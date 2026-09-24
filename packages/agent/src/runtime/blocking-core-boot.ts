@@ -8,11 +8,6 @@ import { formatError } from "@elizaos/shared";
 import { CORE_PLUGINS } from "./core-plugins.ts";
 import { selectDatabasePluginNames } from "./database-selection.ts";
 import type { ResolvedPlugin } from "./plugin-types.ts";
-import { applyHostActionOwnership } from "./runtime-action-ownership.ts";
-
-const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
-  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]],
-]);
 
 export async function preregisterCorePluginsInDependencyWaves(args: {
   runtime: AgentRuntime;
@@ -62,9 +57,7 @@ export async function preregisterCorePluginsInDependencyWaves(args: {
       args.abortSignal?.throwIfAborted();
       const startedAt = Date.now();
       logger.debug(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await args.runtime.registerPlugin(
-        applyHostActionOwnership(args.runtime, resolved.plugin),
-      );
+      await args.runtime.registerPlugin(resolved.plugin);
       registered.add(name);
       logger.debug(
         `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - startedAt}ms)`,
@@ -95,10 +88,7 @@ export async function preregisterCorePluginsInDependencyWaves(args: {
     args.abortSignal?.throwIfAborted();
     const ready: Array<[string, ResolvedPlugin]> = [];
     for (const [name, resolved] of pending) {
-      const dependencies = [
-        ...(resolved.plugin.dependencies ?? []),
-        ...(CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? []),
-      ];
+      const dependencies = resolved.plugin.dependencies ?? [];
       if (
         !dependencies.some(
           (dependency) =>

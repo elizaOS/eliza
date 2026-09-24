@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder alarm sets ios alarm; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
     "An iPhone alarm request currently lands in one of the owner scheduling flows that are available in the environment, typically a life reminder or owner calendar event.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

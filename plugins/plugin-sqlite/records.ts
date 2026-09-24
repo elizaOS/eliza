@@ -25,6 +25,7 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
   ElizaError,
@@ -61,7 +62,9 @@ import {
   type Relationship,
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
+  rankMessageSearch,
   requireFreshWorldMetadataRevision,
+  rerankMemories,
   type Task,
   type TaskMetadataPatch,
   type UUID,
@@ -72,12 +75,27 @@ import {
   type World,
   type WorldMetadataCompareAndSwapParams,
   type WorldMetadataMutationResult,
+  withinCreatedAtWindow,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { rankMessageSearch, rerankMemories, withinCreatedAtWindow } from "@elizaos/retrieval";
 import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
+
+/** Public memory and content fields are string-keyed; symbol capabilities stay on the live turn. */
+function persistableMemory<T extends Partial<Memory>>(memory: T): T {
+  const stringKeyedCopy = <V extends object>(value: V): V => {
+    const copied = { ...value };
+    for (const symbol of Object.getOwnPropertySymbols(copied)) {
+      Reflect.deleteProperty(copied, symbol);
+    }
+    return copied;
+  };
+  const stored = stringKeyedCopy(memory);
+  if (stored.content !== undefined)
+    stored.content = stringKeyedCopy(stored.content);
+  return stored;
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Internal stored shapes
@@ -106,13 +124,17 @@ interface StoredMemory {
   metadata?: MemoryMetadata;
 }
 
-const PATCH_PATH_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*$/;
+const PATCH_PATH_PATTERN =
+  /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*$/;
 const BLOCKED_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MAX_PATCH_PATH_LENGTH = 256;
 const MAX_PATCH_PATH_SEGMENTS = 16;
 const MAX_PATCH_ARRAY_INDEX = 100_000;
 
-function invalidPatchPath(context: Record<string, unknown>, cause?: unknown): ElizaError {
+function invalidPatchPath(
+  context: Record<string, unknown>,
+  cause?: unknown,
+): ElizaError {
   return new ElizaError("Component patch path is invalid", {
     code: "COMPONENT_PATCH_PATH_INVALID",
     context,
@@ -122,8 +144,14 @@ function invalidPatchPath(context: Record<string, unknown>, cause?: unknown): El
 }
 
 function patchPathSegments(path: string): string[] {
-  if (typeof path !== "string" || path.length === 0 || path.length > MAX_PATCH_PATH_LENGTH) {
-    throw invalidPatchPath({ pathLength: typeof path === "string" ? path.length : null });
+  if (
+    typeof path !== "string" ||
+    path.length === 0 ||
+    path.length > MAX_PATCH_PATH_LENGTH
+  ) {
+    throw invalidPatchPath({
+      pathLength: typeof path === "string" ? path.length : null,
+    });
   }
   const parts = path.split(".");
   if (
@@ -131,15 +159,23 @@ function patchPathSegments(path: string): string[] {
     !PATCH_PATH_PATTERN.test(path) ||
     parts.some(
       (part) =>
-        BLOCKED_PATCH_KEYS.has(part) || (/^\d+$/.test(part) && Number(part) > MAX_PATCH_ARRAY_INDEX)
+        BLOCKED_PATCH_KEYS.has(part) ||
+        (/^\d+$/.test(part) && Number(part) > MAX_PATCH_ARRAY_INDEX),
     )
   ) {
-    throw invalidPatchPath({ pathLength: path.length, segmentCount: parts.length });
+    throw invalidPatchPath({
+      pathLength: path.length,
+      segmentCount: parts.length,
+    });
   }
   return parts;
 }
 
-function definePatchValue(target: Record<string, unknown>, key: string, value: unknown): void {
+function definePatchValue(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
   try {
     Object.defineProperty(target, key, {
       configurable: true,
@@ -154,7 +190,7 @@ function definePatchValue(target: Record<string, unknown>, key: string, value: u
 
 function ownPatchValue(
   target: Record<string, unknown>,
-  key: string
+  key: string,
 ): { found: boolean; value?: unknown } {
   let descriptor: PropertyDescriptor | undefined;
   try {
@@ -171,14 +207,16 @@ function ownPatchValue(
 
 function assertPatchContainer(
   value: unknown,
-  key: string
+  key: string,
 ): asserts value is Record<string, unknown> {
   if (typeof value !== "object" || value === null) {
     throw invalidPatchPath({ key, reason: "container" });
   }
   try {
     const prototype = Object.getPrototypeOf(value);
-    const safePrototype = Array.isArray(value) ? Array.prototype : Object.prototype;
+    const safePrototype = Array.isArray(value)
+      ? Array.prototype
+      : Object.prototype;
     if (prototype !== safePrototype && prototype !== null) {
       throw invalidPatchPath({ key, reason: "nested-prototype" });
     }
@@ -210,8 +248,15 @@ function clonePatchRoot(value: unknown): Record<string, unknown> {
   return clone;
 }
 
-function appendPatchValue(target: unknown[], key: string, value: unknown): void {
-  const length = ownPatchValue(target as unknown as Record<string, unknown>, "length").value;
+function appendPatchValue(
+  target: unknown[],
+  key: string,
+  value: unknown,
+): void {
+  const length = ownPatchValue(
+    target as unknown as Record<string, unknown>,
+    "length",
+  ).value;
   if (
     typeof length !== "number" ||
     !Number.isSafeInteger(length) ||
@@ -220,7 +265,11 @@ function appendPatchValue(target: unknown[], key: string, value: unknown): void 
   ) {
     throw invalidPatchPath({ key, reason: "array-length" });
   }
-  definePatchValue(target as unknown as Record<string, unknown>, String(length), value);
+  definePatchValue(
+    target as unknown as Record<string, unknown>,
+    String(length),
+    value,
+  );
 }
 
 interface StoredRelationship {
@@ -274,19 +323,28 @@ function storedMemoryTableName(memory: StoredMemory): string | undefined {
  */
 const worldMetadataTails = new WeakMap<IStorage, Promise<void>>();
 
-function withWorldMetadataTail<T>(storage: IStorage, operation: () => Promise<T>): Promise<T> {
-  const run = (worldMetadataTails.get(storage) ?? Promise.resolve()).then(operation, operation);
+function withWorldMetadataTail<T>(
+  storage: IStorage,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const run = (worldMetadataTails.get(storage) ?? Promise.resolve()).then(
+    operation,
+    operation,
+  );
   worldMetadataTails.set(
     storage,
     run.then(
       () => undefined,
-      () => undefined
-    )
+      () => undefined,
+    ),
   );
   return run;
 }
 
-function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): Relationship {
+function relationshipFromStored(
+  r: StoredRelationship,
+  fallbackAgentId: UUID,
+): Relationship {
   return {
     id: r.id as UUID,
     sourceEntityId: r.sourceEntityId as UUID,
@@ -360,7 +418,7 @@ function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
       definePatchValue(
         parent,
         last,
-        typeof existing.value === "number" ? existing.value + delta : delta
+        typeof existing.value === "number" ? existing.value + delta : delta,
       );
       break;
     }
@@ -398,9 +456,18 @@ function levenshtein(a: string, b: string): number {
  * Ids break timestamp ties through the same case-insensitive comparison
  * PostgreSQL applies.
  */
-function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): number {
-  const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
-  const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+function compareStoredMemoriesNewestFirst(
+  a: StoredMemory,
+  b: StoredMemory,
+): number {
+  const ta =
+    typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+      ? a.createdAt
+      : 0;
+  const tb =
+    typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+      ? b.createdAt
+      : 0;
   if (ta !== tb) return tb - ta;
   const aId = typeof a.id === "string" ? a.id : "";
   const bId = typeof b.id === "string" ? b.id : "";
@@ -428,7 +495,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
 
-  async initialize(_config?: Record<string, string | number | boolean | null>): Promise<void> {
+  async initialize(
+    _config?: Record<string, string | number | boolean | null>,
+  ): Promise<void> {
     await this.storage.init();
     await this.vectorIndex.init(this.embeddingDimension);
     this.ready = true;
@@ -440,15 +509,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     await this.initialize();
   }
 
-  async runPluginMigrations(
-    _plugins: Array<{ name: string; schema?: Record<string, JsonValue> }>,
-    _options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
-  ): Promise<void> {
-    logger.debug(
-      { src: "plugin:sqlite" },
-      "Plugin migrations not needed for in-memory storage"
-    );
-  }
+  abstract runPluginMigrations(
+    plugins: Array<{ name: string; schema?: Record<string, JsonValue> }>,
+    options?: { verbose?: boolean; force?: boolean; dryRun?: boolean },
+  ): Promise<void>;
 
   async isReady(): Promise<boolean> {
     return this.ready && (await this.storage.isReady());
@@ -467,12 +531,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   abstract transaction<T>(
     callback: (tx: IDatabaseAdapter<IStorage>) => Promise<T>,
-    options?: { entityContext?: UUID }
+    options?: { entityContext?: UUID },
   ): Promise<T>;
 
   abstract withAgentScope<T>(
     agentId: UUID,
-    callback: (scoped: IDatabaseAdapter<IStorage>) => Promise<T>
+    callback: (scoped: IDatabaseAdapter<IStorage>) => Promise<T>,
   ): Promise<T>;
 
   // ── Embedding ─────────────────────────────────────────────────────────
@@ -487,7 +551,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
     const embeddedMemories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (memory) => Array.isArray(memory.embedding) && memory.embedding.length > 0
+      (memory) =>
+        Array.isArray(memory.embedding) && memory.embedding.length > 0,
     );
     const reclaimed: UUID[] = [];
 
@@ -525,7 +590,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async upsertEntities(entities: Entity[]): Promise<void> {
     for (const entity of entities) {
       if (!entity.id) continue;
-      const existing = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entity.id);
+      const existing = await this.storage.get<Entity>(
+        COLLECTIONS.ENTITIES,
+        entity.id,
+      );
       await this.storage.set(COLLECTIONS.ENTITIES, entity.id, {
         ...(existing ?? {}),
         ...entity,
@@ -545,7 +613,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async updateEntities(entities: Entity[]): Promise<void> {
     for (const entity of entities) {
       if (!entity.id) continue;
-      const existing = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entity.id);
+      const existing = await this.storage.get<Entity>(
+        COLLECTIONS.ENTITIES,
+        entity.id,
+      );
       if (!existing) continue;
       await this.storage.set(COLLECTIONS.ENTITIES, entity.id, {
         ...existing,
@@ -562,22 +633,25 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async getEntitiesForRooms(
     roomIds: UUID[],
-    includeComponents = false
+    includeComponents = false,
   ): Promise<EntitiesForRoomsResult> {
     const result: EntitiesForRoomsResult = [];
     for (const roomId of roomIds) {
       const participants = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId
+        (p) => p.roomId === roomId,
       );
-      const entityIds = [...new Set(participants.map((p) => p.entityId))] as UUID[];
+      const entityIds = [
+        ...new Set(participants.map((p) => p.entityId)),
+      ] as UUID[];
       const entities = await this.getEntitiesByIds(entityIds);
 
       if (includeComponents) {
         for (const entity of entities) {
           if (!entity.id) continue;
           const components = await this.getComponentsForEntities([entity.id]);
-          (entity as Entity & { components?: Component[] }).components = components;
+          (entity as Entity & { components?: Component[] }).components =
+            components;
         }
       }
 
@@ -586,7 +660,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
+  async getEntitiesByNames(params: {
+    names: string[];
+    agentId: UUID;
+  }): Promise<Entity[]> {
     if (params.names.length === 0) return [];
     const set = new Set(params.names);
     return this.storage.getWhere<Entity>(COLLECTIONS.ENTITIES, (e) => {
@@ -601,10 +678,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     limit?: number;
   }): Promise<Entity[]> {
     const q = params.query.toLowerCase();
-    const matches = await this.storage.getWhere<Entity>(COLLECTIONS.ENTITIES, (e) => {
-      const names = (e as Entity & { names?: string[] }).names ?? [];
-      return names.some((name) => name.toLowerCase().includes(q));
-    });
+    const matches = await this.storage.getWhere<Entity>(
+      COLLECTIONS.ENTITIES,
+      (e) => {
+        const names = (e as Entity & { names?: string[] }).names ?? [];
+        return names.some((name) => name.toLowerCase().includes(q));
+      },
+    );
     return params.limit ? matches.slice(0, params.limit) : matches;
   }
 
@@ -631,16 +711,27 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const matchedComponents = await this.storage.getWhere<Component>(
         COLLECTIONS.COMPONENTS,
         (component) => {
-          if (params.agentId && component.agentId !== params.agentId) return false;
-          if (params.entityIds?.length && !params.entityIds.includes(component.entityId)) {
+          if (params.agentId && component.agentId !== params.agentId)
+            return false;
+          if (
+            params.entityIds?.length &&
+            !params.entityIds.includes(component.entityId)
+          ) {
             return false;
           }
-          if (params.componentType !== undefined && component.type !== params.componentType) {
+          if (
+            params.componentType !== undefined &&
+            component.type !== params.componentType
+          ) {
             return false;
           }
-          if (params.worldId !== undefined && component.worldId !== params.worldId) return false;
+          if (
+            params.worldId !== undefined &&
+            component.worldId !== params.worldId
+          )
+            return false;
           return dataContainsFilter(component.data, params.componentDataFilter);
-        }
+        },
       );
       for (const component of matchedComponents) {
         const bucket = matchedComponentsByEntity.get(component.entityId) ?? [];
@@ -652,30 +743,36 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     let entityIds: UUID[];
     if (hasComponentQuery) {
       entityIds = params.entityIds?.length
-        ? params.entityIds.filter((entityId) => matchedComponentsByEntity.has(entityId))
+        ? params.entityIds.filter((entityId) =>
+            matchedComponentsByEntity.has(entityId),
+          )
         : [...matchedComponentsByEntity.keys()];
     } else if (params.entityIds?.length) {
       entityIds = [...params.entityIds];
     } else if (params.limit !== undefined) {
-      const entities = await this.storage.getWhere<Entity>(COLLECTIONS.ENTITIES, (entity) =>
-        params.agentId ? entity.agentId === params.agentId : true
+      const entities = await this.storage.getWhere<Entity>(
+        COLLECTIONS.ENTITIES,
+        (entity) => (params.agentId ? entity.agentId === params.agentId : true),
       );
       entityIds = entities.flatMap((entity) => (entity.id ? [entity.id] : []));
     } else {
       return [];
     }
 
-    const candidates = (await this.getEntitiesByIds(entityIds)).filter((entity) =>
-      params.agentId ? entity.agentId === params.agentId : true
+    const candidates = (await this.getEntitiesByIds(entityIds)).filter(
+      (entity) => (params.agentId ? entity.agentId === params.agentId : true),
     );
     const offset = params.offset ?? 0;
     const limit = params.limit ?? candidates.length;
-    const entities = candidates.slice(offset, offset + limit).map((entity) => ({ ...entity }));
+    const entities = candidates
+      .slice(offset, offset + limit)
+      .map((entity) => ({ ...entity }));
     for (const entity of entities) {
       if (!entity.id) continue;
       const components = params.includeAllComponents
-        ? (await this.getComponentsForEntities([entity.id])).filter((component) =>
-            params.agentId ? component.agentId === params.agentId : true
+        ? (await this.getComponentsForEntities([entity.id])).filter(
+            (component) =>
+              params.agentId ? component.agentId === params.agentId : true,
           )
         : (matchedComponentsByEntity.get(entity.id) ?? []);
       if (components.length > 0) {
@@ -711,7 +808,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async updateComponents(components: Component[]): Promise<void> {
     for (const component of components) {
       if (!component.id) continue;
-      const existing = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, component.id);
+      const existing = await this.storage.get<Component>(
+        COLLECTIONS.COMPONENTS,
+        component.id,
+      );
       if (!existing) continue;
       await this.storage.set(COLLECTIONS.COMPONENTS, component.id, {
         ...existing,
@@ -728,7 +828,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertComponents(
     components: Component[],
-    _options?: { entityContext?: UUID }
+    _options?: { entityContext?: UUID },
   ): Promise<void> {
     for (const component of components) {
       const naturalKey = await this.storage.getWhere<Component>(
@@ -737,7 +837,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           c.entityId === component.entityId &&
           c.type === component.type &&
           c.worldId === component.worldId &&
-          c.sourceEntityId === component.sourceEntityId
+          c.sourceEntityId === component.sourceEntityId,
       );
 
       const existing = naturalKey[0];
@@ -759,12 +859,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async patchComponents(
     updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
-    _options?: { entityContext?: UUID }
+    _options?: { entityContext?: UUID },
   ): Promise<void> {
     for (const update of updates) {
       const component = await this.storage.get<Component>(
         COLLECTIONS.COMPONENTS,
-        update.componentId
+        update.componentId,
       );
       if (!component) continue;
       const data = clonePatchRoot(component.data);
@@ -772,7 +872,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         applyPatchOp(data, op);
       }
       component.data = data as Component["data"];
-      await this.storage.set(COLLECTIONS.COMPONENTS, update.componentId, component);
+      await this.storage.set(
+        COLLECTIONS.COMPONENTS,
+        update.componentId,
+        component,
+      );
     }
   }
 
@@ -782,7 +886,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       type: string;
       worldId?: UUID;
       sourceEntityId?: UUID;
-    }>
+    }>,
   ): Promise<(Component | null)[]> {
     const result: (Component | null)[] = [];
     for (const key of keys) {
@@ -792,7 +896,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           c.entityId === key.entityId &&
           c.type === key.type &&
           c.worldId === (key.worldId ?? null) &&
-          c.sourceEntityId === (key.sourceEntityId ?? null)
+          c.sourceEntityId === (key.sourceEntityId ?? null),
       );
       result.push(matches[0] ?? null);
     }
@@ -802,32 +906,51 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async getComponentsForEntities(
     entityIds: UUID[],
     worldId?: UUID,
-    sourceEntityId?: UUID
+    sourceEntityId?: UUID,
   ): Promise<Component[]> {
     if (entityIds.length === 0) return [];
     const idSet = new Set(entityIds);
     return this.storage.getWhere<Component>(COLLECTIONS.COMPONENTS, (c) => {
       if (!idSet.has(c.entityId as UUID)) return false;
       if (worldId !== undefined && c.worldId !== worldId) return false;
-      if (sourceEntityId !== undefined && c.sourceEntityId !== sourceEntityId) return false;
+      if (sourceEntityId !== undefined && c.sourceEntityId !== sourceEntityId)
+        return false;
       return true;
     });
   }
 
   // ── Memory CRUD ───────────────────────────────────────────────────────
 
-  async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
+  private async currentDocumentRequester<T extends DocumentRequesterContext>(
+    params: T,
+  ): Promise<T> {
+    return {
+      ...params,
+      requesterRoomIds: await this.getRoomsForParticipants([
+        params.requesterEntityId,
+      ]),
+    };
+  }
+
+  async queryDocuments(
+    params: DocumentListQueryParams,
+  ): Promise<DocumentListQueryResult> {
+    params = await this.currentDocumentRequester(params);
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (memory) =>
         storedMemoryTableName(memory) === "documents" ||
-        storedMemoryTableName(memory) === "document_fragments"
+        storedMemoryTableName(memory) === "document_fragments",
     );
     return queryDocumentsInMemory(memories.map(toMemory), params);
   }
 
   async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
-    const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+    params = await this.currentDocumentRequester(params);
+    const stored = await this.storage.get<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      params.documentId,
+    );
     if (
       !stored ||
       storedMemoryTableName(stored) !== "documents" ||
@@ -839,14 +962,21 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return isDocumentVisibleToRequester(memory, params) ? memory : null;
   }
 
-  async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
+  async queryDocumentFragments(
+    params: DocumentFragmentQueryParams,
+  ): Promise<Memory[]> {
+    params = await this.currentDocumentRequester(params);
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (memory) =>
         storedMemoryTableName(memory) === "documents" ||
-        storedMemoryTableName(memory) === "document_fragments"
+        storedMemoryTableName(memory) === "document_fragments",
     );
-    return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
+    return queryDocumentFragmentsInMemory(
+      memories.map(toMemory),
+      params,
+      this.embeddingDimension,
+    );
   }
 
   private withMemoryMutationLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -856,17 +986,21 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       this.storage,
       run.then(
         () => undefined,
-        () => undefined
-      )
+        () => undefined,
+      ),
     );
     return run;
   }
 
   async compareAndSwapDocument(
-    params: DocumentCompareAndSwapParams
+    params: DocumentCompareAndSwapParams,
   ): Promise<DocumentMutationResult> {
     return this.withMemoryMutationLock(async () => {
-      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      params = await this.currentDocumentRequester(params);
+      const stored = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        params.documentId,
+      );
       if (
         !stored ||
         storedMemoryTableName(stored) !== "documents" ||
@@ -878,8 +1012,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
       }
-      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
-      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      if (!isDocumentVisibleToRequester(existing, params))
+        return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params))
+        return { status: "forbidden" };
       const replacement: StoredMemory = {
         ...stored,
         ...params.replacement,
@@ -888,17 +1024,27 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         agentId: params.agentId,
         metadata: params.replacement.metadata,
       };
-      await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
+      await this.storage.set(
+        COLLECTIONS.MEMORIES,
+        params.documentId,
+        replacement,
+      );
       return { status: "updated", document: toMemory(replacement) };
     });
   }
 
   async updateDocumentDirectGrants(
-    params: DocumentDirectGrantUpdateParams
+    params: DocumentDirectGrantUpdateParams,
   ): Promise<DocumentMutationResult> {
-    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
+    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(
+      params.directGrantEntityIds,
+    );
     return this.withMemoryMutationLock(async () => {
-      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      params = await this.currentDocumentRequester(params);
+      const stored = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        params.documentId,
+      );
       if (
         !stored ||
         storedMemoryTableName(stored) !== "documents" ||
@@ -920,7 +1066,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       ) {
         return { status: "not_found" };
       }
-      const metadata = { ...((stored.metadata ?? {}) as Record<string, unknown>) };
+      const metadata = {
+        ...((stored.metadata ?? {}) as Record<string, unknown>),
+      };
       if (directGrantEntityIds.length > 0) {
         metadata.directGrantEntityIds = directGrantEntityIds;
       } else {
@@ -936,11 +1084,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async replaceDocumentRevision(
-    params: DocumentRevisionReplaceParams
+    params: DocumentRevisionReplaceParams,
   ): Promise<DocumentMutationResult> {
     validateDocumentRevisionReplacement(params);
     return this.withMemoryMutationLock(async () => {
-      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      params = await this.currentDocumentRequester(params);
+      const stored = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        params.documentId,
+      );
       if (
         !stored ||
         storedMemoryTableName(stored) !== "documents" ||
@@ -952,15 +1104,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
       }
-      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
-      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      if (!isDocumentVisibleToRequester(existing, params))
+        return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params))
+        return { status: "forbidden" };
       if (!this.storage.applyBatch) {
         throw new ElizaError(
-          "The configured in-memory storage cannot atomically replace documents",
+          "SQLite record storage cannot atomically replace documents",
           {
             code: "DOCUMENT_REVISION_ATOMIC_STORAGE_REQUIRED",
             context: { documentId: params.documentId },
-          }
+          },
         );
       }
       const oldFragments = await this.storage.getWhere<StoredMemory>(
@@ -968,7 +1122,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (memory) =>
           memory.agentId === params.agentId &&
           memory.metadata?.type === MemoryType.FRAGMENT &&
-          memory.metadata.documentId === params.documentId
+          memory.metadata.documentId === params.documentId,
       );
       const oldIds = oldFragments
         .map(({ id }) => id)
@@ -976,7 +1130,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       for (const fragment of params.fragments) {
         const collision = await this.storage.get<StoredMemory>(
           COLLECTIONS.MEMORIES,
-          fragment.id as UUID
+          fragment.id as UUID,
         );
         if (collision) {
           throw new ElizaError("Atomic document fragment id already exists", {
@@ -1017,7 +1171,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       } catch (error) {
         // error-policy:J2 Staged vector entries are not a committed revision;
         // remove them before surfacing the storage/vector failure.
-        await Promise.all(indexedNewIds.map((id) => this.vectorIndex.remove(id)));
+        await Promise.all(
+          indexedNewIds.map((id) => this.vectorIndex.remove(id)),
+        );
         throw new ElizaError("Failed to stage an atomic document revision", {
           code: "DOCUMENT_REVISION_STAGE_FAILED",
           context: { documentId: params.documentId },
@@ -1029,9 +1185,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
-  async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
+  async deleteDocumentWithSnapshot(
+    params: DocumentDeleteParams,
+  ): Promise<DocumentMutationResult> {
     return this.withMemoryMutationLock(async () => {
-      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      params = await this.currentDocumentRequester(params);
+      const stored = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        params.documentId,
+      );
       if (
         !stored ||
         storedMemoryTableName(stored) !== "documents" ||
@@ -1043,23 +1205,30 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
       }
-      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
-      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      if (!isDocumentVisibleToRequester(existing, params))
+        return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params))
+        return { status: "forbidden" };
       const fragments = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (memory) => {
-          const metadata = memory.metadata as Record<string, unknown> | undefined;
+          const metadata = memory.metadata as
+            | Record<string, unknown>
+            | undefined;
           return (
             memory.agentId === params.agentId &&
             metadata?.type === MemoryType.FRAGMENT &&
             metadata.documentId === params.documentId
           );
-        }
+        },
       );
       const fragmentIds = fragments
         .map((memory) => memory.id)
         .filter((id): id is string => typeof id === "string");
-      await this.storage.deleteMany(COLLECTIONS.MEMORIES, [...fragmentIds, params.documentId]);
+      await this.storage.deleteMany(COLLECTIONS.MEMORIES, [
+        ...fragmentIds,
+        params.documentId,
+      ]);
       await Promise.all(fragmentIds.map((id) => this.vectorIndex.remove(id)));
       return { status: "deleted", document: existing };
     });
@@ -1068,15 +1237,18 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async listMemoryTypes(): Promise<string[]> {
     const rows = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (memory) => memory.agentId === this.agentId
+      (memory) => memory.agentId === this.agentId,
     );
     const types = rows.map((memory) => {
       const type = storedMemoryTableName(memory);
       if (typeof type !== "string" || type.length === 0) {
-        throw new ElizaError("Cannot inventory memories with a missing storage type", {
-          code: "MEMORY_STORAGE_TYPE_INVALID",
-          context: { agentId: this.agentId, memoryId: memory.id },
-        });
+        throw new ElizaError(
+          "Cannot inventory memories with a missing storage type",
+          {
+            code: "MEMORY_STORAGE_TYPE_INVALID",
+            context: { agentId: this.agentId, memoryId: memory.id },
+          },
+        );
       }
       return type;
     });
@@ -1114,76 +1286,101 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           (
             await this.storage.getWhere<StoredParticipant>(
               COLLECTIONS.PARTICIPANTS,
-              (participant) => participant.entityId === params.entityId
+              (participant) => participant.entityId === params.entityId,
             )
-          ).map((participant) => participant.roomId)
+          ).map((participant) => participant.roomId),
         )
       : null;
-    const authorEntityIds = params.authorEntityIds ? new Set(params.authorEntityIds) : null;
-    const excludedRoomIds = params.excludeRoomIds ? new Set(params.excludeRoomIds) : null;
-    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
-      // Match plugin-sql entity RLS: entityId is the isolation principal, not
-      // an author-row predicate. A principal sees every author's memories in
-      // rooms it participates in, plus its own agent-owned document records.
-      if (params.entityId && participantRoomIds) {
-        const tableName = storedMemoryTableName(m);
-        const agentDocument =
-          (tableName === "documents" || tableName === "document_fragments") &&
-          m.agentId === params.entityId;
-        if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
-      }
-      if (params.agentId && m.agentId !== params.agentId) return false;
-      if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID)) return false;
-      if (params.roomId && m.roomId !== params.roomId) return false;
-      if (excludedRoomIds?.has(m.roomId as UUID)) return false;
-      if (params.worldId && m.worldId !== params.worldId) return false;
-      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
-      if (params.start && m.createdAt && m.createdAt < params.start) return false;
-      if (params.end && m.createdAt && m.createdAt > params.end) return false;
-      if (params.unique && !m.unique) return false;
-      if (params.metadata) {
-        const md = (m.metadata ?? {}) as Record<string, unknown>;
-        for (const [k, v] of Object.entries(params.metadata)) {
-          if (md[k] !== v) return false;
+    const authorEntityIds = params.authorEntityIds
+      ? new Set(params.authorEntityIds)
+      : null;
+    const excludedRoomIds = params.excludeRoomIds
+      ? new Set(params.excludeRoomIds)
+      : null;
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (m) => {
+        // Match plugin-sql entity RLS: entityId is the isolation principal, not
+        // an author-row predicate. A principal sees every author's memories in
+        // rooms it participates in, plus its own agent-owned document records.
+        if (params.entityId && participantRoomIds) {
+          const tableName = storedMemoryTableName(m);
+          const agentDocument =
+            (tableName === "documents" || tableName === "document_fragments") &&
+            m.agentId === params.entityId;
+          if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
         }
-      }
-      if (textContains) {
-        const text = (m.content as { text?: unknown } | undefined)?.text;
-        if (typeof text !== "string" || !text.toLowerCase().includes(textContains)) {
+        if (params.agentId && m.agentId !== params.agentId) return false;
+        if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID))
           return false;
+        if (params.roomId && m.roomId !== params.roomId) return false;
+        if (excludedRoomIds?.has(m.roomId as UUID)) return false;
+        if (params.worldId && m.worldId !== params.worldId) return false;
+        if (params.tableName && storedMemoryTableName(m) !== params.tableName)
+          return false;
+        if (params.start && m.createdAt && m.createdAt < params.start)
+          return false;
+        if (params.end && m.createdAt && m.createdAt > params.end) return false;
+        if (params.unique && !m.unique) return false;
+        if (params.metadata) {
+          const md = (m.metadata ?? {}) as Record<string, unknown>;
+          for (const [k, v] of Object.entries(params.metadata)) {
+            if (md[k] !== v) return false;
+          }
         }
-      }
-      return true;
-    });
+        if (textContains) {
+          const text = (m.content as { text?: unknown } | undefined)?.text;
+          if (
+            typeof text !== "string" ||
+            !text.toLowerCase().includes(textContains)
+          ) {
+            return false;
+          }
+        }
+        return true;
+      },
+    );
     let readableMemories = memories.map(toMemory);
     if (params.accessContext) {
       readableMemories = filterMemoryReadByAccessContext(
         readableMemories,
         params.accessContext,
         this.agentId,
-        params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+        params.tableName === "messages" &&
+          params.accessContext.authorizedRoomIds !== undefined
           ? "room"
-          : "private"
+          : "private",
       );
     }
 
     const direction = params.orderDirection ?? "desc";
     readableMemories.sort((a, b) => {
-      const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
-      const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+      const ta =
+        typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+          ? a.createdAt
+          : 0;
+      const tb =
+        typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : 0;
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
-      return direction === "asc" ? compareMemoryIds(aId, bId) : compareMemoryIds(bId, aId);
+      return direction === "asc"
+        ? compareMemoryIds(aId, bId)
+        : compareMemoryIds(bId, aId);
     });
 
     if (params.cursor) {
       const cursor = params.cursor;
       readableMemories = readableMemories.filter((memory) => {
-        const createdAt = typeof memory.createdAt === "number" ? memory.createdAt : 0;
+        const createdAt =
+          typeof memory.createdAt === "number" ? memory.createdAt : 0;
         const id = typeof memory.id === "string" ? memory.id : "";
         if (createdAt !== cursor.createdAt) {
-          return direction === "asc" ? createdAt > cursor.createdAt : createdAt < cursor.createdAt;
+          return direction === "asc"
+            ? createdAt > cursor.createdAt
+            : createdAt < cursor.createdAt;
         }
         const idOrder = compareMemoryIds(id, cursor.id);
         return direction === "asc" ? idOrder > 0 : idOrder < 0;
@@ -1193,7 +1390,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? params.count;
     if (offset > 0) readableMemories = readableMemories.slice(offset);
-    if (limit !== undefined) readableMemories = readableMemories.slice(0, limit);
+    if (limit !== undefined)
+      readableMemories = readableMemories.slice(0, limit);
 
     return readableMemories;
   }
@@ -1210,21 +1408,25 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (params.roomIds.length === 0) return [];
     const roomSet = new Set(params.roomIds);
     const textContains = params.textContains?.trim().toLowerCase();
-    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
-      if (!roomSet.has(m.roomId as UUID)) return false;
-      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
-      // Same case-insensitive `includes` semantics the SQL adapter pushes
-      // down as ILIKE.
-      if (
-        textContains &&
-        !String(m.content.text ?? "")
-          .toLowerCase()
-          .includes(textContains)
-      ) {
-        return false;
-      }
-      return true;
-    });
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (m) => {
+        if (!roomSet.has(m.roomId as UUID)) return false;
+        if (params.tableName && storedMemoryTableName(m) !== params.tableName)
+          return false;
+        // Same case-insensitive `includes` semantics the SQL adapter pushes
+        // down as ILIKE.
+        if (
+          textContains &&
+          !String(m.content.text ?? "")
+            .toLowerCase()
+            .includes(textContains)
+        ) {
+          return false;
+        }
+        return true;
+      },
+    );
     memories.sort(compareStoredMemoriesNewestFirst);
     let readableMemories = memories.map(toMemory);
     if (params.accessContext) {
@@ -1232,9 +1434,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         readableMemories,
         params.accessContext,
         this.agentId,
-        params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+        params.tableName === "messages" &&
+          params.accessContext.authorizedRoomIds !== undefined
           ? "room"
-          : "private"
+          : "private",
       );
     }
     const offset = typeof params.offset === "number" ? params.offset : 0;
@@ -1258,7 +1461,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const tableName = params.tableName ?? "messages";
     const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => roomSet.has(m.roomId as UUID) && storedMemoryTableName(m) === tableName
+      (m) =>
+        roomSet.has(m.roomId as UUID) && storedMemoryTableName(m) === tableName,
     );
     // The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
     // adapters' created_at range conditions.
@@ -1268,28 +1472,33 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         withinCreatedAtWindow(
           typeof memory.createdAt === "number" ? memory.createdAt : undefined,
           params.since,
-          params.until
-        )
+          params.until,
+        ),
       );
     if (params.accessContext) {
       candidates = filterMemoryReadByAccessContext(
         candidates,
         params.accessContext,
         this.agentId,
-        "room"
+        "room",
       );
     }
     const ranked = rankMessageSearch(candidates, params.query);
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? 20;
-    return ranked.slice(offset, offset + limit).map(({ item, ftsRank, trigramSimilarity }) => ({
-      memory: item,
-      ftsRank,
-      trigramSimilarity,
-    }));
+    return ranked
+      .slice(offset, offset + limit)
+      .map(({ item, ftsRank, trigramSimilarity }) => ({
+        memory: item,
+        ftsRank,
+        trigramSimilarity,
+      }));
   }
 
-  async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
+  async getMemoriesByIds(
+    memoryIds: UUID[],
+    tableName?: string,
+  ): Promise<Memory[]> {
     const memories: Memory[] = [];
     for (const id of memoryIds) {
       const m = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
@@ -1310,7 +1519,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => storedMemoryTableName(m) === params.query_table_name && !!m.embedding
+      (m) =>
+        storedMemoryTableName(m) === params.query_table_name && !!m.embedding,
     );
 
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
@@ -1365,31 +1575,36 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const eligibleMemories = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (memory) =>
-          (!params.tableName || storedMemoryTableName(memory) === params.tableName) &&
+          (!params.tableName ||
+            storedMemoryTableName(memory) === params.tableName) &&
           (!params.roomId || memory.roomId === params.roomId) &&
           (!params.worldId || memory.worldId === params.worldId) &&
           (!params.entityId || memory.entityId === params.entityId) &&
-          (!params.unique || !!memory.unique)
+          (!params.unique || !!memory.unique),
       );
       const readableMemories = params.accessContext
         ? filterMemoryReadByAccessContext(
             eligibleMemories.map(toMemory),
             params.accessContext,
             this.agentId,
-            params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+            params.tableName === "messages" &&
+              params.accessContext.authorizedRoomIds !== undefined
               ? "room"
-              : "private"
+              : "private",
           )
         : eligibleMemories.map(toMemory);
       const memoriesById = new Map(
-        readableMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
+        readableMemories.flatMap((memory) =>
+          memory.id ? [[memory.id, memory] as const] : [],
+        ),
       );
-      const requestedCount = limit === undefined ? memoriesById.size : limit + offset;
+      const requestedCount =
+        limit === undefined ? memoriesById.size : limit + offset;
       const results = await this.vectorIndex.searchExact(
         params.embedding,
         requestedCount,
         threshold,
-        new Set(memoriesById.keys())
+        new Set(memoriesById.keys()),
       );
 
       const memories = results.slice(offset).flatMap((result) => {
@@ -1401,14 +1616,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createMemories(
-    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
   ): Promise<UUID[]> {
     return this.withMemoryMutationLock(async () => {
       const ids: UUID[] = [];
       for (const { memory, tableName, unique = false } of memories) {
         const id = (memory.id ?? randomUUID()) as UUID;
         const stored: StoredMemory = {
-          ...memory,
+          ...persistableMemory(memory),
           id,
           tableName,
           agentId: memory.agentId ?? this.agentId,
@@ -1427,10 +1642,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async updateMemoryEmbedding(
-    update: import("@elizaos/core").MemoryEmbeddingUpdate
+    update: import("@elizaos/core").MemoryEmbeddingUpdate,
   ): Promise<boolean> {
     return this.withMemoryMutationLock(async () => {
-      const current = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, update.id);
+      const current = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        update.id,
+      );
       const expected = update.expected;
       if (
         !current ||
@@ -1446,22 +1664,28 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       )
         throw new Error("Invalid memory embedding for active dimension");
       const embedding = [...update.embedding];
-      await this.storage.set(COLLECTIONS.MEMORIES, update.id, { ...current, embedding });
+      await this.storage.set(COLLECTIONS.MEMORIES, update.id, {
+        ...current,
+        embedding,
+      });
       await this.vectorIndex.add(update.id, embedding);
       return true;
     });
   }
 
   async updateMemories(
-    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
   ): Promise<void> {
     return this.withMemoryMutationLock(async () => {
       for (const memory of memories) {
-        const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, memory.id);
+        const existing = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          memory.id,
+        );
         if (!existing) continue;
         const updated: StoredMemory = {
           ...existing,
-          ...memory,
+          ...persistableMemory(memory),
           metadata: {
             ...(existing.metadata ?? {}),
             ...(memory.metadata ?? {}),
@@ -1477,15 +1701,18 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
-    _options?: { entityContext?: UUID }
+    _options?: { entityContext?: UUID },
   ): Promise<void> {
     return this.withMemoryMutationLock(async () => {
       for (const { memory, tableName } of memories) {
         const id = memory.id ?? (randomUUID() as UUID);
-        const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
+        const existing = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          id,
+        );
         const stored: StoredMemory = {
           ...(existing ?? {}),
-          ...memory,
+          ...persistableMemory(memory),
           id,
           tableName,
           agentId: memory.agentId ?? existing?.agentId ?? this.agentId,
@@ -1520,7 +1747,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.MEMORIES,
         (m) =>
           roomSet.has(m.roomId as UUID) &&
-          (tableName ? storedMemoryTableName(m) === tableName : true)
+          (tableName ? storedMemoryTableName(m) === tableName : true),
       );
       const ids = memories
         .map((m) => m.id)
@@ -1544,7 +1771,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (roomSet && !roomSet.has(m.roomId as UUID)) return false;
       if (params.unique && !m.unique) return false;
-      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName)
+        return false;
       if (params.entityId && m.entityId !== params.entityId) return false;
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.metadata) {
@@ -1567,7 +1795,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.MEMORIES,
       (m) =>
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
-        (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
+        (params.tableName
+          ? storedMemoryTableName(m) === params.tableName
+          : true),
     );
     memories.sort(compareStoredMemoriesNewestFirst);
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
@@ -1610,7 +1840,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       entityId: UUID;
       roomId: UUID;
       type: string;
-    }>
+    }>,
   ): Promise<void> {
     for (const entry of params) {
       const id = randomUUID() as UUID;
@@ -1635,7 +1865,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return logs;
   }
 
-  async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
+  async updateLogs(
+    logs: Array<{ id: UUID; updates: Partial<Log> }>,
+  ): Promise<void> {
     for (const { id, updates } of logs) {
       const existing = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
       if (!existing) continue;
@@ -1682,7 +1914,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         await this.storage.set(COLLECTIONS.WORLDS, id, {
           ...structuredClone(world),
           id,
-          metadata: initializeWorldMetadataRevision(world.metadata as Metadata | undefined),
+          metadata: initializeWorldMetadataRevision(
+            world.metadata as Metadata | undefined,
+          ),
         });
         ids.push(id);
       }
@@ -1706,16 +1940,19 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return withWorldMetadataTail(this.storage, async () => {
       for (const world of worlds) {
         if (!world.id) continue;
-        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, world.id);
+        const existing = await this.storage.get<World>(
+          COLLECTIONS.WORLDS,
+          world.id,
+        );
         if (!existing) continue;
         const storedRevision = requireFreshWorldMetadataRevision(
           existing.metadata as Metadata | undefined,
           world.metadata as Metadata | undefined,
-          String(world.id)
+          String(world.id),
         );
         const nextMetadata = advanceWorldMetadataRevision(
           world.metadata as Metadata | undefined,
-          storedRevision
+          storedRevision,
         );
         await this.storage.set(COLLECTIONS.WORLDS, world.id, {
           ...existing,
@@ -1736,18 +1973,20 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           await this.storage.set(COLLECTIONS.WORLDS, id, {
             ...structuredClone(world),
             id,
-            metadata: initializeWorldMetadataRevision(world.metadata as Metadata | undefined),
+            metadata: initializeWorldMetadataRevision(
+              world.metadata as Metadata | undefined,
+            ),
           });
           continue;
         }
         const storedRevision = requireFreshWorldMetadataRevision(
           existing.metadata as Metadata | undefined,
           world.metadata as Metadata | undefined,
-          String(id)
+          String(id),
         );
         const nextMetadata = advanceWorldMetadataRevision(
           world.metadata as Metadata | undefined,
-          storedRevision
+          storedRevision,
         );
         await this.storage.set(COLLECTIONS.WORLDS, id, {
           ...existing,
@@ -1771,29 +2010,37 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
    * does not leave a false committed audit record behind.
    */
   async compareAndSwapWorldMetadata(
-    params: WorldMetadataCompareAndSwapParams
+    params: WorldMetadataCompareAndSwapParams,
   ): Promise<WorldMetadataMutationResult> {
     // Storage-scoped serialization (see withWorldMetadataTail): this races
     // correctly against other adapter instances over the same shared
     // storage AND against the updateWorlds/upsertWorlds writers below,
     // which route through the same tail.
     return withWorldMetadataTail(this.storage, () =>
-      this.compareAndSwapWorldMetadataSerialized(params)
+      this.compareAndSwapWorldMetadataSerialized(params),
     );
   }
 
   private async compareAndSwapWorldMetadataSerialized(
-    params: WorldMetadataCompareAndSwapParams
+    params: WorldMetadataCompareAndSwapParams,
   ): Promise<WorldMetadataMutationResult> {
-    const stored = await this.storage.get<World>(COLLECTIONS.WORLDS, params.worldId);
+    const stored = await this.storage.get<World>(
+      COLLECTIONS.WORLDS,
+      params.worldId,
+    );
     if (!stored) return { status: "not_found" };
     const storedMetadata = (stored.metadata ?? {}) as Record<string, unknown>;
     if (
-      !worldMetadataValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)
+      !worldMetadataValueEquals(
+        storedMetadata,
+        params.expectedMetadata as Record<string, unknown>,
+      )
     ) {
       return { status: "conflict" };
     }
-    const storedRevision = getWorldMetadataRevision(stored.metadata as Metadata | undefined);
+    const storedRevision = getWorldMetadataRevision(
+      stored.metadata as Metadata | undefined,
+    );
     if (storedRevision === null) return { status: "conflict" };
     const audit = params.audit;
     // Validate cloneability BEFORE inserting the audit row: a non-cloneable
@@ -1814,7 +2061,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       ...stored,
       metadata: advanceWorldMetadataRevision(
         replacementMetadata,
-        storedRevision
+        storedRevision,
       ) as World["metadata"],
     };
     if (audit) {
@@ -1839,7 +2086,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         createdAt: new Date(),
       } as Log);
       try {
-        await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
+        await this.storage.set(
+          COLLECTIONS.WORLDS,
+          params.worldId,
+          replacementWorld,
+        );
       } catch (error) {
         // error-policy:J6 best-effort teardown: the world write failed after
         // the audit insert; compensate by deleting the audit row so the
@@ -1856,14 +2107,18 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
               auditLogId: id,
               err: compensationError,
             },
-            "Failed to roll back the role_audit row after a failed world-metadata write; a stale committed audit row may remain"
+            "Failed to roll back the role_audit row after a failed world-metadata write; a stale committed audit row may remain",
           );
         }
         throw error;
       }
       return { status: "updated" };
     }
-    await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
+    await this.storage.set(
+      COLLECTIONS.WORLDS,
+      params.worldId,
+      replacementWorld,
+    );
     return { status: "updated" };
   }
 
@@ -1882,9 +2137,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (worldIds.length === 0) return;
     const worldSet = new Set(worldIds);
     const rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false
+      r.worldId ? worldSet.has(r.worldId as UUID) : false,
     );
-    const roomIds = rooms.map((r) => r.id).filter((id): id is UUID => id !== undefined);
+    const roomIds = rooms
+      .map((r) => r.id)
+      .filter((id): id is UUID => id !== undefined);
     await this.deleteRooms(roomIds);
   }
 
@@ -1893,16 +2150,20 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const entitySet = new Set(entityIds);
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
-      (p) => entitySet.has(p.entityId as UUID)
+      (p) => entitySet.has(p.entityId as UUID),
     );
     return [...new Set(participants.map((p) => p.roomId as UUID))];
   }
 
-  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
+  async getRoomsByWorlds(
+    worldIds: UUID[],
+    limit?: number,
+    offset?: number,
+  ): Promise<Room[]> {
     if (worldIds.length === 0) return [];
     const worldSet = new Set(worldIds);
     let rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false
+      r.worldId ? worldSet.has(r.worldId as UUID) : false,
     );
     const off = offset ?? 0;
     if (off > 0) rooms = rooms.slice(off);
@@ -1947,8 +2208,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async deleteRooms(roomIds: UUID[]): Promise<void> {
     if (roomIds.length === 0) return;
     const set = new Set(roomIds);
-    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) =>
-      set.has(m.roomId as UUID)
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (m) => set.has(m.roomId as UUID),
     );
     const memoryIds = memories
       .map((memory) => memory.id)
@@ -1957,20 +2219,24 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       await this.storage.delete(COLLECTIONS.ROOMS, id);
     }
     // Cascade: drop participants and memories belonging to these rooms.
-    await this.storage.deleteWhere<StoredParticipant>(COLLECTIONS.PARTICIPANTS, (p) =>
-      set.has(p.roomId as UUID)
+    await this.storage.deleteWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (p) => set.has(p.roomId as UUID),
     );
     await this.deleteMemories(memoryIds);
   }
 
   // ── Participant CRUD ──────────────────────────────────────────────────
 
-  async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+  async createRoomParticipants(
+    entityIds: UUID[],
+    roomId: UUID,
+  ): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const entityId of entityIds) {
       const existing = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.entityId === entityId && p.roomId === roomId
+        (p) => p.entityId === entityId && p.roomId === roomId,
       );
       const existingParticipant = existing[0];
       if (existingParticipant) {
@@ -1986,13 +2252,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteParticipants(
-    participants: Array<{ entityId: UUID; roomId: UUID }>
+    participants: Array<{ entityId: UUID; roomId: UUID }>,
   ): Promise<boolean> {
     let removed = false;
     for (const { entityId, roomId } of participants) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.entityId === entityId && p.roomId === roomId
+        (p) => p.entityId === entityId && p.roomId === roomId,
       );
       for (const p of matches) {
         if (p.id) {
@@ -2009,12 +2275,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       entityId: UUID;
       roomId: UUID;
       updates: ParticipantUpdateFields;
-    }>
+    }>,
   ): Promise<void> {
     for (const { entityId, roomId, updates } of participants) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.entityId === entityId && p.roomId === roomId
+        (p) => p.entityId === entityId && p.roomId === roomId,
       );
       for (const p of matches) {
         if (!p.id) continue;
@@ -2031,23 +2297,29 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
     if (entityIds.length === 0) return [];
     const set = new Set(entityIds);
-    const stored = await this.storage.getWhere<StoredParticipant>(COLLECTIONS.PARTICIPANTS, (p) =>
-      set.has(p.entityId as UUID)
+    const stored = await this.storage.getWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (p) => set.has(p.entityId as UUID),
     );
     const participants: Participant[] = [];
     for (const p of stored) {
-      const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, p.entityId);
+      const entity = await this.storage.get<Entity>(
+        COLLECTIONS.ENTITIES,
+        p.entityId,
+      );
       if (entity) participants.push({ id: p.id as UUID, entity });
     }
     return participants;
   }
 
-  async getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult> {
+  async getParticipantsForRooms(
+    roomIds: UUID[],
+  ): Promise<ParticipantsForRoomsResult> {
     const result: ParticipantsForRoomsResult = [];
     for (const roomId of roomIds) {
       const stored = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId
+        (p) => p.roomId === roomId,
       );
       result.push({
         roomId,
@@ -2057,12 +2329,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
+  async areRoomParticipants(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<boolean[]> {
     const result: boolean[] = [];
     for (const { roomId, entityId } of pairs) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId && p.entityId === entityId
+        (p) => p.roomId === roomId && p.entityId === entityId,
       );
       result.push(matches.length > 0);
     }
@@ -2070,13 +2344,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getParticipantUserStates(
-    pairs: Array<{ roomId: UUID; entityId: UUID }>
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
   ): Promise<ParticipantUserState[]> {
     const result: ParticipantUserState[] = [];
     for (const { roomId, entityId } of pairs) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId && p.entityId === entityId
+        (p) => p.roomId === roomId && p.entityId === entityId,
       );
       const state = matches[0]?.userState ?? null;
       result.push(state);
@@ -2089,12 +2363,12 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       roomId: UUID;
       entityId: UUID;
       state: ParticipantUserState;
-    }>
+    }>,
   ): Promise<void> {
     for (const { roomId, entityId, state } of updates) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId && p.entityId === entityId
+        (p) => p.roomId === roomId && p.entityId === entityId,
       );
       for (const p of matches) {
         if (!p.id) continue;
@@ -2109,13 +2383,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   // ── Relationship CRUD ─────────────────────────────────────────────────
 
   async getRelationshipsByPairs(
-    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
   ): Promise<(Relationship | null)[]> {
     const result: (Relationship | null)[] = [];
     for (const pair of pairs) {
       const matches = await this.storage.getWhere<StoredRelationship>(
         COLLECTIONS.RELATIONSHIPS,
-        (r) => r.sourceEntityId === pair.sourceEntityId && r.targetEntityId === pair.targetEntityId
+        (r) =>
+          r.sourceEntityId === pair.sourceEntityId &&
+          r.targetEntityId === pair.targetEntityId,
       );
       const first = matches[0];
       result.push(first ? relationshipFromStored(first, this.agentId) : null);
@@ -2130,18 +2406,24 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     offset?: number;
   }): Promise<Relationship[]> {
     const entitySet = params.entityIds ? new Set(params.entityIds) : null;
-    let stored = await this.storage.getWhere<StoredRelationship>(COLLECTIONS.RELATIONSHIPS, (r) => {
-      if (entitySet) {
-        if (!entitySet.has(r.sourceEntityId as UUID) && !entitySet.has(r.targetEntityId as UUID)) {
-          return false;
+    let stored = await this.storage.getWhere<StoredRelationship>(
+      COLLECTIONS.RELATIONSHIPS,
+      (r) => {
+        if (entitySet) {
+          if (
+            !entitySet.has(r.sourceEntityId as UUID) &&
+            !entitySet.has(r.targetEntityId as UUID)
+          ) {
+            return false;
+          }
         }
-      }
-      if (params.tags && params.tags.length > 0) {
-        const tags = r.tags ?? [];
-        if (!params.tags.some((t) => tags.includes(t))) return false;
-      }
-      return true;
-    });
+        if (params.tags && params.tags.length > 0) {
+          const tags = r.tags ?? [];
+          if (!params.tags.some((t) => tags.includes(t))) return false;
+        }
+        return true;
+      },
+    );
 
     const offset = params.offset ?? 0;
     if (offset > 0) stored = stored.slice(offset);
@@ -2156,7 +2438,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       targetEntityId: UUID;
       tags?: string[];
       metadata?: Metadata;
-    }>
+    }>,
   ): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const rel of relationships) {
@@ -2176,10 +2458,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return ids;
   }
 
-  async getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]> {
+  async getRelationshipsByIds(
+    relationshipIds: UUID[],
+  ): Promise<Relationship[]> {
     const relationships: Relationship[] = [];
     for (const id of relationshipIds) {
-      const r = await this.storage.get<StoredRelationship>(COLLECTIONS.RELATIONSHIPS, id);
+      const r = await this.storage.get<StoredRelationship>(
+        COLLECTIONS.RELATIONSHIPS,
+        id,
+      );
       if (r) relationships.push(relationshipFromStored(r, this.agentId));
     }
     return relationships;
@@ -2190,7 +2477,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!rel.id) continue;
       const existing = await this.storage.get<StoredRelationship>(
         COLLECTIONS.RELATIONSHIPS,
-        rel.id
+        rel.id,
       );
       if (!existing) continue;
       const next: StoredRelationship = {
@@ -2236,10 +2523,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return ids;
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+  async updateAgents(
+    updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
+  ): Promise<boolean> {
     let updated = false;
     for (const { agentId, agent } of updates) {
-      const existing = await this.storage.get<Agent>(COLLECTIONS.AGENTS, agentId);
+      const existing = await this.storage.get<Agent>(
+        COLLECTIONS.AGENTS,
+        agentId,
+      );
       if (!existing) continue;
       await this.storage.set(COLLECTIONS.AGENTS, agentId, {
         ...existing,
@@ -2290,7 +2582,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const key of keys) {
       const entry = await this.storage.get<StoredCacheEntry<T>>(
         COLLECTIONS.CACHE,
-        this.cacheStorageKey(key)
+        this.cacheStorageKey(key),
       );
       if (!entry) continue;
       if (entry.expiresAt && Date.now() > entry.expiresAt) {
@@ -2302,9 +2594,13 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return out;
   }
 
-  async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
+  async setCaches<T>(
+    entries: Array<{ key: string; value: T }>,
+  ): Promise<boolean> {
     for (const { key, value } of entries) {
-      await this.storage.set(COLLECTIONS.CACHE, this.cacheStorageKey(key), { value });
+      await this.storage.set(COLLECTIONS.CACHE, this.cacheStorageKey(key), {
+        value,
+      });
     }
     return true;
   }
@@ -2312,7 +2608,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   async deleteCaches(keys: string[]): Promise<boolean> {
     let removed = false;
     for (const key of keys) {
-      const ok = await this.storage.delete(COLLECTIONS.CACHE, this.cacheStorageKey(key));
+      const ok = await this.storage.delete(
+        COLLECTIONS.CACHE,
+        this.cacheStorageKey(key),
+      );
       if (ok) removed = true;
     }
     return removed;
@@ -2352,7 +2651,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getTasksByName(name: string): Promise<Task[]> {
-    return this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => t.name === name);
+    return this.storage.getWhere<Task>(
+      COLLECTIONS.TASKS,
+      (t) => t.name === name,
+    );
   }
 
   async createTasks(tasks: Task[]): Promise<UUID[]> {
@@ -2379,22 +2681,30 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
       if (
         !existing?.tags?.includes("queue") ||
-        (existing.metadata?.status != null && existing.metadata.status !== "pending")
+        (existing.metadata?.status != null &&
+          existing.metadata.status !== "pending")
       ) {
         return false;
       }
-      await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task, id });
+      await this.storage.set(COLLECTIONS.TASKS, id, {
+        ...existing,
+        ...task,
+        id,
+      });
       return true;
     };
     const run = this.taskMutationTail.then(operation, operation);
     this.taskMutationTail = run.then(
       () => undefined,
-      () => undefined
+      () => undefined,
     );
     return run;
   }
 
-  async patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<boolean> {
+  async patchTaskMetadata(
+    id: UUID,
+    patch: TaskMetadataPatch,
+  ): Promise<boolean> {
     const operation = async () => {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
       if (!existing) return false;
@@ -2413,12 +2723,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const run = this.taskMutationTail.then(operation, operation);
     this.taskMutationTail = run.then(
       () => undefined,
-      () => undefined
+      () => undefined,
     );
     return run;
   }
 
-  async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+  async updateTasks(
+    updates: Array<{ id: UUID; task: Partial<Task> }>,
+  ): Promise<void> {
     for (const { id, task } of updates) {
       const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
       if (!existing) continue;
@@ -2434,7 +2746,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Pairing CRUD ──────────────────────────────────────────────────────
 
-  async getPairingRequests(queries: PairingRequestQuery[]): Promise<PairingRequestsResult> {
+  async getPairingRequests(
+    queries: PairingRequestQuery[],
+  ): Promise<PairingRequestsResult> {
     const result: PairingRequestsResult = [];
     for (const query of queries) {
       const { channel, agentId } = query;
@@ -2443,7 +2757,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (r) =>
           r.channel === channel &&
           r.agentId === agentId &&
-          (!query.createdAfter || new Date(r.createdAt).getTime() >= query.createdAfter.getTime())
+          (!query.createdAfter ||
+            new Date(r.createdAt).getTime() >= query.createdAfter.getTime()),
       );
       const isPaged = query.limit !== undefined || query.offset !== undefined;
       if (!isPaged && query.order === undefined) {
@@ -2488,13 +2803,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return result;
   }
 
-  async getPairingAllowlists(queries: PairingAllowlistQuery[]): Promise<PairingAllowlistsResult> {
+  async getPairingAllowlists(
+    queries: PairingAllowlistQuery[],
+  ): Promise<PairingAllowlistsResult> {
     const result: PairingAllowlistsResult = [];
     for (const query of queries) {
       const { channel, agentId } = query;
       const entries = await this.storage.getWhere<PairingAllowlistEntry>(
         COLLECTIONS.PAIRING_ALLOWLIST,
-        (e) => e.channel === channel && e.agentId === agentId
+        (e) => e.channel === channel && e.agentId === agentId,
       );
       const isPaged = query.limit !== undefined || query.offset !== undefined;
       if (!isPaged && query.order === undefined) {
@@ -2557,7 +2874,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (!request.id) continue;
       const existing = await this.storage.get<PairingRequest>(
         COLLECTIONS.PAIRING_REQUESTS,
-        request.id
+        request.id,
       );
       if (!existing) continue;
       await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, request.id, {
@@ -2573,7 +2890,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]> {
+  async createPairingAllowlistEntries(
+    entries: PairingAllowlistEntry[],
+  ): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const entry of entries) {
       const id = entry.id as UUID;
@@ -2586,12 +2905,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return ids;
   }
 
-  async updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void> {
+  async updatePairingAllowlistEntries(
+    entries: PairingAllowlistEntry[],
+  ): Promise<void> {
     for (const entry of entries) {
       if (!entry.id) continue;
       const existing = await this.storage.get<PairingAllowlistEntry>(
         COLLECTIONS.PAIRING_ALLOWLIST,
-        entry.id
+        entry.id,
       );
       if (!existing) continue;
       await this.storage.set(COLLECTIONS.PAIRING_ALLOWLIST, entry.id, {

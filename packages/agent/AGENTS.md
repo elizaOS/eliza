@@ -8,7 +8,7 @@ Standalone elizaOS agent + HTTP backend server. Wraps `@elizaos/core`'s `AgentRu
 - Owns runtime boot, plugin resolution/lifecycle, the HTTP API + route dispatch, character/config loading, trajectory persistence, triggers/scheduling, permission brokering, and provider-neutral TEE policy/key-release paths.
 
 Repository-wide conventions and evidence requirements are inherited from the
-root [`CLAUDE.md`](../../CLAUDE.md).
+root [`AGENTS.md`](../../AGENTS.md).
 
 ## Layout
 
@@ -95,7 +95,7 @@ bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # deterministic Vitest batches
 bun run --cwd packages/agent test:integration # *.integration.test.ts suites (excluded from the default lane)
-bun run --cwd packages/agent lint             # biome check --write across src/
+bun run --cwd packages/agent lint             # biome check --write across source and test tooling
 bun run --cwd packages/agent lint:check       # biome check read-only
 bun run --cwd packages/agent format           # biome format --write
 bun run --cwd packages/agent format:check     # biome format read-only
@@ -110,6 +110,12 @@ The package test runner keeps one file per isolated Vitest process and runs up
 to four processes concurrently by default. Set `AGENT_TEST_CONCURRENCY` to a
 positive integer to tune process parallelism, `AGENT_TEST_BATCH_SIZE` to group
 files deliberately, or `AGENT_TEST_VERBOSE=1` to print every passing child log.
+
+Colocate module-owned tests beside their source and script tests beside their
+scripts. Reserve `test/` for package-wide scenarios, fixtures, support code,
+and setup. Do not create `__tests__`, `test/api`, or `test/runtime` trees.
+The default runner and Vitest share the discovery patterns exported by
+`scripts/run-vitest-batches.mjs`.
 
 `build:docker-dist`, `build:ios-jsc`, `clean`, `pack:dry-run`, `test:remote-capabilities:{docker,cloud-live,provider-live,source-build}` also exist in `package.json`.
 
@@ -171,13 +177,14 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
 - `bin.ts` statically imports `node:fs` and pins AOSP/mobile bootstrap symbols onto `globalThis` to defeat tree-shaking in the mobile bundle — do not remove those guards.
 - `core-plugins.ts` splits plugins into blocking vs deferred boot phases; slow feature/provider plugins must stay in the deferred set or boot regresses.
 - Several barrel re-exports avoid duplicate-symbol (`TS2308`) collisions and lazy-load heavy plugins (wallet, app-manager, elizacloud) — read the inline comments in `index.ts`/`api/index.ts`/`services/index.ts` before adding broad `export *` lines.
-- `lint`/`lint:check` and `format` cover the complete `src/` tree.
+- Typechecking includes source, package scenarios, and script suites. Lint and
+  format cover `src/`, `test/`, `scripts/`, and the Vitest configurations.
 - Post-turn evidence must wait for the current room lease's delivery settlement:
   both JSON and SSE routes reconcile the final assistant text, reply correlation,
   and action callback history before extraction snapshots are frozen. Failed
   reconciliation cancels extraction; it must not deadlock the route or advance a
   memory checkpoint. Keep the paired transport cases in
-  `api/__tests__/conversation-idempotency.test.ts` when changing this boundary.
+  `api/conversation-idempotency.test.ts` when changing this boundary.
 - Standalone grounded action replies pass complete conversation memories, action results,
   trajectories, character context, and model output without trimming, deduping,
   summarizing, or silently falling back from a partial prompt. Missing or invalid

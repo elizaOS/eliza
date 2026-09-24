@@ -27,7 +27,7 @@ const ENV_KEYS = [
   "CEREBRAS_API_KEY",
   "OPENAI_API_KEY",
   "OLLAMA_BASE_URL",
-  "ZAI_API_KEY",
+  "OPENROUTER_API_KEY",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -200,7 +200,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
   });
 
   it("keeps only z.ai when it owns direct text beside Cloud capabilities", () => {
-    process.env.ZAI_API_KEY = "zai-test";
+    process.env.OPENROUTER_API_KEY = "openrouter-test";
     process.env.OPENAI_API_KEY = "sk-test";
 
     const config: ElizaConfig = {
@@ -210,7 +210,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
       },
       serviceRouting: {
         llmText: {
-          backend: "zai",
+          backend: "openrouter",
           transport: "direct",
         },
         media: {
@@ -226,7 +226,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     const names = collectPluginNames(config);
 
-    expect(names.has("@elizaos/plugin-zai")).toBe(true);
+    expect(names.has("@elizaos/plugin-openrouter")).toBe(true);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
@@ -298,7 +298,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
   it("keeps z.ai when it owns direct embeddings beside external direct text", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
-    process.env.ZAI_API_KEY = "zai-test";
+    process.env.OPENROUTER_API_KEY = "openrouter-test";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -315,7 +315,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
           transport: "cloud-proxy",
         },
         embeddings: {
-          backend: "zai",
+          backend: "openrouter",
           transport: "direct",
         },
       },
@@ -324,13 +324,13 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-openai")).toBe(true);
-    expect(names.has("@elizaos/plugin-zai")).toBe(true);
+    expect(names.has("@elizaos/plugin-openrouter")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
   it("keeps z.ai embeddings when Cloud owns text", () => {
-    process.env.ZAI_API_KEY = "zai-test";
+    process.env.OPENROUTER_API_KEY = "openrouter-test";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -343,7 +343,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
           transport: "cloud-proxy",
         },
         embeddings: {
-          backend: "zai",
+          backend: "openrouter",
           transport: "direct",
         },
       },
@@ -351,7 +351,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     const names = collectPluginNames(config);
 
-    expect(names.has("@elizaos/plugin-zai")).toBe(true);
+    expect(names.has("@elizaos/plugin-openrouter")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
@@ -524,7 +524,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
-    expect(names.has("@elizaos/plugin-zerollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-zerollama")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 
@@ -596,7 +596,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
 
     expect(names.has("agent-orchestrator")).toBe(true);
     expect(names.has("@elizaos/plugin-pty")).toBe(true);
-    expect(names.has("@elizaos/plugin-cli-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
   });
 
   it("keeps ELIZA_AGENT_ORCHESTRATOR=0 authoritative on cloud containers", () => {
@@ -608,7 +608,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
     expect(names.has("agent-orchestrator")).toBe(false);
     // The terminal + CLI-inference lanes are independent of the orchestrator gate.
     expect(names.has("@elizaos/plugin-pty")).toBe(true);
-    expect(names.has("@elizaos/plugin-cli-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
   });
 
   it("keeps lean-chat containers lean despite cloud-container defaults", () => {

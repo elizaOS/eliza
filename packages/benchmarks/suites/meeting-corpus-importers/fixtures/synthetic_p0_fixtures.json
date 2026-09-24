@@ -1,0 +1,125 @@
+{
+  "fixtures": [
+    {
+      "corpusId": "ami",
+      "recordingId": "ami-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising AMI parser shape",
+      "audio": { "uri": "fixtures/ami-synth-001.wav", "durationMs": 2200, "sampleRateHz": 16000, "channels": 1 },
+      "sourceStreams": [{ "id": "mix", "kind": "room_mic", "channel": 1 }],
+      "speakerTurns": [
+        { "speakerId": "ami-a", "startMs": 0, "endMs": 1000 },
+        { "speakerId": "ami-b", "startMs": 900, "endMs": 2200 }
+      ],
+      "transcript": [
+        { "speakerId": "ami-a", "startMs": 0, "endMs": 1000, "text": "project update", "words": [{ "text": "project", "startMs": 0, "endMs": 450 }] },
+        { "speakerId": "ami-b", "startMs": 900, "endMs": 2200, "text": "overlap response", "words": [{ "text": "overlap", "startMs": 900, "endMs": 1400 }] }
+      ],
+      "metadata": { "language": "en", "overlapRatio": 0.1 }
+    },
+    {
+      "corpusId": "chime6",
+      "recordingId": "chime6-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising CHiME-6 parser shape",
+      "audio": { "uri": "fixtures/chime6-synth-001.wav", "durationMs": 1800, "sampleRateHz": 16000, "channels": 6 },
+      "sourceStreams": [{ "id": "array", "kind": "array_mic", "channel": 1 }],
+      "speakerTurns": [{ "speakerId": "chime-a", "startMs": 0, "endMs": 1800 }],
+      "transcript": [{ "speakerId": "chime-a", "startMs": 0, "endMs": 1800, "text": "distant kitchen speech", "words": [{ "text": "distant", "startMs": 0, "endMs": 500 }] }],
+      "metadata": { "room": "kitchen" }
+    },
+    {
+      "corpusId": "chime7_dasr",
+      "recordingId": "chime7-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising CHiME-7 DASR parser shape",
+      "audio": { "uri": "fixtures/chime7-synth-001.wav", "durationMs": 1600, "sampleRateHz": 16000, "channels": 4 },
+      "sourceStreams": [{ "id": "dasr", "kind": "array_mic", "channel": 1 }],
+      "speakerTurns": [{ "speakerId": "dasr-a", "startMs": 0, "endMs": 1600 }],
+      "transcript": [{ "speakerId": "dasr-a", "startMs": 0, "endMs": 1600, "text": "distributed asr", "words": [{ "text": "distributed", "startMs": 0, "endMs": 700 }] }]
+    },
+    {
+      "corpusId": "dipco",
+      "recordingId": "dipco-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising DiPCo parser shape",
+      "audio": { "uri": "fixtures/dipco-synth-001.wav", "durationMs": 1700, "sampleRateHz": 16000, "channels": 5 },
+      "sourceStreams": [{ "id": "dinner-array", "kind": "array_mic", "channel": 1 }],
+      "speakerTurns": [{ "speakerId": "dipco-a", "startMs": 0, "endMs": 1700 }],
+      "transcript": [{ "speakerId": "dipco-a", "startMs": 0, "endMs": 1700, "text": "dinner party turn", "words": [{ "text": "dinner", "startMs": 0, "endMs": 500 }] }]
+    },
+    {
+      "corpusId": "libricss",
+      "recordingId": "libricss-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising LibriCSS parser shape",
+      "audio": { "uri": "fixtures/libricss-synth-001.wav", "durationMs": 2000, "sampleRateHz": 16000, "channels": 7 },
+      "sourceStreams": [{ "id": "css-array", "kind": "array_mic", "channel": 1 }],
+      "speakerTurns": [
+        { "speakerId": "css-a", "startMs": 0, "endMs": 1200 },
+        { "speakerId": "css-b", "startMs": 800, "endMs": 2000 }
+      ],
+      "transcript": [{ "speakerId": "css-a", "startMs": 0, "endMs": 1200, "text": "overlapped read speech", "words": [{ "text": "overlapped", "startMs": 0, "endMs": 600 }] }]
+    },
+    {
+      "corpusId": "voxconverse",
+      "recordingId": "voxconverse-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising VoxConverse parser shape",
+      "audio": { "uri": "fixtures/voxconverse-synth-001.wav", "durationMs": 2100, "sampleRateHz": 16000, "channels": 1 },
+      "sourceStreams": [{ "id": "web-audio", "kind": "recording", "channel": 1 }],
+      "speakerTurns": [
+        { "speakerId": "vox-a", "startMs": 0, "endMs": 900 },
+        { "speakerId": "vox-b", "startMs": 1000, "endMs": 2100 }
+      ],
+      "transcript": [{ "speakerId": "vox-a", "startMs": 0, "endMs": 900, "text": "speaker diarization only", "words": [{ "text": "speaker", "startMs": 0, "endMs": 400 }] }]
+    },
+    {
+      "corpusId": "dihard",
+      "recordingId": "dihard-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising DIHARD parser shape",
+      "audio": { "uri": "fixtures/dihard-synth-001.wav", "durationMs": 1300, "sampleRateHz": 16000, "channels": 2 },
+      "sourceStreams": [{ "id": "hard-audio", "kind": "wild_audio", "channel": 1 }],
+      "speakerTurns": [{ "speakerId": "dihard-a", "startMs": 0, "endMs": 1300 }],
+      "transcript": [{ "speakerId": "dihard-a", "startMs": 0, "endMs": 1300, "text": "hard diarization", "words": [{ "text": "hard", "startMs": 0, "endMs": 500 }] }]
+    },
+    {
+      "corpusId": "musan",
+      "recordingId": "musan-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising MUSAN parser shape",
+      "audio": { "uri": "fixtures/musan-noise.wav", "durationMs": 1000, "sampleRateHz": 16000, "channels": 1 },
+      "sourceStreams": [{ "id": "noise", "kind": "noise_music", "channel": 1 }],
+      "speakerTurns": [{ "speakerId": "noise", "startMs": 0, "endMs": 1000 }],
+      "transcript": [{ "speakerId": "noise", "startMs": 0, "endMs": 1000, "text": "noise bed", "words": [{ "text": "noise", "startMs": 0, "endMs": 500 }] }],
+      "metadata": { "augmentationOnly": true }
+    },
+    {
+      "corpusId": "whamr",
+      "recordingId": "whamr-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising WHAMR parser shape",
+      "audio": { "uri": "fixtures/whamr-synth-001.wav", "durationMs": 2000, "sampleRateHz": 8000, "channels": 1 },
+      "sourceStreams": [{ "id": "reverb-mix", "kind": "reverberant_mix", "channel": 1 }],
+      "speakerTurns": [
+        { "speakerId": "wham-a", "startMs": 0, "endMs": 1500 },
+        { "speakerId": "wham-b", "startMs": 500, "endMs": 2000 }
+      ],
+      "transcript": [{ "speakerId": "wham-a", "startMs": 0, "endMs": 1500, "text": "noisy reverberant speech", "words": [{ "text": "noisy", "startMs": 0, "endMs": 400 }] }]
+    },
+    {
+      "corpusId": "librimix",
+      "recordingId": "librimix-synth-001",
+      "license": "synthetic-fixture-only",
+      "citation": "Synthetic fixture exercising LibriMix parser shape",
+      "audio": { "uri": "fixtures/librimix-synth-001.wav", "durationMs": 1900, "sampleRateHz": 16000, "channels": 1 },
+      "sourceStreams": [{ "id": "mix", "kind": "speaker_mix", "channel": 1 }],
+      "speakerTurns": [
+        { "speakerId": "mix-a", "startMs": 0, "endMs": 1200 },
+        { "speakerId": "mix-b", "startMs": 700, "endMs": 1900 }
+      ],
+      "transcript": [{ "speakerId": "mix-a", "startMs": 0, "endMs": 1200, "text": "two speaker mix", "words": [{ "text": "two", "startMs": 0, "endMs": 300 }] }]
+    }
+  ]
+}

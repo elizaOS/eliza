@@ -10,9 +10,11 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   createCharacter,
+  ElizaError,
   NotificationService,
   type Service,
   ServiceType,
+  stringToUuid as sqliteTestAgentId,
 } from "@elizaos/core";
 import type { RouteHandlerResult } from "@elizaos/shared/api/http-plugin";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
@@ -30,7 +32,10 @@ const runtime = {} as IAgentRuntime;
 
 async function createNotificationRuntime(
   services: NonNullable<Plugin["services"]> = [],
-  adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(":memory:"),
+  adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(
+    ":memory:",
+    sqliteTestAgentId("AndroidNotificationDispatchTest"),
+  ),
 ): Promise<{ runtime: AgentRuntime; cleanup: () => Promise<void> }> {
   const runtime = new AgentRuntime({
     character: createCharacter({ name: "AndroidNotificationDispatchTest" }),
@@ -626,11 +631,17 @@ describe("dispatchBufferedRequest", () => {
 
       override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
         this.readAttempts += 1;
-        if (this.readAttempts === 1) throw new Error("cache temporarily down");
+        if (this.readAttempts === 1)
+          throw new ElizaError("cache temporarily down", {
+            code: "TEST_STORAGE_UNAVAILABLE",
+          });
         return super.getCaches<T>(keys);
       }
     }
-    const adapter = new TransientCacheAdapter();
+    const adapter = TransientCacheAdapter.create(
+      ":memory:",
+      sqliteTestAgentId("AndroidNotificationDispatchTest"),
+    );
     const failedRuntime = await createNotificationRuntime(
       [NotificationService],
       adapter,

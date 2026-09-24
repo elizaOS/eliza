@@ -97,10 +97,13 @@ for (const mode of ["deterministic", "live"] as const) {
 							ELIZA_ADMIN_ENTITY_ID: ownerId,
 						},
 					} as Character,
-					
+
 					logLevel: "fatal",
 				});
-				const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+				const adapter = SQLiteDatabaseAdapter.create(
+					":memory:",
+					runtime.agentId,
+				);
 				runtime.registerDatabaseAdapter(adapter);
 				await adapter.init();
 

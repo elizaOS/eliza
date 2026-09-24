@@ -69,7 +69,9 @@ it("keeps the existing iOS custom pod include gates", () => {
   expect(appStorePods.get("ElizaosCapacitorBunRuntime")).toBe(
     "@elizaos/capacitor-bun-runtime",
   );
-  expect(appStorePods.get("ElizaBunEngine")).toBe("@elizaos/capacitor-bun-runtime");
+  expect(appStorePods.get("ElizaBunEngine")).toBe(
+    "@elizaos/capacitor-bun-runtime",
+  );
   expect(appStorePods.get("ElizaosCapacitorSecureStore")).toBe(
     "@elizaos/capacitor-secure-store",
   );

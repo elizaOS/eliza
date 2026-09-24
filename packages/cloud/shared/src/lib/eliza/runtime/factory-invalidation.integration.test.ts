@@ -129,8 +129,8 @@ test("invalidation during real runtime initialization retains the unpublished ru
     },
   };
   f.loaded.plugins.push(plugin);
-  boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(
-    async () => SQLiteDatabaseAdapter.create(":memory:", f.agentId),
+  boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(async () =>
+    SQLiteDatabaseAdapter.create(":memory:", f.agentId),
   );
   const creation = f.factory.createRuntimeForUser(f.context);
   const outcome = creation.then(
@@ -163,8 +163,8 @@ test("invalidation during real runtime initialization retains the unpublished ru
 
 test("a fresh creation after invalidation succeeds, but an invalidated health check cannot return it", async () => {
   const f = fixture();
-  boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(
-    async () => SQLiteDatabaseAdapter.create(":memory:", f.agentId),
+  boundary(spyOn(dbAdapterPool, "getOrCreate")).mockImplementation(async () =>
+    SQLiteDatabaseAdapter.create(":memory:", f.agentId),
   );
   await f.factory.invalidateRuntime(f.agentId);
   const runtime = await f.factory.createRuntimeForUser(f.context);

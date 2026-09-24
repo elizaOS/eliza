@@ -4,7 +4,6 @@
  */
 
 import nodeCrypto from "node:crypto";
-import { ElizaError, resolveStateDir } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   createRuntimeAccountStoragePolicy,
@@ -12,6 +11,7 @@ import {
   saveAccount,
 } from "@elizaos/auth/auth/account-storage";
 import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

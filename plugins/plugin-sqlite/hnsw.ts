@@ -76,7 +76,7 @@ export class EphemeralHNSW implements IVectorStorage {
   async add(id: string, vector: number[]): Promise<void> {
     if (vector.length !== this.dimension) {
       throw new Error(
-        `Vector dimension mismatch: expected ${this.dimension}, got ${vector.length}`
+        `Vector dimension mismatch: expected ${this.dimension}, got ${vector.length}`,
       );
     }
 
@@ -108,11 +108,17 @@ export class EphemeralHNSW implements IVectorStorage {
     let currentNode = this.entryPoint;
 
     for (let l = this.maxLevel; l > level; l--) {
-      currentNode = this.searchLayer(vector, currentNode, 1, l)[0]?.id ?? currentNode;
+      currentNode =
+        this.searchLayer(vector, currentNode, 1, l)[0]?.id ?? currentNode;
     }
 
     for (let l = Math.min(level, this.maxLevel); l >= 0; l--) {
-      const neighbors = this.searchLayer(vector, currentNode, this.config.efConstruction, l);
+      const neighbors = this.searchLayer(
+        vector,
+        currentNode,
+        this.config.efConstruction,
+        l,
+      );
 
       const M = this.config.M;
       const selectedNeighbors = neighbors.slice(0, M);
@@ -133,7 +139,11 @@ export class EphemeralHNSW implements IVectorStorage {
           neighborSet.add(id);
 
           if (neighborSet.size > M) {
-            const toKeep = this.selectBestNeighbors(neighborNode.vector, neighborSet, M);
+            const toKeep = this.selectBestNeighbors(
+              neighborNode.vector,
+              neighborSet,
+              M,
+            );
             neighborNode.neighbors.set(l, new Set(toKeep.map((n) => n.id)));
           }
         }
@@ -159,7 +169,7 @@ export class EphemeralHNSW implements IVectorStorage {
     query: number[],
     entryId: string,
     ef: number,
-    level: number
+    level: number,
   ): Array<{ id: string; distance: number }> {
     const visited = new Set<string>([entryId]);
     const entryNode = this.nodes.get(entryId);
@@ -171,7 +181,9 @@ export class EphemeralHNSW implements IVectorStorage {
       { id: entryId, distance: entryDist },
     ];
 
-    const results: Array<{ id: string; distance: number }> = [{ id: entryId, distance: entryDist }];
+    const results: Array<{ id: string; distance: number }> = [
+      { id: entryId, distance: entryDist },
+    ];
 
     while (candidates.length > 0) {
       candidates.sort((a, b) => a.distance - b.distance);
@@ -220,7 +232,7 @@ export class EphemeralHNSW implements IVectorStorage {
   private selectBestNeighbors(
     nodeVector: number[],
     neighborIds: Set<string>,
-    M: number
+    M: number,
   ): Array<{ id: string; distance: number }> {
     const neighbors: Array<{ id: string; distance: number }> = [];
 
@@ -272,13 +284,19 @@ export class EphemeralHNSW implements IVectorStorage {
     }
   }
 
-  async search(query: number[], k: number, threshold = 0.5): Promise<VectorSearchResult[]> {
+  async search(
+    query: number[],
+    k: number,
+    threshold = 0.5,
+  ): Promise<VectorSearchResult[]> {
     if (this.entryPoint === null || this.nodes.size === 0) {
       return [];
     }
 
     if (query.length !== this.dimension) {
-      throw new Error(`Query dimension mismatch: expected ${this.dimension}, got ${query.length}`);
+      throw new Error(
+        `Query dimension mismatch: expected ${this.dimension}, got ${query.length}`,
+      );
     }
 
     let currentNode = this.entryPoint;
@@ -291,7 +309,12 @@ export class EphemeralHNSW implements IVectorStorage {
       }
     }
 
-    const results = this.searchLayer(query, currentNode, Math.max(k, this.config.efSearch), 0);
+    const results = this.searchLayer(
+      query,
+      currentNode,
+      Math.max(k, this.config.efSearch),
+      0,
+    );
 
     return results
       .slice(0, k)
@@ -317,13 +340,15 @@ export class EphemeralHNSW implements IVectorStorage {
     query: number[],
     k: number,
     threshold = 0.5,
-    eligibleIds?: ReadonlySet<string>
+    eligibleIds?: ReadonlySet<string>,
   ): Promise<VectorSearchResult[]> {
     const resultLimit = Math.max(0, Math.trunc(k));
     if (this.nodes.size === 0 || resultLimit === 0) return [];
 
     if (query.length !== this.dimension) {
-      throw new Error(`Query dimension mismatch: expected ${this.dimension}, got ${query.length}`);
+      throw new Error(
+        `Query dimension mismatch: expected ${this.dimension}, got ${query.length}`,
+      );
     }
 
     const best: VectorSearchResult[] = [];
@@ -342,7 +367,8 @@ export class EphemeralHNSW implements IVectorStorage {
         const parent = Math.floor((index - 1) / 2);
         const current = best[index];
         const parentValue = best[parent];
-        if (!current || !parentValue || compare(current, parentValue) <= 0) break;
+        if (!current || !parentValue || compare(current, parentValue) <= 0)
+          break;
         swap(index, parent);
         index = parent;
       }
@@ -353,8 +379,10 @@ export class EphemeralHNSW implements IVectorStorage {
         const left = index * 2 + 1;
         const right = left + 1;
         let worse = index;
-        if (best[left] && best[worse] && compare(best[left], best[worse]) > 0) worse = left;
-        if (best[right] && best[worse] && compare(best[right], best[worse]) > 0) worse = right;
+        if (best[left] && best[worse] && compare(best[left], best[worse]) > 0)
+          worse = left;
+        if (best[right] && best[worse] && compare(best[right], best[worse]) > 0)
+          worse = right;
         if (worse === index) break;
         swap(index, worse);
         index = worse;

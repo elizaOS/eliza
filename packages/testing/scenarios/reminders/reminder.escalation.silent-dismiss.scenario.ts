@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder escalation silent dismiss; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
@@ -137,7 +137,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

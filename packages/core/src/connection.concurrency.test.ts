@@ -11,6 +11,7 @@
  * entity or a world overlap freely.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureConnection, ensureConnections } from "./connection";
@@ -196,7 +197,10 @@ describe("ensureConnection under concurrency", () => {
 	it("warns when a reconciliation holds a record lock past the diagnostic threshold", async () => {
 		vi.useFakeTimers();
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-		const adapter = new HoldingEntityAdapter();
+		const adapter = HoldingEntityAdapter.create(
+			":memory:",
+			stringToUuid("stuck-lock-agent"),
+		);
 		const entityId = stringToUuid("stuck-lock-entity");
 		const reconciliation = ensureConnection(adapter, {
 			agentId: stringToUuid("stuck-lock-agent"),
@@ -226,8 +230,14 @@ describe("ensureConnection under concurrency", () => {
 	});
 
 	it("does not serialize identical record ids across independent adapters", async () => {
-		const firstAdapter = new HoldingEntityAdapter();
-		const secondAdapter = SQLiteDatabaseAdapter.create(":memory:");
+		const firstAdapter = HoldingEntityAdapter.create(
+			":memory:",
+			stringToUuid("adapter-scope-agent"),
+		);
+		const secondAdapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			stringToUuid("adapter-scope-agent"),
+		);
 		const secondWriteStarted = deferred();
 		const originalSecondUpsert =
 			secondAdapter.upsertEntities.bind(secondAdapter);
@@ -266,13 +276,18 @@ describe("ensureConnection under concurrency", () => {
 			override async upsertEntities(entities: Entity[]): Promise<void> {
 				this.entityWrites += 1;
 				if (this.entityWrites === 1) {
-					throw new Error("injected first entity write failure");
+					throw new ElizaError("injected first entity write failure", {
+						code: "TEST_STORAGE_UNAVAILABLE",
+					});
 				}
 				await super.upsertEntities(entities);
 			}
 		}
 
-		const adapter = new RejectFirstEntityWriteAdapter();
+		const adapter = RejectFirstEntityWriteAdapter.create(
+			":memory:",
+			stringToUuid("reject-successor-agent"),
+		);
 		const shared = {
 			agentId: stringToUuid("reject-successor-agent"),
 			entityId: stringToUuid("reject-successor-entity"),
@@ -292,7 +307,9 @@ describe("ensureConnection under concurrency", () => {
 
 		expect(results[0]).toMatchObject({
 			status: "rejected",
-			reason: new Error("injected first entity write failure"),
+			reason: new ElizaError("injected first entity write failure", {
+				code: "TEST_STORAGE_UNAVAILABLE",
+			}),
 		});
 		expect(results[1]).toMatchObject({ status: "fulfilled" });
 	});
@@ -350,7 +367,10 @@ describe("ensureConnection under concurrency", () => {
 		expect(typeof getRegistrySize).toBe("function");
 		if (typeof getRegistrySize !== "function") return;
 
-		const adapter = new HoldingEntityAdapter();
+		const adapter = HoldingEntityAdapter.create(
+			":memory:",
+			stringToUuid("registry-retirement-agent"),
+		);
 		const reconciliation = ensureConnection(adapter, {
 			agentId: stringToUuid("registry-retirement-agent"),
 			entityId: stringToUuid("registry-retirement-entity"),

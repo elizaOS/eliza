@@ -6,11 +6,10 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
 import { registerConnectorSourceMetadata } from "../connectors.ts";
-import { AgentRuntime } from "../runtime.ts";
+import type { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import type {
 	ActionEventPayload,
@@ -48,7 +47,7 @@ async function createCtx(opts: { withService?: boolean } = {}): Promise<{
 	const events: AgentEventPayload[] = [];
 	const runtime = createSQLiteTestRuntime({
 		character: createCharacter({ name: "AgentEventBridgeIntegrationAgent" }),
-		
+
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});

@@ -94,11 +94,11 @@ None. This plugin reads no environment variables and has no elizaOS `settings` f
 - **Build outputs:** `dist/plugin.js` (IIFE for web bundlers), `dist/plugin.cjs.js` (Node/CJS), `dist/esm/index.js` (ESM via tsc). The `bun`/`development` export conditions resolve directly to `src/index.ts`.
 - **Peer dep:** `@capacitor/core ^8.3.1`. The consuming app must provide this.
 - **CocoaPods:** `ElizaosCapacitorNetworkPolicy.podspec` targets iOS 13+. Swift 5.1 minimum.
-- See the repo root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and commit workflow.
+- See the repo root `AGENTS.md` for repo-wide architecture rules, logger conventions, and commit workflow.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

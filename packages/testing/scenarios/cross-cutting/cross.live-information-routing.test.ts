@@ -3,7 +3,7 @@
  * route, URL-safety, execution-result, and visible-failure assertions.
  */
 
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import type { ScenarioTurnExecution } from "@elizaos/testing/scenario-runner/schema";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/agent/runtime/actions/web-fetch", () => ({
@@ -16,7 +16,7 @@ vi.mock("@elizaos/core", () => ({
   isBlockedHostname: (hostname: string) => hostname === "localhost",
   isPrivateIpAddress: (hostname: string) => hostname === "127.0.0.1",
 }));
-vi.mock("@elizaos/scenario-runner/action-families", () => ({
+vi.mock("@elizaos/testing/scenario-runner/action-families", () => ({
   actionsAreScenarioEquivalent: (candidate: string, expected: string) =>
     candidate === expected || candidate.endsWith(`_${expected}`),
 }));

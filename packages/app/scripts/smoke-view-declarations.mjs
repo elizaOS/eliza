@@ -118,14 +118,14 @@ export const smokeViewDeclarations = [
   [
     "task-coordinator",
     "Task Coordinator",
-    "plugin-task-coordinator",
+    "plugin-agent-orchestrator",
     "/task-coordinator",
     "TaskCoordinatorView",
   ],
   [
     "orchestrator",
     "Orchestrator",
-    "plugin-task-coordinator",
+    "plugin-agent-orchestrator",
     "/orchestrator",
     "OrchestratorView",
     "gui",
@@ -134,7 +134,7 @@ export const smokeViewDeclarations = [
   [
     "cockpit",
     "Cockpit",
-    "plugin-task-coordinator",
+    "plugin-agent-orchestrator",
     "/cockpit",
     "CockpitRoute",
     "gui",

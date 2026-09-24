@@ -1,8 +1,8 @@
 /** Scenario fixture for selfcontrol self set enforcement respects no; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function expectNoBlockAfterDecline(ctx: ScenarioContext): string | undefined {
   const forbidden = expectNoActionCalled(ctx, ["WEBSITE_BLOCK"]);
@@ -30,7 +30,7 @@ export default scenario({
     "Agent proposes a block; user declines. Agent must not enforce the block — WEBSITE_BLOCK is forbidden on the refusal turn.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

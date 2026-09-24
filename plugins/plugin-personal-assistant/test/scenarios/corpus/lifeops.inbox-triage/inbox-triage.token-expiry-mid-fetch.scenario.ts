@@ -11,11 +11,11 @@
  * Cited: 03-coverage-gap-matrix.md — token expiry handling.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 function checkAgentSurfacesAuthFailure(
   ctx: ScenarioContext,
@@ -72,7 +72,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

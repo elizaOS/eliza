@@ -170,11 +170,11 @@ with import-cycle checks and parity tests across both plugins.
   there. The tsup `build:js` and the vite `build:views` are independent.
 - **Owner scope.** `OWNER_GOALS` is owner-scoped (`roleGate: ADMIN`, contexts
   `goals` / `self_care` / `owner`).
-- See the root `CLAUDE.md` for repo-wide architecture rules.
+- See the root `AGENTS.md` for repo-wide architecture rules.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

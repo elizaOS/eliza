@@ -162,201 +162,6 @@ export {
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
 
-export * from "./runtime/response-grammar";
-export * from "./runtime/response-handler-evaluators";
-export * from "./runtime/response-handler-field-evaluator";
-export * from "./runtime/response-handler-field-registry";
-export * from "./runtime/rlm";
-export * from "./runtime/room-handler-queue";
-export * from "./runtime/shortcut-registry";
-export * from "./runtime/system-prompt";
-export * from "./runtime/trace-correlation";
-export * from "./runtime/trajectory-gate";
-export * from "./runtime/trajectory-provider-attribution";
-export * from "./runtime/trajectory-recorder";
-export * from "./runtime/trajectory-usage-rollup";
-export * from "./runtime/turn-controller";
-export {
-	type CallModelWithValidationOptions,
-	type CallModelWithValidationResult,
-	callModelWithValidation,
-	DEFAULT_REMOTE_REROLL_BUDGET,
-	getProviderForModelType,
-	type ParseAndValidateResult,
-	parseAndValidate,
-	rerollBudgetCeilingFromSetting,
-	SchemaValidationFailedError,
-} from "./runtime/validated-model-call";
-export { flattenRuntimeSettings } from "./runtime-settings.ts";
-// Export character schemas
-export * from "./schemas/character";
-// Export security utilities
-export * from "./security";
-export * from "./security/basic-email";
-// Envelope unwrap for orchestration surfaces that forward a user message
-// onward (deterministic follow-up sends must never embed the security banner
-// in a child task — live 2026-08-21).
-export { extractWrappedExternalContent } from "./security/external-content";
-export {
-	type OutboundLiteralSpan,
-	sanitizeOutboundText,
-	sanitizeOutboundTextWithLiterals,
-} from "./security/outbound-sanitize.ts";
-export {
-	isSensitiveKeyName,
-	redactLogArgs,
-	redactObjectSecrets,
-	redactSecrets,
-	redactSensitiveText,
-} from "./security/redact";
-export * from "./security/secret-swap";
-export * from "./sensitive-request-policy";
-export * from "./sensitive-requests";
-export * from "./services";
-export * from "./services/agent-event-bridge";
-export * from "./services/agentEvent";
-export * from "./services/approval";
-export * from "./services/channel-topics";
-export * from "./services/hook";
-export * from "./services/notification";
-export {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptRuntimeLike,
-	type RuntimePromptResolver,
-	resolveOptimizedPromptForRuntime,
-} from "./services/optimized-prompt-resolver";
-export * from "./services/pairing";
-export * from "./services/pairing-integration";
-export * from "./services/post-delivery-task-tracker";
-export * from "./services/runtime-capability-service";
-// TaskService is exported so hosts and tests can `instanceof`-check the
-// runtime-registered instance; a relative src import would create a second
-// class identity against the built package and always fail that check.
-export {
-	TaskService,
-	type TaskServiceClock,
-	type TaskServiceTimerHandle,
-} from "./services/task";
-export {
-	getTaskSchedulerAdapter,
-	markTaskSchedulerDirty,
-	registerTaskSchedulerRuntime,
-	startTaskScheduler,
-	stopTaskScheduler,
-	unregisterTaskSchedulerRuntime,
-} from "./services/task-scheduler";
-export * from "./services/tool-policy";
-export * from "./services/triggerScheduling";
-// Export sessions utilities
-export * from "./sessions";
-export * from "./settings";
-export * from "./streaming-context";
-export * from "./target-sources";
-export * from "./trajectory-context";
-export * from "./trajectory-utils";
-export * from "./tunnel-service";
-export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
-// Export everything from types
-export * from "./types";
-export {
-	ConnectorAccountHealth,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAuthMethod,
-} from "./types";
-export * from "./types/agentEvent";
-export * from "./types/message-service";
-export * from "./types/notification";
-export * from "./types/plugin-manifest";
-export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
-export type {
-	EnabledViewKinds,
-	ViewKind,
-	ViewKindBearer,
-} from "./types/view-kind";
-export {
-	isAlwaysOnViewKind,
-	isViewKindEnabled,
-	isViewVisible,
-	resolveViewKind,
-	VIEW_KIND_META,
-	VIEW_KINDS,
-} from "./types/view-kind";
-// Export utils first to avoid circular dependency issues
-export * from "./utils";
-export { addHeader, parseKeyValueXml, parseToonKeyValue } from "./utils";
-/** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
-export { Semaphore } from "./utils/batch-queue/semaphore.js";
-export * from "./utils/boolean";
-export * from "./utils/buffer";
-// Export channel utilities (room/world helpers)
-export * from "./utils/channel-utils";
-export type {
-	ConfirmationDecision,
-	ConfirmationStatus,
-	DestructiveConfirmationGateResult,
-	RequireConfirmationArgs,
-} from "./utils/confirmation";
-// Unified two-phase confirmation helper for destructive actions.
-export {
-	clearPendingConfirmation,
-	gateDestructiveConfirmation,
-	llmConfirmedFlagIsAuthoritative,
-	requireConfirmation,
-} from "./utils/confirmation";
-export {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicPick,
-	deterministicSample,
-	deterministicShuffle,
-	getDeterministicNames,
-	hashStringToUint32,
-	shortStringHash,
-	stableStringify,
-} from "./utils/deterministic.js";
-// Export browser-compatible utilities
-export * from "./utils/environment";
-export { getEnv } from "./utils/environment";
-export * from "./utils/extraction-evidence";
-export { formatError } from "./utils/format-error";
-export * from "./utils/html-raw-text";
-/** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
-export * from "./utils/inference-priority-gate";
-export * from "./utils/inflection-term-keys";
-export {
-	assertModelOutputComplete,
-	isModelOutputLimitFinishReason,
-	isModelProviderError,
-	isProviderSchemaRejection,
-	modelProviderErrorDetail,
-} from "./utils/model-errors";
-// Export Node-specific utilities
-export * from "./utils/project-memory-scope";
-export * from "./utils/project-registry";
-// Canonical env-var reader with legacy-alias back-compat
-export * from "./utils/read-env";
-// Blob-safe rendering of user/planner-supplied references in output
-export * from "./utils/reference-echo";
-// Canonical runtime-setting → env resolver (per-agent setting first, then env)
-export * from "./utils/resolve-setting";
-// Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
-export * from "./utils/state-dir";
-// Export streaming utilities
-export * from "./utils/streaming";
-export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
-export * from "./utils/well-formed";
-// User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
-// shared between the Electrobun renderer (writes via desktop RPC) and the
-// agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
-export * from "./utils/workspace-folder-config";
-// Export validation utilities
-export * from "./validation";
-
-// Node-specific exports
-export const isBrowser = false;
-export const isNode = true;
-
 export {
 	hasAdminAccess,
 	hasOwnerAccess,
@@ -390,6 +195,7 @@ export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
 export * from "./name-tokens.js";
+export * from "./retrieval/index.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
@@ -484,9 +290,23 @@ export {
 	parseFieldTranscript,
 	splitTranscriptList,
 } from "./runtime/response-field-transcript.ts";
+export * from "./runtime/response-grammar";
+export * from "./runtime/response-handler-evaluators";
+export * from "./runtime/response-handler-field-evaluator";
+export * from "./runtime/response-handler-field-registry";
+export * from "./runtime/rlm";
+export * from "./runtime/room-handler-queue";
 export { RunTerminalOwner } from "./runtime/run-terminal-owner";
+export * from "./runtime/shortcut-registry";
 export * from "./runtime/shortcut-registry.js";
+export * from "./runtime/system-prompt";
+export * from "./runtime/trace-correlation";
+export * from "./runtime/trajectory-gate";
+export * from "./runtime/trajectory-provider-attribution";
+export * from "./runtime/trajectory-recorder";
 export { withSemanticStageFanOut } from "./runtime/trajectory-semantic-stage-sink.ts";
+export * from "./runtime/trajectory-usage-rollup";
+export * from "./runtime/turn-controller";
 export {
 	looksLikeActionEnvelopeJson,
 	looksLikeEvaluatorEnvelopeJson,
@@ -494,6 +314,27 @@ export {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "./runtime/user-visible-model-output.ts";
+export {
+	type CallModelWithValidationOptions,
+	type CallModelWithValidationResult,
+	callModelWithValidation,
+	DEFAULT_REMOTE_REROLL_BUDGET,
+	getProviderForModelType,
+	type ParseAndValidateResult,
+	parseAndValidate,
+	rerollBudgetCeilingFromSetting,
+	SchemaValidationFailedError,
+} from "./runtime/validated-model-call";
+export { flattenRuntimeSettings } from "./runtime-settings.ts";
+// Export character schemas
+export * from "./schemas/character";
+// Export security utilities
+export * from "./security";
+export * from "./security/basic-email";
+// Envelope unwrap for orchestration surfaces that forward a user message
+// onward (deterministic follow-up sends must never embed the security banner
+// in a child task — live 2026-08-21).
+export { extractWrappedExternalContent } from "./security/external-content";
 export {
 	AUTHORITY_KEYWORDS,
 	containsObfuscatedKeyword,
@@ -527,6 +368,19 @@ export {
 	guardOutboundEnvelopeAttachments,
 	reportOutboundEnvelopeBlock,
 } from "./security/outbound-envelope-guard.ts";
+export {
+	type OutboundLiteralSpan,
+	sanitizeOutboundText,
+	sanitizeOutboundTextWithLiterals,
+} from "./security/outbound-sanitize.ts";
+export {
+	isSensitiveKeyName,
+	redactLogArgs,
+	redactObjectSecrets,
+	redactSecrets,
+	redactSensitiveText,
+} from "./security/redact";
+export * from "./security/secret-swap";
 // Kernel contracts used by independently composed plugins.
 export { projectCompleteToolArgsForModel } from "./security/tool-diagnostics.ts";
 export {
@@ -534,8 +388,44 @@ export {
 	type EnsureAgentVoiceOptions,
 	ensureAgentVoice,
 } from "./security/voice-gate.ts";
+export * from "./sensitive-request-policy";
+export * from "./sensitive-requests";
+export * from "./services";
+export * from "./services/agent-event-bridge";
+export * from "./services/agentEvent";
+export * from "./services/approval";
+export * from "./services/channel-topics";
 export { EmbeddingGenerationService } from "./services/embedding.ts";
+export * from "./services/hook";
+export * from "./services/notification";
+export {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptRuntimeLike,
+	type RuntimePromptResolver,
+	resolveOptimizedPromptForRuntime,
+} from "./services/optimized-prompt-resolver";
+export * from "./services/pairing";
+export * from "./services/pairing-integration";
 export { PiiScrubService } from "./services/pii-scrub.ts";
+export * from "./services/post-delivery-task-tracker";
+export * from "./services/runtime-capability-service";
+// TaskService is exported so hosts and tests can `instanceof`-check the
+// runtime-registered instance; a relative src import would create a second
+// class identity against the built package and always fail that check.
+export {
+	TaskService,
+	type TaskServiceClock,
+	type TaskServiceTimerHandle,
+} from "./services/task";
+export {
+	getTaskSchedulerAdapter,
+	markTaskSchedulerDirty,
+	registerTaskSchedulerRuntime,
+	startTaskScheduler,
+	stopTaskScheduler,
+	unregisterTaskSchedulerRuntime,
+} from "./services/task-scheduler";
+export * from "./services/tool-policy";
 export {
 	createTrajectoryJsonBudget,
 	type SanitizationState,
@@ -583,6 +473,25 @@ export {
 	type TrajectorySummaryRecord,
 	type TrajectoryUsageTotalsRecord,
 } from "./services/trajectory-types.ts";
+export * from "./services/triggerScheduling";
+// Export sessions utilities
+export * from "./sessions";
+export * from "./settings";
+export * from "./streaming-context";
+export * from "./target-sources";
+export * from "./trajectory-context";
+export * from "./trajectory-utils";
+export * from "./tunnel-service";
+export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
+// Export everything from types
+export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
+export * from "./types/agentEvent";
 export type {
 	ContextEvent,
 	ContextObject,
@@ -593,12 +502,16 @@ export * from "./types/effects.js";
 export * from "./types/interactions.js";
 export * from "./types/long-term-memory.ts";
 export * from "./types/memory.js";
+export * from "./types/message-service";
 export * from "./types/message-source.js";
 export type {
 	TokenUsageForCost,
 	TrajectoryRuntimeLogger,
 } from "./types/model-pricing";
+export * from "./types/notification";
 export * from "./types/notification.js";
+export * from "./types/plugin-manifest";
+export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export * from "./types/primitives.js";
 export * from "./types/shortcut.js";
 export * from "./types/surface-manifest.js";
@@ -622,7 +535,23 @@ export type {
 	TrajectoryStep,
 } from "./types/trajectory-export.ts";
 export { CONTEXT_OBJECT_TRAJECTORY_VERSION } from "./types/trajectory-export.ts";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./types/view-kind";
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./types/view-kind";
 export * from "./types/view-kind.js";
+// Export utils first to avoid circular dependency issues
+export * from "./utils";
+export { addHeader, parseKeyValueXml, parseToonKeyValue } from "./utils";
 export {
 	collectActionResultSizeWarnings,
 	getActionResultActionName,
@@ -634,7 +563,26 @@ export {
 	writeJsonAtomic,
 	writeJsonAtomicSync,
 } from "./utils/atomic-json.ts";
+/** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export { BatchProcessor, TaskDrain } from "./utils/batch-queue.ts";
+export * from "./utils/boolean";
+export * from "./utils/buffer";
+// Export channel utilities (room/world helpers)
+export * from "./utils/channel-utils";
+export type {
+	ConfirmationDecision,
+	ConfirmationStatus,
+	DestructiveConfirmationGateResult,
+	RequireConfirmationArgs,
+} from "./utils/confirmation";
+// Unified two-phase confirmation helper for destructive actions.
+export {
+	clearPendingConfirmation,
+	gateDestructiveConfirmation,
+	llmConfirmedFlagIsAuthoritative,
+	requireConfirmation,
+} from "./utils/confirmation";
 export {
 	CONTEXT_CAPABILITIES_STATE_KEY,
 	getExplicitRoutingContexts,
@@ -645,13 +593,39 @@ export {
 } from "./utils/context-routing.ts";
 export { createHash } from "./utils/crypto-compat.ts";
 export * from "./utils/deterministic.js";
+export {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicPick,
+	deterministicSample,
+	deterministicShuffle,
+	getDeterministicNames,
+	hashStringToUint32,
+	shortStringHash,
+	stableStringify,
+} from "./utils/deterministic.js";
 export * from "./utils/env-alias.js";
+export * from "./utils/environment";
+export { getEnv } from "./utils/environment";
 export * from "./utils/example-names.js";
 export {
 	isExpectedLocalEmbeddingUnavailability,
 	modelProviderFailureDetails,
 } from "./utils/expected-local-embedding-unavailability.ts";
+export * from "./utils/extraction-evidence";
+export { formatError } from "./utils/format-error";
 export * from "./utils/format-error.js";
+export * from "./utils/html-raw-text";
+/** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
+export * from "./utils/inference-priority-gate";
+export * from "./utils/inflection-term-keys";
+export {
+	assertModelOutputComplete,
+	isModelOutputLimitFinishReason,
+	isModelProviderError,
+	isProviderSchemaRejection,
+	modelProviderErrorDetail,
+} from "./utils/model-errors";
 export {
 	getErrorMessage,
 	isProviderContextOverflowError,
@@ -664,10 +638,24 @@ export {
 	providerRetryAfterMs,
 } from "./utils/model-retry";
 export { providerRateLimitRetryAt } from "./utils/model-retry.ts";
+// Export Node-specific utilities
+export * from "./utils/project-memory-scope";
+export * from "./utils/project-registry";
+// Canonical env-var reader with legacy-alias back-compat
+export * from "./utils/read-env";
 export {
 	hasReasoningResidue,
 	stripReasoningPrefixes,
 } from "./utils/reasoning-tags.ts";
+// Blob-safe rendering of user/planner-supplied references in output
+export * from "./utils/reference-echo";
+// Canonical runtime-setting → env resolver (per-agent setting first, then env)
+export * from "./utils/resolve-setting";
+// Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
+export * from "./utils/state-dir";
+// Export streaming utilities
+export * from "./utils/streaming";
+export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 export { trimEndCharacters } from "./utils/string-boundaries.ts";
 export {
 	MAX_TEXT_NORMALIZE_EDGES,
@@ -683,3 +671,10 @@ export {
 } from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
 export { UnionFind } from "./utils/union-find.ts";
+export * from "./utils/well-formed";
+// User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
+// shared between the Electrobun renderer (writes via desktop RPC) and the
+// agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
+export * from "./utils/workspace-folder-config";
+// Export validation utilities
+export * from "./validation";

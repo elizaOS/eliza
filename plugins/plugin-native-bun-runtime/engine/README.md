@@ -49,7 +49,7 @@ The package supplies the Eliza ABI shim in
 directly or expose the `src/ios/bun_ios.h` style API used by `dannote/bun`; the
 build script wraps that Bun API into `ElizaBunEngine.framework`.
 
-The exported Eliza ABI is documented in `BRIDGE_CONTRACT.md`:
+The exported Eliza ABI is declared in `Sources/ElizaBunEngineShim/eliza_bun_engine.h`:
 
 - `eliza_bun_engine_abi_version`
 - `eliza_bun_engine_last_error`
@@ -71,7 +71,7 @@ can run without embedding the full engine framework. When the framework exists,
 
 SwiftBun is tracked as an optional JavaScriptCore bridge candidate, not as a
 replacement for the TypeScript runtime or the full Bun framework path. The
-policy is documented in `SWIFT_BUN_COMPATIBILITY.md` and codified in
+policy is codified in
 `packages/app/src/platform/ios-runtime-backends.ts`.
 
 The approved production local iOS backend remains

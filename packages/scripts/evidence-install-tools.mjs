@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   resolveFfmpegBinary,
   resolveFfprobeBinary,
-} from "../evidence/src/ffmpeg-binaries.ts";
+} from "../testing/evidence/ffmpeg-binaries.ts";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "../..");
@@ -515,7 +515,10 @@ function doctorVerificationStep() {
   return {
     label: "evidence toolchain verification",
     bin: process.execPath,
-    args: [path.join(REPO_ROOT, "packages/scripts", "evidence-doctor.mjs"), "--strict"],
+    args: [
+      path.join(REPO_ROOT, "packages/scripts", "evidence-doctor.mjs"),
+      "--strict",
+    ],
     timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.verification,
   };
 }

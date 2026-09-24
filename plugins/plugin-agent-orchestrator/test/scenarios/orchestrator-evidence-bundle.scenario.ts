@@ -2,8 +2,8 @@
  * Scenario-runner scenario asserting a completed coding task emits the full
  * completion evidence bundle (changeset, logs, verification verdict).
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_EVIDENCE_BUNDLE,

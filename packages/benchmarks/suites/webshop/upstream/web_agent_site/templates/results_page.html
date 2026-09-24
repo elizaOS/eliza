@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.0.3/css/font-awesome.css	">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.bundle.min.js"></script>
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <div class="container py-5">
+      <div class="row top-buffer">
+        <div class="col-sm-6">
+          <div id="instruction-text" class="text-center">
+            <h4>Instruction:<br>{{ instruction_text }}</h4>
+          </div>
+        </div>
+      </div>
+      <div class="row top-buffer">
+        <form method="post" action="{{ url_for('index', session_id=session_id) }}">
+          <button type="submit" class="btn btn-success">Back to Search</button>
+        </form>
+      </div>
+      <div class="row top-buffer">
+        <div class="col-sm-8">
+          <div class="display-4">
+            <h3>Page {{page}} (Total results: {{total}})</h3>
+          </div>
+          {% if page > 1 %}
+            <div class="col-sm-2">
+              <form method="post" action="{{url_for('search_results', session_id=session_id, keywords=keywords, page=page - 1)}}">
+                <button type="submit" class="btn btn-primary">&lt; Prev</button>
+              </form>
+            </div>
+            <div class="col-sm-2">
+              <form method="post" action="{{url_for('search_results', session_id=session_id, keywords=keywords, page=page + 1)}}">
+                <button type="submit" class="btn btn-primary">Next &gt;</button>
+              </form>
+            </div>
+          {% else %}
+            <div class="col-sm-2">
+            </div>
+            <div class="col-sm-2">
+              <form method="post" action="{{url_for('search_results', session_id=session_id, keywords=keywords, page=page + 1)}}">
+                <button type="submit" class="btn btn-primary">Next &gt;</button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="row top-buffer">
+        {% for item in products %}
+        <div class="col-lg-12 mx-auto list-group-item">
+          <div class="col-lg-4">
+            <img src="{{item.MainImage}}" class="result-img">
+          </div>
+          <div class="col-lg-8">
+            <ul class="list-group shadow">
+                <div class="media align-items-lg-center flex-column flex-lg-row p-3">
+                  <div class="media-body order-2 order-lg-1 searched-product">
+                    {% set item_page_url = url_for('item_page', session_id=session_id, asin=item.asin, keywords=keywords, page=page, options=dict() ) %}
+                    <h4 class="mt-0 font-weight-bold mb-2 product-asin"><a class="product-link" href="{{ item_page_url }}">{{item.asin}}</a></h5>
+                    <h4 class="mt-0 font-weight-bold mb-2 product-title">{{item.Title}}</h5>
+                    <div class="d-flex align-items-center justify-content-between mt-1">
+                      <h5 class="font-weight-bold my-2 product-price">{{item.Price}}</h6>
+                    </div>
+<!--
+                    <div class="d-flex align-items-center justify-content-between mt-1">
+                      <h5 class="font-weight-bold my-2 product-category">{{item.category}}</h5>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mt-1">
+                      <h5 class="font-weight-bold my-2 product-query">{{item.query}}</h5>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mt-1">
+                      <h5 class="font-weight-bold my-2 product-product_category">{{item.product_category}}</h5>
+                    </div>
+-->
+                  </div>
+                </div>
+            </ul>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </body>
+</html>

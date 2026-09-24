@@ -9,40 +9,40 @@ let sessionManager: DynamicViewSessionManager | null = null;
 let builtInsRegistered = false;
 
 export function getDynamicViewRegistry(): DynamicViewRegistry {
-  return registry;
+	return registry;
 }
 
 export function getDynamicViewSessionManager(
-  options: ConstructorParameters<typeof DynamicViewSessionManager>[0],
+	options: ConstructorParameters<typeof DynamicViewSessionManager>[0],
 ): DynamicViewSessionManager {
-  if (!sessionManager) {
-    sessionManager = new DynamicViewSessionManager(options);
-  }
-  return sessionManager;
+	if (!sessionManager) {
+		sessionManager = new DynamicViewSessionManager(options);
+	}
+	return sessionManager;
 }
 
 export function resetDynamicViewStateForTests(): void {
-  for (const manifest of registry.list()) {
-    registry.unregister(manifest.id);
-  }
-  sessionManager = null;
-  builtInsRegistered = false;
+	for (const manifest of registry.list()) {
+		registry.unregister(manifest.id);
+	}
+	sessionManager = null;
+	builtInsRegistered = false;
 }
 
 export function registerBuiltInDynamicViews(): DynamicViewManifest[] {
-  if (builtInsRegistered) return registry.list();
-  const demoManifest: DynamicViewManifest = {
-    id: "agent.run.trace.demo",
-    title: "Agent Run Trace Demo",
-    description: "Developer demo for agent-created dynamic views.",
-    source: "developer",
-    entrypoint: "./demo/agent-run-trace.html",
-    placement: "floating",
-    metadata: {
-      demo: true,
-    },
-  };
-  registry.register(demoManifest, { update: true });
-  builtInsRegistered = true;
-  return registry.list();
+	if (builtInsRegistered) return registry.list();
+	const demoManifest: DynamicViewManifest = {
+		id: "agent.run.trace.demo",
+		title: "Agent Run Trace Demo",
+		description: "Developer demo for agent-created dynamic views.",
+		source: "developer",
+		entrypoint: "./demo/agent-run-trace.html",
+		placement: "floating",
+		metadata: {
+			demo: true,
+		},
+	};
+	registry.register(demoManifest, { update: true });
+	builtInsRegistered = true;
+	return registry.list();
 }

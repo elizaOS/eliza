@@ -22,6 +22,8 @@ const rmPathRecursiveScript = path.resolve(
   packageRoot,
   "..",
   "..",
+  "..",
+  "packages",
   "scripts",
   "rm-path-recursive.mjs",
 );

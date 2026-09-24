@@ -8,6 +8,7 @@
  * AgentRuntime + SQLiteDatabaseAdapter with a real world and room; no model.
  */
 
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../runtime";
@@ -28,7 +29,10 @@ function staticProvider(name: string, extra: Partial<Provider> = {}): Provider {
 }
 
 async function makeRuntime(): Promise<AgentRuntime> {
-	const adapter = SQLiteDatabaseAdapter.create(":memory:");
+	const adapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("role-gate-test"),
+	);
 	const runtime = await createInitializedRuntime({
 		character: { name: "role-gate-test" } as Character,
 		adapter,

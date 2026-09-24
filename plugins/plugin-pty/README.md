@@ -31,5 +31,5 @@ This plugin is that missing keystone.
   credentials. Off by default: requires `PTY_VENDOR_CLI_ENABLED=true` (a
   separate gate from `PTY_INTERACTIVE_ENABLED`); store builds always reject.
 
-See [CLAUDE.md](./CLAUDE.md) for architecture, the cerebras wiring, config, and
+See [AGENTS.md](./AGENTS.md) for architecture, the cerebras wiring, config, and
 the evidence standard.

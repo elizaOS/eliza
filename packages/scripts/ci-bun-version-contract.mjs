@@ -14,9 +14,9 @@
  * literal is repeated at each site and this contract is what guarantees the
  * copies never drift from the source of truth.
  *
- * Checked statically against the tracked tree (git ls-files when the root is a
- * git checkout, so populated submodules and untracked build output cannot
- * change the result; a plain directory walk only for synthetic fixture trees):
+ * Checks current repository sources, including new non-ignored files and excluding
+ * working-tree deletions. Git keeps ignored build output and submodule contents
+ * out of the inventory; synthetic fixtures use a directory walk:
  *
  *   1. Every `bun-version:`/`BUN_VERSION:` value in workflows, composite
  *      actions, and workflow-shaped templates outside `.github` is the
@@ -271,25 +271,54 @@ export function classifyTypeRange(range, canonical) {
   return "unparseable";
 }
 
-// Tracked-file enumeration. A real checkout is read through git so the scan
-// matches the checked-in tree exactly; the recursive walk exists only for the
-// synthetic fixture trees the tests build (no `.git` there, by construction).
+// Include unstaged destinations during moves so a new runtime surface cannot
+// evade validation until staging. Deleted paths are excluded separately; sparse
+// checkout entries remain tracked and must still be readable.
 function trackedFiles(repoRoot) {
   if (existsSync(join(repoRoot, ".git"))) {
     // spawn-sync-captured routes child output through files: Bun's test runner
     // can hand back empty stdio pipes, which made 23k tracked files enumerate
     // as zero and the whole inventory silently vanish.
-    const result = spawnSync("git", ["-C", repoRoot, "ls-files", "-z"], {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    });
+    const result = spawnSync(
+      "git",
+      [
+        "-C",
+        repoRoot,
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--deduplicate",
+      ],
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
     if (result.status !== 0 || result.error) {
       throw new Error(
         `git ls-files failed for ${repoRoot}: status=${String(result.status)} ${result.stderr ?? ""}`,
         { cause: result.error },
       );
     }
-    return result.stdout.split("\0").filter((entry) => entry.length > 0);
+    const deleted = spawnSync(
+      "git",
+      ["-C", repoRoot, "ls-files", "--deleted", "-z"],
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+    if (deleted.status !== 0 || deleted.error) {
+      throw new Error(`git deleted-file inventory failed for ${repoRoot}`, {
+        cause: deleted.error,
+      });
+    }
+    const removed = new Set(deleted.stdout.split("\0"));
+    return result.stdout
+      .split("\0")
+      .filter((entry) => entry.length > 0 && !removed.has(entry));
   }
   const found = [];
   const stack = [repoRoot];

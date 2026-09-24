@@ -19,14 +19,14 @@ import {
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
 } from "@elizaos/agent";
-import type { UUID } from "@elizaos/core";
+import type { AgentRuntime, EventPayload, Task, UUID } from "@elizaos/core";
 import {
+  EventType,
   registerConnectorSourceDefinitions,
   registerConnectorSourceMetadata,
+  stringToUuid,
   unregisterConnectorSourceMetadataOwner,
 } from "@elizaos/core";
-import type { AgentRuntime, EventPayload, Task } from "@elizaos/core";
-import { EventType, stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { startTriggerEventBridge } from "./trigger-event-bridge.ts";

@@ -5,10 +5,9 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../../security/model-failure.ts";
 import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
 import {
@@ -78,7 +77,7 @@ async function makeRuntime(): Promise<{
 			bio: "test",
 			settings: {},
 		} as Character,
-		
+
 		logLevel: "fatal",
 	});
 	runtimes.push(runtime);

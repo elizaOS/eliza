@@ -1,0 +1,88 @@
+{
+  "type": "function",
+  "function": {
+    "name": "TASKS",
+    "description": "Manage delegated task and subagent lifecycle. Use action=create or spawn_agent to start work; send to apply updated instructions; list_agents or history to inspect status; control with controlAction pause/resume/continue/stop/reopen; cancel or stop_agent to end work; and share to surface a task result.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "create",
+            "spawn_agent",
+            "send",
+            "stop_agent",
+            "list_agents",
+            "cancel",
+            "history",
+            "control",
+            "share",
+            "reopen"
+          ],
+          "description": "Lifecycle operation to record."
+        },
+        "task": {
+          "type": "string",
+          "description": "Task prompt for create or spawn_agent."
+        },
+        "input": {
+          "type": "string",
+          "description": "Updated instruction for action=send."
+        },
+        "controlAction": {
+          "type": "string",
+          "enum": [
+            "pause",
+            "resume",
+            "continue",
+            "stop",
+            "reopen"
+          ],
+          "description": "Child lifecycle operation for action=control."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Target running subagent session when known."
+        },
+        "threadId": {
+          "type": "string",
+          "description": "Target task thread when known."
+        },
+        "taskId": {
+          "type": "string",
+          "description": "Alias for the target task thread id."
+        },
+        "search": {
+          "type": "string",
+          "description": "Task lookup text when an id is unavailable."
+        },
+        "all": {
+          "type": "boolean",
+          "description": "Apply cancel/stop to every matching session."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for cancellation or stopping."
+        },
+        "note": {
+          "type": "string",
+          "description": "Pause or stop note."
+        },
+        "instruction": {
+          "type": "string",
+          "description": "Instruction applied while resuming or continuing."
+        }
+      },
+      "required": ["action"],
+      "additionalProperties": false
+    }
+  },
+  "x-eliza-benchmark": {
+    "mode": "capture_only",
+    "result": {
+      "captured": true,
+      "effect": "not_executed"
+    }
+  }
+}

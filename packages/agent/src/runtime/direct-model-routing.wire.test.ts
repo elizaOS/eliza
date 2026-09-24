@@ -137,7 +137,7 @@ describe("direct model routing", () => {
           const config = loadElizaConfig();
           const runtime = new AgentRuntime({
             character: { name: pass, bio: ["Direct routing wire regression"] },
-            
+
             settings: {
               ...buildRuntimeSettingsProjection(config),
               ELIZA_PROVIDER: backend,
@@ -150,7 +150,10 @@ describe("direct model routing", () => {
             },
             logLevel: "fatal",
           });
-          const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+          const adapter = SQLiteDatabaseAdapter.create(
+            ":memory:",
+            runtime.agentId,
+          );
           runtime.registerDatabaseAdapter(adapter);
           try {
             await adapter.createAgents([

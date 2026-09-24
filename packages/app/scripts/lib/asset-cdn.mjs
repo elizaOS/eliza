@@ -1,14 +1,13 @@
 /**
  * Resolves release tags, asset repositories, and CDN base URLs (jsDelivr,
  * raw.githubusercontent.com) for published elizaOS release assets; shared by
- * the CDN validation and homepage release-data scripts.
+ * the CDN validation and release scripts.
  */
 import process from "node:process";
 
 export const ELIZA_GITHUB_REPOSITORY = "elizaos/eliza";
 const CDN_ORIGIN = "https://cdn.jsdelivr.net/gh";
 const RAW_GITHUB_ORIGIN = "https://raw.githubusercontent.com";
-const HOMEPAGE_ASSET_ROOT = "packages/homepage/public";
 
 function normalizeReleaseTag(value) {
   const normalized = value?.trim();
@@ -98,10 +97,6 @@ export function resolveElizaAssetBaseUrls({
 } = {}) {
   const explicitAppBase =
     env.VITE_ASSET_BASE_URL?.trim() || env.ELIZA_ASSET_BASE_URL?.trim() || "";
-  const explicitHomepageBase =
-    env.VITE_HOMEPAGE_ASSET_BASE_URL?.trim() ||
-    env.HOMEPAGE_ASSET_BASE_URL?.trim() ||
-    "";
 
   return {
     releaseTag,
@@ -112,12 +107,6 @@ export function resolveElizaAssetBaseUrls({
         releaseTag,
         assetRoot: "packages/app/public",
       }),
-    homepageAssetBaseUrl:
-      explicitHomepageBase ||
-      buildJsDelivrAssetBase({
-        repository,
-        releaseTag,
-        assetRoot: HOMEPAGE_ASSET_ROOT,
-      }),
+
   };
 }

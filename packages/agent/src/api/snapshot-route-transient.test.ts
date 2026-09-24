@@ -1,3 +1,4 @@
+import type { UUID } from "@elizaos/core";
 import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Proves the POST /api/snapshot HTTP boundary's transient/terminal split
@@ -82,10 +83,11 @@ async function seedState(root: string): Promise<void> {
  */
 class PgliteFacadeAdapter extends SQLiteDatabaseAdapter {
   constructor(
+    agentId: UUID,
     private readonly dataDir: string,
     private readonly materialize: () => Promise<unknown>,
   ) {
-    super();
+    super(":memory:", agentId);
   }
 
   getPgliteDataDir(): string {
@@ -119,7 +121,11 @@ async function withSnapshotServer(
     // Register before initialize() so the runtime does not fall back to a
     // plain in-memory adapter without the raw-connection facade.
     runtime.registerDatabaseAdapter(
-      new PgliteFacadeAdapter(path.join(root, "state", "pglite"), dumpDataDir),
+      new PgliteFacadeAdapter(
+        runtime.agentId,
+        path.join(root, "state", "pglite"),
+        dumpDataDir,
+      ),
     );
     await initializeTestRuntime(runtime, { skipMigrations: true });
 

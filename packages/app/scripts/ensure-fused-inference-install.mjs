@@ -254,10 +254,7 @@ export async function ensureFusedInferenceInstall({
     bunExecutable,
     [
       "--conditions=eliza-source",
-      path.join(
-        repoRoot,
-        "packages/app/scripts/verify-fused-embedding.mjs",
-      ),
+      path.join(repoRoot, "packages/app/scripts/verify-fused-embedding.mjs"),
       embedding.path,
     ],
     { cwd: repoRoot, env },

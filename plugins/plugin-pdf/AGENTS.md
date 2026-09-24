@@ -84,7 +84,7 @@ Edit `services/pdf.ts`. The class extends `Service` from `@elizaos/core`. Add th
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

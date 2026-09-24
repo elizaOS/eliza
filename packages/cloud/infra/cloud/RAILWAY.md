@@ -3,7 +3,7 @@
 Where every Eliza Cloud surface runs, how it deploys, and which request path
 it serves. This file is the canonical map; the summaries in
 [`../README.md`](../README.md), [`terraform/README.md`](./terraform/README.md),
-and the package `CLAUDE.md`/`AGENTS.md` defer to it.
+and the package `AGENTS.md` defer to it.
 
 Every claim here is cross-checked against the in-repo sources of truth:
 [`packages/cloud/api/wrangler.toml`](../../api/wrangler.toml) (Worker routes,

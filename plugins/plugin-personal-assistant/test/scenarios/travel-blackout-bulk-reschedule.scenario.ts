@@ -1,5 +1,5 @@
 // Defines the travel blackout bulk reschedule LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
@@ -21,7 +21,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

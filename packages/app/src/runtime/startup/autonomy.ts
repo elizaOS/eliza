@@ -4,8 +4,13 @@
  * the persistence compatibility needed across supported runtime adapters.
  */
 
-import { ChannelType, ElizaError } from "@elizaos/core";
-import { type AgentRuntime, logger, stringToUuid } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ChannelType,
+  ElizaError,
+  logger,
+  stringToUuid,
+} from "@elizaos/core";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,

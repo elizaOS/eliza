@@ -5,7 +5,7 @@
  * arrangement: ending up with both a paused chase and a new parallel one
  * leaves Casey silently uncovered on a real deadline while the app looks busy.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

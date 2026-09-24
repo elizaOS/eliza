@@ -55,11 +55,6 @@ const LIVE_PROVIDER_CANDIDATES = [
     keys: ["OPENROUTER_API_KEY"],
   },
   {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
-  },
-  {
     name: "anthropic",
     plugin: "@elizaos/plugin-anthropic",
     keys: ["ANTHROPIC_API_KEY"],

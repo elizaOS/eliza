@@ -10,12 +10,12 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError, resolveStateDir } from "@elizaos/core";
 import {
   decrypt,
   encrypt,
   loadDefaultMasterKeySync,
 } from "@elizaos/auth/vault";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 

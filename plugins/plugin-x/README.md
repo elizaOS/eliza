@@ -80,7 +80,7 @@ TWITTER_MAX_FOLLOWS_PER_CYCLE=5
 
 Multi-account routing: provide account-scoped credentials in `TWITTER_ACCOUNTS` (JSON) or register accounts via the runtime's ConnectorAccountManager. `TWITTER_DEFAULT_ACCOUNT_ID` selects the default account (effective default: `"default"`).
 
-For the full validated schema and defaults see `src/environment.ts` (`twitterEnvSchema`, `validateTwitterConfig`). For an exhaustive variable table and architecture notes see [CLAUDE.md](./CLAUDE.md).
+For the full validated schema and defaults see `src/environment.ts` (`twitterEnvSchema`, `validateTwitterConfig`). For an exhaustive variable table and architecture notes see [AGENTS.md](./AGENTS.md).
 
 ## Discovery service
 

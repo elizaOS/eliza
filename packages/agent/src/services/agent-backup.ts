@@ -15,9 +15,9 @@ import { type BigIntStats, constants, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createKmsClient, systemKey } from "@elizaos/auth/kms";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, timeInferenceSpan } from "@elizaos/core";
-import { createKmsClient, systemKey } from "@elizaos/auth/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   AGENT_BACKUP_CANONICAL_JSON,

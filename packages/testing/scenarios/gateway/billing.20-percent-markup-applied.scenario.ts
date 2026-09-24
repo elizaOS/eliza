@@ -1,9 +1,10 @@
 /** Scenario fixture for billing 20 percent markup applied; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import { expectTurnToCallAction } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/schema";
 
 function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {
   const action = ctx.turns?.[1]?.actionsCalled.find((entry) =>
@@ -56,7 +57,7 @@ export default scenario({
     "Agent drafts and sends a Twilio SMS with a structured billing breakdown that includes raw, markup, and billed amounts.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

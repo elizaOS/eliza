@@ -10,10 +10,11 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
 } from "@elizaos/agent";
 import { markDeferredBootPhase } from "@elizaos/agent/runtime/deferred-boot-status";
-import { ElizaError, formatError } from "@elizaos/core";
 import {
   type AgentRuntime,
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+  ElizaError,
+  formatError,
   logger,
   type TargetSource,
 } from "@elizaos/core";

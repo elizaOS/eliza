@@ -18,7 +18,7 @@
  * Synthetic persona (Priya Raman, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const LITERALIZED =
   /(who left(\s+you)?|are you (ok|okay|alright)\b.{0,40}(breakup|loss|them leaving)|sorry (you'?re|to hear) (going through|about)|who'?s gone from your life|grief you'?re carrying)/i;

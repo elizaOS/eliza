@@ -93,11 +93,11 @@ They run in the PR-lane cloud sweep (`bun run test:cloud` via
   to the provisioning-worker daemon to avoid racing status writes — see the
   comment in `agentHotPoolResponse` before re-adding them here.
 
-Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../../CLAUDE.md).
+Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../../../AGENTS.md).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

@@ -1486,16 +1486,10 @@ function stageDesktopBuild() {
     "Ensuring Electrobun workspace dependencies are installed",
   );
 
-  // The renderer bundle imports generated inputs a fresh checkout does not
-  // have: synced public brand assets and the gitignored
-  // packages/homepage/src/generated/release-data.ts that
-  // @homepage/pages/marketing.tsx resolves through the app's Vite alias. The
-  // web lane gets them from the app package's `prebuild` hook, but this stage
-  // invokes the vite binary directly, so run the same hook explicitly before
-  // building or CI fails with UNLOADABLE_DEPENDENCY on release-data.
+  // Direct Vite builds need the same public asset preparation as web builds.
   runBun(["run", "prebuild"], {
     cwd: APP_DIR,
-    label: "Preparing renderer generated assets (public sync + release data)",
+    label: "Preparing renderer public assets",
   });
 
   // Capture the moment the renderer build starts so we can prove afterward that

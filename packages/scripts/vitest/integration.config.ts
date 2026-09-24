@@ -199,19 +199,6 @@ const integrationResolveAlias: ModuleAlias[] = [
         ),
       },
     },
-    {
-      find: "@elizaos/plugin-whatsapp",
-      packageName: "@elizaos/plugin-whatsapp",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-whatsapp",
-          "src",
-          "index",
-        ),
-      },
-    },
   ]),
 ];
 
@@ -227,10 +214,7 @@ const integrationConfig = {
     testTimeout: 120_000,
     hookTimeout: 120_000,
     globalSetup: [
-      path.join(
-        elizaWorkspaceRoot,
-        "packages/app/test/e2e-global-setup.ts",
-      ),
+      path.join(elizaWorkspaceRoot, "packages/app/test/e2e-global-setup.ts"),
     ],
     // Integration files frequently replace globals and module-level mocks.
     // Shared module state causes cross-file bleed, which is more expensive to
@@ -279,9 +263,7 @@ const integrationConfig = {
       // author remembering to add it somewhere.
       elizaGlob("packages/agent/src/**/*.integration.test.ts"),
     ],
-    setupFiles: [
-      path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts"),
-    ],
+    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts")],
     exclude: [
       "dist/**",
       "**/node_modules/**",

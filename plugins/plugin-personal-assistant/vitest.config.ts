@@ -53,18 +53,14 @@ const escapedAgentSourceRoot = agentSourceRoot.replace(
 const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
 const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-agent-orchestrator",
-  "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
-  "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
   "@elizaos/plugin-vision",
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-native-filesystem",
-  "@elizaos/plugin-app-manager",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-inbox/plugin",
-  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -555,29 +551,6 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The agent's settings action pulls createSettingsAction +
-      // parseSettingsRequest from the `@elizaos/plugin-app-control` barrel
-      // (#14804), but app-control's build bundles only the barrel — there is
-      // no per-file dist and vitest has no eliza-source condition. Anchor the
-      // bare specifier to the file stub (which re-exports the real settings
-      // module) and subpaths to source. These must be alias entries, not
-      // resolveId stubs: vite:alias runs before user plugins, so baseConfig's
-      // installed-package alias for this plugin would otherwise win and
-      // resolve a stale published dist that lacks the settings exports.
-      {
-        find: /^@elizaos\/plugin-app-control$/,
-        replacement: path.join(lifeopsTestStubsRoot, "plugin-app-control.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-control\/(.+)$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-app-control",
-          "src",
-          "$1.ts",
-        ),
-      },
       {
         find: /^@elizaos\/plugin-calendar$/,
         replacement: path.join(
@@ -744,30 +717,32 @@ export default defineConfig({
       },
       // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
       // imports the real scenario loader from source; loader.ts references its
-      // own package via `@elizaos/scenario-runner/schema`, a self-referencing
+      // own package via `@elizaos/testing/scenario-runner/schema`, a self-referencing
       // package-exports import Vite's resolver does not support. Anchor the
       // subpath to the prebuilt schema entry the exports map points at.
       {
-        find: /^@elizaos\/scenario-runner\/schema$/,
+        find: /^@elizaos\/testing\/scenario-runner\/schema$/,
         replacement: path.join(
           elizaRoot,
           "packages",
+          "testing",
           "scenario-runner",
           "schema",
           "index.js",
         ),
       },
       // The scenario corpus imports shared assertion helpers through
-      // `@elizaos/scenario-runner/scenario-assertions` — the same
+      // `@elizaos/testing/scenario-runner/scenario-assertions` — the same
       // package-exports subpath shape as `/schema` above, which this lane
       // cannot resolve (the `./*` exports wildcard points at a `./dist/*.js`
       // that plugin-tests never builds). Anchor it to source; its only
       // package import is `/schema`, covered by the alias above.
       {
-        find: /^@elizaos\/scenario-runner\/scenario-assertions$/,
+        find: /^@elizaos\/testing\/scenario-runner\/scenario-assertions$/,
         replacement: path.join(
           elizaRoot,
           "packages",
+          "testing",
           "scenario-runner",
           "src",
           "scenario-assertions.ts",

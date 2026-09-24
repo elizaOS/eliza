@@ -18,11 +18,14 @@ type WalkContext = {
 };
 
 function failUnbounded(context: Record<string, unknown>): never {
-  throw new ElizaError("In-memory component filter exceeds the match walk budget", {
-    code: INMEMORY_FILTER_UNBOUNDED,
-    context,
-    severity: "fatal",
-  });
+  throw new ElizaError(
+    "In-memory component filter exceeds the match walk budget",
+    {
+      code: INMEMORY_FILTER_UNBOUNDED,
+      context,
+      severity: "fatal",
+    },
+  );
 }
 
 function reserve(ctx: WalkContext, count: number): void {
@@ -53,7 +56,11 @@ function ownEnumerableDataEntries(value: object): Array<[string, unknown]> {
   return entries;
 }
 
-function ownDataValue(value: object, key: string, side: "filter" | "value"): unknown {
+function ownDataValue(
+  value: object,
+  key: string,
+  side: "filter" | "value",
+): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   if (!descriptor) return undefined;
   if (!("value" in descriptor)) {
@@ -70,7 +77,11 @@ function arrayLength(value: unknown[], side: "filter" | "value"): number {
   return length as number;
 }
 
-function enter(value: object, set: "visitingValues" | "visitingFilters", ctx: WalkContext): void {
+function enter(
+  value: object,
+  set: "visitingValues" | "visitingFilters",
+  ctx: WalkContext,
+): void {
   if (ctx[set].has(value)) {
     failUnbounded({ cycle: true });
   }
@@ -79,7 +90,7 @@ function enter(value: object, set: "visitingValues" | "visitingFilters", ctx: Wa
 
 export function dataContainsFilter(
   value: unknown,
-  filter: Record<string, unknown> | undefined
+  filter: Record<string, unknown> | undefined,
 ): boolean {
   if (!filter) return true;
   return dataContainsFilterInner(value, filter, 0, {
@@ -94,7 +105,7 @@ function dataContainsFilterInner(
   filter: Record<string, unknown>,
   depth: number,
   ctx: WalkContext,
-  visitAlreadyReserved = false
+  visitAlreadyReserved = false,
 ): boolean {
   if (depth > MAX_INMEMORY_FILTER_DEPTH) {
     failUnbounded({ depth, max: MAX_INMEMORY_FILTER_DEPTH });
@@ -122,10 +133,14 @@ function dataContainsFilterInner(
         const expectedLength = arrayLength(expected, "filter");
         const actualLength = arrayLength(actual, "value");
         reserve(ctx, expectedLength + actualLength);
-        for (let expectedIndex = 0; expectedIndex < expectedLength; expectedIndex += 1) {
+        for (
+          let expectedIndex = 0;
+          expectedIndex < expectedLength;
+          expectedIndex += 1
+        ) {
           const expectedDescriptor = Object.getOwnPropertyDescriptor(
             expected,
-            String(expectedIndex)
+            String(expectedIndex),
           );
           if (!expectedDescriptor) continue;
           if (!("value" in expectedDescriptor)) {
@@ -133,8 +148,15 @@ function dataContainsFilterInner(
           }
           const expectedItem = expectedDescriptor.value;
           let found = false;
-          for (let actualIndex = 0; actualIndex < actualLength; actualIndex += 1) {
-            const actualDescriptor = Object.getOwnPropertyDescriptor(actual, String(actualIndex));
+          for (
+            let actualIndex = 0;
+            actualIndex < actualLength;
+            actualIndex += 1
+          ) {
+            const actualDescriptor = Object.getOwnPropertyDescriptor(
+              actual,
+              String(actualIndex),
+            );
             if (!actualDescriptor) continue;
             if (!("value" in actualDescriptor)) {
               failUnbounded({ accessor: true, side: "value" });
@@ -144,7 +166,13 @@ function dataContainsFilterInner(
             reserve(ctx, 1);
             const actualItem = actualDescriptor.value;
             const matched = isPlainObject(expectedItem)
-              ? dataContainsFilterInner(actualItem, expectedItem, depth + 1, ctx, true)
+              ? dataContainsFilterInner(
+                  actualItem,
+                  expectedItem,
+                  depth + 1,
+                  ctx,
+                  true,
+                )
               : actualItem === expectedItem;
             if (matched) {
               found = true;

@@ -22,14 +22,6 @@ type SubCliEntry = {
 
 const entries: SubCliEntry[] = [
   {
-    name: "plugins",
-    description: "Plugin management (elizaOS plugins)",
-    register: async (program) => {
-      const mod = await import("../plugins-cli");
-      mod.registerPluginsCli(program);
-    },
-  },
-  {
     name: "models",
     description: "Model configuration",
     register: async (program) => {

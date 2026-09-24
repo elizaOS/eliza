@@ -79,8 +79,7 @@ import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
-  useSlashCommandController,
-} from "./chat/useSlashCommandController";
+} from "./chat/shortcut-report";
 import {
   reportUserViewClosed,
   reportUserViewSwitch,
@@ -97,7 +96,6 @@ import {
   isElizaCloudHostedLocation,
   resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
-import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -162,7 +160,6 @@ import { GlassStyles } from "./glass";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
-import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import { PageFrame } from "./layouts/page-frame";
@@ -2585,15 +2582,6 @@ function ChatOverlayMount({
   const firstRunOpen =
     isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
     (firstRunComplete === false && retainMountedFirstRunOpen);
-  // #12087 Item 20: derive the slash-command authority from the authoritative
-  // role instead of the fail-open defaults. Elevated (owner-only) commands
-  // require OWNER; authenticated commands require rank ≥ USER. A remote
-  // USER/GUEST no longer sees elevated commands.
-  const { isOwner, atLeast } = useRole();
-  const slash = useSlashCommandController({
-    isElevated: isOwner,
-    isAuthorized: atLeast("USER"),
-  });
   useLayoutEffect(() => {
     if (controller && firstRunOpen && firstRunMountEpoch !== null) {
       onFirstRunChatMounted?.(firstRunMountEpoch);
@@ -2609,7 +2597,6 @@ function ChatOverlayMount({
     <ChatOverlay
       controller={controller}
       agentName={agentName}
-      slash={slash}
       initialMode={initialMode}
       fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunOpen}
@@ -2968,7 +2955,7 @@ function AppContent() {
       ? getOverlayApp(activeOverlayApp)
       : undefined;
   const overlayAppSurfaceActive = Boolean(resolvedOverlayApp);
-  const contextMenu = useContextMenu();
+  useContextMenu();
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
   const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
@@ -3298,7 +3285,7 @@ function AppContent() {
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
   }, [setTab]);
 
-  // Slash-command settings navigation (e.g. `/settings model`): open the
+  // Settings navigation events open the
   // settings tab focused on the requested section (or the hub when absent).
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3336,7 +3323,7 @@ function AppContent() {
     });
     // An agent-dispatched navigate to the Settings view that carries a `subview`
     // deep-links a section. Route it through the same settings state the
-    // slash-command path uses (initialSection + #hash) instead of the generic
+    // settings navigation uses (initialSection + #hash) instead of the generic
     // path nav, which would drop the requested section.
     // Returns whether the request was actually applied — this is the
     // canonical, single-owner handler `listenForNavigateViewRequests` claims
@@ -4054,12 +4041,6 @@ function AppContent() {
             Sibling of BuildBadge; renders nothing without /build-info.json. */}
         <VoiceCaptureHud />
         <ShellOverlays actionNotice={actionNotice} />
-        <SaveCommandModal
-          open={contextMenu.saveCommandModalOpen}
-          text={contextMenu.saveCommandText}
-          onSave={contextMenu.confirmSaveCommand}
-          onClose={contextMenu.closeSaveCommandModal}
-        />
         <SecretsManagerModalMount />
         <CustomActionEditor
           open={customActionsEditorOpen}

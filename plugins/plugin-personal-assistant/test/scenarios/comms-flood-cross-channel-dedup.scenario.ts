@@ -13,8 +13,8 @@
  * paired with an actionCalled proof that the assistant actually engaged the
  * request — together beating the all-actionCalled guard.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // Dedup means the deduped request is acted on at most once end-to-end: no more
 // than one outbound dispatch may leave for it. Two dispatches would be the

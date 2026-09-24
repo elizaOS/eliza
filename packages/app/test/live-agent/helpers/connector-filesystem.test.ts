@@ -132,8 +132,7 @@ describe("connector filesystem imports", () => {
   });
 
   it("imports the alternate Lens package before checkout fallbacks", () => {
-    const directory =
-      "packages/app/node_modules/@elizaos-plugins/client-lens";
+    const directory = "packages/app/node_modules/@elizaos-plugins/client-lens";
     expect(
       runFixture("Lens", {
         [`${directory}/package.json`]: JSON.stringify({

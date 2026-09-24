@@ -107,7 +107,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "Manual real/e2e plugin suite without model/provider terms; keep as non-model evidence unless a provider key is introduced.",
     matches: (row) =>
-      /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify|task-coordinator|agent-orchestrator)/i.test(
+      /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify|agent-orchestrator)/i.test(
         row.value,
       ),
   },

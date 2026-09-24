@@ -22,7 +22,7 @@
  * Synthetic (Margot Delacroix, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { COLE } from "./_personas";
 
 // Pet names / over-familiar address a professional assistant should avoid.

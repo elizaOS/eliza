@@ -127,7 +127,7 @@ import {
 } from "@elizaos/plugin-todos/edge";
 ```
 
-See `CLAUDE.md` for the full extension and verification contract.
+See `AGENTS.md` for the full extension and verification contract.
 
 ## Environment variables
 

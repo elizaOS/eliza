@@ -20,7 +20,7 @@ import {
   useRef,
 } from "react";
 import { dispatchStewardSessionChange } from "../../events/steward-session-event";
-import { LoginProvider, useAuth as useStewardAuth } from "../../auth/index";
+import { LoginProvider, useAuth as useStewardAuth } from "../../login/index";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";

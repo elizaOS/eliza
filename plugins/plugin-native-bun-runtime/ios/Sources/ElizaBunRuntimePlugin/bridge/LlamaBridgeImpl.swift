@@ -159,7 +159,7 @@ private func c_llama_sampler_free(_ smpl: LlamaSamplerPtr)
 // llama.cpp's `llama_model_params`, `llama_context_params`, and `llama_batch`
 // are POD structs but their layouts drift across upstream releases. We treat
 // the params structs as opaque byte bags sized generously, and use a tiny C
-// shim (LlamaShim.c) for the few field reads/writes Swift needs. That keeps
+// shim (runtime-symbol-shim.c) for the few field reads/writes Swift needs. That keeps
 // Swift agnostic to layout drift.
 //
 // `LlamaBatch` we mirror in Swift because its layout has been stable since
@@ -201,7 +201,7 @@ struct LlamaBatch {
     var logits: UnsafeMutablePointer<Int8>? = nil
 }
 
-// Shim symbols — implemented in LlamaShim.c. The shim folds into libllama.a
+// Shim symbols — implemented in runtime-symbol-shim.c. The shim folds into libllama.a
 // by `vendor-deps/llama.cpp/build-ios.sh`.
 
 @_silgen_name("eliza_llama_model_params_set_n_gpu_layers")

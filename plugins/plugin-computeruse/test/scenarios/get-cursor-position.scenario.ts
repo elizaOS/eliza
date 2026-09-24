@@ -21,8 +21,8 @@ import {
   describeCalls,
   successfulActionData,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 process.env.COMPUTER_USE_ENABLED = "1";
 

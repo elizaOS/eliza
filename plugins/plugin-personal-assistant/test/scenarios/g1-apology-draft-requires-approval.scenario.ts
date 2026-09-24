@@ -5,8 +5,8 @@
  * silently dispatching an external message.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -18,7 +18,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

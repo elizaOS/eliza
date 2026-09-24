@@ -8,8 +8,8 @@
  * (409). elizacloud is handled as a cloud-managed connection.
  */
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import type { SecretsManager } from "@elizaos/auth/vault";
+import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   normalizeFirstRunProviderId,

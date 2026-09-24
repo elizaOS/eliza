@@ -12,13 +12,13 @@
  *   initialMessage:   "Hey there! I'm new here, just wanted to say hi."
  *   turnTimeoutMs:    120_000
  *
- * The current `@elizaos/scenario-runner` contract is scripted, so this file is
+ * The current `@elizaos/testing/scenario-runner` contract is scripted, so this file is
  * the compatibility port: a single scripted turn with deterministic routing
  * fixtures proves the `GREET_USER` action is selected and succeeds.
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,

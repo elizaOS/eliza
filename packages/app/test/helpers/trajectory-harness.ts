@@ -20,10 +20,8 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Memory, UUID } from "@elizaos/core";
-import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
-import type { AgentRuntime, State } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
+import type { AgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { ElizaError, EventType, toWellFormedUnicode } from "@elizaos/core";
 import {
   ConversationHarness,
   type ConversationHarnessOptions,

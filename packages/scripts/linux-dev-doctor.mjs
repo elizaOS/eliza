@@ -613,7 +613,9 @@ async function main() {
     return;
   }
   if (args.help) {
-    console.log("Usage: bun packages/scripts/linux-dev-doctor.mjs [--json] [--strict]");
+    console.log(
+      "Usage: bun packages/scripts/linux-dev-doctor.mjs [--json] [--strict]",
+    );
     return;
   }
   const report = collectLinuxDevReport();

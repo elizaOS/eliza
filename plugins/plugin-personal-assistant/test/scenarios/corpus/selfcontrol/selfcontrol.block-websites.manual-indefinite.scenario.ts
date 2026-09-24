@@ -4,8 +4,8 @@ import {
   describeCalls,
   successfulCalls,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -17,7 +17,7 @@ export default scenario({
     "If the user does not specify a duration, the website block should stay active until they explicitly remove it.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

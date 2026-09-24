@@ -55,7 +55,10 @@ export const MATRIX_STEPS = [
   {
     id: "android-emu-capture",
     label: "Android emulator capture",
-    command: ["node", "packages/scripts/e2e-recordings/capture-android-emu.mjs"],
+    command: [
+      "node",
+      "packages/scripts/e2e-recordings/capture-android-emu.mjs",
+    ],
     tags: ["device", "android"],
     requires: "android-emulator",
   },
@@ -294,7 +297,7 @@ function commandFailure(label, result) {
 
 /** Capture content hashes for every pre-existing producer artifact. */
 export function captureEvidenceBaseline(stagingDir, { run = spawnSync } = {}) {
-  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const cli = path.join(REPO_ROOT, "packages", "testing", "evidence", "cli.ts");
   const baselinePath = path.join(stagingDir, "silo-baseline.json");
   const result = run(
     "bun",
@@ -321,7 +324,7 @@ export function createVerifiedBundle(
   baselinePath,
   { run = spawnSync } = {},
 ) {
-  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const cli = path.join(REPO_ROOT, "packages", "testing", "evidence", "cli.ts");
   const created = run(
     "bun",
     [

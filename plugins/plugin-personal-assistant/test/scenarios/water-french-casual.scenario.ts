@@ -2,7 +2,7 @@
  * Live-model scenario: casual French (tu) phrasing persists a "Drink water"
  * task.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +12,7 @@ export default scenario({
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

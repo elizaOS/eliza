@@ -2,7 +2,7 @@
 
 Shared contracts, configuration, utilities, and assets used by runtime hosts,
 UI, Cloud services, and plugins. Repository rules in the
-[root guide](../../CLAUDE.md) apply.
+[root guide](../../AGENTS.md) apply.
 
 ## Ownership and entry points
 

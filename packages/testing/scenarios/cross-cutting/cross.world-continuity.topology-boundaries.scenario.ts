@@ -3,8 +3,8 @@
  * verified owner accounts converge on one principal while a same-name decoy
  * stays outside world/room discovery, and exercises query and invalid-id paths.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 type MessageResult = {
   success?: boolean;
@@ -145,7 +145,7 @@ export default scenario({
     mode: "model-free",
     reason: "Every turn invokes the MESSAGE topology contract directly.",
   },
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   rooms: [
     {
       id: "discord-owner-dm",

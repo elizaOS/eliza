@@ -6,7 +6,10 @@
  * full-Bun runtime is flagged available. Pure function, called directly.
  */
 import { describe, expect, it } from "vitest";
-import { resolveIosRuntimeConfig } from "./ios-runtime";
+import {
+  assertSupportedIosRuntimeConfig,
+  resolveIosRuntimeConfig,
+} from "./ios-runtime";
 
 describe("resolveIosRuntimeConfig", () => {
   it("prefers iOS runtime env over Android env", () => {
@@ -69,4 +72,22 @@ describe("resolveIosRuntimeConfig", () => {
       fullBun: true,
     });
   });
+});
+
+it.each(["tunnel-to-mobile", "mobile-tunnel", "host-with-tunnel", "tunneled"])(
+  "rejects removed mobile tunnel mode %s before startup",
+  (mode) => {
+    expect(() =>
+      resolveIosRuntimeConfig({ VITE_ELIZA_IOS_RUNTIME_MODE: mode }),
+    ).toThrow("Select local, cloud, cloud-hybrid, or remote-mac mode");
+  },
+);
+it("rejects a persisted tunnel mode with an actionable error code", () => {
+  expect(() =>
+    assertSupportedIosRuntimeConfig({
+      mode: "tunnel-to-mobile",
+      fullBun: true,
+      cloudApiBase: "https://eliza.app",
+    }),
+  ).toThrow(expect.objectContaining({ code: "MOBILE_TUNNEL_UNAVAILABLE" }));
 });

@@ -19,14 +19,14 @@ let activeDispatcher: LocalAgentDispatcher | null = null;
 
 /** Register the dispatcher the agent child attached over its stdio bridge. */
 export function setActiveLocalAgentDispatcher(
-  dispatcher: LocalAgentDispatcher | null,
+	dispatcher: LocalAgentDispatcher | null,
 ): void {
-  activeDispatcher = dispatcher;
+	activeDispatcher = dispatcher;
 }
 
 /** The active dispatcher, or `null` when the agent child is not IPC-connected. */
 export function getActiveLocalAgentDispatcher(): LocalAgentDispatcher | null {
-  return activeDispatcher;
+	return activeDispatcher;
 }
 
 /**
@@ -34,10 +34,10 @@ export function getActiveLocalAgentDispatcher(): LocalAgentDispatcher | null {
  * this so a request that arrives with no live IPC bridge fails observably.
  */
 export function requireActiveLocalAgentDispatcher(): LocalAgentDispatcher {
-  if (!activeDispatcher) {
-    throw new Error(
-      "localAgentRequest received but no local-agent IPC dispatcher is attached: the agent child is not running in local-agent IPC mode (ELIZA_DESKTOP_LOCAL_AGENT_IPC=1).",
-    );
-  }
-  return activeDispatcher;
+	if (!activeDispatcher) {
+		throw new Error(
+			"localAgentRequest received but no local-agent IPC dispatcher is attached: the agent child is not running in local-agent IPC mode (ELIZA_DESKTOP_LOCAL_AGENT_IPC=1).",
+		);
+	}
+	return activeDispatcher;
 }

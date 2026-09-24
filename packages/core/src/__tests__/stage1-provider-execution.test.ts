@@ -3,7 +3,6 @@
  * cached planning context cannot leak back into a later response decision.
  * Uses an in-memory runtime and counting providers; no model or network. */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality";
 import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store";

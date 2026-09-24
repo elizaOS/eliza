@@ -49,7 +49,7 @@ const LEVELS = [
     // view container (wires the presentational @elizaos/ui CockpitView to the
     // live orchestrator client), so it is the source guaranteed in the view graph.
     name: "plugin view cockpit",
-    file: "plugins/plugin-task-coordinator/src/CockpitRoute.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/CockpitRoute.tsx",
   },
   {
     name: "plugin view focus",
@@ -117,11 +117,11 @@ const LEVELS = [
   },
   {
     name: "plugin view task coordinator",
-    file: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/CodingAgentTasksPanel.tsx",
   },
   {
     name: "plugin view orchestrator",
-    file: "plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/OrchestratorWorkbench.tsx",
   },
   {
     name: "plugin view trajectory logger",

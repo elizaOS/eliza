@@ -6,7 +6,7 @@
  */
 
 import path from "node:path";
-import { analyzeImageFile as analyzeSharedImageFile } from "@elizaos/evidence/visual-primitives";
+import { analyzeImageFile as analyzeSharedImageFile } from "@elizaos/testing/evidence/visual-primitives";
 
 export const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 export const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".m4v"]);
@@ -71,7 +71,7 @@ export function inferSource(root, filePath) {
   if (rel.startsWith("packages/app/reports/walkthrough/")) {
     return "walkthrough";
   }
-  if (rel.startsWith("packages/scenario-runner/reports/")) {
+  if (rel.startsWith("packages/testing/scenario-runner/reports/")) {
     return "scenario-runner";
   }
   if (rel.startsWith("reports/live-test-runs/")) return "live-test-runs";

@@ -15,6 +15,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isTokenExpiryText } from "@elizaos/auth/auth/token-expiry";
 import type {
   Content,
   Entity,
@@ -33,7 +34,6 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { isTokenExpiryText } from "@elizaos/auth/auth/token-expiry";
 import type { AcpService } from "./acp-service.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";

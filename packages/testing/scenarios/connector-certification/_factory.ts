@@ -1,14 +1,15 @@
 /** Builds connector-certification scenarios against scenario-runner's real runtime. */
-import type {
-  ScenarioFinalCheck,
-  ScenarioSeedStep,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import type {
+  ScenarioFinalCheck,
+  ScenarioSeedStep,
+} from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export const CONNECTOR_CERTIFICATION_AXES = [
   "core",
@@ -106,9 +107,7 @@ export function buildConnectorCertificationScenario(
     ],
     description: config.description,
     isolation: "per-scenario",
-    requires: {
-      plugins: ["@elizaos/plugin-agent-skills"],
-    },
+    requires: {},
     seed: config.seed,
     rooms: [
       {

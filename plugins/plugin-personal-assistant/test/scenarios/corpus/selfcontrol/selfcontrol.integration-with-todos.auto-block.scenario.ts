@@ -1,8 +1,8 @@
 /** Scenario fixture for selfcontrol integration with todos auto block; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function expectClarificationBeforeTodoBlock(
   ctx: ScenarioContext,
@@ -27,7 +27,7 @@ export default scenario({
     "A todo-gated auto-block request without explicit websites should ask which social sites to include before the rule is created.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder cross platform created on phone fires on mac; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
     "A reminder created from the phone channel should be accepted and persisted through the standard reminder pipeline. Cross-device delivery fan-out is covered by the deterministic reminder ladder scenarios.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

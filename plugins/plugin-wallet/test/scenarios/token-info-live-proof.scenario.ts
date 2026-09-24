@@ -2,7 +2,7 @@
  * Exercises wallet token discovery through a live model and the public
  * DexScreener service so required-service readiness is proven on the real path.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // Public USDC ERC-20 contract address on Ethereum mainnet — not a credential.
 const TOKEN_ADDRESS = "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"; // gitleaks:allow

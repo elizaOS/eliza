@@ -6,8 +6,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -20,7 +20,7 @@ export default scenario({
     "User indicates they want to skip a doctor's appointment. Office policy charges $75 for skips inside 24h. The agent must surface the fee, queue any cancel action behind approval, and not silently no-show.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -384,7 +384,6 @@ jobs:
 
       - name: Generate release validation manifests
         run: |
-          node packages/app/scripts/write-homepage-release-data.mjs
           node packages/app/scripts/generate-static-asset-manifest.mjs
 
       - name: Release readiness checks

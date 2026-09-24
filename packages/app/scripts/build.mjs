@@ -8,12 +8,12 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 import { normalizeEnvPrefix } from "../src/env-prefix.js";
 import {
   removePublicBuildStamp,
   shouldSkipBuildStamp,
 } from "./build-stamp.mjs";
+import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(__dirname, "..");

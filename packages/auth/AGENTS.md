@@ -1,23 +1,23 @@
 # @elizaos/auth
 
-One owner for product login, account authentication and encrypted storage. The root export is the browser-safe SDK; Node APIs use explicit subpaths. Internal modules live in `src/auth` and `src/vault`; tests include both auth colocated tests and vault `test` suites. Never import application hosts. Preserve stored ciphertext, AAD, account migration and refresh coordination.
+One owner for product login, account authentication and encrypted storage. The root export is the browser-safe SDK; Node APIs use explicit subpaths. Account and storage modules live in `src/auth`, `src/vault` and `src/kms`; the browser SDK lives in `src/sdk` and the identity service in `src/server`. Vitest owns account/storage tests and Bun owns SDK/service tests. Never import application hosts. Preserve stored ciphertext, AAD, account migration and refresh coordination.
 
 # `@elizaos/auth/auth`
 
-Leaf authentication and credential package shared by `@elizaos/agent` and
+Account-authentication modules shared by `@elizaos/agent` and
 `@elizaos/app`. It owns encrypted account records, provider credential
 resolution, OAuth and subscription login, token-expiry policy, direct-key
 probing, and per-account refresh serialization.
 
 Repository-wide engineering and evidence requirements are inherited from the
-root [`CLAUDE.md`](../../CLAUDE.md).
+root [`AGENTS.md`](../../AGENTS.md).
 
 ## Dependency boundary
 
-This package must remain below both application hosts. Production code may
-depend on `@elizaos/core`, `@elizaos/shared`, `@elizaos/auth/vault`, and Node
+This package must remain below both application hosts. The account-authentication
+modules may depend on `@elizaos/core`, `@elizaos/shared`, `@elizaos/auth/vault`, and Node
 built-ins; it must not import `@elizaos/agent` or `@elizaos/app`. That
-constraint prevents the dependency cycle this package was created to break.
+constraint keeps account storage independent of application and identity-service startup.
 
 Consumers should use only exports declared in `package.json`. A source file is
 private until it is intentionally added to the root barrel or an explicit
@@ -249,7 +249,7 @@ await test.dispose(); // removes temp dir
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
@@ -259,7 +259,7 @@ under test.
 
 Owns product login, identity sessions and the browser client. React components
 and hooks are exported from the `@elizaos/ui` root barrel.
-Repository-wide instructions in [CLAUDE.md](../../CLAUDE.md) apply.
+Repository-wide instructions in [AGENTS.md](../../AGENTS.md) apply.
 
 Keep browser and server entry points separate. Importing the browser
 client must not load a database, server runtime or optional wallet adapters.

@@ -19,9 +19,7 @@ function resolveElizaWorkspaceRoot(startFile) {
   while (true) {
     if (
       fs.existsSync(path.join(current, "package.json")) &&
-      fs.existsSync(
-        path.join(current, "packages", "app", "package.json"),
-      ) &&
+      fs.existsSync(path.join(current, "packages", "app", "package.json")) &&
       fs.existsSync(path.join(current, "packages", "app", "package.json"))
     ) {
       return current;

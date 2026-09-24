@@ -8,7 +8,7 @@ speech, and transcription handlers, and manages the resident model lifecycle.
 The root is a function library; the explicit bridge entrypoint also exports
 the runtime-owned mobile device bridge plugin.
 
-Read the repository [CLAUDE.md](../../AGENTS.md), the parent
+Read the repository [AGENTS.md](../../AGENTS.md), the parent
 [`plugin-local-inference` guide](../plugin-local-inference/AGENTS.md), and the
 [native inference contract](../plugin-local-inference/native/AGENTS.md) before
 changing its ABI, model selection, or memory policy.

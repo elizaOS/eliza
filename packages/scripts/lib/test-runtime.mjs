@@ -84,7 +84,7 @@ function canRunNode(nodePath, currentExecPath) {
   }
   const result = spawnSync(
     nodePath,
-    ["-e", "process.stdout.write(`${process.platform}/${process.arch}`)"],
+    ["-e", "process.stdout.write(process.platform + '/' + process.arch)"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );
   return (

@@ -20,9 +20,9 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { deserialize as deserializeLegacy } from "node:v8";
 import { ElizaError, logger, type UUID } from "@elizaos/core";
-import type { IStorage } from "./types";
 import { decodeRecord, encodeRecord, RECORD_CODEC } from "./record-codec";
-import type { SqlDatabase, SQLiteDriver } from "./sqlite-driver-types";
+import type { SQLiteDriver, SqlDatabase } from "./sqlite-driver-types";
+import type { IStorage } from "./types";
 
 type Owner = { active: boolean; child?: Promise<void> };
 
@@ -55,7 +55,10 @@ export class SQLiteStorageBase implements IStorage {
   ) {
     driver.assertSupportedRuntime();
     if (!driver.supportsFileSystem && path !== ":memory:") {
-      throw this.failure("PORTABLE_PATH_UNSUPPORTED", "Portable SQLite supports only :memory: databases");
+      throw this.failure(
+        "PORTABLE_PATH_UNSUPPORTED",
+        "Portable SQLite supports only :memory: databases",
+      );
     }
     if (path !== ":memory:" && !isAbsolute(path))
       throw this.failure(
@@ -443,7 +446,10 @@ export class SQLiteStorageBase implements IStorage {
 
   async backup(destination: string): Promise<void> {
     if (!this.driver.supportsFileSystem) {
-      throw this.failure("PORTABLE_BACKUP_UNSUPPORTED", "Portable SQLite has no persistent filesystem for backups");
+      throw this.failure(
+        "PORTABLE_BACKUP_UNSUPPORTED",
+        "Portable SQLite has no persistent filesystem for backups",
+      );
     }
     this.requireOutsideTransaction();
     if (!isAbsolute(destination) || existsSync(destination))

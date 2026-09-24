@@ -47,13 +47,7 @@ describe("findBundledFusedLibDir", () => {
   it("finds a sibling local-inference/lib that holds the fused lib", () => {
     const libDir = stageLibAt("app");
     // module nested deep, mirroring eliza-dist/node_modules/@elizaos/app/dist/runtime
-    const url = moduleUrlAt(
-      "app",
-      "node_modules",
-      "@elizaos",
-      "app",
-      "dist",
-    );
+    const url = moduleUrlAt("app", "node_modules", "@elizaos", "app", "dist");
     expect(findBundledFusedLibDir(url)).toBe(libDir);
   });
 

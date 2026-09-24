@@ -24,8 +24,6 @@ export function setup(): void {
   }
 
   // eslint-disable-next-line no-console
-  console.log(
-    "[e2e-global-setup] dist/ not found — building @elizaos/app…",
-  );
+  console.log("[e2e-global-setup] dist/ not found — building @elizaos/app…");
   execSync("bun run build", { cwd: packageRoot, stdio: "inherit" });
 }

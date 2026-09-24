@@ -33,10 +33,7 @@ const iosRuntimeBridgePath = path.resolve(
   here,
   "../../../app/src/platform/ios-runtime-bridge.ts",
 );
-const appCoreBrowserPath = path.resolve(
-  here,
-  "../../../app/src/browser.ts",
-);
+const appCoreBrowserPath = path.resolve(here, "../../../app/src/browser.ts");
 const appMainPath = path.resolve(here, "../../src/main.tsx");
 
 // The exact hand-authored classifier sources that lived inline in

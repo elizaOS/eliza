@@ -1,4 +1,5 @@
 {
-  "ELIZA_CHAT_VIA_CLI": "codex",
-  "ELIZA_CLI_CODEX_MODEL": "gpt-5.5"
+  "EVAL_MODEL_PROVIDER": "openai",
+  "OPENAI_SMALL_MODEL": "gpt-5.5",
+  "OPENAI_LARGE_MODEL": "gpt-5.5"
 }

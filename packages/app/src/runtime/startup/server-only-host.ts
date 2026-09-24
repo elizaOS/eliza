@@ -4,9 +4,8 @@
  * idempotent resource shutdown without owning process signals or exit policy.
  */
 import process from "node:process";
-import { formatError } from "@elizaos/core";
 import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { formatError, logger } from "@elizaos/core";
 import {
   resolveApiExposePort,
   resolveDesktopApiPort,

@@ -4,7 +4,7 @@
  * Searches cheap verified RTX 4090 offers, rents the cheapest one from the
  * prebuilt certification image, runs the certification chain on the instance
  * via onstart (clone @ --sha → bundle:create → certify:rollup → certify:sign,
- * from packages/evidence), pulls the signed certification.json back through
+ * from packages/testing), pulls the signed certification.json back through
  * the instance logs, and ALWAYS destroys the instance in a finally block —
  * never "stop", because stopped vast instances keep billing disk.
  *
@@ -402,8 +402,8 @@ export function buildOnstart(opts) {
     "else",
     '  echo "[cert-run] gpu-vision service unavailable in this image; vision lanes will record as absent"',
     "fi",
-    `bun run --cwd packages/evidence bundle:create -- --tier ${opts.tier} || fail bundle-create`,
-    // Absolute path: the certify steps below run with cwd packages/evidence
+    `bun run --cwd packages/testing bundle:create -- --tier ${opts.tier} || fail bundle-create`,
+    // Absolute path: the certify steps below run with cwd packages/testing
     // (bun run --cwd), so a repo-root-relative bundle path would not resolve.
     'BUNDLE_DIR="$(ls -td "$PWD"/evidence/runs/*/ 2>/dev/null | head -1)"',
     '[ -n "$BUNDLE_DIR" ] || fail bundle-dir',
@@ -412,8 +412,8 @@ export function buildOnstart(opts) {
     // Verdicts live beside the bundle, never inside it: certify:sign's
     // integrity check refuses a bundle containing unlisted files.
     'VERDICTS="${BUNDLE_DIR%/}-verdicts.json"',
-    'bun run --cwd packages/evidence certify:rollup -- --bundle "$BUNDLE_DIR" --out "$VERDICTS" || fail rollup',
-    `bun run --cwd packages/evidence certify:sign -- --bundle "$BUNDLE_DIR" --verdicts "$VERDICTS" --reviewer-id '${opts.reviewerId}' --reviewer-kind agent || fail sign`,
+    'bun run --cwd packages/testing certify:rollup -- --bundle "$BUNDLE_DIR" --out "$VERDICTS" || fail rollup',
+    `bun run --cwd packages/testing certify:sign -- --bundle "$BUNDLE_DIR" --verdicts "$VERDICTS" --reviewer-id '${opts.reviewerId}' --reviewer-kind agent || fail sign`,
     `echo "${CERT_BEGIN_MARKER}"`,
     'cat "$BUNDLE_DIR/certification.json" || fail cert-read',
     'echo ""',

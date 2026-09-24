@@ -10,62 +10,62 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const electrobunMock = vi.hoisted(() => {
-  const constructorCalls: unknown[][] = [];
-  class MockBrowserWindow {
-    public readonly options: unknown;
-    constructor(...args: unknown[]) {
-      constructorCalls.push(args);
-      this.options = args[0];
-    }
-  }
-  return { constructorCalls, MockBrowserWindow };
+	const constructorCalls: unknown[][] = [];
+	class MockBrowserWindow {
+		public readonly options: unknown;
+		constructor(...args: unknown[]) {
+			constructorCalls.push(args);
+			this.options = args[0];
+		}
+	}
+	return { constructorCalls, MockBrowserWindow };
 });
 
 vi.mock("electrobun/bun", () => ({
-  BrowserWindow: electrobunMock.MockBrowserWindow,
+	BrowserWindow: electrobunMock.MockBrowserWindow,
 }));
 
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 
 describe("createElectrobunBrowserWindow", () => {
-  beforeEach(() => {
-    electrobunMock.constructorCalls.length = 0;
-  });
+	beforeEach(() => {
+		electrobunMock.constructorCalls.length = 0;
+	});
 
-  it("constructs a BrowserWindow with the given options and returns it", () => {
-    const options = { title: "Main", icon: "app.png" };
+	it("constructs a BrowserWindow with the given options and returns it", () => {
+		const options = { title: "Main", icon: "app.png" };
 
-    const win = createElectrobunBrowserWindow(options);
+		const win = createElectrobunBrowserWindow(options);
 
-    expect(electrobunMock.constructorCalls).toHaveLength(1);
-    expect(electrobunMock.constructorCalls[0]).toEqual([options]);
-    expect(win).toBeInstanceOf(electrobunMock.MockBrowserWindow);
-  });
+		expect(electrobunMock.constructorCalls).toHaveLength(1);
+		expect(electrobunMock.constructorCalls[0]).toEqual([options]);
+		expect(win).toBeInstanceOf(electrobunMock.MockBrowserWindow);
+	});
 
-  it("passes the extended icon and partition fields straight through", () => {
-    const options = {
-      title: "Secondary",
-      partition: "persist:x",
-      icon: "i.png",
-    };
+	it("passes the extended icon and partition fields straight through", () => {
+		const options = {
+			title: "Secondary",
+			partition: "persist:x",
+			icon: "i.png",
+		};
 
-    createElectrobunBrowserWindow(options);
+		createElectrobunBrowserWindow(options);
 
-    const passed = electrobunMock.constructorCalls[0]?.[0] as
-      | Record<string, unknown>
-      | undefined;
-    expect(passed).toEqual(options);
-    expect(passed?.icon).toBe("i.png");
-    expect(passed?.partition).toBe("persist:x");
-  });
+		const passed = electrobunMock.constructorCalls[0]?.[0] as
+			| Record<string, unknown>
+			| undefined;
+		expect(passed).toEqual(options);
+		expect(passed?.icon).toBe("i.png");
+		expect(passed?.partition).toBe("persist:x");
+	});
 
-  it("forwards a null partition instead of dropping the field", () => {
-    createElectrobunBrowserWindow({ title: "Null partition", partition: null });
+	it("forwards a null partition instead of dropping the field", () => {
+		createElectrobunBrowserWindow({ title: "Null partition", partition: null });
 
-    const passed = electrobunMock.constructorCalls[0]?.[0] as
-      | Record<string, unknown>
-      | undefined;
-    expect(passed).toEqual({ title: "Null partition", partition: null });
-    expect(passed && "partition" in passed).toBe(true);
-  });
+		const passed = electrobunMock.constructorCalls[0]?.[0] as
+			| Record<string, unknown>
+			| undefined;
+		expect(passed).toEqual({ title: "Null partition", partition: null });
+		expect(passed && "partition" in passed).toBe(true);
+	});
 });

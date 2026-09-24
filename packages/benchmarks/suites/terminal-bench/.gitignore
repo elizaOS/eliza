@@ -1,0 +1,11 @@
+# The vendored Terminal-Bench corpus is task DATA, not build output. Root
+# ignore patterns (*.log, *.pyc, data dumps) must not apply inside tasks/, or
+# files silently drop out of the pinned snapshot and the corpus integrity hash
+# (corpus-manifest.json) fails after a fresh clone.
+!tasks/**
+tasks/**/.DS_Store
+# Interpreter/build byproducts inside the corpus are never part of the pinned
+# snapshot even though `!tasks/**` re-includes task data.
+tasks/**/__pycache__/
+tasks/**/*.pyc
+test_output/

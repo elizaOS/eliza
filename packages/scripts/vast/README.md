@@ -118,7 +118,7 @@ node packages/scripts/vast/local-certify.mjs --tier full
 ```
 
 It runs `bundle:create → certify:rollup → certify:sign` from
-`packages/evidence`, then copies `certification.json` to the repo root ready
+`packages/testing`, then copies `certification.json` to the repo root ready
 to commit on the promotion branch (plus prints the `evidence/bundle/` copy
 command the gate requires). `--no-sign` stops after rollup so you can
 hand-review `verdicts.json` first — signing refuses to mark mechanically

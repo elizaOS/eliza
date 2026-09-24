@@ -1,9 +1,8 @@
 /** Tests real maps service/action behavior over the in-memory runtime database adapter. */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   type ActionParameters,
-  AgentRuntime,
+  type AgentRuntime,
   type Content,
   createCharacter,
   isPromotedSubactionVirtual,
@@ -13,7 +12,7 @@ import {
   tagsRequireEffectReceipts,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";
@@ -114,7 +113,7 @@ describe("MapsService and MAPS action", () => {
     runtime = createSQLiteTestRuntime({
       agentId: AGENT_ID,
       character: createCharacter({ name: "Maps Test" }),
-      
+
       logLevel: "fatal",
     });
     service = new MapsService(runtime);

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Local STT (speech-to-text) microbenchmark.
  *
@@ -18,6 +19,7 @@
  */
 
 import { performance } from "node:perf_hooks";
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { AgentRuntime } from "../../core/src/runtime";
 import { ModelType } from "../../core/src/types";
@@ -105,7 +107,10 @@ async function buildRuntime(): Promise<AgentRuntime> {
       bio: "bench",
       settings: {},
     } as never,
-    adapter: SQLiteDatabaseAdapter.create(":memory:"),
+    adapter: SQLiteDatabaseAdapter.create(
+      ":memory:",
+      sqliteTestAgentId("LocalSttBench"),
+    ),
     logLevel: "fatal",
   });
 

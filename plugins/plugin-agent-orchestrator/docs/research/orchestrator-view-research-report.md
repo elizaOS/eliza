@@ -23,7 +23,7 @@ Remaining work:
 The repository already has three partial layers that should be joined rather than rebuilt from scratch:
 
 - `plugins/plugin-agent-orchestrator` owns ACP subprocess sessions, agent selection, routing, workspace lifecycle, sub-agent progress, and task actions.
-- `plugins/plugin-task-coordinator` owns a plugin view bundle at `/task-coordinator` plus task/session panels, but it is currently wired to mostly stubbed task-thread client methods.
+- `plugins/plugin-agent-orchestrator` owns a plugin view bundle at `/task-coordinator` plus task/session panels, but it is currently wired to mostly stubbed task-thread client methods.
 - `packages/ui` owns the app shell, dynamic plugin views, built-in `/tasks` page, chat sidebar widgets, task-coordinator slots, route resolution, i18n, and local smoke coverage.
 
 The main blocker is that the desired product model is "task thread with room, messages, sub-agents, goal, telemetry, and lifecycle", while the implemented backend model exposed to UI is mostly "ACP session list". Typed task-thread shapes exist in `packages/ui/src/api/client-types-cloud.ts`, and `CodingAgentTasksPanel` already expects thread APIs, but `ElizaClient` returns empty/null for task-thread list/detail/archive/reopen. The `/api/coding-agents/metrics` route returns `{}`, and no route currently exposes per-agent token usage.
@@ -48,17 +48,17 @@ The action path is richer. `TASKS_SPAWN_AGENT` constructs task-room/worktree-roo
 
 ## Current UI State
 
-`plugin-task-coordinator` now declares shipped GUI views for task coordination and orchestration. The older XR/TUI duplicate declarations and terminal capability surface were removed; the remaining view capabilities should be tested against the GUI route and retained `viewType` contract.
+`plugin-agent-orchestrator` now declares shipped GUI views for task coordination and orchestration. The older XR/TUI duplicate declarations and terminal capability surface were removed; the remaining view capabilities should be tested against the GUI route and retained `viewType` contract.
 
 `packages/ui` can route dynamic plugin views by matching `ViewRegistryEntry.path` and loading their `bundleUrl` through `DynamicViewLoader` in `packages/ui/src/App.tsx:451`. Built-in static views include `tasks`, which renders `TasksPageView` in `packages/ui/src/App.tsx:542`. The navigation type and path map include `tasks`, but not `orchestrator`, in `packages/ui/src/navigation/index.ts:44` and `packages/ui/src/navigation/index.ts:318`.
 
 `packages/ui/src/slots/task-coordinator-slots.tsx` deliberately keeps app from importing the plugin directly and instead lets plugins register task-coordinator components into slots. This is the right pattern to preserve if `/orchestrator` remains a frontend plugin view, but it also means `plugin-agent-orchestrator` cannot simply add a React file without introducing a browser build and a view-registration story.
 
-The current task panel is a useful seed, but not enough for the requested view. `CodingAgentTasksPanel` polls `client.listCodingAgentTaskThreads` every 5 seconds in `plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx:680`, loads selected thread details, and has archive/reopen handlers in `plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx:802`. The client methods behind those calls currently return empty/null/false in `packages/ui/src/api/client-agent.ts:3403`, so local task rooms and history are not truly available.
+The current task panel is a useful seed, but not enough for the requested view. `CodingAgentTasksPanel` polls `client.listCodingAgentTaskThreads` every 5 seconds in `plugins/plugin-agent-orchestrator/src/ui/CodingAgentTasksPanel.tsx:680`, loads selected thread details, and has archive/reopen handlers in `plugins/plugin-agent-orchestrator/src/ui/CodingAgentTasksPanel.tsx:802`. The client methods behind those calls currently return empty/null/false in `packages/ui/src/api/client-agent.ts:3403`, so local task rooms and history are not truly available.
 
 Chat sidebar widgets are registered for app runs and activity under `agent-orchestrator` in `packages/ui/src/widgets/registry.ts:67`, but they are not the requested full-room orchestration surface.
 
-There is no first-class `/orchestrator` route in desktop or cloud today. Desktop has a built-in `tasks` tab and `/apps/tasks` surface, while `plugin-task-coordinator` registers `/task-coordinator`. Cloud is further behind for this specific feature: inline cloud agent chat is intentionally not wired yet, and public cloud chat is character-room text streaming rather than orchestrator/task-room state.
+There is no first-class `/orchestrator` route in desktop or cloud today. Desktop has a built-in `tasks` tab and `/apps/tasks` surface, while `plugin-agent-orchestrator` registers `/task-coordinator`. Cloud is further behind for this specific feature: inline cloud agent chat is intentionally not wired yet, and public cloud chat is character-room text streaming rather than orchestrator/task-room state.
 
 Slash-chat support is also not built in for this product yet. Existing slash behavior is tied to saved/custom action expansion, not built-in `/orchestrator`, `/task`, `/spawn`, or `/tasks` commands. The first version should decide whether slash commands call the orchestrator API directly or translate into planner-visible task requests.
 
@@ -129,7 +129,7 @@ Use `/orchestrator` as the primary product route.
 
 Preferred implementation path:
 
-1. Rename or duplicate `plugin-task-coordinator` view registration so GUI path `/orchestrator` loads the new orchestrator component, with `/task-coordinator` retained as a compatibility alias.
+1. Rename or duplicate `plugin-agent-orchestrator` view registration so GUI path `/orchestrator` loads the new orchestrator component, with `/task-coordinator` retained as a compatibility alias.
 2. Keep `plugin-agent-orchestrator` as the backend owner and add all durable task/coordinator routes there.
 3. Keep `packages/ui` slots for shared app-shell embedding, but move the full orchestrator product UI into the plugin view bundle to avoid hardcoding a large new static page in `packages/ui`.
 4. Add `orchestrator` to the UI navigation type/path map only if it needs a first-class built-in tab. If it is a plugin view with `desktopTabEnabled`, dynamic view routing can load it by path without adding a built-in tab.

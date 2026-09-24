@@ -1,9 +1,9 @@
 # Eliza-1 training and publishing
 
 Training, evaluation, quantization, and publication contract for Eliza-1.
-Repository-wide rules come from the root [CLAUDE.md](../../CLAUDE.md); native
+Repository-wide rules come from the root [AGENTS.md](../../AGENTS.md); native
 runtime and ABI rules come from
-[`plugin-local-inference/native/CLAUDE.md`](../../plugins/plugin-local-inference/native/CLAUDE.md).
+[`plugin-local-inference/native/AGENTS.md`](../../plugins/plugin-local-inference/native/AGENTS.md).
 
 This file is the canonical contract for training, quantization,
 evaluation, and HuggingFace publishing of the Eliza-1 model line. It
@@ -147,7 +147,7 @@ recipe-test evidence.
 
 The reference implementations and on-device kernels live in
 `plugins/plugin-local-inference/native/{reference,verify}` and
-`packages/native/plugins/{qjl-cpu,polarquant-cpu}`. The Python recipes here
+`plugins/plugin-local-inference/native/{qjl-cpu,polarquant-cpu}`. The Python recipes here
 MUST stay byte-for-byte compatible with those references — when a
 recipe's block layout, codebook, or sign-vector seed changes, the
 references, kernels, and `_kernel_manifest.py` sha256 pins must be
@@ -258,7 +258,7 @@ publishing* always requires green.
   (`build_v2_corpus.py`, the `transform_*.py` family, `deslop_eval_splits.sh`,
   `validate_corpus.py`). The privacy filter is mandatory on every
   write path that touches real user trajectories — repo-wide
-  `CLAUDE.md` enforces this; do not bypass.
+  `AGENTS.md` enforces this; do not bypass.
 - Native-tool-calling data prep is `prepare_native_tool_calling_data.py`
   with the schema at `config/native_tool_calling_record.schema.json`.
   Tool-calling cache optimization is part of the runtime contract;
@@ -313,7 +313,7 @@ shipped bundle.
   its target text checkpoint's hash.
 - **Bit-exact with kernels.** When a quantization recipe and a kernel
   reference disagree, the kernel reference
-  (`packages/native/plugins/{qjl-cpu,polarquant-cpu}`) is canonical.
+  (`plugins/plugin-local-inference/native/{qjl-cpu,polarquant-cpu}`) is canonical.
   Update the recipe to match, not the other way around.
 - **Branding.** Published HF repos and READMEs say `Eliza-1`. Internal
   training logs, dataset names, and source-checkpoint references may
@@ -332,12 +332,12 @@ shipped bundle.
   operational reference (Vast, Nebius dispatch).
 - `packages/training/scripts/quantization/README.md` — recipe-level
   reference.
-- Root `CLAUDE.md` / `AGENTS.md` — repo-wide conventions and cleanup
+- Root `AGENTS.md` — repo-wide conventions and cleanup
   mandate.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

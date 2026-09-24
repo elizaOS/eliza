@@ -1,3 +1,4 @@
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { createAssistantPlugin } from "../index.ts";
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 
@@ -61,7 +62,12 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-async function setup(adapter = SQLiteDatabaseAdapter.create(":memory:")) {
+async function setup(
+  adapter = SQLiteDatabaseAdapter.create(
+    ":memory:",
+    sqliteTestAgentId("BackgroundMemoryTest"),
+  ),
+) {
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: {
@@ -279,7 +285,13 @@ describe("durable background memory", () => {
           `CREATE TABLE entity_identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),entity_id uuid NOT NULL,agent_id uuid NOT NULL,platform text NOT NULL,handle text NOT NULL,verified boolean NOT NULL,confidence real NOT NULL,source text,first_seen timestamptz NOT NULL,last_seen timestamptz NOT NULL,evidence_message_ids jsonb,extraction_evidence jsonb,CONSTRAINT unique_entity_identity UNIQUE(entity_id,platform,handle,agent_id))`,
         );
         const { runtime, service, message } = await setup(
-          Object.assign(SQLiteDatabaseAdapter.create(":memory:"), { db: drizzle(client) }),
+          Object.assign(
+            SQLiteDatabaseAdapter.create(
+              ":memory:",
+              sqliteTestAgentId("BackgroundMemoryTest"),
+            ),
+            { db: drizzle(client) },
+          ),
         );
         const identities = new RelationshipsService(runtime);
         const getService = runtime.getService.bind(runtime);

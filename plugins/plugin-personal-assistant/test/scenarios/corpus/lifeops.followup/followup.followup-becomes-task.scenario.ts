@@ -5,8 +5,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -18,7 +18,7 @@ export default scenario({
     "User says 'this isn't a nudge anymore, just make it a task'. The agent must promote the followup row into a scheduled task with a concrete due time — not keep nagging.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -50,14 +50,7 @@ export function relativeAppDir(repoRoot, appDir) {
 export function resolveElectrobunDir(repoRoot) {
   const candidates = [
     path.join(repoRoot, "packages", "app", "platforms", "electrobun"),
-    path.join(
-      repoRoot,
-      "eliza",
-      "packages",
-      "app",
-      "platforms",
-      "electrobun",
-    ),
+    path.join(repoRoot, "eliza", "packages", "app", "platforms", "electrobun"),
     fileURLToPath(new URL("../../platforms/electrobun/", import.meta.url)),
   ];
   const match = candidates.find((candidate) =>

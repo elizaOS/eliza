@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "manifestUrl": "https://android.googlesource.com/platform/manifest",
+  "manifestRevision": "android-15.0.0_r31",
+  "manifestTagObject": "935bc0133a3d4d90fe3d3a5d27a5639a65ac8702",
+  "manifestCommit": "74492e14530690709ca5a130a365dffb02f44ba3",
+  "device": {
+    "targetId": "pixel9a-tegu",
+    "codename": "tegu",
+    "marketingName": "Pixel 9a",
+    "buildId": "BD4A.250505.003",
+    "productBrand": "elizaOS",
+    "productName": "eliza_tegu_phone",
+    "expectedFingerprintPrefix": "elizaOS/eliza_tegu_phone/tegu:"
+  },
+  "projects": [
+    {
+      "path": "device/google/caimito",
+      "name": "device/google/caimito",
+      "tagObject": "9594761218305a93aa8c82663f2aa292f7082a27",
+      "commit": "d47eec04c6c8d7b9ea051069c5fb57a2b1e53f11"
+    },
+    {
+      "path": "device/google/caimito-sepolicy",
+      "name": "device/google/caimito-sepolicy",
+      "tagObject": "09efab419a2c74ba35fcc08d1200a549f28c0254",
+      "commit": "167e428ae7a3c179b4197448ad21d800a19590a1"
+    },
+    {
+      "path": "device/google/tegu",
+      "name": "device/google/tegu",
+      "tagObject": "dfc95ed73cb5e00fd6efbb3a10f34ad72f4669dc",
+      "commit": "b0184eca7c2571669a0dd5708b5e555c475500be"
+    },
+    {
+      "path": "device/google/tegu-sepolicy",
+      "name": "device/google/tegu-sepolicy",
+      "tagObject": "d362b19c181ed9e3d9f60d907624e59991ef89e2",
+      "commit": "b1515e8d9ae2820cfd31b4b0eacead6ba3da54d9"
+    },
+    {
+      "path": "device/google/tegu-kernels/6.1",
+      "name": "device/google/tegu-kernels/6.1",
+      "tagObject": "96731ddb89e1e2e171e8d8d00bbc34dbccb4e8c7",
+      "commit": "5380e4f672819d5c9936b740b0f8b7772d80dd56"
+    },
+    {
+      "path": "device/google/zumapro",
+      "name": "device/google/zumapro",
+      "tagObject": "f9cc4506959704064f0cb4090e6b3c568521d035",
+      "commit": "b79071ebf467d2e0a5b2a3518702a41c38a8c67e"
+    },
+    {
+      "path": "device/google/zumapro-sepolicy",
+      "name": "device/google/zumapro-sepolicy",
+      "tagObject": "7d7df0cb36671cc6ecdad3a79277e02bc679e5d4",
+      "commit": "321f067b7942c1608d40600da7d21886e6bc120f"
+    },
+    {
+      "path": "device/google/gs-common",
+      "name": "device/google/gs-common",
+      "tagObject": "b588f3b10880bbfd2b33acbfa0b0dc919c370a5b",
+      "commit": "bc1833afb0af84a10c1c7bbe03483dcb9296dbd5"
+    }
+  ],
+  "requiredSourceFiles": [
+    "device/google/tegu/aosp_tegu.mk",
+    "device/google/tegu/tegu/BoardConfig.mk",
+    "device/google/zumapro/BoardConfig-common.mk",
+    "device/google/zumapro-sepolicy/zumapro-sepolicy.mk",
+    "device/google/gs-common/check_current_prebuilt/check_current_prebuilt.mk",
+    "device/google/tegu-kernels/6.1/25D4/Image.lz4"
+  ],
+  "proprietaryArchive": {
+    "filename": "google_devices-tegu-bd4a.250505.003-9ab41e05.tgz",
+    "url": "https://dl.google.com/dl/android/aosp/google_devices-tegu-bd4a.250505.003-9ab41e05.tgz",
+    "sizeBytes": 387180241,
+    "sha256": "0ad7cd61322c38ba01d142123de4e30c69e091c54c0901d18beae7e4b6da7be2",
+    "licenseAcceptance": "interactive-user-required",
+    "requiredExtractedFiles": [
+      "vendor/google_devices/tegu/Android.bp",
+      "vendor/google_devices/tegu/Android.mk",
+      "vendor/google_devices/tegu/BoardConfigPartial.mk",
+      "vendor/google_devices/tegu/device-partial.mk",
+      "vendor/google_devices/tegu/android-info.txt",
+      "vendor/google_devices/tegu/LICENSE",
+      "vendor/google_devices/tegu/proprietary/BoardConfigVendor.mk",
+      "vendor/google_devices/tegu/proprietary/device-vendor.mk",
+      "vendor/google_devices/tegu/proprietary/vendor.img",
+      "vendor/google_devices/tegu/proprietary/vendor_dlkm.img"
+    ]
+  }
+}

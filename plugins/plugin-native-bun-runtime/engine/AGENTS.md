@@ -12,8 +12,6 @@ The C shim and Swift host define ABI symbols and request framing. The production
 
 ```
 ../ElizaBunEngine.podspec    CocoaPods packaging boundary
-BRIDGE_CONTRACT.md           ABI, lifecycle, and host-call contract
-SWIFT_BUN_COMPATIBILITY.md   compatibility-lane policy
 Sources/                     C ABI shim and public headers
 scripts/
   check-upstream-support.mjs upstream capability probe
@@ -36,8 +34,8 @@ bun run --cwd plugins/plugin-native-bun-runtime engine:smoke:sim
 bun run --cwd plugins/plugin-native-bun-runtime engine:smoke:device
 bun run --cwd plugins/plugin-native-bun-runtime engine:verify:app-store
 bun run --cwd plugins/plugin-native-bun-runtime engine:test
-bun run --cwd plugins/plugin-native-bun-runtime engine:lint:check
-bun run --cwd plugins/plugin-native-bun-runtime engine:format:check
+bun run --cwd plugins/plugin-native-bun-runtime lint:check
+bun run --cwd plugins/plugin-native-bun-runtime format:check
 ```
 
 Builds require an iOS-capable Bun source tree at `vendor/bun` or `ELIZA_BUN_IOS_SOURCE_DIR`. A missing framework is an error when full-engine mode is requested; never fall back silently to a compatibility runtime.
@@ -47,11 +45,11 @@ Builds require an iOS-capable Bun source tree at `vendor/bun` or `ELIZA_BUN_IOS_
 - Device/App Store slices are no-JIT and must not import arbitrary dynamic loading, process spawning, shell execution, package installation, or executable-memory permission APIs.
 - The framework declares its ABI version, `ElizaBunEngineNoJIT`, and `ElizaBunEngineExecutionProfile` in metadata; build and verification reject mismatches.
 - Production links the framework directly through CocoaPods. Debug compatibility loading must not leak into the App Store artifact.
-- Preserve request correlation, UTF-8/JSON ownership, callback lifetime, stop semantics, and `eliza_bun_engine_free` ownership from `BRIDGE_CONTRACT.md`.
+- Preserve request correlation, UTF-8/JSON ownership, callback lifetime, stop semantics, and `eliza_bun_engine_free` ownership from `Sources/ElizaBunEngineShim/eliza_bun_engine.h`.
 - Native model operations cross the host callback; do not open an internal TCP server or bypass the signed host bridge.
 - Generated frameworks are platform artifacts. Build the latest source and verify the exact framework embedded in the app.
 
 ## Verification
 
-Follow the repository-wide standard in the [root CLAUDE.md](../../../CLAUDE.md). Run unit and policy checks, build the affected simulator/device slice, smoke the real agent bundle, verify the embedded framework and signed app, and inspect host-call logs and failure behavior on a simulator or physical device as required.
+Follow the repository-wide standard in the [root AGENTS.md](../../../AGENTS.md). Run unit and policy checks, build the affected simulator/device slice, smoke the real agent bundle, verify the embedded framework and signed app, and inspect host-call logs and failure behavior on a simulator or physical device as required.
 

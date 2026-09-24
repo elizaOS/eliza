@@ -445,10 +445,7 @@ const CELLS = [
       voices: "multi-speaker",
     },
     class: "wakeword-device-gap",
-    command: [
-      "node",
-      "packages/app/scripts/voice/voice-openwakeword-eval.mjs",
-    ],
+    command: ["node", "packages/app/scripts/voice/voice-openwakeword-eval.mjs"],
     evidence: [
       "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
       "$ELIZA_VOICE_OPENWAKEWORD_REPORT",

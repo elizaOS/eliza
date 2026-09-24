@@ -145,14 +145,7 @@ export function resolvePlatformTemplateRoot(
 ) {
   const candidates = [
     path.join(repoRootValue, "packages", "app", "platforms", platform),
-    path.join(
-      repoRootValue,
-      "eliza",
-      "packages",
-      "app",
-      "platforms",
-      platform,
-    ),
+    path.join(repoRootValue, "eliza", "packages", "app", "platforms", platform),
     path.join(appCoreRootValue, "platforms", platform),
   ];
   for (const candidate of candidates) {

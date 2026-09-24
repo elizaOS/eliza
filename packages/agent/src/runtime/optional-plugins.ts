@@ -16,11 +16,6 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = Object.keys(
  */
 export const UNBUNDLED_OPTIONAL_PLUGINS: readonly string[] = [
   "@elizaos/plugin-gitpathologist",
-  "@elizaos/plugin-zerollama",
-  // ESP32 companion device bridge (#18957): opt-in, desktop/node only — the
-  // device is LAN hardware a phone-resident agent never drives, so it stays
-  // out of the mobile bundle.
-  "@elizaos/plugin-companion",
 ];
 
 /** Deferred registrations preserve bundled-first order; each package is authored once. */
@@ -86,12 +81,6 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   // deferred-plugin timeout before being skipped. Skip it up front on
   // android/ios (it is a desktop dev tool, already gated in plugin-collector).
   "@elizaos/plugin-gitpathologist": { skipOnMobile: true },
-  // Ollama is a desktop/server HTTP daemon; never spend a mobile boot timeout
-  // trying to import a provider that cannot run on the phone itself.
-  "@elizaos/plugin-zerollama": { skipOnMobile: true },
-  // The ESP32 companion bridge is desktop-only opt-in hardware tooling; it is
-  // absent from the mobile bundle, so skip the import up front on android/ios.
-  "@elizaos/plugin-companion": { skipOnMobile: true },
   // Root barrel exports the InboxView React components; the runtime plugin
   // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
   // would drag react/.tsx into the bun-target mobile agent bundle. (In

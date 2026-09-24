@@ -25,7 +25,7 @@ const CATALOG_DIR = process.env.LIFEOPS_CATALOG_DIR
     );
 const TS_SCENARIO_ROOTS = [
   "plugins/plugin-personal-assistant/test/scenarios",
-  "packages/scenario-runner/test/scenarios",
+  "packages/testing/scenario-runner/test/scenarios",
 ].map((entry) => path.join(REPO_ROOT, entry));
 const EXPECTED_CATALOGS = [
   ["adhd-capture-and-start.catalog.json", "A1", 28],

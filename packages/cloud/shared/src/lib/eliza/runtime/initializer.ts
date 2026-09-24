@@ -13,7 +13,6 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { doorDashPlugin } from "@elizaos/plugin-doordash";
 import { edgeRuntimeCache, getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
 import "@/lib/polyfills/dom-polyfills";
 import { agentLoader } from "../agent-loader";
@@ -247,14 +246,10 @@ export class RuntimeFactory {
     }
     const filteredPlugins = filterPlugins(plugins);
     const mcpShouldBeEnabled = shouldEnableMcp(context);
-    const doorDashShouldBeEnabled = getConnectedMcpPlatforms(context).includes("doordash");
     const cachePluginNames =
       mcpShouldBeEnabled && !filteredPlugins.some((p) => p.name === "mcp")
         ? [...filteredPlugins.map((plugin) => plugin.name), (mcpPlugin as Plugin).name]
         : filteredPlugins.map((plugin) => plugin.name);
-    if (doorDashShouldBeEnabled && !cachePluginNames.includes(doorDashPlugin.name)) {
-      cachePluginNames.push(doorDashPlugin.name);
-    }
 
     const cacheKey = buildRuntimeCacheKey({
       agentId,
@@ -294,10 +289,6 @@ export class RuntimeFactory {
     if (mcpShouldBeEnabled && !filteredPlugins.some((p) => p.name === "mcp")) {
       filteredPlugins.push(mcpPlugin as Plugin);
       elizaLogger.info("[RuntimeFactory] Added MCP plugin for OAuth-connected user");
-    }
-    if (doorDashShouldBeEnabled && !filteredPlugins.some((p) => p.name === doorDashPlugin.name)) {
-      filteredPlugins.push(doorDashPlugin);
-      elizaLogger.info("[RuntimeFactory] Added the safe DoorDash ordering facade");
     }
 
     const embeddingModel = resolveHostedEmbeddingModel(character);

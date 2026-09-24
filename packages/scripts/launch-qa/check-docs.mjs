@@ -21,12 +21,7 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ROOT_DOCS = [
-  "README.md",
-  "CONTRIBUTING.md",
-  "SECURITY.md",
-  "WINDOWS.md",
-];
+const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "SECURITY.md", "WINDOWS.md"];
 const ISSUE_TEMPLATE_CONFIG = ".github/ISSUE_TEMPLATE/config.yml";
 const SECURITY_POLICY_FILE = "SECURITY.md";
 const SECURITY_POLICY_CONTACT_URL =
@@ -134,17 +129,7 @@ function walkPackageJsons(dir) {
 
 function collectDocs(repoRoot, scope = "all") {
   const files = new Set();
-  const dirs =
-    scope === "launchdocs"
-      ? [
-          "packages/docs/docs/launchdocs",
-          "packages/docs/launchdocs",
-          "packages/docs/launch-resources",
-          "launchdocs",
-        ]
-      : scope === "docs"
-        ? ["packages/docs/docs", "packages/docs", "docs"]
-        : ["packages/docs/docs", "packages/docs", "docs", "launchdocs"];
+  const dirs = scope === "launchdocs" ? ["launchdocs"] : scope === "docs" ? ["docs"] : ["docs", "launchdocs"];
 
   for (const dirName of dirs) {
     for (const filePath of walkMarkdownFiles(path.join(repoRoot, dirName))) {
@@ -368,7 +353,6 @@ function normalizeCwd(repoRoot, docFile, cwdPart) {
   }
   const docRel = rel(repoRoot, docFile);
   const commandBase =
-    docRel.startsWith("packages/docs/") ||
     docRel.startsWith("docs/") ||
     docRel.startsWith("launchdocs/")
       ? repoRoot
@@ -525,7 +509,8 @@ function checkSecurityPolicy(repoRoot) {
     errors.push({
       type: "missing-security-contact",
       file: ISSUE_TEMPLATE_CONFIG,
-      message: "missing Security vulnerability contact link in issue template config",
+      message:
+        "missing Security vulnerability contact link in issue template config",
     });
     return errors;
   }

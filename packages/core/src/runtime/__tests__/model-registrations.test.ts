@@ -7,9 +7,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	type Character,
 	EventType,
@@ -23,7 +22,7 @@ function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 			name: "ModelRegistrationsAgent",
 			bio: "test",
 		} as Character,
-		
+
 		logLevel: "fatal",
 		settings,
 	});

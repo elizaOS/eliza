@@ -153,7 +153,7 @@ The wiring is end-to-end:
 3. `patchLlamaCppCapacitorPodspecForXcframework()` rewrites the npm
    package's podspec to point at
    `ios/Frameworks-xcframework/LlamaCpp.xcframework`. Note: this also
-   relies on `packages/app/patches/llama-cpp-capacitor@0.1.5.patch`
+   relies on `patches/llama-cpp-capacitor@0.1.5.patch`
    already swapping the SPM-side framework reference; the patch's
    `LlamaCpp.podspec` / `LlamaCppCapacitor.podspec` edits are kept in
    sync with the runtime patcher.

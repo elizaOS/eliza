@@ -28,8 +28,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {

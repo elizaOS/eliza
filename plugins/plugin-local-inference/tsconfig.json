@@ -39,21 +39,15 @@
 			"@elizaos/plugin-computeruse/mobile/ios-bridge": [
 				"../plugin-computeruse/src/mobile/ios-bridge.ts"
 			],
-			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
-			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
 			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
 			"@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
 			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
-			"@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
-			"@elizaos/plugin-agent-skills/*": ["../plugin-agent-skills/src/*"],
-			"@elizaos/plugin-registry": ["../plugin-registry/src/index.ts"],
-			"@elizaos/plugin-registry/*": ["../plugin-registry/src/*"],
-			"@elizaos/plugin-task-coordinator": [
-				"../plugin-task-coordinator/src/index.ts"
+			"@elizaos/plugin-agent-orchestrator/ui": [
+				"../plugin-agent-orchestrator/src/ui/index.ts"
 			],
-			"@elizaos/plugin-task-coordinator/*": [
-				"../plugin-task-coordinator/src/*"
+			"@elizaos/plugin-agent-orchestrator/ui/*": [
+				"../plugin-agent-orchestrator/src/ui/*"
 			],
 			"@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
 			"@elizaos/plugin-health/*": ["../plugin-health/src/*"],
@@ -67,19 +61,19 @@
 			"@elizaos/app/*": ["../../packages/app/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
-			"@elizaos/auth/vault": [
-				"../../packages/auth/src/vault/index.ts"
-			],
-			"@elizaos/auth/vault/*": [
-				"../../packages/auth/src/vault/*"
-			],
+			"@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+			"@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
 			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
 			"csstype": [
 				"../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
-			]
+			],
+			"@elizaos/plugin-native-inference": [
+				"../plugin-native-inference/src/index.ts"
+			],
+			"@elizaos/plugin-native-inference/*": ["../plugin-native-inference/src/*"]
 		}
 	},
 	"include": ["src/**/*"],

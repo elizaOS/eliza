@@ -3,7 +3,7 @@
  * check-in are structural state; the assistant does not turn a heated rupture
  * into automatic outreach or counseling.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

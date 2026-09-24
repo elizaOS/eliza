@@ -177,7 +177,7 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
   from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
   providers/context, the raw model output, every tool/action call, and the result. Then **open
   the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+  (`packages/testing/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
 - **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
   drive the *real* path end to end. Not the happy "front door" only: cover error paths,
   edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that

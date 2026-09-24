@@ -3,8 +3,6 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@homepage/*": ["../homepage/src/*"],
-      "@/*": ["../homepage/src/*"],
       "@elizaos/app": ["../app/dist/index.d.ts"],
       "@elizaos/app/*": ["../app/dist/*"],
       "@elizaos/app/first-run/first-run-config": [
@@ -12,7 +10,7 @@
       ],
       "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-task-coordinator": [
+      "@elizaos/plugin-agent-orchestrator/ui": [
         "./src/types/app-plugin-modules.d.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
@@ -30,18 +28,6 @@
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-app-manager": [
-        "../../plugins/plugin-app-manager/src/index.ts"
-      ],
-      "@elizaos/plugin-app-manager/*": [
-        "../../plugins/plugin-app-manager/src/*"
-      ],
-      "@elizaos/plugin-agent-skills": [
-        "../../plugins/plugin-agent-skills/src/index.ts"
-      ],
-      "@elizaos/plugin-agent-skills/*": [
-        "../../plugins/plugin-agent-skills/src/*"
-      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
@@ -54,16 +40,6 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
-      "@elizaos/plugin-commands": [
-        "../../plugins/plugin-commands/src/index.ts"
-      ],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
-      ],
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/dist/index.d.ts"
       ],
@@ -71,8 +47,8 @@
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/ui": ["../src/ui/index.ts"],
+      "@elizaos/ui/*": ["../src/ui/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "csstype": [
@@ -191,7 +167,6 @@
     "src/mobile-remote-fallback.ts",
     "src/keyboard-dictation.ts",
     "src/web-entry-policy.test.ts",
-    "src/marketing-home-entry.tsx",
     "src/sw-fetch.test.ts",
     "src/packaged-shell-storage-test-bridge.test.ts",
     "src/runtime-chooser-override.test.ts",

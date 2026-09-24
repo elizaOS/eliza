@@ -16,9 +16,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime";
 import { ModelType } from "../../../../packages/core/src/types";
 
 interface TranscriptionParams {
@@ -37,7 +36,7 @@ function makeRuntime(): TestRuntimeCtx {
 			bio: "asr-priority test",
 			settings: {},
 		} as never,
-		
+
 		logLevel: "fatal",
 	});
 	const calls: string[] = [];

@@ -37,8 +37,8 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {
   createWebSearchEdgePlugin,
@@ -324,7 +324,10 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
       agentKey: "shared-runtime-kernel-prewarm",
       actionsEnabled: true,
       webSearchEnabled: true,
-      adapter: SQLiteDatabaseAdapter.create(":memory:"),
+      adapter: SQLiteDatabaseAdapter.create(
+        ":memory:",
+        stringToUuid("shared-runtime-kernel-prewarm"),
+      ),
       character: {
         name: "Shared Eliza",
         system: "Shared runtime initialization prewarm.",
@@ -593,7 +596,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const trustedRoomKey = input.execution.roomKey.trim();
   await ensureEdgeStreamingContext();
   timing.markEdgeContextReady();
-  const adapter = SQLiteDatabaseAdapter.create(":memory:");
+  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   let providerDispatched = false;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
@@ -781,7 +785,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   const mediaPlugin =
     actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
-  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
   const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);

@@ -18,7 +18,6 @@ import "@elizaos/capacitor-mobile-signals";
 import "@elizaos/capacitor-appblocker";
 import "@elizaos/capacitor-bun-runtime";
 import "@elizaos/plugin-native-phone/bridge";
-import "@elizaos/capacitor-screencapture";
 import "@elizaos/capacitor-swabble";
 import "@elizaos/capacitor-system";
 import "@elizaos/capacitor-talkmode";

@@ -1,0 +1,63 @@
+body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
+h1, h2, h3 { margin-top: 20px; }
+.task-type { margin-bottom: 30px; }
+.task-card { border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
+.task-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.task-title { margin: 0; font-size: 1.1em; font-weight: bold; }
+.task-status { padding: 3px 8px; border-radius: 3px; font-size: 0.9em; }
+.status-not-started { background-color: #f0f0f0; }
+.status-preparing { background-color: #fff3cd; }
+.status-running { background-color: #cce5ff; }
+.status-completed { background-color: #d4edda; }
+.status-error { background-color: #f8d7da; color: #721c24; }
+.task-details { margin-top: 10px; }
+.progress-bar { height: 10px; background-color: #e9ecef; border-radius: 5px; margin-top: 5px; overflow: hidden; }
+.progress-fill { height: 100%; background-color: #007bff; width: 0%; }
+.task-actions { margin-top: 15px; }
+.btn { padding: 5px 10px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn:hover { background-color: #0069d9; }
+.btn-warning { background-color: #ffc107; color: #212529; }
+.btn-warning:hover { background-color: #e0a800; }
+.btn:disabled { background-color: #6c757d; cursor: not-allowed; }
+.config-actions { margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee; }
+.config-actions .btn { width: 100%; }
+
+/* Collapsible config args styling */
+.config-collapsible { margin-top: 10px; }
+.config-collapsible-header { 
+    cursor: pointer; 
+    padding: 8px 0; 
+    border-bottom: 1px solid #eee; 
+    display: flex; 
+    align-items: center; 
+    font-weight: 500;
+    color: #666;
+}
+.config-collapsible-header:hover { color: #333; }
+.config-collapsible-header i { 
+    margin-right: 8px; 
+    transition: transform 0.2s ease;
+    font-size: 12px;
+}
+.config-collapsible-content { 
+    display: none; 
+    padding-top: 10px;
+}
+
+/* Fix config item spacing */
+.config-item { 
+    margin-bottom: 8px; 
+    padding: 4px 0;
+}
+.config-item:last-child { margin-bottom: 0; }
+.config-label { 
+    font-weight: 500; 
+    color: #555; 
+    margin-right: 8px;
+}
+.config-value { 
+    color: #333; 
+    word-break: break-word;
+}
+.refresh-btn { float: right; margin-top: 10px; }
+.timestamp { font-size: 0.8em; color: #666; }

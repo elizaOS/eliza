@@ -5,7 +5,7 @@
  * not the approval surface: the draft must stay held until the owner has
  * actually seen and confirmed the text, and no external dispatch may occur.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -25,7 +25,7 @@ export default scenario({
   tier: "T3",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

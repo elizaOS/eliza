@@ -8,7 +8,7 @@ Registers a set of REST routes that expose document CRUD, bulk upload, URL inges
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-knowledge`).
 
-Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflow) live in the root [CLAUDE.md](../../CLAUDE.md) — not repeated here.
+Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflow) live in the root [AGENTS.md](../../AGENTS.md) — not repeated here.
 
 ## Plugin surface
 
@@ -120,7 +120,7 @@ user-private documents only while a current member of the document room.
 **Add a new route:**
 1. Add the method + path to `DOCUMENT_ROUTES` in `src/plugin.ts`.
 2. Implement the handler branch inside `handleDocumentsRoutes()` in `src/routes.ts`. Resolve the authenticated access context, delegate authorization to the access-context-aware `DocumentService` method, then call `json(res, ...)` or `error(res, ...)`.
-3. Every route must have a real caller (UI or agent action) per root CLAUDE.md rule 10.
+3. Every route must have a real caller (UI or agent action) per root AGENTS.md rule 10.
 
 **Add a new presenter field:**
 Add to `PresentedDocument` in `src/document-presenter.ts` and populate it in `presentDocument()`.
@@ -144,7 +144,7 @@ must never become a competing read authority or post-filter raw storage rows.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

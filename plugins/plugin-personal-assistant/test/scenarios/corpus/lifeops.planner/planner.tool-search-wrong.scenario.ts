@@ -17,11 +17,11 @@
  * listed NONE; no scenario covers this.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 const FORBIDDEN_BLOCKER_ACTIONS = new Set<string>([
   "WEBSITE_BLOCK",
@@ -74,7 +74,7 @@ export default scenario({
   tags: ["lifeops", "planner", "tool-search", "self-correction", "robustness"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

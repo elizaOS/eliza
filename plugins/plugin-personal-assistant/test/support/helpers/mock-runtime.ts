@@ -9,7 +9,7 @@ import {
   type MockEnvironmentName,
   type StartedMocks,
   startMocks,
-} from "../../../../../packages/scenario-runner/test/mocks/scripts/start-mocks.ts";
+} from "../../../../../packages/testing/scenario-runner/test/mocks/scripts/start-mocks.ts";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,

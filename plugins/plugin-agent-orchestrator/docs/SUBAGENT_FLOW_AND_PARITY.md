@@ -44,7 +44,7 @@ to `done`); evaluator `evaluators/sub-agent-completion.ts`.
 
 **Provisioning** happens at spawn: `acp-service.ts` resolves the workdir, captures
 a git baseline SHA + dirty set (for the completion changeset), and writes a
-sub-agent `AGENTS.md`/`CLAUDE.md` identity manifest on bare workdirs
+sub-agent `AGENTS.md` identity manifest on bare workdirs
 (`sub-agent-identity.ts`). Explicit repo clone / worktree / branch / commit / push
 / PR is `CodingWorkspaceService` (`workspace-*.ts`), driven by
 `TASKS_PROVISION_WORKSPACE` / `TASKS_SUBMIT_WORKSPACE`.
@@ -55,7 +55,7 @@ sub-agent `AGENTS.md`/`CLAUDE.md` identity manifest on bare workdirs
   `taskRoomId` = a dedicated task-scoped room; all sessions' messages
   (`senderKind: user|orchestrator|sub_agent|system`) append there. Exposed via
   `GET /api/orchestrator/tasks/:id/messages`, `/timeline`, and `/stream` (SSE).
-- The in-app **task view** (`plugin-task-coordinator/src/OrchestratorWorkbench.tsx`)
+- The in-app **task view** (`plugin-agent-orchestrator/src/ui/OrchestratorWorkbench.tsx`)
   renders this as a per-task message room: the merged timeline + per-sub-agent
   sessions list + plan + diff + usage + recovery, with near-live polling.
 - On chat connectors, the **progress thread** (`index.ts emitProgress`) routes all

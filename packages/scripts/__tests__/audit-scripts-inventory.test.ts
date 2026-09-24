@@ -137,8 +137,8 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     );
     expect(darwinWrapper?.category).toBe("reachable-from-package-script");
     expect(darwinWrapper?.packageScriptCallers).toContainEqual({
-      packageJson: "packages/native/ios-deps/package.json",
-      script: "build:llama-cpp",
+      packageJson: "plugins/plugin-native-bun-runtime/package.json",
+      script: "build:sqlite-vec",
     });
     expect(
       inv.summary.filesByCategory["reachable-from-package-script"],

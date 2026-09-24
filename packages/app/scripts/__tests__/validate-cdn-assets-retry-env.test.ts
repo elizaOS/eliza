@@ -24,7 +24,7 @@ describe("validate-cdn-assets retry policy env injection (#18950)", () => {
     fixtureRoot = mkdtempSync(path.join(tmpdir(), "cdn-retry-env-"));
     for (const asset of [
       "packages/app/public/asset-a.png",
-      "packages/homepage/public/asset-b.png",
+      "packages/app/public/asset-b.png",
     ]) {
       const filePath = path.join(fixtureRoot, asset);
       mkdirSync(path.dirname(filePath), { recursive: true });

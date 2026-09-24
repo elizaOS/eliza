@@ -1,27 +1,19 @@
 {
   "schema": "gpt55_harvest_manifest",
   "schemaVersion": 1,
-  "generatedAt": "2026-08-02T16:23:27.984Z",
-  "repoRoot": "/Users/shawwalters/eliza-workspace/milady/eliza",
-  "goal": "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
+  "generatedAt": "2026-09-24T01:08:35.716Z",
+  "repoRoot": "/Users/shawwalters/v3",
+  "goal": "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   "provider": {
-    "mechanism": "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/testing/src/live-provider.ts selectCliProvider)",
-    "backend": "codex",
-    "model": "gpt-5.5",
-    "modelOverrideEnv": "ELIZA_CLI_CODEX_MODEL",
-    "plugin": "@elizaos/plugin-cli-inference",
-    "credentialsPath": "~/.codex/auth.json (ChatGPT-OAuth; eliza never sees the token)",
-    "env": {
-      "ELIZA_CHAT_VIA_CLI": "codex",
-      "ELIZA_CLI_CODEX_MODEL": "gpt-5.5"
-    },
-    "note": "Stage-1 leg S1 proves ONE real scenario through this seam live. The driver consumes S1's proven provider env verbatim."
+    "mechanism": "API provider selected by packages/testing/src/live-provider.ts",
+    "configuration": "Supply provider credentials and model settings through --provider-env or inherited environment variables.",
+    "note": "Validate a real scenario with the chosen provider before starting a full harvest."
   },
   "trajectoryFormat": {
     "name": "eliza_native_v1",
     "definedIn": "packages/core/src/services/trajectory-types.ts (ElizaNativeTrajectoryRow)",
     "contract": "packages/training/docs/dataset/CANONICAL_RECORD.md",
-    "converter": "packages/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
+    "converter": "packages/testing/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
     "trainingPrep": "packages/training/scripts/prepare_eliza1_trajectory_dataset.py"
   },
   "families": {
@@ -29,7 +21,7 @@
       "kind": "scenario",
       "emitsTrajectory": "native",
       "trajectoryFormat": "eliza_native_v1",
-      "runnerCli": "packages/scenario-runner/src/cli.ts",
+      "runnerCli": "packages/testing/scenario-runner/src/cli.ts",
       "tsconfig": "tsconfig.json",
       "runInvocationTemplate": [
         "bun",
@@ -37,7 +29,7 @@
         "eliza-source",
         "--tsconfig-override",
         "<TSCONFIG>",
-        "packages/scenario-runner/src/cli.ts",
+        "packages/testing/scenario-runner/src/cli.ts",
         "run",
         "<DIR>",
         "--scenario",
@@ -56,34 +48,14 @@
         "manifest": "<NATIVE>.manifest.json"
       },
       "verdictSource": "report .scenarios[].status === 'passed' | native row.scenarioStatus",
-      "providerSeam": "ELIZA_CHAT_VIA_CLI=codex \u2192 provider 'cli', model gpt-5.5, plugin @elizaos/plugin-cli-inference, reads ~/.codex/auth.json",
+      "providerSeam": "API-backed provider selected by packages/testing/src/live-provider.ts; credentials and model settings come from the operator environment",
       "items": [
-        {
-          "id": "packages__scenario-runner__test__scenarios",
-          "dir": "packages/scenario-runner/test/scenarios",
-          "scenarioFiles": 56,
-          "baseScenarios": 56,
-          "expandedScenarios": 616,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "packages/scenario-runner/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
         {
           "id": "packages__testing__scenarios",
           "dir": "packages/testing/scenarios",
-          "scenarioFiles": 468,
-          "baseScenarios": 468,
-          "expandedScenarios": 5148,
+          "scenarioFiles": 467,
+          "baseScenarios": 467,
+          "expandedScenarios": 5137,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -91,7 +63,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "packages/testing/scenarios"
             ],
@@ -101,9 +73,9 @@
         {
           "id": "plugins__plugin-agent-orchestrator__test__scenarios",
           "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
-          "scenarioFiles": 17,
-          "baseScenarios": 17,
-          "expandedScenarios": 187,
+          "scenarioFiles": 16,
+          "baseScenarios": 16,
+          "expandedScenarios": 176,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -111,69 +83,9 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-agent-orchestrator/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
-        {
-          "id": "plugins__plugin-app-control__test__scenarios",
-          "dir": "plugins/plugin-app-control/test/scenarios",
-          "scenarioFiles": 23,
-          "baseScenarios": 23,
-          "expandedScenarios": 253,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "plugins/plugin-app-control/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
-        {
-          "id": "plugins__plugin-cloud-apps__test__scenarios",
-          "dir": "plugins/plugin-cloud-apps/test/scenarios",
-          "scenarioFiles": 2,
-          "baseScenarios": 2,
-          "expandedScenarios": 22,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "plugins/plugin-cloud-apps/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
-        {
-          "id": "plugins__plugin-commands__test__scenarios",
-          "dir": "plugins/plugin-commands/test/scenarios",
-          "scenarioFiles": 1,
-          "baseScenarios": 1,
-          "expandedScenarios": 11,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "plugins/plugin-commands/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }
@@ -191,7 +103,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-computeruse/test/scenarios"
             ],
@@ -211,29 +123,9 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-elizacloud/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
-        {
-          "id": "plugins__plugin-finances__test__scenarios",
-          "dir": "plugins/plugin-finances/test/scenarios",
-          "scenarioFiles": 1,
-          "baseScenarios": 1,
-          "expandedScenarios": 11,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "plugins/plugin-finances/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }
@@ -251,7 +143,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-form/test/scenarios"
             ],
@@ -271,7 +163,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-health/test/scenarios"
             ],
@@ -291,7 +183,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-inbox/test/scenarios"
             ],
@@ -311,9 +203,29 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-local-inference/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-maps__test__scenarios",
+          "dir": "plugins/plugin-maps/test/scenarios",
+          "scenarioFiles": 2,
+          "baseScenarios": 2,
+          "expandedScenarios": 22,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/testing/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-maps/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }
@@ -331,7 +243,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-meetings/test/scenarios"
             ],
@@ -341,9 +253,9 @@
         {
           "id": "plugins__plugin-personal-assistant__test__scenarios",
           "dir": "plugins/plugin-personal-assistant/test/scenarios",
-          "scenarioFiles": 765,
-          "baseScenarios": 765,
-          "expandedScenarios": 8415,
+          "scenarioFiles": 766,
+          "baseScenarios": 766,
+          "expandedScenarios": 8426,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -351,7 +263,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-personal-assistant/test/scenarios"
             ],
@@ -371,7 +283,7 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-relationships/test/scenarios"
             ],
@@ -391,9 +303,49 @@
               "eliza-source",
               "--tsconfig-override",
               "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
+              "packages/testing/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-telegram/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-vision__test__scenarios",
+          "dir": "plugins/plugin-vision/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/testing/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-vision/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-wallet__test__scenarios",
+          "dir": "plugins/plugin-wallet/test/scenarios",
+          "scenarioFiles": 2,
+          "baseScenarios": 2,
+          "expandedScenarios": 22,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/testing/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-wallet/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }
@@ -412,10 +364,12 @@
       "trajectoryFormat": "eliza_native_v1 (after wiring)",
       "runInvocationTemplate": "ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
       "trajectoryWiring": "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
-      "providerSeam": "Same ELIZA_CHAT_VIA_CLI=codex seam; the live-provider helper (packages/app/test/helpers/live-provider.ts) already recognizes CLI backends.",
-      "liveLaneCount": 50,
+      "providerSeam": "API-backed provider selected by packages/app/test/helpers/live-provider.ts.",
+      "liveLaneCount": 54,
       "lanes": [
+        "packages/app/test/app/agent-reset-route.real.e2e.test.ts",
         "packages/app/test/app/chat-streaming-telemetry.real.e2e.test.ts",
+        "packages/app/test/app/conversation-idempotency-restart.real.e2e.test.ts",
         "packages/app/test/app/memory-relationships.real.e2e.test.ts",
         "packages/app/test/app/qa-checklist.real.e2e.test.ts",
         "packages/app/test/app/streaming-visible-text.live.e2e.test.ts",
@@ -434,7 +388,6 @@
         "packages/app/test/live-agent/feishu-connector.live.e2e.test.ts",
         "packages/app/test/live-agent/health-and-dev-stack.real.e2e.test.ts",
         "packages/app/test/live-agent/lens-connector.live.e2e.test.ts",
-        "packages/app/test/live-agent/matrix-connector.live.e2e.test.ts",
         "packages/app/test/live-agent/nostr-connector.live.e2e.test.ts",
         "packages/app/test/live-agent/page-scoped-chat.live.e2e.test.ts",
         "packages/app/test/live-agent/permissions-and-sensitive.real.e2e.test.ts",
@@ -442,10 +395,13 @@
         "packages/app/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
         "packages/app/test/live-agent/real-runtime-helpers.live.e2e.test.ts",
         "packages/app/test/live-agent/runtime-debug.live.e2e.test.ts",
-        "packages/app/test/live-agent/settings-shell-toggle.live.e2e.test.ts",
         "packages/app/test/live-agent/telegram-connector.live.e2e.test.ts",
         "packages/app/test/live-agent/views-interact-ws-roundtrip.real.e2e.test.ts",
         "packages/app/test/live-agent/views-routes.real.e2e.test.ts",
+        "plugins/plugin-agent-orchestrator/ui/test/coding-agent-codex-artifact.live.e2e.test.ts",
+        "plugins/plugin-agent-orchestrator/ui/test/orchestrator-workbench.live.e2e.test.ts",
+        "plugins/plugin-computeruse/src/__tests__/computeruse-browser-fixture.real.e2e.test.ts",
+        "plugins/plugin-computeruse/src/__tests__/computeruse-cerebras-browser-fixture.live.e2e.test.ts",
         "plugins/plugin-computeruse/src/__tests__/runtime.live.e2e.test.ts",
         "plugins/plugin-computeruse/test/computeruse.real.e2e.test.ts",
         "plugins/plugin-knowledge/test/documents-api.live.e2e.test.ts",
@@ -457,19 +413,19 @@
         "plugins/plugin-personal-assistant/test/lifeops-gmail-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-memory.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-screen-context.live.e2e.test.ts",
+        "plugins/plugin-personal-assistant/test/memory-restart-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/reminder-review-job.real.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-dev.live.e2e.test.ts",
+        "plugins/plugin-personal-assistant/test/undated-owner-todo.cerebras.live.e2e.test.ts",
         "plugins/plugin-sql/src/__tests__/integration/pglite-e2e.real.e2e.test.ts",
-        "plugins/plugin-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
-        "plugins/plugin-task-coordinator/test/orchestrator-workbench.live.e2e.test.ts",
         "plugins/plugin-vision/test/vision.real.e2e.test.ts"
       ],
       "scriptedRealServices": [
-        "packages/scenario-runner/scripts/real-llm-attachment-smoke.mjs",
-        "packages/scenario-runner/scripts/real-service-audio-roundtrip.mjs",
-        "packages/scenario-runner/scripts/real-service-voice-e2e.mjs"
+        "packages/testing/scenario-runner/scripts/real-llm-attachment-smoke.mjs",
+        "packages/testing/scenario-runner/scripts/real-service-audio-roundtrip.mjs",
+        "packages/testing/scenario-runner/scripts/real-service-voice-e2e.mjs"
       ]
     }
   }

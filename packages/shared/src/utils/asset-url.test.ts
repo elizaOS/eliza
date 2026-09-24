@@ -3,7 +3,7 @@
  * Exercises relative asset normalization, absolute URL preservation, custom currentUrl/baseUrl options,
  * boot-config CDN base resolution, and API base URL prefixing.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
   setBootConfig,
@@ -11,7 +11,12 @@ import {
 import { resolveApiUrl, resolveAppAssetUrl } from "./asset-url.js";
 
 describe("asset-url utilities", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", undefined);
+    setBootConfig(DEFAULT_BOOT_CONFIG);
+  });
   afterEach(() => {
+    vi.unstubAllGlobals();
     setBootConfig(DEFAULT_BOOT_CONFIG);
   });
 

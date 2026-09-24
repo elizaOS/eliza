@@ -13,12 +13,6 @@
  * exposed by this resolver as API keys.
  */
 
-import {
-  logger,
-  MODEL_PROVIDER_SECRETS,
-  resolveStateDir,
-  SECRET_KEY_ALIASES,
-} from "@elizaos/core";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
 import {
   getAccessToken,
@@ -29,6 +23,12 @@ import {
   type DirectAccountProvider,
   isDirectAccountProvider,
 } from "@elizaos/auth/auth/types";
+import {
+  logger,
+  MODEL_PROVIDER_SECRETS,
+  resolveStateDir,
+  SECRET_KEY_ALIASES,
+} from "@elizaos/core";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,

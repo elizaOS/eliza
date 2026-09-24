@@ -20,7 +20,7 @@
  * All context is synthetic (Priya Raman, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // Any bare HH:MM clock token in the reply.
 const CLOCK_TOKEN = /\b\d{1,2}:\d{2}\b/;

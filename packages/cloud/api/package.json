@@ -52,7 +52,8 @@
     "zod": "^4.4.3",
     "@elizaos/shared": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/plugin-web-search": "workspace:*",

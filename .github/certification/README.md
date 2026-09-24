@@ -9,7 +9,7 @@ The repository no longer runs a dedicated certification workflow. Evidence
 certification is an operator-run release/review activity:
 
 ```bash
-bun run --cwd packages/evidence certify:verify -- \
+bun run --cwd packages/testing certify:verify -- \
   --cert <path/to/certification.json> \
   --bundle <bundle-dir> \
   --pubkey .github/certification/certification-public-key.pem \

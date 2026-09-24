@@ -4,17 +4,16 @@
  * no external model, credentials, device backend, or live routing file is used.
  * Run with vitest.real-runtime.config.ts to exercise current core sources.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import { createOpenAI } from "@ai-sdk/openai";
 import {
-  AgentRuntime,
   ElizaError,
   type GenerateTextParams,
   type IAgentRuntime,
   MODEL_PROVIDER_ATTEMPTS,
   ModelType,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installRouterHandler } from "../../plugin-local-inference/src/services/router-handler";
@@ -48,7 +47,7 @@ function fixture(options: { sdk?: boolean; prefer?: string | null; routerFirst?:
         ELIZA_BRAIN_PROVIDER: options.prefer ?? "",
       },
     },
-    
+
     logLevel: "fatal",
   });
   const fetch = vi.fn(

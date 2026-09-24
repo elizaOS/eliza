@@ -2,7 +2,7 @@
 /**
  * Local evidence reviewer for screenshots, videos, logs, trajectories, and
  * reports produced by the repo's verification lanes. The normal path verifies
- * and reads one `@elizaos/evidence` bundle; `--source` is a deliberate legacy or
+ * and reads one `@elizaos/testing/evidence` bundle; `--source` is a deliberate legacy or
  * ad-hoc compatibility mode. It computes deterministic image heuristics, runs
  * packaged OCR, and generates one browser dashboard for the manual "capturing
  * is not reviewing" pass.
@@ -28,7 +28,7 @@ import {
 } from "./lib.mjs";
 
 // sharp is not imported here: all pixel work runs inside
-// @elizaos/evidence/visual-primitives (reached via lib.mjs and ocr.mjs), which
+// @elizaos/testing/evidence/visual-primitives (reached via lib.mjs and ocr.mjs), which
 // owns the only `sharp` this repo resolves from a root-level script. Importing
 // it here fails module resolution (sharp is nested under the evidence package),
 // which is why analyzeImageFile no longer takes a sharp handle.
@@ -131,7 +131,7 @@ Options:
   --no-open               Do not open the dashboard.
   --out=<dir>             Dashboard directory. Default: evidence/review/
   --source=<dir>          Explicit compatibility scan. Repeatable; never implicit.
-  --bundle=<dir>          Read an evidence bundle's manifest.json (the @elizaos/evidence
+  --bundle=<dir>          Read an evidence bundle's manifest.json (the @elizaos/testing/evidence
                           BundleManifest inventory) and review its artifacts. Without
                           --bundle or --source, the newest evidence/runs/* bundle is used.
                           Add --source only to compare deliberate external artifacts.
@@ -266,7 +266,7 @@ export function writeReviewerFile(filePath, contents) {
  * package verifier rather than duplicating its certification-sensitive rules.
  */
 function verifyBundleIntegrity(bundleDir) {
-  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const cli = path.join(REPO_ROOT, "packages", "testing", "evidence", "cli.ts");
   const result = spawnSync("bun", [cli, "verify", bundleDir], {
     cwd: REPO_ROOT,
     encoding: "utf8",
@@ -395,7 +395,7 @@ async function buildArtifactRecord(full, meta, options, counters) {
 }
 
 /**
- * The @elizaos/evidence BundleManifest artifact kinds mapped onto the reviewer's
+ * The @elizaos/testing/evidence BundleManifest artifact kinds mapped onto the reviewer's
  * coarser artifact types. `screenshot`/`keyframe` are pixels the image
  * heuristics and OCR run over; `analysis`/`qa`/`report` render as inspectable
  * text. An unlisted kind falls back to extension-based classification.
@@ -415,7 +415,7 @@ const BUNDLE_KIND_TO_TYPE = {
 
 /**
  * Read and structurally validate an evidence bundle's `manifest.json` — the
- * signed artifact inventory @elizaos/evidence writes (schema 1). This is
+ * signed artifact inventory @elizaos/testing/evidence writes (schema 1). This is
  * untrusted disk input (error-policy:J3): a missing or malformed manifest throws
  * an explicit error rather than silently reviewing a partial/forged inventory.
  */
@@ -423,7 +423,7 @@ function readBundleManifest(bundleDir, bytes = null) {
   const manifestPath = path.join(bundleDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
     throw new Error(
-      `--bundle: no manifest.json in ${toPosixPath(path.relative(REPO_ROOT, bundleDir))} (expected an @elizaos/evidence bundle directory)`,
+      `--bundle: no manifest.json in ${toPosixPath(path.relative(REPO_ROOT, bundleDir))} (expected an @elizaos/testing/evidence bundle directory)`,
     );
   }
   let manifest;
@@ -615,7 +615,7 @@ async function collectArtifacts(options) {
   const bundleDir = resolveBundleDirForOptions(options);
   if (bundleDir === null && options.scanDirs.length === 0) {
     throw new Error(
-      "no finalized evidence bundle found under evidence/runs; run `bun run --cwd packages/evidence bundle:create -- --tier cpu` or pass --bundle/--source explicitly",
+      "no finalized evidence bundle found under evidence/runs; run `bun run --cwd packages/testing bundle:create -- --tier cpu` or pass --bundle/--source explicitly",
     );
   }
   const ocrEngine =

@@ -16,8 +16,8 @@
  */
 
 import type {
-  LocalAgentRequestOptions,
-  LocalAgentRequestResult,
+	LocalAgentRequestOptions,
+	LocalAgentRequestResult,
 } from "./rpc-schema";
 
 /**
@@ -27,11 +27,11 @@ import type {
  * stdio bridge today).
  */
 export interface NormalizedLocalAgentRequest {
-  path: string;
-  method: string;
-  headers: Record<string, string>;
-  body: string | null;
-  timeoutMs?: number;
+	path: string;
+	method: string;
+	headers: Record<string, string>;
+	body: string | null;
+	timeoutMs?: number;
 }
 
 /**
@@ -43,9 +43,9 @@ export interface NormalizedLocalAgentRequest {
  * would hide a broken pipeline behind a fake 200.
  */
 export interface LocalAgentDispatcher {
-  request(
-    request: NormalizedLocalAgentRequest,
-  ): Promise<LocalAgentRequestResult>;
+	request(
+		request: NormalizedLocalAgentRequest,
+	): Promise<LocalAgentRequestResult>;
 }
 
 const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD"]);
@@ -56,51 +56,51 @@ const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD"]);
  * request that assumes an HTTP origin is a bug, not something to paper over.
  */
 export function normalizeLocalAgentRequest(
-  params: unknown,
+	params: unknown,
 ): NormalizedLocalAgentRequest {
-  if (!params || typeof params !== "object") {
-    throw new Error("localAgentRequest params must be an object.");
-  }
-  const record = params as Record<string, unknown>;
-  if (typeof record.path !== "string" || record.path.length === 0) {
-    throw new Error("localAgentRequest path must be a non-empty string.");
-  }
-  if (!record.path.startsWith("/")) {
-    throw new Error(
-      `localAgentRequest path must be agent-relative (start with "/"); got "${record.path}". Local-agent IPC mode has no HTTP origin.`,
-    );
-  }
+	if (!params || typeof params !== "object") {
+		throw new Error("localAgentRequest params must be an object.");
+	}
+	const record = params as Record<string, unknown>;
+	if (typeof record.path !== "string" || record.path.length === 0) {
+		throw new Error("localAgentRequest path must be a non-empty string.");
+	}
+	if (!record.path.startsWith("/")) {
+		throw new Error(
+			`localAgentRequest path must be agent-relative (start with "/"); got "${record.path}". Local-agent IPC mode has no HTTP origin.`,
+		);
+	}
 
-  const method =
-    typeof record.method === "string" && record.method.length > 0
-      ? record.method.toUpperCase()
-      : "GET";
+	const method =
+		typeof record.method === "string" && record.method.length > 0
+			? record.method.toUpperCase()
+			: "GET";
 
-  const headers =
-    record.headers && typeof record.headers === "object"
-      ? Object.fromEntries(
-          Object.entries(record.headers as Record<string, unknown>).filter(
-            (entry): entry is [string, string] => typeof entry[1] === "string",
-          ),
-        )
-      : {};
+	const headers =
+		record.headers && typeof record.headers === "object"
+			? Object.fromEntries(
+					Object.entries(record.headers as Record<string, unknown>).filter(
+						(entry): entry is [string, string] => typeof entry[1] === "string",
+					),
+				)
+			: {};
 
-  const rawBody = typeof record.body === "string" ? record.body : null;
-  if (rawBody !== null && METHODS_WITHOUT_BODY.has(method)) {
-    throw new Error(
-      `localAgentRequest method ${method} must not carry a body.`,
-    );
-  }
-  const body = METHODS_WITHOUT_BODY.has(method) ? null : rawBody;
+	const rawBody = typeof record.body === "string" ? record.body : null;
+	if (rawBody !== null && METHODS_WITHOUT_BODY.has(method)) {
+		throw new Error(
+			`localAgentRequest method ${method} must not carry a body.`,
+		);
+	}
+	const body = METHODS_WITHOUT_BODY.has(method) ? null : rawBody;
 
-  const timeoutMs =
-    typeof record.timeoutMs === "number" &&
-    Number.isFinite(record.timeoutMs) &&
-    record.timeoutMs > 0
-      ? record.timeoutMs
-      : undefined;
+	const timeoutMs =
+		typeof record.timeoutMs === "number" &&
+		Number.isFinite(record.timeoutMs) &&
+		record.timeoutMs > 0
+			? record.timeoutMs
+			: undefined;
 
-  return { path: record.path, method, headers, body, timeoutMs };
+	return { path: record.path, method, headers, body, timeoutMs };
 }
 
 /**
@@ -109,10 +109,10 @@ export function normalizeLocalAgentRequest(
  * api base is the `eliza-local-agent://ipc` scheme (local-agent IPC mode).
  */
 export function createLocalAgentRequestHandler(
-  dispatcher: LocalAgentDispatcher,
+	dispatcher: LocalAgentDispatcher,
 ): (params: LocalAgentRequestOptions) => Promise<LocalAgentRequestResult> {
-  return async (params) => {
-    const normalized = normalizeLocalAgentRequest(params);
-    return dispatcher.request(normalized);
-  };
+	return async (params) => {
+		const normalized = normalizeLocalAgentRequest(params);
+		return dispatcher.request(normalized);
+	};
 }

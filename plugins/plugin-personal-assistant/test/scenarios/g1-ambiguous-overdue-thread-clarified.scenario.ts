@@ -5,7 +5,7 @@
  * personal note. "the alex thing" is underdetermined, so the assistant must ask
  * before it drafts into the wrong relationship.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

@@ -17,7 +17,9 @@ describe("generate-view-heroes CLI option parsing", () => {
     assert.equal(options.dryRun, false);
     assert.equal(options.check, false);
     assert.equal(options.help, false);
-    assert.ok(typeof options.repoRoot === "string" && options.repoRoot.length > 0);
+    assert.ok(
+      typeof options.repoRoot === "string" && options.repoRoot.length > 0,
+    );
   });
 
   it("parses --help and -h flags", () => {

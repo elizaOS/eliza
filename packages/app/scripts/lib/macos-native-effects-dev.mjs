@@ -51,13 +51,7 @@ export function resolveMacNativeEffectsDevPlan({
   const root = sourceCheckoutRoot(cwd, exists);
   if (!root) return { kind: "skip" };
 
-  const packageDir = join(
-    root,
-    "packages",
-    "app",
-    "platforms",
-    "electrobun",
-  );
+  const packageDir = join(root, "packages", "app", "platforms", "electrobun");
   const sourcePath = join(packageDir, "native", "macos", "window-effects.mm");
   const dylibPath = join(packageDir, "src", "libMacWindowEffects.dylib");
 

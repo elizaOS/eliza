@@ -23,7 +23,7 @@ test("GPU image smoke test mounts the CUDA link stub ephemerally", async () => {
   );
   assert.match(
     dockerfile,
-    /RUN --mount=type=bind,from=llama-builder,source=\/tmp\/libcuda\.so\.1,target=\/tmp\/libcuda\.so\.1,ro \\\n    LD_LIBRARY_PATH=\/tmp llama-server --version/,
+    /RUN --mount=type=bind,from=llama-builder,source=\/tmp\/libcuda\.so\.1,target=\/tmp\/libcuda\.so\.1,ro \\\n {4}LD_LIBRARY_PATH=\/tmp llama-server --version/,
   );
   assert.doesNotMatch(dockerfile, /COPY[^\n]*libcuda\.so/);
 });

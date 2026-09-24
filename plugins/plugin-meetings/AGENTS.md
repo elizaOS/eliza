@@ -159,11 +159,11 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsc --noEmit
 - Sessions hang off one reused "Meetings" world; each meeting gets its own
   room with `source` = platform. Roster participants are wired to entities via
   `createUniqueUuid(runtime, "meeting-participant:<platform>:<name>")`.
-- See the root `CLAUDE.md` for repo-wide rules (ESM, logger-only, evidence).
+- See the root `AGENTS.md` for repo-wide rules (ESM, logger-only, evidence).
 
 ## Verification
 
-Follow the root [CLAUDE.md](../../CLAUDE.md). Capture and manually review:
+Follow the root [AGENTS.md](../../AGENTS.md). Capture and manually review:
 
 - A real bot join against a live Google Meet / Teams / Zoom meeting: browser video/screenshots
   of the bot in the roster, the waiting-room admission, and the graceful leave.

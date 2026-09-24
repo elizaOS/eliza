@@ -123,7 +123,7 @@ For agent/action/provider/prompt/model changes, use a real live-model run, not
 the deterministic proxy. Produce with:
 
 ```bash
-  packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
+  packages/testing/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
 ```
 
 Link the JSON report, run viewer, native jsonl, or write `N/A - <reason>`.

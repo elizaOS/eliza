@@ -18,7 +18,7 @@
  * the promoted INBOX_SEARCH subaction; the load-bearing negative outcome
  * (delta:0) still proves the no-fabricated-reminder behavior.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

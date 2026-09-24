@@ -27,7 +27,7 @@
  * person, project, or place appears.
  */
 
-import type { ScenarioSeedStep } from "@elizaos/scenario-runner/schema";
+import type { ScenarioSeedStep } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * A named persona charter: the reusable owner-fact seed(s) that install the

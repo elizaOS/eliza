@@ -209,13 +209,7 @@ describe("development Vite process commands", () => {
 
   it("keeps every desktop renderer Vite entrypoint on the canonical source-aware command", () => {
     const desktopDevSource = readFileSync(
-      path.join(
-        repoRoot,
-        "packages",
-        "app",
-        "scripts",
-        "dev-platform.mjs",
-      ),
+      path.join(repoRoot, "packages", "app", "scripts", "dev-platform.mjs"),
       "utf8",
     );
 

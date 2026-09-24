@@ -44,7 +44,7 @@ const stewardAuthState = vi.hoisted(() => ({
   user: null as { id: string } | null,
 }));
 
-vi.mock("../../auth/index", () => ({
+vi.mock("../../login/index", () => ({
   LoginProvider: ({ children }: { children: ReactNode }) => children,
   useAuth: () => ({
     isAuthenticated: stewardAuthState.isAuthenticated,

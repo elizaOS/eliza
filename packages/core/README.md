@@ -569,7 +569,7 @@ evaluators described below. Its contributions live in that plugin; a bare
 runtime does not install assistant behavior.
 
 Storage adapters own retrieval. `searchMemories` delegates to the registered
-adapter; SQL and in-memory adapters use `@elizaos/retrieval` for optional keyword
+adapter; SQL and in-memory adapters use `@elizaos/core` for optional keyword
 reranking after scoped vector pagination. Search algorithms are not core exports.
 
 ### Actions
@@ -704,7 +704,7 @@ bun run --cwd packages/core test:coverage # with v8 coverage
 bun run --cwd packages/core typecheck     # tsgo --noEmit
 ```
 
-For agent-facing notes on layout, the public surface, and how to extend the runtime, see [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md).
+For agent-facing notes on layout, the public surface, and how to extend the runtime, see [AGENTS.md](AGENTS.md).
 
 ---
 
@@ -948,3 +948,5 @@ SDK attempts and runtime provider failover; any further authorized send needs
 external reconciliation. A local error cannot prove that a remote effect did not
 occur. These controls must be required by the measured host and its network
 policy; ordinary mode remains unchanged.
+
+Keyword, hybrid and message retrieval algorithms live in `src/retrieval/` and are exported from the core barrel. Adapters apply authorization and scoping before ranking; `rerankMemories` preserves semantic-only and attachment-only results.

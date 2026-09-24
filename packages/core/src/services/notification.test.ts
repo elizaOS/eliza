@@ -3,6 +3,7 @@
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
 
+import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import {
 	afterAll,
@@ -27,7 +28,10 @@ import { NotificationService } from "./notification.ts";
 
 async function createRuntime(
 	services: NonNullable<Plugin["services"]>,
-	adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(":memory:"),
+	adapter: SQLiteDatabaseAdapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("NotificationIntegrationAgent"),
+	),
 ): Promise<{
 	runtime: AgentRuntime;
 	cleanup: () => Promise<void>;
@@ -370,13 +374,18 @@ describe("NotificationService", () => {
 	it("fails startup when persisted notification state cannot be read", async () => {
 		class UnreadableCacheAdapter extends SQLiteDatabaseAdapter {
 			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
-				throw new Error("notification cache unavailable");
+				throw new ElizaError("notification cache unavailable", {
+					code: "TEST_STORAGE_UNAVAILABLE",
+				});
 			}
 		}
 
 		const failing = await createRuntime(
 			[NotificationService],
-			new UnreadableCacheAdapter(),
+			UnreadableCacheAdapter.create(
+				":memory:",
+				sqliteTestAgentId("NotificationIntegrationAgent"),
+			),
 		);
 		try {
 			await expect(
@@ -408,13 +417,18 @@ describe("NotificationService", () => {
 			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
 				this.readAttempts += 1;
 				if (this.readAttempts === 1) {
-					throw new Error("notification cache temporarily unavailable");
+					throw new ElizaError("notification cache temporarily unavailable", {
+						code: "TEST_STORAGE_UNAVAILABLE",
+					});
 				}
 				return super.getCaches<T>(keys);
 			}
 		}
 
-		const adapter = new TransientCacheAdapter();
+		const adapter = TransientCacheAdapter.create(
+			":memory:",
+			sqliteTestAgentId("NotificationIntegrationAgent"),
+		);
 		const transient = await createRuntime([NotificationService], adapter);
 		try {
 			await expect(
@@ -473,11 +487,16 @@ describe("NotificationService", () => {
 
 			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
 				this.readAttempts += 1;
-				throw new Error("notification cache unavailable");
+				throw new ElizaError("notification cache unavailable", {
+					code: "TEST_STORAGE_UNAVAILABLE",
+				});
 			}
 		}
 
-		const adapter = new UnavailableCacheAdapter();
+		const adapter = UnavailableCacheAdapter.create(
+			":memory:",
+			sqliteTestAgentId("NotificationIntegrationAgent"),
+		);
 		const unavailable = await createRuntime([NotificationService], adapter);
 		try {
 			await expect(

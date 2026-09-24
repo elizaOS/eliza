@@ -9,7 +9,7 @@ import {
 import type {
   ScenarioContext,
   ScenarioSeedStep,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import type { DeterministicModelFixture } from "@elizaos/testing";
 import { requireIncrementalSourceCitations } from "../../../../plugins/plugin-assistant/src/services/evaluator-schema.ts";
 

@@ -50,7 +50,7 @@ explicitly with `--quantizers`, or use `--skip-quantize` for checkpoint-only
 training. `finetune_all_tiers.py` runs the registry-approved subset of those
 experimental recipes. Neither runner automatically stages the GGUF release
 ladder or an MTP bundle. Use the GGUF recipe, manifest staging and publish
-orchestrator documented in [CLAUDE.md](CLAUDE.md) for that path.
+orchestrator documented in [AGENTS.md](AGENTS.md) for that path.
 
 Per-task benchmarks live in `scripts/benchmark/native_tool_call_bench.py` and
 score native tool-call structure, tool names, argument keys, and JSON routing

@@ -1,0 +1,25 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.500
+Alice Kim: Thanks everyone for joining, let's start with the roadmap.
+
+2
+00:00:03.800 --> 00:00:07.200
+Bob Ng: Sounds good. I'll cover the ingestion changes first.
+
+3
+00:00:07.400 --> 00:00:11.900
+Bob Ng: We cut the p95 latency from 400ms to 120ms after the batching fix.
+
+4
+00:00:12.100 --> 00:00:15.000
+Alice Kim: That's a big win. Can you own the rollout note by Friday?
+
+5
+00:00:15.200 --> 00:00:16.400
+Bob Ng: Yes, I'll write it up.
+
+6
+00:00:16.800 --> 00:00:20.500
+<v Carol Diaz>Quick flag: the mobile build is still failing on the new SDK.

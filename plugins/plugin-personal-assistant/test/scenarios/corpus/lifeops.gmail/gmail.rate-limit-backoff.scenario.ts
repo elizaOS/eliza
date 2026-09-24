@@ -9,11 +9,11 @@
  * Cited: 03-coverage-gap-matrix.md — rate-limit backoff.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 function checkBackoffSurfaced(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
@@ -47,7 +47,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

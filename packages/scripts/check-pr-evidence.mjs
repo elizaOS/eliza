@@ -2445,7 +2445,9 @@ export function runSelfTest() {
       "exit 0 after 41s",
       "```",
     ].join("\n");
-    const named = evaluatePrEvidence(buildFixtureBody({ "backend-logs": naming }));
+    const named = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": naming }),
+    );
     const namedRow = named.findings.find((f) => f.id === "backend-logs");
     if (namedRow?.status !== "ok") {
       failures.push(
@@ -2469,7 +2471,9 @@ export function runSelfTest() {
       (f) => f.id === "backend-logs",
     );
     if (fabricatedRow?.status === "ok") {
-      failures.push("a disclosed placeholder/mocked run must still be rejected");
+      failures.push(
+        "a disclosed placeholder/mocked run must still be rejected",
+      );
     }
   }
 

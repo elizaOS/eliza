@@ -194,7 +194,7 @@ class OpenWakeWordFrontEnd:
         self.emb = ort.InferenceSession(str(emb_path), sess_options=opts, providers=["CPUExecutionProvider"])
         # The head must be trained on the SAME embeddings it will see at
         # inference. The wakeword-cpp C runtime
-        # (packages/native/plugins/wakeword-cpp/src/wakeword_runtime.c) feeds
+        # (plugins/plugin-local-inference/native/wakeword-cpp/src/wakeword_runtime.c) feeds
         # the raw log-mel straight into the embedding model — it does NOT apply
         # openWakeWord's `mel/10 + 2` rescale (its parity test confirms the C
         # path and a no-rescale ONNX reference agree). A head trained WITH the

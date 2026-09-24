@@ -17,8 +17,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,

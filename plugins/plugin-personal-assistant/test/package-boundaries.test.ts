@@ -1,5 +1,5 @@
 /**
- * Guards LifeOps package boundaries: CLAUDE.md/AGENTS.md stay identical, the docs frame
+ * Guards LifeOps package boundaries: the docs frame
  * LifeOps as the personal-assistant owner (not the health/connector implementation home),
  * and health/screen-time actions stay plugin-health wrappers. Static source asserts.
  */
@@ -20,12 +20,8 @@ function readPackageFile(path: string): string {
 }
 
 describe("LifeOps package boundaries", () => {
-  it("keeps CLAUDE.md and AGENTS.md identical", () => {
-    expect(readPackageFile("AGENTS.md")).toBe(readPackageFile("CLAUDE.md"));
-  });
-
   it("documents LifeOps as the personal assistant owner, not the health or connector implementation home", () => {
-    const guide = readPackageFile("CLAUDE.md");
+    const guide = readPackageFile("AGENTS.md");
 
     expect(guide).toContain(
       "Chat-first owner operations and cross-domain LifeOps orchestration",

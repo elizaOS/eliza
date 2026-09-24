@@ -4,8 +4,8 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LoginAuth } from "@elizaos/auth";
 import { type Browser, chromium } from "@playwright/test";
-import type { LoginAuth } from "../../src/sdk/auth";
 import type { startEmbeddedLogin } from "../../src/server/embedded";
 
 declare global {
@@ -35,7 +35,7 @@ test("registers and signs in with a browser passkey and rejects consumed challen
       }
       if (url.pathname === "/") {
         return new Response(
-          '<!doctype html><html><head><title>Login browser integration</title></head><body><script type="module">import { LoginAuth } from "/sdk/auth.js"; window.loginAuth = new LoginAuth({ baseUrl: location.origin });</script></body></html>',
+          '<!doctype html><html><head><title>Login browser integration</title></head><body><script type="module">import { LoginAuth } from "/sdk/index.js"; window.loginAuth = new LoginAuth({ baseUrl: location.origin });</script></body></html>',
           {
             headers: { "Content-Type": "text/html" },
           },
@@ -68,7 +68,7 @@ test("registers and signs in with a browser passkey and rejects consumed challen
   );
   Object.assign(process.env, environment);
   try {
-    const entry = join(import.meta.dir, "../../src/sdk/auth.ts");
+    const entry = Bun.resolveSync("@elizaos/auth", import.meta.dir);
     const outdir = join(directory, "bundle");
     const build = Bun.spawn(
       [

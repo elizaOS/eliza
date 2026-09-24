@@ -39,8 +39,7 @@ const vaultMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/auth/vault", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@elizaos/auth/vault")>();
+  const actual = await importOriginal<typeof import("@elizaos/auth/vault")>();
   vaultMocks.resolveRunnableMethods.mockImplementation(
     actual.resolveRunnableMethods,
   );
@@ -273,9 +272,9 @@ describe("handleSecretsManagerRoute", () => {
   beforeEach(async () => {
     authMocks.ensureRouteMinRole.mockReset();
     authMocks.ensureRouteMinRole.mockResolvedValue(true);
-    const actual = await vi.importActual<
-      typeof import("@elizaos/auth/vault")
-    >("@elizaos/auth/vault");
+    const actual = await vi.importActual<typeof import("@elizaos/auth/vault")>(
+      "@elizaos/auth/vault",
+    );
     vaultMocks.resolveRunnableMethods.mockReset();
     vaultMocks.resolveRunnableMethods.mockImplementation(
       actual.resolveRunnableMethods,

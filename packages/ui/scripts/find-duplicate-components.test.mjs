@@ -86,7 +86,7 @@ test("local Eliza runtime artifacts are outside maintained source", () => {
   assert.equal(
     isMaintainedSource(
       new URL(
-        "../../scenario-runner/.eliza/smthrs/session/generated-view.tsx",
+        "../../testing/scenario-runner/.eliza/smthrs/session/generated-view.tsx",
         import.meta.url,
       ).pathname,
     ),

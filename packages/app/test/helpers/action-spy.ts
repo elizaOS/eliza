@@ -19,8 +19,7 @@
  * ```
  */
 
-import type { UUID } from "@elizaos/core";
-import type { ActionEventPayload, IAgentRuntime } from "@elizaos/core";
+import type { ActionEventPayload, IAgentRuntime, UUID } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 
 /**

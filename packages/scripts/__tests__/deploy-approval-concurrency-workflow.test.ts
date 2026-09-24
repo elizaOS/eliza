@@ -4,7 +4,7 @@
  * workflow-level concurrency group, or the wait head-of-line blocks every
  * newer canonical run at `pending` with zero jobs. Admission is therefore
  * per-run (or per-PR) at the workflow level. For workflows that rely on
- * GitHub job-level locking (cloud-cf-deploy, deploy-aasa) that lock must be a
+ * GitHub job-level locking (cloud-cf-deploy) that lock must be a
  * shared serial queue (`cancel-in-progress: false`, `queue: max`) and must
  * never carry per-run ids. The provisioning-worker deploy is the deliberate
  * exception (#29337): its job concurrency key is run-unique queue-lease
@@ -47,7 +47,6 @@ function loadWorkflow(name: string): Workflow {
 
 const cfDeploy = loadWorkflow("cloud-cf-deploy.yml");
 const cfRelease = loadWorkflow("cloud-cf-release.yml");
-const aasa = loadWorkflow("deploy-aasa.yml");
 const provisioning = loadWorkflow("deploy-eliza-provisioning-worker.yml");
 
 /** Asserts a workflow-level group admits every non-PR run independently. */
@@ -95,21 +94,6 @@ describe("cloud-cf-deploy approval/concurrency topology (#18092)", () => {
     for (const [name, job] of Object.entries(cfRelease.jobs ?? {})) {
       expect(job.concurrency, `cloud-cf-release job ${name}`).toBeUndefined();
     }
-  });
-});
-
-describe("deploy-aasa approval/concurrency topology (#18092)", () => {
-  it("admits every run into a unique workflow group without eviction", () => {
-    expectPerRunAdmission(aasa);
-    expect(aasa.concurrency?.["cancel-in-progress"]).toBe(false);
-  });
-
-  it("keeps the production publish lock at job level as a serial queue", () => {
-    const publish = Object.values(aasa.jobs ?? {}).find(
-      (job) => job.environment === "production",
-    );
-    expect(publish).toBeDefined();
-    expectSerialMutationLock(publish);
   });
 });
 

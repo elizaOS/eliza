@@ -5,9 +5,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Evaluator,
   Memory,
@@ -22,7 +21,7 @@ function harness() {
   const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: { name: "IncrementalEvaluator", bio: "test" },
-    
+
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;

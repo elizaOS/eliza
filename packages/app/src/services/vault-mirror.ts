@@ -10,12 +10,12 @@
  * plugin-save path and `/api/secrets/manager/*` routes sharing one facade.
  */
 
-import { logger } from "@elizaos/core";
 import {
   createManager,
   type SecretsManager,
   type Vault,
 } from "@elizaos/auth/vault";
+import { logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared/type-guards";
 
 // The process-wide SecretsManager facade, constructed once on first use. The

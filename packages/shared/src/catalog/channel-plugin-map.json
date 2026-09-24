@@ -9,7 +9,5 @@
   "slack": "@elizaos/plugin-slack",
   "telegram": "@elizaos/plugin-telegram",
   "twitter": "@elizaos/plugin-x",
-  "wechat": "@elizaos/plugin-wechat",
-  "whatsapp": "@elizaos/plugin-whatsapp",
   "x": "@elizaos/plugin-x"
 }

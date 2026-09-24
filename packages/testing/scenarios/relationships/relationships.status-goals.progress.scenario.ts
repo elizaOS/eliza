@@ -1,9 +1,10 @@
 /** Scenario fixture for relationships status goals progress; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -19,7 +20,7 @@ export default scenario({
 
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
 
   rooms: [

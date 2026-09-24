@@ -9,12 +9,12 @@ import { webFetch } from "@elizaos/agent/runtime/actions/web-fetch";
 import { webSearch } from "@elizaos/agent/runtime/actions/web-search";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
-import { actionsAreScenarioEquivalent } from "@elizaos/scenario-runner/action-families";
+import { actionsAreScenarioEquivalent } from "@elizaos/testing/scenario-runner/action-families";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const INLINE_WEB_PLUGIN_NAME = "agent-inline-web";
 const WEB_ACTION_NAMES = ["WEB_FETCH", "WEB_SEARCH"] as const;

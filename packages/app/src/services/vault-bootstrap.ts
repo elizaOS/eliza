@@ -30,12 +30,12 @@ import {
   formatVaultRef,
   isVaultRef,
 } from "@elizaos/agent/runtime/operations/vault-bridge";
-import { logger } from "@elizaos/core";
 import {
   mirrorSensitiveValueIfAbsent,
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/auth/vault";
+import { logger } from "@elizaos/core";
 import { loadRegistry } from "@elizaos/shared/catalog";
 import {
   CONNECTOR_SECRET_FIELDS,

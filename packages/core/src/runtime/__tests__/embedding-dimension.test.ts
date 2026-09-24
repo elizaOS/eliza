@@ -21,6 +21,7 @@
  *    the degraded mode instead of crashing (#10702's original symptom).
  */
 
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -62,7 +63,12 @@ function makeRuntime(
 				? { EMBEDDING_PROVIDER: options.embeddingProvider }
 				: {},
 		} as Character,
-		adapter: options.adapter ?? SQLiteDatabaseAdapter.create(":memory:"),
+		adapter:
+			options.adapter ??
+			SQLiteDatabaseAdapter.create(
+				":memory:",
+				sqliteTestAgentId("EmbeddingProbeAgent"),
+			),
 		logLevel: "fatal",
 		settings: {
 			...(options.ELIZA_EMBEDDING_PROVIDER
@@ -649,7 +655,10 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 
 	it("refuses to pin a different model at the same width until the operator acknowledges the cutover", async () => {
 		// gte-small and bge-small are both 384-dim and live in different spaces.
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("EmbeddingProbeAgent"),
+		);
 		await seedIdentity(adapter, {
 			provider: "embeddings",
 			modelLabel: GTE,
@@ -705,7 +714,10 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 	it("tolerates a provider swap that serves the same model", async () => {
 		// VPS 2026-09-05: plugin-openai's slot and plugin-embeddings both point at
 		// the same local BGE sidecar; whichever wins the probe writes the same vectors.
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("EmbeddingProbeAgent"),
+		);
 		await seedIdentity(adapter, {
 			provider: "openai",
 			modelLabel: BGE,
@@ -730,7 +742,10 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 	});
 
 	it("follows a width change without blocking (the stale-dimension reconcile owns those vectors)", async () => {
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("EmbeddingProbeAgent"),
+		);
 		await seedIdentity(adapter, {
 			provider: "openai",
 			modelLabel: "text-embedding-3-small",
@@ -897,12 +912,17 @@ describe("provider-identified embedding representations", () => {
 	it("does not return usable named vectors when storage activation fails", async () => {
 		class UnavailableStore extends SQLiteDatabaseAdapter {
 			override async ensureEmbeddingSpace(): Promise<UUID[]> {
-				throw new Error("Storage migration unavailable");
+				throw new ElizaError("Storage migration unavailable", {
+					code: "TEST_STORAGE_UNAVAILABLE",
+				});
 			}
 		}
 		const runtime = new AgentRuntime({
 			character: { name: "Migration failure", bio: "test" },
-			adapter: new UnavailableStore(),
+			adapter: UnavailableStore.create(
+				":memory:",
+				sqliteTestAgentId("EmbeddingProbeAgent"),
+			),
 			logLevel: "fatal",
 		});
 		runtime.registerModel(

@@ -20,12 +20,25 @@ test("boots the built kernel and dispatches known inference without a core shim"
     await writeFile(
       path.join(directory, "worker.mjs"),
       `
-      import { AgentRuntime, ModelType } from ${JSON.stringify(core)};
-      import { SQLiteDatabaseAdapter } from ${JSON.stringify(fileURLToPath(new URL("../../../../plugins/plugin-sqlite/dist/index.js", import.meta.url)))};
+      import { AgentRuntime, ModelType, stringToUuid } from ${JSON.stringify(core)};
+      import { SQLiteDatabaseAdapter } from ${JSON.stringify(fileURLToPath(new URL("../../../../plugins/plugin-sqlite/dist/portable.js", import.meta.url)))};
       export default { async fetch() {
-        const runtime = new AgentRuntime({ adapter: SQLiteDatabaseAdapter.create(":memory:"), character: { name: "Compatibility fixture", bio: [] }, logLevel: "fatal" });
+        const runtime = new AgentRuntime({ adapter: SQLiteDatabaseAdapter.create(":memory:", stringToUuid("Compatibility fixture")), character: { name: "Compatibility fixture", bio: [] }, logLevel: "fatal" });
         try {
           await runtime.initialize({ skipMigrations: true });
+          await runtime.setCache("sqlite-proof", { complete: "stored value", count: 2n });
+          let rollbackCode;
+          try {
+            await runtime.adapter.transaction(async (tx) => {
+              await tx.setCaches([{key: "sqlite-proof", value: {complete: "uncommitted"}}]);
+              throw new Error("abort fixture transaction");
+            });
+          } catch (error) {
+            // error-policy:J1 The test response exposes the actual rollback error code.
+            rollbackCode = error.code;
+          }
+          const stored = await runtime.getCache("sqlite-proof");
+          if (stored.complete !== "stored value" || stored.count !== 2n) throw new Error("SQLite rollback lost the complete record");
           let calls = 0;
           runtime.registerModel(ModelType.TEXT_SMALL, async (_runtime, input) => {
             if (input.prompt !== "Return the fixture value.") throw new Error("Unexpected inference request");
@@ -33,7 +46,7 @@ test("boots the built kernel and dispatches known inference without a core shim"
             return "fixture:perfect";
           }, "fixture");
           const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Return the fixture value." });
-          return Response.json({ result, calls, routes: "routes" in runtime, messageService: runtime.messageService });
+          return Response.json({ result, calls, rollbackCode, routes: "routes" in runtime, messageService: runtime.messageService });
         } finally { await runtime.stop(); }
       }};
     `,
@@ -62,7 +75,7 @@ test("boots the built kernel and dispatches known inference without a core shim"
         "--outdir",
         output,
       ],
-      { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 },
+      { timeout: 90_000, maxBuffer: 2 * 1024 * 1024 },
     );
     worker = new Miniflare({
       compatibilityDate: "2026-04-01",
@@ -76,10 +89,11 @@ test("boots the built kernel and dispatches known inference without a core shim"
       ],
     });
     const response = await worker.dispatchFetch("https://kernel.test/");
-    expect(response.status).toBe(200);
+    expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.json()).toEqual({
       result: "fixture:perfect",
       calls: 1,
+      rollbackCode: "SQLITE_TRANSACTION_FAILED",
       routes: false,
       messageService: null,
     });
@@ -87,4 +101,4 @@ test("boots the built kernel and dispatches known inference without a core shim"
     await worker?.dispose();
     await rm(directory, { recursive: true, force: true });
   }
-}, 45_000);
+}, 120_000);

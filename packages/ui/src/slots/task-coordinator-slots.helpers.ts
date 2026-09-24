@@ -6,7 +6,7 @@
  * implementations.
  *
  * See `task-coordinator-slots.tsx` for the architectural note on why app
- * does not import from @elizaos/plugin-task-coordinator directly.
+ * does not import from @elizaos/plugin-agent-orchestrator directly.
  */
 
 import type { ComponentType } from "react";

@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder cross platform acknowledged syncs; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
@@ -163,7 +163,7 @@ export default scenario({
     "Deterministic acknowledgement control for the cross-device ladder case. The scenario proves the first rung fires, the owner acknowledges it, and later rungs no longer dispatch; device-bus sync itself is covered by the real intent-sync ladder tests.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

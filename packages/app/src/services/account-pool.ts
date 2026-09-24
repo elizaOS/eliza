@@ -30,13 +30,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
-import {
-  type AnthropicAccountPoolBridge,
-  logger,
-  resolveStateDir,
-  setAnthropicAccountPoolBridge,
-} from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   type AccountStoragePolicy,
@@ -56,6 +49,13 @@ import {
   isSubscriptionProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
 } from "@elizaos/auth/auth/types";
+import {
+  type AnthropicAccountPoolBridge,
+  ElizaError,
+  logger,
+  resolveStateDir,
+  setAnthropicAccountPoolBridge,
+} from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,

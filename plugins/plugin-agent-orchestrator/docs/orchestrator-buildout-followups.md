@@ -26,7 +26,7 @@ line numbers.
    REST routes** (`packages/app/src/api/server.ts`) — the secret create/submit/fulfill
    path that orchestrator provider setup will use.
 5. **Locked capability manifest↔dispatch parity** with a regression test
-   (`plugin-task-coordinator/__tests__/unit/orchestrator-capability-parity.test.ts`) + a
+   (`plugin-agent-orchestrator/ui/__tests__/unit/orchestrator-capability-parity.test.ts`) + a
    `test` script so CI runs it. The declared capabilities (`ORCHESTRATOR_CAPABILITIES` in
    `index.ts`) must exactly match the ids `runOrchestratorCapability` dispatches; this drift
    previously reopened (`orchestrator-update-task`/`-validate-task`).

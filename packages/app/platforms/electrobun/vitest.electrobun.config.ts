@@ -9,40 +9,40 @@ const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
 
 export default defineConfig({
-  resolve: {
-    alias: [
-      {
-        find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app$/,
-        replacement: path.join(appCoreSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app\/(.*)$/,
-        replacement: path.join(appCoreSrcRoot, "$1"),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(sharedSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.*)$/,
-        replacement: path.join(sharedSrcRoot, "$1"),
-      },
-      {
-        find: /^bun:ffi$/,
-        replacement: path.resolve(__dirname, "src/__stubs__/bun-ffi.ts"),
-      },
-      {
-        find: /^electrobun\/bun$/,
-        replacement: path.resolve(__dirname, "src/__stubs__/electrobun-bun.ts"),
-      },
-    ],
-  },
-  test: {
-    environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-  },
+	resolve: {
+		alias: [
+			{
+				find: /^@elizaos\/core$/,
+				replacement: path.join(coreSrcRoot, "index.ts"),
+			},
+			{
+				find: /^@elizaos\/app$/,
+				replacement: path.join(appCoreSrcRoot, "index.ts"),
+			},
+			{
+				find: /^@elizaos\/app\/(.*)$/,
+				replacement: path.join(appCoreSrcRoot, "$1"),
+			},
+			{
+				find: /^@elizaos\/shared$/,
+				replacement: path.join(sharedSrcRoot, "index.ts"),
+			},
+			{
+				find: /^@elizaos\/shared\/(.*)$/,
+				replacement: path.join(sharedSrcRoot, "$1"),
+			},
+			{
+				find: /^bun:ffi$/,
+				replacement: path.resolve(__dirname, "src/__stubs__/bun-ffi.ts"),
+			},
+			{
+				find: /^electrobun\/bun$/,
+				replacement: path.resolve(__dirname, "src/__stubs__/electrobun-bun.ts"),
+			},
+		],
+	},
+	test: {
+		environment: "node",
+		include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+	},
 });

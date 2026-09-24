@@ -1,0 +1,10 @@
+{
+  "name": "@elizaos-benchmarks/eliza-benchmark-scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bun scripts that drive the published elizaOS runtime for benchmark trace generation (drift-harness for suites/context-bench).",
+  "dependencies": {
+    "@elizaos/agent": "beta"
+  }
+}

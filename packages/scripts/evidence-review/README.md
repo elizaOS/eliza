@@ -16,7 +16,7 @@ evidence being reviewed. Before any lane runs it hashes the named producer
 inventory; bundle creation then admits only new or written/replaced files, so a
 skipped lane contributes zero stale artifacts. The standalone zero-argument review command selects
 the newest finalized bundle as a convenience. In both cases the canonical
-`@elizaos/evidence` verifier checks artifact bytes, sizes, hashes, provenance,
+`@elizaos/testing/evidence` verifier checks artifact bytes, sizes, hashes, provenance,
 unlisted files, and symlinks before the dashboard is written.
 
 `--source=<dir>` is an explicit compatibility escape hatch for archived or
@@ -45,7 +45,7 @@ dashboard cannot overwrite the signed manifest or add unlisted files.
 
 The old compatibility roots `device-e2e-output/`,
 `packages/app/reports/walkthrough/`, and
-`packages/scenario-runner/reports/` have no live writer. They are excluded from
+`packages/testing/scenario-runner/reports/` have no live writer. They are excluded from
 normal ingestion and remain reviewable only through explicit `--source`.
 
 ## App visual crawler

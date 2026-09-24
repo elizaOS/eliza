@@ -330,3 +330,97 @@ describe("generateMediaAction media-kind routing is i18n-safe (#10471)", () => {
     );
   });
 });
+
+describe("GENERATE_MEDIA speech model fallback", () => {
+  const speechOptions = {
+    parameters: {
+      mediaType: "audio",
+      audioKind: "tts",
+      prompt: "Complete spoken text",
+      voice: "speaker-1",
+    },
+  };
+
+  function speechRuntime(output: Uint8Array | ArrayBuffer) {
+    const useModel = vi.fn(async () => output);
+    return {
+      runtime: {
+        getService: () => undefined,
+        getSetting: () => undefined,
+        getModel: (type: string) =>
+          type === ModelType.TEXT_TO_SPEECH ? useModel : undefined,
+        useModel,
+      } as never,
+      useModel,
+    };
+  }
+
+  it("delivers complete WAV bytes with the requested voice and the correct attachment type", async () => {
+    const bytes = Buffer.concat([
+      Buffer.from("RIFF0000WAVE"),
+      Buffer.from([1, 2, 3, 4]),
+    ]);
+    const { runtime, useModel } = speechRuntime(bytes);
+    const callback = vi.fn(
+      async (_content: import("@elizaos/core").Content) => [],
+    );
+    expect(
+      await generateMediaAction.validate(
+        runtime,
+        message,
+        undefined,
+        speechOptions,
+      ),
+    ).toBe(true);
+    const result = await generateMediaAction.handler(
+      runtime,
+      message,
+      undefined,
+      speechOptions,
+      callback,
+    );
+    expect(result.success).toBe(true);
+    expect(useModel).toHaveBeenCalledWith(ModelType.TEXT_TO_SPEECH, {
+      text: "Complete spoken text",
+      voice: "speaker-1",
+      audioStream: false,
+    });
+    const attachment = callback.mock.calls[0]?.[0].attachments?.[0];
+    if (!attachment)
+      throw new Error("Speech callback did not deliver an attachment");
+    expect(attachment.mimeType).toBe("audio/wav");
+    expect(attachment.title).toMatch(/\.wav$/);
+    expect(Buffer.from(attachment.url.split(",")[1], "base64")).toEqual(bytes);
+  });
+
+  it("does not advertise speech synthesis as a music generator", async () => {
+    const { runtime, useModel } = speechRuntime(new Uint8Array([1, 2]));
+    expect(
+      await generateMediaAction.validate(runtime, message, undefined, {
+        parameters: {
+          mediaType: "audio",
+          audioKind: "music",
+          prompt: "A song",
+        },
+      }),
+    ).toBe(false);
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty speech output without delivering an attachment", async () => {
+    const { runtime } = speechRuntime(new ArrayBuffer(0));
+    const callback = vi.fn(
+      async (_content: import("@elizaos/core").Content) => [],
+    );
+    const result = await generateMediaAction.handler(
+      runtime,
+      message,
+      undefined,
+      speechOptions,
+      callback,
+    );
+    expect(result.success).toBe(false);
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.text).toContain("no audio bytes");
+  });
+});

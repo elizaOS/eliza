@@ -8,7 +8,7 @@
  * action whose arguments carry it (selectedActionArguments), not just reply
  * wording.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -19,7 +19,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "briefing", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

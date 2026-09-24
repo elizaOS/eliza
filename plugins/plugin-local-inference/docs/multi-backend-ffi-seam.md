@@ -5,7 +5,7 @@
 > describes is already written: [`src/llm-backend.h`](../native/llama.cpp/tools/omnivoice/src/llm-backend.h).
 > The FFI ABI it plugs into is [`include/eliza-inference-ffi.h`](../native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h)
 > (the streaming-LLM surface, ABI v8+). The governing contract is
-> [`native/AGENTS.md` §11](../native/CLAUDE.md) — "one managed library, one
+> [`native/AGENTS.md` §11](../native/AGENTS.md) — "one managed library, one
 > pipe, no sidecar/subprocess/TCP."
 
 ## 1. The problem — one FFI pipe, N in-process runtimes

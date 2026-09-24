@@ -37,13 +37,10 @@ import {
   ElizaError,
   redactConnectorJsonAudit,
 } from "@elizaos/core";
-import {
-  COLLECTIONS,
-  type IStorage,
-} from "./types";
 import { SQLiteRecordAdapter } from "./records";
-import { SQLiteStorageBase } from "./storage-base";
 import type { SQLiteDriver } from "./sqlite-driver-types";
+import { SQLiteStorageBase } from "./storage-base";
+import { COLLECTIONS, type IStorage } from "./types";
 
 function randomUuid(): UUID {
   return randomUUID() as UUID;
@@ -107,7 +104,11 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
   protected static driver: SQLiteDriver;
 
   constructor(path: string, agentId: UUID) {
-    const storage = new SQLiteStorageBase(path, agentId, (new.target as typeof SQLiteAdapterBase).driver);
+    const storage = new SQLiteStorageBase(
+      path,
+      agentId,
+      (new.target as typeof SQLiteAdapterBase).driver,
+    );
     super(storage, agentId);
     this.sqlite = storage;
     const namespace = (value: string): string => {
@@ -118,18 +119,32 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
         );
       return value;
     };
+    const prepareRecordStore = async (): Promise<void> => {
+      if (path === ":memory:") await ensureInitialized();
+    };
     this.recordStore = {
       version: 1,
       agentId,
-      transaction: <T>(operation: () => Promise<T>) =>
-        storage.transaction(operation, () => this.rebuildIndex()),
-      get: <T>(name: string, key: string) =>
-        storage.get<T>(namespace(name), key),
-      getAll: <T>(name: string) => storage.getAll<T>(namespace(name)),
-      set: <T>(name: string, key: string, value: T) =>
-        storage.set(namespace(name), key, value),
-      delete: (name: string, key: string) =>
-        storage.delete(namespace(name), key),
+      transaction: async <T>(operation: () => Promise<T>) => {
+        await prepareRecordStore();
+        return storage.transaction(operation, () => this.rebuildIndex());
+      },
+      get: async <T>(name: string, key: string) => {
+        await prepareRecordStore();
+        return storage.get<T>(namespace(name), key);
+      },
+      getAll: async <T>(name: string) => {
+        await prepareRecordStore();
+        return storage.getAll<T>(namespace(name));
+      },
+      set: async <T>(name: string, key: string, value: T) => {
+        await prepareRecordStore();
+        return storage.set(namespace(name), key, value);
+      },
+      delete: async (name: string, key: string) => {
+        await prepareRecordStore();
+        return storage.delete(namespace(name), key);
+      },
     };
     this.connectorAccountsById =
       storage.collection<ConnectorAccountRecord>("connector_accounts");
@@ -144,9 +159,12 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
       storage.collection<ConnectorAccountAuditEventRecord>("connector_audit");
     this.oauthFlowsByStateHash =
       storage.collection<OAuthFlowRecord>("oauth_flows");
-    const adapter = this;
     // Central interception makes inherited multi-write batches atomic too. Calls
     // within a method use the target and remain within that operation's owner.
+    const atomicMethods = new Set([
+      ...Object.getOwnPropertyNames(SQLiteRecordAdapter.prototype),
+      ...Object.getOwnPropertyNames(SQLiteAdapterBase.prototype),
+    ]);
     const lifecycle = new Set([
       "constructor",
       "initialize",
@@ -157,28 +175,64 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
       "transaction",
       "backup",
     ]);
-    const facade = new Proxy(adapter, {
+    let initialization: Promise<void> | undefined;
+    let closed = false;
+    const ensureInitialized = (): Promise<void> => {
+      if (closed) {
+        throw new ElizaError("SQLite adapter is closed", {
+          code: "SQLITE_NOT_READY",
+        });
+      }
+      initialization ??= this.initialize();
+      return initialization;
+    };
+    const facade = new Proxy(this, {
       get: (target, property, receiver) => {
         const value = Reflect.get(target, property, receiver);
         if (typeof value !== "function") return value;
-        if (typeof property !== "string" || lifecycle.has(property))
+        if (path === ":memory:") {
+          if (property === "initialize" || property === "init")
+            return ensureInitialized;
+          if (property === "transaction")
+            return async (...args: unknown[]) => {
+              await ensureInitialized();
+              return Reflect.apply(value, target, args);
+            };
+          if (property === "close")
+            return async () => {
+              if (initialization) await initialization;
+              closed = true;
+              await this.close();
+            };
+        }
+        if (
+          typeof property !== "string" ||
+          lifecycle.has(property) ||
+          !atomicMethods.has(property)
+        )
           return value.bind(target);
-        return (...args: unknown[]) =>
-          storage.operation(
+        return async (...args: unknown[]) => {
+          if (path === ":memory:") await ensureInitialized();
+          return storage.operation(
             async () => {
               target.validateAgentArguments(args, property);
               return Reflect.apply(value, target, args);
             },
             () => target.rebuildIndex(),
           );
+        };
       },
     });
-    adapter.facade = facade;
+    this.facade = facade;
+    // biome-ignore lint/correctness/noConstructorReturn: Subclasses must inherit the atomic operation facade.
     return facade;
   }
 
   static create<T extends SQLiteAdapterBase>(
-    this: new (path: string, agentId: UUID) => T,
+    this: new (
+      path: string,
+      agentId: UUID,
+    ) => T,
     path: string,
     agentId: UUID,
   ): T {
@@ -272,9 +326,58 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
       throw new ElizaError("Embedding dimension must be a positive integer", {
         code: "SQLITE_EMBEDDING_DIMENSION_INVALID",
       });
+    const activeSpace = await this.sqlite.get<string>(
+      "adapter_metadata",
+      "embedding_space",
+    );
+    if (activeSpace !== null && this.embeddingDimension !== dimension) {
+      throw new ElizaError(
+        "A named embedding representation cannot change dimensions",
+        {
+          code: "EMBEDDING_SPACE_CHANGED",
+        },
+      );
+    }
     await super.ensureEmbeddingDimension(dimension);
     await this.sqlite.set("adapter_metadata", "embedding_dimension", dimension);
     await this.rebuildIndex();
+  }
+
+  async ensureEmbeddingSpace(spaceId: string): Promise<UUID[]> {
+    if (!spaceId.trim() || spaceId !== spaceId.trim()) {
+      throw new ElizaError(
+        "Embedding representation requires a canonical identifier",
+        {
+          code: "EMBEDDING_SPACE_INVALID",
+        },
+      );
+    }
+    const activeSpace = await this.sqlite.get<string>(
+      "adapter_metadata",
+      "embedding_space",
+    );
+    if (activeSpace !== null && activeSpace !== spaceId) {
+      throw new ElizaError(
+        "Use a separate database or migrate its named embedding representation",
+        {
+          code: "EMBEDDING_SPACE_CHANGED",
+        },
+      );
+    }
+    const pending: UUID[] = [];
+    const memories = await this.sqlite.getAll<Memory>(COLLECTIONS.MEMORIES);
+    for (const memory of memories) {
+      if (!memory.id) continue;
+      if (activeSpace === null && memory.embedding !== undefined) {
+        delete memory.embedding;
+        await this.sqlite.set(COLLECTIONS.MEMORIES, memory.id, memory);
+      }
+      if (memory.content.text && !memory.embedding?.length)
+        pending.push(memory.id);
+    }
+    await this.sqlite.set("adapter_metadata", "embedding_space", spaceId);
+    await this.rebuildIndex();
+    return pending;
   }
 
   protected override cacheStorageKey(key: string): string {

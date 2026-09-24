@@ -36,7 +36,7 @@ async function makeRuntime(): Promise<{
     character: createCharacter({
       name: "GateAgent",
     }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

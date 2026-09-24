@@ -14,6 +14,7 @@
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
+  BM25,
   ChannelType,
   compareMemoryIds,
   composeToolDiagnosticRedactor,
@@ -30,7 +31,6 @@ import {
   type DocumentsServiceResult,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
-import { BM25 } from "@elizaos/retrieval";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,

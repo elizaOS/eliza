@@ -1,0 +1,32 @@
+#!/bin/sh
+
+set -eu
+
+packaging_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+validation_root=$(mktemp -d "${TMPDIR:-/tmp}/elizaos-debian-units.XXXXXX")
+trap 'rm -rf -- "$validation_root"' EXIT HUP INT TERM
+
+# systemd-analyze verifies absolute ExecStart= and ConditionFileIsExecutable=
+# paths under --root. Inert placeholders let source-only validation exercise
+# the exact unit syntax and executable-path contracts without launching the
+# payload. Package-owned units are all passed explicitly; host target
+# dependencies are intentionally excluded from recursive error accounting.
+for executable in eliza-agent eliza-desktop; do
+	install -D -m 0755 /bin/true "$validation_root/usr/bin/$executable"
+	install -D -m 0755 /bin/true \
+		"$validation_root/usr/lib/elizaos/bin/$executable"
+done
+for unit in \
+	elizaos-agent.service \
+	elizaos-desktop.service \
+	elizaos-session.target
+do
+	install -D -m 0644 "$packaging_dir/$unit" \
+		"$validation_root/usr/lib/systemd/user/$unit"
+done
+
+SYSTEMD_UNIT_PATH=/usr/lib/systemd/user \
+	systemd-analyze --recursive-errors=no --root="$validation_root" verify \
+		elizaos-agent.service \
+		elizaos-desktop.service \
+		elizaos-session.target

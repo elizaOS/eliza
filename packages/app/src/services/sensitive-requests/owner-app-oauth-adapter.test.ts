@@ -5,8 +5,9 @@
  * `sendMessageToTarget` mock that captures each dispatched message.
  */
 
-import { ChannelType, type Content } from "@elizaos/core";
 import {
+  ChannelType,
+  type Content,
   type DispatchSensitiveRequest,
   defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,

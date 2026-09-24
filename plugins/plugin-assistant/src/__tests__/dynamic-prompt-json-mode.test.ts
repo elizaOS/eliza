@@ -1,12 +1,12 @@
 /** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import {
-  AgentRuntime,
+  type AgentRuntime,
   type Character,
   ModelType,
   type State,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   disposeAssistantReasoning,
@@ -23,7 +23,6 @@ afterEach(async () => {
 
 function makeRuntime(): AgentRuntime {
   const runtime = createSQLiteTestRuntime({
-    
     character: {
       name: "dynamic-prompt-json-mode-test",
       bio: "test",

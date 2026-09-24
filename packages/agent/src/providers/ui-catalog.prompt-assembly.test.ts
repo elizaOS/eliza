@@ -12,16 +12,16 @@
  * real `selectV5PlannerStateProviderNames`, and rendered by the real
  * `composeState` — no provider mocks. Deterministic; no model or database.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import {
-  AgentRuntime,
+  type AgentRuntime,
   ChannelType,
   type Memory,
   type RoleGateRole,
   type UUID,
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   uiGenerativeProvider,
@@ -49,7 +49,7 @@ let runtime: AgentRuntime;
 beforeAll(async () => {
   runtime = createSQLiteTestRuntime({
     character: { name: "ui-catalog-prompt-assembly-test", bio: [] },
-    
+
     logLevel: "fatal",
   });
   await runtime.initialize({ skipMigrations: true });

@@ -1,0 +1,53 @@
+{
+  "id": "982d12a5-beab-424f-8d38-d2a48429e511",
+  "snapshot": "vscode",
+  "instruction": "Please help me change the color theme of VS Code to Visual Studio Dark.",
+  "source": "https://www.youtube.com/watch?v=ORrELERGIHs",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": "SETTINGS_PATH=\"$HOME/.config/Code/User/settings.json\"; [ ! -f \"$SETTINGS_PATH\" ] && echo '{\"workbench.colorTheme\": \"Red\"}' > \"$SETTINGS_PATH\" || (grep -q \"workbench.colorTheme\" \"$SETTINGS_PATH\" && sed -i 's/\"workbench.colorTheme\": \"[^\"]*\"/\"workbench.colorTheme\": \"Red\"/' \"$SETTINGS_PATH\" || jq '. + {\"workbench.colorTheme\": \"Red\"}' \"$SETTINGS_PATH\" > temp.json && mv temp.json \"$SETTINGS_PATH\")",
+        "shell": true
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Visual Studio Code"
+      }
+    }
+  ],
+  "trajectory": "trajectories/982d12a5-beab-424f-8d38-d2a48429e511",
+  "related_apps": [
+    "vscode"
+  ],
+  "evaluator": {
+    "func": "compare_config",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "{\"workbench.colorTheme\": \"Visual Studio Dark\"}\n"
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/.config/Code/User/settings.json",
+      "dest": "settings.json"
+    },
+    "options": {
+      "containment_ok": true
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

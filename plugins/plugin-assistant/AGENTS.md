@@ -1,8 +1,8 @@
 # @elizaos/plugin-assistant
 
 Explicitly registered conversational behavior for the Node runtime. Follow the
-[root guide](../../CLAUDE.md) and preserve the message/planner invariants recorded
-in the [core guide](../../packages/core/CLAUDE.md). Those invariants moved with
+[root guide](../../AGENTS.md) and preserve the message/planner invariants recorded
+in the [core guide](../../packages/core/AGENTS.md). Those invariants moved with
 this implementation; core does not register this plugin implicitly.
 
 `createAssistantPlugin()` composes contributions. `src/services/message.ts` and

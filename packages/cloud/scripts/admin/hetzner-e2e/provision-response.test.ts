@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { provisionJobId } from "./provision-response";
 
 const stateFile = join(tmpdir(), `hetzner-e2e-provision-${process.pid}.json`);
@@ -16,9 +16,7 @@ afterEach(() => {
 
 describe("Hetzner E2E provisioning response", () => {
   test("returns the job id for dedicated asynchronous provisioning", () => {
-    expect(provisionJobId(202, { data: { jobId: "job-123" } })).toBe(
-      "job-123",
-    );
+    expect(provisionJobId(202, { data: { jobId: "job-123" } })).toBe("job-123");
   });
 
   test("accepts an already-running shared-runtime agent without a job", () => {

@@ -60,5 +60,4 @@ The package build delegates to `packages/app/scripts/desktop-build.mjs`, which o
 
 ## Verification
 
-Follow the [app guide](../../CLAUDE.md), the [app guide](../../../app/CLAUDE.md), and the repository-wide standard in the [root CLAUDE.md](../../../../CLAUDE.md). Run typecheck and tests, build the current renderer and desktop package, install it, and manually review startup, authentication, agent readiness, windows, menus, tray behavior, updates, logs, and shutdown on every affected operating system.
-
+Follow the [app guide](../../AGENTS.md), the [app guide](../../../app/AGENTS.md), and the repository-wide standard in the [root AGENTS.md](../../../../AGENTS.md). Run typecheck and tests, build the current renderer and desktop package, install it, and manually review startup, authentication, agent readiness, windows, menus, tray behavior, updates, logs, and shutdown on every affected operating system.

@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder cross platform fires on mac and phone; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { reminderDispatchModelFixtures } from "./reminder-dispatch-model-fixtures";
 
 /**
@@ -141,7 +141,7 @@ export default scenario({
     "Deterministic ladder control for the Mac + phone reminder case. The scenario proves three reminder rungs fire one per process pass before any acknowledgement; device-bus fan-out is covered by the real intent-sync and device-bus tests.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

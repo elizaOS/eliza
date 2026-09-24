@@ -39,7 +39,7 @@ import {
 //
 // This is a focused route unit test: real request body parsing, no PGLite, no
 // runtime, no LLM. The agent-turn → action → navigate path (real AgentRuntime)
-// is exercised by packages/scenario-runner/test/scenarios/
+// is exercised by packages/testing/scenario-runner/test/scenarios/
 // deterministic-view-switching.scenario.ts.
 
 type NavigateBody = Record<string, unknown>;

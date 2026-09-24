@@ -27,7 +27,7 @@ const MTP_BUILD_SCRIPT = path.resolve(
 );
 
 // The builder derives its repo root from packages/app/scripts, not from
-// run-mobile-build's configurable repoRoot. Keep this identical so the
+// run-mobile-build's configurable repoRoot. The builder imports this list so the
 // staleness gate checks the same source tree the builder compiles.
 export const mtpBuilderRepoRoot = path.resolve(
   appCoreScriptsDir,
@@ -44,14 +44,6 @@ export const MTP_FORK_SRC_CANDIDATES = [
     "plugin-local-inference",
     "native",
     "llama.cpp",
-  ),
-  path.join(
-    mtpBuilderRepoRoot,
-    "packages",
-    "native",
-    "ios-deps",
-    "llama.cpp",
-    "src",
   ),
 ].filter(Boolean);
 

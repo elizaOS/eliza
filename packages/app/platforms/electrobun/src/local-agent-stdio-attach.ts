@@ -16,22 +16,22 @@
 
 import { setActiveLocalAgentDispatcher } from "./local-agent-dispatcher-registry";
 import {
-  LocalAgentStdioDispatcher,
-  type StdioFrameWriter,
+	LocalAgentStdioDispatcher,
+	type StdioFrameWriter,
 } from "./local-agent-stdio-dispatcher";
 
 /** The child stdio surface this attach helper needs. */
 export interface LocalAgentChildStdio {
-  /** Child stdin — request frames are written here as NDJSON lines. */
-  stdin: StdioFrameWriter;
-  /** Child stdout — response frames (and logs) arrive here line by line. */
-  stdout: AsyncIterable<string>;
+	/** Child stdin — request frames are written here as NDJSON lines. */
+	stdin: StdioFrameWriter;
+	/** Child stdout — response frames (and logs) arrive here line by line. */
+	stdout: AsyncIterable<string>;
 }
 
 export interface LocalAgentStdioAttachment {
-  dispatcher: LocalAgentStdioDispatcher;
-  /** Tear down: reject in-flight requests, clear the registry. Idempotent. */
-  detach: (reason: string) => void;
+	dispatcher: LocalAgentStdioDispatcher;
+	/** Tear down: reject in-flight requests, clear the registry. Idempotent. */
+	detach: (reason: string) => void;
 }
 
 /**
@@ -40,32 +40,32 @@ export interface LocalAgentStdioAttachment {
  * called; a pump failure (pipe error) tears the attachment down with the error.
  */
 export function attachLocalAgentStdioBridge(
-  child: LocalAgentChildStdio,
+	child: LocalAgentChildStdio,
 ): LocalAgentStdioAttachment {
-  const dispatcher = new LocalAgentStdioDispatcher(child.stdin);
-  setActiveLocalAgentDispatcher(dispatcher);
+	const dispatcher = new LocalAgentStdioDispatcher(child.stdin);
+	setActiveLocalAgentDispatcher(dispatcher);
 
-  let detached = false;
-  const detach = (reason: string): void => {
-    if (detached) return;
-    detached = true;
-    dispatcher.dispose(reason);
-    setActiveLocalAgentDispatcher(null);
-  };
+	let detached = false;
+	const detach = (reason: string): void => {
+		if (detached) return;
+		detached = true;
+		dispatcher.dispose(reason);
+		setActiveLocalAgentDispatcher(null);
+	};
 
-  void (async () => {
-    try {
-      for await (const line of child.stdout) {
-        if (detached) return;
-        dispatcher.handleLine(line);
-      }
-      detach("agent child stdout closed");
-    } catch (err) {
-      detach(
-        `agent child stdout errored: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  })();
+	void (async () => {
+		try {
+			for await (const line of child.stdout) {
+				if (detached) return;
+				dispatcher.handleLine(line);
+			}
+			detach("agent child stdout closed");
+		} catch (err) {
+			detach(
+				`agent child stdout errored: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	})();
 
-  return { dispatcher, detach };
+	return { dispatcher, detach };
 }

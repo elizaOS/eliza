@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync, spawnSync } from "node:child_process";
 /**
  * Remove build outputs and tool caches so the next `bun run build` / dev run is cold.
  *
@@ -10,6 +9,7 @@ import { execFileSync, spawnSync } from "node:child_process";
  * Does not remove node_modules or global Bun/npm caches (set ELIZA_CLEAN_GLOBAL_TOOL_CACHE=1 to also run
  * `bun pm cache rm` — destructive to all Bun projects on the machine).
  */
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,7 +74,6 @@ function rmNodeModulesCaches() {
     path.join(root, "packages", "app"),
     path.join(root, "apps", "homepage"),
     path.join(root, "packages", "ui"),
-    path.join(root, "packages", "app"),
     path.join(root, "packages", "app", "platforms", "electrobun"),
   ];
   for (const base of bases) {
@@ -109,20 +108,26 @@ function main() {
   console.log(`[clean] repo root: ${root}${deep ? " (deep)" : ""}\n`);
 
   rmPath("dist", path.join(root, "dist"));
-  rmPath("packages/app/web-dist", path.join(root, "packages", "app", "web-dist"));
+  rmPath("packages/app/dist", path.join(root, "packages", "app", "dist"));
+  rmPath(
+    "packages/app/web-dist",
+    path.join(root, "packages", "app", "web-dist"),
+  );
   rmPath("packages/app/.vite", path.join(root, "packages", "app", ".vite"));
   rmPath(
-    "packages/homepage/dist",
     path.join(root, "packages", "homepage", "dist"),
   );
   rmPath(
-    "packages/homepage/.vite",
     path.join(root, "packages", "homepage", ".vite"),
   );
 
   rmPath(
     "eliza/packages/app/dist",
     path.join(root, "eliza", "packages", "app", "dist"),
+  );
+  rmPath(
+    "eliza/packages/app/web-dist",
+    path.join(root, "eliza", "packages", "app", "web-dist"),
   );
 
   rmPluginDists();
@@ -144,14 +149,7 @@ function main() {
   if (deep) {
     rmPath(
       "packages/app/platforms/electrobun/build",
-      path.join(
-        root,
-        "packages",
-        "app",
-        "platforms",
-        "electrobun",
-        "build",
-      ),
+      path.join(root, "packages", "app", "platforms", "electrobun", "build"),
     );
     rmPath(
       "packages/app/platforms/electrobun/artifacts",

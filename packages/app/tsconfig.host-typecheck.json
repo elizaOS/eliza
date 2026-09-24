@@ -21,7 +21,7 @@
     "src/browser.ts",
     "src/styles",
     "src/entry-cloud-api-key.test.ts",
-    "src/__tests__",
+    "src/state-dir-no-direct-env.test.ts",
     "src/boot-profile.ts",
     "src/diagnostics",
     "src/registry",

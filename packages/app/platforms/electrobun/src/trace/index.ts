@@ -8,24 +8,24 @@ import { TraceStore } from "./trace-store";
 let traceService: TraceService | null = null;
 
 export function getTraceService(options: {
-  dynamicViewRegistry: DynamicViewRegistry;
-  dynamicViewSessions: DynamicViewSessionManager;
+	dynamicViewRegistry: DynamicViewRegistry;
+	dynamicViewSessions: DynamicViewSessionManager;
 }): TraceService {
-  if (!traceService) {
-    traceService = new TraceService({
-      store: new TraceStore(),
-      dynamicViewRegistry: options.dynamicViewRegistry,
-      dynamicViewSessions: options.dynamicViewSessions,
-    });
-  }
-  options.dynamicViewRegistry.register(createTraceDynamicViewManifest(), {
-    update: true,
-  });
-  return traceService;
+	if (!traceService) {
+		traceService = new TraceService({
+			store: new TraceStore(),
+			dynamicViewRegistry: options.dynamicViewRegistry,
+			dynamicViewSessions: options.dynamicViewSessions,
+		});
+	}
+	options.dynamicViewRegistry.register(createTraceDynamicViewManifest(), {
+		update: true,
+	});
+	return traceService;
 }
 
 export function resetTraceStateForTests(): void {
-  traceService = null;
+	traceService = null;
 }
 
 export * from "./errors";

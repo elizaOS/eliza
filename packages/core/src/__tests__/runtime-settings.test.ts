@@ -5,6 +5,7 @@
  * adapter, no model calls.
  */
 
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
@@ -174,7 +175,10 @@ describe("AgentRuntime.getSetting", () => {
 	});
 
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("runtime-settings-restart-test"),
+		);
 		const characterName = "runtime-settings-restart-test";
 		const firstRuntime = new AgentRuntime({
 			character: {

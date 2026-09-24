@@ -1,6 +1,6 @@
 # @elizaos/testing
 
-Private workspace for repository-wide scenarios and deterministic runtime, model, database and connector test fixtures. This package is not published or imported by the production runtime.
+Private workspace for repository-wide scenarios and deterministic runtime, model, database and connector test fixtures. This package is not published. Fixture helpers stay separate from the synthetic-world control subpath.
 
 Use `createDeterministicModelPlugin` with explicit fixtures and assert their consumption. Unexpected requests and exhausted fixtures fail; do not replace those failures with canned catch-all success. Use `createTestRuntimeWithModelProvider` to execute the real runtime against local PGlite. Live-provider helpers are opt-in and distinct from required deterministic tests.
 
@@ -19,5 +19,27 @@ core exports protocol types and execution, not fixture data.
 Repository-wide scenarios live in `scenarios/`; product-specific scenarios stay
 with their owning packages and plugins. Run `test:scenarios` for corpus guard
 tests and full scenario validation, or `scenarios:validate` for discovery alone.
-The package `test` and `typecheck` commands cover both fixtures and scenarios.
+The package `test` and `typecheck` commands cover fixtures, scenarios, and evidence.
 Live-model scenario execution remains explicit through the scenario runner.
+
+## Evidence and certification
+
+[Evidence tooling](evidence/README.md) provides signed bundles, artifact analysis,
+visual QA, video ingestion, and certification. Import `@elizaos/testing/evidence`
+or its `visual-primitives` subpath. The package test and typecheck commands also
+cover evidence; use `test:evidence` and `typecheck:evidence` for focused checks.
+Bundle and certification commands run from this workspace, for example
+`bun run --cwd packages/testing bundle:create -- --tier cpu`.
+
+## Scenario execution and synthetic worlds
+
+`scenario-runner/` owns discovery, schemas, the scenario CLI and real-runtime
+execution. Import `@elizaos/testing/scenario-runner` and its `/schema` subpath.
+`synthetic-world/` owns fenced command journals and production controllers;
+import `@elizaos/testing/synthetic-world`. Both are part of this workspace,
+with no nested package manifests.
+
+Use `test:runner`, `typecheck:runner`, `test:synthetic-world`, and
+`typecheck:synthetic-world` for focused checks. The root package test and
+typecheck commands include both. Runner CLI commands retain their names, such
+as `bun run --cwd packages/testing test:pr:e2e`.

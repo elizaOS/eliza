@@ -22,10 +22,6 @@ import {
   type Plugin,
   transformWithOxc,
 } from "vite";
-import {
-  ANDROID_CLOUD_ROUTING_MARKERS,
-  findAndroidCloudRoutingMarkers,
-} from "./scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -51,6 +47,10 @@ import {
 } from "./scripts/build-stamp.mjs";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "./scripts/lib/android-cloud-routing-markers.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -426,7 +426,7 @@ const json5EsmEntry = path.join(
 );
 const markedEntry = path.join(
   elizaRoot,
-  "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
+  "plugins/plugin-agent-orchestrator/node_modules/marked/lib/marked.esm.js",
 );
 const rechartsEntry = path.join(
   uiPkgRoot,
@@ -2079,7 +2079,7 @@ function workspaceJsxInJsPlugin(): Plugin {
 
       return transformWithOxc(code, cleanId, {
         lang: "jsx",
-        jsx: "automatic",
+        jsx: { runtime: "automatic" },
         sourcemap: true,
       });
     },
@@ -2587,14 +2587,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/auth$/,
         replacement: path.resolve(elizaRoot, "packages/auth/src/sdk/index.ts"),
       },
-      {
-        find: /^@homepage\//,
-        replacement: `${path.resolve(here, "../homepage/src")}/`,
-      },
-      {
-        find: /^@\//,
-        replacement: `${path.resolve(here, "../homepage/src")}/`,
-      },
       { find: /^react$/, replacement: reactEntry },
       { find: /^react\/index\.js$/, replacement: reactEntry },
       { find: /^react\/jsx-runtime$/, replacement: reactJsxRuntimeEntry },
@@ -2794,6 +2786,10 @@ export const INVALID_TRACER_PROVIDER = {};
         ],
         ["@elizaos/plugin-wallet/ui", "plugins/plugin-wallet/src/ui/index.ts"],
         [
+          "@elizaos/plugin-agent-orchestrator/ui",
+          "plugins/plugin-agent-orchestrator/src/ui/index.ts",
+        ],
+        [
           "@elizaos/plugin-wallet/register",
           "plugins/plugin-wallet/src/register.ts",
         ],
@@ -2806,8 +2802,8 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-native-phone/src/register.ts",
         ],
         [
-          "@elizaos/plugin-task-coordinator/register",
-          "plugins/plugin-task-coordinator/src/register.ts",
+          "@elizaos/plugin-agent-orchestrator/ui/register",
+          "plugins/plugin-agent-orchestrator/src/ui/register.ts",
         ],
         [
           "@elizaos/plugin-native-wifi/register",
@@ -3219,7 +3215,7 @@ export const INVALID_TRACER_PROVIDER = {};
 
             return transformWithOxc(code, id, {
               lang: "jsx",
-              jsx: "automatic",
+              jsx: { runtime: "automatic" },
               sourcemap: true,
             });
           },
@@ -3273,9 +3269,6 @@ export const INVALID_TRACER_PROVIDER = {};
       "@puppeteer/browsers",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-inference",
-      // Node-only connector; LifeOps server services may dynamically import it,
-      // but the renderer must not parse its Baileys/qrcode-terminal graph.
-      "@elizaos/plugin-whatsapp",
       // Native keychain bindings (.node). Dep optimization treats .node as text → UTF-8 error.
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.

@@ -54,10 +54,6 @@ import {
   resolveDefaultTelegramAccountId,
   resolveTelegramAccount,
 } from "./accounts";
-import {
-  applyTelegramSetMyCommands,
-  registerTelegramCommandHandlers,
-} from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
@@ -1026,27 +1022,12 @@ export class TelegramService extends Service {
       );
     });
 
-    // Register universal slash-command handlers BEFORE launch. Telegraf accepts
+    // Register task-board handlers before launch. Telegraf accepts
     // command registration any time before launch(), and a matched command
     // handler that never calls next() terminates the middleware chain — so the
     // catch-all message handler in setupMessageHandlers does not also process
     // command messages (no double-processing).
     const commandMessageManager = activeState.messageManager;
-    const registered = registerTelegramCommandHandlers(
-      bot,
-      this.runtime,
-      commandMessageManager,
-      accountId,
-    );
-    logger.debug(
-      {
-        src: "plugin:telegram",
-        agentId: this.runtime.agentId,
-        accountId,
-        commandCount: registered.length,
-      },
-      "Registered universal slash-command handlers",
-    );
     // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
     registerTelegramTaskBoardCommand(
       bot,
@@ -1057,18 +1038,12 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Runs the retryable post-launch probes: publish the slash-command menu and
-   * retrieve bot identity before process shutdown hooks are installed.
+   * Retrieves bot identity after launch, before installing shutdown hooks.
    */
   private async finishBotStartup(
     bot: Telegraf<Context>,
     accountId: string,
   ): Promise<void> {
-    // Publish the slash-command menu to Telegram so commands appear in the `/`
-    // menu. setMyCommands failure is logged + swallowed (network) and must not
-    // crash boot.
-    await applyTelegramSetMyCommands(bot, this.runtime, accountId);
-
     // Get bot info for identification purposes
     const botInfo = await bot.telegram.getMe();
     logger.debug(

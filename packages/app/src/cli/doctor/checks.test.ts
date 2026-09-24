@@ -42,9 +42,7 @@ const tempDirs: string[] = [];
 const originalCloudKey = process.env.ELIZAOS_CLOUD_API_KEY;
 
 function makeTempDir(): string {
-  const dir = realpathSync(
-    mkdtempSync(path.join(tmpdir(), "app-doctor-")),
-  );
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "app-doctor-")));
   tempDirs.push(dir);
   return dir;
 }

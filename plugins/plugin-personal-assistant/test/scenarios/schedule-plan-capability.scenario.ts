@@ -1,5 +1,5 @@
 // Defines the schedule plan capability LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * Behavior scenario for the `schedule_plan` LifeOps capability.
@@ -35,7 +35,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  *     `"action":"scheduling"` or the promoted virtual
  *     `PERSONAL_ASSISTANT_SCHEDULING`. The `selectedActionArguments` final
  *     check is read by the executor
- *     (`packages/scenario-runner/src/final-checks/index.ts`): it filters the
+ *     (`packages/testing/scenario-runner/src/final-checks/index.ts`): it filters the
  *     captured actions to the accepted names and matches the regex against
  *     the action name + `JSON.stringify(parameters)` + result text. The
  *     regex requires the structured discriminator (or the virtual name), not
@@ -63,7 +63,7 @@ export default scenario({
   tags: ["lifeops", "scheduling", "schedule_plan", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -1,16 +1,16 @@
 # @elizaos/auth
 
-Account authentication and encrypted credential storage share one package below the agent and application hosts. Import storage from `@elizaos/auth/vault` and account authentication from `@elizaos/auth/auth`. The browser-safe root exports the login SDK. Node hosts can import the combined account and vault API from `@elizaos/auth/credentials`.
+Product login, account authentication and encrypted credential storage share one package below the agent and application hosts. Import storage from `@elizaos/auth/vault` and account authentication from `@elizaos/auth/auth`. The browser-safe root exports the login SDK. Node hosts can import the combined account and vault API from `@elizaos/auth/credentials`.
 
 # @elizaos/auth/auth
 
-Leaf auth package for Eliza agents. Owns account credential storage, OAuth /
+The Node account-authentication module owns credential storage, OAuth /
 subscription login flows, direct-API-key probing, refresh coordination, and the
 encrypted account envelope those depend on. Valid legacy plaintext records are
 migrated atomically before they are returned.
 
 It sits **below** `@elizaos/agent` and `@elizaos/app` so both consume it
-without a dependency cycle. It depends only on `@elizaos/core`, `@elizaos/shared`,
+without a dependency cycle. These account modules depend on `@elizaos/core`, `@elizaos/shared`,
 `@elizaos/auth/vault`, and node builtins — never on `@elizaos/agent` or `@elizaos/app`.
 
 ## Public surface
@@ -192,7 +192,7 @@ await test.dispose();
 Real vault, real encryption, real audit log — temp dir cleaned up on
 `dispose()`. No OS keychain access (uses an in-memory master key).
 
-# @elizaos/auth
+## Login SDK and service
 
 First-party login and account sessions for elizaOS. Browser clients import
 `@elizaos/auth`; React consumers import `@elizaos/ui`, which owns the shared login UI.

@@ -266,9 +266,7 @@ describe("ensureCloudTestRuntime", () => {
       },
       log: (text) => logs.push(text),
     });
-    expect(ran).toEqual([
-      PREFLIGHT_STEPS.coreBuild.label,
-    ]);
+    expect(ran).toEqual([PREFLIGHT_STEPS.coreBuild.label]);
     expect(logs.join("")).toContain("missing runtime artifact");
   });
 

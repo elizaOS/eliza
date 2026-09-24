@@ -1,6 +1,7 @@
 /** Scenario fixture for bluebubbles imessage receive; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectMemoryWrite } from "@elizaos/scenario-runner/scenario-assertions";
+
+import { expectMemoryWrite } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -13,7 +14,7 @@ export default scenario({
     "A BlueBubbles webhook delivering an inbound iMessage should create the incoming message memory and route the message through the agent.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

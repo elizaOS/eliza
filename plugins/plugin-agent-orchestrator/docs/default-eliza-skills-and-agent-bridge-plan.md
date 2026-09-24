@@ -108,7 +108,7 @@ The injected parent runtime memory also now explains:
 
 The orchestrator-managed gitignore block now includes common generated agent files:
 
-- `CLAUDE.md`
+- `AGENTS.md`
 - `.claude/`
 - `AGENTS.md`
 - `.codex/`

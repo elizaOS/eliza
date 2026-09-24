@@ -7,8 +7,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -20,7 +20,7 @@ export default scenario({
     "Two-turn approval lifecycle. Turn 1 proposes the booking and creates a PENDING approval. Turn 2 transitions PENDING → APPROVED, and only then does the BOOK_TRAVEL action actually run against Duffel.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

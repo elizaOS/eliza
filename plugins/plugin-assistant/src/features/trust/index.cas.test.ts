@@ -3,6 +3,7 @@
  * producing the same committed authority audit as interactive role changes.
  */
 
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
@@ -20,7 +21,10 @@ describe("trust admin role bootstrap CAS", () => {
     const runtime = new AgentRuntime({
       character: { name: "trust-cas" } as Character,
     });
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      sqliteTestAgentId("trust-cas"),
+    );
     await adapter.init();
     runtime.registerDatabaseAdapter(adapter);
     const ownerId = stringToUuid("trust-cas-owner") as UUID;

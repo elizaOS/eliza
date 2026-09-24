@@ -36,13 +36,6 @@
  *     the safer behaviour is fill-only and let the user click submit.
  */
 
-import type {
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   createManager,
   getAutofillAllowed,
@@ -50,6 +43,13 @@ import {
   listSavedLogins,
   type Vault,
 } from "@elizaos/auth/vault";
+import type {
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   evaluateBrowserWorkspaceTab,
   isBrowserWorkspaceBridgeConfigured,

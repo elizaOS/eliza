@@ -3,9 +3,9 @@ import { Session } from "electrobun/bun";
 import { logger } from "../logger";
 import { resolveMainWindowPartition } from "../main-window-session";
 import {
-  type DesktopSession,
-  installDesktopSessionCookies,
-  loadOrCreateDesktopSession,
+	type DesktopSession,
+	installDesktopSessionCookies,
+	loadOrCreateDesktopSession,
 } from "../native/auth-bridge";
 
 // Tracks whether the desktop loopback session has already been primed for the
@@ -17,15 +17,15 @@ let desktopSessionPrimeInFlight: Promise<void> | null = null;
 let desktopSessionPendingPrime: DesktopSessionPrimeRequest | null = null;
 
 interface DesktopSessionPrimeRequest {
-  apiBase: string;
-  rendererOrigin: string;
-  generation: number;
+	apiBase: string;
+	rendererOrigin: string;
+	generation: number;
 }
 
 interface DesktopSessionBackendStatus {
-  state: string;
-  port: number | null;
-  startedAt: number | null;
+	state: string;
+	port: number | null;
+	startedAt: number | null;
 }
 
 /**
@@ -34,23 +34,23 @@ interface DesktopSessionBackendStatus {
  * they must not invalidate cookies or fan out new one-shot proof sockets.
  */
 export function createDesktopSessionGenerationTracker(): (
-  status: DesktopSessionBackendStatus,
+	status: DesktopSessionBackendStatus,
 ) => boolean {
-  let port: number | null = null;
-  let startedAt: number | null = null;
-  return (status) => {
-    if (
-      status.state !== "running" ||
-      status.port === null ||
-      status.startedAt === null
-    ) {
-      return false;
-    }
-    if (status.port === port && status.startedAt === startedAt) return false;
-    port = status.port;
-    startedAt = status.startedAt;
-    return true;
-  };
+	let port: number | null = null;
+	let startedAt: number | null = null;
+	return (status) => {
+		if (
+			status.state !== "running" ||
+			status.port === null ||
+			status.startedAt === null
+		) {
+			return false;
+		}
+		if (status.port === port && status.startedAt === startedAt) return false;
+		port = status.port;
+		startedAt = status.startedAt;
+		return true;
+	};
 }
 
 /**
@@ -59,85 +59,85 @@ export function createDesktopSessionGenerationTracker(): (
  * cookies installed for the old origin don't authenticate the new one.
  */
 export function markDesktopSessionStale(): void {
-  desktopSessionPrimed = false;
-  desktopSessionGeneration += 1;
+	desktopSessionPrimed = false;
+	desktopSessionGeneration += 1;
 }
 
 async function runDesktopSessionPrime(
-  apiBase: string,
-  rendererOrigin: string,
-  generation: number,
+	apiBase: string,
+	rendererOrigin: string,
+	generation: number,
 ): Promise<void> {
-  let session: DesktopSession | null;
-  try {
-    // A persisted session can outlive the embedded backend process that owns
-    // its database row. Re-prove filesystem co-location and mint for every
-    // agent generation; persistence remains available to browser-bridge callers
-    // that explicitly use loadOrCreateDesktopSession's default reuse behavior.
-    session = await loadOrCreateDesktopSession({
-      apiBase,
-      reusePersistedSession: false,
-    });
-  } catch (err) {
-    logger.warn(
-      `[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-  if (!session) {
-    logger.info(
-      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
-    );
-    return;
-  }
+	let session: DesktopSession | null;
+	try {
+		// A persisted session can outlive the embedded backend process that owns
+		// its database row. Re-prove filesystem co-location and mint for every
+		// agent generation; persistence remains available to browser-bridge callers
+		// that explicitly use loadOrCreateDesktopSession's default reuse behavior.
+		session = await loadOrCreateDesktopSession({
+			apiBase,
+			reusePersistedSession: false,
+		});
+	} catch (err) {
+		logger.warn(
+			`[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return;
+	}
+	if (!session) {
+		logger.info(
+			"[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
+		);
+		return;
+	}
 
-  try {
-    const partition = resolveMainWindowPartition(process.env);
-    const electrobunSession =
-      partition !== null
-        ? Session.fromPartition(partition)
-        : Session.defaultSession;
-    const installer = electrobunSession.cookies as {
-      set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
-    };
-    const touched = installDesktopSessionCookies(installer, session, {
-      apiOrigin: apiBase,
-      rendererOrigin,
-    });
-    if (generation === desktopSessionGeneration) {
-      desktopSessionPrimed = true;
-    }
-    logger.info(
-      `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
-    );
-  } catch (err) {
-    logger.warn(
-      `[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+	try {
+		const partition = resolveMainWindowPartition(process.env);
+		const electrobunSession =
+			partition !== null
+				? Session.fromPartition(partition)
+				: Session.defaultSession;
+		const installer = electrobunSession.cookies as {
+			set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
+		};
+		const touched = installDesktopSessionCookies(installer, session, {
+			apiOrigin: apiBase,
+			rendererOrigin,
+		});
+		if (generation === desktopSessionGeneration) {
+			desktopSessionPrimed = true;
+		}
+		logger.info(
+			`[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
+		);
+	} catch (err) {
+		logger.warn(
+			`[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 }
 
 async function drainDesktopSessionPrimes(
-  initialRequest: DesktopSessionPrimeRequest,
+	initialRequest: DesktopSessionPrimeRequest,
 ): Promise<void> {
-  let request = initialRequest;
-  for (;;) {
-    await runDesktopSessionPrime(
-      request.apiBase,
-      request.rendererOrigin,
-      request.generation,
-    );
-    const pending = desktopSessionPendingPrime;
-    desktopSessionPendingPrime = null;
-    if (!pending) return;
-    if (
-      desktopSessionPrimed &&
-      pending.generation === desktopSessionGeneration
-    ) {
-      return;
-    }
-    request = pending;
-  }
+	let request = initialRequest;
+	for (;;) {
+		await runDesktopSessionPrime(
+			request.apiBase,
+			request.rendererOrigin,
+			request.generation,
+		);
+		const pending = desktopSessionPendingPrime;
+		desktopSessionPendingPrime = null;
+		if (!pending) return;
+		if (
+			desktopSessionPrimed &&
+			pending.generation === desktopSessionGeneration
+		) {
+			return;
+		}
+		request = pending;
+	}
 }
 
 /**
@@ -151,25 +151,25 @@ async function drainDesktopSessionPrimes(
  * request. The bridge does not — and cannot — be that boundary.
  */
 export async function primeDesktopSessionAuth(
-  apiBase: string,
-  rendererOrigin: string,
+	apiBase: string,
+	rendererOrigin: string,
 ): Promise<boolean> {
-  if (desktopSessionPrimed) return true;
-  const request = {
-    apiBase,
-    rendererOrigin,
-    generation: desktopSessionGeneration,
-  };
-  if (desktopSessionPrimeInFlight) {
-    desktopSessionPendingPrime = request;
-  } else {
-    desktopSessionPrimeInFlight = drainDesktopSessionPrimes(request).finally(
-      () => {
-        desktopSessionPendingPrime = null;
-        desktopSessionPrimeInFlight = null;
-      },
-    );
-  }
-  await desktopSessionPrimeInFlight;
-  return desktopSessionPrimed;
+	if (desktopSessionPrimed) return true;
+	const request = {
+		apiBase,
+		rendererOrigin,
+		generation: desktopSessionGeneration,
+	};
+	if (desktopSessionPrimeInFlight) {
+		desktopSessionPendingPrime = request;
+	} else {
+		desktopSessionPrimeInFlight = drainDesktopSessionPrimes(request).finally(
+			() => {
+				desktopSessionPendingPrime = null;
+				desktopSessionPrimeInFlight = null;
+			},
+		);
+	}
+	await desktopSessionPrimeInFlight;
+	return desktopSessionPrimed;
 }

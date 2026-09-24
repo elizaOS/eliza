@@ -142,7 +142,7 @@ const RULES = [
       reason:
         "Agent, scenario, planner, memory, and persona behavior must be proven with model inputs and outputs, not mocks.",
       collectionHints: [
-        "packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>",
+        "packages/testing/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>",
         "Open the JSON report and run viewer, then attach the reviewed trajectory summary.",
       ],
     },

@@ -64,7 +64,7 @@ const privacyCases = [
 
 function normSource(entry: (typeof normCases)[number]): string {
   return `/** Generated SCENE-style sanction probe; run behavior/_generate-static.ts. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { buildNormProbeSetup } from "./_factory.ts";
 import { ${entry.exportName} as config } from "./_scene-cases.ts";
 
@@ -101,7 +101,7 @@ export default scenario({
 
 function privacySource(entry: (typeof privacyCases)[number]): string {
   return `/** Generated MuPPET-style privacy probe; run behavior/_generate-static.ts. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { buildPrivacyProbeSetup } from "./_factory.ts";
 import { ${entry.exportName} as config } from "./_privacy-cases.ts";
 

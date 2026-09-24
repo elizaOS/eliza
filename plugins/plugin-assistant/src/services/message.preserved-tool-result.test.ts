@@ -13,11 +13,10 @@ import { createAssistantPlugin } from "../index.ts";
  * candidate selection.
  */
 
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
 import { ElizaError } from "../../../../packages/core/src/errors.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
   ActionResult,
@@ -126,7 +125,7 @@ async function createHarness(options: {
       bio: "Exercises the planner-loop failure rescue seam.",
       settings: {},
     }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

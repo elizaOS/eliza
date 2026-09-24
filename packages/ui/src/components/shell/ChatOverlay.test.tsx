@@ -90,8 +90,6 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
-import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
-import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   CHAT_PREFILL_EVENT,
   ELIZA_BACK_INTENT_EVENT,
@@ -388,57 +386,20 @@ describe("ChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("keeps natural-language view requests model-owned", () => {
-    const controller = makeController();
-    const navigateView = vi.fn();
-    const command: SlashCommandCatalogItem = {
-      key: "views",
-      nativeName: "views",
-      description: "Open views",
-      textAliases: ["/views"],
-      scope: "both",
-      acceptsArgs: true,
-      args: [
-        {
-          name: "view",
-          description: "view",
-          dynamicChoices: "views",
-        },
-      ],
-      requiresAuth: false,
-      requiresElevated: false,
-      target: { kind: "navigate", tab: "views", path: "/views" },
-      source: "builtin",
-    };
-    const slash: SlashCommandController = {
-      commands: [command],
-      loading: false,
-      error: false,
-      // Ordinary prose stays model-owned, including exact route requests.
-      naturalShortcutsEnabled: true,
-      resolveChoices: () => ["notes", "calendar"],
-      describeChoice: () => "",
-      resolveSection: () => undefined,
-      isAuthorized: true,
-      isElevated: false,
-      navigateTab: vi.fn(),
-      navigateSettings: vi.fn(),
-      navigateView,
-      clearChat: vi.fn(),
-      openCommandPalette: vi.fn(),
-    };
-
-    render(<ChatOverlay controller={controller} slash={slash} />);
-    const input = screen.getByLabelText("message") as HTMLInputElement;
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "open notes" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(navigateView).not.toHaveBeenCalled();
-    expect(controller.send).toHaveBeenCalledWith("open notes");
-    expect(input.value).toBe("");
-    expect(document.activeElement).toBe(input);
-  });
+  it.each(["open notes", "/settings model", "/commands"])(
+    "sends %s as ordinary chat without a command menu",
+    (text) => {
+      const controller = makeController();
+      render(<ChatOverlay controller={controller} />);
+      const input = screen.getByLabelText("message") as HTMLInputElement;
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: text } });
+      expect(screen.queryByRole("listbox")).toBeNull();
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(controller.send).toHaveBeenCalledWith(text);
+      expect(input.value).toBe("");
+    },
+  );
 
   it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
     const controller = makeController();

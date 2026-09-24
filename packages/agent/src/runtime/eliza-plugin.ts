@@ -68,7 +68,6 @@ import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
 } from "../providers/session-utils.ts";
-import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
@@ -109,7 +108,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
-    createDynamicSkillProvider(),
     pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),

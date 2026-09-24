@@ -7,12 +7,12 @@
  * true once it owns a request, false to let the caller keep dispatching.
  */
 import type http from "node:http";
+import type { InferenceTurnSummary, Log } from "@elizaos/core";
 import {
   INFERENCE_TRACE_ID_PATTERN,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { InferenceTurnSummary, Log } from "@elizaos/core";
 import { parseCanonicalInteger } from "@elizaos/shared/utils/number-parsing";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {

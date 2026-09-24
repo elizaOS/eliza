@@ -51,7 +51,7 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
 
 // Imported directly by the app shell (main.tsx), not via the manifest scan.
 const FIRST_RENDER_REGISTRATION_MODULES = [
-  "@elizaos/plugin-task-coordinator/register",
+  "@elizaos/plugin-agent-orchestrator/ui/register",
   "@elizaos/plugin-relationships/register",
 ] as const;
 

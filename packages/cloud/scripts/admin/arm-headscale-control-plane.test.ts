@@ -318,7 +318,10 @@ describe("Headscale protected workflow contract", () => {
   });
 
   test("emits only closed remote failure categories", () => {
-    const step = namedStep(workflow, "Inspect or converge Headscale control plane");
+    const step = namedStep(
+      workflow,
+      "Inspect or converge Headscale control plane",
+    );
     const run = String(step.run ?? "");
 
     expect(run).toContain(

@@ -110,7 +110,10 @@ function createContext(
 }
 
 async function newAdapter(): Promise<SQLiteDatabaseAdapter> {
-  const adapter = SQLiteDatabaseAdapter.create(":memory:");
+  const adapter = SQLiteDatabaseAdapter.create(
+    ":memory:",
+    "00000000-0000-0000-0000-000000000001",
+  );
   await adapter.initialize();
   return adapter;
 }

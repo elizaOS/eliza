@@ -5,10 +5,9 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
   Content,
@@ -119,7 +118,7 @@ async function createHarness(
       bio: "Exercises the real message-service delivery boundary.",
       settings: {},
     }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

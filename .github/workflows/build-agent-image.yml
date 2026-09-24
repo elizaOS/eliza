@@ -184,13 +184,11 @@ jobs:
             --filter=@elizaos/agent \
             --filter=@elizaos/plugin-sql \
             --filter=@elizaos/plugin-video \
-            --filter=@elizaos/plugin-agent-skills \
             --filter=@elizaos/plugin-pdf \
             --filter=@elizaos/plugin-browser \
             --filter=@elizaos/plugin-native-inference \
             --filter=@elizaos/plugin-coding-tools \
             --filter=@elizaos/plugin-native-filesystem \
-            --filter=@elizaos/plugin-commands \
             --filter=@elizaos/plugin-computeruse \
             --filter=@elizaos/plugin-discord \
             --filter=@elizaos/plugin-elizacloud \
@@ -199,7 +197,6 @@ jobs:
             --filter=@elizaos/plugin-mcp \
             --filter=@elizaos/plugin-telegram \
             --filter=@elizaos/plugin-x \
-            --filter=@elizaos/plugin-whatsapp \
             --filter=@elizaos/plugin-wallet \
             --filter=@elizaos/plugin-workflow
 

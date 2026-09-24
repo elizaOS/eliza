@@ -177,7 +177,7 @@ test("run-scenarios-isolated resolves the real scenario-runner CLI", () => {
   const paths = JSON.parse(result.stdout) as { repoRoot: string; cli: string };
   expect(paths.repoRoot).toBe(REPO_ROOT);
   expect(paths.cli).toBe(
-    path.join(REPO_ROOT, "packages", "scenario-runner", "src", "cli.ts"),
+    path.join(REPO_ROOT, "packages", "testing", "scenario-runner", "src", "cli.ts"),
   );
   expect(paths.cli).not.toContain("packages/eliza/packages");
   expect(existsSync(paths.cli)).toBe(true);

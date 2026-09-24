@@ -1,6 +1,7 @@
 // Coordinates cloud service server wallets behavior behind route handlers.
-import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
+
 import { LoginApiError } from "@elizaos/auth";
+import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
 import { and, eq } from "drizzle-orm";
 import { verifyMessage } from "viem";
 import { db } from "../../db/client";

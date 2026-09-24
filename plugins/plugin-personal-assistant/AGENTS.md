@@ -173,7 +173,7 @@ this transition. The Todo projection tags real target IDs as `definition` or
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run the relevant package lanes above, then exercise the real connector, scheduler, database, approval, or UI boundary changed. Inspect scheduled-task records, database rows, logs, trajectories, and rendered behavior; mocked success is not evidence for a real integration.
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run the relevant package lanes above, then exercise the real connector, scheduler, database, approval, or UI boundary changed. Inspect scheduled-task records, database rows, logs, trajectories, and rendered behavior; mocked success is not evidence for a real integration.
 
 Planner-owned LifeOps replies hand complete action-specific facts, character
 context and reply rules to the final response model through `data.replyGrounding`.

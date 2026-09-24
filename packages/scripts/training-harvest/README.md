@@ -1,7 +1,7 @@
 # gpt-5.5 trajectory-training harvest pipeline
 
 Stage 2 corpus harvest for the gpt-5.5 → eliza-1 training pipeline. Runs the
-elizaOS test/eval corpus through gpt-5.5 (Codex subscription), captures every
+elizaOS test/eval corpus through the configured API model, captures every
 run as an `eliza_native_v1` trajectory + pass/fail verdict, so Stage 3 can
 GEPA-repair the failures and Stage 4 can extract the passes into training data.
 
@@ -15,21 +15,19 @@ full corpus is NOT run here.
 | `build-manifest.mjs` | Enumerates the whole corpus → `manifest.json` (families, items, run commands, trajectory landing). Discover-only; runs nothing. |
 | `manifest.json` | Machine-readable corpus manifest (generated). |
 | `harvest-runner.mjs` | Stage-2 driver. Consumes the Stage-1 provider incantation, iterates the manifest, runs each item, captures trajectory + verdict into `harvest/`. |
-| `s1-provider.example.json` | Example provider-env the driver consumes (`{ELIZA_CHAT_VIA_CLI:"codex", ELIZA_CLI_CODEX_MODEL:"gpt-5.5"}`). Stage-1 leg S1 emits the real one. |
+| `s1-provider.example.json` | Example model settings; supply credentials separately. |
 
-## Provider seam (how gpt-5.5-via-Codex slots in)
+## Provider configuration
 
-The scenario runner already has a first-class CLI-subscription provider
-(`packages/testing/src/live-provider.ts` → `selectCliProvider`). Setting
-`ELIZA_CHAT_VIA_CLI=codex` selects provider `"cli"`, model `gpt-5.5`, plugin
-`@elizaos/plugin-cli-inference`, which reads `~/.codex/auth.json` itself — no API
-key ever passes through eliza. The driver injects this env per spawn; it is
-never hard-coded. Precedence: `--provider-env <s1.json>` → `$HARVEST_PROVIDER_ENV_FILE`
-→ inherited `ELIZA_CHAT_VIA_CLI`/API key → `--deterministic` (offline self-test).
+Use a supported API provider with credentials supplied through the environment.
+The example provider file selects OpenAI models; it contains no credentials.
+Pass `--provider-env <file.json>` or set `HARVEST_PROVIDER_ENV_FILE` to supply
+provider settings. The driver otherwise uses inherited API credentials.
+`--deterministic` runs the offline driver self-test without a model call.
 
 ## Families & trajectory emission
 
-- **scenario** — `@elizaos/scenario-runner` drives a real `AgentRuntime`+PGLite.
+- **scenario** — `@elizaos/testing/scenario-runner` drives a real `AgentRuntime`+PGLite.
   Emits `eliza_native_v1` **natively** via `--export-native`. Verdict per
   scenario id (`report.scenarios[].status`, mirrored to `native row.scenarioStatus`).
   978 base scenario ids across 7 dirs (~10,716 with persona expansion).

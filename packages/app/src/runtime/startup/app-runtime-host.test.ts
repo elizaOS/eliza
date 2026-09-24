@@ -7,10 +7,10 @@
  * flow and observable host state.
  */
 
-import { ElizaError } from "@elizaos/core";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+  ElizaError,
   logger,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

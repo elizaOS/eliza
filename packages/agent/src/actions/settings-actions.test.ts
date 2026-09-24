@@ -1,8 +1,8 @@
 /**
  * Colocated unit coverage for settings-actions.ts. Sibling suites already pin
- * backend helpers and the chat-config provider/capability/section legs; this
+ * backend helpers and the chat-config provider/capability legs; this
  * file drives the remaining exported surface and handler branches: trimToString
- * overflow, SETTINGS_OPS, set_owner_name, worldSettings set (empty / single /
+ * overflow, set_owner_name, worldSettings set (empty / single /
  * bulk / missing key / dependency order / persist failure), show_backends,
  * set_backend success/tag/brain, and dispatch aliases. Deterministic: real
  * temp config store + stub runtime, no live model.
@@ -24,11 +24,7 @@ import {
   type WorldSettings,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  SETTINGS_OPS,
-  settingsAction,
-  trimToString,
-} from "./settings-actions.ts";
+import { settingsAction, trimToString } from "./settings-actions.ts";
 
 const OWNER_MESSAGE = { entityId: "owner" } as unknown as Memory;
 
@@ -127,42 +123,6 @@ describe("trimToString", () => {
   it("trims and keeps a value at the exact max length", () => {
     expect(trimToString("  hello  ", 5)).toBe("hello");
     expect(trimToString("hello", 5)).toBe("hello");
-  });
-});
-
-describe("SETTINGS_OPS and action metadata", () => {
-  it("exports the full op catalog the handler dispatches on", () => {
-    expect([...SETTINGS_OPS]).toEqual([
-      "get",
-      "list",
-      "update_ai_provider",
-      "toggle_capability",
-      "set_owner_name",
-      "set",
-      "show_backends",
-      "set_backend",
-    ]);
-  });
-
-  it("declares SETTINGS with an OWNER gate and owner-name/backend similes", () => {
-    expect(settingsAction.name).toBe("SETTINGS");
-    expect(settingsAction.roleGate).toEqual({ minRole: "OWNER" });
-    expect(settingsAction.similes).toEqual(
-      expect.arrayContaining([
-        "SET_OWNER_NAME",
-        "SHOW_BACKENDS",
-        "SET_BACKEND",
-      ]),
-    );
-  });
-
-  it("validate() is unconditionally true", async () => {
-    await expect(
-      settingsAction.validate(
-        { character: {} } as unknown as IAgentRuntime,
-        OWNER_MESSAGE,
-      ),
-    ).resolves.toBe(true);
   });
 });
 

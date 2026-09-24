@@ -16,13 +16,13 @@ const CONFIG_FILENAME = "eliza.json";
  * pulling the agent into the static boot graph.
  */
 function resolveElizaConfigPath(
-  env: Record<string, string | undefined>,
+	env: Record<string, string | undefined>,
 ): string {
-  const override = env.ELIZA_CONFIG_PATH?.trim();
-  if (override) {
-    return resolveUserPath(override);
-  }
-  return path.join(resolveStateDir(env as NodeJS.ProcessEnv), CONFIG_FILENAME);
+	const override = env.ELIZA_CONFIG_PATH?.trim();
+	if (override) {
+		return resolveUserPath(override);
+	}
+	return path.join(resolveStateDir(env as NodeJS.ProcessEnv), CONFIG_FILENAME);
 }
 
 /**
@@ -36,46 +36,46 @@ function resolveElizaConfigPath(
  * `JSON.parse` is sufficient.
  */
 export function readPersistedDeployment(
-  env: Record<string, string | undefined> = process.env as Record<
-    string,
-    string | undefined
-  >,
+	env: Record<string, string | undefined> = process.env as Record<
+		string,
+		string | undefined
+	>,
 ): PersistedDeployment | null {
-  const configPath = resolveElizaConfigPath(env);
-  let raw: string;
-  try {
-    raw = fs.readFileSync(configPath, "utf-8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return null;
-    }
-    logger.warn(
-      `[Deployment] Could not read ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
+	const configPath = resolveElizaConfigPath(env);
+	let raw: string;
+	try {
+		raw = fs.readFileSync(configPath, "utf-8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			return null;
+		}
+		logger.warn(
+			`[Deployment] Could not read ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    logger.warn(
-      `[Deployment] Could not parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (err) {
+		logger.warn(
+			`[Deployment] Could not parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
 
-  const deploymentTarget = normalizeDeploymentTargetConfig(
-    (parsed as { deploymentTarget?: unknown } | null)?.deploymentTarget,
-  );
-  if (!deploymentTarget) {
-    return null;
-  }
-  return {
-    runtime: deploymentTarget.runtime,
-    remoteApiBase: deploymentTarget.remoteApiBase ?? null,
-    remoteAccessToken: deploymentTarget.remoteAccessToken ?? null,
-  };
+	const deploymentTarget = normalizeDeploymentTargetConfig(
+		(parsed as { deploymentTarget?: unknown } | null)?.deploymentTarget,
+	);
+	if (!deploymentTarget) {
+		return null;
+	}
+	return {
+		runtime: deploymentTarget.runtime,
+		remoteApiBase: deploymentTarget.remoteApiBase ?? null,
+		remoteAccessToken: deploymentTarget.remoteAccessToken ?? null,
+	};
 }
 
 let cachedDeployment: PersistedDeployment | null | undefined;
@@ -87,8 +87,8 @@ let cachedDeployment: PersistedDeployment | null | undefined;
  * runtime-mode decision in `main()`.
  */
 export function getPersistedDeployment(): PersistedDeployment | null {
-  if (cachedDeployment === undefined) {
-    cachedDeployment = readPersistedDeployment();
-  }
-  return cachedDeployment;
+	if (cachedDeployment === undefined) {
+		cachedDeployment = readPersistedDeployment();
+	}
+	return cachedDeployment;
 }

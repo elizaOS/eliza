@@ -5,7 +5,14 @@
  */
 
 import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +22,7 @@ const SERVICE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(SERVICE_DIRECTORY, "../../../..");
 const HARNESS_PATH = join(
   SERVICE_DIRECTORY,
-  "sandbox-engine-run-container.harness.ts",
+  "../../test/fixtures/sandbox-engine-run-container.ts",
 );
 const STDOUT_BYTES = 300_000;
 const STDOUT_SENTINEL = "<stdout-complete>\n";
@@ -27,7 +34,10 @@ let previousBaseline: string | undefined;
 function installContainerStub(body: string): void {
   binDirectory = mkdtempSync(join(tmpdir(), "eliza-container-stub-"));
   const stub = join(binDirectory, "container");
-  writeFileSync(stub, `#!${process.execPath}\n${body}`);
+  writeFileSync(
+    stub,
+    `#!${process.execPath}\nrequire("node:fs").writeFileSync(${JSON.stringify(join(binDirectory, "argv.json"))}, JSON.stringify(process.argv.slice(2)));\n${body}`,
+  );
   chmodSync(stub, 0o755);
 }
 
@@ -109,6 +119,15 @@ describe.skipIf(process.platform === "win32")(
       const result = await runHarness("stdout");
 
       expect(result.code).toBe(0);
+      if (!binDirectory) throw new Error("Container fixture directory missing");
+      expect(
+        JSON.parse(readFileSync(join(binDirectory, "argv.json"), "utf8")),
+      ).toEqual([
+        "run",
+        "--name",
+        "eliza-sandbox-stdout",
+        "eliza-sandbox:test",
+      ]);
       expect(result.stderr).toEqual(Buffer.alloc(0));
       const resolvedMarker = Buffer.from(RESOLVED_MARKER);
       const resolvedMarkerOffset = result.stdout.indexOf(resolvedMarker);
@@ -127,6 +146,36 @@ describe.skipIf(process.platform === "win32")(
           Buffer.byteLength(STDOUT_SENTINEL) +
           Buffer.byteLength(RESOLVED_MARKER),
       );
+    }, 90_000);
+
+    it("rejects a missing Apple Container executable", async () => {
+      binDirectory = mkdtempSync(join(tmpdir(), "eliza-container-missing-"));
+      const result = await runHarness("stdout");
+      expect(result.code).toBe(1);
+      expect(JSON.parse(result.stdout.toString())).toMatchObject({
+        kind: "rejected",
+        message: "Apple Container executable unavailable",
+      });
+    }, 90_000);
+
+    it("reports a typed failure when the container executable cannot spawn", async () => {
+      binDirectory = mkdtempSync(
+        join(tmpdir(), "eliza-container-unspawnable-"),
+      );
+      const executable = join(binDirectory, "container");
+      mkdirSync(executable);
+      chmodSync(executable, 0o755);
+      const result = await runHarness("stdout");
+      expect(result.code).toBe(1);
+      expect(JSON.parse(result.stdout.toString())).toMatchObject({
+        kind: "rejected",
+        isElizaError: true,
+        code: "SANDBOX_APPLE_CONTAINER_SPAWN_FAILED",
+        context: {
+          containerName: "eliza-sandbox-stdout",
+          engine: "apple-container",
+        },
+      });
     }, 90_000);
 
     it("forwards startup-exit stderr byte-for-byte and rejects typed", async () => {

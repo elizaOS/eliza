@@ -2,7 +2,7 @@
  * Generated from ishiki-labs/multi-party-dialogue at 356c30b9dc74cbfa115ab7b9a89991d92ce0a315.
  * Apache-2.0. Do not hand-edit; run heldout/ishiki-generate.ts.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { buildHeldoutSetup, type HeldoutScenarioConfig } from "../_factory.ts";
 
 const config = {

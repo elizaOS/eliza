@@ -155,10 +155,8 @@ export type LiveProviderName =
   | "groq"
   | "openai"
   | "anthropic"
-  | "google"
   | "openrouter"
-  | "local-llama-cpp"
-  | "cli";
+  | "local-llama-cpp";
 
 export type LiveProviderConfig = {
   name: LiveProviderName;
@@ -177,9 +175,6 @@ export function getFirstRunProviderForLiveProvider(
 ): string {
   if (provider.name === "local-llama-cpp") {
     return "openai";
-  }
-  if (provider.name === "google") {
-    return "gemini";
   }
   return provider.name;
 }
@@ -263,17 +258,6 @@ const PROVIDERS: Array<{
     largeModelEnvVar: "ANTHROPIC_LARGE_MODEL",
     defaultSmallModel: "claude-haiku-4-5-20251001",
     defaultLargeModel: "claude-haiku-4-5-20251001",
-  },
-  {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keyEnvVars: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
-    keyEnvVarAliases: ["ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY"],
-    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    smallModelEnvVar: "GOOGLE_SMALL_MODEL",
-    largeModelEnvVar: "GOOGLE_LARGE_MODEL",
-    defaultSmallModel: "gemini-2.0-flash-001",
-    defaultLargeModel: "gemini-2.0-flash-001",
   },
   {
     name: "openrouter",
@@ -410,100 +394,11 @@ function buildLiveProviderConfig(
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
  *
- * Preference order: cerebras -> groq -> openai -> anthropic -> google -> openrouter.
+ * Preference order: cerebras -> groq -> openai -> anthropic -> openrouter.
  */
-// ---------------------------------------------------------------------------
-// CLI-subscription provider (@elizaos/plugin-cli-inference)
-//
-// A subscription-only host (Claude Max / ChatGPT-Codex, no API key) serves live
-// inference by spawning the sanctioned local CLI: ELIZA_CHAT_VIA_CLI selects the
-// backend and the CLI reads its own on-disk credentials — eliza never sees the
-// token, so there is no real apiKey. Mirrors core's selectCliProvider
-// (packages/testing/src/live-provider.ts). Selected FIRST when
-// ELIZA_CHAT_VIA_CLI names a supported backend: setting it is an explicit opt-in
-// to the subscription route, so it wins over an ambient API key. Existing CI
-// never sets ELIZA_CHAT_VIA_CLI, so this path is inert there.
-// ---------------------------------------------------------------------------
-
-const CLI_BACKENDS = ["claude", "claude-sdk", "codex", "codex-sdk"] as const;
-type CliBackend = (typeof CLI_BACKENDS)[number];
-
-const CLI_SUBSCRIPTION_SENTINEL_API_KEY =
-  "cli-subscription:no-api-key-cli-reads-own-credentials";
-
-const CLI_PASSTHROUGH_ENV_VARS = [
-  "ELIZA_PLANNER_NATIVE_TOOLS",
-  "ELIZA_CLI_CLAUDE_MODEL",
-  "ELIZA_CLI_CLAUDE_PLANNER_MODEL",
-  "ELIZA_CLI_CLAUDE_BIN",
-  "ELIZA_CLI_CODEX_MODEL",
-  "ELIZA_CLI_CODEX_PLANNER_MODEL",
-  "ELIZA_CLI_CODEX_REASONING_EFFORT",
-  "ELIZA_CLI_CODEX_BIN",
-  "ELIZA_CLI_TIMEOUT_MS",
-] as const;
-
-function resolveConfiguredCliBackend(): CliBackend | null {
-  const raw = process.env.ELIZA_CHAT_VIA_CLI?.trim().toLowerCase();
-  return (CLI_BACKENDS as readonly string[]).includes(raw ?? "")
-    ? (raw as CliBackend)
-    : null;
-}
-
-export function cliBackendStatePaths(
-  backend: CliBackend,
-  userHome = homedir(),
-): readonly string[] {
-  return backend.startsWith("codex")
-    ? [path.join(userHome, ".codex", "auth.json")]
-    : [
-        path.join(userHome, ".claude", ".credentials.json"),
-        path.join(userHome, ".claude.json"),
-      ];
-}
-
-function selectCliProvider(): LiveProviderConfig | null {
-  const backend = resolveConfiguredCliBackend();
-  if (!backend) return null;
-  if (
-    !cliBackendStatePaths(backend).some((statePath) => existsSync(statePath))
-  ) {
-    return null;
-  }
-
-  const isCodex = backend.startsWith("codex");
-  const model = isCodex
-    ? getTrimmedEnv("ELIZA_CLI_CODEX_MODEL") || "gpt-5.5"
-    : getTrimmedEnv("ELIZA_CLI_CLAUDE_MODEL") || "claude-opus-4-8";
-
-  const env: Record<string, string> = { ELIZA_CHAT_VIA_CLI: backend };
-  for (const envVar of CLI_PASSTHROUGH_ENV_VARS) {
-    const val = getTrimmedEnv(envVar);
-    if (val) env[envVar] = val;
-  }
-
-  return {
-    name: "cli",
-    apiKey: CLI_SUBSCRIPTION_SENTINEL_API_KEY,
-    baseUrl: `cli://${backend}`,
-    // plugin-cli-inference registers large-tier handlers only; both tiers map to
-    // the same subscription-served model.
-    smallModel: model,
-    largeModel: model,
-    pluginPackage: "@elizaos/plugin-cli-inference",
-    env,
-  };
-}
-
 export function selectLiveProvider(
   preferredProvider?: LiveProviderName,
 ): LiveProviderConfig | null {
-  if (!preferredProvider || preferredProvider === "cli") {
-    const cli = selectCliProvider();
-    if (cli) return cli;
-    if (preferredProvider === "cli") return null;
-  }
-
   const candidates = preferredProvider
     ? PROVIDERS.filter((p) => p.name === preferredProvider)
     : PROVIDERS;
@@ -549,12 +444,6 @@ export function selectLiveProvider(
 export async function selectLiveProviderAsync(
   preferredProvider?: LiveProviderName,
 ): Promise<LiveProviderConfig | null> {
-  if (!preferredProvider || preferredProvider === "cli") {
-    const cli = selectCliProvider();
-    if (cli) return cli;
-    if (preferredProvider === "cli") return null;
-  }
-
   const candidates = preferredProvider
     ? PROVIDERS.filter((p) => p.name === preferredProvider)
     : PROVIDERS;

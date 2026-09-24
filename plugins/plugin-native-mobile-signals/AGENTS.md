@@ -151,11 +151,11 @@ Extend `MobileSignalsSnapshot` or `MobileSignalsHealthSnapshot` in `src/definiti
 - On iOS, Screen Time features require Apple's restricted `com.apple.developer.family-controls` entitlement, which must be provisioned by Apple. The `validate:ios-screen-time` script is the canonical check.
 - `dist/` is committed for publishing but should be regenerated via `build` before any release.
 - The package uses three outputs: ESM (`dist/esm/`) for tree-shaking consumers, CJS (`dist/plugin.cjs.js`) for CommonJS hosts, and IIFE (`dist/plugin.js`) for unpkg/browser script-tag use. The explicit `eliza-source` export condition resolves directly to `src/index.ts` for local dev.
-- See root `CLAUDE.md` for repo-wide conventions (logging, ESM, naming, architecture rules).
+- See root `AGENTS.md` for repo-wide conventions (logging, ESM, naming, architecture rules).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

@@ -127,9 +127,7 @@ const _wrapperRoot = path.resolve(here, "../../../..");
 const _wrapperEliza = path.join(_wrapperRoot, "eliza");
 const isElizaMonorepo =
   existsSync(path.join(_wrapperRoot, "package.json")) &&
-  existsSync(
-    path.join(_wrapperEliza, "packages", "app", "package.json"),
-  ) &&
+  existsSync(path.join(_wrapperEliza, "packages", "app", "package.json")) &&
   realpathSync(_wrapperEliza) === realpathSync(_elizaRoot);
 // Standalone eliza checkout — _elizaRoot IS the repo and there's no
 // outer wrapper. dev-platform.mjs originally only handled the wrapper
@@ -157,13 +155,7 @@ function resolveElectrobunDir() {
       "electrobun",
     );
   }
-  return path.join(
-    elizaRoot,
-    "packages",
-    "app",
-    "platforms",
-    "electrobun",
-  );
+  return path.join(elizaRoot, "packages", "app", "platforms", "electrobun");
 }
 
 const devServerEntry = isElizaMonorepo
@@ -440,7 +432,9 @@ function ensureBunRootPackageLink(packageName) {
 prepareMacNativeEffectsForDesktopDev();
 syncRendererPublicAssets();
 const rendererDistStale = viteRendererBuildNeeded(appDir, bundleRoot);
-const rendererDistExists = existsSync(path.join(appDir, "web-dist", "index.html"));
+const rendererDistExists = existsSync(
+  path.join(appDir, "web-dist", "index.html"),
+);
 const rendererBuildAction = resolveRendererBuildAction({
   forceRenderer,
   distStale: rendererDistStale,

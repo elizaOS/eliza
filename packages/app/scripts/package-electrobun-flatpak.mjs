@@ -38,10 +38,7 @@ import {
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
-const electrobunRoot = path.join(
-  repoRoot,
-  "packages/app/platforms/electrobun",
-);
+const electrobunRoot = path.join(repoRoot, "packages/app/platforms/electrobun");
 const buildRoot = path.join(electrobunRoot, "build");
 const artifactRoot = path.join(electrobunRoot, "artifacts");
 const iconPath = path.join(electrobunRoot, "assets/appIcon.png");

@@ -18,6 +18,22 @@ The full Bun engine artifact is produced by this package’s
 The Android implementation delegates lifecycle and RPC calls to the host app's
 `ElizaAgentService` over its app-owned agent bridge.
 
+## Engine build tooling
+
+The same workspace owns the native engine shim, build scripts, policy checks,
+and `ElizaBunEngine.podspec`. See [the engine build guide](engine/README.md).
+
+```bash
+bun run engine:build:sim
+bun run engine:build:device
+bun run engine:verify:app-store
+bun run test
+```
+
+The optional SQLite vector-extension builder is also owned here; see
+[its build guide](ios/sqlite-vec/README.md). Llama framework assembly uses the
+app’s existing MTP/xcframework pipeline and the single llama.cpp submodule.
+
 ## Install
 
 ```bash
@@ -82,7 +98,7 @@ await ElizaBunRuntime.stop();
 ## Bridge contract
 
 The full-engine ABI lives in
-`plugins/plugin-native-bun-runtime/engine/BRIDGE_CONTRACT.md`. The compatibility host still
+`plugins/plugin-native-bun-runtime/engine/Sources/ElizaBunEngineShim/eliza_bun_engine.h`. The compatibility host still
 implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Runs the focused coding-agent live E2E suite: verifies the required
- * plugin-task-coordinator live test files exist, then executes them with
+ * plugin-agent-orchestrator live test files exist, then executes them with
  * ELIZA_LIVE_TEST=1 via run-with-env.
  */
 
@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..", "..");
 const requiredTests = [
-  "eliza/plugins/plugin-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
-  "eliza/plugins/plugin-task-coordinator/test/quicksort-coding-agent.live.e2e.test.ts",
+  "eliza/plugins/plugin-agent-orchestrator/ui/test/coding-agent-codex-artifact.live.e2e.test.ts",
+  "eliza/plugins/plugin-agent-orchestrator/ui/test/quicksort-coding-agent.live.e2e.test.ts",
 ];
 const missingTests = requiredTests.filter(
   (relativePath) => !fs.existsSync(path.join(repoRoot, relativePath)),

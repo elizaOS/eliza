@@ -12,7 +12,6 @@ export interface SqlDatabase {
   close(): void;
 }
 
-
 export interface SQLiteDriver {
   readonly supportsFileSystem: boolean;
   assertSupportedRuntime(): void;

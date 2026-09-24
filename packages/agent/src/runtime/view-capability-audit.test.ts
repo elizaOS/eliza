@@ -76,7 +76,7 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   todos: "plugin-todos",
   relationships: "plugin-relationships",
   documents: "plugin-knowledge",
-  orchestrator: "plugin-task-coordinator",
+  orchestrator: "plugin-agent-orchestrator",
 };
 
 /**

@@ -9,12 +9,11 @@ Bootable Linux and AOSP distributions are maintained separately in
 ## How repository instructions work
 
 - Read this guide before changing the repository.
-- Before working in a package or plugin, read the nearest `CLAUDE.md` and its
+- Before working in a package or plugin, read the nearest `AGENTS.md` and its
   `README.md`. A local guide adds package-specific architecture, commands, and
   validation requirements; repository-wide rules in this guide remain binding.
-- `CLAUDE.md` and `AGENTS.md` in the same directory must be byte-for-byte
-  identical. Author `CLAUDE.md`, copy the finished content to `AGENTS.md`, and
-  run `bun run check:agents-claude`.
+- `AGENTS.md` is the canonical repository instruction file. Maintain it directly;
+  do not generate duplicate instruction files.
 - The `AGENTS.md` files under
   `packages/elizaos/src/migrate/__tests__/fixtures/` are migration inputs, not
   repository instructions. They are intentionally unpaired and must change only
@@ -69,7 +68,7 @@ bun install            # install workspaces, prepare submodules, patches, and fu
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
-bun run verify         # parity, dependency, type, lint, and repository audit gates
+bun run verify         # dependency, type, lint, and repository audit gates
 bun run lint           # workspace lint tasks
 bun run format         # workspace formatting tasks
 bun run typecheck      # workspace TypeScript checks
@@ -154,11 +153,9 @@ packages/
   elizaos/          the elizaos CLI and packaged project/plugin templates
   prompts/          shared prompt templates across supported languages
   shared/           cross-package utilities, contracts, and brand assets
-  testing/          private runtime fixtures and repository-wide scenario corpus
+  testing/          fixtures, scenario runner, synthetic worlds, evidence and certification
   skills/           bundled runtime skills and loading utilities
   browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
-  scenario-runner/  real-runtime scenario execution and report generation
-  evidence/         evidence manifest, bundle, verification, and ingestion foundation
   docs/             documentation site source
   homepage/         public Eliza product and download site
   training/         Eliza-1 training, evaluation, conversion, and release tooling
@@ -395,7 +392,7 @@ kinds from `mimeType` at read time.
 ## Testing and verification
 
 Run focused checks while iterating, then expand in proportion to the affected
-surface. At minimum, documentation changes must pass guide parity and link/path
+surface. At minimum, documentation changes must pass link/path
 validation; code changes must pass the owning package's tests, typecheck, and
 lint plus the root `bun run verify` gate.
 
@@ -425,7 +422,7 @@ canonical integrity verifier, and reviews that exact run. Standalone
 are never scanned implicitly. `--source=<dir>` is only for deliberate archived
 or ad-hoc compatibility review.
 
-`packages/evidence/src/ingest.ts` is the normal producer inventory. A new or
+`packages/testing/evidence/ingest.ts` is the normal producer inventory. A new or
 moved producer must have a named ingestor, producer-to-bundle regression test,
 and real generated-bundle inspection. Do not add another scan-root list or let
 a coordinated command discover its run by recency.
@@ -443,7 +440,7 @@ states. No touched view may retain a computed `needs-work` or `broken` verdict.
 Run at least five audit/inspection/iteration cycles for a meaningful redesign.
 Orange is the accent; do not introduce blue, and use darker orange—not black—
 for an orange resting control's hover state. The full visual contract lives in
-`packages/app/CLAUDE.md`.
+`packages/app/AGENTS.md`.
 
 ## GitHub workflow and definition of done
 

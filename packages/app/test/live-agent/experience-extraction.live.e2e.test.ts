@@ -1,10 +1,12 @@
 /** Exercises experience extraction live e2e behavior with deterministic app test fixtures. */
 import crypto from "node:crypto";
-import { ChannelType, type Memory, type UUID } from "@elizaos/core";
 import {
   type AgentRuntime,
+  ChannelType,
   createMessageMemory,
+  type Memory,
   type Plugin,
+  type UUID,
 } from "@elizaos/core";
 import type { EvaluatorService } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect } from "vitest";

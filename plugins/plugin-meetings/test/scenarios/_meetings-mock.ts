@@ -13,7 +13,7 @@ import type {
   ScenarioCleanupStep,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import type { MeetingPlatform } from "@elizaos/shared";
 import {
   ASSERT_MEETING_MOCK_LEDGER,

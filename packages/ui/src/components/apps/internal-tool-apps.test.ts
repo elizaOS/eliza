@@ -19,7 +19,7 @@ import {
 
 describe("internal tool app descriptors", () => {
   it("bridges the Automations app route to the task tool tab", () => {
-    const appName = "@elizaos/plugin-task-coordinator";
+    const appName = "@elizaos/plugin-agent-orchestrator";
     const descriptor = getInternalToolAppDescriptors().find(
       (item) => item.name === appName,
     );
@@ -67,18 +67,18 @@ describe("internal tool app descriptors", () => {
       path: "/apps/tasks",
       tags: ["automations", "renamed"],
       available: true,
-      pluginName: "@elizaos/plugin-task-coordinator",
+      pluginName: "@elizaos/plugin-agent-orchestrator",
       hasHeroImage: true,
       heroImageUrl: "/api/views/task-coordinator/hero",
     };
 
     const staticApp = getInternalToolApps().find(
-      (app) => app.name === "@elizaos/plugin-task-coordinator",
+      (app) => app.name === "@elizaos/plugin-agent-orchestrator",
     );
     expect(staticApp?.displayName).toBe("Automations");
 
     const overlaid = getInternalToolApps([automationsView]).find(
-      (app) => app.name === "@elizaos/plugin-task-coordinator",
+      (app) => app.name === "@elizaos/plugin-agent-orchestrator",
     );
     expect(overlaid?.displayName).toBe("Workflow Studio");
     expect(overlaid?.description).toBe("Renamed via ViewDeclaration");
@@ -88,7 +88,7 @@ describe("internal tool app descriptors", () => {
 
   it("maps window paths back to their internal-tool app name", () => {
     expect(getInternalToolAppNameForPath("/apps/tasks")).toBe(
-      "@elizaos/plugin-task-coordinator",
+      "@elizaos/plugin-agent-orchestrator",
     );
     expect(getInternalToolAppNameForPath("/apps/plugins")).toBe(
       "@elizaos/app-plugin-viewer",
@@ -98,7 +98,7 @@ describe("internal tool app descriptors", () => {
 
   it("derives the pinnable list from declared pinnable flags", () => {
     const pinnable = getPinnableInternalAppNames();
-    expect(pinnable).toContain("@elizaos/plugin-task-coordinator");
+    expect(pinnable).toContain("@elizaos/plugin-agent-orchestrator");
     // Files is a non-pinnable internal tool.
     expect(pinnable).not.toContain("@elizaos/app-files-viewer");
     for (const name of pinnable) {

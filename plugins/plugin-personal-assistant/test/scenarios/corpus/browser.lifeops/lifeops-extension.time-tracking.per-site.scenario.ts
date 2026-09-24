@@ -8,8 +8,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { seedBrowserExtensionTelemetry } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -22,7 +22,7 @@ export default scenario({
     "User asks how much time they spent on x.com today. Seeded browser-extension telemetry should flow through GET_TIME_ON_SITE with a non-zero result.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

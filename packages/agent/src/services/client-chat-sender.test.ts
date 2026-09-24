@@ -7,7 +7,7 @@
  * single-owner swarm delivery. Most cases use a deterministic state stand-in;
  * transport ownership runs through AgentRuntime and SQLiteDatabaseAdapter.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import crypto from "node:crypto";
 import {
   AgentRuntime,
@@ -20,7 +20,10 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import {
+  createSQLiteTestRuntime,
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { handleSwarmSynthesis } from "../api/server-helpers-swarm.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
@@ -121,7 +124,7 @@ describe("registerClientChatSendHandler — relay source coverage", () => {
         bio: ["test"],
         settings: {},
       } as Character,
-      
+
       logLevel: "fatal",
     });
     const { state } = makeState([]);
@@ -237,7 +240,7 @@ describe("swarm synthesis — dashboard transport ownership", () => {
         bio: ["test"],
         settings: {},
       } as Character,
-      
+
       logLevel: "fatal",
     });
     const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);

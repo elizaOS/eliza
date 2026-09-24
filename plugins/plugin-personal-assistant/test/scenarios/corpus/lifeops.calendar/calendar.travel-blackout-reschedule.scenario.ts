@@ -5,11 +5,11 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
 
@@ -33,7 +33,7 @@ export default scenario({
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "travel", "bulk-reschedule"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

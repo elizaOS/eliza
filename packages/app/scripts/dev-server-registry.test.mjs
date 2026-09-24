@@ -13,7 +13,6 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { configureDevCloudEnvironment } from "./lib/dev-cloud-target.mjs";
 import {
   allocatePortsForWorktree,
   createDevServerCloudProfileFingerprint,
@@ -28,6 +27,7 @@ import {
   updateRegistryEntry,
   writeRegistry,
 } from "./dev-server-registry.mjs";
+import { configureDevCloudEnvironment } from "./lib/dev-cloud-target.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");

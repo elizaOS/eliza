@@ -132,11 +132,11 @@ Follow the pattern in `utils/config.ts`: `getRawSetting(runtime, "ANTHROPIC_X_MO
 - **Multi-account OAuth pool:** The credential store reads the shared `ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core`. When present, token selection and 401/429 failover route through the pool (`utils/credential-store.ts`).
 - **Usage events:** Every successful model call emits `EventType.MODEL_USED` via `emitModelUsageEvent` (`utils/events.ts`), including cache hit/write token counts.
 - **Structured output:** Pass `responseSchema` (JSON Schema object) to any text handler. The plugin builds a native AI SDK `output` object; the response is parsed JSON, not a plain string.
-- See root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
+- See root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

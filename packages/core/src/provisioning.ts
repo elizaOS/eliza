@@ -1,7 +1,7 @@
 /**
  * Agent provisioning: migrations, agent/entity/room setup, embedding dimension.
  * Runs once at deploy/daemon boot; not part of runtime.initialize().
- * Export from node entry point only (not browser/edge).
+ * Exported through the core Node/Bun entry point.
  *
  * WHY this module exists:
  * - Keeps the runtime a lean request handler; heavy one-time setup lives here.
@@ -86,10 +86,8 @@ export async function runPluginMigrations(
 		return;
 	}
 
-	const isProduction =
-		typeof process !== "undefined" && process.env.NODE_ENV === "production";
+	const isProduction = process.env.NODE_ENV === "production";
 	const forceDestructive =
-		typeof process !== "undefined" &&
 		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
 
 	await adapter.runPluginMigrations(pluginsWithSchemas, {

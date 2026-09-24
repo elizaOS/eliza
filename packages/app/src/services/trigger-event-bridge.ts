@@ -30,15 +30,16 @@ import {
   readTriggerConfig,
   triggersFeatureEnabled,
 } from "@elizaos/agent";
-import { isPassiveConnectorSource, type UUID } from "@elizaos/core";
 import {
   type AgentRuntime,
   type EventPayload,
   type EventPayloadMap,
   EventType,
   type IAgentRuntime,
+  isPassiveConnectorSource,
   lifeOpsPassiveConnectorsEnabled,
   type Task,
+  type UUID,
 } from "@elizaos/core";
 
 const DEFAULT_MIN_INTERVAL_MS = 1_000;

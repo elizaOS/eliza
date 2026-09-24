@@ -50,7 +50,7 @@ const searchParamsRef = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("../../../auth/index", () => ({
+vi.mock("../../../login/index", () => ({
   DiscordIcon: ({ size }: { size?: number }) => (
     <svg aria-hidden="true" data-size={size} data-testid="discord-icon" />
   ),

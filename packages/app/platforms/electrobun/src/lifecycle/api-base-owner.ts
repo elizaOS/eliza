@@ -30,17 +30,17 @@
  */
 
 import {
-  normalizeApiBase,
-  pushApiBaseToRenderer,
-  resolveDesktopRuntimeMode,
-  resolveDesktopRuntimeModeSignal,
+	normalizeApiBase,
+	pushApiBaseToRenderer,
+	resolveDesktopRuntimeMode,
+	resolveDesktopRuntimeModeSignal,
 } from "../api-base";
 import { getPersistedDeployment } from "../persisted-deployment";
 import { getStartupTraceConfig } from "../startup-trace";
 
 interface ApiBaseSnapshot {
-  base: string | null;
-  token: string;
+	base: string | null;
+	token: string;
 }
 
 let current: ApiBaseSnapshot = { base: null, token: "" };
@@ -54,54 +54,54 @@ let current: ApiBaseSnapshot = { base: null, token: "" };
 // escapes decode back to the same character — so every legitimate URL/token is
 // unchanged.
 const SCRIPT_UNSAFE_CHARS: Record<string, string> = {
-  "<": "\\u003C",
-  ">": "\\u003E",
-  "\u2028": "\\u2028",
-  "\u2029": "\\u2029",
+	"<": "\\u003C",
+	">": "\\u003E",
+	"\u2028": "\\u2028",
+	"\u2029": "\\u2029",
 };
 
 function safeJsonForHtml(value: unknown): string {
-  return JSON.stringify(value).replace(
-    /[<>\u2028\u2029]/g,
-    (ch) => SCRIPT_UNSAFE_CHARS[ch] ?? ch,
-  );
+	return JSON.stringify(value).replace(
+		/[<>\u2028\u2029]/g,
+		(ch) => SCRIPT_UNSAFE_CHARS[ch] ?? ch,
+	);
 }
 
 function shouldInjectRuntimeChooserTestMode(): boolean {
-  return process.env.ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER === "1";
+	return process.env.ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER === "1";
 }
 
 function shouldInjectDesktopTestBridgeMarker(): boolean {
-  return process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED === "1";
+	return process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED === "1";
 }
 
 function resolveStartupTraceId(): string | null {
-  return getStartupTraceConfig().sessionId;
+	return getStartupTraceConfig().sessionId;
 }
 
 function resolveCurrentExternalApiBase(): string | null {
-  const runtime = resolveDesktopRuntimeMode(process.env);
-  if (runtime.mode === "external" && runtime.externalApi.base) {
-    return runtime.externalApi.base;
-  }
-  const currentBase = normalizeApiBase(current.base ?? undefined);
-  if (!currentBase) return null;
-  try {
-    const parsed = new URL(currentBase);
-    const hostname = parsed.hostname.toLowerCase();
-    if (
-      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-      hostname !== "localhost" &&
-      hostname !== "127.0.0.1" &&
-      hostname !== "::1" &&
-      hostname !== "[::1]"
-    ) {
-      return parsed.origin;
-    }
-  } catch {
-    return null;
-  }
-  return null;
+	const runtime = resolveDesktopRuntimeMode(process.env);
+	if (runtime.mode === "external" && runtime.externalApi.base) {
+		return runtime.externalApi.base;
+	}
+	const currentBase = normalizeApiBase(current.base ?? undefined);
+	if (!currentBase) return null;
+	try {
+		const parsed = new URL(currentBase);
+		const hostname = parsed.hostname.toLowerCase();
+		if (
+			(parsed.protocol === "http:" || parsed.protocol === "https:") &&
+			hostname !== "localhost" &&
+			hostname !== "127.0.0.1" &&
+			hostname !== "::1" &&
+			hostname !== "[::1]"
+		) {
+			return parsed.origin;
+		}
+	} catch {
+		return null;
+	}
+	return null;
 }
 
 /**
@@ -113,12 +113,12 @@ function resolveCurrentExternalApiBase(): string | null {
  * agent supervisor confirms ready, after a runtime-mode change, etc.
  */
 export function setCurrent(base: string | null, token: string = ""): void {
-  current = { base, token };
+	current = { base, token };
 }
 
 /** Read the current snapshot — for tests + diagnostic logging. */
 export function getCurrent(): Readonly<ApiBaseSnapshot> {
-  return current;
+	return current;
 }
 
 /**
@@ -137,58 +137,58 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
  * apiBase and every `/api/*` call returns SPA HTML.
  */
 export function injectIntoHtml(html: string): string {
-  const startupTraceId = resolveStartupTraceId();
-  const startupTraceInject = startupTraceId
-    ? `window.__ELIZA_STARTUP_TRACE_ID__=${safeJsonForHtml(startupTraceId)};`
-    : "";
-  const runtimeChooserTestInject = shouldInjectRuntimeChooserTestMode()
-    ? "window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__=true;"
-    : "";
-  const desktopTestBridgeInject = shouldInjectDesktopTestBridgeMarker()
-    ? "window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__=true;"
-    : "";
-  const runtimeModeSignal = resolveDesktopRuntimeModeSignal(
-    process.env,
-    getPersistedDeployment(),
-  );
-  const runtimeModeInject = runtimeModeSignal
-    ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
-    : "";
-  if (
-    !current.base &&
-    !startupTraceInject &&
-    !runtimeChooserTestInject &&
-    !desktopTestBridgeInject &&
-    !runtimeModeInject
-  )
-    return html;
+	const startupTraceId = resolveStartupTraceId();
+	const startupTraceInject = startupTraceId
+		? `window.__ELIZA_STARTUP_TRACE_ID__=${safeJsonForHtml(startupTraceId)};`
+		: "";
+	const runtimeChooserTestInject = shouldInjectRuntimeChooserTestMode()
+		? "window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__=true;"
+		: "";
+	const desktopTestBridgeInject = shouldInjectDesktopTestBridgeMarker()
+		? "window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__=true;"
+		: "";
+	const runtimeModeSignal = resolveDesktopRuntimeModeSignal(
+		process.env,
+		getPersistedDeployment(),
+	);
+	const runtimeModeInject = runtimeModeSignal
+		? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
+		: "";
+	if (
+		!current.base &&
+		!startupTraceInject &&
+		!runtimeChooserTestInject &&
+		!desktopTestBridgeInject &&
+		!runtimeModeInject
+	)
+		return html;
 
-  let apiBaseInject = "";
-  if (current.base) {
-    const baseLiteral = safeJsonForHtml(current.base);
-    const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
-    const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
-    // Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
-    // before any renderer JS runs, so the renderer's cloud-only branding
-    // (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only
-    // injected when explicitly cloud, so the default desktop/web behavior is
-    // unchanged.
-    const externalApiBase = resolveCurrentExternalApiBase();
-    const localApiBaseInject = `window.__ELIZA_DESKTOP_LOCAL_API_BASE__=${safeJsonForHtml(externalApiBase ? null : current.base)};`;
-    const externalApiBaseInject = externalApiBase
-      ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
-      : "";
-    apiBaseInject = `${externalApiBaseInject}${localApiBaseInject}${bootConfigInject}`;
-  }
+	let apiBaseInject = "";
+	if (current.base) {
+		const baseLiteral = safeJsonForHtml(current.base);
+		const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
+		const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+		// Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
+		// before any renderer JS runs, so the renderer's cloud-only branding
+		// (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only
+		// injected when explicitly cloud, so the default desktop/web behavior is
+		// unchanged.
+		const externalApiBase = resolveCurrentExternalApiBase();
+		const localApiBaseInject = `window.__ELIZA_DESKTOP_LOCAL_API_BASE__=${safeJsonForHtml(externalApiBase ? null : current.base)};`;
+		const externalApiBaseInject = externalApiBase
+			? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
+			: "";
+		apiBaseInject = `${externalApiBaseInject}${localApiBaseInject}${bootConfigInject}`;
+	}
 
-  const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${desktopTestBridgeInject}${runtimeModeInject}${apiBaseInject}</script>`;
-  if (html.includes("</head>")) {
-    return html.replace("</head>", `${script}</head>`);
-  }
-  if (html.includes("<body")) {
-    return html.replace("<body", `${script}<body`);
-  }
-  return script + html;
+	const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${desktopTestBridgeInject}${runtimeModeInject}${apiBaseInject}</script>`;
+	if (html.includes("</head>")) {
+		return html.replace("</head>", `${script}</head>`);
+	}
+	if (html.includes("<body")) {
+		return html.replace("<body", `${script}<body`);
+	}
+	return script + html;
 }
 
 /**
@@ -198,14 +198,14 @@ export function injectIntoHtml(html: string): string {
  * should iterate their window registry and call this per window.
  */
 export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
-  if (!current.base) return;
-  pushApiBaseToRenderer(
-    win,
-    current.base,
-    current.token || undefined,
-    resolveCurrentExternalApiBase(),
-    resolveCurrentExternalApiBase() ? null : current.base,
-  );
+	if (!current.base) return;
+	pushApiBaseToRenderer(
+		win,
+		current.base,
+		current.token || undefined,
+		resolveCurrentExternalApiBase(),
+		resolveCurrentExternalApiBase() ? null : current.base,
+	);
 }
 
 /**
@@ -214,10 +214,10 @@ export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
  * `pushApiBaseToRenderer(win, base, token)` directly.
  */
 export function notifyChange(
-  win: { webview: { rpc?: unknown } },
-  base: string | null,
-  token: string = "",
+	win: { webview: { rpc?: unknown } },
+	base: string | null,
+	token: string = "",
 ): void {
-  setCurrent(base, token);
-  pushToWindow(win);
+	setCurrent(base, token);
+	pushToWindow(win);
 }

@@ -15,16 +15,6 @@ const EXCLUDED_PREFIXES = [
   "docs/",
   "packages/app/",
   "packages/cloud/",
-  "packages/docs/apps/",
-  "packages/docs/build-and-release.md",
-  "packages/docs/connectors/",
-  "packages/docs/dashboard/",
-  "packages/docs/electrobun-startup.md",
-  "packages/docs/plugin-resolution-and-node-path.md",
-  "packages/docs/plugins/",
-  "packages/docs/runtime/",
-  "packages/elizaos/src/commands/",
-  "packages/skills/",
   "packages/training/",
   "packages/ui/src/services/local-inference/",
   "packages/app/test/",
@@ -37,19 +27,21 @@ const EXCLUDED_PREFIXES = [
 const EXCLUDED_NAMES = new Set(["CHANGELOG.md"]);
 
 function trackedMarkdownFiles() {
-  return execFileSync("git", ["ls-files", "*.md"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  })
-    .split("\n")
-    .filter(Boolean)
-    // `git ls-files` includes index entries deleted in the current worktree.
-    // Audit the documentation that would actually ship from this checkout.
-    .filter((file) => existsSync(path.join(ROOT, file)))
-    .filter((file) => !EXCLUDED_NAMES.has(path.basename(file)))
-    .filter(
-      (file) => !EXCLUDED_PREFIXES.some((prefix) => file.startsWith(prefix)),
-    );
+  return (
+    execFileSync("git", ["ls-files", "*.md"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    })
+      .split("\n")
+      .filter(Boolean)
+      // `git ls-files` includes index entries deleted in the current worktree.
+      // Audit the documentation that would actually ship from this checkout.
+      .filter((file) => existsSync(path.join(ROOT, file)))
+      .filter((file) => !EXCLUDED_NAMES.has(path.basename(file)))
+      .filter(
+        (file) => !EXCLUDED_PREFIXES.some((prefix) => file.startsWith(prefix)),
+      )
+  );
 }
 
 function stripAnchor(href) {

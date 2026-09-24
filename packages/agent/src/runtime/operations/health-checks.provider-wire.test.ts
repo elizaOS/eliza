@@ -4,10 +4,10 @@
  * requiring several output tokens must complete without a probe-imposed limit;
  * genuinely incomplete output and rejected credentials still block activation.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import { createServer } from "node:http";
-import { AgentRuntime, ModelType } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { ModelType } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../../../../../plugins/plugin-openai/models/text";
 import { providerSmokeCheck } from "./health-checks";
@@ -96,7 +96,6 @@ it.each(["complete", "length", "unauthorized"] as const)(
       const runtime = createSQLiteTestRuntime({
         character: { name: "HealthWire", bio: ["test"] },
         logLevel: "fatal",
-        
       });
       runtime.registerModel(
         ModelType.TEXT_SMALL,

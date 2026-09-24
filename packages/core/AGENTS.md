@@ -16,7 +16,7 @@ exports or route table. Hosts use shared HTTP contracts and their own registrati
 - `plugins/plugin-sql`: PGlite/PostgreSQL, schemas, migrations and concrete stores.
 - `plugins/plugin-openai`: OpenAI-compatible inference protocol, including configured compatible endpoints.
 - `packages/auth`: provider login/account storage and scoped vault implementations.
-- `packages/retrieval`: optional search algorithms and result reranking, consumed by adapters and hosts; core only delegates search.
+- `src/retrieval/`: storage-neutral keyword, hybrid and message ranking exported from core; adapters retain authorization and scoping before ranking.
 - `packages/agent` and `packages/app`: authentication at transport ingress, HTTP, process configuration, desktop/native policy and application composition.
 - `packages/testing`: private strict inference fixtures and real-runtime test harnesses; never a production dependency.
 
@@ -146,7 +146,7 @@ visible.
   unrelated responsibility.
 - Build output belongs only in package-root `dist/`. Core has no source-generation prebuild; do not recreate generated TypeScript or declarations under `src/`.
 - Repository-wide rules and evidence requirements are inherited from the root
-  [`CLAUDE.md`](../../CLAUDE.md).
+  [`AGENTS.md`](../../AGENTS.md).
 
 ## Package completion evidence
 

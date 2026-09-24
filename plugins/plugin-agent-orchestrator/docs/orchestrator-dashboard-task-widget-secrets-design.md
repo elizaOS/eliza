@@ -17,7 +17,7 @@ goal hook calls out, in priority order:
    actually work and be tested**, with no secret material echoed to chat.
 
 Scope is intentionally narrow. The existing
-[`OrchestratorWorkbench.tsx`](../../plugin-task-coordinator/src/OrchestratorWorkbench.tsx) (4142 LOC) is
+[`OrchestratorWorkbench.tsx`](../src/ui/OrchestratorWorkbench.tsx) (4142 LOC) is
 mature — rail, inspector, action bar, timeline, operator drawer, plan editor.
 We do not redesign it. We add a thin glance strip, fix the gaps, and lock
 behavior in tests.
@@ -267,7 +267,7 @@ All under existing infra (`packages/ui` vitest for components,
      completion, assert status flips to Saved without any token appearing in
      the chat-message stream.
 
-4. **Scenario runner (`packages/scenario-runner`):** add a `task-creation`
+4. **Scenario runner (`packages/testing/scenario-runner`):** add a `task-creation`
    scenario that drives the e2e create → widget → click → workbench path
    against the real orchestrator routes, using the fake-ACP transport already
    used by the orchestrator unit tests. Gated under `test:e2e:manual` because

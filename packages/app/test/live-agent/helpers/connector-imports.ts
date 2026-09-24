@@ -196,19 +196,6 @@ export function resolveNostrPluginImportSpecifier(): string | null {
   });
 }
 
-const MATRIX_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-matrix";
-
-export function resolveMatrixPluginImportSpecifier(): string | null {
-  return resolvePluginImportSpecifier({
-    packageName: MATRIX_PLUGIN_PACKAGE_NAME,
-    localEntries: [
-      "../../plugins/plugin-matrix/dist/index.js",
-      "../plugins/plugin-matrix/dist/index.js",
-      "../plugins/plugin-matrix/dist/index",
-    ],
-  });
-}
-
 const FEISHU_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-feishu";
 
 export function resolveFeishuPluginImportSpecifier(): string | null {

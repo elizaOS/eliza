@@ -10,9 +10,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, test, vi } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
   EventType,
   ModelType,
@@ -52,7 +51,7 @@ function makeRuntime(opts: RuntimeMockOpts): {
       bio: "Exercises recall embedding through the real model router.",
       settings: {},
     },
-    
+
     logLevel: "fatal",
   });
   runtime.registerModel(
@@ -75,7 +74,7 @@ describe("embedRecallQuery — resolve / fail-open", () => {
         bio: "Exercises recall without a registered embedding capability.",
         settings: { ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false },
       },
-      
+
       logLevel: "fatal",
     });
     const useModel = vi.spyOn(runtime, "useModel");

@@ -5,11 +5,7 @@
     {
       "id": "agent-image",
       "workflow": "build-agent-image.yml",
-      "surfaces": [
-        "canonical",
-        "cloud",
-        "docker"
-      ],
+      "surfaces": ["canonical", "cloud", "docker"],
       "shaInput": "source_sha",
       "inputs": {
         "publication_target": "canonical"

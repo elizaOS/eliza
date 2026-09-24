@@ -7,9 +7,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	MAX_SECRET_SWAP_WALK_NODES,
 	SECRET_SWAP_UNBOUNDED,
@@ -30,7 +29,7 @@ function makeRuntime(enabled: boolean): AgentRuntime {
 				ELIZA_SECRET_SWAP_ENABLED: enabled,
 			},
 		} as Character,
-		
+
 		logLevel: "fatal",
 	});
 }

@@ -15,7 +15,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const TURBO_JSON = fileURLToPath(new URL("../../../turbo.json", import.meta.url));
+const TURBO_JSON = fileURLToPath(
+  new URL("../../../turbo.json", import.meta.url),
+);
 const BUILD_STAMP_MJS = fileURLToPath(
   new URL("../../app/scripts/build-stamp.mjs", import.meta.url),
 );

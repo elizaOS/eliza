@@ -23,15 +23,13 @@ for (const [name, source] of [
   ["normal exit", "process.exit(1)"],
   ["signal exit", "process.kill(process.pid, 'SIGTERM')"],
 ]) {
-  test(
-    `static server teardown handles an observed ${name}`,
-    { timeout: 2_000 },
-    async () => {
-      const child = spawn(process.execPath, ["-e", source], { stdio: "ignore" });
-      await once(child, "exit");
-      await stopServer(child);
-    },
-  );
+  test(`static server teardown handles an observed ${name}`, {
+    timeout: 2_000,
+  }, async () => {
+    const child = spawn(process.execPath, ["-e", source], { stdio: "ignore" });
+    await once(child, "exit");
+    await stopServer(child);
+  });
 }
 
 async function unusedPort() {

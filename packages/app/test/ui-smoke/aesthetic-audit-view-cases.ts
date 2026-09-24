@@ -68,7 +68,10 @@ export function buildAuditViewCases(): AuditViewCase[] {
     ...VIEW_CASES.flatMap((view): AuditViewCase[] => {
       const base: AuditViewCase = {
         id: view.id,
-        slug: `plugin-${view.id}-${view.viewType}`,
+        slug:
+          view.id === "task-coordinator"
+            ? "plugin-agent-orchestrator-tasks-gui"
+            : `plugin-${view.id}-${view.viewType}`,
         path: view.path,
         viewType: view.viewType,
         kind: "plugin",

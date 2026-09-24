@@ -1,7 +1,7 @@
 # certification-vast — dispatches an automated full-tier certification run on
 # a rented vast.ai GPU (#14548, epic #14541). Thin caller of
 # packages/scripts/vast/run-certification.mjs: search offers → create from the
-# prebuilt certification image → onstart runs the packages/evidence chain
+# prebuilt certification image → onstart runs the packages/testing chain
 # (bundle:create → certify:rollup → certify:sign) → poll → pull the signed
 # certification.json → DESTROY the instance in the script's own finally.
 #

@@ -172,7 +172,7 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `NotificationStackClearButton` in `packages/ui/src/components/shell/NotificationsHomeCenter.tsx:664` | - | `Button`, `ClearConfirmationContent` |
 | canonical-wrapper | lab-only | `ActionButton` in `packages/ui/stories/src/lab/lab-ui.tsx:70` | `packages/ui/src/components/ui/button.tsx` | `Button` |
 |  |  | Design-lab fixture is not shipped product UI. |  |  |
-| canonical-wrapper | not-reviewed | `RecoveryActionButton` in `plugins/plugin-task-coordinator/src/orchestrator-task-inspector.tsx:1102` | - | `Button` |
+| canonical-wrapper | not-reviewed | `RecoveryActionButton` in `plugins/plugin-agent-orchestrator/src/ui/orchestrator-task-inspector.tsx:1102` | - | `Button` |
 | renderer-adapter | not-reviewed | `Button` in `packages/ui/src/spatial/primitives.tsx:578` | - | `UiButton` |
 
 ### banner
@@ -216,8 +216,8 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `ProtectionCard` in `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx:281` | - | `AlertCircle`, `Card`, `CheckCircle2`, `div`, `p`, `section` |
 | canonical-wrapper | not-reviewed | `AppBlockerSettingsCard` in `plugins/plugin-personal-assistant/src/components/AppBlockerSettingsCard.tsx:110` | - | `AppBlockerStatusIcon`, `Button`, `CheckCircle2`, `Checkbox`, `Clock3`, `Input`, `ListChecks`, `Loader2`, `RefreshCw`, `Search`, `ShieldBan`, `Smartphone`, `Square`, `Timer`, `div`, `label`, `span` |
 | canonical-wrapper | not-reviewed | `WebsiteBlockerSettingsCard` in `plugins/plugin-personal-assistant/src/components/WebsiteBlockerSettingsCard.tsx:80` | - | `Button`, `CheckCircle2`, `Monitor`, `Settings`, `ShieldBan`, `div`, `span` |
-| canonical-wrapper | not-reviewed | `GitHubConnectionCard` in `plugins/plugin-task-coordinator/src/GitHubConnectionCard.tsx:80` | - | `Button`, `CheckCircle2`, `ExternalLink`, `GitPullRequest`, `LogIn`, `SettingsControls.Input`, `Unplug`, `div`, `p`, `span` |
-| canonical-wrapper | not-reviewed | `TaskCard` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:239` | - | `Button`, `GitBranch`, `TaskStatusChip`, `TaskStatusMedallion`, `span` |
+| canonical-wrapper | not-reviewed | `GitHubConnectionCard` in `plugins/plugin-agent-orchestrator/src/ui/GitHubConnectionCard.tsx:80` | - | `Button`, `CheckCircle2`, `ExternalLink`, `GitPullRequest`, `LogIn`, `SettingsControls.Input`, `Unplug`, `div`, `p`, `span` |
+| canonical-wrapper | not-reviewed | `TaskCard` in `plugins/plugin-agent-orchestrator/src/ui/TaskCardList.tsx:239` | - | `Button`, `GitBranch`, `TaskStatusChip`, `TaskStatusMedallion`, `span` |
 | molecular-candidate | not-reviewed | `PromptCardGrid` in `packages/ui/src/cloud-ui/components/brand/prompt-card.tsx:39` | - | `PromptCard`, `div` |
 | molecular-candidate | not-reviewed | `DashboardActionCards` in `packages/ui/src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx:72` | - | `ArrowRight`, `BookOpen`, `Bot`, `Code`, `CreditCard`, `KeyRound`, `Link`, `Rocket`, `Server`, `Store`, `Wallet`, `div`, `h3`, `span` |
 | molecular-candidate | not-reviewed | `DashboardDataListCard` in `packages/ui/src/cloud-ui/components/data-list/dashboard-data-list.tsx:84` | - | `div` |
@@ -287,7 +287,7 @@ No named candidates.
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `PhoneNumberInput` in `packages/homepage/src/components/login/phone-number-input.tsx:98` | - | `ChevronDown`, `CountryFlag`, `Input`, `NativeSelect`, `div`, `label`, `option` |
 | canonical-wrapper | not-reviewed | `AgentInput` in `packages/ui/src/agent-surface/components.tsx:68` | - | `Input` |
-| canonical-wrapper | not-reviewed | `TaskSearchInput` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:182` | - | `Card`, `Input`, `Search` |
+| canonical-wrapper | not-reviewed | `TaskSearchInput` in `plugins/plugin-agent-orchestrator/src/ui/TaskCardList.tsx:182` | - | `Card`, `Input`, `Search` |
 
 ### marker
 
@@ -323,7 +323,7 @@ No named candidates.
 | Classification | Decision | Definition | Canonical owner | Rendered tags |
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `ApiParameterSelect` in `packages/ui/src/cloud-ui/components/docs/api-parameter-select.tsx:29` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` |
-| canonical-wrapper | not-reviewed | `FilterSelect` in `plugins/plugin-task-coordinator/src/orchestrator-workbench-list.tsx:24` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `TaskStatusChip`, `span` |
+| canonical-wrapper | not-reviewed | `FilterSelect` in `plugins/plugin-agent-orchestrator/src/ui/orchestrator-workbench-list.tsx:24` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `TaskStatusChip`, `span` |
 
 ### separator
 
@@ -382,7 +382,7 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `Tabs` in `packages/ui/src/cloud-ui/components/docs/mdx-components.tsx:70` | - | `TabsContent`, `TabsList`, `TabsTrigger`, `UiTabs`, `div` |
 | canonical-wrapper | not-reviewed | `AppDetailsTabs` in `packages/ui/src/cloud/applications/components/app-details-tabs.tsx:48` | - | `AppAnalytics`, `AppDomains`, `AppEarningsDashboard`, `AppFrontendHosting`, `AppMonetizationSettings`, `AppOverview`, `AppPromote`, `AppSettings`, `AppUsers`, `Button`, `Icon`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `BrowserTabSwitcher` in `packages/ui/src/components/pages/BrowserTabSwitcher.tsx:292` | - | `BrowserTabCard`, `Button`, `Dialog`, `DialogClose`, `DialogContent`, `DialogHeader`, `DialogTitle`, `Plus`, `X`, `div`, `h3`, `p`, `section`, `span` |
-| canonical-wrapper | not-reviewed | `AgentTabsSection` in `plugins/plugin-task-coordinator/src/AgentTabsSection.tsx:38` | - | `Button`, `ExternalLink`, `InstallStateIcon`, `KeyRound`, `Loader2`, `RotateCw`, `SettingsControls.MutedText`, `SettingsControls.SegmentedGroup`, `a`, `div`, `span` |
+| canonical-wrapper | not-reviewed | `AgentTabsSection` in `plugins/plugin-agent-orchestrator/src/ui/AgentTabsSection.tsx:38` | - | `Button`, `ExternalLink`, `InstallStateIcon`, `KeyRound`, `Loader2`, `RotateCw`, `SettingsControls.MutedText`, `SettingsControls.SegmentedGroup`, `a`, `div`, `span` |
 | parallel-primitive | compatibility-adapter | `BrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:18` | `packages/ui/src/components/ui/tabs.tsx` |  |
 |  |  | Legacy Cloud export now aliases canonical Tabs while callers migrate to the supported atom export. |  |  |
 

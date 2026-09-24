@@ -90,11 +90,11 @@ Edit `WEB_SEARCH_CATEGORY.filters` in `src/index.ts`. Filter names must match ke
   account access, writes, and arbitrary provider URLs.
 - **`getPageInfo` uses a raw `fetch` + regex.** It is not Tavily-backed — it downloads the HTML directly and extracts `<title>` and `<meta name="description">`. `metadata`, `images`, and `links` fields are always empty.
 - **`@tavily/core` is the only external runtime dep** (`^0.7.0`). Keep it pinned close to avoid API contract drift.
-- For repo-wide conventions (logger-only, ESM modules, naming, architecture rules) see the root `CLAUDE.md`.
+- For repo-wide conventions (logger-only, ESM modules, naming, architecture rules) see the root `AGENTS.md`.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

@@ -5,8 +5,8 @@
  * calendar. Triage is exactly where injected content gets read at scale, so
  * inbound message text must be classified, never obeyed.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 const INBOUND_BURST =

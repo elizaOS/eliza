@@ -51,12 +51,11 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
 
 export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app",
-  "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/plugin-form",
   "@elizaos/plugin-knowledge",
   "@elizaos/plugin-screenshare",
-  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-agent-orchestrator",
   // Shared wallet/inventory system package — provides components used by the
   // app shell, not a standalone installable app.
   "@elizaos/plugin-wallet",

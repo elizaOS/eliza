@@ -1,6 +1,6 @@
 /**
  * Runs the agent Vitest suite in bounded parallel, process-isolated batches.
- * The file selection mirrors vitest.config.ts while one-file batches prevent
+ * Exports the default discovery contract consumed by vitest.config.ts; batches prevent
  * leaked module state and open handles from crossing test boundaries.
  * Positional arguments select exact eligible files; interruption stops queued work.
  * Requested JUnit evidence includes every batch and is reconciled before publication.
@@ -27,17 +27,30 @@ const packageRoot = path.resolve(
 );
 const roots = ["src", "test", "scripts"];
 
-const excludedPatterns = [
-  /\.e2e\.test\.[cm]?tsx?$/,
-  /\.integration\.test\.[cm]?tsx?$/,
-  /\.live\.test\.[cm]?tsx?$/,
-  /\.live\.e2e\.test\.[cm]?tsx?$/,
-  /\.real\.test\.[cm]?tsx?$/,
-  /-real\.test\.[cm]?tsx?$/,
-  /\.cloud-smoke\.test\.[cm]?tsx?$/,
-  /\.provider-smoke\.test\.[cm]?tsx?$/,
-  /test\/crash-restart-supervisor\.test\.[cm]?tsx?$/,
+export const agentTestInclude = roots.map(
+  (root) => `${root}/**/*.test.{ts,tsx}`,
+);
+export const agentTestExclude = [
+  "**/dist/**",
+  "**/node_modules/**",
+  "**/*.e2e.test.{ts,tsx}",
+  "**/*.integration.test.{ts,tsx}",
+  "**/*.live.test.{ts,tsx}",
+  "**/*.real.test.{ts,tsx}",
+  "**/*-real.test.{ts,tsx}",
+  "**/*.cloud-smoke.test.{ts,tsx}",
+  "**/*.provider-smoke.test.{ts,tsx}",
+  "test/crash-restart-supervisor.test.ts",
 ];
+
+export function isDefaultAgentTest(relativePath) {
+  return (
+    agentTestInclude.some((pattern) =>
+      path.matchesGlob(relativePath, pattern),
+    ) &&
+    !agentTestExclude.some((pattern) => path.matchesGlob(relativePath, pattern))
+  );
+}
 
 function walk(relativeDir, out) {
   const absoluteDir = path.join(packageRoot, relativeDir);
@@ -54,10 +67,7 @@ function walk(relativeDir, out) {
       continue;
     }
     if (!stat.isFile()) continue;
-    if (!/\.test\.[cm]?tsx?$/.test(entry)) continue;
-    if (excludedPatterns.some((pattern) => pattern.test(relativePath))) {
-      continue;
-    }
+    if (!isDefaultAgentTest(relativePath)) continue;
     out.push(relativePath);
   }
 }

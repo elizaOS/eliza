@@ -1,0 +1,68 @@
+{
+  "$schema": "Pinned SHA-256 hashes for vendor downloads. Updated weekly by .github/workflows/update-vendor-checksums.yml. Mismatches block the install.",
+  "platform-tools": {
+    "darwin": {
+      "url": "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip",
+      "sha256": "ee39ad5967e95c2a07f04dbcbde96b1a0c916ba376096db5d2f498b7727a5d1d",
+      "size": null,
+      "updated": null
+    },
+    "linux": {
+      "url": "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
+      "sha256": "d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1",
+      "size": null,
+      "updated": null
+    },
+    "win32": {
+      "url": "https://dl.google.com/android/repository/platform-tools-latest-windows.zip",
+      "sha256": "45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e022bbc1a99",
+      "size": null,
+      "updated": null
+    }
+  },
+  "sideloader": {
+    "repo": "https://github.com/Dadoum/Sideloader",
+    "note": "Exact CLI archives from prerelease 1.0-pre4, reviewed and pinned by asset name, byte size, and SHA-256. The installer verifies the archive before extracting the named binary and refuses unsupported targets.",
+    "pinned": {
+      "version": "1.0-pre4",
+      "targets": {
+        "darwin-arm64": {
+          "archive": "sideloader-cli-arm64-apple-macos.zip",
+          "asset": "https://github.com/Dadoum/Sideloader/releases/download/1.0-pre4/sideloader-cli-arm64-apple-macos.zip",
+          "binary": "sideloader-cli-arm64-apple-macos",
+          "sha256": "7cc8e17dec05a89a5a1d982d401357151953c47f907589eebd8f5102357b9b90",
+          "size": 2893573
+        },
+        "darwin-x64": {
+          "archive": "sideloader-cli-x86_64-apple-darwin.zip",
+          "asset": "https://github.com/Dadoum/Sideloader/releases/download/1.0-pre4/sideloader-cli-x86_64-apple-darwin.zip",
+          "binary": "sideloader-cli-x86_64-apple-darwin",
+          "sha256": "23b38b94b579ec4321d77189a46490098901cc01db8d84219c11ffabb0daba02",
+          "size": 3158997
+        },
+        "linux-arm64": {
+          "archive": "sideloader-cli-aarch64-linux-gnu.zip",
+          "asset": "https://github.com/Dadoum/Sideloader/releases/download/1.0-pre4/sideloader-cli-aarch64-linux-gnu.zip",
+          "binary": "sideloader-cli-aarch64-linux-gnu",
+          "sha256": "3bd61364aee655a44a99837e2f8046d4d9f2455b401a8c32aa909b5de9e6de03",
+          "size": 9211257
+        },
+        "linux-x64": {
+          "archive": "sideloader-cli-x86_64-linux-gnu.zip",
+          "asset": "https://github.com/Dadoum/Sideloader/releases/download/1.0-pre4/sideloader-cli-x86_64-linux-gnu.zip",
+          "binary": "sideloader-cli-x86_64-linux-gnu",
+          "sha256": "e193c02d661a5d797af4b44186c8655d078a0bfde419bdeab934c513d1a7b737",
+          "size": 9443457
+        },
+        "win32-x64": {
+          "archive": "sideloader-cli-x86_64-windows-msvc.zip",
+          "asset": "https://github.com/Dadoum/Sideloader/releases/download/1.0-pre4/sideloader-cli-x86_64-windows-msvc.zip",
+          "binary": "sideloader-cli-x86_64-windows-msvc.exe",
+          "sha256": "c60b7d92c6a5dcc312cb6eb2fe1a855326722aa0b3aebf6827689241dbc0f5a9",
+          "size": 5642329
+        }
+      }
+    }
+  },
+  "last-updated": "2026-08-23T00:05:23Z"
+}

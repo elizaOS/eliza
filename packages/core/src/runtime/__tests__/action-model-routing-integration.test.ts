@@ -7,9 +7,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	type Action,
 	type Character,
@@ -43,7 +42,7 @@ describe("action model routing — runtime integration", () => {
 	beforeEach(() => {
 		runtime = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			
+
 			logLevel: "fatal",
 		});
 		runtime.composeState = async () => ({ values: {}, data: {}, text: "" });
@@ -168,7 +167,7 @@ describe("action model routing — runtime integration", () => {
 		// Re-create runtime with NO local handler.
 		const runtime2 = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			
+
 			logLevel: "fatal",
 		});
 		runtime2.composeState = async () => ({ values: {}, data: {}, text: "" });
@@ -207,7 +206,7 @@ describe("action model routing — runtime integration", () => {
 	it("fallback: handler error escalates one step up the chain", async () => {
 		const runtime3 = createSQLiteTestRuntime({
 			character: makeCharacter(),
-			
+
 			logLevel: "fatal",
 		});
 		runtime3.composeState = async () => ({ values: {}, data: {}, text: "" });

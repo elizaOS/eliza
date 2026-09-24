@@ -7,15 +7,14 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(): AgentRuntime {
 	return createSQLiteTestRuntime({
 		character: { name: "FinalWireBudget", bio: "test" } as Character,
-		
+
 		logLevel: "fatal",
 	});
 }

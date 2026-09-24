@@ -1,0 +1,264 @@
+"""VisualWebBench benchmark runner."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import time
+from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from benchmarks.visualwebbench.agent import OracleVisualWebBenchAgent
+from benchmarks.visualwebbench.dataset import VisualWebBenchDataset
+from benchmarks.visualwebbench.evaluator import VisualWebBenchEvaluator
+from benchmarks.visualwebbench.types import (
+    VisualWebBenchConfig,
+    VisualWebBenchPrediction,
+    VisualWebBenchReport,
+    VisualWebBenchResult,
+    VisualWebBenchTask,
+)
+
+logger = logging.getLogger(__name__)
+
+_ELIZA_BRIDGE_PROVIDERS = {"eliza", "eliza-bridge", "eliza-ts"}
+_ELIZA_APP_HARNESS_PROVIDERS = {
+    "app-harness",
+    "eliza-app",
+    "eliza-app-harness",
+    "eliza-browser-app",
+}
+_LOCAL_ELIZA_PROVIDERS = {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}
+
+
+class VisualWebBenchRunner:
+    """Run VisualWebBench tasks and write benchmark artifacts."""
+
+    def __init__(self, config: VisualWebBenchConfig) -> None:
+        self.config = config
+        self.dataset = VisualWebBenchDataset(
+            fixture_path=config.fixture_path,
+            hf_repo=config.hf_repo,
+            split=config.split,
+            task_types=config.task_types,
+            image_cache_dir=config.image_cache_dir,
+            cache_images_to_disk=config.cache_images_to_disk,
+        )
+        self.evaluator = VisualWebBenchEvaluator(
+            bbox_iou_threshold=config.bbox_iou_threshold,
+        )
+
+    async def run_benchmark(self) -> VisualWebBenchReport:
+        await self.dataset.load(
+            use_huggingface=self.config.use_huggingface,
+            use_sample_tasks=self.config.use_sample_tasks,
+            max_tasks=self.config.max_tasks,
+            include_edge_scenarios=self.config.include_edge_scenarios,
+        )
+        tasks = self.dataset.get_tasks(self.config.max_tasks)
+        if not tasks:
+            raise RuntimeError("No VisualWebBench tasks loaded")
+
+        agent = self._create_agent()
+        await agent.initialize()
+        try:
+            results: list[VisualWebBenchResult] = []
+            for task in tasks:
+                result = await self._run_task(agent, task)
+                results.append(result)
+                logger.info(
+                    "VisualWebBench %s/%s score=%.3f",
+                    task.task_type.value,
+                    task.id,
+                    result.score,
+                )
+        finally:
+            await agent.close()
+
+        report = self._generate_report(results)
+        self._save_results(report)
+        return report
+
+    def _create_agent(self) -> Any:
+        """Pick an agent. Oracle only runs when --mock is set."""
+        if self.config.mock:
+            return OracleVisualWebBenchAgent()
+        provider = (self.config.provider or "eliza").strip().lower()
+        if provider in _LOCAL_ELIZA_PROVIDERS:
+            from eliza_adapter.visualwebbench import LocalElizaVisualWebBenchAgent
+
+            return LocalElizaVisualWebBenchAgent(self.config)
+        if provider in _ELIZA_BRIDGE_PROVIDERS:
+            from eliza_adapter.visualwebbench import ElizaVisualWebBenchAgent
+
+            return ElizaVisualWebBenchAgent(self.config)
+        if provider in _ELIZA_APP_HARNESS_PROVIDERS:
+            from eliza_adapter.visualwebbench import ElizaVisualWebBenchAppHarnessAgent
+
+            return ElizaVisualWebBenchAppHarnessAgent(self.config)
+        raise ValueError(
+            "VisualWebBench requires --mock for the offline oracle, "
+            "--provider eliza for the benchmark API bridge, or "
+            f"--provider eliza-app-harness for the browser app harness; got {provider!r}"
+        )
+
+    async def _run_task(self, agent: Any, task: VisualWebBenchTask) -> VisualWebBenchResult:
+        started = time.time()
+        timeout_ms = getattr(agent, "task_timeout_ms", self.config.timeout_ms)
+        try:
+            prediction = await asyncio.wait_for(
+                agent.predict(task),
+                timeout=timeout_ms / 1000,
+            )
+        except asyncio.TimeoutError:
+            prediction = VisualWebBenchPrediction(
+                task_id=task.id,
+                task_type=task.task_type,
+                error="Task timed out",
+                latency_ms=(time.time() - started) * 1000,
+            )
+        except Exception as exc:
+            logger.exception("VisualWebBench task failed: %s", task.id)
+            prediction = VisualWebBenchPrediction(
+                task_id=task.id,
+                task_type=task.task_type,
+                error=str(exc),
+                latency_ms=(time.time() - started) * 1000,
+            )
+        return self.evaluator.evaluate(task, prediction)
+
+    def _generate_report(self, results: list[VisualWebBenchResult]) -> VisualWebBenchReport:
+        metrics = self.evaluator.aggregate(results)
+        by_task_type: dict[str, dict[str, float]] = {}
+        for task_type in sorted({r.task_type.value for r in results}):
+            subset = [r for r in results if r.task_type.value == task_type]
+            agg: dict[str, float] = {
+                "score": sum(r.score for r in subset) / len(subset),
+                "total_tasks": float(len(subset)),
+            }
+            # Per-metric averages — ROUGE-1/2/L, F1, accuracy as applicable.
+            metric_keys: set[str] = set()
+            for r in subset:
+                metric_keys.update(r.metrics.keys())
+            for key in sorted(metric_keys):
+                vals = [r.metrics.get(key, 0.0) for r in subset]
+                agg[key] = sum(vals) / len(vals) if vals else 0.0
+            by_task_type[task_type] = agg
+
+        return VisualWebBenchReport(
+            total_tasks=len(results),
+            overall_accuracy=metrics["overall_accuracy"],
+            by_task_type=by_task_type,
+            average_latency_ms=metrics["average_latency_ms"],
+            results=results,
+            summary={
+                "timestamp": datetime.now().isoformat(),
+                "mode": _mode_name(self.config),
+                "source": "huggingface" if self.config.use_huggingface else "sample-tasks",
+                "hf_repo": self.config.hf_repo,
+                "split": self.config.split,
+                "model": self.config.model or "",
+                "provider": self.config.provider or "",
+                "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
+                "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
+                "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
+                "agent_selection_strategy": os.environ.get(
+                    "ELIZA_AGENT_SELECTION_STRATEGY", ""
+                ),
+                "rouge_score": metrics["rouge_score"],
+                "f1_score": metrics["f1_score"],
+                "choice_accuracy": metrics["choice_accuracy"],
+            },
+        )
+
+    def _save_results(self, report: VisualWebBenchReport) -> None:
+        out_dir = Path(self.config.output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        results_path = out_dir / "visualwebbench-results.json"
+        with results_path.open("w", encoding="utf-8") as f:
+            json.dump(self._report_to_dict(report), f, indent=2, default=str)
+
+        summary_path = out_dir / "summary.md"
+        with summary_path.open("w", encoding="utf-8") as f:
+            f.write(self._markdown_summary(report))
+
+        if self.config.save_traces:
+            trace_dir = out_dir / "traces"
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            for result in report.results:
+                trace_path = trace_dir / f"{_safe_name(result.task_id)}.json"
+                with trace_path.open("w", encoding="utf-8") as f:
+                    json.dump(_result_to_dict(result), f, indent=2, default=str)
+
+        logger.info("VisualWebBench results saved to %s", out_dir)
+
+    def _report_to_dict(self, report: VisualWebBenchReport) -> dict[str, Any]:
+        return {
+            "benchmark": "visualwebbench",
+            "total_tasks": report.total_tasks,
+            "overall_accuracy": report.overall_accuracy,
+            "average_latency_ms": report.average_latency_ms,
+            "by_task_type": report.by_task_type,
+            "summary": report.summary,
+            "results": [_result_to_dict(r) for r in report.results],
+        }
+
+    def _markdown_summary(self, report: VisualWebBenchReport) -> str:
+        summary = report.summary
+        lines = [
+            "# VisualWebBench Results",
+            "",
+            "| Metric | Value |",
+            "|---|---:|",
+            f"| Mode | {summary.get('mode', 'unknown')} |",
+            f"| Source | {summary.get('source', 'unknown')} |",
+            f"| Total Tasks | {report.total_tasks} |",
+            f"| Overall Score | {report.overall_accuracy * 100:.1f} |",
+            f"| ROUGE mean (rouge subtasks) | {float(summary.get('rouge_score', 0)) * 100:.1f} |",
+            f"| F1 (webqa) | {float(summary.get('f1_score', 0)) * 100:.1f} |",
+            f"| Choice Accuracy (MCQ subtasks) | {float(summary.get('choice_accuracy', 0)) * 100:.1f} |",
+            f"| Avg Latency (ms) | {report.average_latency_ms:.0f} |",
+            "",
+            "## By Subtask",
+            "",
+            "| Subtask | Tasks | Score | Detail |",
+            "|---|---:|---:|---|",
+        ]
+        for task_type, agg in sorted(report.by_task_type.items()):
+            detail_parts = []
+            for k, v in agg.items():
+                if k in {"score", "total_tasks"}:
+                    continue
+                detail_parts.append(f"{k}={v:.1f}")
+            detail = ", ".join(detail_parts) if detail_parts else "-"
+            lines.append(
+                f"| {task_type} | {int(agg.get('total_tasks', 0))} | "
+                f"{agg.get('score', 0) * 100:.1f} | {detail} |"
+            )
+        lines.append("")
+        return "\n".join(lines)
+
+
+def _result_to_dict(result: VisualWebBenchResult) -> dict[str, Any]:
+    data = asdict(result)
+    data["task_type"] = result.task_type.value
+    data["prediction"]["task_type"] = result.prediction.task_type.value
+    return data
+
+
+def _safe_name(value: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in value)
+
+
+def _mode_name(config: VisualWebBenchConfig) -> str:
+    if config.mock:
+        return "mock-oracle"
+    provider = (config.provider or "eliza").strip().lower()
+    if provider in _ELIZA_APP_HARNESS_PROVIDERS:
+        return "eliza-app-harness"
+    return "eliza-bridge"

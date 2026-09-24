@@ -347,7 +347,7 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Launch checklist", "Follow up"],
     requireAny: ["Cloud agent", "demo recording"],
   }),
-  "plugin-task-coordinator-gui": expected({
+  "plugin-agent-orchestrator-tasks-gui": expected({
     requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
   }),
   "plugin-orchestrator-gui": expected({

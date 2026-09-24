@@ -98,7 +98,7 @@ async function createHarness(opts: HarnessOptions = {}) {
     character: createCharacter({
       name: `DeliverThenPersist${v4().slice(0, 8)}`,
     }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

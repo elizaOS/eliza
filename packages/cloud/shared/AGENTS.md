@@ -115,11 +115,11 @@ the stored Item environment's explicit secret is configured.
 - **Migrations are append-only.** Never edit an applied migration. No `CREATE INDEX CONCURRENTLY` (runs in a transaction). Use `IF NOT EXISTS` / `IF EXISTS`. Keep migrations small and targeted (<100 lines): add objects, backfill, and drop in separate migrations — no omnibus recreate-the-schema files (they lock active prod tables). Never `db:push`.
 - **Transitive type errors:** TypeScript follows workspace source aliases. Trace failures to their owning package and report unresolved failures; filtered output is not a passing package gate.
 - **win32 PGlite quarantine (#15785):** on Windows the `test` entry (`scripts/run-bun-tests.mjs`) runs the PGlite tenant-db placement-claimer and authenticated native pairing suites in their own child `bun test` process and retries them (bounded) ONLY on a Bun native-crash signature (`panic(main thread): Illegal instruction`, exit 3), capturing the panic to `.tmp/bun-pglite-crash/` for the upstream Bun report (`scripts/bun-pglite-crash-upstream-report.md`). Genuine test failures never retry; non-win32 behavior is a plain `bun test --isolate`. Renamed a suite? Update `DEFAULT_QUARANTINED_SUITES` in `scripts/run-bun-tests-helpers.mjs` (the run fails loudly until you do).
-- **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `CLAUDE.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.
+- **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `AGENTS.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

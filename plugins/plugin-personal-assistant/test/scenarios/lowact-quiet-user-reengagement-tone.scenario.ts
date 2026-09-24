@@ -17,7 +17,7 @@
  * OUTCOME (not echo): the judge grades the load-bearing behavior — the reply is
  * warm, guilt-free, and does not dump the backlog or demand a response.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

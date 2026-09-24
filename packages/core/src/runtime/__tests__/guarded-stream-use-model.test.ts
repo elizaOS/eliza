@@ -12,9 +12,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
@@ -39,7 +38,7 @@ function makeRuntime(): AgentRuntime {
 				ELIZA_PII_SWAP_ENABLED: true,
 			},
 		} as Character,
-		
+
 		logLevel: "fatal",
 	});
 }
@@ -230,7 +229,7 @@ describe("AgentRuntime.useModel streaming guard — incremental egress (#15256)"
 					ELIZA_PII_SWAP_ENABLED: false,
 				},
 			} as Character,
-			
+
 			logLevel: "fatal",
 		});
 		const reply = "The quick brown fox jumps over the lazy dog every morning.";

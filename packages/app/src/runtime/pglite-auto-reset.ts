@@ -5,8 +5,7 @@
  * `createDatabaseAdapter()` rebuilds a fresh PGlite manager from clean state.
  */
 
-import { formatError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { formatError, logger } from "@elizaos/core";
 import { closePgliteSingleton } from "@elizaos/plugin-sql";
 
 /**

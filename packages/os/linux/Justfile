@@ -1,0 +1,69 @@
+# elizaOS Linux canonical Debian image recipes.
+
+default:
+    @just --list
+
+setup:
+    @command -v docker >/dev/null 2>&1 || { echo "Install Docker first." >&2; exit 1; }
+    @docker info >/dev/null 2>&1 || { echo "Docker is not running or unavailable." >&2; exit 1; }
+    @echo "Docker OK"
+
+# Validate or explicitly build the pinned elizaOS/eliza Linux artifact. Image
+# builds consume this output read-only; application source is never copied into
+# the OS repository.
+elizaos-app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eliza_root="${ELIZAOS_ELIZA_ROOT:-$(git rev-parse --show-toplevel)/.eliza-source}"
+    app_out="${ELIZAOS_APP_ARTIFACT:-${eliza_root}/packages/app-core/platforms/electrobun/build/dev-linux-x64/Eliza-dev}"
+    if [ ! -x "${app_out}/bin/launcher" ]; then
+        [ "${ELIZAOS_BUILD_APP:-0}" = 1 ] || {
+            echo "Missing packaged app: ${app_out}/bin/launcher" >&2
+            echo "Set ELIZAOS_APP_ARTIFACT or ELIZAOS_BUILD_APP=1." >&2
+            exit 66
+        }
+        [ "$(uname -s):$(uname -m)" = "Linux:x86_64" ] || {
+            echo "ELIZAOS_BUILD_APP=1 requires Linux x86_64." >&2
+            exit 66
+        }
+        test -f "${eliza_root}/packages/app-core/scripts/desktop-build.mjs"
+        (cd "${eliza_root}" && bun install --frozen-lockfile)
+        (cd "${eliza_root}" && BUILD_ENV=dev bun packages/app-core/scripts/desktop-build.mjs build --env dev)
+    fi
+    test -x "${app_out}/bin/launcher"
+    test -d "${app_out}/Resources/app/eliza-dist/node_modules"
+    test -s "${app_out}/Resources/app/eliza-dist/local-inference/lib/libelizainference.so"
+    echo "Verified packaged app: ${app_out}"
+
+build: elizaos-app
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eliza_root="${ELIZAOS_ELIZA_ROOT:-$(git rev-parse --show-toplevel)/.eliza-source}"
+    app_out="${ELIZAOS_APP_ARTIFACT:-${eliza_root}/packages/app-core/platforms/electrobun/build/dev-linux-x64/Eliza-dev}"
+    make -C elizaos build \
+        ARCH="${ELIZAOS_ARCH:-amd64}" \
+        PROFILE="${ELIZAOS_PROFILE:-gui}" \
+        PACKAGED_APP="${app_out}"
+
+config:
+    make -C elizaos lint
+
+static-smoke:
+    make -C elizaos lint
+
+lint:
+    make -C elizaos lint
+
+boot firmware="uefi":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    arch="${ELIZAOS_ARCH:-amd64}"
+    iso="${ELIZAOS_ISO:-$(ls -t elizaos/out/elizaos-linux-${arch}-*.iso 2>/dev/null | head -n1 || true)}"
+    test -n "${iso}" || { echo "No ${arch} ISO found; set ELIZAOS_ISO." >&2; exit 1; }
+    elizaos/scripts/boot-qemu.sh --arch "${arch}" --firmware "{{ firmware }}" "${iso}"
+
+test:
+    make -C elizaos lint
+
+clean:
+    node ../../scripts/rm-path-recursive.mjs elizaos/out elizaos/cache elizaos/chroot elizaos/binary

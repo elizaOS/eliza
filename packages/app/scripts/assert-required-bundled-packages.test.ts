@@ -241,30 +241,6 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).not.toThrow();
   });
 
-  it("keeps bundled skill markdown payloads", () => {
-    const packageRoot = path.join(tmpDir, "skills-package");
-    const skillDir = path.join(packageRoot, "skills", "example-skill");
-    const referenceDir = path.join(skillDir, "references");
-    mkdirSync(referenceDir, { recursive: true });
-
-    const skillFile = path.join(skillDir, "SKILL.md");
-    const referenceFile = path.join(referenceDir, "usage.md");
-    const packageReadme = path.join(packageRoot, "README.md");
-    writeFileSync(skillFile, "# Example\n");
-    writeFileSync(referenceFile, "# Usage\n");
-    writeFileSync(packageReadme, "# Package readme\n");
-
-    expect(
-      shouldCopyPackageEntry(skillFile, "@elizaos/skills", packageRoot),
-    ).toBe(true);
-    expect(
-      shouldCopyPackageEntry(referenceFile, "@elizaos/skills", packageRoot),
-    ).toBe(true);
-    expect(
-      shouldCopyPackageEntry(packageReadme, "@elizaos/skills", packageRoot),
-    ).toBe(false);
-  });
-
   it("keeps documented runtime assets for packages that load them dynamically", () => {
     const googleapisRoot = path.join(tmpDir, "googleapis");
     const googleDocsApiFile = path.join(

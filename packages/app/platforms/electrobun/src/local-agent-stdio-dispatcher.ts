@@ -16,8 +16,8 @@
  */
 
 import type {
-  LocalAgentDispatcher,
-  NormalizedLocalAgentRequest,
+	LocalAgentDispatcher,
+	NormalizedLocalAgentRequest,
 } from "./local-agent-request";
 import type { LocalAgentRequestResult } from "./rpc-schema";
 
@@ -28,30 +28,30 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Sink for outbound request frames — the child process's stdin writer. */
 export interface StdioFrameWriter {
-  write(line: string): void;
+	write(line: string): void;
 }
 
 interface PendingRequest {
-  resolve: (result: LocalAgentRequestResult) => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+	resolve: (result: LocalAgentRequestResult) => void;
+	reject: (error: Error) => void;
+	timer: ReturnType<typeof setTimeout>;
 }
 
 interface StdioResponseFrame {
-  id?: unknown;
-  ok?: unknown;
-  result?: unknown;
-  error?: unknown;
+	id?: unknown;
+	ok?: unknown;
+	result?: unknown;
+	error?: unknown;
 }
 
 function isLocalAgentRequestResult(
-  value: unknown,
+	value: unknown,
 ): value is LocalAgentRequestResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { status?: unknown }).status === "number"
-  );
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as { status?: unknown }).status === "number"
+	);
 }
 
 /**
@@ -60,110 +60,110 @@ function isLocalAgentRequestResult(
  * child correlates responses by echoing the request `id`.
  */
 export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
-  private nextId = 1;
-  private readonly pending = new Map<number, PendingRequest>();
+	private nextId = 1;
+	private readonly pending = new Map<number, PendingRequest>();
 
-  constructor(
-    private readonly writer: StdioFrameWriter,
-    private readonly defaultTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-  ) {}
+	constructor(
+		private readonly writer: StdioFrameWriter,
+		private readonly defaultTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+	) {}
 
-  request(
-    request: NormalizedLocalAgentRequest,
-  ): Promise<LocalAgentRequestResult> {
-    const id = this.nextId++;
-    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-    return new Promise<LocalAgentRequestResult>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new Error(
-            `localAgentRequest ${request.method} ${request.path} timed out after ${timeoutMs}ms.`,
-          ),
-        );
-      }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
+	request(
+		request: NormalizedLocalAgentRequest,
+	): Promise<LocalAgentRequestResult> {
+		const id = this.nextId++;
+		const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+		return new Promise<LocalAgentRequestResult>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				this.pending.delete(id);
+				reject(
+					new Error(
+						`localAgentRequest ${request.method} ${request.path} timed out after ${timeoutMs}ms.`,
+					),
+				);
+			}, timeoutMs);
+			this.pending.set(id, { resolve, reject, timer });
 
-      const frame = JSON.stringify({
-        id,
-        method: LOCAL_AGENT_REQUEST_METHOD,
-        payload: {
-          path: request.path,
-          method: request.method,
-          headers: request.headers,
-          body: request.body,
-        },
-      });
-      try {
-        this.writer.write(`${frame}\n`);
-      } catch (err) {
-        this.settleError(
-          id,
-          err instanceof Error ? err : new Error(String(err)),
-        );
-      }
-    });
-  }
+			const frame = JSON.stringify({
+				id,
+				method: LOCAL_AGENT_REQUEST_METHOD,
+				payload: {
+					path: request.path,
+					method: request.method,
+					headers: request.headers,
+					body: request.body,
+				},
+			});
+			try {
+				this.writer.write(`${frame}\n`);
+			} catch (err) {
+				this.settleError(
+					id,
+					err instanceof Error ? err : new Error(String(err)),
+				);
+			}
+		});
+	}
 
-  /**
-   * Feed one raw stdout line from the child. Non-JSON lines and frames without a
-   * numeric id we are waiting on are ignored (the child multiplexes logs on the
-   * same pipe). A matched frame settles its pending request.
-   */
-  handleLine(line: string): void {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    let frame: StdioResponseFrame;
-    try {
-      frame = JSON.parse(trimmed) as StdioResponseFrame;
-    } catch {
-      return;
-    }
-    if (typeof frame.id !== "number") return;
-    const pending = this.pending.get(frame.id);
-    if (!pending) return;
+	/**
+	 * Feed one raw stdout line from the child. Non-JSON lines and frames without a
+	 * numeric id we are waiting on are ignored (the child multiplexes logs on the
+	 * same pipe). A matched frame settles its pending request.
+	 */
+	handleLine(line: string): void {
+		const trimmed = line.trim();
+		if (!trimmed) return;
+		let frame: StdioResponseFrame;
+		try {
+			frame = JSON.parse(trimmed) as StdioResponseFrame;
+		} catch {
+			return;
+		}
+		if (typeof frame.id !== "number") return;
+		const pending = this.pending.get(frame.id);
+		if (!pending) return;
 
-    if (frame.ok === false) {
-      this.settleError(
-        frame.id,
-        new Error(
-          typeof frame.error === "string"
-            ? frame.error
-            : "localAgentRequest failed.",
-        ),
-      );
-      return;
-    }
-    if (!isLocalAgentRequestResult(frame.result)) {
-      this.settleError(
-        frame.id,
-        new Error("localAgentRequest response frame missing a numeric status."),
-      );
-      return;
-    }
-    this.settleResult(frame.id, frame.result);
-  }
+		if (frame.ok === false) {
+			this.settleError(
+				frame.id,
+				new Error(
+					typeof frame.error === "string"
+						? frame.error
+						: "localAgentRequest failed.",
+				),
+			);
+			return;
+		}
+		if (!isLocalAgentRequestResult(frame.result)) {
+			this.settleError(
+				frame.id,
+				new Error("localAgentRequest response frame missing a numeric status."),
+			);
+			return;
+		}
+		this.settleResult(frame.id, frame.result);
+	}
 
-  /** Reject every in-flight request — call when the child stdio pipe closes. */
-  dispose(reason: string): void {
-    for (const id of [...this.pending.keys()]) {
-      this.settleError(id, new Error(reason));
-    }
-  }
+	/** Reject every in-flight request — call when the child stdio pipe closes. */
+	dispose(reason: string): void {
+		for (const id of [...this.pending.keys()]) {
+			this.settleError(id, new Error(reason));
+		}
+	}
 
-  private settleResult(id: number, result: LocalAgentRequestResult): void {
-    const pending = this.pending.get(id);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.pending.delete(id);
-    pending.resolve(result);
-  }
+	private settleResult(id: number, result: LocalAgentRequestResult): void {
+		const pending = this.pending.get(id);
+		if (!pending) return;
+		clearTimeout(pending.timer);
+		this.pending.delete(id);
+		pending.resolve(result);
+	}
 
-  private settleError(id: number, error: Error): void {
-    const pending = this.pending.get(id);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.pending.delete(id);
-    pending.reject(error);
-  }
+	private settleError(id: number, error: Error): void {
+		const pending = this.pending.get(id);
+		if (!pending) return;
+		clearTimeout(pending.timer);
+		this.pending.delete(id);
+		pending.reject(error);
+	}
 }

@@ -5,6 +5,8 @@
  * short-lived access tokens but never refresh tokens or display identities.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { getAccessToken } from "@elizaos/auth/auth/credentials";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,
@@ -13,8 +15,6 @@ import type {
   AccountPoolBrokerSnapshot,
 } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import { getAccessToken } from "@elizaos/auth/auth/credentials";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {

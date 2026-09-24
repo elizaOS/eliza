@@ -68,19 +68,6 @@ function validatedUuid(value: string, field: string): string {
 }
 
 const namespacePromises = new WeakMap<IAgentRuntime, Promise<void>>();
-const PROCESS_LOCKS_KEY = Symbol.for(
-  "@elizaos/plugin-maps:saved-place-cas-locks",
-);
-type LockRegistry = Map<string, Promise<void>>;
-
-function processLocks(): LockRegistry {
-  const root = globalThis as typeof globalThis & {
-    [PROCESS_LOCKS_KEY]?: LockRegistry;
-  };
-  root[PROCESS_LOCKS_KEY] ??= new Map<string, Promise<void>>();
-  return root[PROCESS_LOCKS_KEY];
-}
-
 function stateWorldId(runtime: IAgentRuntime): UUID {
   return createUniqueUuid(runtime, "maps:saved-places:world") as UUID;
 }

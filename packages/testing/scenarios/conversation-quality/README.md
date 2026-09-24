@@ -123,7 +123,7 @@ tea preference must still be attributed to the actual owner, never the agent.
 OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
 OPENAI_SMALL_MODEL=qwen-3.8-27b OPENAI_LARGE_MODEL=qwen-3.8-27b \
 CEREBRAS_JUDGE_MODEL=qwen-3.8-27b \
-bun --conditions eliza-source packages/scenario-runner/src/cli.ts run \
+bun --conditions eliza-source packages/testing/scenario-runner/src/cli.ts run \
   packages/testing/scenarios/conversation-quality \
   --scenario convq.continuous-conversation \
   --report /tmp/eliza-continuous-conversation.json

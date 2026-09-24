@@ -10,6 +10,10 @@
  */
 
 import {
+  isRefreshTokenExpiryText,
+  isTokenExpiryText,
+} from "@elizaos/auth/auth";
+import {
   type CodingAccountStrategy,
   type CodingAccountUsage,
   type CodingAgentSelection,
@@ -19,10 +23,6 @@ import {
   getCodingAgentSelectorBridge,
   logger,
 } from "@elizaos/core";
-import {
-  isRefreshTokenExpiryText,
-  isTokenExpiryText,
-} from "@elizaos/auth/auth";
 import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 
 // The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export

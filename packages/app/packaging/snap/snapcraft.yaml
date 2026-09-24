@@ -139,7 +139,7 @@ parts:
           "plugin-local-inference",
           "plugin-pdf",
           "plugin-sql",
-          "plugin-task-coordinator",
+          "plugin-agent-orchestrator",
           "plugin-telegram",
           "plugin-video",
           "plugin-wallet",
@@ -482,25 +482,22 @@ parts:
         --filter=@elizaos/core \
         --filter=@elizaos/shared \
         --filter=@elizaos/ui \
-        --filter=@elizaos/auth/vault \
-        --filter=@elizaos/skills \
+        --filter=@elizaos/auth \
         --filter=@elizaos/app \
         --filter=@elizaos/agent \
-        --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser \
-        --filter=@elizaos/plugin-commands \
         --filter=@elizaos/plugin-imessage \
         --filter=@elizaos/plugin-personal-assistant \
         --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-pdf \
         --filter=@elizaos/plugin-sql \
-        --filter=@elizaos/plugin-task-coordinator \
+        --filter=@elizaos/plugin-agent-orchestrator \
         --filter=@elizaos/plugin-telegram \
         --filter=@elizaos/plugin-video \
         --filter=@elizaos/plugin-wallet \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
-        --filter=@elizaos/scenario-runner
+        --filter=@elizaos/testing
       node "$RM_PATH_RECURSIVE" node_modules/@types
       node "$RM_PATH_RECURSIVE" "$SNAP_BUILD_TYPES_DIR"
 

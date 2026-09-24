@@ -1,10 +1,10 @@
 # `@elizaos/testing`
 
-Private deterministic runtime fixtures and repository-wide scenarios consumed by
-`@elizaos/scenario-runner`. Production packages must not import this workspace.
+Private evidence tooling, deterministic runtime fixtures and repository-wide scenarios consumed by
+`@elizaos/testing/scenario-runner`. Production code must not import fixture helpers; synthetic-world control has its own explicit subpath.
 
 Repository-wide engineering and evidence requirements are inherited from the
-root [`CLAUDE.md`](../../CLAUDE.md).
+root [`AGENTS.md`](../../AGENTS.md).
 
 ## Ownership boundary
 
@@ -13,7 +13,7 @@ contract, or has no single product owner. New product-specific scenarios belong
 beside the package or plugin that owns the behavior. Runtime construction and
 deterministic model helpers belong in `@elizaos/testing`; external-service
 recordings and scenario-runner mocks belong under
-`packages/scenario-runner/test/mocks`; cloud integration infrastructure belongs
+`packages/testing/scenario-runner/test/mocks`; cloud integration infrastructure belongs
 under `packages/cloud`.
 
 Keep fixture exports under `src/`; scenarios are not production exports. Scenarios import the real
@@ -71,10 +71,31 @@ report opt-in skips honestly. Register cleanup in test teardown so fixture
 failures do not replace assertion errors. Existing `@elizaos/testing` exports
 continue to resolve from `src/`.
 
-`test` runs fixture tests and corpus guard tests plus scenario validation.
-`typecheck` checks both source fixtures and the scenario corpus. Use
+`test` runs fixture tests, corpus guard tests, scenario validation, and evidence tests.
+`typecheck` checks source fixtures, the scenario corpus, and evidence. Use
 `test:fixtures`, `test:scenarios`, `typecheck:fixtures`, and
 `typecheck:scenarios` for focused iteration; run `format:check` for the corpus
 format check and the root verification gate for repository lint.
-Agent and scenario-runner are optional test peers to avoid adding a task-graph
-cycle back from runtime fixtures to their consumers.
+Runtime hosts and plugins are optional test peers to avoid adding task-graph
+cycles back from runtime fixtures to their consumers.
+
+## Evidence tooling
+
+`evidence/` owns bundle creation, artifact analysis, certification, video and visual QA.
+Read [its guide](evidence/AGENTS.md) and [README](evidence/README.md) before changing those contracts.
+Use `@elizaos/testing/evidence` or `@elizaos/testing/evidence/visual-primitives`
+for evidence APIs; these subpaths do not load runtime fixtures. `test:evidence`
+and `typecheck:evidence` run through the package test and typecheck commands.
+
+## Scenario execution and synthetic worlds
+
+`scenario-runner/` owns discovery, schemas, the scenario CLI and real-runtime
+execution. Import `@elizaos/testing/scenario-runner` and its `/schema` subpath.
+`synthetic-world/` owns fenced command journals and production controllers;
+import `@elizaos/testing/synthetic-world`. Both are part of this workspace,
+with no nested package manifests.
+
+Use `test:runner`, `typecheck:runner`, `test:synthetic-world`, and
+`typecheck:synthetic-world` for focused checks. The root package test and
+typecheck commands include both. Runner CLI commands retain their names, such
+as `bun run --cwd packages/testing test:pr:e2e`.

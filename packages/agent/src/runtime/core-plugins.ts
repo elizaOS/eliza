@@ -112,9 +112,8 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-vision", mobileCore: true },
   { plugin: "@elizaos/plugin-scheduling", mobileCore: true },
   // View-providing plugins that must resolve their home tiles on every platform.
-  { plugin: "@elizaos/plugin-task-coordinator", viewEveryPlatform: true },
+  { plugin: "@elizaos/plugin-agent-orchestrator/ui", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
-  { plugin: "@elizaos/plugin-app-control", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-calendar", viewEveryPlatform: true },
   // todos: the UI-free runtime (loaded via @elizaos/plugin-todos/plugin) now
@@ -278,12 +277,8 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/plugin-form — standalone form plugin; load via plugin registry/config
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
-  "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
-  "@elizaos/plugin-cloud-apps", // Eliza Cloud Apps: LIST_CLOUD_APPS / GET_APP + CLOUD_APPS provider, plus CREATE_APP / DEPLOY_APP (READY+reachability completion gate) / GET_APP_DEPLOY_STATUS / DELETE_APP (two-phase confirm) + deploy-success facts cache. Reaches local/native + Discord/Telegram via the shared pipeline. Cloud-hosted agents add this separately via agent-loader, gated behind CLOUD_APPS_PLUGIN_ENABLED.
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools + shell service, approvals, and history provider (desktop-only
-  "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
-  "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-scheduling", // always-loaded ScheduledTask runtime primitive (runner host + REST surface + seed registry); personal-assistant enriches it when present
   "@elizaos/plugin-knowledge", // Knowledge CRUD/search routes required by the web and desktop Knowledge surface
@@ -311,7 +306,6 @@ export const CORE_PLUGINS: readonly string[] = [
 export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
-  "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
   "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
   "@elizaos/plugin-todos", // UI-free personal Todo action/provider on local PGlite
   "@elizaos/plugin-knowledge", // Knowledge CRUD/search routes exposed to hosted web clients
@@ -323,8 +317,6 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   // cost of making an already-present Calendar view functional.
   "@elizaos/plugin-scheduling",
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
-  "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
-  "@elizaos/plugin-commands", // slash commands
 ];
 
 /**
@@ -342,7 +334,6 @@ export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [
   // Cloud-container operator defaults (pty terminal + BYO-subscription CLI
   // inference) are coding surfaces a chat-only agent never uses.
   "@elizaos/plugin-pty",
-  "@elizaos/plugin-cli-inference",
   // Cloud chat agents route models to Eliza Cloud (plugin-elizacloud), which
   // serves TEXT_EMBEDDING via the fast 1536-dim cloud endpoint. plugin-local-
   // inference otherwise wins the TEXT_EMBEDDING registration with an on-device
@@ -430,7 +421,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "@elizaos/plugin-google-workspace", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
   "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking. The Eliza app manifest enables it and requires registration before ready (#17023); standalone agent installs stay opt-in because they do not ship this package.
-  "@elizaos/plugin-finances", // Owner finances dashboard (app_finances schema); auto-registered by plugin-personal-assistant, also enablable standalone
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt", // RepoPrompt CLI integration and workflow orchestration

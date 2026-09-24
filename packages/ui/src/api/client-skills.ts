@@ -26,11 +26,6 @@ import type {
   SkillInfo,
   SkillScanReportSummary,
 } from "./client-types";
-import type {
-  CommandSurface,
-  CommandsCatalogResponse,
-  SlashCommandCatalogItem,
-} from "./client-types-commands";
 
 export type AppRunSteeringDisposition =
   | "accepted"
@@ -225,10 +220,6 @@ declare module "./client-base" {
     ): Promise<AppSessionActionResult>;
     listRegistryPlugins(): Promise<RegistryPluginItem[]>;
     searchRegistryPlugins(query: string): Promise<RegistryPluginItem[]>;
-    listCommands(
-      surface?: CommandSurface,
-      init?: RequestInit,
-    ): Promise<SlashCommandCatalogItem[]>;
     listCustomActions(init?: RequestInit): Promise<CustomActionDef[]>;
     createCustomAction(
       action: Omit<CustomActionDef, "id" | "createdAt" | "updatedAt">,
@@ -770,19 +761,6 @@ ElizaClient.prototype.searchRegistryPlugins = async function (
   query,
 ) {
   return this.fetch(`/api/apps/plugins/search?q=${encodeURIComponent(query)}`);
-};
-
-ElizaClient.prototype.listCommands = async function (
-  this: ElizaClient,
-  surface,
-  init,
-) {
-  const query = surface ? `?surface=${encodeURIComponent(surface)}` : "";
-  const data = await this.fetch<CommandsCatalogResponse>(
-    `/api/commands${query}`,
-    init,
-  );
-  return data.commands;
 };
 
 ElizaClient.prototype.listCustomActions = async function (

@@ -493,11 +493,14 @@ export async function readRetainedSemanticEvidence(sourcePath: string) {
       { code: "SEMANTIC_RESTART_INVALID_FIXTURES" },
     );
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
+  const forbidNetwork = (): never => {
     throw new ElizaError("Restart readback forbids network requests", {
       code: "SEMANTIC_RESTART_NETWORK_FORBIDDEN",
     });
-  }) as typeof fetch;
+  };
+  globalThis.fetch = Object.assign(async () => forbidNetwork(), {
+    preconnect: forbidNetwork,
+  });
   let owned: Awaited<ReturnType<typeof createTestRuntime>> | undefined;
   try {
     owned = await createTestRuntime({

@@ -1,5 +1,5 @@
 /** Builds data-only provider canaries whose effects can only be proven by the external qualification protocol. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 export type ProviderCanaryConfig = {
   lane: "live-only";
   executionProfile: "provider-qualified";

@@ -16,10 +16,8 @@ const RESET = "\x1b[0m";
 export type LiveProviderId =
   | "openai"
   | "anthropic"
-  | "google"
   | "groq"
   | "openrouter"
-  | "ollama"
   | "xai"
   | "elizacloud"
   | "cerebras";
@@ -66,12 +64,6 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
     pluginExportNames: ["anthropicPlugin", "default"],
     defaultRequiredEnv: ["ANTHROPIC_API_KEY"],
   },
-  google: {
-    pluginPath: "../../../../plugins/plugin-google-genai/index.ts",
-    bareSpecifier: "@elizaos/plugin-google-genai",
-    pluginExportNames: ["default"],
-    defaultRequiredEnv: ["GOOGLE_GENERATIVE_AI_API_KEY"],
-  },
   groq: {
     pluginPath: "../../../../plugins/plugin-groq/index.ts",
     bareSpecifier: "@elizaos/plugin-groq",
@@ -83,12 +75,6 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
     bareSpecifier: "@elizaos/plugin-openrouter",
     pluginExportNames: ["openrouterPlugin", "default"],
     defaultRequiredEnv: ["OPENROUTER_API_KEY"],
-  },
-  ollama: {
-    pluginPath: "../../../../plugins/plugin-zerollama/index.ts",
-    bareSpecifier: "@elizaos/plugin-zerollama",
-    pluginExportNames: ["ollamaPlugin", "default"],
-    defaultRequiredEnv: ["OLLAMA_API_ENDPOINT"],
   },
   xai: {
     pluginPath: "../../../../plugins/plugin-xai/index.ts",
@@ -476,7 +462,7 @@ export async function buildLiveHarness(
   const runtime = new AgentRuntime({
     agentId,
     character,
-    
+
     plugins,
     checkShouldRespond: false,
     logLevel: "warn",

@@ -97,8 +97,8 @@ describe("shared overlay-app-registry", () => {
       userAgent: ELIZAOS_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/plugin-native-contacts",
       "@elizaos/plugin-feed",
+      "@elizaos/plugin-native-contacts",
       "@elizaos/plugin-native-phone",
       "@elizaos/plugin-native-wifi",
     ]);
@@ -110,8 +110,8 @@ describe("shared overlay-app-registry", () => {
       userAgent: WHITE_LABEL_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/plugin-native-contacts",
       "@elizaos/plugin-feed",
+      "@elizaos/plugin-native-contacts",
       "@elizaos/plugin-native-phone",
       "@elizaos/plugin-native-wifi",
     ]);

@@ -4,10 +4,11 @@
  * validates every selected row, preserves every supplied context turn, and
  * records the source decision id in each generated scenario.
  */
-import { createHash } from "node:crypto";
+
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
@@ -247,7 +248,7 @@ function renderScenario(
  * Generated from ishiki-labs/multi-party-dialogue at ${ISHIKI_REVISION}.
  * Apache-2.0. Do not hand-edit; run heldout/ishiki-generate.ts.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   buildHeldoutSetup,
   type HeldoutScenarioConfig,

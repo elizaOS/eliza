@@ -94,10 +94,6 @@ const backgroundRealResolvePlugin = {
       return virtualAgentStubId;
     }
 
-    if (source === "@elizaos/plugin-app-manager") {
-      return `${optionalPluginStubPrefix}${source}`;
-    }
-
     return (
       resolveJsToTsFromSourceRoot(lifeopsSourceRoot, source, importer) ??
       resolveJsToTsFromSourceRoot(agentSourceRoot, source, importer)
@@ -106,21 +102,6 @@ const backgroundRealResolvePlugin = {
   load(id: string) {
     if (id.startsWith(optionalPluginStubPrefix)) {
       const packageName = id.slice(optionalPluginStubPrefix.length);
-      if (packageName === "@elizaos/plugin-app-manager") {
-        return `
-export class AppSessionService {
-  static serviceType = "app-session";
-  static async start() {
-    return new AppSessionService();
-  }
-  async stop() {}
-  listRuns() {
-    return [];
-  }
-}
-export default { name: "plugin-app-manager-test-stub", services: [AppSessionService] };
-`;
-      }
 
       const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
       return `

@@ -1,3 +1,4 @@
+/** Verifies real SQLite diagnostic writes are drained and reported during runtime shutdown. */
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
@@ -6,7 +7,7 @@ import { ModelType } from "../../types";
 function fixture() {
 	const runtime = new AgentRuntime({
 		character: { name: "DiagnosticShutdown", bio: "test" },
-		
+
 		logLevel: "fatal",
 	});
 	const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
@@ -62,9 +63,13 @@ describe("model diagnostic ownership", () => {
 		write.reject(failure);
 		await shutdown;
 		expect(close).toHaveBeenCalledOnce();
-		expect(report).toHaveBeenCalledWith("AgentRuntime.modelCallLog", failure, {
-			model: "TEXT_LARGE",
-			diagnosticOnly: true,
-		});
+		expect(report).toHaveBeenCalledWith(
+			"AgentRuntime.modelCallLog",
+			expect.objectContaining({
+				code: "SQLITE_TRANSACTION_FAILED",
+				cause: failure,
+			}),
+			{ model: "TEXT_LARGE", diagnosticOnly: true },
+		);
 	});
 });

@@ -8,8 +8,8 @@
 import type {
   CapturedAction,
   ScenarioContext,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 type JsonRecord = Record<string, unknown>;
 

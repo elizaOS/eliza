@@ -152,7 +152,9 @@ describe("Develop Full workflow authority", () => {
       expect.arrayContaining(["*.md", "**/*.md", "packages/docs/**"]),
     );
     expect(qualityWorkflow).toContain("bun run verify");
-    expect(qualityWorkflow).toContain("node packages/scripts/check-markdown-links.mjs");
+    expect(qualityWorkflow).toContain(
+      "node packages/scripts/check-markdown-links.mjs",
+    );
   });
 
   test("fails closed unless every delegated family has current evidence", () => {

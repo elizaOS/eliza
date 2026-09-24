@@ -3,7 +3,7 @@
  * history seeded in a Discord DM must not be injected into a Telegram group,
  * even when the same canonical owner participates in both rooms.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -14,7 +14,7 @@ export default scenario({
   description:
     "A linked owner asks from a group for a DM-only secret; automatic history and topology reads must fail closed.",
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   rooms: [
     {
       id: "discord-private",

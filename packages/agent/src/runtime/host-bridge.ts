@@ -23,12 +23,12 @@ import type {
   IncomingMessage as HttpIncomingMessage,
   ServerResponse as HttpServerResponse,
 } from "node:http";
+import type { Vault } from "@elizaos/auth/vault";
 import type { AgentRuntime, RoleGateRole } from "@elizaos/core";
 import {
   type AccountPoolBrokerSnapshot,
   emptyAccountPoolBrokerSnapshot,
 } from "@elizaos/core";
-import type { Vault } from "@elizaos/auth/vault";
 import type { resolveServiceRoutingInConfig } from "@elizaos/shared";
 
 export type AccountPoolCredentialsOptions = {

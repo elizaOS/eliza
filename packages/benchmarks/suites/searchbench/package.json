@@ -1,0 +1,17 @@
+{
+  "name": "@elizaos/searchbench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Regression benchmark for corpus-wide chat message search (FTS + pg_trgm) against a real >=10k-message PGlite store.",
+  "scripts": {
+    "bench": "node run-all.mjs",
+    "bench:json": "node run-all.mjs --json"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "drizzle-orm": "^0.44.0",
+    "uuid": "^11.0.0"
+  }
+}

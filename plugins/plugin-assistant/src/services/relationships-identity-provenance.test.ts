@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
@@ -114,9 +115,15 @@ describe("Identity merge provenance", () => {
     const client = new PGlite();
     try {
       await createIdentityTables(client);
-      const adapter = Object.assign(SQLiteDatabaseAdapter.create(":memory:"), {
-        db: drizzle(client),
-      });
+      const adapter = Object.assign(
+        SQLiteDatabaseAdapter.create(
+          ":memory:",
+          sqliteTestAgentId("MergeRollbackQA"),
+        ),
+        {
+          db: drizzle(client),
+        },
+      );
       const runtime = new AgentRuntime({
         plugins: [createAssistantPlugin()],
         character: { name: "MergeRollbackQA", bio: "test" },
@@ -212,9 +219,15 @@ describe("Identity merge provenance", () => {
       const client = new PGlite();
       try {
         await createIdentityTables(client);
-        const adapter = Object.assign(SQLiteDatabaseAdapter.create(":memory:"), {
-          db: drizzle(client),
-        });
+        const adapter = Object.assign(
+          SQLiteDatabaseAdapter.create(
+            ":memory:",
+            sqliteTestAgentId("MergeEvidenceQA"),
+          ),
+          {
+            db: drizzle(client),
+          },
+        );
         const runtime = new AgentRuntime({
           plugins: [createAssistantPlugin()],
           character: { name: "MergeEvidenceQA", bio: "test" },
@@ -295,9 +308,15 @@ describe("Source-owned identity reconciliation", () => {
   async function setup() {
     const client = new PGlite();
     await createIdentityTables(client);
-    const adapter = Object.assign(SQLiteDatabaseAdapter.create(":memory:"), {
-      db: drizzle(client),
-    });
+    const adapter = Object.assign(
+      SQLiteDatabaseAdapter.create(
+        ":memory:",
+        sqliteTestAgentId("IdentityReconciliationQA"),
+      ),
+      {
+        db: drizzle(client),
+      },
+    );
     const runtime = new AgentRuntime({
       plugins: [createAssistantPlugin()],
       character: { name: "IdentityReconciliationQA", bio: "test" },

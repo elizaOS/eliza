@@ -131,7 +131,7 @@
     },
     {
       "includes": [
-        "plugins/plugin-task-coordinator/src/**/*.ts",
+        "plugins/plugin-agent-orchestrator/ui/src/**/*.ts",
         "plugins/plugin-calendar/src/**/*.ts",
         "plugins/plugin-scheduling/src/**/*.ts",
         "plugins/plugin-blocker/src/**/*.ts",
@@ -199,7 +199,7 @@
         "!packages/app/**",
         "!packages/cloud/api/**",
         "!packages/cloud/shared/**",
-        "!packages/scenario-runner/**",
+        "!packages/testing/scenario-runner/**",
         "!packages/scripts/**",
         "!packages/testing/scenarios/**",
         "!packages/ui/**"

@@ -1,11 +1,12 @@
 /** Verifies provenance against actual ZIP contents, including changed and missing runtime payloads. */
-import { test } from "node:test";
+
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { test } from "node:test";
 import { packagedRuntimeFiles } from "./apk-runtime-provenance.mjs";
 
 test("records packaged bytes after native stripping and asset renaming", () => {

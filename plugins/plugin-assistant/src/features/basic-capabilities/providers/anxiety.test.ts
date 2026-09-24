@@ -59,7 +59,7 @@ async function makeRuntime(): Promise<{
 }> {
   const runtime = new AgentRuntime({
     character: createCharacter({ name: "Eliza" }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

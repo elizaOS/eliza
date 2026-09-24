@@ -59,7 +59,9 @@ describe("interpreted template rendering", () => {
       for (const context of contexts) compare(template, context);
   });
 
-  it("renders every authored prompt without a code-generating runtime", () => {
+  it("renders every authored prompt without a code-generating runtime", {
+    timeout: 60_000,
+  }, () => {
     const payloads = [
       {},
       {

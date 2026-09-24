@@ -5,9 +5,7 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../packages/core/src/runtime";
 import type { JSONSchema } from "../../../packages/core/src/types/model";
 import { withInactiveArrayFields } from "../../plugin-assistant/src/services/message/inactive-field-schema";
 import { handleResponseHandler } from "../models/text";
@@ -79,7 +77,7 @@ it("admits an inactive array without losing the prompt or weakening the active t
         OPENAI_BASE_URL: "https://schema.fixture.invalid/v1",
       },
     },
-    
+
     logLevel: "fatal",
   });
   try {

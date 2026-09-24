@@ -329,14 +329,7 @@ const showTimestamps = parseBooleanFromText(
 	getEnvironmentVar("LOG_TIMESTAMPS") ?? "true",
 );
 
-// A Worker isolate cannot generate randomness during module evaluation. Node
-// processes already have a stable per-process discriminator; edge hosts should
-// inject SERVER_ID when they need one more specific than the runtime label.
-const serverId =
-	getEnvironmentVar("SERVER_ID") ||
-	(typeof process !== "undefined" && process.pid
-		? `process-${process.pid}`
-		: "edge-runtime");
+const serverId = getEnvironmentVar("SERVER_ID") || `process-${process.pid}`;
 
 // ============================================================================
 // Sensitive-data redaction

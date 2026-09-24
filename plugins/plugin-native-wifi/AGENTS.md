@@ -73,11 +73,11 @@ No env vars or settings keys. The plugin reads no process environment at runtime
 - **Location permission.** Android requires `ACCESS_FINE_LOCATION` for `WifiManager.startScan`. If the permission is denied, scans succeed silently with an empty list or throw; the provider maps errors to `wifiNetworksError` in `values`.
 - **Provider context gate.** `wifiNetworksProvider` uses `contextGate: { anyOf: ["system"] }` — it only fires in system-context conversations, not every agent turn.
 - **`elizaos.app` metadata.** `package.json` carries an `elizaos.app` block (`displayName: "WiFi"`, `category: "system"`, `androidOnly: true`, `heroImage: "assets/hero.png"`) used by the app catalog tooling.
-- **Root AGENTS.md.** Repo-wide architecture rules, logger conventions, ESM requirements, and naming rules live in the root `CLAUDE.md`. This file covers only plugin-native-wifi specifics.
+- **Root AGENTS.md.** Repo-wide architecture rules, logger conventions, ESM requirements, and naming rules live in the root `AGENTS.md`. This file covers only plugin-native-wifi specifics.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

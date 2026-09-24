@@ -90,7 +90,7 @@
     "start:embedded": "bun src/server/embedded.ts",
     "start": "bun src/server/start.ts",
     "test:railpack": "bun test test/login/railpack-runtime.test.ts",
-    "test:browser": "bun test test/login/browser-login.test.ts",
+    "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
     "test:credentials": "node ../scripts/run-vitest.mjs run",
     "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack"
   },

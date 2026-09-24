@@ -50,10 +50,6 @@ const autonomousElizaPathCandidates = [
   "packages/agent/src/runtime/eliza.ts",
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
-const homepageReleaseDataPathCandidates = [
-  "packages/homepage/src/generated/release-data.ts",
-  "apps/homepage/src/generated/release-data.ts",
-] as const;
 const cdnValidationScriptPathCandidates = [
   "packages/app/scripts/validate-cdn-assets.mjs",
   "scripts/validate-cdn-assets.mjs",
@@ -1498,41 +1494,6 @@ function assertStaticAssetManifestIsCurrent() {
   process.exit(1);
 }
 
-function assertHomepageReleaseDataUsesCurrentAssetRoot() {
-  const releaseDataSource = readExistingReleaseCheckFile(
-    "generated homepage release data",
-    homepageReleaseDataPathCandidates,
-  );
-
-  if (!releaseDataSource.includes("homepageAssetBaseUrl:")) {
-    console.error(
-      "release-check: generated homepage release data is missing homepageAssetBaseUrl.",
-    );
-    process.exit(1);
-  }
-
-  const hasNoPublishedRelease =
-    releaseDataSource.includes('"homepageAssetBaseUrl": ""') ||
-    releaseDataSource.includes("homepageAssetBaseUrl: ''") ||
-    releaseDataSource.includes('homepageAssetBaseUrl: ""');
-  if (
-    !hasNoPublishedRelease &&
-    !releaseDataSource.includes("/packages/homepage/public/")
-  ) {
-    console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
-    );
-    process.exit(1);
-  }
-
-  if (releaseDataSource.includes("/apps/web/public/")) {
-    console.error(
-      "release-check: generated homepage release data still points at legacy /apps/web/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
-    );
-    process.exit(1);
-  }
-}
-
 function assertAppleStoreEntitlementsReviewed() {
   try {
     assertReviewedAppleStoreEntitlements();
@@ -1561,7 +1522,6 @@ function main() {
   assertMacSmokeScriptLaunchesPackagedLauncherDirectly();
   assertStartApiServerCatchBlockSafety();
   assertStaticAssetManifestIsCurrent();
-  assertHomepageReleaseDataUsesCurrentAssetRoot();
   maybeValidateCdnAssets();
   assertBundledAgentOrchestratorInstallFix();
   assertOrchestratorVersionPinned();

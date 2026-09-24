@@ -1,5 +1,5 @@
 /** Scenario fixture for gmail refuse send without confirmation; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -10,7 +10,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

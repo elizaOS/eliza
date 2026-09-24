@@ -45,7 +45,7 @@ vi.mock("../../../widgets/home-attention-store", () => ({
 
 // useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
 // stub it so the click test isolates the navigation rail (the CustomEvent).
-vi.mock("../../../chat/useSlashCommandController", () => ({
+vi.mock("../../../chat/shortcut-report", () => ({
   reportUserViewSwitch: vi.fn(),
 }));
 

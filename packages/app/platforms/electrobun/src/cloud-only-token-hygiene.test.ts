@@ -17,37 +17,37 @@ import { resolveDesktopRuntimeMode } from "./api-base";
 import { ensureDesktopApiToken } from "./native/agent";
 
 describe("cloud-only token hygiene", () => {
-  it("resolves the skip-embedded-agent flag to the disabled runtime mode", () => {
-    const resolution = resolveDesktopRuntimeMode({
-      ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1",
-    });
-    expect(resolution.mode).toBe("disabled");
-  });
+	it("resolves the skip-embedded-agent flag to the disabled runtime mode", () => {
+		const resolution = resolveDesktopRuntimeMode({
+			ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1",
+		});
+		expect(resolution.mode).toBe("disabled");
+	});
 
-  it("resolves NO api token from a disabled-mode env without ELIZA_API_TOKEN", () => {
-    // This is exactly what injectApiBase's disabled branch publishes to the
-    // renderer: resolveApiToken(env) with nothing minted — so the renderer's
-    // cloud resolver has no fake local credential to fall back to.
-    expect(
-      resolveApiToken({ ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" }),
-    ).toBeNull();
-    expect(resolveApiToken({})).toBeNull();
-  });
+	it("resolves NO api token from a disabled-mode env without ELIZA_API_TOKEN", () => {
+		// This is exactly what injectApiBase's disabled branch publishes to the
+		// renderer: resolveApiToken(env) with nothing minted — so the renderer's
+		// cloud resolver has no fake local credential to fall back to.
+		expect(
+			resolveApiToken({ ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" }),
+		).toBeNull();
+		expect(resolveApiToken({})).toBeNull();
+	});
 
-  it("mints a token only via an explicit ensureDesktopApiToken call", () => {
-    const env: NodeJS.ProcessEnv = {};
-    expect(resolveApiToken(env)).toBeNull();
+	it("mints a token only via an explicit ensureDesktopApiToken call", () => {
+		const env: NodeJS.ProcessEnv = {};
+		expect(resolveApiToken(env)).toBeNull();
 
-    const minted = ensureDesktopApiToken(env);
+		const minted = ensureDesktopApiToken(env);
 
-    expect(minted).not.toBe("");
-    expect(env.ELIZA_API_TOKEN).toBe(minted);
-    expect(resolveApiToken(env)).toBe(minted);
-  });
+		expect(minted).not.toBe("");
+		expect(env.ELIZA_API_TOKEN).toBe(minted);
+		expect(resolveApiToken(env)).toBe(minted);
+	});
 
-  it("never overwrites an operator-provided token when minting", () => {
-    const env: NodeJS.ProcessEnv = { ELIZA_API_TOKEN: "operator-token" };
-    expect(ensureDesktopApiToken(env)).toBe("operator-token");
-    expect(env.ELIZA_API_TOKEN).toBe("operator-token");
-  });
+	it("never overwrites an operator-provided token when minting", () => {
+		const env: NodeJS.ProcessEnv = { ELIZA_API_TOKEN: "operator-token" };
+		expect(ensureDesktopApiToken(env)).toBe("operator-token");
+		expect(env.ELIZA_API_TOKEN).toBe("operator-token");
+	});
 });

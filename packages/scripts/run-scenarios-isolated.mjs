@@ -37,7 +37,7 @@ export function resolveScenarioIsolatedPaths() {
   );
   return {
     repoRoot,
-    cli: path.join(repoRoot, "packages", "scenario-runner", "src", "cli.ts"),
+    cli: path.join(repoRoot, "packages", "testing", "scenario-runner", "src", "cli.ts"),
   };
 }
 

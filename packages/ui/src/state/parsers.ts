@@ -14,11 +14,7 @@ import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,
 } from "../utils/streaming-text";
-import {
-  AGENT_STATES,
-  type ApiLikeError,
-  type SlashCommandInput,
-} from "./types";
+import { AGENT_STATES, type ApiLikeError } from "./types";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -303,11 +299,6 @@ export function shouldApplyFinalStreamText(
   );
 }
 
-function normalizeSlashCommandName(name: string): string {
-  if (!name.startsWith("/")) name = `/${name}`;
-  return name.trim().toLowerCase();
-}
-
 // Split command arguments into tokens. Each token is an optional `key=` prefix
 // followed by a value that is either a quoted string (quotes stripped, inner
 // spaces preserved) or a bare run of non-space chars. Keeping `key="multi word"`
@@ -324,20 +315,6 @@ function splitCommandArgs(text: string): string[] {
     match = regex.exec(text);
   }
   return parts;
-}
-
-export function parseSlashCommandInput(text: string): SlashCommandInput | null {
-  if (!text.startsWith("/")) return null;
-  const body = text.slice(1).trim();
-  if (!body) return null;
-  const firstSpace = body.search(/\s/);
-  if (firstSpace === -1) {
-    return { name: normalizeSlashCommandName(body), argsRaw: "" };
-  }
-  return {
-    name: normalizeSlashCommandName(body.slice(0, firstSpace)),
-    argsRaw: body.slice(firstSpace + 1).trim(),
-  };
 }
 
 export function normalizeCustomActionName(value: string): string {

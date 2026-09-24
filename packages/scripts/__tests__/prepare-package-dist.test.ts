@@ -95,7 +95,10 @@ describe("prepare-package-dist", () => {
 
     expect(prepared.exports).toEqual(expectedExports);
     const written = JSON.parse(
-      readFileSync(join(root, "packages/template-fixture/dist/package.json"), "utf8"),
+      readFileSync(
+        join(root, "packages/template-fixture/dist/package.json"),
+        "utf8",
+      ),
     );
     expect(written.exports).toEqual(expectedExports);
   });

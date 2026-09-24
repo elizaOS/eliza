@@ -119,12 +119,6 @@ export default defineConfig({
         replacement: resolve(coreSrc, "$1"),
       },
       {
-        // Vitest deliberately omits Vite's `module` condition. Resolve this
-        // workspace package explicitly so clean CI does not require dist/.
-        find: /^@elizaos\/prompts$/,
-        replacement: resolve(promptsSrc, "index.ts"),
-      },
-      {
         find: /^@elizaos\/app(?:\/browser|\/ui-compat)?$/,
         replacement: hostExternalStub,
       },

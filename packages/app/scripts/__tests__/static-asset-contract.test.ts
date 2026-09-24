@@ -1,6 +1,6 @@
 /**
  * Contract tests for source-owned static asset inventory. The suite exercises
- * the real repository and homepage copy producer, temporary Git checkouts, and
+ * the real repository, temporary Git checkouts, and
  * standalone filesystem roots so ignored build output cannot alter a source
  * manifest while real additions and deletions remain visible.
  */
@@ -17,10 +17,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  HOMEPAGE_PUBLIC_ASSETS,
-  syncHomepageAssets,
-} from "../sync-homepage-assets.mjs";
 import {
   buildStaticAssetManifest,
   validateStaticAssetManifest,
@@ -127,7 +123,7 @@ describe("static asset manifest contract (#16290)", () => {
     if (!result.ok) {
       const expected = JSON.parse(result.expected ?? "{}");
       const actual = JSON.parse(result.actual ?? "{}");
-      const detail = ["app", "homepage"]
+      const detail = ["app"]
         .flatMap((tree) => {
           const onDisk = new Set<string>(expected[tree] ?? []);
           const inManifest = new Set<string>(actual[tree] ?? []);
@@ -197,39 +193,6 @@ describe("static asset manifest contract (#16290)", () => {
     expect(offenders).toEqual([]);
   }, 30_000);
 
-  it("stays valid after the real homepage asset producer copies ignored output", async () => {
-    const rootDir = createGitFixture();
-    try {
-      writeFixtureFile(rootDir, ".gitignore");
-      writeFileSync(
-        path.join(rootDir, ".gitignore"),
-        "packages/app/public/**\n",
-      );
-      for (const relativePath of HOMEPAGE_PUBLIC_ASSETS) {
-        writeFixtureFile(
-          rootDir,
-          path.join("packages/homepage/public", relativePath),
-        );
-      }
-      stageFixturePaths(rootDir, ".gitignore", "packages/homepage/public");
-      writeStaticAssetManifest(rootDir);
-
-      await syncHomepageAssets({
-        sourceRoot: path.join(rootDir, "packages/homepage/public"),
-        destinationRoot: path.join(rootDir, "packages/app/public"),
-      });
-
-      expect(validateStaticAssetManifest(rootDir).ok).toBe(true);
-      expect(
-        HOMEPAGE_PUBLIC_ASSETS.every((relativePath) =>
-          existsSync(path.join(rootDir, "packages/app/public", relativePath)),
-        ),
-      ).toBe(true);
-    } finally {
-      rmSync(rootDir, { recursive: true, force: true });
-    }
-  });
-
   it("detects non-ignored additions and missing tracked assets", () => {
     const rootDir = createGitFixture();
     try {
@@ -281,13 +244,10 @@ describe("static asset manifest contract (#16290)", () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "eliza-static-assets-"));
     try {
       const appAsset = "packages/app/public/archive-app.txt";
-      const homepageAsset = "packages/homepage/public/archive-homepage.txt";
       writeFixtureFile(rootDir, appAsset);
-      writeFixtureFile(rootDir, homepageAsset);
 
       expect(buildStaticAssetManifest(rootDir)).toEqual({
         app: [appAsset],
-        homepage: [homepageAsset],
       });
     } finally {
       rmSync(rootDir, { recursive: true, force: true });

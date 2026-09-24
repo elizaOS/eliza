@@ -1,6 +1,6 @@
 /**
  * Exercises the #23100 atomic role-write path end-to-end against the real
- * in-memory adapter: `setEntityRoleCas` resolving the world through the
+ * SQLite adapter: `setEntityRoleCas` resolving the world through the
  * runtime, enforcing the per-attempt `authorize` predicate, committing via
  * `compareAndSwapWorldMetadata`, and the typed conflict / unauthorized /
  * world-not-found / malformed-target / missing-capability outcomes.
@@ -106,7 +106,7 @@ async function setup() {
 	return { adapter, runtime, message };
 }
 
-describe("setEntityRoleCas against the real in-memory adapter", () => {
+describe("setEntityRoleCas against the real SQLite adapter", () => {
 	it("commits a role change with a durable audit row and typed result", async () => {
 		const { adapter, runtime, message } = await setup();
 		const result = await setEntityRoleCas(
@@ -347,14 +347,8 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 		},
 	);
 
-	it("conflicts when a legacy writer mutates the live stored metadata during authorization", async () => {
+	it("retries when a legacy writer commits metadata during authorization", async () => {
 		const { adapter, runtime, message } = await setup();
-		// The memory store returns LIVE stored objects. A legacy whole-world
-		// writer (plain updateWorlds holding the same reference) mutates the
-		// world's metadata IN PLACE while our authorize predicate awaits:
-		// the helper's frozen snapshot must diverge from the stored state and
-		// the CAS must retry/conflict instead of comparing two aliases of
-		// the same mutated object and committing over the concurrent write.
 		let attempts = 0;
 		let firstViewTargetRole: string | undefined;
 		const result = await setEntityRoleCas(
@@ -364,24 +358,22 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 			"ADMIN",
 			{
 				maxAttempts: 2,
-				authorize: (fresh) => {
+				authorize: async (fresh) => {
 					attempts += 1;
 					if (attempts === 1) {
 						firstViewTargetRole = fresh?.metadata?.roles?.[String(TARGET_ID)];
-						// Mutate the LIVE stored world object in place — exactly
-						// what a legacy blind writer holding the getWorldsByIds
-						// reference would do between our read and our write.
-						const world = (
-							adapter as unknown as {
-								worlds: Map<
-									string,
-									{ metadata: { roles: Record<string, string> } }
-								>;
-							}
-						).worlds.get(String(WORLD_ID));
-						if (world) {
-							world.metadata.roles[String(TARGET_ID)] = "GUEST";
-						}
+						const world = await storedWorld(adapter);
+						if (!world) throw new Error("World fixture is missing");
+						const metadata = world.metadata as RolesWorldMetadata;
+						await adapter.updateWorlds([
+							{
+								...world,
+								metadata: {
+									...metadata,
+									roles: { ...metadata.roles, [TARGET_ID]: "GUEST" },
+								},
+							},
+						]);
 					}
 					return true;
 				},
@@ -397,15 +389,9 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 		expect(attempts).toBe(2);
 		expect(["committed", "conflict"]).toContain(result.status);
 		if (result.status === "committed") {
-			const world = (
-				adapter as unknown as {
-					worlds: Map<string, { metadata: { roles: Record<string, string> } }>;
-				}
-			).worlds.get(String(WORLD_ID));
-			// The committed replacement was built from the POST-mutation
-			// snapshot (roles include whatever the legacy writer set).
-			expect(world?.metadata.roles[String(TARGET_ID)]).toBe("ADMIN");
+			expect((await storedRoles(adapter))[TARGET_ID]).toBe("ADMIN");
 		}
+		await adapter.close();
 	});
 });
 

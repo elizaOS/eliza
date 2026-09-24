@@ -8,8 +8,8 @@
  * Cited: 03-coverage-gap-matrix.md — label-bound search.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -20,7 +20,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

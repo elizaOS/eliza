@@ -65,7 +65,7 @@ vi.mock("../../../api", () => ({
 
 // Isolate the navigation rail — assert the CustomEvent without the slash-command
 // controller side effects.
-vi.mock("../../../chat/useSlashCommandController", () => ({
+vi.mock("../../../chat/shortcut-report", () => ({
   reportUserViewSwitch: vi.fn(),
 }));
 

@@ -347,9 +347,6 @@ vi.mock("./components/shell/SystemWarningBanner", () => ({
 vi.mock("./components/shell/ShellOverlays", () => ({
   ShellOverlays: () => null,
 }));
-vi.mock("./components/chat/SaveCommandModal", () => ({
-  SaveCommandModal: () => null,
-}));
 vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,
   __resetCompanionSpeechMemoryForTests: vi.fn(),

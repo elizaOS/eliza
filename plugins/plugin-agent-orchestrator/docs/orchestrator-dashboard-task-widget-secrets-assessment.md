@@ -49,7 +49,7 @@ priority order:
    the rail → inspector path. The chat-side spec is in slice 4 of the
    design doc; it didn't land in this pass.
 4. **`OrchestratorGlanceStrip` was descoped.** On second read of
-   [`WorkbenchHeader`](../../../plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx#L597),
+   [`WorkbenchHeader`](../src/ui/OrchestratorWorkbench.tsx#L597),
    the header already reads "12 tasks · 1 active · 3 done" with the same
    minimal language the design called for, and adds a usage chip on the
    right. A separate strip would have been redundant and added a second

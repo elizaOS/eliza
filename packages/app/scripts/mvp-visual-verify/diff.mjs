@@ -9,4 +9,4 @@ export {
   DEFAULT_PIXEL_THRESHOLD,
   diffAgainstBaseline,
   summarizeDiff,
-} from "@elizaos/evidence/visual-primitives";
+} from "@elizaos/testing/evidence/visual-primitives";

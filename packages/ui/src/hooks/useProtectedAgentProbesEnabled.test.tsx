@@ -56,7 +56,6 @@ vi.mock("../state", () => ({
 }));
 
 import { fetchRuntimeModeSnapshot } from "../api/runtime-mode-client";
-import { useSlashCommandController } from "../chat/useSlashCommandController";
 import { shouldProbeExistingLocalInstall } from "../state/first-run-bootstrap";
 import {
   __resetAuthStatusForTests,
@@ -121,11 +120,6 @@ function GateProbe(props: { onValue: (enabled: boolean) => void }): null {
 
 function RuntimeModeProbe(): null {
   useRuntimeMode();
-  return null;
-}
-
-function SlashProbe(): null {
-  useSlashCommandController();
   return null;
 }
 
@@ -253,32 +247,5 @@ describe("useRuntimeMode — GET /api/runtime/mode gated (#16242)", () => {
     setLocation("http://localhost:2138/");
     render(<RuntimeModeProbe />);
     await waitFor(() => expect(runtimeModeMock).toHaveBeenCalledTimes(1));
-  });
-});
-
-describe("useSlashCommandController — command catalog gated (#16242)", () => {
-  it("does not fetch commands/custom-actions on the unauthenticated Cloud origin, then fetches after sign-in", async () => {
-    setLocation(`${CLOUD_APP_ORIGIN}/`);
-    render(<SlashProbe />);
-    await Promise.resolve();
-    expect(listCommands).not.toHaveBeenCalled();
-    expect(listCustomActions).not.toHaveBeenCalled();
-
-    act(() => {
-      authenticate();
-    });
-    await waitFor(() => {
-      expect(listCommands).toHaveBeenCalledTimes(1);
-      expect(listCustomActions).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("fetches the catalog on mount on a non-Cloud origin (unchanged behavior)", async () => {
-    setLocation("http://localhost:2138/");
-    render(<SlashProbe />);
-    await waitFor(() => {
-      expect(listCommands).toHaveBeenCalledWith("gui");
-      expect(listCustomActions).toHaveBeenCalledTimes(1);
-    });
   });
 });

@@ -11,7 +11,6 @@ import {
   parseConversationMessageEvent,
   parseCustomActionParams,
   parseProactiveMessageEvent,
-  parseSlashCommandInput,
   parseStreamEventEnvelopeEvent,
 } from "./parsers";
 
@@ -141,7 +140,7 @@ describe("chat-input parsers — fuzz", () => {
     updatedAt: "",
   } as unknown as CustomActionDef;
 
-  it("parseSlashCommandInput / parseCustomActionParams never throw and stay well-typed", () => {
+  it("parseCustomActionParams never throw and stay well-typed", () => {
     const rng = makeRng(0x5eed);
     for (let i = 0; i < 4000; i++) {
       const parts: string[] = [];
@@ -150,12 +149,6 @@ describe("chat-input parsers — fuzz", () => {
         parts.push(TOKENS[Math.floor(rng() * TOKENS.length)]);
       }
       const raw = parts.join("");
-
-      const slash = parseSlashCommandInput(raw);
-      if (slash !== null) {
-        expect(slash.name.startsWith("/")).toBe(true);
-        expect(typeof slash.argsRaw).toBe("string");
-      }
 
       const { params, missingRequired } = parseCustomActionParams(action, raw);
       expect(typeof params).toBe("object");

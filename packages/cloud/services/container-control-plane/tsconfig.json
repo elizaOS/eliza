@@ -2,7 +2,11 @@
   "extends": "../../../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -11,33 +15,71 @@
     "incremental": false,
     "declaration": false,
     "declarationMap": false,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "noEmit": true,
     "paths": {
-      "@/lib/*": ["../../shared/src/lib/*"],
-      "@/db/*": ["../../shared/src/db/*"],
-      "@/types/*": ["../../shared/src/types/*"],
-      "@elizaos/cloud-shared": ["../../shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["../../shared/src/*"],
-      "@elizaos/core/edge": ["../../../../packages/core/src/index.edge.ts"],
-      "@elizaos/core": ["../../../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../../../packages/core/src/*"],
+      "@/lib/*": [
+        "../../shared/src/lib/*"
+      ],
+      "@/db/*": [
+        "../../shared/src/db/*"
+      ],
+      "@/types/*": [
+        "../../shared/src/types/*"
+      ],
+      "@elizaos/cloud-shared": [
+        "../../shared/src/index.ts"
+      ],
+      "@elizaos/cloud-shared/*": [
+        "../../shared/src/*"
+      ],
+      "@elizaos/core/edge": [
+        "../../../../packages/core/src/index.edge.ts"
+      ],
+      "@elizaos/core": [
+        "../../../../packages/core/src/index.ts"
+      ],
+      "@elizaos/core/*": [
+        "../../../../packages/core/src/*"
+      ],
       "@elizaos/plugin-scheduling/edge": [
         "../../../../plugins/plugin-scheduling/src/edge.ts"
       ],
       "@elizaos/plugin-todos/edge": [
         "../../../../plugins/plugin-todos/src/edge.ts"
       ],
-      "@elizaos/plugin-sql": ["../../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"],
+      "@elizaos/plugin-sql": [
+        "../../../../plugins/plugin-sql/src/index.ts"
+      ],
+      "@elizaos/plugin-sql/*": [
+        "../../../../plugins/plugin-sql/src/*"
+      ],
       "@elizaos/plugin-web-search/edge": [
         "../../../../plugins/plugin-web-search/src/edge.ts"
       ],
-      "drizzle-orm": ["../../../node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"],
-      "@/*": ["../../../*"]
+      "drizzle-orm": [
+        "../../../node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../../../node_modules/drizzle-orm/*"
+      ],
+      "@/*": [
+        "../../../*"
+      ],
+      "@elizaos/cloud-sdk/*": [
+        "../../sdk/src/*"
+      ]
     }
   },
-  "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "../../shared/src/types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

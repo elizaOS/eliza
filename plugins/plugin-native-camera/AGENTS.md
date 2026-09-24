@@ -115,11 +115,11 @@ Capacitor plugin registration name: `"ElizaCamera"` (used internally by `@capaci
 - **Build output.** `tsc` compiles to `dist/esm/`; rollup then bundles into `dist/plugin.js` (IIFE for browser script tag) and `dist/plugin.cjs.js` (CJS). The `exports` field in `package.json` selects source-mode builds via the explicit `eliza-source` condition at `src/index.ts`.
 - **iOS deployment target:** iOS 15.0+, Swift 5.9. Depends on `AVFoundation`, `Photos`, and `UIKit`.
 - **Android:** Kotlin implementation under `ai.eliza.plugins.camera`. Camera enumeration is read via `CameraDeviceReader` and covered by an **instrumented test** (`android/src/androidTest/.../CameraDeviceReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-camera:connectedDebugAndroidTest` from `packages/app/platforms/android` (issue #9967); `getDevices` delegates to the reader (JS shape unchanged).
-- See root `CLAUDE.md` for repo-wide conventions (logger, ESM, naming, architecture rules).
+- See root `AGENTS.md` for repo-wide conventions (logger, ESM, naming, architecture rules).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

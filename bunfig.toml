@@ -2,7 +2,6 @@
 timeout = 60000
 # Coverage is opt-in: bun test --coverage <paths>.
 # Live receipts: bun test --timeout=120000 <paths> (without coverage).
-coverage = false
 coveragePathIgnorePatterns = [
   "**/dist/**",
   "**/build/**",

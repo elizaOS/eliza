@@ -5,17 +5,17 @@
  * cases (e.g. the built-in preload hasn't fired yet) we need a stub.
  */
 export function ensureElectrobunGlobal(): void {
-  if (typeof window.__electrobun === "undefined") {
-    (
-      window as {
-        __electrobun: {
-          receiveMessageFromBun: (m: unknown) => void;
-          receiveInternalMessageFromBun: (m: unknown) => void;
-        };
-      }
-    ).__electrobun = {
-      receiveMessageFromBun: (_m: unknown) => {},
-      receiveInternalMessageFromBun: (_m: unknown) => {},
-    };
-  }
+	if (typeof window.__electrobun === "undefined") {
+		(
+			window as {
+				__electrobun: {
+					receiveMessageFromBun: (m: unknown) => void;
+					receiveInternalMessageFromBun: (m: unknown) => void;
+				};
+			}
+		).__electrobun = {
+			receiveMessageFromBun: (_m: unknown) => {},
+			receiveInternalMessageFromBun: (_m: unknown) => {},
+		};
+	}
 }

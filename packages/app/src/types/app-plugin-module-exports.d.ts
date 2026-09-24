@@ -15,7 +15,7 @@ declare module "@elizaos/plugin-native-phone" {
   >;
 }
 
-declare module "@elizaos/plugin-task-coordinator" {
+declare module "@elizaos/plugin-agent-orchestrator" {
   export const CodingAgentControlChip: import("react").ComponentType<
     Record<string, never>
   >;

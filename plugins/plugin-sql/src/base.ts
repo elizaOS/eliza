@@ -85,6 +85,7 @@ import {
   type Room,
   type RunStatus,
   requireFreshWorldMetadataRevision,
+  rerankMemories,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -103,7 +104,6 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { rerankMemories } from "@elizaos/retrieval";
 import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {

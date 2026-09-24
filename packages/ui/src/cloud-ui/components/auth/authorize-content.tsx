@@ -28,7 +28,7 @@ import {
   GoogleIcon,
   LoginForm,
   useAuth,
-} from "../../../auth/index";
+} from "../../../login/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { CornerBrackets } from "../primitives";

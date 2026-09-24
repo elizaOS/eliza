@@ -18,8 +18,7 @@ const CONFIG = {
   tenantId: "elizacloud-staging",
 };
 
-const STAGING_CALLBACK_BASE_URL =
-  "https://api-staging.eliza.app/steward";
+const STAGING_CALLBACK_BASE_URL = "https://api-staging.eliza.app/steward";
 
 let providerStateSequence = 0;
 

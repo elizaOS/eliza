@@ -93,11 +93,11 @@ The `scheduleNext` method accepts `earliestBeginSec` (default 900s / 15 min, flo
 - **Android is not supported** — the `capacitor.android` package metadata is retained for Capacitor package shape; there is no `android/` source tree.
 - **Web returns `supported: false`** for all three methods. The consuming app is expected to check `getStatus().supported` and fall back to `@capacitor/background-runner` polling on web/non-iOS.
 - The podspec pod name is `ElizaosCapacitorElizaTasks` (matches `capacitor.ios.podName` in `package.json`). Keep these in sync if renaming.
-- See root `CLAUDE.md` for repo-wide conventions (logger rules, ESM, architecture commandments).
+- See root `AGENTS.md` for repo-wide conventions (logger rules, ESM, architecture commandments).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

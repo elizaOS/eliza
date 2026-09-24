@@ -3,7 +3,7 @@
 #
 # packages/scripts/vast/run-certification.mjs rents a vast.ai RTX 4090 and boots this
 # image; the onstart script it injects only clones the repo at one sha and
-# runs the packages/evidence certification chain. vast caps onstart-cmd at
+# runs the packages/testing certification chain. vast caps onstart-cmd at
 # 16 KB, so EVERYTHING heavy is baked here instead: CUDA-enabled llama-server
 # (>= build b8525, the minimum packages/scripts/gpu-vision accepts for the
 # DeepSeek-OCR mmproj), the sha256-pinned OCR + VLM GGUFs from
@@ -83,7 +83,7 @@ ENV PATH="${BUN_INSTALL}/bin:${PATH}"
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
     && bun --version
 
-# Playwright Chromium + OS deps, pinned to the packages/evidence devDep line.
+# Playwright Chromium + OS deps, pinned to the packages/testing devDep line.
 ARG PLAYWRIGHT_VERSION=1.61.0
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \

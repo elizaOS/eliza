@@ -13,28 +13,18 @@
     "noEmit": true,
     "paths": {
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
-      "@elizaos/plugin-app-manager": [
-        "../../plugins/plugin-app-manager/src/index.ts"
-      ],
-      "@elizaos/plugin-agent-skills": [
-        "../../plugins/plugin-agent-skills/src/index.ts"
-      ],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/src/index.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/app": ["./src/index.ts"],
       "@elizaos/app/*": ["./src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/ui": ["../src/ui/index.ts"],
+      "@elizaos/ui/*": ["../src/ui/*"],
       "@elizaos/ui/api/client-types-cloud": [
-        "../ui/src/api/client-types-cloud.ts"
+        "../src/ui/api/client-types-cloud.ts"
       ],
-      "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
+      "@elizaos/ui/navigation": ["../src/ui/navigation/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
@@ -55,18 +45,12 @@
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
-      "@elizaos/plugin-commands": [
-        "../../plugins/plugin-commands/src/index.ts"
-      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
-      ],
-      "@elizaos/plugin-task-coordinator": [
-        "../../plugins/plugin-task-coordinator/src/index.ts"
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/src/index.ts"
@@ -91,7 +75,6 @@
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
-      "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
@@ -132,9 +115,6 @@
       ],
       "@elizaos/plugin-native-phone/bridge": [
         "../../plugins/plugin-native-phone/src/bridge.ts"
-      ],
-      "@elizaos/capacitor-screencapture": [
-        "../../plugins/plugin-native-screencapture/src/index.ts"
       ]
     }
   },
@@ -156,7 +136,7 @@
     "src/browser.ts",
     "src/styles",
     "src/entry-cloud-api-key.test.ts",
-    "src/__tests__",
+    "src/state-dir-no-direct-env.test.ts",
     "src/boot-profile.ts",
     "src/diagnostics",
     "src/registry",

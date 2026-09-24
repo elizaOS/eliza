@@ -9,30 +9,30 @@ export const TRACE_DYNAMIC_VIEW_ID = "agent.run.trace";
 const TRACE_VIEW_FILE = "agent-run-trace.html";
 
 function currentDir(): string {
-  return path.dirname(fileURLToPath(import.meta.url));
+	return path.dirname(fileURLToPath(import.meta.url));
 }
 
 function resolveTraceViewEntrypoint(): string {
-  const baseDir = currentDir();
-  const candidates = [
-    path.join(baseDir, "views", TRACE_VIEW_FILE),
-    path.join(baseDir, "trace", "views", TRACE_VIEW_FILE),
-  ];
-  const found = candidates.find((candidate) => fs.existsSync(candidate));
-  return pathToFileURL(found ?? candidates[0]).href;
+	const baseDir = currentDir();
+	const candidates = [
+		path.join(baseDir, "views", TRACE_VIEW_FILE),
+		path.join(baseDir, "trace", "views", TRACE_VIEW_FILE),
+	];
+	const found = candidates.find((candidate) => fs.existsSync(candidate));
+	return pathToFileURL(found ?? candidates[0]).href;
 }
 
 export function createTraceDynamicViewManifest(): DynamicViewManifest {
-  return {
-    id: TRACE_DYNAMIC_VIEW_ID,
-    title: "Agent Run Trace",
-    description: "Contextual trace view for agent runs and capability calls.",
-    source: "system",
-    entrypoint: resolveTraceViewEntrypoint(),
-    placement: "floating",
-    metadata: {
-      trace: true,
-      productionPanel: false,
-    },
-  };
+	return {
+		id: TRACE_DYNAMIC_VIEW_ID,
+		title: "Agent Run Trace",
+		description: "Contextual trace view for agent runs and capability calls.",
+		source: "system",
+		entrypoint: resolveTraceViewEntrypoint(),
+		placement: "floating",
+		metadata: {
+			trace: true,
+			productionPanel: false,
+		},
+	};
 }

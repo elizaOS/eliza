@@ -6,8 +6,8 @@ import type { Action } from "@elizaos/core";
 import type {
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const ACTION_NAME = "NOOP_PROVENANCE_CHECK";
 const ACTION_PREVIEW =

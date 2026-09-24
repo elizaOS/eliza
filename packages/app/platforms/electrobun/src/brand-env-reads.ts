@@ -17,11 +17,11 @@ import { readAliasedEnv } from "@elizaos/shared/utils/env";
  * convention with no brand alias and stays a direct read.
  */
 export function resolveRendererUrlFromEnv(): string {
-  return (
-    readAliasedEnv("ELIZA_RENDERER_URL") ??
-    process.env.VITE_DEV_SERVER_URL ??
-    ""
-  );
+	return (
+		readAliasedEnv("ELIZA_RENDERER_URL") ??
+		process.env.VITE_DEV_SERVER_URL ??
+		""
+	);
 }
 
 /**
@@ -29,5 +29,5 @@ export function resolveRendererUrlFromEnv(): string {
  * compiled-in brand namespace when `ELIZA_NAMESPACE` (or its brand alias) is unset.
  */
 export function resolveNamespaceFromEnv(fallback: string): string {
-  return readAliasedEnv("ELIZA_NAMESPACE") ?? fallback;
+	return readAliasedEnv("ELIZA_NAMESPACE") ?? fallback;
 }

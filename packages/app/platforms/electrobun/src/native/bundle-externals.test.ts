@@ -27,43 +27,43 @@ const configPath = path.join(electrobunDir, "electrobun.config.ts");
 
 /** Externals that are pure type-only dependencies of the shell are exempt. */
 const TYPE_ONLY_EXTERNALS = new Set([
-  "@elizaos/agent",
-  "@elizaos/app",
-  "@elizaos/shared",
+	"@elizaos/agent",
+	"@elizaos/app",
+	"@elizaos/shared",
 ]);
 
 const EXTERNAL_BLOCK_PATTERN = /external:\s*\[([\s\S]*?)\]/;
 const QUOTED_STRING_PATTERN = /"([^"]+)"/g;
 
 function readBundleExternals(): string[] {
-  const source = readFileSync(configPath, "utf8");
-  const block = EXTERNAL_BLOCK_PATTERN.exec(source);
-  if (!block) {
-    throw new Error(`No bundle 'external' array found in ${configPath}`);
-  }
-  const externals: string[] = [];
-  for (const match of block[1].matchAll(QUOTED_STRING_PATTERN)) {
-    externals.push(match[1]);
-  }
-  if (externals.length === 0) {
-    throw new Error(`Parsed an empty 'external' array from ${configPath}`);
-  }
-  return externals;
+	const source = readFileSync(configPath, "utf8");
+	const block = EXTERNAL_BLOCK_PATTERN.exec(source);
+	if (!block) {
+		throw new Error(`No bundle 'external' array found in ${configPath}`);
+	}
+	const externals: string[] = [];
+	for (const match of block[1].matchAll(QUOTED_STRING_PATTERN)) {
+		externals.push(match[1]);
+	}
+	if (externals.length === 0) {
+		throw new Error(`Parsed an empty 'external' array from ${configPath}`);
+	}
+	return externals;
 }
 
 function collectShellSources(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "__stubs__" || entry === "__tests__") continue;
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      collectShellSources(full, found);
-      continue;
-    }
-    if (!full.endsWith(".ts") && !full.endsWith(".tsx")) continue;
-    if (full.endsWith(".d.ts") || full.includes(".test.")) continue;
-    found.push(full);
-  }
-  return found;
+	for (const entry of readdirSync(dir)) {
+		if (entry === "__stubs__" || entry === "__tests__") continue;
+		const full = path.join(dir, entry);
+		if (statSync(full).isDirectory()) {
+			collectShellSources(full, found);
+			continue;
+		}
+		if (!full.endsWith(".ts") && !full.endsWith(".tsx")) continue;
+		if (full.endsWith(".d.ts") || full.includes(".test.")) continue;
+		found.push(full);
+	}
+	return found;
 }
 
 /**
@@ -73,66 +73,66 @@ function collectShellSources(dir: string, found: string[] = []): string[] {
  * startup; both are excluded.
  */
 const TYPE_IMPORT_PATTERN =
-  /\b(?:import|export)\s+type\s+[\s\S]*?from\s*["'][^"']+["']/g;
+	/\b(?:import|export)\s+type\s+[\s\S]*?from\s*["'][^"']+["']/g;
 const VALUE_IMPORT_PATTERN =
-  /(?:^|[\s;}])(?:import|export)\s+(?:[\s\S]*?\sfrom\s*)?["']([^"']+)["']/g;
+	/(?:^|[\s;}])(?:import|export)\s+(?:[\s\S]*?\sfrom\s*)?["']([^"']+)["']/g;
 
 function findValueImportSpecifiers(source: string): string[] {
-  const withoutTypeImports = source.replace(TYPE_IMPORT_PATTERN, "");
-  const specifiers: string[] = [];
-  for (const match of withoutTypeImports.matchAll(VALUE_IMPORT_PATTERN)) {
-    specifiers.push(match[1]);
-  }
-  return specifiers;
+	const withoutTypeImports = source.replace(TYPE_IMPORT_PATTERN, "");
+	const specifiers: string[] = [];
+	for (const match of withoutTypeImports.matchAll(VALUE_IMPORT_PATTERN)) {
+		specifiers.push(match[1]);
+	}
+	return specifiers;
 }
 
 function matchesExternal(specifier: string, external: string): boolean {
-  if (external.endsWith("/*")) {
-    return specifier.startsWith(external.slice(0, -1));
-  }
-  return specifier === external || specifier.startsWith(`${external}/`);
+	if (external.endsWith("/*")) {
+		return specifier.startsWith(external.slice(0, -1));
+	}
+	return specifier === external || specifier.startsWith(`${external}/`);
 }
 
 describe("electrobun shell bundle externals", () => {
-  const externals = readBundleExternals();
-  const sources = collectShellSources(shellSrcDir);
+	const externals = readBundleExternals();
+	const sources = collectShellSources(shellSrcDir);
 
-  it("finds the shell sources and the configured externals", () => {
-    expect(externals).toEqual(
-      expect.arrayContaining(["@elizaos/plugin-local-inference"]),
-    );
-    expect(sources.length).toBeGreaterThan(20);
-  });
+	it("finds the shell sources and the configured externals", () => {
+		expect(externals).toEqual(
+			expect.arrayContaining(["@elizaos/plugin-local-inference"]),
+		);
+		expect(sources.length).toBeGreaterThan(20);
+	});
 
-  it("never statically imports an externalized package", () => {
-    const enforced = externals.filter((e) => !TYPE_ONLY_EXTERNALS.has(e));
-    const violations: string[] = [];
+	it("never statically imports an externalized package", () => {
+		const enforced = externals.filter((e) => !TYPE_ONLY_EXTERNALS.has(e));
+		const violations: string[] = [];
 
-    for (const file of sources) {
-      const specifiers = findValueImportSpecifiers(readFileSync(file, "utf8"));
-      for (const specifier of specifiers) {
-        const external = enforced.find((e) => matchesExternal(specifier, e));
-        if (external) {
-          violations.push(
-            `${path.relative(electrobunDir, file)} statically imports "${specifier}" (external: "${external}")`,
-          );
-        }
-      }
-    }
+		for (const file of sources) {
+			const specifiers = findValueImportSpecifiers(readFileSync(file, "utf8"));
+			for (const specifier of specifiers) {
+				const external = enforced.find((e) => matchesExternal(specifier, e));
+				if (external) {
+					violations.push(
+						`${path.relative(electrobunDir, file)} statically imports "${specifier}" (external: "${external}")`,
+					);
+				}
+			}
+		}
 
-    expect(violations).toEqual([]);
-  });
+		expect(violations).toEqual([]);
+	});
 
-  it("reaches the wake-word surface lazily", () => {
-    const fusedWake = readFileSync(
-      path.join(nativeDir, "fused-wake.ts"),
-      "utf8",
-    );
-    expect(fusedWake).toContain(
-      'await import("@elizaos/plugin-local-inference/voice-wake")',
-    );
-    expect(findValueImportSpecifiers(fusedWake)).not.toContain(
-      "@elizaos/plugin-local-inference/voice-wake",
-    );
-  });
+	it("reaches the wake-word surface lazily", () => {
+		const fusedWake = readFileSync(
+			path.join(nativeDir, "fused-wake.ts"),
+			"utf8",
+		);
+		expect(fusedWake).toContain(
+			'await import("@elizaos/plugin-local-inference/voice-wake")',
+		);
+		expect(findValueImportSpecifiers(fusedWake)).not.toContain(
+			"@elizaos/plugin-local-inference/voice-wake",
+		);
+	});
 });

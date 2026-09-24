@@ -272,24 +272,34 @@ test("runtime downloads exhaust bounded retries without publishing partial bytes
 test("bundled Android agent disables auto-install before the script argument", () => {
   const launchSetup = __testables.LAUNCH_SCRIPT.split("\n(\n  setsid ")[0];
   for (const command of ["", "android-bridge"]) {
-    const output = execFileSync("sh", ["-c", [
-      "pkill() { :; }; sleep() { :; }",
-      launchSetup,
-      'printf "%s\\n" "$@"',
-    ].join("\n")], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        AGENT_ROOT: os.tmpdir(),
-        LD_PATH: "/runtime/loader",
-        BUN_PATH: "/runtime/bun",
-        AGENT_BUNDLE_PATH: "/app/agent bundle.js",
-        AGENT_COMMAND: command,
+    const output = execFileSync(
+      "sh",
+      [
+        "-c",
+        [
+          "pkill() { :; }; sleep() { :; }",
+          launchSetup,
+          'printf "%s\\n" "$@"',
+        ].join("\n"),
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          AGENT_ROOT: os.tmpdir(),
+          LD_PATH: "/runtime/loader",
+          BUN_PATH: "/runtime/bun",
+          AGENT_BUNDLE_PATH: "/app/agent bundle.js",
+          AGENT_COMMAND: command,
+        },
       },
-    });
+    );
     assert.deepEqual(output.trim().split("\n"), [
-      "/runtime/loader", "/runtime/bun", "--no-install",
-      "/app/agent bundle.js", ...(command ? [command] : []),
+      "/runtime/loader",
+      "/runtime/bun",
+      "--no-install",
+      "/app/agent bundle.js",
+      ...(command ? [command] : []),
     ]);
   }
 });

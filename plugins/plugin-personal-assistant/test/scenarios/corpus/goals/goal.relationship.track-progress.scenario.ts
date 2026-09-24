@@ -1,6 +1,6 @@
 /** Scenario fixture for goal relationship track progress; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { LifeOpsService } from "../../../../src/lifeops/service.ts";
 
@@ -54,7 +54,7 @@ export default scenario({
   tags: ["lifeops", "goals", "relationships", "smoke"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

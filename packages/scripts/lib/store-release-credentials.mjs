@@ -268,7 +268,9 @@ function evaluatePolicy(live, policy) {
     blockers.push(
       `Environment ${RELEASE_ENVIRONMENT}: reviewer allowlist is empty in the contract; an owner must verify [${live.reviewers
         .map((reviewer) => reviewer.login)
-        .join(", ")}] and commit RELEASE_ENVIRONMENT_POLICY.authorizedReviewers.`,
+        .join(
+          ", ",
+        )}] and commit RELEASE_ENVIRONMENT_POLICY.authorizedReviewers.`,
     );
   } else {
     for (const reviewer of live.reviewers) {

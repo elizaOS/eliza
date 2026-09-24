@@ -3,12 +3,12 @@
  * AI SDK against a loopback HTTP provider. Streaming and complete responses retain
  * optional fields, JSON-only compatibility, complete prompts and provider errors.
  */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import { createServer } from "node:http";
 import { runWithTrajectoryContext } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
-import { AgentRuntime } from "../../../packages/core/src/runtime";
+import type { AgentRuntime } from "../../../packages/core/src/runtime";
 import { handleTextSmall } from "../models/text";
 
 afterEach(() => vi.restoreAllMocks());
@@ -105,7 +105,7 @@ it.each([false, true])(
             OPENAI_SMALL_MODEL: "qwen-3.8-27b",
           },
         },
-        
+
         logLevel: "fatal",
       });
       runtimeOwner = runtime;

@@ -381,6 +381,6 @@ export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
-// `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
+// `types/index.js` aggregates `config-like` and `trajectory`.
 export * from "./types/index.ts";
 export * from "./version-resolver.ts";

@@ -13,20 +13,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";
 import {
-  CUSTOM_PLUGINS_DIRNAME,
-  EJECTED_PLUGINS_DIRNAME,
   findRuntimePluginExport,
   mergeDropInPlugins,
   type PluginModuleShape,
   repairBrokenInstallRecord,
   resolveElizaPluginImportSpecifier,
   resolvePackageEntry,
-  STATIC_ELIZA_PLUGIN_LOADERS,
-  STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
 } from "./plugin-types.ts";
-
-const STATIC_TEST_KEY = "__plugin_types_coverage_key__";
 
 function plugin(name: string, extra?: Partial<Plugin>): Plugin {
   return {
@@ -55,33 +49,6 @@ async function writeJson(
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
-
-describe("plugin-types constants", () => {
-  afterEach(() => {
-    delete STATIC_ELIZA_PLUGINS[STATIC_TEST_KEY];
-    delete STATIC_ELIZA_PLUGIN_LOADERS[STATIC_TEST_KEY];
-  });
-
-  it("exports the drop-in and ejected plugin directory names", () => {
-    expect(CUSTOM_PLUGINS_DIRNAME).toBe("plugins/custom");
-    expect(EJECTED_PLUGINS_DIRNAME).toBe("plugins/ejected");
-  });
-
-  it("exposes STATIC_ELIZA_PLUGINS as a mutable shared registry", () => {
-    expect(STATIC_ELIZA_PLUGINS).toEqual(expect.any(Object));
-    STATIC_ELIZA_PLUGINS[STATIC_TEST_KEY] = { marker: true };
-    expect(STATIC_ELIZA_PLUGINS[STATIC_TEST_KEY]).toEqual({ marker: true });
-  });
-
-  it("exposes STATIC_ELIZA_PLUGIN_LOADERS as a mutable loader map", async () => {
-    const loader = async () => ({ loaded: true });
-    STATIC_ELIZA_PLUGIN_LOADERS[STATIC_TEST_KEY] = loader;
-    expect(STATIC_ELIZA_PLUGIN_LOADERS[STATIC_TEST_KEY]).toBe(loader);
-    await expect(
-      STATIC_ELIZA_PLUGIN_LOADERS[STATIC_TEST_KEY]?.(),
-    ).resolves.toEqual({ loaded: true });
-  });
-});
 
 describe("findRuntimePluginExport", () => {
   it("returns null for an empty module", () => {

@@ -1,0 +1,363 @@
+"""MMLU benchmark adapter.
+
+Wraps lm-evaluation-harness when available; otherwise runs a
+self-contained implementation that talks to an OpenAI-compatible
+endpoint directly. Either path emits the same result shape so the
+registry's score extractor doesn't care which mode produced it.
+
+CLI:
+
+    python -m benchmarks.standard.mmlu \\
+        --model-endpoint http://localhost:8000/v1 \\
+        --model gpt-4o-mini \\
+        --output /tmp/mmlu
+
+Result file: ``<output>/mmlu-results.json``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import re
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Iterable
+
+from ._base import (
+    BenchmarkResult,
+    ChatMessage,
+    GenerationConfig,
+    OpenAICompatibleClient,
+    RunStats,
+)
+from ._cli import RunnerFactory, cli_dispatch
+from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
+
+log = logging.getLogger("benchmarks.standard.mmlu")
+
+BENCHMARK_ID = "mmlu"
+DATASET_NAME = "cais/mmlu"
+DATASET_REVISION = "c30699e8356da336a370243923dbaf21066bb9fe"
+DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
+EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
+EXPECTED_TEST_EXAMPLES = 14_042
+# Reasoning models (gpt-oss, o-series, …) spend completion tokens on hidden
+# reasoning before emitting the visible answer. At the old 256-token default they
+# routinely exhausted the budget mid-reasoning and returned an EMPTY visible
+# answer, which the harness scored as wrong — silently depressing a real ~0.92 to
+# ~0.48 (gpt-oss-120b, abstract_algebra: 11/25 empty). A single MCQ letter costs
+# ~1 token, so the only reason to raise this is reasoning headroom; non-reasoning
+# models stop early and are unaffected. See the truncation warning in `run`.
+DEFAULT_MAX_TOKENS = 2048
+
+
+SYSTEM_PROMPT = (
+    "You are an expert taking a multiple-choice exam. For each question, "
+    "respond with a single letter (A, B, C, or D) corresponding to the "
+    "correct answer. Do not include any explanation."
+)
+
+# Tiny built-in fixture covers the explicit mock smoke test. Real runs load the
+# pinned ``cais/mmlu`` revision and fail if that corpus is unavailable.
+SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
+    {
+        "subject": "high_school_mathematics",
+        "question": "What is 12 + 7?",
+        "choices": ["17", "18", "19", "20"],
+        "answer_index": 2,
+    },
+    {
+        "subject": "world_history",
+        "question": "In what year did World War II end?",
+        "choices": ["1942", "1945", "1948", "1950"],
+        "answer_index": 1,
+    },
+    {
+        "subject": "elementary_mathematics",
+        "question": "Which of the following is a prime number?",
+        "choices": ["4", "6", "9", "11"],
+        "answer_index": 3,
+    },
+)
+
+
+_LETTER_RE = re.compile(r"\b([A-D])\b")
+_LETTER_OPTIONS = ("A", "B", "C", "D")
+
+
+def _format_question(item: dict[str, object]) -> str:
+    question = str(item["question"])
+    choices = item["choices"]
+    if not isinstance(choices, list) or len(choices) != 4:
+        raise ValueError(f"MMLU item has bad choices: {choices!r}")
+    body = [f"Question: {question}"]
+    for letter, choice in zip(_LETTER_OPTIONS, choices):
+        body.append(f"{letter}. {choice}")
+    body.append("Answer:")
+    return "\n".join(body)
+
+
+def _extract_letter(text: str) -> str | None:
+    if not text:
+        return None
+    stripped = text.strip().upper()
+    match = _LETTER_RE.search(stripped)
+    return match.group(1) if match else None
+
+
+def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
+    """Load a pinned, complete MMLU test corpus for non-mock runs."""
+    from datasets import load_dataset
+
+    target_count = (
+        EXPECTED_TEST_EXAMPLES if limit is None else min(limit, EXPECTED_TEST_EXAMPLES)
+    )
+    if target_count <= 0:
+        return []
+    ds = load_dataset(DATASET_NAME, "all", split="test", revision=DATASET_REVISION)
+
+    examples: list[dict[str, object]] = []
+    for row in ds:
+        examples.append(
+            {
+                "subject": row.get("subject") or "",
+                "question": row.get("question") or "",
+                "choices": list(row.get("choices") or []),
+                "answer_index": int(row.get("answer") or 0),
+            }
+        )
+        if len(examples) >= target_count:
+            break
+    if len(examples) != target_count:
+        raise RuntimeError(
+            f"MMLU corpus is incomplete: expected {target_count} test examples, "
+            f"loaded {len(examples)} from revision {DATASET_REVISION}"
+        )
+    return examples
+
+
+class MMLURunner:
+    """Self-contained MMLU scorer for OpenAI-compatible endpoints.
+
+    Loads ``cais/mmlu`` (or fixture in mock mode), prompts the model for
+    a single-letter answer, scores accuracy.
+    """
+
+    benchmark_id: str = BENCHMARK_ID
+    dataset_version: str = DATASET_VERSION
+
+    def __init__(
+        self,
+        *,
+        examples: Iterable[dict[str, object]] | None = None,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        include_edge_scenarios: bool = False,
+    ) -> None:
+        self._examples = list(examples) if examples is not None else None
+        self._max_tokens = max_tokens
+        self._include_edge_scenarios = include_edge_scenarios
+
+    def _selected_examples(
+        self, limit: int | None
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(
+            self._examples
+            if self._examples is not None
+            else _load_dataset_examples(limit)
+        )
+        if self._examples is not None and limit is not None:
+            base = base[:limit]
+        examples = (
+            expand_mmlu_examples(base) if self._include_edge_scenarios else list(base)
+        )
+        validate_mmlu_examples(examples)
+        return base, examples
+
+    def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
+        base, examples = self._selected_examples(limit)
+        counts = count_dict_examples(base, examples)
+        counts["edge_multiplier"] = 10
+        return counts
+
+    def run(
+        self,
+        *,
+        client: OpenAICompatibleClient,
+        model: str,
+        endpoint: str,
+        output_dir: Path,
+        limit: int | None,
+    ) -> BenchmarkResult:
+        stats = RunStats()
+        _, examples = self._selected_examples(limit)
+        if not examples:
+            raise RuntimeError("MMLU loaded zero examples")
+
+        config = GenerationConfig(
+            model=model, max_tokens=self._max_tokens, temperature=0.0
+        )
+
+        correct = 0
+        empty_outputs = 0
+        per_subject: dict[str, list[int]] = {}
+        failures: list[dict[str, object]] = []
+
+        for i, item in enumerate(examples):
+            subject = str(item.get("subject") or "unknown")
+            expected_idx = int(item["answer_index"])  # type: ignore[arg-type]
+            expected_letter = _LETTER_OPTIONS[expected_idx]
+            messages = [
+                ChatMessage(role="system", content=SYSTEM_PROMPT),
+                ChatMessage(role="user", content=_format_question(item)),
+            ]
+            try:
+                gen = client.generate(messages, config)
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(
+                    f"MMLU generation failed for example {i + 1}/{len(examples)}"
+                ) from exc
+            empty_output = not gen.text.strip()
+            if empty_output:
+                empty_outputs += 1
+                predicted = None
+            else:
+                predicted = _extract_letter(gen.text)
+            is_correct = predicted == expected_letter
+            if is_correct:
+                correct += 1
+            slot = per_subject.setdefault(subject, [0, 0])
+            slot[1] += 1
+            if is_correct:
+                slot[0] += 1
+            if not is_correct and len(failures) < 8:
+                failures.append(
+                    {
+                        "subject": subject,
+                        "question": item.get("question"),
+                        "expected": expected_letter,
+                        "predicted": "<empty>"
+                        if empty_output
+                        else predicted or gen.text[:120],
+                        "empty_visible_output": empty_output,
+                    }
+                )
+
+        n = sum(c[1] for c in per_subject.values())
+        if n != len(examples):
+            raise RuntimeError(
+                f"MMLU evaluated {n}/{len(examples)} examples; refusing a partial score"
+            )
+        if empty_outputs == n:
+            raise RuntimeError(
+                f"MMLU generated empty visible output for all {n} evaluated examples; "
+                "treating this as a harness/model transport error rather than accuracy=0"
+            )
+        empty_output_rate = round(empty_outputs / n, 4)
+        if empty_outputs:
+            # Partial empties silently depress the score: they are scored as wrong
+            # even though the harness never got an answer. Surface it loudly so a
+            # truncated run is never mistaken for a real low score (the usual cause
+            # is a reasoning model exhausting max_tokens on hidden reasoning).
+            log.warning(
+                "MMLU: %d/%d (%.0f%%) evaluated examples returned empty visible "
+                "output and were scored as misses — the accuracy UNDERSTATES the "
+                "model. Reasoning models can exhaust max_tokens (%d) on hidden "
+                "reasoning before the answer; raise --max-tokens or lower reasoning "
+                "effort, then re-run.",
+                empty_outputs,
+                n,
+                100 * empty_output_rate,
+                self._max_tokens,
+            )
+
+        accuracy = correct / n
+        subject_accuracy: dict[str, float] = {
+            subject: round(slot[0] / slot[1], 4)
+            for subject, slot in per_subject.items()
+        }
+
+        return BenchmarkResult(
+            benchmark=BENCHMARK_ID,
+            model=model,
+            endpoint=endpoint,
+            dataset_version=EXPANDED_DATASET_VERSION
+            if self._include_edge_scenarios
+            else DATASET_VERSION,
+            n=n,
+            metrics={
+                "score": round(accuracy, 4),
+                "accuracy": round(accuracy, 4),
+                "correct": float(correct),
+                "n": float(n),
+            },
+            raw_json={
+                "subject_accuracy": subject_accuracy,
+                "empty_outputs": empty_outputs,
+                "empty_output_rate": empty_output_rate,
+            },
+            failures=failures,
+            elapsed_s=stats.elapsed(),
+        )
+
+
+class _MMLUFactory(RunnerFactory):
+    prog = "benchmarks.standard.mmlu"
+    description = "MMLU 4-way multiple-choice benchmark (cais/mmlu) over an OpenAI-compatible endpoint."
+
+    def augment_parser(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--max-tokens",
+            type=int,
+            default=DEFAULT_MAX_TOKENS,
+            help="Cap on generated tokens per question",
+        )
+
+    def build(
+        self, args: argparse.Namespace
+    ) -> tuple[MMLURunner, Sequence[str] | None]:
+        runner = MMLURunner(
+            max_tokens=args.max_tokens, include_edge_scenarios=args.expand_scenarios
+        )
+        mock_responses: Sequence[str] | None = None
+        if args.mock:
+            base = list(SMOKE_FIXTURES)
+            if args.limit is not None:
+                base = base[: args.limit]
+            examples = expand_mmlu_examples(base) if args.expand_scenarios else base
+            # Drive the runner against the built-in fixture deterministically.
+            runner = MMLURunner(
+                examples=base,
+                max_tokens=args.max_tokens,
+                include_edge_scenarios=args.expand_scenarios,
+            )
+            # Echo the correct letter so a mock smoke run scores 100%.
+            mock_responses = [
+                _LETTER_OPTIONS[int(item["answer_index"])]  # type: ignore[arg-type]
+                for item in examples
+            ]
+        return runner, mock_responses
+
+
+def expand_mmlu_examples(examples: list[dict[str, object]]) -> list[dict[str, object]]:
+    def mutate(item: dict[str, object], instruction: str) -> None:
+        item["question"] = f"{instruction}\n\n{item['question']}"
+
+    return expand_dict_examples(examples, id_key="scenario_id", mutator=mutate)
+
+
+def validate_mmlu_examples(examples: list[dict[str, object]]) -> None:
+    validate_dict_examples(
+        examples,
+        id_key="scenario_id",
+        required_keys=("question", "choices", "answer_index"),
+    )
+
+
+def main() -> int:
+    cli_dispatch(_MMLUFactory(), output_filename="mmlu-results.json")
+    return 0  # unreachable; cli_dispatch sys.exits.
+
+
+if __name__ == "__main__":
+    main()

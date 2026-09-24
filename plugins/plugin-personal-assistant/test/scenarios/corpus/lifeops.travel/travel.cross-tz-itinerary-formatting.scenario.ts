@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -17,7 +17,7 @@ export default scenario({
     "User is in Pacific time, travelling to Tokyo. The itinerary brief must show flight times in BOTH destination and home timezone — not just UTC, not just one side. Catches a 'agent did the math but lost the user's frame of reference' bug.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

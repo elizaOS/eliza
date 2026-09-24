@@ -61,12 +61,9 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
 
     // Lean chat keeps the conversational essentials.
     expect(names.has("@elizaos/plugin-sql")).toBe(true);
-    expect(names.has("@elizaos/plugin-app-control")).toBe(true);
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-knowledge")).toBe(true);
     expect(names.has("@elizaos/plugin-todos")).toBe(true);
-    expect(names.has("@elizaos/plugin-commands")).toBe(true);
-    expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
     // Calendar tile (viewEveryPlatform) needs scheduling; Google Workspace is
     // NOT inferred from Calendar alone (Apple/Microsoft/ICS also use Calendar).
     expect(names.has("@elizaos/plugin-calendar")).toBe(true);

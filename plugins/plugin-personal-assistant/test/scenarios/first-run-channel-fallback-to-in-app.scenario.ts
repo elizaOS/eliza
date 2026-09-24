@@ -14,7 +14,7 @@
  * connectivity check (`src/lifeops/first-run/questions.ts`, header contract)
  * and `installFirstRunChannelInspector` (`.../first-run/channel-inspector.ts`).
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   channelFallbackRecorded,
   resetFirstRunPrecondition,

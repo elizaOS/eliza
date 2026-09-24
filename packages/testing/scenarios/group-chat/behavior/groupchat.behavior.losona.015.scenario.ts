@@ -2,7 +2,7 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/testing/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
 const config = {

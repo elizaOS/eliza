@@ -8,9 +8,8 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Character,
   Memory,
@@ -43,7 +42,7 @@ function makeRuntime(): AgentRuntime {
       bio: "test",
       settings: { POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000" },
     } as Character,
-    
+
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;

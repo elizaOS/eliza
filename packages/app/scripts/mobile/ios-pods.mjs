@@ -186,10 +186,6 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     iosPods: [{ name: "ElizaosCapacitorMobileSignals", kind: "custom" }],
   },
   {
-    packageName: "@elizaos/capacitor-screencapture",
-    iosPods: [{ name: "ElizaosCapacitorScreencapture", kind: "custom" }],
-  },
-  {
     packageName: "@elizaos/capacitor-secure-store",
     iosPods: [{ name: "ElizaosCapacitorSecureStore", kind: "custom" }],
   },

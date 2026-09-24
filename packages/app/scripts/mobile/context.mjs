@@ -133,8 +133,6 @@ export const elizaOsApkName = systemApkStaging.apkName;
 
 export const platformsDir = path.join(appCoreRoot, "platforms");
 
-export const nativePluginsDir = path.join(packagesRoot, "native", "plugins");
-
 export const androidAgentSpikeDir = path.join(
   repoRoot,
   "scripts",

@@ -28,7 +28,7 @@
  * Synthetic persona (Marcus Oyelaran, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const RENAG =
   /(don'?t forget to call|make sure you call|have you called|remember to call|you (still )?need to call)/i;

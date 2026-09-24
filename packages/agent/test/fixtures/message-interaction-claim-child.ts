@@ -1,0 +1,22 @@
+/** Executes one file-store claim in a separate process for lock/CAS tests. */
+
+import fs from "node:fs/promises";
+import { FileMessageInteractionSessionStore } from "../../src/services/message-interaction-session-store.ts";
+
+const [stateDirectory, contextPath] = process.argv.slice(2);
+if (!stateDirectory || !contextPath)
+  throw new Error("state directory and context path are required");
+const context = JSON.parse(await fs.readFile(contextPath, "utf8"));
+const store = new FileMessageInteractionSessionStore({
+  stateDirectory,
+  // The claim context owns the interaction timestamp. Use the same instant for
+  // opportunistic pruning so this contention fixture does not become invalid
+  // merely because its deterministic timestamp is older than wall-clock time.
+  clock: () => Number(context.now),
+  // Eight independent Bun processes deliberately contend on a durable fsync
+  // path. Keep the assertion about serialization independent of host I/O load;
+  // lock-timeout behavior has its own deterministic coverage.
+  lockTimeoutMs: 120_000,
+});
+const result = await store.claimIfCurrent(context);
+process.stdout.write(result.status);

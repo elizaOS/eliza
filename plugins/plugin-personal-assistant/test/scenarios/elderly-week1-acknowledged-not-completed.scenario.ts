@@ -23,7 +23,7 @@
  * acknowledge" assertion fails.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { isRecord, registerDeliveryChannel } from "./_helpers/elderly-week1";
 
 const SCENARIO_ID = "elderly-week1-acknowledged-not-completed";

@@ -1,4 +1,4 @@
-/** Publish one Node entry and declaration for the assistant policy plugin. */
+/** Publish the assistant policy plugin and its explicit action and prompt entry points. */
 import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ await rm(`${root}dist`, { recursive: true, force: true });
 await build({
   entry: {
     index: `${root}src/index.ts`,
+    "actions/generate-media": `${root}src/features/advanced-capabilities/actions/generateMedia.ts`,
     "prompts/response-policy": `${root}src/prompts/response-policy.ts`,
   },
   outDir: `${root}dist`,

@@ -12,7 +12,6 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
   copyFile,
-  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -149,7 +148,6 @@ console.log("[build-mobile] output dir:", outDir);
 
 if (process.argv.includes("--verify-workspace-resolution")) {
   const requiredPackages = [
-    "@elizaos/plugin-commands",
     "@elizaos/plugin-vision",
     "@elizaos/plugin-wallet",
     "@elizaos/cloud-routing",
@@ -426,7 +424,7 @@ if (TARGET === "ios-jsc") {
 // boot). The narrow list below is exactly the packages whose dependency
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
-// Other packages — including `@elizaos/plugin-task-coordinator` and
+// Other packages — including `@elizaos/plugin-agent-orchestrator` and
 // `@elizaos/plugin-personal-assistant` — are imported by `api/server.ts` as
 // named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
@@ -436,13 +434,6 @@ if (TARGET === "ios-jsc") {
 const optionalPluginStubs = {
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
-  // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
-  // dependency is `@elizaos/core` (workspace:*), so it does not drag an
-  // incompatible core into the bundle, and `api/commands-routes.ts` imports the
-  // pure `getConnectorCommands` from it by name. The null-plugin Proxy stub does
-  // not carry that own-key, so stubbing it made the /api/commands route throw
-  // `getConnectorCommands is not a function` on device. It belongs to the
-  // "let it bundle, the runtime plugin filter handles registration" group.
   "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
@@ -452,15 +443,6 @@ const optionalPluginStubs = {
   // load set anyway, so a null stub prevents Chromium plumbing from entering
   // the bundle if that optional resolution path is reached.
   "@elizaos/plugin-browser": path.join(stubsDir, "null-plugin.cjs"),
-  // Server-side connectors that app-lifeops dynamically imports inside
-  // its service mixins. Mobile never reaches the runtime path that
-  // calls `import("@elizaos/plugin-whatsapp")`, but
-  // Bun's bundler still has to resolve them statically. The plugins
-  // are workspace-only deps on app-lifeops and aren't in
-  // packages/agent's resolution scope, so stub them out here. Trying to
-  // bundle the real package also drags Baileys native bindings into the mobile
-  // bundle, which is wrong on every axis.
-  "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   // Desktop/server-only optional integrations. The mobile agent does not host
   // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
   // imports both optional modules lazily. Resolve them to the shared no-op
@@ -1842,13 +1824,6 @@ for (const asset of [
   const sz = (await stat(src)).size;
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
-
-// Skills are runtime inputs, not imports; bundling JavaScript cannot inline them.
-await cp(
-  path.join(repoRoot, "packages/skills/skills"),
-  path.join(outDir, "skills"),
-  { recursive: true },
-);
 
 const generatedUtc = new Date().toISOString();
 const manifest = {

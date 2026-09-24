@@ -12,8 +12,8 @@ import {
   getAgentHostBridge,
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
-import { ModelType } from "@elizaos/core";
 import { listAccounts } from "@elizaos/auth/auth/account-storage";
+import { ModelType } from "@elizaos/core";
 import {
   FirstRunActivationSchema,
   PostFirstRunResponseSchema,

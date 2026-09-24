@@ -26,7 +26,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateToolArgs } from "../../../core/src/actions/validate-tool-args.ts";
-import { claimRendererReply } from "../__tests__/view-renderer-test-utils.ts";
+import { claimRendererReply } from "../../test/view-renderer-test-utils.ts";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
 import {
   beginViewInstallation,

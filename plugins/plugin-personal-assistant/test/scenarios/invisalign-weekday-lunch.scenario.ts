@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: "remind me about my Invisalign on weekdays after lunch" creates a weekly (Mon–Fri) afternoon reminder habit, verified by definitionCountDelta with cadence, weekday, window, and reminder-plan assertions.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

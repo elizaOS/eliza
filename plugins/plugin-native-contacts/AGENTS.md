@@ -87,11 +87,11 @@ The provider intentionally omits the native bridge's optional pagination limit s
 - **Spatial view.** `ContactsSpatialView.tsx` is authored with the spatial-UI vocabulary and is purely presentational (snapshot + action callback) with no Capacitor runtime imports.
 - **Views bundle.** The overlay UI is built separately via `vite.config.views.ts` into `dist/views/bundle.js`. `bundlePath` in the view descriptors points there. The tsup build (`build:js`) and the vite build (`build:views`) are independent steps.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
-- See the root `CLAUDE.md` for repo-wide architecture rules, logging conventions, and git workflow.
+- See the root `AGENTS.md` for repo-wide architecture rules, logging conventions, and git workflow.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

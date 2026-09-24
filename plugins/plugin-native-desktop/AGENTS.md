@@ -90,11 +90,11 @@ None. This package reads no env vars and has no runtime configuration. All behav
 - **Platform availability:** System tray, global shortcuts, auto-launch, `getPath`, and `showItemInFolder` are Node/Electrobun only. Calling them on web returns unavailable results or throws. The `elizaos.platformDetails` field in `package.json` documents exactly what is available per platform.
 - **`DesktopPermissionId`** mirrors `PermissionId` from `@elizaos/shared/contracts/permissions`. The type is defined inline here to keep this package free of cross-package type imports.
 - **Build pipeline:** `tsc` compiles to `dist/esm/`, then rollup bundles to `dist/plugin.js` (IIFE) and `dist/plugin.cjs.js` (CJS). The `build` script uses `with-package-build-lock.mjs` to serialize concurrent builds; `build:unlocked` runs the actual steps. `watch` only runs tsc, not rollup.
-- See root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM standards.
+- See root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM standards.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

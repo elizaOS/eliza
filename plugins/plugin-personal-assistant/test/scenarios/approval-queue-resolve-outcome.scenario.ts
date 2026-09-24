@@ -7,8 +7,8 @@
  * reject leaves it "rejected" with no gated side effect and no send/sign
  * confirmation.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 type CapturedActionLite = ScenarioContext["actionsCalled"][number];
 
@@ -127,7 +127,7 @@ export default scenario({
     "Two paths over the live approval_requests queue. APPROVE path: a pending sign_document approval is seeded, the owner approves, and the row transitions pending -> approved/executing/done with the gated executor firing. REJECT companion path: a second pending approval is seeded, the owner rejects, the row lands in 'rejected', and no sign/send side effect ever runs.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

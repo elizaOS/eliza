@@ -397,7 +397,10 @@ describe("ConnectorAccountManager", () => {
 	});
 
 	it("preserves PKCE code verifier through database-backed OAuth flow storage", async () => {
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
 		const manager = getConnectorAccountManager(runtime);
@@ -515,7 +518,10 @@ describe("ConnectorAccountManager", () => {
 	});
 
 	it("fails a flow whose PKCE verifier died with a restart instead of forwarding a doomed exchange", async () => {
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
 		const manager = getConnectorAccountManager(runtime);
@@ -568,7 +574,10 @@ describe("durable storage binding", () => {
 		const runtime = makeRuntime();
 		const manager = getConnectorAccountManager(runtime);
 
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 		(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 			adapter;
@@ -596,7 +605,10 @@ describe("durable storage binding", () => {
 	});
 
 	it("round-trips a provider-owned account key separately from the external identity", async () => {
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 		const manager = getConnectorAccountManager(makeRuntime(adapter));
 		const stableKey = "acct_google_role_bound_key";
@@ -652,7 +664,10 @@ describe("durable storage binding", () => {
 	});
 
 	it("prefers an explicitly injected storage over the runtime adapter", async () => {
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 		const runtime = makeRuntime(adapter);
 		const manager = getConnectorAccountManager(runtime);
@@ -695,7 +710,10 @@ describe("fallback-to-durable state handoff", () => {
 		const manager = getConnectorAccountManager(runtime);
 		await manager.upsertAccount("google", BOOT_ACCOUNT);
 
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 		(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 			adapter;
@@ -728,7 +746,10 @@ describe("fallback-to-durable state handoff", () => {
 		const manager = getConnectorAccountManager(runtime);
 		const storage = manager.getStorage();
 
-		const adapter = SQLiteDatabaseAdapter.create(":memory:");
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			"00000000-0000-0000-0000-000000000001",
+		);
 		await adapter.initialize();
 
 		const pendingUpsert = storage.upsertAccount(BOOT_ACCOUNT);
@@ -756,7 +777,10 @@ describe("fallback-to-durable state handoff", () => {
 		manager.registerProvider({
 			provider: "oauth-split",
 			startOAuth: async () => {
-				const adapter = SQLiteDatabaseAdapter.create(":memory:");
+				const adapter = SQLiteDatabaseAdapter.create(
+					":memory:",
+					"00000000-0000-0000-0000-000000000001",
+				);
 				await adapter.initialize();
 				(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 					adapter;
@@ -807,7 +831,10 @@ describe("fallback-to-durable state handoff", () => {
 			provider: "oauth-complete-split",
 			startOAuth: async () => ({ authUrl: "https://auth.example/start" }),
 			completeOAuth: async () => {
-				const adapter = SQLiteDatabaseAdapter.create(":memory:");
+				const adapter = SQLiteDatabaseAdapter.create(
+					":memory:",
+					"00000000-0000-0000-0000-000000000001",
+				);
 				await adapter.initialize();
 				(runtime as unknown as { adapter?: SQLiteDatabaseAdapter }).adapter =
 					adapter;

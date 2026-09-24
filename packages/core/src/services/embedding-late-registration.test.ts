@@ -3,8 +3,10 @@
  * service starts, using the real runtime registry, event bus, queue and adapter.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import {
+	createSQLiteTestRuntime,
+	SQLiteDatabaseAdapter,
+} from "@elizaos/testing/sqlite-adapter";
 import { expect, test } from "vitest";
 import { createCharacter } from "../character";
 import { AgentRuntime } from "../runtime";
@@ -17,7 +19,7 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 	async (modelType) => {
 		const runtime = new AgentRuntime({
 			character: createCharacter({ name: "Late embedding registration" }),
-			
+
 			logLevel: "fatal",
 			enableAutonomy: false,
 		});
@@ -120,7 +122,7 @@ test.each([ModelType.TEXT_EMBEDDING, ModelType.TEXT_EMBEDDING_BATCH])(
 test("a stopped waiting service never activates when a provider arrives", async () => {
 	const runtime = createSQLiteTestRuntime({
 		character: createCharacter({ name: "Stopped embedding waiter" }),
-		
+
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});
@@ -150,7 +152,7 @@ test.each([
 	async (modelType, mutation) => {
 		const runtime = createSQLiteTestRuntime({
 			character: createCharacter({ name: "Source race" }),
-			
+
 			logLevel: "fatal",
 			enableAutonomy: false,
 		});

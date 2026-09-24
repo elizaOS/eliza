@@ -1,6 +1,7 @@
 /** Scenario fixture for twilio sms receive route to agent; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+
+import { expectTurnToCallAction } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +13,7 @@ export default scenario({
     "Inbound Twilio SMS is routed to the active user agent and produces a real reply path. Signed webhook coverage and dedupe remain covered by the webhook integration tests.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

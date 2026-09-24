@@ -13,7 +13,7 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,

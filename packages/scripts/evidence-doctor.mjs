@@ -242,7 +242,7 @@ export async function probePackagedOcr({
 /**
  * Behavioral probe for a system tesseract binary: it must recognize the
  * generated ELIZA fixture, mirroring the evidence OCR engine's CLI shape
- * (`tesseract <img> - --psm <n>`, see packages/evidence/src/analyzers/ocr/
+ * (`tesseract <img> - --psm <n>`, see packages/testing/evidence/analyzers/ocr/
  * engines.ts). The probe uses `--psm 8` (single word) because the fixture is
  * one word — the engine's screenshot default `--psm 6` segments the blocky
  * glyph grid unreliably. A binary that answers --version but cannot read the

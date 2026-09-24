@@ -9,11 +9,6 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  assertRendererOnlyDevCloudTargetSupported,
-  configureDevCloudEnvironment,
-} from "./lib/dev-cloud-target.mjs";
-import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
-import {
   createDevServerCloudProfileFingerprint,
   defaultRegistryPath,
   normalizeWorktreePath,
@@ -22,6 +17,11 @@ import {
   resolveDevServerCloudPolicyIdentity,
   updateRegistryEntry,
 } from "./dev-server-registry.mjs";
+import {
+  assertRendererOnlyDevCloudTargetSupported,
+  configureDevCloudEnvironment,
+} from "./lib/dev-cloud-target.mjs";
+import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, "..");

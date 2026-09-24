@@ -182,15 +182,7 @@ const API_PORT = resolveDesktopApiPort(process.env);
 const cwd = process.cwd();
 const sourceCheckout = [
   path.join(cwd, "packages", "app", "src", "runtime", "dev-server.ts"),
-  path.join(
-    cwd,
-    "eliza",
-    "packages",
-    "app",
-    "src",
-    "runtime",
-    "dev-server.ts",
-  ),
+  path.join(cwd, "eliza", "packages", "app", "src", "runtime", "dev-server.ts"),
 ].some((entry) => existsSync(entry));
 
 // --app=<name> selects which app to serve (default: "app" → packages/app)

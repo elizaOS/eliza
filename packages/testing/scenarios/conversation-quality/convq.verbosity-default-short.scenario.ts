@@ -20,7 +20,7 @@
  * Synthetic persona (Priya Raman, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const PRODUCTIVITY_PIVOT_1 =
   /(lanternfish|onboarding|anything (i can|you need)|on your (list|plate)|want me to|shall we|productive)/i;

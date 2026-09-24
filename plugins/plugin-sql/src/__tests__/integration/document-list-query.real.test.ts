@@ -123,7 +123,7 @@ describe("document list query (real SQL parity)", () => {
   }
 
   async function seedInMemory(documents: Memory[]): Promise<SQLiteDatabaseAdapter> {
-    const inMemory = SQLiteDatabaseAdapter.create(":memory:");
+    const inMemory = SQLiteDatabaseAdapter.create(":memory:", agentId);
     await inMemory.initialize();
     // Mirror SQL setup so isolation reads compare the same room membership.
     await inMemory.createRoomParticipants([REQUESTER_ID, OTHER_ENTITY_ID], roomId);

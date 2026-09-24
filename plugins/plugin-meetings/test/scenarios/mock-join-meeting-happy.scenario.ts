@@ -15,7 +15,7 @@ import type { UUID } from "@elizaos/core";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import {
   assertMeetingMockLedger,
   defaultMockMeetingScript,

@@ -61,4 +61,4 @@ The expected endpoint is `api-development.eliza.app`, matching the development i
 
 ## Agent docs
 
-`CLAUDE.md` / `AGENTS.md` in this directory describe the package for AI coding agents (where code lives, how to extend it).
+`AGENTS.md` in this directory describe the package for AI coding agents (where code lives, how to extend it).

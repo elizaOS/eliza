@@ -3,11 +3,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@homepage/*": ["../homepage/src/*"],
-      "@/*": ["../homepage/src/*"],
       "@elizaos/app": ["../app/src/index.ts"],
-      "@elizaos/plugin-task-coordinator": [
-        "../../plugins/plugin-task-coordinator/src/index.ts"
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
@@ -41,16 +39,6 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
-      "@elizaos/plugin-commands": [
-        "../../plugins/plugin-commands/src/index.ts"
-      ],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
-      ],
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/src/index.ts"
       ],
@@ -59,8 +47,8 @@
       ],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/ui": ["../src/ui/index.ts"],
+      "@elizaos/ui/*": ["../src/ui/*"],
       "@elizaos/plugin-native-inference/host-bridge": [
         "../../plugins/plugin-native-inference/src/bridge.ts"
       ],

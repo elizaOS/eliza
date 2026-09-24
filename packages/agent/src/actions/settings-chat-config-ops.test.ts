@@ -1,38 +1,23 @@
 /**
- * Chat-settings leg of #14325: the owner-gated SETTINGS action must, when the
- * chat surface asks to configure a plugin ("configure telegram") or switch the
- * model provider ("switch my model provider to openai"), mutate the REAL on-disk
- * eliza.json config store — not a mock. This drives `settingsAction.handler`
- * against a temp config file (via ELIZA_CONFIG_PATH / ELIZA_PERSIST_CONFIG_PATH,
- * the same load/write path the running agent uses) and asserts the persisted
- * bytes, so a regression that silently stops persisting provider/capability
- * changes fails here. The `[CONFIG:pluginId]` card's fetch/edit/save/enable
- * round-trip is covered deterministically in
- * `packages/ui/src/components/chat/MessageContent.config.test.tsx`; the live
- * chat round-trip (real model emits `[CONFIG:telegram]` / drives SETTINGS) is
- * covered by the `live-only` scenarios in
- * `plugins/plugin-app-control/test/scenarios/settings-in-chat-*.scenario.ts`.
- *
- * Also pins the two `set` branches (#14703): a legacy no-section set
- * ({ action:"set", key, value }) stays on the worldSettings-registry handler,
- * while a section-addressed set routes into plugin-app-control's section
- * registry — asserted against a loopback HTTP stub standing in for the
- * agent server the section routes call.
- *
- * Deterministic: real config store on a temp dir, stub runtime, no live model.
+ * Exercises chat settings against a real temporary configuration store and
+ * owner-world records. Provider, capability, and owner settings must persist;
+ * invalid operations must fail explicitly. Runtime collaborators are fixtures.
  */
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {
   type ActionResult,
+  createMessageMemory,
+  executePlannedToolCall,
   getSalt,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Setting,
   saltWorldSettings,
+  stringToUuid,
   unsaltWorldSettings,
   type World,
   type WorldSettings,
@@ -41,6 +26,7 @@ import {
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { settingsAction } from "./settings-actions.ts";
 
@@ -112,11 +98,36 @@ afterEach(() => {
 });
 
 describe("SETTINGS action — always available at the chat boundary", () => {
-  it("declares the OWNER role gate the chat settings surface relies on", () => {
-    // The chat settings direction ("settings is just settings in chat") depends
-    // on this gate: any authenticated non-owner in chat must not reach it.
-    expect(settingsAction.roleGate).toEqual({ minRole: "OWNER" });
-  });
+  it.each(["GUEST", "USER", "MEMBER"] as const)(
+    "rejects %s before changing persisted settings",
+    async (role) => {
+      const before = fs.readFileSync(configPath, "utf8");
+      const runtime = createMockRuntime({ actions: [settingsAction], logger });
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message: createMessageMemory({
+            entityId: stringToUuid("non-owner"),
+            roomId: stringToUuid("settings-room"),
+            content: { text: "Enable my wallet" },
+          }),
+          activeContexts: ["settings"],
+          userRoles: [role],
+        },
+        {
+          name: "SETTINGS",
+          params: {
+            action: "toggle_capability",
+            capability: "wallet",
+            enabled: true,
+          },
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(String(result.error)).toContain("not allowed");
+      expect(fs.readFileSync(configPath, "utf8")).toBe(before);
+    },
+  );
 
   it("validate() resolves true (gate is structural, not validate-time)", async () => {
     // SETTINGS has no validate-time preconditions — the OWNER gate is enforced
@@ -125,21 +136,6 @@ describe("SETTINGS action — always available at the chat boundary", () => {
     // validate.
     await expect(settingsAction.validate(RUNTIME, OWNER_MESSAGE)).resolves.toBe(
       true,
-    );
-  });
-
-  it("lists built-in settings sections through the consolidated registry", async () => {
-    const result = await invoke({ action: "list" });
-
-    expect(result.success).toBe(true);
-    expect(result.data?.sections).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "permissions",
-          writable: true,
-          via: "SETTINGS",
-        }),
-      ]),
     );
   });
 });
@@ -394,98 +390,6 @@ describe("SETTINGS set — legacy no-section branch (worldSettings registry)", (
     expect(result.success).toBe(false);
     expect(result.data?.error).toBe("NO_VALID_UPDATES");
     expect(updatedWorlds).toHaveLength(0);
-  });
-});
-
-describe("SETTINGS set — section-addressed branch (app-control registry)", () => {
-  interface RecordedRequest {
-    method: string | undefined;
-    url: string | undefined;
-    body: unknown;
-  }
-
-  let server: http.Server;
-  let recorded: RecordedRequest[];
-  let priorElizaPort: string | undefined;
-
-  beforeEach(async () => {
-    recorded = [];
-    server = http.createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on("data", (chunk: Buffer) => chunks.push(chunk));
-      req.on("end", () => {
-        const raw = Buffer.concat(chunks).toString("utf-8");
-        recorded.push({
-          method: req.method,
-          url: req.url,
-          body: raw ? JSON.parse(raw) : undefined,
-        });
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end("{}");
-      });
-    });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const address = server.address();
-    if (!address || typeof address === "string")
-      throw new Error("stub server has no port");
-    priorElizaPort = process.env.ELIZA_PORT;
-    process.env.ELIZA_PORT = String(address.port);
-  });
-
-  afterEach(async () => {
-    if (priorElizaPort === undefined) delete process.env.ELIZA_PORT;
-    else process.env.ELIZA_PORT = priorElizaPort;
-    await new Promise<void>((resolve, reject) =>
-      server.close((err) => (err ? reject(err) : resolve())),
-    );
-  });
-
-  it("routes a section-addressed set to app-control's permissions route", async () => {
-    const result = (await invoke({
-      action: "set",
-      section: "permissions",
-      key: "shell",
-      value: "off",
-    })) as ActionResult;
-
-    expect(result.success).toBe(true);
-    expect(recorded).toEqual([
-      {
-        method: "PUT",
-        url: "/api/permissions/shell",
-        body: { enabled: false },
-      },
-    ]);
-    expect(result.values).toMatchObject({
-      section: "permissions",
-      key: "shell",
-      value: false,
-    });
-  });
-
-  it("set section=capabilities key=wallet value=false resolves through the registry (#14703 residual)", async () => {
-    const result = (await invoke({
-      action: "set",
-      section: "capabilities",
-      key: "wallet",
-      value: "false",
-    })) as ActionResult;
-
-    expect(result.success).toBe(true);
-    expect(recorded).toEqual([
-      {
-        method: "PUT",
-        url: "/api/config",
-        body: { ui: { capabilities: { wallet: false } } },
-      },
-    ]);
-    expect(result.values).toMatchObject({
-      section: "capabilities",
-      key: "wallet",
-      value: false,
-    });
   });
 });
 

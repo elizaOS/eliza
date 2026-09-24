@@ -7,7 +7,7 @@
  * Turn 2: WEBSITE_BLOCK fires for the requested hostnames.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const TASK_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 const TODO_TITLE = "do 50 push-ups";

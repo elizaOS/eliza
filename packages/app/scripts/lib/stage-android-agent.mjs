@@ -1710,8 +1710,7 @@ export async function stageAndroidAgentRuntime({
       revision: resolvePinnedBunArtifact(bunChannel, "x64").revision,
       architectures: ["x86_64", "arm64-v8a"],
       channel: bunChannel,
-      artifact_lock:
-        "packages/app/scripts/lib/android-bun-artifacts.lock.json",
+      artifact_lock: "packages/app/scripts/lib/android-bun-artifacts.lock.json",
     },
     alpine: {
       branch: ALPINE_BRANCH,

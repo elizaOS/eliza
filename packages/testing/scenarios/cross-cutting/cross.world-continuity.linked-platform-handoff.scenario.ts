@@ -3,8 +3,8 @@
  * It verifies automatic recent-context handoff and explicit durable topology
  * discovery for one canonical owner using Discord, Telegram, and X.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 async function verifyTopologyDiscovery(
   ctx: ScenarioContext,
@@ -78,7 +78,7 @@ export default scenario({
   description:
     "One verified owner supplies a fact in Discord, recalls it in Telegram, then discovers the durable worlds shared with the agent from X.",
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   rooms: [
     {
       id: "discord-dm",

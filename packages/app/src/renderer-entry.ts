@@ -4,10 +4,7 @@
  * desktop, harness, and agent-app route retains the established main entry.
  */
 
-import {
-  shouldUseMarketingHomeEntry,
-  shouldUsePublicWebEntry,
-} from "./web-entry-policy";
+import { shouldUsePublicWebEntry } from "./web-entry-policy";
 
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
 declare const __ELIZA_PUBLIC_WEB_ENTRY__: boolean | undefined;
@@ -37,12 +34,8 @@ const entryDecisionInput = {
   forceApexConsole:
     import.meta.env?.DEV === true &&
     import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true",
-  forceMarketingHome:
-    import.meta.env?.DEV === true &&
-    import.meta.env?.VITE_FORCE_MARKETING_HOME === "true",
 };
 
-const useMarketingHomeEntry = shouldUseMarketingHomeEntry(entryDecisionInput);
 const usePublicEntry =
   __ELIZA_PUBLIC_WEB_ENTRY__ === true &&
   shouldUsePublicWebEntry(entryDecisionInput);
@@ -56,9 +49,7 @@ async function handleRendererFailure(error: unknown): Promise<void> {
 
 // Separate import callbacks let Vite attach each renderer's CSS dependencies.
 // A conditional import callback can collapse those lists to shared CSS only.
-if (useMarketingHomeEntry) {
-  void import("./marketing-home-entry").catch(handleRendererFailure);
-} else if (usePublicEntry) {
+if (usePublicEntry) {
   void import("./public-web-entry").catch(handleRendererFailure);
 } else {
   void import("./main").catch(handleRendererFailure);

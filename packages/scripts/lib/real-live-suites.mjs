@@ -149,13 +149,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "real AgentRuntime provider context sent through the configured live text model",
   },
   {
-    file: "packages/evidence/src/vision-qa/vision-qa.live.test.ts",
+    file: "packages/testing/evidence/vision-qa/vision-qa.live.test.ts",
     requires: ["ANTHROPIC_API_KEY"],
     notes:
       "vision-qa VLM screenshot Q&A against the real Anthropic vision model; also armed by ANTHROPIC_LIVE_TEST=1",
   },
   {
-    file: "packages/evidence/src/vision-qa/cli-backend.live.test.ts",
+    file: "packages/testing/evidence/vision-qa/cli-backend.live.test.ts",
     optIn: "ELIZA_VISION_QA_CLI_LIVE",
     notes:
       "vision-qa CLI backend driving a real claude/codex CLI (ELIZA_VISION_QA_CLI selects); spends operator CLI tokens",

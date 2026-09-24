@@ -61,14 +61,14 @@ describe("getHomeGridApps", () => {
       label: "Workflow Studio",
       path: "/apps/tasks",
       available: true,
-      pluginName: "@elizaos/plugin-task-coordinator",
+      pluginName: "@elizaos/plugin-agent-orchestrator",
     };
     // DEFAULT_PINNED_APPS (4) precede the single pinned internal-tool tile.
     const tile = getHomeGridApps(
-      ["@elizaos/plugin-task-coordinator"],
+      ["@elizaos/plugin-agent-orchestrator"],
       [view],
     ).at(-1);
-    expect(tile?.name).toBe("@elizaos/plugin-task-coordinator");
+    expect(tile?.name).toBe("@elizaos/plugin-agent-orchestrator");
     expect(tile?.displayName).toBe("Workflow Studio");
   });
 });

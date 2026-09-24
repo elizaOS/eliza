@@ -4,7 +4,7 @@
  * of core, agent, and plugins that flags unallowlisted duplicate
  * `static serviceType` declarations.
  */
-import { lstatSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -187,18 +187,17 @@ function collectSourceFiles(root: string): string[] {
 	const files: string[] = [];
 
 	function walk(directory: string): void {
-		for (const entry of readdirSync(directory)) {
-			const fullPath = path.join(directory, entry);
-			const stat = lstatSync(fullPath);
-			if (stat.isSymbolicLink()) continue;
-			if (stat.isDirectory()) {
-				if (!ignoredDirectoryNames.has(entry)) {
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			const fullPath = path.join(directory, entry.name);
+			if (entry.isSymbolicLink()) continue;
+			if (entry.isDirectory()) {
+				if (!ignoredDirectoryNames.has(entry.name)) {
 					walk(fullPath);
 				}
 				continue;
 			}
 			if (
-				stat.isFile() &&
+				entry.isFile() &&
 				sourceExtensions.has(path.extname(fullPath)) &&
 				!shouldIgnoreFile(fullPath)
 			) {

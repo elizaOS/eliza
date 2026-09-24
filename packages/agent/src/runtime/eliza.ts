@@ -15,7 +15,6 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { pluginManagerPlugin } from "@elizaos/plugin-registry/runtime";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { createAssistantPlugins } from "./assistant-plugins.ts";
 import {
@@ -40,7 +39,6 @@ import {
   stopMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
-import { resolveBundledSkillsDir } from "./bundled-skills.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
@@ -129,6 +127,7 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
+import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import type { Plugin } from "@elizaos/core";
 // `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
 // transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
@@ -163,7 +162,6 @@ import {
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -4754,13 +4752,6 @@ export async function startEliza(
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();
 
-  const bundledSkillsDir = await resolveBundledSkillsDir();
-  logger.debug(
-    bundledSkillsDir === null
-      ? "[eliza] @elizaos/skills is not installed; bundled skills are unavailable"
-      : `[eliza] Bundled skills dir: ${bundledSkillsDir}`,
-  );
-
   // Workspace skills directory (highest precedence for overrides)
   const workspaceSkillsDir = workspaceDir ? `${workspaceDir}/skills` : null;
   const managedSkillsDir = path.join(resolveStateDir(), "skills");
@@ -4895,10 +4886,6 @@ export async function startEliza(
         plugins: [
           ...assistantPlugins,
           ...subAgentCredentialPlugins,
-          ...(character.settings?.ENABLE_PLUGIN_MANAGER === true ||
-          character.settings?.ENABLE_PLUGIN_MANAGER === "true"
-            ? [pluginManagerPlugin]
-            : []),
           elizaPlugin,
           ...pluginsForRuntime,
         ],
@@ -4925,7 +4912,6 @@ export async function startEliza(
             embeddingProviderName: preferredEmbeddingRuntimeProviderName,
             visionModeSetting,
             managedSkillsDir,
-            bundledSkillsDir,
             workspaceSkillsDir,
             connectorSecretsOverlay,
             providerCredentialsOverlay,
@@ -5067,24 +5053,6 @@ export async function startEliza(
     } catch (err) {
       logger.warn(
         `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fail until it is restored (no non-durable fallback): ${formatError(err)}`,
-      );
-    }
-  };
-
-  // Register the hosted-app run reader as a runtime service so the session gate
-  // can query it via getService instead of statically importing the plugin
-  // (which inverted the host→plugin dependency direction). Dynamic import keeps
-  // the plugin out of the agent's static module graph; absence is non-fatal and
-  // the gate treats it as "no active runs".
-  const registerAppSessionService = async (): Promise<void> => {
-    try {
-      const { AppSessionService } = await import(
-        /* @vite-ignore */ "@elizaos/plugin-app-manager"
-      );
-      await runtime.registerService(AppSessionService);
-    } catch (err) {
-      logger.debug(
-        `[eliza] AppSessionService registration skipped: ${formatError(err)}`,
       );
     }
   };
@@ -5649,7 +5617,6 @@ export async function startEliza(
     bootTimer.lap("svc:connector-setup");
     await registerConnectorCredentialStoreService();
     bootTimer.lap("svc:connector-credential-store");
-    await registerAppSessionService();
     bootTimer.lap("svc:app-session");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");

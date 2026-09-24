@@ -13,7 +13,7 @@
  * `_diariz_*`). There is no standalone `libvoice_classifier` runtime.
  *
  * The GGUFs are NOT in the repo (they are produced by the in-tree onnx→gguf
- * converters under packages/native/plugins/<lib>/scripts/). Point this at a
+ * converters under plugins/plugin-local-inference/native/<lib>/scripts/). Point this at a
  * directory holding them; the fused lib resolves from $ELIZA_INFERENCE_LIBRARY
  * (exact) or $ELIZA_INFERENCE_LIB_DIR.
  *
@@ -37,7 +37,6 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 import { handleLiveVoiceAttribution } from "@elizaos/plugin-local-inference/runtime/voice-entity-binding";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import {
@@ -53,6 +52,7 @@ import {
   GgmlSileroVad,
   VadDetector,
 } from "@elizaos/plugin-local-inference/services/voice/vad";
+import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(

@@ -12,16 +12,16 @@ import * as apiBaseOwner from "./api-base-owner";
 
 /** Minimal window shape that `apiBaseOwner.pushToWindow` accepts. */
 export interface PushableWindow {
-  webview: { rpc?: unknown };
+	webview: { rpc?: unknown };
 }
 
 export function publishAgentApiBase(
-  rendererBase: string,
-  apiToken: string,
-  targets: Iterable<PushableWindow> = [],
+	rendererBase: string,
+	apiToken: string,
+	targets: Iterable<PushableWindow> = [],
 ): void {
-  apiBaseOwner.setCurrent(rendererBase, apiToken);
-  for (const win of targets) {
-    apiBaseOwner.pushToWindow(win);
-  }
+	apiBaseOwner.setCurrent(rendererBase, apiToken);
+	for (const win of targets) {
+		apiBaseOwner.pushToWindow(win);
+	}
 }

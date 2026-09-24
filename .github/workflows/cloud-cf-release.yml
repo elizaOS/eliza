@@ -231,16 +231,16 @@ jobs:
           esac
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            canonical_source="packages/homepage/src/lib/contact.ts"
+            canonical_source="packages/cloud/shared/src/lib/public-telegram-identity.ts"
             resolved_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
             resolved_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
             valid_bot_id "$resolved_bot_id" || \
-              fail "The homepage canonical Telegram bot ID is missing or invalid"
+              fail "The cloud canonical Telegram bot ID is missing or invalid"
             [[ "$resolved_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
-              fail "The homepage canonical Telegram username is missing or invalid"
+              fail "The cloud canonical Telegram username is missing or invalid"
             resolved_bot_username_key="$(printf '%s' "$resolved_bot_username" | tr '[:upper:]' '[:lower:]')"
             [[ "$resolved_bot_username_key" == *bot ]] || \
-              fail "The homepage canonical Telegram username must use the managed bot suffix"
+              fail "The cloud canonical Telegram username must use the managed bot suffix"
           else
             valid_bot_id "$ADMITTED_TELEGRAM_BOT_ID" || \
               fail "The caller-admitted Telegram bot ID is missing or invalid; re-run all jobs"

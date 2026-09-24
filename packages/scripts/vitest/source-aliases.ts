@@ -235,6 +235,34 @@ export function buildWorkspaceSourceAliases(
 
   return [
     {
+      find: /^@elizaos\/testing\/scenario-runner\/schema$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/scenario-runner/schema/index.js",
+      ),
+    },
+    {
+      find: /^@elizaos\/testing\/scenario-runner$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/scenario-runner/src/index.ts",
+      ),
+    },
+    {
+      find: /^@elizaos\/testing\/synthetic-world$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/synthetic-world/src/index.ts",
+      ),
+    },
+    {
+      find: /^@elizaos\/testing\/scenario-runner\/(.+)$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/testing/scenario-runner/src/$1",
+      ),
+    },
+    {
       find: /^@elizaos\/testing$/,
       replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
     },

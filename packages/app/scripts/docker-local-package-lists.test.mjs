@@ -38,10 +38,10 @@ describe("Docker runtime dependency closure", () => {
       },
       sql: {
         name: "@elizaos/sql",
-        dependencies: { "@elizaos/retrieval": "workspace:*", pg: "8.23.0" },
+        dependencies: { "@elizaos/core": "workspace:*", pg: "8.23.0" },
       },
-      retrieval: {
-        name: "@elizaos/retrieval",
+      core: {
+        name: "@elizaos/core",
         dependencies: { "@elizaos/sql": "workspace:*" },
       },
     });
@@ -49,7 +49,7 @@ describe("Docker runtime dependency closure", () => {
       collectDockerWorkspaceDirs(root, ["packages/agent"]).map((dir) =>
         path.relative(root, dir),
       ),
-    ).toEqual(["packages/agent", "packages/sql", "packages/retrieval"]);
+    ).toEqual(["packages/agent", "packages/sql", "packages/core"]);
   });
 
   it("fails with the owning consumer when a declared runtime workspace is absent", () => {

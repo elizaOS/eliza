@@ -62,7 +62,7 @@ async function makeRuntime(settings?: Record<string, string>): Promise<{
       name: "GateAgent",
       ...(settings ? { settings } : {}),
     }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

@@ -14,7 +14,7 @@ import { argValue, fail, run } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(packageRoot, "..", "..");
+const repoRoot = path.resolve(packageRoot, "..", "..", "..");
 
 const appPath = path.resolve(
   argValue("--app", process.env.ELIZA_IOS_APP_PATH || ""),

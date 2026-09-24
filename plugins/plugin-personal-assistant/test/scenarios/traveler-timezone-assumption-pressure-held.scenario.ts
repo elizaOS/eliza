@@ -6,7 +6,7 @@
  * zone and sending is worse than a short delay, so the send stays held until
  * she confirms.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

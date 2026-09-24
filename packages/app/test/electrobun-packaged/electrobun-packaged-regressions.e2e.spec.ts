@@ -576,7 +576,7 @@ async function readVisiblePluginIds(
     (current) =>
       current.ok &&
       current.ids.includes("openai") &&
-      current.ids.includes("ollama"),
+      current.ids.includes("local-inference"),
     {
       timeout: 20_000,
       message: `Timed out waiting for visible plugin catalog entries at ${PLUGINS_ROUTE}.`,
@@ -1025,7 +1025,7 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
 
     await openRouteAndWait(harness, PLUGINS_ROUTE, PLUGINS_SELECTOR);
     const pluginIds = await readVisiblePluginIds(harness);
-    expect(pluginIds).toEqual(expect.arrayContaining(["openai", "ollama"]));
+    expect(pluginIds).toEqual(expect.arrayContaining(["openai", "local-inference"]));
     await writeHarnessScreenshot(
       harness,
       testInfo,

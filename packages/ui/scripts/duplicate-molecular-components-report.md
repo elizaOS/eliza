@@ -49,7 +49,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `SidebarItem` in `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:174`
 - `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx:298`
 - `ActionListRow` in `packages/ui/src/components/shared/ActionListRow.tsx:115`
-- `ReasoningCell` in `plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx:96`
+- `ReasoningCell` in `plugins/plugin-agent-orchestrator/src/ui/orchestrator-reasoning.tsx:96`
 - Fingerprint: `sha256:982159e726ae366cad541734d281ae30c74bbff4c06577ae8203a7786d25581c`
 - Decision: **distinct-domain-compositions**. Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts.
 

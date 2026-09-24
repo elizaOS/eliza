@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -17,7 +17,7 @@ export default scenario({
     "User missed a 1:1 call with Maria. The agent's repair-message must (a) acknowledge the specific miss — not a generic 'sorry I missed you', (b) propose 2–3 concrete reschedule slots from open calendar time. Generic apologies fail.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

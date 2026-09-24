@@ -1,5 +1,5 @@
 /** Scenario fixture for todo update due; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "todos", "multi-turn-memory"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

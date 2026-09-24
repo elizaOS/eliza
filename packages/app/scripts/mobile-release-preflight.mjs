@@ -8,8 +8,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evaluateStagedIosSideloadBundle } from "./lib/mobile-lane-stamp.mjs";
 import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
+import { evaluateStagedIosSideloadBundle } from "./lib/mobile-lane-stamp.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
@@ -225,13 +225,7 @@ function checkIos() {
 }
 
 function checkAndroid() {
-  const androidRoot = path.join(
-    appRoot,
-    "..",
-    "app",
-    "platforms",
-    "android",
-  );
+  const androidRoot = path.join(appRoot, "..", "app", "platforms", "android");
   addCheck(
     "Android project",
     fs.existsSync(path.join(androidRoot, "gradlew")),

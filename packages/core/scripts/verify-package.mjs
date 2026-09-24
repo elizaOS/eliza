@@ -143,7 +143,7 @@ const character = parseCharacter(JSON.parse(readFileSync('character.json', 'utf8
 const original = structuredClone(character);
 const agentId = stringToUuid(character.name);
 assert.equal(flattenRuntimeSettings(character, {}).shouldRespondModel, 'character-model');
-const adapter = SQLiteDatabaseAdapter.create(":memory:");
+const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
 await adapter.initialize();
 await adapter.createAgents([{ id: agentId, name: character.name, settings: { shouldRespondModel: 'database-model', defaultTemperature: 0.42, secrets: { shared: 'database-setting', databaseNested: 'fixture-nested' } }, secrets: { shared: 'database-top', databaseTop: 'fixture-top' } }]);
 const merged = await mergeDbSettings(character, adapter, agentId);
@@ -176,10 +176,16 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  const keywordMemory = { id: 'keyword', content: { text: 'automobile receipt' } };
+  const semanticMemory = { id: 'semantic', content: { text: 'bought a car' } };
+  const attachmentMemory = { id: 'attachment', content: {} };
+  assert.deepEqual(publicApi.rerankMemories('automobile', [semanticMemory, attachmentMemory, keywordMemory]), [keywordMemory, semanticMemory, attachmentMemory]);
+  assert.equal(new publicApi.BM25([{ title: 'receipt', content: 'automobile receipt' }]).search('automobile', 1)[0].index, 0);
+
   for (const retired of ['loadCharacters', 'createRuntimes', 'mergeSettingsInto']) {
     assert.equal(retired in publicApi, false, retired + ' is retired from the v2 public API');
   }
-  for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'BM25', 'Tokenizer', 'rankMessageSearch', 'rerankMemories', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'fetchRemoteMedia', 'detectMime', 'describeImageCached', 'resolveAttachmentBytes', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'fetchRemoteMedia', 'detectMime', 'describeImageCached', 'resolveAttachmentBytes', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public']) {

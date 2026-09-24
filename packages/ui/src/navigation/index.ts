@@ -4,7 +4,7 @@
  * Re-exported by the `@elizaos/ui` barrel, which server-side plugins import
  * under plain node inside the production Docker image — so this module must
  * not statically import `@capacitor/core` (not shipped in the server image; a
- * static import made `plugin-task-coordinator` unloadable there). Platform
+ * static import made `plugin-agent-orchestrator` unloadable there). Platform
  * detection reads the bridge-injected `globalThis.Capacitor` instead, which is
  * exactly what the npm module's `getPlatform()`/`isNativePlatform()` consult:
  * present on native WebViews, absent on web and node (→ "web", not native).

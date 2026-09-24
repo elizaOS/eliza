@@ -103,7 +103,24 @@ describe("GET /api/memories/stats", () => {
     // agree with the store's ground truth.
     const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     await insertMessages(adapter, 137);
-    await insertMessages(adapter, 23, OTHER_AGENT);
+    const foreignAdapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      OTHER_AGENT,
+    );
+    try {
+      await insertMessages(foreignAdapter, 23, OTHER_AGENT);
+      expect(
+        await foreignAdapter.countMemories({
+          agentId: OTHER_AGENT,
+          tableName: "messages",
+        }),
+      ).toBe(23);
+      await expect(
+        insertMessages(adapter, 1, OTHER_AGENT),
+      ).rejects.toMatchObject({ code: "SQLITE_AGENT_MISMATCH" });
+    } finally {
+      await foreignAdapter.close();
+    }
     await adapter.createMemories([
       {
         memory: {

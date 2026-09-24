@@ -25,8 +25,8 @@ describe("first-run options and provider normalizers", () => {
     expect(isSubscriptionProviderSelectionId("anthropic-subscription")).toBe(
       true,
     );
-    expect(isSubscriptionProviderSelectionId("openai-subscription")).toBe(true);
-    expect(isSubscriptionProviderSelectionId("gemini-subscription")).toBe(true);
+    expect(isSubscriptionProviderSelectionId("openai-subscription")).toBe(false);
+    expect(isSubscriptionProviderSelectionId("gemini-subscription")).toBe(false);
     expect(isSubscriptionProviderSelectionId("unknown-provider-xyz")).toBe(
       false,
     );
@@ -39,7 +39,7 @@ describe("first-run options and provider normalizers", () => {
     ).toBe("anthropic-subscription");
     expect(
       normalizeSubscriptionProviderSelectionId("OPENAI-SUBSCRIPTION"),
-    ).toBe("openai-subscription");
+    ).toBeNull();
     expect(
       normalizeSubscriptionProviderSelectionId("non-existent-provider"),
     ).toBeNull();
@@ -48,8 +48,8 @@ describe("first-run options and provider normalizers", () => {
   it("normalizes first-run provider IDs and handles casing, aliases, and whitespace", () => {
     expect(normalizeFirstRunProviderId("anthropic")).toBe("anthropic");
     expect(normalizeFirstRunProviderId(" OpenAI ")).toBe("openai");
-    expect(normalizeFirstRunProviderId("google")).toBe("gemini");
-    expect(normalizeFirstRunProviderId("ollama")).toBe("ollama");
+    expect(normalizeFirstRunProviderId("google")).toBeNull();
+    expect(normalizeFirstRunProviderId("ollama")).toBeNull();
   });
 
   it("retrieves provider options and families by provider ID", () => {
@@ -58,7 +58,7 @@ describe("first-run options and provider normalizers", () => {
     expect(anthropicOption?.id).toBe("anthropic");
 
     expect(getFirstRunProviderFamily("anthropic")).toBe("anthropic");
-    expect(getFirstRunProviderFamily("ollama")).toBe("ollama");
+    expect(getFirstRunProviderFamily("ollama")).toBeNull();
     expect(getFirstRunProviderFamily("elizacloud")).toBe("elizacloud");
   });
 

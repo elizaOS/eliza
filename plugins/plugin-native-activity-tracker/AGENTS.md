@@ -83,11 +83,11 @@ Add the field to `ActivityCollectorOptions`, use it inside `startActivityCollect
 - **System sleep / lock.** The Swift collector emits a synthetic `deactivate` on `willSleep`, `screensDidSleep`, `sessionDidResignActive`, and `com.apple.screenIsLocked`, and a synthetic `activate` on wake/unlock. This prevents a stale frontmost app from appearing active across sleep boundaries.
 - **Accessibility permission.** `windowTitle` requires macOS Accessibility permission granted to the host process. The collector proceeds without it; `windowTitle` is simply absent.
 - **No plugin manifest.** This package does not export an elizaOS `Plugin` object and is not auto-loaded by the elizaOS plugin registry. It is a library dependency that other plugins or services import directly.
-- See the root [CLAUDE.md](../../CLAUDE.md) for repo-wide architecture, logging, and naming rules.
+- See the root [AGENTS.md](../../AGENTS.md) for repo-wide architecture, logging, and naming rules.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

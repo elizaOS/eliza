@@ -1,10 +1,9 @@
 /** Exercises real discovery, execution and planner settlement with deterministic model responses. */
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+
 import { randomUUID } from "node:crypto";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import type { PlannerRuntime } from "../../../../../packages/core/src/runtime/planner-types.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";
 import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
@@ -19,7 +18,7 @@ describe("discovery denial through planner settlement", () => {
     async (writeFailure) => {
       const runtime = createSQLiteTestRuntime({
         character: { name: "Discovery regression", bio: "Test" },
-        
+
         logLevel: "fatal",
       });
       await runtime.initialize();

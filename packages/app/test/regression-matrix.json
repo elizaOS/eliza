@@ -325,9 +325,7 @@
     "packageScriptDisallowlist": {
       "test:e2e": ["apps-e2e.e2e.test.ts"]
     },
-    "desktopInventorySources": [
-      "packages/app/test/release-heavy-inventory.md"
-    ],
+    "desktopInventorySources": ["packages/app/test/release-heavy-inventory.md"],
     "forbiddenDesktopInventoryMarkers": [
       ["it.", "todo", "("],
       "conditional test helper misuse"

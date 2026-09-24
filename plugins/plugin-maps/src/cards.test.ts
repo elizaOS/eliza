@@ -6,15 +6,14 @@
  * of the system under test.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
   type ActionParameters,
-  AgentRuntime,
+  type AgentRuntime,
   createCharacter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import type { MapsProviderAdapter } from "./adapter.js";
@@ -108,7 +107,7 @@ describe("MAPS chat cards", () => {
     runtime = createSQLiteTestRuntime({
       agentId: AGENT_ID,
       character: createCharacter({ name: "Maps Card Test" }),
-      
+
       logLevel: "fatal",
     });
     const service = new MapsService(runtime);

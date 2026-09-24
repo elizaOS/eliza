@@ -18,10 +18,8 @@
  *   The provider env is injected, never hard-coded. Precedence:
  *     1. --provider-env <file.json>  (a JSON object of env vars; what S1 writes)
  *     2. $HARVEST_PROVIDER_ENV_FILE  (same, via env)
- *     3. current process env if it already carries ELIZA_CHAT_VIA_CLI / an API key
+ *     3. current process env if it already carries an API key
  *     4. --deterministic  → SCENARIO_USE_DETERMINISTIC_MODEL=1 (offline driver self-test)
- *   For the real Stage-2 run, S1 emits { "ELIZA_CHAT_VIA_CLI": "codex",
- *   "ELIZA_CLI_CODEX_MODEL": "gpt-5.5" }.
  *
  * This driver is SCOPED to the scenario family (the only family that emits
  * eliza_native_v1 natively). Benchmark + e2e families require the trajectory
@@ -114,22 +112,10 @@ function loadProviderEnv() {
       env: { SCENARIO_USE_DETERMINISTIC_MODEL: "1" },
     };
   }
-  if (process.env.ELIZA_CHAT_VIA_CLI) {
-    return {
-      source: "inherited:ELIZA_CHAT_VIA_CLI",
-      env: {
-        ELIZA_CHAT_VIA_CLI: process.env.ELIZA_CHAT_VIA_CLI,
-        ...(process.env.ELIZA_CLI_CODEX_MODEL
-          ? { ELIZA_CLI_CODEX_MODEL: process.env.ELIZA_CLI_CODEX_MODEL }
-          : {}),
-      },
-    };
-  }
   const apiKeys = [
     "OPENAI_API_KEY",
     "GROQ_API_KEY",
     "ANTHROPIC_API_KEY",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
     "OPENROUTER_API_KEY",
     "CEREBRAS_API_KEY",
   ].filter((k) => process.env[k]);
@@ -137,7 +123,7 @@ function loadProviderEnv() {
     return { source: `inherited:${apiKeys[0]}`, env: {} };
   }
   throw new Error(
-    "no provider configured: pass --provider-env <s1.json>, --deterministic, or export ELIZA_CHAT_VIA_CLI / an API key",
+    "no provider configured: pass --provider-env <s1.json>, --deterministic, or export a supported provider API key",
   );
 }
 
@@ -148,7 +134,7 @@ function discoverScenarioIds(dirRel, providerEnv) {
     "eliza-source",
     "--tsconfig-override",
     TSCONFIG,
-    path.join(REPO_ROOT, "packages/scenario-runner/src/cli.ts"),
+    path.join(REPO_ROOT, "packages/testing/scenario-runner/src/cli.ts"),
     "list",
     dirRel,
   ];
@@ -180,7 +166,7 @@ function runScenario(dirRel, id, providerEnv) {
     "eliza-source",
     "--tsconfig-override",
     TSCONFIG,
-    path.join(REPO_ROOT, "packages/scenario-runner/src/cli.ts"),
+    path.join(REPO_ROOT, "packages/testing/scenario-runner/src/cli.ts"),
     "run",
     dirRel,
     "--scenario",

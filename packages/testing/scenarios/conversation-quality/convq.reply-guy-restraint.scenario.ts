@@ -23,7 +23,7 @@
  * Synthetic group (The Porch: Marcus, Dee, Toph + agent). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const REPLY_GUY_TELLS =
   /(actually|fun fact|for what it'?s worth|fwiw|technically|if (you'?re|anyone'?s) curious|the answer is|it'?s (called|actually)|did you know)/i;

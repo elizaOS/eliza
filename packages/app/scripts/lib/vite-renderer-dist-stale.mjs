@@ -80,8 +80,8 @@ function maxMtimeAcrossDirs(dirs) {
 export function rendererDistMatchesPlaywrightTestAuth(
   appDir,
   expectedPlaywrightTestAuth,
+  distDir = path.join(appDir, "web-dist"),
 ) {
-  const distDir = path.join(appDir, "web-dist");
   const manifest = readRendererBuildManifest(distDir);
   return (
     rendererBuildManifestMatchesDist(distDir, manifest) &&
@@ -99,10 +99,11 @@ export function resolvePlaywrightTestAuth(appDir) {
 /**
  * @param {string} appDir absolute path to packages/app
  * @param {string} repoRoot absolute path to repo root
- * @param {{ expectedPlaywrightTestAuth?: boolean }} [options]
+ * @param {{ expectedPlaywrightTestAuth?: boolean, distDir?: string }} [options]
  */
 export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
-  const distIndex = path.join(appDir, "web-dist", "index.html");
+  const distDir = options.distDir ?? path.join(appDir, "web-dist");
+  const distIndex = path.join(distDir, "index.html");
   if (!fs.existsSync(distIndex)) {
     return true;
   }
@@ -111,6 +112,7 @@ export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
     !rendererDistMatchesPlaywrightTestAuth(
       appDir,
       options.expectedPlaywrightTestAuth,
+      distDir,
     )
   ) {
     return true;

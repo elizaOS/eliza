@@ -8,9 +8,10 @@ import {
   configureLocalEmbeddingPlugin,
   loadEffectiveElizaConfig,
 } from "@elizaos/agent";
-import { formatError, isTruthyEnvValue } from "@elizaos/core";
 import {
   type AgentRuntime,
+  formatError,
+  isTruthyEnvValue,
   logger,
   ModelType,
   type Plugin,

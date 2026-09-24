@@ -32,3 +32,19 @@ For isolated temporary storage, call `SQLiteDatabaseAdapter.create(":memory:", a
 and then `initialize()`. This uses the native SQLite engine with the same
 transaction and ownership checks as durable storage. Close the adapter after
 use; temporary databases are independent and disappear when closed.
+
+Cloudflare Workers with Node compatibility use the real portable SQLite engine
+through `@elizaos/plugin-sqlite/portable`. Its `SQLiteDatabaseAdapter` accepts only
+`:memory:` and keeps the same record codec, transactions and agent ownership
+checks. It initializes lazily on its first operation or explicitly with
+`initialize()`. State lasts only for that adapter's lifetime; durable Cloud state
+continues to belong to the host's external storage. File paths and backups are
+rejected by the portable entry point.
+
+The pinned sql.js dependency has a narrow patch for Workers without a browser
+`location`; the portable build includes that patched engine with static Node-compatible
+builtin imports, so consumers do not need a separate patch. The real Workerd runtime boot test covers this entry point. Named
+embedding representations are persisted with the database. Selecting a name
+for legacy vectors clears those vectors while preserving their complete source
+records for regeneration; changing an established name or its dimension requires
+an explicit migration or a separate database.

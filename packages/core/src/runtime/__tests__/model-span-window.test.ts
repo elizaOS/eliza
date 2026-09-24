@@ -10,13 +10,12 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
 } from "../../inference-timing";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
 const PRE_HOOK_DELAY_MS = 250;
@@ -33,7 +32,7 @@ function makeRuntime(): AgentRuntime {
 			name: "SpanWindowAgent",
 			bio: "test",
 		} as Character,
-		
+
 		logLevel: "fatal",
 	});
 }

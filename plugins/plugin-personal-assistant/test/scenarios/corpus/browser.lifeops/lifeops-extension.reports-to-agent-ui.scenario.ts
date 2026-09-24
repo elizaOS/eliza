@@ -8,8 +8,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { seedBrowserExtensionTelemetry } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -22,7 +22,7 @@ export default scenario({
     "Tests the extension -> agent UI surface. User asks the agent to confirm the extension is connected and reporting, and the seeded telemetry must be reflected in the answer.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

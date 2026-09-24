@@ -77,6 +77,23 @@ test("discovers implicit, explicit, compact, and multiple typecheck projects", (
   );
 });
 
+test("discovers consolidated package projects through script delegation and rejects cycles", () => {
+  const packageDir = path.join(repoRoot, "packages", "example");
+  const scripts = {
+    typecheck: "bun run typecheck:host && bun run typecheck:renderer",
+    "typecheck:host": "tsc --noEmit -p tsconfig.host.json",
+    "typecheck:renderer": "bun run typecheck:ui",
+    "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
+  };
+  assert.deepEqual(discoverTypecheckProjects(packageDir, scripts.typecheck, scripts), [
+    path.join(packageDir, "tsconfig.host.json"),
+    path.join(packageDir, "tsconfig.ui.json"),
+  ]);
+  assert.throws(() => discoverTypecheckProjects(packageDir, "bun run recursive", {
+    recursive: "bun run recursive",
+  }), /Cyclic typecheck script/);
+});
+
 test("models explicit and dependency-graph Turbo builds before typecheck", () => {
   const manifests = new Map([
     ["@elizaos/owner", { dependencies: { "@elizaos/direct": "workspace:*" } }],

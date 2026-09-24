@@ -1,5 +1,5 @@
 /** Generated SCENE-style sanction probe; run behavior/_generate-static.ts. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { buildNormProbeSetup } from "./_factory.ts";
 import { spoilerRedaction as config } from "./_scene-cases.ts";
 

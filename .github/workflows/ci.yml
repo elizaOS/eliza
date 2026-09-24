@@ -44,8 +44,6 @@ jobs:
         run: bun run verify
       - name: Formatting
         run: bun run format:check
-      - name: Run CLAUDE/AGENTS guide parity self-test
-        run: node --test packages/scripts/assert-agents-claude-identical.test.mjs
       - name: Check maintained Markdown link targets
         run: node packages/scripts/check-markdown-links.mjs
       - name: Run type-duplication finder self-test
@@ -541,7 +539,7 @@ jobs:
       - name: Build view bundles
         run: bun run build:views
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
+        run: bunx vitest run packages/agent/test/views-system-smoke.test.ts
       - name: Remote capability router tests
         run: bun run --cwd packages/agent test:remote-capabilities
       - name: Remote capability plugin surface audit
@@ -569,7 +567,7 @@ jobs:
         if: steps.docker-health.outputs.healthy == 'true'
         run: bun run --cwd packages/agent test:remote-capabilities:docker
       - name: Run synthetic-world transaction tests
-        run: bun run --cwd packages/synthetic-world test
+        run: bun run --cwd packages/testing test:synthetic-world
   desktop-contract:
     name: Electrobun Desktop Contract
     needs: preflight
@@ -654,10 +652,6 @@ jobs:
         run: bun run --cwd packages/cloud/routing build
       - name: Electrobun window and dynamic-view coverage
         run: bun run --cwd packages/app/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts src/application-menu.test.ts
-      - name: View management action coverage
-        run: bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts
-      - name: App verification diagnostics coverage
-        run: bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts
       - name: Computer-use screenshot quality diagnostics coverage
         run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts src/platform/a11y.test.ts
       - name: App screenshot quality diagnostics coverage
@@ -711,9 +705,9 @@ jobs:
       - name: Persona catalog coverage gate
         run: node packages/scripts/check-lifeops-persona-catalog-coverage.mjs
       - name: Build workspace packages for scenario resolution
-        run: bunx turbo run build --filter=@elizaos/scenario-runner...
+        run: bunx turbo run build --filter=@elizaos/testing...
       - name: Zero-cost scenario e2e
-        run: bun run --cwd packages/scenario-runner test:pr:e2e
+        run: bun run --cwd packages/testing test:pr:e2e
       - name: Upload deterministic E2E reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1030,11 +1024,6 @@ jobs:
         run: |
           bun run build:core
           bun run --cwd packages/ui build
-      - name: Validate homepage source contracts
-        working-directory: packages/homepage
-        run: bun run test && bun run check:snapshot-inventory
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build the only deployable frontend
         working-directory: packages/app
         run: bun run build:web

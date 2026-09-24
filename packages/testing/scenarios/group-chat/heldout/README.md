@@ -97,7 +97,7 @@ whose current turn is inbound to the selected seat. It never relabels an
 outbound turn as inbound.
 
 ```bash
-bun run --cwd packages/scenario-runner eval:when2speak -- \
+bun run --cwd packages/testing eval:when2speak -- \
   --input=/tmp/discord-replay.jsonl \
   --input-format=discord-replay \
   --provider=cli

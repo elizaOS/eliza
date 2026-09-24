@@ -467,7 +467,8 @@ describe("app shell local connection policy", () => {
   });
 
   test("keeps the canonical renderer for Android Cloud builds", () => {
-    const source = '<script type="module" src="/src/renderer-entry.ts"></script>';
+    const source =
+      '<script type="module" src="/src/renderer-entry.ts"></script>';
 
     expect(selectAndroidCloudRendererEntry(source, true)).toBe(source);
     expect(selectAndroidCloudRendererEntry(source, false)).toBe(source);

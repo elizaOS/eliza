@@ -16,8 +16,8 @@
  * single pass/fail criterion — Priya's message surfaced, ranked above the noise,
  * unprompted.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // The buried VIP must not be quietly parked into an approval/intervention queue
 // as if it were a low-signal item needing owner triage; a trust-collapse misfile

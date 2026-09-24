@@ -101,7 +101,7 @@ backup; BitRouter is deleted.
 - Remove `BITROUTER_API_KEY` / `BITROUTER_BASE_URL` from `cloud/api/wrangler.toml`
   (vars), the secret-push loop in `.github/workflows/cloud-cf-deploy.yml`,
   `types/cloud-worker-env.ts`, and any provider-env reads.
-- Update `RAILWAY.md` and `cloud-infra` CLAUDE.md/AGENTS.md (drop the BitRouter
+- Update `RAILWAY.md` and `cloud-infra` AGENTS.md (drop the BitRouter
   service row + section).
 - **Operator:** ensure `OPENROUTER_API_KEY` secret is set on the Worker (staging
   + prod); deploy; then stop/delete the Railway `bitrouter` service.

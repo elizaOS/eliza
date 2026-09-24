@@ -3,7 +3,7 @@
  * acknowledge, and complete — across Discord and Telegram rooms via the LifeOps
  * reminder API.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;
@@ -46,7 +46,7 @@ export default scenario({
   tags: ["lifeops"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

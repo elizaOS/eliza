@@ -1,0 +1,33 @@
+{
+  "name": "@elizaos/bench-eliza-1-vision-cua-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end harness that exercises the eliza-1 vision + plugin-computeruse loop: capture all displays -> tile -> IMAGE_DESCRIPTION + OCR-with-coords -> ground a UI element -> click -> re-capture and verify state change. Stub-mode by default; flip ELIZA_VISION_CUA_E2E_REAL=1 to wire to the real runtime.",
+  "main": "./src/pipeline.ts",
+  "types": "./src/pipeline.ts",
+  "exports": {
+    ".": "./src/pipeline.ts",
+    "./pipeline": "./src/pipeline.ts",
+    "./stubs/vlm": "./src/stubs/stub-vlm.ts",
+    "./stubs/ocr": "./src/stubs/stub-ocr.ts"
+  },
+  "scripts": {
+    "fixtures:generate": "bun run scripts/generate-fixtures.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@elizaos/plugin-computeruse": "workspace:*",
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.10"
+  }
+}

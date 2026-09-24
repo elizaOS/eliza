@@ -9,10 +9,10 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "../lib/capacitor-platform-templates.mjs";
+import { resolveNativePluginDir } from "../lib/capacitor-plugin-names.mjs";
 import {
   appDir,
   elizaCheckoutRoot,
-  nativePluginsDir,
   packagesRoot,
   repoRoot,
 } from "./context.mjs";
@@ -226,7 +226,7 @@ export function resolvePackageAbsolutePathCandidates(
 export function resolveNativePluginPackagePath(pkgName, relativeTo) {
   const match = pkgName.match(/^@elizaos\/capacitor-(.+)$/);
   if (match) {
-    const localPluginRoot = path.join(nativePluginsDir, match[1]);
+    const localPluginRoot = resolveNativePluginDir(match[1]);
     if (fs.existsSync(path.join(localPluginRoot, "package.json"))) {
       return path.relative(relativeTo, localPluginRoot);
     }

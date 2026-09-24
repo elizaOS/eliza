@@ -4,9 +4,12 @@
  * chooses whether it exercises deterministic validation or opted-in hardware.
  */
 
+import {
+  type AgentRuntime,
+  createCharacter,
+  stringToUuid,
+} from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { ComputerUseService } from "../../src/services/computer-use-service.js";
 
 /** Starts the service through the same AgentRuntime registration path used in production. */
@@ -19,7 +22,7 @@ export async function startComputerUseRuntime(
       name: "ComputerUseServiceTestAgent",
       settings,
     }),
-    
+
     enableAutonomy: false,
     enableDocuments: false,
     enableRelationships: false,

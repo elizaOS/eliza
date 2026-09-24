@@ -2,27 +2,27 @@
 import { isKioskShellMode } from "./kiosk-mode";
 
 function parseTruthy(value: string | undefined): boolean {
-  const normalized = value?.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
+	const normalized = value?.trim().toLowerCase();
+	return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 function parseFalsy(value: string | undefined): boolean {
-  const normalized = value?.trim().toLowerCase();
-  return normalized === "0" || normalized === "false" || normalized === "no";
+	const normalized = value?.trim().toLowerCase();
+	return normalized === "0" || normalized === "false" || normalized === "no";
 }
 
 export function shouldCreateDesktopTray(
-  env: NodeJS.ProcessEnv = process.env,
+	env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (parseTruthy(env.ELIZA_DESKTOP_DISABLE_TRAY)) {
-    return false;
-  }
+	if (parseTruthy(env.ELIZA_DESKTOP_DISABLE_TRAY)) {
+		return false;
+	}
 
-  if (parseFalsy(env.ELIZA_DESKTOP_TRAY)) {
-    return false;
-  }
+	if (parseFalsy(env.ELIZA_DESKTOP_TRAY)) {
+		return false;
+	}
 
-  return true;
+	return true;
 }
 
 /**
@@ -39,23 +39,23 @@ export function shouldCreateDesktopTray(
  * switch: ELIZA_DESKTOP_TRAY_FIRST=0 restores the Dock icon at rest.
  */
 export function shouldStartTrayFirst(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  argv: readonly string[] = process.argv,
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+	argv: readonly string[] = process.argv,
 ): boolean {
-  if (platform !== "darwin") {
-    return false;
-  }
-  if (parseFalsy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
-    return false;
-  }
-  if (!shouldCreateDesktopTray(env)) {
-    return false;
-  }
-  if (isKioskShellMode(env, argv)) {
-    return false;
-  }
-  return true;
+	if (platform !== "darwin") {
+		return false;
+	}
+	if (parseFalsy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
+		return false;
+	}
+	if (!shouldCreateDesktopTray(env)) {
+		return false;
+	}
+	if (isKioskShellMode(env, argv)) {
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -66,10 +66,10 @@ export function shouldStartTrayFirst(
  * kernel line.
  */
 export function hasKnownMacosStatusItemSceneRegression(
-  platform: NodeJS.Platform = process.platform,
-  kernelRelease = "",
+	platform: NodeJS.Platform = process.platform,
+	kernelRelease = "",
 ): boolean {
-  return platform === "darwin" && /^25\.5(?:\.|$)/.test(kernelRelease);
+	return platform === "darwin" && /^25\.5(?:\.|$)/.test(kernelRelease);
 }
 
 /**
@@ -83,7 +83,7 @@ export function hasKnownMacosStatusItemSceneRegression(
  * keeps its text context menu.
  */
 export const TRAY_POPOVER_SUPPORTED_PLATFORMS: ReadonlySet<NodeJS.Platform> =
-  new Set<NodeJS.Platform>(["darwin"]);
+	new Set<NodeJS.Platform>(["darwin"]);
 
 /**
  * Whether the tray should attach a native context menu.
@@ -95,11 +95,11 @@ export const TRAY_POPOVER_SUPPORTED_PLATFORMS: ReadonlySet<NodeJS.Platform> =
  * `ELIZA_DESKTOP_TRAY_MENU=0` is an emergency compatibility escape hatch.
  */
 export function shouldAttachTrayMenu(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
 ): boolean {
-  void platform;
-  return !parseFalsy(env.ELIZA_DESKTOP_TRAY_MENU);
+	void platform;
+	return !parseFalsy(env.ELIZA_DESKTOP_TRAY_MENU);
 }
 
 export type TrayClickAction = "toggle-popover" | "hide-window" | "show-window";
@@ -111,17 +111,17 @@ export type TrayClickAction = "toggle-popover" | "hide-window" | "show-window";
  * tray click always has a visible effect.
  */
 export function resolveTrayClickAction(state: {
-  popoverConfigured: boolean;
-  windowVisible: boolean;
-  windowFocused: boolean;
+	popoverConfigured: boolean;
+	windowVisible: boolean;
+	windowFocused: boolean;
 }): TrayClickAction {
-  if (state.popoverConfigured) {
-    return "toggle-popover";
-  }
-  if (state.windowVisible && state.windowFocused) {
-    return "hide-window";
-  }
-  return "show-window";
+	if (state.popoverConfigured) {
+		return "toggle-popover";
+	}
+	if (state.windowVisible && state.windowFocused) {
+		return "hide-window";
+	}
+	return "show-window";
 }
 
 /**
@@ -132,21 +132,21 @@ export function resolveTrayClickAction(state: {
  * menu separately. Requires the tray and excludes kiosk shell mode.
  */
 export function shouldEnableTrayPopover(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  argv: readonly string[] = process.argv,
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+	argv: readonly string[] = process.argv,
 ): boolean {
-  if (!TRAY_POPOVER_SUPPORTED_PLATFORMS.has(platform)) {
-    return false;
-  }
-  if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_POPOVER)) {
-    return false;
-  }
-  if (!shouldCreateDesktopTray(env)) {
-    return false;
-  }
-  if (isKioskShellMode(env, argv)) {
-    return false;
-  }
-  return true;
+	if (!TRAY_POPOVER_SUPPORTED_PLATFORMS.has(platform)) {
+		return false;
+	}
+	if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_POPOVER)) {
+		return false;
+	}
+	if (!shouldCreateDesktopTray(env)) {
+		return false;
+	}
+	if (isKioskShellMode(env, argv)) {
+		return false;
+	}
+	return true;
 }

@@ -10,6 +10,7 @@
  * for the compose-level proof; no model.
  */
 
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { factsProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
@@ -33,9 +34,7 @@ type AdapterCallCounts = {
  * Count adapter reads while still executing the real query — a counting
  * delegate, not a stub: results come from the actual in-memory store.
  */
-function instrumentAdapter(
-	adapter: SQLiteDatabaseAdapter,
-): AdapterCallCounts {
+function instrumentAdapter(adapter: SQLiteDatabaseAdapter): AdapterCallCounts {
 	const counts: AdapterCallCounts = { getRoomsByIds: 0, messagesScans: 0 };
 	const realGetRoomsByIds = adapter.getRoomsByIds.bind(adapter);
 	adapter.getRoomsByIds = async (roomIds: UUID[]) => {
@@ -57,7 +56,10 @@ async function makeRuntime(): Promise<{
 	adapter: SQLiteDatabaseAdapter;
 	counts: AdapterCallCounts;
 }> {
-	const adapter = SQLiteDatabaseAdapter.create(":memory:");
+	const adapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("coalescing-test"),
+	);
 	const runtime = await createInitializedRuntime({
 		character: { name: "coalescing-test" } as Character,
 		adapter,

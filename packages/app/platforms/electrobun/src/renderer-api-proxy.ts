@@ -1,10 +1,10 @@
 /** Implements Electrobun desktop renderer api proxy ts behavior for app shell integration. */
 export function isRendererApiProxyPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/api/") ||
-    pathname === "/ws" ||
-    pathname.startsWith("/music-player")
-  );
+	return (
+		pathname.startsWith("/api/") ||
+		pathname === "/ws" ||
+		pathname.startsWith("/music-player")
+	);
 }
 
 /**
@@ -20,97 +20,97 @@ export function isRendererApiProxyPath(pathname: string): boolean {
  * and the HTTP api base, so the proxy stays active for those flows.
  */
 export function shouldProxyToApiBase(apiBase: string | undefined): boolean {
-  if (!apiBase) return false;
-  let scheme: string;
-  try {
-    scheme = new URL(apiBase).protocol;
-  } catch {
-    // error-policy:J3 malformed api base URL -> proxy inert
-    return false;
-  }
-  return scheme === "http:" || scheme === "https:";
+	if (!apiBase) return false;
+	let scheme: string;
+	try {
+		scheme = new URL(apiBase).protocol;
+	} catch {
+		// error-policy:J3 malformed api base URL -> proxy inert
+		return false;
+	}
+	return scheme === "http:" || scheme === "https:";
 }
 
 const BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS = 255;
 
 function parsePositiveInteger(value: string | undefined): number | null {
-  if (!value) return null;
-  // parseInt stops at the first non-digit, so "1junk" would yield 1 and be
-  // accepted as a deliberate setting. Require the whole value to be decimal; the optional leading plus is
-  // kept because `parseInt` accepted it.
-  const trimmed = value.trim();
-  if (!/^\+?\d+$/.test(trimmed)) return null;
-  const parsed = Number(trimmed);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+	if (!value) return null;
+	// parseInt stops at the first non-digit, so "1junk" would yield 1 and be
+	// accepted as a deliberate setting. Require the whole value to be decimal; the optional leading plus is
+	// kept because `parseInt` accepted it.
+	const trimmed = value.trim();
+	if (!/^\+?\d+$/.test(trimmed)) return null;
+	const parsed = Number(trimmed);
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function clampBunServeIdleTimeout(seconds: number): number {
-  return Math.min(seconds, BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS);
+	return Math.min(seconds, BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS);
 }
 
 export function resolveRendererProxyIdleTimeoutSeconds(
-  env: Record<string, string | undefined>,
+	env: Record<string, string | undefined>,
 ): number {
-  const explicit = parsePositiveInteger(
-    env.ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS,
-  );
-  if (explicit) return clampBunServeIdleTimeout(explicit);
+	const explicit = parsePositiveInteger(
+		env.ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS,
+	);
+	if (explicit) return clampBunServeIdleTimeout(explicit);
 
-  const httpTimeoutMs = parsePositiveInteger(env.ELIZA_HTTP_REQUEST_TIMEOUT_MS);
-  if (httpTimeoutMs) {
-    return clampBunServeIdleTimeout(Math.ceil(httpTimeoutMs / 1000));
-  }
+	const httpTimeoutMs = parsePositiveInteger(env.ELIZA_HTTP_REQUEST_TIMEOUT_MS);
+	if (httpTimeoutMs) {
+		return clampBunServeIdleTimeout(Math.ceil(httpTimeoutMs / 1000));
+	}
 
-  const chatTimeoutMs = parsePositiveInteger(
-    env.ELIZA_CHAT_GENERATION_TIMEOUT_MS,
-  );
-  if (chatTimeoutMs) {
-    return clampBunServeIdleTimeout(Math.ceil((chatTimeoutMs + 60_000) / 1000));
-  }
+	const chatTimeoutMs = parsePositiveInteger(
+		env.ELIZA_CHAT_GENERATION_TIMEOUT_MS,
+	);
+	if (chatTimeoutMs) {
+		return clampBunServeIdleTimeout(Math.ceil((chatTimeoutMs + 60_000) / 1000));
+	}
 
-  return BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS;
+	return BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS;
 }
 
 const HOP_BY_HOP_HEADERS = [
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "host",
+	"connection",
+	"keep-alive",
+	"proxy-authenticate",
+	"proxy-authorization",
+	"te",
+	"trailer",
+	"transfer-encoding",
+	"upgrade",
+	"host",
 ] as const;
 
 function createProxyHeaders(req: Request): Headers {
-  const headers = new Headers(req.headers);
-  for (const header of HOP_BY_HOP_HEADERS) {
-    headers.delete(header);
-  }
-  return headers;
+	const headers = new Headers(req.headers);
+	for (const header of HOP_BY_HOP_HEADERS) {
+		headers.delete(header);
+	}
+	return headers;
 }
 
 export function createRendererApiProxyRequestInit(
-  req: Request,
-  _target: URL,
+	req: Request,
+	_target: URL,
 ): RequestInit & { duplex?: "half" } {
-  const headers = createProxyHeaders(req);
-  const init: RequestInit & { duplex?: "half" } = {
-    method: req.method,
-    headers,
-    redirect: "manual",
-  };
+	const headers = createProxyHeaders(req);
+	const init: RequestInit & { duplex?: "half" } = {
+		method: req.method,
+		headers,
+		redirect: "manual",
+	};
 
-  if (req.method === "GET" || req.method === "HEAD") {
-    headers.delete("content-length");
-    return init;
-  }
+	if (req.method === "GET" || req.method === "HEAD") {
+		headers.delete("content-length");
+		return init;
+	}
 
-  if (req.body) {
-    init.body = req.body;
-    init.duplex = "half";
-  }
+	if (req.body) {
+		init.body = req.body;
+		init.duplex = "half";
+	}
 
-  return init;
+	return init;
 }

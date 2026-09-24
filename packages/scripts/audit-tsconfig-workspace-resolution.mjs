@@ -93,12 +93,23 @@ function compilerTokenIndex(tokens) {
 }
 
 /** Derive every tsconfig consumed by direct compiler invocations in a script. */
-export function discoverTypecheckProjects(packageDir, script) {
+export function discoverTypecheckProjects(packageDir, script, scripts = {}, active = new Set()) {
   const projects = [];
   for (const statement of splitShellStatements(script)) {
     const tokens = tokenizeShellStatement(statement);
     const compilerIndex = compilerTokenIndex(tokens);
-    if (compilerIndex < 0) continue;
+    if (compilerIndex < 0) {
+      const bunIndex = tokens.findIndex((token) => path.basename(token) === "bun");
+      if (bunIndex >= 0 && tokens[bunIndex + 1] === "run") {
+        const name = tokens[bunIndex + 2];
+        const nested = scripts[name];
+        if (nested) {
+          if (active.has(name)) throw new Error(`Cyclic typecheck script: ${name}`);
+          projects.push(...discoverTypecheckProjects(packageDir, nested, scripts, new Set([...active, name])));
+        }
+      }
+      continue;
+    }
     let foundProject = false;
     for (let index = compilerIndex + 1; index < tokens.length; index += 1) {
       const token = tokens[index];
@@ -584,6 +595,7 @@ export function auditTsconfigWorkspaceResolution(options = {}) {
       projectPaths = discoverTypecheckProjects(
         packageDirsByName.get(packageName),
         script,
+        manifest.scripts,
       );
     } catch (error) {
       violations.push(`${packageName} typecheck: ${error.message}`);

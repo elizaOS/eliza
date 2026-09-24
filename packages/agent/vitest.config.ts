@@ -4,7 +4,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/scripts/vitest/default.config";
+import baseConfig from "../scripts/vitest/default.config";
+import {
+  agentTestExclude,
+  agentTestInclude,
+} from "./scripts/run-vitest-batches.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -229,10 +233,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/auth\/vault\/(.+)$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/auth/src/vault/$1",
-        ),
+        replacement: path.join(monorepoRoot, "packages/auth/src/vault/$1"),
       },
     ],
   },
@@ -258,20 +259,11 @@ export default defineConfig({
         inline: [/@elizaos\//, /\/plugins\/plugin-/],
       },
     },
-    include: [
-      "src/**/*.test.{ts,tsx}",
-      "test/**/*.test.{ts,tsx}",
-      "scripts/**/*.test.{ts,tsx}",
-    ],
-    exclude: [
-      "dist/**",
-      "**/node_modules/**",
-      "**/*.e2e.test.{ts,tsx}",
-      "**/*.integration.test.{ts,tsx}",
-      "**/*.live.test.{ts,tsx}",
-      "**/*.live.e2e.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
-      "**/*-real.test.{ts,tsx}",
-    ],
+    include: agentTestInclude,
+    exclude: agentTestExclude.filter((pattern) =>
+      process.env.RUN_CRASH_RESTART_E2E === "1"
+        ? pattern !== "test/crash-restart-supervisor.test.ts"
+        : true,
+    ),
   },
 });

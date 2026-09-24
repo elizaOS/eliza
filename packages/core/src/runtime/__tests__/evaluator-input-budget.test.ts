@@ -5,12 +5,11 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { ElizaError } from "../../errors";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 import { computePrefixHashes } from "../context-hash";
 
@@ -184,7 +183,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 		const backupRequests: CapturedRequest[] = [];
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -233,7 +232,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 		const backupRequests: CapturedRequest[] = [];
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -285,7 +284,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 		});
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -323,7 +322,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 		});
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -374,7 +373,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 					SMALL_EVALUATOR_MODEL: "llama3.1-8b",
 				},
 			} as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(
@@ -480,7 +479,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 		});
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "large", 10, {
@@ -569,7 +568,7 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 		});
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "small", 10, {
@@ -602,7 +601,7 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 		});
 		const runtimeWithRecorder = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtimeWithRecorder.registerModel(
@@ -682,7 +681,7 @@ describe("runEvaluator — provider-owned input rejection", () => {
 		const finalRequests: CapturedRequest[] = [];
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		registerRateLimitedPrimary(runtime);
@@ -731,7 +730,7 @@ describe("runEvaluator — provider-owned input rejection", () => {
 		});
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		registerRateLimitedPrimary(runtime);
@@ -784,7 +783,7 @@ describe("runEvaluator — trajectory stage records the per-attempt prepared req
 		const recordedStages: Array<Record<string, unknown>> = [];
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
-			
+
 			logLevel: "fatal",
 		});
 		runtime.registerModel(

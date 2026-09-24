@@ -49,11 +49,11 @@ import {
 } from "@elizaos/agent";
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
@@ -199,16 +199,6 @@ const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-device-bridge",
   "eliza-aosp-llama",
 ] as const;
-
-let pluginRegistryApiPromise:
-  | Promise<typeof import("@elizaos/plugin-registry")>
-  | undefined;
-function getPluginRegistryApi(): Promise<
-  typeof import("@elizaos/plugin-registry")
-> {
-  pluginRegistryApiPromise ??= import("@elizaos/plugin-registry");
-  return pluginRegistryApiPromise;
-}
 
 import {
   clearCloudSecrets,
@@ -868,34 +858,6 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     },
   },
   {
-    // Plugin routes load @elizaos/plugin-registry lazily: that package pulls in
-    // heavyweight registry/install code, so keep it out of the startup path and
-    // only load it for plugin-management requests.
-    id: "plugins",
-    handler: async ({ req, res, state, url }) => {
-      if (!url.pathname.startsWith("/api/plugins")) {
-        return false;
-      }
-      // error-policy:J4 explicit user-facing degrade — while the heavyweight
-      // registry module is cold-loading (boot window), holding the socket open
-      // starves every /api/plugins poller into proxy "socket hang up" loops
-      // (#13859). Answer 503 + Retry-After instead; the memoized import keeps
-      // loading and the client's next poll lands 200 once warm.
-      const registryApi = await resolveWithinDeadline(
-        getPluginRegistryApi(),
-        PLUGIN_REGISTRY_LOAD_DEADLINE_MS,
-      );
-      if (registryApi === null) {
-        res.setHeader("Retry-After", "2");
-        sendJsonResponse(res, 503, {
-          error: "Plugin registry is still loading",
-        });
-        return true;
-      }
-      return registryApi.handlePluginsCompatRoutes(req, res, state);
-    },
-  },
-  {
     // Catalog routes: registry SoT projections (apps, plugins, connectors).
     id: "catalog",
     handler: ({ req, res, state }) => handleCatalogRoutes(req, res, state),
@@ -903,42 +865,6 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
   {
     id: "first-run",
     handler: ({ req, res, state }) => handleFirstRunRoute(req, res, state),
-  },
-  {
-    // GET /api/plugins/:id/ui-spec: generate a UiSpec for plugin configuration.
-    // Used by the agent to spawn interactive config forms in chat. Registered
-    // AFTER the `/api/plugins` handler; the generic handler declines the
-    // ui-spec path (its matcher does not claim it), so this more specific
-    // entry still resolves it, matching the legacy line ordering.
-    id: "plugin-ui-spec",
-    handler: async ({ req, res, state, method, url }) => {
-      const uiSpecMatch =
-        method === "GET" &&
-        url.pathname.match(/^\/api\/plugins\/([^/]+)\/ui-spec$/);
-      if (!uiSpecMatch) {
-        return false;
-      }
-      if (!(await ensureRouteAuthorized(req, res, state))) return true;
-      const pluginId = decodePathComponent(uiSpecMatch[1], res, "plugin id");
-      if (pluginId === null) return true;
-      const { buildPluginConfigUiSpec } = await import(
-        "@elizaos/shared/config/plugin-ui-spec"
-      );
-      const { buildPluginListResponse } = await getPluginRegistryApi();
-      const pluginList = buildPluginListResponse(state.current);
-      const plugin = pluginList.plugins.find(
-        (p: { id: string }) => p.id === pluginId,
-      );
-      if (!plugin) {
-        sendJsonResponse(res, 404, { error: `Plugin "${pluginId}" not found` });
-        return true;
-      }
-      const spec = buildPluginConfigUiSpec(
-        plugin as Parameters<typeof buildPluginConfigUiSpec>[0],
-      );
-      sendJsonResponse(res, 200, { spec });
-      return true;
-    },
   },
   {
     // GET /api/agents: return the running agent's info. The app runs a single

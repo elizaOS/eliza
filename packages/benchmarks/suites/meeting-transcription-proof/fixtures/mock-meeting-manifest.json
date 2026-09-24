@@ -1,0 +1,1188 @@
+{
+  "provider_mode": "mock",
+  "surfaces": [
+    "zoom",
+    "google_meet",
+    "on_device",
+    "cloud_agent",
+    "hybrid_local_cloud"
+  ],
+  "capture_modes": [
+    "bot",
+    "bot_free"
+  ],
+  "transcript_schema": {
+    "required_fields": [
+      "meeting_id",
+      "source",
+      "consent",
+      "segments",
+      "speakers",
+      "artifacts",
+      "retention_policy"
+    ]
+  },
+  "adapters": [
+    {
+      "id": "zoom",
+      "capture_modes": ["bot", "bot_free"]
+    },
+    {
+      "id": "google_meet",
+      "capture_modes": ["bot", "bot_free"]
+    },
+    {
+      "id": "on_device_capture",
+      "capture_modes": ["bot_free"]
+    }
+  ],
+  "stressors": [
+    "music",
+    "noise",
+    "babble",
+    "overlap",
+    "far_field"
+  ],
+  "scenarios": [
+    {
+      "id": "clean_single_speaker",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["transcript_artifact", "metrics"]
+    },
+    {
+      "id": "zoom_bot",
+      "surface": "zoom",
+      "capture_mode": "bot",
+      "evidence": ["audio", "video", "backend_logs", "transcript_artifact"]
+    },
+    {
+      "id": "zoom_bot_free",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "frontend_logs", "screenshots", "transcript_artifact"]
+    },
+    {
+      "id": "google_meet_bot",
+      "surface": "google_meet",
+      "capture_mode": "bot",
+      "evidence": ["audio", "video", "backend_logs", "transcript_artifact"]
+    },
+    {
+      "id": "google_meet_bot_free",
+      "surface": "google_meet",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "frontend_logs", "screenshots", "transcript_artifact"]
+    },
+    {
+      "id": "on_device_capture",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "cloud_agent_capture",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "evidence": ["backend_logs", "model_trajectories", "transcript_artifact"]
+    },
+    {
+      "id": "hybrid_local_cloud",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "backend_logs", "frontend_logs", "model_trajectories"]
+    },
+    {
+      "id": "multiple_people_single_stream",
+      "surface": "google_meet",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "video", "speaker_profile_artifact"]
+    },
+    {
+      "id": "shared_room_microphone",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "video", "speaker_profile_artifact"]
+    },
+    {
+      "id": "speech_over_music",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "speech_over_noise",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "speech_over_babble",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "overlapped_speech",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "evidence": ["audio", "metrics", "speaker_profile_artifact"]
+    },
+    {
+      "id": "far_field_room",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "video", "metrics"]
+    },
+    {
+      "id": "known_speaker_recognition",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["speaker_profile_artifact", "metrics"]
+    },
+    {
+      "id": "unknown_speaker_creation",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["speaker_profile_artifact", "metrics"]
+    },
+    {
+      "id": "speaker_name_correction",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["screenshots", "speaker_profile_artifact", "transcript_artifact"]
+    },
+    {
+      "id": "voice_profile_deletion",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["speaker_profile_artifact", "retention_artifact"]
+    },
+    {
+      "id": "transcript_sharing_export_delete",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "evidence": ["consent_record", "retention_artifact", "screenshots"]
+    }
+  ],
+  "dataset_sources": [
+    {
+      "id": "musan",
+      "source_url": "https://www.openslr.org/17/",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-musan-checksum",
+      "conditions": [
+        "speech_over_music",
+        "speech_over_noise",
+        "speech_over_babble"
+      ],
+      "splits": ["music", "noise", "babble"],
+      "sample_count": 3,
+      "duration_seconds": 180.0,
+      "annotation_types": ["noise_music_babble_labels"],
+      "target_metrics": ["wer", "cer", "end_of_turn_latency_ms"],
+      "evidence": ["audio", "metrics"]
+    },
+    {
+      "id": "libricss",
+      "source_url": "https://github.com/chenzhuo1011/libri_css",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-libricss-checksum",
+      "conditions": [
+        "overlapped_speech",
+        "multiple_people_single_stream"
+      ],
+      "splits": ["overlap_0s", "overlap_0l"],
+      "sample_count": 2,
+      "duration_seconds": 120.0,
+      "annotation_types": ["transcript", "diarization", "speaker_identity"],
+      "target_metrics": ["wer", "speaker_attributed_wer", "der", "jer", "overlap_aware_wer"],
+      "evidence": ["audio", "transcript_artifact", "metrics"]
+    },
+    {
+      "id": "chime6",
+      "source_url": "https://www.openslr.org/150/",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-chime6-checksum",
+      "conditions": [
+        "far_field_reverberant_room",
+        "shared_room_microphone"
+      ],
+      "splits": ["dev", "eval"],
+      "sample_count": 2,
+      "duration_seconds": 120.0,
+      "annotation_types": ["transcript", "diarization", "speaker_identity"],
+      "target_metrics": ["wer", "speaker_attributed_wer", "der", "jer"],
+      "evidence": ["audio", "transcript_artifact", "speaker_profile_artifact", "metrics"]
+    },
+    {
+      "id": "misp_meeting",
+      "source_url": "https://github.com/coalboss/MISP-Meeting",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-misp-meeting-checksum",
+      "conditions": [
+        "audiovisual_meeting",
+        "shared_room_microphone",
+        "multiple_people_single_stream"
+      ],
+      "splits": ["dev", "test"],
+      "sample_count": 2,
+      "duration_seconds": 120.0,
+      "annotation_types": ["transcript", "diarization", "speaker_identity", "active_speaker_video"],
+      "target_metrics": ["active_speaker_accuracy", "der", "speaker_attributed_wer"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"]
+    }
+  ],
+  "capture_paths": [
+    {
+      "id": "zoom_bot",
+      "surface": "zoom",
+      "capture_mode": "bot",
+      "participant_metadata": "zoom participant ids, names, and active-speaker events",
+      "consent_disclosure": "bot participant and recording notice",
+      "media_streams": ["mixed_audio", "active_speaker_video"],
+      "evidence": ["audio", "video", "backend_logs", "consent_record"]
+    },
+    {
+      "id": "zoom_bot_free",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "participant_metadata": "desktop foreground app and user-confirmed meeting roster",
+      "consent_disclosure": "local capture disclosure in app UI",
+      "media_streams": ["system_audio", "microphone_audio", "screen_video"],
+      "evidence": ["audio", "video", "frontend_logs", "screenshots", "consent_record"]
+    },
+    {
+      "id": "google_meet_bot",
+      "surface": "google_meet",
+      "capture_mode": "bot",
+      "participant_metadata": "Google Meet participant ids, names, and active-speaker events when available",
+      "consent_disclosure": "bot participant and recording notice",
+      "media_streams": ["mixed_audio", "active_speaker_video"],
+      "evidence": ["audio", "video", "backend_logs", "consent_record"]
+    },
+    {
+      "id": "google_meet_bot_free",
+      "surface": "google_meet",
+      "capture_mode": "bot_free",
+      "participant_metadata": "browser tab title, calendar attendees, and user-confirmed roster",
+      "consent_disclosure": "local capture disclosure in app UI",
+      "media_streams": ["tab_audio", "microphone_audio", "screen_video"],
+      "evidence": ["audio", "video", "frontend_logs", "screenshots", "consent_record"]
+    },
+    {
+      "id": "on_device_capture",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "participant_metadata": "local speaker profile roster and explicit user labels",
+      "consent_disclosure": "device microphone capture disclosure",
+      "media_streams": ["microphone_audio"],
+      "evidence": ["audio", "frontend_logs", "screenshots", "consent_record"]
+    },
+    {
+      "id": "cloud_agent_capture",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "participant_metadata": "cloud agent meeting participant metadata",
+      "consent_disclosure": "agent recording notice and retention policy",
+      "media_streams": ["mixed_audio", "active_speaker_video"],
+      "evidence": ["audio", "video", "backend_logs", "model_trajectories", "consent_record"]
+    },
+    {
+      "id": "hybrid_local_cloud",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "participant_metadata": "local roster plus cloud transcript participant reconciliation",
+      "consent_disclosure": "local capture and cloud processing disclosure",
+      "media_streams": ["system_audio", "microphone_audio"],
+      "evidence": ["audio", "backend_logs", "frontend_logs", "model_trajectories", "consent_record"]
+    }
+  ],
+  "speaker_operations": [
+    {
+      "id": "known_speaker_enrollment",
+      "surface": "on_device",
+      "evidence": ["audio", "speaker_profile_artifact", "consent_record"],
+      "metrics": ["voice_profile_false_reject_rate", "speaker_identity_quality"],
+      "privacy_control": "explicit opt-in enrollment with profile artifact review",
+      "confidence_policy": "store profile only when enrollment clip and consent record both pass"
+    },
+    {
+      "id": "known_speaker_recognition",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "speaker_profile_artifact", "metrics"],
+      "metrics": ["voice_profile_false_accept_rate", "voice_profile_false_reject_rate", "speaker_identity_quality"],
+      "privacy_control": "speaker labels are user-visible and editable before sharing",
+      "confidence_policy": "attach a known name only above threshold, otherwise keep an unknown speaker label"
+    },
+    {
+      "id": "unknown_speaker_creation",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "speaker_profile_artifact", "transcript_artifact"],
+      "metrics": ["der", "jer", "speaker_identity_quality"],
+      "privacy_control": "unknown profiles remain local unless the user opts in to cloud sync",
+      "confidence_policy": "create a temporary unknown speaker only after repeated segments exceed clustering confidence"
+    },
+    {
+      "id": "speaker_name_correction",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["screenshots", "speaker_profile_artifact", "transcript_artifact"],
+      "metrics": ["speaker_attributed_wer", "speaker_identity_quality"],
+      "privacy_control": "manual label edits are auditable and reversible",
+      "confidence_policy": "manual corrections override model labels for that transcript and future opted-in profiles"
+    },
+    {
+      "id": "duplicate_speaker_merge",
+      "surface": "cloud_agent",
+      "evidence": ["speaker_profile_artifact", "transcript_artifact", "model_trajectories"],
+      "metrics": ["der", "speaker_attributed_wer", "speaker_identity_quality"],
+      "privacy_control": "merge requires explicit review of affected transcript segments",
+      "confidence_policy": "suggest merge only when voice and roster signals agree"
+    },
+    {
+      "id": "incorrect_speaker_split",
+      "surface": "cloud_agent",
+      "evidence": ["speaker_profile_artifact", "transcript_artifact", "model_trajectories"],
+      "metrics": ["der", "jer", "speaker_attributed_wer"],
+      "privacy_control": "split preserves both profile histories with user-confirmed names",
+      "confidence_policy": "suggest split when segment embeddings and active-speaker video disagree with current label"
+    },
+    {
+      "id": "voice_profile_deletion",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["speaker_profile_artifact", "retention_artifact", "consent_record"],
+      "metrics": ["consent_retention_quality", "speaker_identity_quality"],
+      "privacy_control": "delete removes stored voice profile material and records retention proof",
+      "confidence_policy": "deleted profiles must not be used for recognition in later runs"
+    },
+    {
+      "id": "post_deletion_non_recognition",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "retention_artifact", "metrics"],
+      "metrics": ["voice_profile_false_accept_rate", "consent_retention_quality"],
+      "privacy_control": "post-deletion replay proves no stale profile can identify the speaker",
+      "confidence_policy": "speaker remains unknown unless newly enrolled with fresh consent"
+    },
+    {
+      "id": "multi_speaker_single_stream_attribution",
+      "surface": "google_meet",
+      "evidence": ["audio", "video", "speaker_profile_artifact", "metrics"],
+      "metrics": ["der", "jer", "active_speaker_accuracy", "speaker_attributed_wer"],
+      "privacy_control": "single camera/microphone rooms require visible uncertainty when labels are inferred",
+      "confidence_policy": "combine diarization, active-speaker video, and roster priors before naming speakers"
+    },
+    {
+      "id": "shared_room_uncertainty",
+      "surface": "zoom",
+      "evidence": ["audio", "video", "speaker_profile_artifact", "transcript_artifact"],
+      "metrics": ["der", "active_speaker_accuracy", "speaker_identity_quality"],
+      "privacy_control": "shared-room transcripts expose confidence and avoid overconfident names",
+      "confidence_policy": "prefer room-level labels when visual or voice evidence is ambiguous"
+    }
+  ],
+  "speaker_name_provenance": [
+    {
+      "id": "platform_roster_name",
+      "source": "platform_roster",
+      "surface": "zoom",
+      "evidence": ["transcript_artifact", "speaker_profile_artifact"],
+      "signals": ["platform_label"],
+      "confidence": 0.91,
+      "conflict_policy": "apply only when roster, diarization, and profile context do not conflict",
+      "confidence_policy": "confirmed labels require high confidence and provenance in the transcript JSON",
+      "privacy_policy": "show source and confidence next to the displayed name",
+      "expected_resolution": "apply_name"
+    },
+    {
+      "id": "calendar_attendee_name",
+      "source": "calendar_attendee",
+      "surface": "google_meet",
+      "evidence": ["transcript_artifact", "screenshots"],
+      "signals": ["calendar_attendee"],
+      "confidence": 0.72,
+      "conflict_policy": "calendar-only matches stay tentative when roster or voice evidence is absent",
+      "confidence_policy": "medium confidence attendee matches ask the user before confirmed display",
+      "privacy_policy": "calendar attendee names remain scoped to the meeting artifact",
+      "expected_resolution": "request_confirmation"
+    },
+    {
+      "id": "self_introduction_name",
+      "source": "self_introduction",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "transcript_artifact"],
+      "signals": ["self_introduction"],
+      "confidence": 0.9,
+      "conflict_policy": "self-introduction wins only for the diarized speaker segment that contains it",
+      "confidence_policy": "apply when transcript confidence and speaker attribution are both high",
+      "privacy_policy": "store the quote-backed provenance with the transcript segment",
+      "expected_resolution": "apply_name"
+    },
+    {
+      "id": "user_correction_name",
+      "source": "user_correction",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["screenshots", "speaker_profile_artifact", "transcript_artifact"],
+      "signals": ["user_correction"],
+      "confidence": 0.99,
+      "conflict_policy": "manual correction overrides lower-priority inferred labels",
+      "confidence_policy": "user-confirmed correction becomes the binding source for future opted-in runs",
+      "privacy_policy": "correction history remains auditable and reversible",
+      "expected_resolution": "prefer_user_correction"
+    },
+    {
+      "id": "voice_profile_match_name",
+      "source": "voice_profile",
+      "surface": "on_device",
+      "evidence": ["audio", "speaker_profile_artifact", "metrics"],
+      "signals": ["voice_profile_match"],
+      "confidence": 0.94,
+      "conflict_policy": "voice profile labels apply only when false-accept controls pass",
+      "confidence_policy": "confirmed display requires a high-confidence profile match",
+      "privacy_policy": "profile provenance and confidence are visible before sharing",
+      "expected_resolution": "apply_name"
+    },
+    {
+      "id": "recurring_speaker_memory",
+      "source": "speaker_memory",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["speaker_profile_artifact", "transcript_artifact"],
+      "signals": ["user_correction", "recurring_meeting_memory"],
+      "confidence": 0.96,
+      "conflict_policy": "previous user correction carries into recurring meetings unless new evidence conflicts",
+      "confidence_policy": "recurring Speaker 2 becomes Sarah only after correction-backed memory is present",
+      "privacy_policy": "recurring memory is attached to the meeting series and can be deleted",
+      "expected_resolution": "prefer_user_correction"
+    },
+    {
+      "id": "same_first_name_ambiguity",
+      "source": "calendar_attendee",
+      "surface": "google_meet",
+      "evidence": ["transcript_artifact", "speaker_profile_artifact", "screenshots"],
+      "signals": ["calendar_attendee", "same_first_name_ambiguity", "voice_profile_match"],
+      "confidence": 0.64,
+      "conflict_policy": "same-first-name cases with mixed signals must not choose a last name without review",
+      "confidence_policy": "ambiguous first-name matches are withheld until a stronger source disambiguates",
+      "privacy_policy": "candidate names are shown as review choices, not confirmed identity",
+      "expected_resolution": "withhold_name"
+    },
+    {
+      "id": "borrowed_device_guardrail",
+      "source": "platform_roster",
+      "surface": "zoom",
+      "evidence": ["audio", "transcript_artifact", "speaker_profile_artifact"],
+      "signals": ["platform_label", "borrowed_device_guardrail", "self_introduction"],
+      "confidence": 0.58,
+      "conflict_policy": "platform laptop owner labels do not bind when voice or self-introduction conflict",
+      "confidence_policy": "borrowed-device conflicts preserve unknown labels until user correction",
+      "privacy_policy": "avoid propagating the device owner's name onto another speaker",
+      "expected_resolution": "preserve_unknown"
+    }
+  ],
+  "audio_visual_cases": [
+    {
+      "id": "ava_active_speaker",
+      "dataset": "AVA-ActiveSpeaker",
+      "coverage": ["video_frames", "face_tracks", "active_speaker_labels", "source_metadata"],
+      "tasks": ["active_speaker", "face_count"],
+      "metrics": ["active_speaker_f1", "active_speaker_map", "face_count_accuracy"],
+      "evidence": ["video", "screenshots", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["none"]
+      }
+    },
+    {
+      "id": "misp_2025_meeting",
+      "dataset": "MISP 2025",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "active_speaker_labels",
+        "source_metadata"
+      ],
+      "tasks": ["active_speaker", "audio_video_association", "face_count"],
+      "metrics": ["active_speaker_f1", "active_speaker_map", "audio_video_association_accuracy", "face_count_accuracy"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "user_correction"]
+      }
+    },
+    {
+      "id": "easycom_license_permitting",
+      "dataset": "EasyCom",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "audio_video_association_labels",
+        "source_metadata"
+      ],
+      "tasks": ["audio_video_association", "face_count"],
+      "metrics": ["audio_video_association_accuracy", "face_count_accuracy"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "calendar_participant", "user_correction"]
+      }
+    },
+    {
+      "id": "synthetic_room_feed_smoke",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "room_feed_labels",
+        "person_count_labels",
+        "source_metadata"
+      ],
+      "tasks": ["room_feed", "face_count"],
+      "metrics": ["room_feed_heuristic_precision", "room_feed_heuristic_recall", "face_count_accuracy"],
+      "evidence": ["audio", "video", "screenshots", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["none"]
+      }
+    },
+    {
+      "id": "off_screen_speaker",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "off_screen_speaker_labels",
+        "source_metadata"
+      ],
+      "tasks": ["off_screen_speaker", "audio_video_association"],
+      "metrics": ["off_screen_speaker_detection_accuracy", "audio_video_association_accuracy"],
+      "evidence": ["audio", "video", "transcript_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "user_correction"]
+      }
+    },
+    {
+      "id": "visual_acoustic_disagreement",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "active_speaker_labels",
+        "source_metadata"
+      ],
+      "tasks": ["visual_acoustic_disagreement", "active_speaker"],
+      "metrics": ["visual_acoustic_disagreement_rate", "active_speaker_f1"],
+      "evidence": ["audio", "video", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "user_correction"]
+      }
+    },
+    {
+      "id": "audio_video_association",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "audio_video_association_labels",
+        "source_metadata"
+      ],
+      "tasks": ["audio_video_association", "active_speaker"],
+      "metrics": ["audio_video_association_accuracy", "active_speaker_f1"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "platform_roster", "user_correction"]
+      }
+    }
+  ],
+  "generated_artifact_scores": [
+    {
+      "id": "summary_factuality",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.9,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/summary-score.json"
+      }
+    },
+    {
+      "id": "action_item_owner_date",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.85,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/action-items-score.json"
+      }
+    },
+    {
+      "id": "decision_extraction",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.85,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/decisions-score.json"
+      }
+    },
+    {
+      "id": "open_question_extraction",
+      "judge_mode": "manual",
+      "observed_score": 1.0,
+      "threshold": 0.8,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "manual_review": "mock-generated-artifacts/open-questions-review.md"
+      }
+    },
+    {
+      "id": "memory_entity_correctness",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.9,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/memory-score.json"
+      }
+    },
+    {
+      "id": "hallucination_rate",
+      "judge_mode": "live_model",
+      "observed_score": 0.0,
+      "threshold": 0.05,
+      "higher_is_better": false,
+      "passed": true,
+      "proof": {
+        "judge_output": "mock-generated-artifacts/hallucination-judge.json",
+        "model_output": "mock-generated-artifacts/hallucination-output.txt",
+        "model_trajectory_jsonl": "mock-generated-artifacts/hallucination-trajectory.jsonl",
+        "raw_prompt": "mock-generated-artifacts/hallucination-prompt.txt"
+      }
+    },
+    {
+      "id": "omission_rate",
+      "judge_mode": "deterministic",
+      "observed_score": 0.0,
+      "threshold": 0.1,
+      "higher_is_better": false,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/omission-score.json"
+      }
+    },
+    {
+      "id": "source_grounding",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.95,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/source-grounding-score.json"
+      }
+    }
+  ],
+  "baseline_comparisons": [
+    {
+      "id": "eliza_current_baseline",
+      "system": "elizaos production meeting transcription path",
+      "comparison_type": "internal_baseline",
+      "run_status": "run",
+      "capture_mode": "mixed",
+      "privacy_mode": "internal baseline",
+      "conditions": [
+        "speech_over_music",
+        "speech_over_noise",
+        "speech_over_babble",
+        "overlapped_speech",
+        "far_field_reverberant_room",
+        "multiple_people_single_stream",
+        "shared_room_microphone"
+      ],
+      "metrics": [
+        "wer",
+        "cer",
+        "der",
+        "jer",
+        "cpwer",
+        "wder",
+        "speaker_name_accuracy",
+        "action_item_f1",
+        "decision_f1",
+        "unsupported_claim_rate",
+        "latency_ms",
+        "privacy_capture_mode"
+      ],
+      "eliza_artifact": "mock/eliza-current-baseline.json",
+      "baseline_artifact": "mock/eliza-current-baseline.json",
+      "manual_review_status": "reviewed",
+      "evidence": ["audio", "transcript_artifact", "metrics", "model_trajectories"],
+      "failure_policy": "current production row is required and cannot be counted as an external win"
+    },
+    {
+      "id": "otter_product_baseline",
+      "system": "Otter-style bot transcription and notes",
+      "comparison_type": "external_product",
+      "run_status": "not_run",
+      "not_run_reason": "commercial account and terms review are not provisioned in mocked plumbing",
+      "capture_mode": "bot",
+      "privacy_mode": "commercial bot",
+      "conditions": ["overlapped_speech", "multiple_people_single_stream"],
+      "metrics": ["wer", "cer", "speaker_name_accuracy", "action_item_f1", "unsupported_claim_rate"],
+      "eliza_artifact": "mock/eliza-vs-otter.json",
+      "baseline_artifact": "N/A - commercial account not provisioned",
+      "manual_review_status": "not_applicable",
+      "evidence": ["transcript_artifact", "metrics"],
+      "failure_policy": "not-run commercial systems must stay not-run with reason, never pass"
+    },
+    {
+      "id": "granola_product_baseline",
+      "system": "Granola-style bot-free capture and notes",
+      "comparison_type": "external_product",
+      "run_status": "not_run",
+      "not_run_reason": "desktop product account and screen/audio capture permission are not available in mocked plumbing",
+      "capture_mode": "bot_free",
+      "privacy_mode": "commercial bot-free desktop capture",
+      "conditions": ["shared_room_microphone", "far_field_reverberant_room"],
+      "metrics": ["wer", "der", "speaker_name_accuracy", "decision_f1", "privacy_capture_mode"],
+      "eliza_artifact": "mock/eliza-vs-granola.json",
+      "baseline_artifact": "N/A - commercial account not provisioned",
+      "manual_review_status": "not_applicable",
+      "evidence": ["audio", "screenshots", "metrics"],
+      "failure_policy": "not-run commercial systems must stay not-run with reason, never pass"
+    },
+    {
+      "id": "zoom_native_notes_baseline",
+      "system": "Zoom AI Companion and Zoom cloud transcript output",
+      "comparison_type": "external_product",
+      "run_status": "imported",
+      "capture_mode": "platform_artifact_import",
+      "privacy_mode": "Zoom cloud artifact",
+      "conditions": ["speech_over_noise", "overlapped_speech"],
+      "metrics": ["wer", "cer", "action_item_f1", "decision_f1", "latency_ms"],
+      "eliza_artifact": "mock/eliza-vs-zoom-native.json",
+      "baseline_artifact": "mock/zoom-native-transcript.json",
+      "manual_review_status": "reviewed",
+      "evidence": ["backend_logs", "transcript_artifact", "metrics"],
+      "failure_policy": "imported native artifacts require terms/usage notes in real reports"
+    },
+    {
+      "id": "google_meet_gemini_notes_baseline",
+      "system": "Google Meet Gemini Take Notes output",
+      "comparison_type": "external_product",
+      "run_status": "imported",
+      "capture_mode": "platform_artifact_import",
+      "privacy_mode": "Google Workspace artifact",
+      "conditions": ["speech_over_babble", "multiple_people_single_stream"],
+      "metrics": ["wer", "cer", "action_item_f1", "decision_f1", "latency_ms"],
+      "eliza_artifact": "mock/eliza-vs-gemini-notes.json",
+      "baseline_artifact": "mock/google-meet-gemini-notes.json",
+      "manual_review_status": "reviewed",
+      "evidence": ["backend_logs", "transcript_artifact", "metrics"],
+      "failure_policy": "imported native artifacts require terms/usage notes in real reports"
+    },
+    {
+      "id": "whisperx_pyannote_open_source_baseline",
+      "system": "WhisperX plus pyannote diarization",
+      "comparison_type": "open_source",
+      "run_status": "run",
+      "capture_mode": "offline_audio",
+      "privacy_mode": "local open-source baseline",
+      "conditions": [
+        "speech_over_music",
+        "speech_over_noise",
+        "speech_over_babble",
+        "overlapped_speech",
+        "far_field_reverberant_room",
+        "multiple_people_single_stream",
+        "shared_room_microphone"
+      ],
+      "metrics": [
+        "wer",
+        "cer",
+        "der",
+        "jer",
+        "cpwer",
+        "wder",
+        "speaker_name_accuracy",
+        "unsupported_claim_rate",
+        "latency_ms",
+        "privacy_capture_mode"
+      ],
+      "eliza_artifact": "mock/eliza-vs-whisperx-pyannote.json",
+      "baseline_artifact": "mock/whisperx-pyannote-output.json",
+      "manual_review_status": "reviewed",
+      "evidence": ["audio", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "failure_policy": "open-source baseline failures are reported with metrics, not skipped"
+    },
+    {
+      "id": "nemo_sortformer_open_source_baseline",
+      "system": "NeMo Sortformer diarization baseline",
+      "comparison_type": "open_source",
+      "run_status": "not_run",
+      "not_run_reason": "NeMo runtime is not installed in mocked plumbing",
+      "capture_mode": "offline_audio",
+      "privacy_mode": "local open-source baseline",
+      "conditions": ["overlapped_speech", "shared_room_microphone"],
+      "metrics": ["der", "jer", "cpwer", "wder", "latency_ms"],
+      "eliza_artifact": "mock/eliza-vs-nemo-sortformer.json",
+      "baseline_artifact": "N/A - NeMo runtime not installed",
+      "manual_review_status": "not_applicable",
+      "evidence": ["audio", "speaker_profile_artifact", "metrics"],
+      "failure_policy": "not-run open-source systems require installation reason and cannot count as pass"
+    }
+  ],
+  "adversarial_cases": [
+    {
+      "id": "adv_overlapping_similar_voices",
+      "class": "overlapping_similar_voices",
+      "fuzz_targets": ["transcript_span_alignment", "rttm_diarization_segments"],
+      "seed": 12537001,
+      "scenario_id": "overlapped_speech",
+      "expected_invariants": ["non_negative_durations", "overlap_retained", "speaker_ids_stable"],
+      "evidence": ["audio", "metrics", "speaker_profile_artifact"],
+      "metrics": ["der", "jer", "speaker_attributed_wer"],
+      "failure_policy": "minimize to seed and attach diarization/transcript span diff"
+    },
+    {
+      "id": "adv_duplicate_display_names",
+      "class": "duplicate_display_names",
+      "fuzz_targets": ["speaker_profile_lifecycle"],
+      "seed": 12537002,
+      "scenario_id": "known_speaker_recognition",
+      "expected_invariants": ["display_name_not_identity", "manual_correction_required_before_merge"],
+      "evidence": ["speaker_profile_artifact", "transcript_artifact", "metrics"],
+      "metrics": ["speaker_identity_quality", "voice_profile_false_accept_rate"],
+      "failure_policy": "minimize to seed and attach speaker profile merge/split trace"
+    },
+    {
+      "id": "adv_borrowed_laptop_identity",
+      "class": "borrowed_laptop_identity",
+      "fuzz_targets": ["speaker_profile_lifecycle", "capture_source_state_machine"],
+      "seed": 12537003,
+      "scenario_id": "shared_room_microphone",
+      "expected_invariants": ["device_owner_not_assumed_speaker", "uncertain_room_label_allowed"],
+      "evidence": ["audio", "screenshots", "speaker_profile_artifact"],
+      "metrics": ["speaker_identity_quality", "active_speaker_accuracy"],
+      "failure_policy": "minimize to seed and attach identity-binding decision trace"
+    },
+    {
+      "id": "adv_transcript_prompt_injection",
+      "class": "transcript_prompt_injection",
+      "fuzz_targets": ["meeting_notes_grounding", "canonical_artifact_schema"],
+      "seed": 12537004,
+      "scenario_id": "cloud_agent_capture",
+      "expected_invariants": ["quoted_injection_not_instruction", "notes_grounded_to_spans"],
+      "evidence": ["model_trajectories", "transcript_artifact", "metrics"],
+      "metrics": ["notes_factuality", "action_item_extraction"],
+      "failure_policy": "minimize to seed and attach model trajectory plus offending span"
+    },
+    {
+      "id": "adv_side_conversation",
+      "class": "side_conversation_not_action_item",
+      "fuzz_targets": ["meeting_notes_grounding"],
+      "seed": 12537005,
+      "scenario_id": "google_meet_bot",
+      "expected_invariants": ["side_conversation_not_promoted", "action_items_have_directive_support"],
+      "evidence": ["model_trajectories", "transcript_artifact", "metrics"],
+      "metrics": ["notes_factuality", "action_item_extraction"],
+      "failure_policy": "minimize to seed and attach unsupported action-item report"
+    },
+    {
+      "id": "adv_negated_action_item",
+      "class": "sarcastic_or_negated_action_item",
+      "fuzz_targets": ["meeting_notes_grounding"],
+      "seed": 12537006,
+      "scenario_id": "zoom_bot",
+      "expected_invariants": ["negated_task_not_action_item", "sarcasm_requires_review"],
+      "evidence": ["model_trajectories", "transcript_artifact", "metrics"],
+      "metrics": ["notes_factuality", "action_item_extraction"],
+      "failure_policy": "minimize to seed and attach note/action grounding diff"
+    },
+    {
+      "id": "adv_music_noise_false_vad",
+      "class": "music_noise_false_vad",
+      "fuzz_targets": ["capture_source_state_machine", "transcript_span_alignment"],
+      "seed": 12537007,
+      "scenario_id": "speech_over_music",
+      "expected_invariants": ["music_not_speaker", "silence_windows_not_transcribed"],
+      "evidence": ["audio", "metrics", "transcript_artifact"],
+      "metrics": ["wer", "cer", "end_of_turn_latency_ms"],
+      "failure_policy": "minimize to seed and attach VAD window report"
+    },
+    {
+      "id": "adv_bot_removed_permission_revoked",
+      "class": "bot_removed_or_permission_revoked",
+      "fuzz_targets": ["capture_source_state_machine", "asr_media_refs"],
+      "seed": 12537008,
+      "scenario_id": "zoom_bot",
+      "expected_invariants": ["terminal_error_classified", "partial_transcript_marked_partial"],
+      "evidence": ["backend_logs", "frontend_logs", "transcript_artifact"],
+      "metrics": ["consent_retention_quality"],
+      "failure_policy": "minimize to seed and attach state transition log"
+    },
+    {
+      "id": "adv_audio_deleted_transcript_allowed",
+      "class": "audio_deleted_transcript_allowed",
+      "fuzz_targets": ["asr_media_refs", "canonical_artifact_schema"],
+      "seed": 12537009,
+      "scenario_id": "transcript_sharing_export_delete",
+      "expected_invariants": ["audio_replay_invalidated", "allowed_transcript_refs_survive"],
+      "evidence": ["retention_artifact", "screenshots", "transcript_artifact"],
+      "metrics": ["consent_retention_quality"],
+      "failure_policy": "minimize to seed and attach retention/delete artifact"
+    },
+    {
+      "id": "adv_malformed_artifact_shape",
+      "class": "malformed_artifact_shape",
+      "fuzz_targets": ["canonical_artifact_schema", "importer_response_shapes"],
+      "seed": 12537010,
+      "scenario_id": "hybrid_local_cloud",
+      "expected_invariants": ["schema_errors_are_actionable", "negative_durations_rejected"],
+      "evidence": ["backend_logs", "metrics", "transcript_artifact"],
+      "metrics": ["transcript_quality", "diarization_quality"],
+      "failure_policy": "minimize to seed and attach malformed artifact fixture"
+    }
+  ],
+  "qa_review_checklist": [
+    {
+      "id": "qa_permission_denied",
+      "flow": "permission_denied",
+      "surface": "zoom_bot_free",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["permission-denied-screenshot", "frontend-console-log"],
+      "evidence": ["screenshots", "frontend_logs"],
+      "failure_policy": "permission denial must be visible and recoverable before capture starts"
+    },
+    {
+      "id": "qa_capture_stopped",
+      "flow": "capture_stopped",
+      "surface": "google_meet_bot_free",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["capture-stop-video", "partial-transcript-artifact"],
+      "evidence": ["video", "transcript_artifact", "frontend_logs"],
+      "failure_policy": "capture stop must finalize partial transcript and mark audio completeness"
+    },
+    {
+      "id": "qa_speaker_correction",
+      "flow": "speaker_correction",
+      "surface": "hybrid_local_cloud",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["speaker-correction-screenshot", "speaker-profile-artifact"],
+      "evidence": ["screenshots", "speaker_profile_artifact"],
+      "failure_policy": "manual correction must be auditable and reversible"
+    },
+    {
+      "id": "qa_delete_audio",
+      "flow": "delete_audio",
+      "surface": "on_device",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["retention-delete-proof", "transcript-after-delete"],
+      "evidence": ["retention_artifact", "transcript_artifact"],
+      "failure_policy": "deleting audio must invalidate replay without deleting allowed transcript text"
+    },
+    {
+      "id": "qa_share_privacy_state",
+      "flow": "share_privacy_state",
+      "surface": "cloud_agent",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["share-dialog-screenshot", "consent-record"],
+      "evidence": ["screenshots", "consent_record", "backend_logs"],
+      "failure_policy": "share controls must distinguish transcript, notes, audio, and generated artifacts"
+    }
+  ],
+  "parity_matrix": [
+    {
+      "id": "local_asr_local_llm_local_tts",
+      "status": "pass",
+      "scenario_ids": [
+        "clean_single_speaker",
+        "zoom_bot",
+        "zoom_bot_free",
+        "google_meet_bot",
+        "google_meet_bot_free",
+        "on_device_capture",
+        "cloud_agent_capture",
+        "hybrid_local_cloud",
+        "multiple_people_single_stream",
+        "shared_room_microphone",
+        "speech_over_music",
+        "speech_over_noise",
+        "speech_over_babble",
+        "overlapped_speech",
+        "far_field_room",
+        "known_speaker_recognition",
+        "unknown_speaker_creation",
+        "speaker_name_correction",
+        "voice_profile_deletion",
+        "transcript_sharing_export_delete"
+      ],
+      "artifact_schema": [
+        "baseline_comparison",
+        "metrics_json",
+        "privacy_mode",
+        "resource_logs",
+        "transcript_artifact"
+      ],
+      "metrics": {
+        "wer": 0.0,
+        "cer": 0.0,
+        "der": 0.0,
+        "jer": 0.0,
+        "cp_wer": 0.0,
+        "wder": 0.0,
+        "ttfa_ms": 0,
+        "final_transcript_latency_ms": 0,
+        "first_note_latency_ms": 0,
+        "cpu_percent": 0,
+        "memory_mb": 0,
+        "battery_percent_delta": 0,
+        "thermal_state": "fixture",
+        "cloud_cost_usd": 0.0,
+        "network_bytes": 0,
+        "failure_rate": 0.0,
+        "retry_count": 0,
+        "dropout_rate": 0.0,
+        "privacy_mode": "local_only"
+      },
+      "baseline": {
+        "baseline_id": "fixture-parity-baseline",
+        "comparison_report": "fixture-baseline-comparison.json",
+        "regression": false
+      },
+      "evidence": ["metrics_json", "resource_logs", "baseline_comparison"],
+      "evidence_platforms": ["desktop", "mobile", "cloud"]
+    },
+    {
+      "id": "local_asr_cloud_llm_local_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not call cloud LLM providers"
+    },
+    {
+      "id": "cloud_asr_cloud_llm_cloud_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not call cloud ASR, LLM, or TTS providers"
+    },
+    {
+      "id": "cloud_asr_local_llm_local_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not call cloud ASR providers"
+    },
+    {
+      "id": "native_talkmode_stt_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not drive native TalkMode"
+    },
+    {
+      "id": "browser_web_speech_fallback",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not invoke browser Web Speech"
+    },
+    {
+      "id": "offline_mode",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not disable networking or prove offline execution"
+    },
+    {
+      "id": "degraded_network_mode",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not apply network shaping"
+    },
+    {
+      "id": "mobile_bridge_local_inference",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not run a mobile bridge or local inference runtime"
+    }
+  ],
+  "metrics": {
+    "transcript_quality": 1.0,
+    "diarization_quality": 1.0,
+    "speaker_identity_quality": 1.0,
+    "consent_retention_quality": 1.0,
+    "wer": 0.0,
+    "cer": 0.0,
+    "speaker_attributed_wer": 0.0,
+    "der": 0.0,
+    "jer": 0.0,
+    "overlap_aware_wer": 0.0,
+    "active_speaker_accuracy": 1.0,
+    "face_count_accuracy": 1.0,
+    "active_speaker_f1": 1.0,
+    "active_speaker_map": 1.0,
+    "audio_video_association_accuracy": 1.0,
+    "off_screen_speaker_detection_accuracy": 1.0,
+    "room_feed_heuristic_precision": 1.0,
+    "room_feed_heuristic_recall": 1.0,
+    "visual_acoustic_disagreement_rate": 0.0,
+    "voice_profile_false_accept_rate": 0.0,
+    "voice_profile_false_reject_rate": 0.0,
+    "end_of_turn_latency_ms": 0,
+    "barge_in_latency_ms": 0,
+    "p95_end_to_end_latency_ms": 0,
+    "notes_factuality": 1.0,
+    "action_item_extraction": 1.0,
+    "summary_factuality": 1.0,
+    "action_item_owner_date": 1.0,
+    "decision_extraction": 1.0,
+    "open_question_extraction": 1.0,
+    "memory_entity_correctness": 1.0,
+    "hallucination_rate": 0.0,
+    "omission_rate": 0.0,
+    "source_grounding": 1.0
+  }
+}

@@ -99,13 +99,7 @@ const ciExcludedRealPaths = [
   ),
 ];
 const liveSetupFile = [
-  path.join(
-    elizaWorkspaceRoot,
-    "packages",
-    "app",
-    "test",
-    "live.setup.ts",
-  ),
+  path.join(elizaWorkspaceRoot, "packages", "app", "test", "live.setup.ts"),
   path.join(
     disabledElizaWorkspaceRoot,
     "packages",
@@ -298,34 +292,6 @@ const realResolveAlias: ModuleAlias[] = [
       },
     },
     {
-      find: "@elizaos/plugin-agent-skills",
-      packageName: "@elizaos/plugin-agent-skills",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-agent-skills",
-          "typescript",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-commands",
-      packageName: "@elizaos/plugin-commands",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-commands",
-          "typescript",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
       find: "@elizaos/plugin-sql",
       packageName: "@elizaos/plugin-sql",
       options: {
@@ -401,20 +367,6 @@ const realResolveAlias: ModuleAlias[] = [
           elizaWorkspaceRoot,
           "plugins",
           "plugin-anthropic",
-          "typescript",
-          "index.node",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-google-genai",
-      packageName: "@elizaos/plugin-google-genai",
-      options: {
-        entryKind: "node",
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-google-genai",
           "typescript",
           "index.node",
         ),

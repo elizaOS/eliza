@@ -5,7 +5,7 @@
  * not the approval surface: the draft stays held until the owner has actually
  * seen the text and confirmed it.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

@@ -22,7 +22,7 @@ const appLifeopsSrc = path.join(
 );
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
-  "plugins/plugin-task-coordinator/src",
+  "plugins/plugin-agent-orchestrator/src/ui",
 );
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const pluginAppManagerSrc = path.join(
@@ -32,10 +32,6 @@ const pluginAppManagerSrc = path.join(
 const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src/ui");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
 const pluginTodosSrc = path.join(monorepoRoot, "plugins/plugin-todos/src");
-const pluginAgentSkillsSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-agent-skills/src",
-);
 const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-browser/src",
@@ -143,7 +139,7 @@ export default defineConfig({
       "src/permissions/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/styles/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/entry-cloud-api-key.test.ts",
-      "src/__tests__/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "src/state-dir-no-direct-env.test.ts",
       "src/diagnostics/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/registry/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/first-run/**/*.{test,spec}.?(c|m)[jt]s?(x)",
@@ -237,7 +233,6 @@ export default defineConfig({
       "scripts/playwright-audit-projects.test.mjs",
       "scripts/playwright-test-match.test.mjs",
       "scripts/run-ui-playwright-node-resolution.test.mjs",
-      "scripts/sync-homepage-assets.test.mjs",
       "scripts/verify-viewport-meta.test.mjs",
       "scripts/visual-qa-live.test.mjs",
       "scripts/voice-evidence-media.test.mjs",
@@ -465,14 +460,6 @@ export default defineConfig({
         replacement: path.join(pluginSqlSrc, "$1"),
       },
       {
-        find: /^@elizaos\/plugin-agent-skills$/,
-        replacement: path.join(pluginAgentSkillsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-agent-skills\/(.+)$/,
-        replacement: path.join(pluginAgentSkillsSrc, "$1"),
-      },
-      {
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
       },
@@ -501,11 +488,11 @@ export default defineConfig({
         replacement: path.join(pluginAppManagerSrc, "$1"),
       },
       {
-        find: /^@elizaos\/plugin-task-coordinator$/,
+        find: /^@elizaos\/plugin-agent-orchestrator\/ui$/,
         replacement: toVitePath(path.join(appTaskCoordinatorSrc, "index.ts")),
       },
       {
-        find: /^@elizaos\/plugin-task-coordinator\/(.+)$/,
+        find: /^@elizaos\/plugin-agent-orchestrator\/ui\/(.+)$/,
         replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
       },
       {

@@ -3,7 +3,7 @@
 Cross-platform Eliza agent application — the shipped web/desktop/mobile UI shell for elizaOS.
 
 Repository-wide engineering and evidence requirements are inherited from the
-root [`CLAUDE.md`](../../CLAUDE.md). This package's visual-review rules are
+root [`AGENTS.md`](../../AGENTS.md). This package's visual-review rules are
 additional and remain mandatory for UI changes.
 
 ## Purpose / role
@@ -42,7 +42,6 @@ packages/app/
     native-module-stub-plugin.ts  Browser replacements for Node/native modules
   scripts/
     build.mjs                Main app build script
-    sync-homepage-assets.mjs Copies approved public assets from the homepage source module
     plugin-build.mjs         Plugin-only build
     run-ui-playwright.mjs    Playwright test runner wrapper
     mobile-release-preflight.mjs  Mobile store/sideload preflight checks
@@ -66,17 +65,11 @@ packages/app/
   resolves trusted launch state, handles special window/device lanes, hydrates
   native storage before the normal first render, mounts React, schedules
   deferred plugin loading, and then finishes platform initialization.
-- `../homepage/src/embedded-home.tsx` and `embedded-downloads.tsx` — public
-  marketing entrypoints consumed through the `@homepage/*` Vite alias. Their
-  package is source/test-only; this app owns every served and deployed build.
-- `src/renderer-entry.ts` — synchronous renderer selector. The root marketing route uses
-  `src/marketing-home-entry.tsx` so its static hero does not wait for the Cloud
-  auth router, service worker, wallet providers, or the normal app boot graph.
+- `src/renderer-entry.ts` selects the public auth shell or full application before loading either module graph.
 
 ## Boot sequence
 
-1. `renderer-entry.ts` selects the marketing-only root, hosted public routes, or the
-   normal application entry before importing any renderer graph.
+1. `renderer-entry.ts` selects hosted public routes or the normal application entry before importing either renderer graph.
 2. `main()` resolves embed, smoke-test, managed-launch, popout, and detached-window
    paths before the normal application path.
 3. `initializeAppModules()` assembles `AppBootConfig` and calls `setBootConfig()`;
@@ -332,11 +325,7 @@ bun run --cwd packages/app test:e2e
 - **`AsyncLocalStorage` patch.** A `renderChunk` plugin patches the `AsyncLocalStorage` browser replacement in mobile WebView bundles so `new undefined` never happens. Do not remove this plugin.
 - **Onboarding QA query params.** `?onboarding-replay=1` (dev builds only) re-runs onboarding as a **non-destructive** client overlay on the same agent — no reset endpoint, no active-server clear, no storage wipe; `?reset` clears the persisted client session for a genuinely fresh first run. Both are wired in `src/first-run-boot-patches.ts` (the arm-before-patch order there is load-bearing — see its header) and regression-locked by `test/first-run-boot-patches.test.ts`. Use the committed replay evidence script and tests rather than relying on the deleted historical HITL inventory.
 - **iOS full-Bun smoke.** When the `eliza:ios-full-bun-smoke:request` key is set through local storage or native Preferences, `main.tsx` calls app's shared `runIosFullBunSmokeIfRequested()` probe, which writes strict backend/model results to Preferences. This is a QA/CI gate; do not inline a second implementation or remove the call.
-- **`predev` / `prebuild` hooks.** Both generate homepage release data, run
-  `sync-to-public.mjs` for shared brand assets, and run
-  `sync-homepage-assets.mjs` for the approved embedded marketing assets before
-  Vite starts. Do not restore a build/dev/deploy lifecycle under
-  `packages/homepage`; this package is the single frontend artifact.
+- **`predev` / `prebuild` hooks.** Copy the supported shared logos, favicons, and banners into the app public tree.
 - See the root guide for architecture, naming, git workflow, and evidence rules.
 
 ## Package completion evidence
@@ -362,7 +351,7 @@ platform packages, and app-facing plugins such as `plugin-registry` and
 `plugin-personal-assistant`.
 
 Repository-wide rules and evidence requirements are inherited from the root
-[`CLAUDE.md`](../../CLAUDE.md).
+[`AGENTS.md`](../../AGENTS.md).
 
 ## Layout
 
@@ -479,7 +468,7 @@ changes, additionally capture and inspect:
 ### iOS local-agent transport ownership
 
 `@elizaos/ui/api/ios-local-agent-transport` owns the shared native runtime,
-fetch interception, boot progress and watchdog restart state. App-core's
+fetch interception, boot progress and watchdog restart state. The app's
 `./api/ios-local-agent-transport` subpath re-exports that owner for compatibility.
 Do not introduce another transport singleton or watchdog listener in the host.
 The fetch boundary applies standard RequestInit overrides and observes caller

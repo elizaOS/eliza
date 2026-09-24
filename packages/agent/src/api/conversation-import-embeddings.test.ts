@@ -1,22 +1,29 @@
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
+/**
+ * Exercises imported-conversation embedding repair against a real SQLite runtime,
+ * including pagination, backdated imports, queue contention, and failed reads.
+ */
 import {
-  AgentRuntime,
   createCharacter,
   type Memory,
   ModelType,
   stringToUuid,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { expect, test, vi } from "vitest";
 import {
   registerImportedConversationEmbeddingWorker,
   scheduleImportedConversationEmbeddings,
 } from "./conversation-import-embeddings.ts";
 
+function embedding(): number[] {
+  // SQLite initializes its vector index with the default 384-dimensional space.
+  return Array.from({ length: 384 }, () => 1);
+}
+
 function fixture() {
   const runtime = createSQLiteTestRuntime({
     character: createCharacter({ name: "Import repair" }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });
@@ -52,14 +59,14 @@ test("pages every imported source, waits for stored vectors, and resets for back
   try {
     for (let n = 0; n < 103; n++) {
       const memory = f.source(n, n !== 102);
-      if (n < 100) memory.embedding = [1];
+      if (n < 100) memory.embedding = embedding();
       await f.runtime.createMemory(memory, "messages");
     }
     await scheduleImportedConversationEmbeddings(f.runtime, f.roomId);
     expect(await f.worker.shouldRun!(f.runtime, await f.task())).toBe(false);
     f.runtime.registerModel(
       ModelType.TEXT_EMBEDDING,
-      async () => [1],
+      async () => embedding(),
       "fixture",
     );
     expect(await f.worker.shouldRun!(f.runtime, await f.task())).toBe(true);
@@ -72,7 +79,10 @@ test("pages every imported source, waits for stored vectors, and resets for back
     await f.worker.execute(f.runtime, {}, await f.task());
     expect((await f.task()).metadata?.updateInterval).toBe(2000);
     for (const n of [100, 101])
-      await f.runtime.updateMemory({ id: f.source(n).id!, embedding: [1] });
+      await f.runtime.updateMemory({
+        id: f.source(n).id!,
+        embedding: embedding(),
+      });
     await f.worker.execute(f.runtime, {}, await f.task());
     expect(
       await f.runtime.getTasksByName("CONVERSATION_IMPORT_EMBEDDINGS"),

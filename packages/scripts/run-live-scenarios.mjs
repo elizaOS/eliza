@@ -39,6 +39,7 @@ export function createLiveScenarioPlan(options = {}) {
   const scenarioCli = path.join(
     repoRoot,
     "packages",
+    "testing",
     "scenario-runner",
     "src",
     "cli.ts",

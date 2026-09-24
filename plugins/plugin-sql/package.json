@@ -60,7 +60,7 @@
     "drizzle-orm": "0.45.2",
     "pg": "^8.23.0",
     "uuid": "^14.0.0",
-    "@elizaos/retrieval": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

@@ -3,7 +3,7 @@
 // What this module does:
 //
 //   1. Mirrors the verified standalone CPU SIMD translation units from
-//      packages/native/plugins/qjl-cpu/{src,include} over the fork's
+//      plugins/plugin-local-inference/native/qjl-cpu/{src,include} over the fork's
 //      ggml/src/ggml-cpu/qjl/ directory. The fork's checkout is `git reset
 //      --hard`'d on every build, so this is the only place the new
 //      avx-vnni / dotprod / int8-sketch TUs (and the runtime-cpuid
@@ -43,16 +43,11 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function firstExistingPath(candidates) {
-  return (
-    candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
-  );
-}
-
-const QJL_CPU_SRC_DIR = firstExistingPath([
-  path.resolve(__dirname, "..", "..", "..", "native", "plugins", "qjl-cpu"),
-  path.resolve(__dirname, "..", "..", "..", "native-plugins", "qjl-cpu"),
-]);
+const QJL_CPU_SRC_DIR = path.resolve(
+  __dirname,
+  "../../../..",
+  "plugins/plugin-local-inference/native/qjl-cpu",
+);
 
 const SENTINEL = "# ELIZA-CPU-SIMD-PATCH-V1";
 
@@ -148,7 +143,7 @@ function patchGgmlCpuCMakeLists(cacheDir, { dryRun }) {
         `the fork layout has changed.`,
     );
   }
-  const replacementBlock = `        ${SENTINEL} — QJL kernel TUs mirrored from packages/native/plugins/qjl-cpu
+  const replacementBlock = `        ${SENTINEL} — QJL kernel TUs mirrored from plugins/plugin-local-inference/native/qjl-cpu
 ${qjlSourceListBlock()}
 `;
   if (!patched.includes(`${SENTINEL} — QJL kernel TUs`)) {

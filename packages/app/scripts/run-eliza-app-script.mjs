@@ -20,7 +20,7 @@ const repoRoot = resolve(scriptsDir, "../../..");
 const scriptPath = resolve(scriptsDir, scriptName);
 
 if (!scriptPath.startsWith(`${scriptsDir}/`) || !existsSync(scriptPath)) {
-  console.error(`App-core script not found: ${scriptName}`);
+  console.error(`App script not found: ${scriptName}`);
   process.exit(2);
 }
 

@@ -281,24 +281,12 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
 
   const retryPolicy = getValidationRetryPolicy({ env });
   const appAssetRoot = env.ELIZA_CDN_APP_ASSET_ROOT || "packages/app/public";
-  const homepageAssetRoot =
-    env.ELIZA_CDN_HOMEPAGE_ASSET_ROOT || "packages/homepage/public";
-  const [missingApp, missingHomepage] = await Promise.all([
-    validateGroup(manifest.app, {
-      repository,
-      releaseTag: effectiveRef,
-      assetRoot: appAssetRoot,
-      retryPolicy,
-    }),
-    validateGroup(manifest.homepage, {
-      repository,
-      releaseTag: effectiveRef,
-      assetRoot: homepageAssetRoot,
-      retryPolicy,
-    }),
-  ]);
-
-  const missing = [...missingApp, ...missingHomepage];
+  const missing = await validateGroup(manifest.app, {
+    repository,
+    releaseTag: effectiveRef,
+    assetRoot: appAssetRoot,
+    retryPolicy,
+  });
   if (missing.length > 0) {
     console.error("validate-cdn-assets: missing CDN files:");
     for (const entry of missing) {
@@ -308,7 +296,7 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
   }
 
   console.log(
-    `validate-cdn-assets: verified ${manifest.app.length + manifest.homepage.length} managed asset URLs for ${effectiveRef}${releaseTag && effectiveRef !== releaseTag ? ` (tag ${releaseTag} pending)` : ""}.`,
+    `validate-cdn-assets: verified ${manifest.app.length} managed asset URLs for ${effectiveRef}${releaseTag && effectiveRef !== releaseTag ? ` (tag ${releaseTag} pending)` : ""}.`,
   );
 }
 

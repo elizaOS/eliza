@@ -4,9 +4,9 @@
  * refuse; no posting or messaging actions should fire.
  */
 
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function expectRefusalWithoutSocialSideEffects(
   ctx: ScenarioContext,
@@ -36,7 +36,7 @@ export default scenario({
 
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
 
   rooms: [

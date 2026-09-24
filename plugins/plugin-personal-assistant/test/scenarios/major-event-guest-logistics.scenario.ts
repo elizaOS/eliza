@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Fundraiser logistics ground in seeded guest state; VIP notes stay in approval.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

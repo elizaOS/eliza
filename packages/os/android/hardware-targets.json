@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "targetId": "pixel9a-tegu",
+      "marketingName": "Pixel 9a",
+      "manufacturer": "Google",
+      "codenames": ["tegu"],
+      "reviewedAt": "2026-08-18",
+      "authoritativeReferences": [
+        "https://developers.google.com/android/drivers",
+        "https://android.googlesource.com/platform/manifest/+/refs/tags/android-15.0.0_r31"
+      ],
+      "productName": "eliza_tegu_phone",
+      "lunchTarget": "eliza_tegu_phone-trunk_staging-userdebug",
+      "expectedFingerprintPrefix": "elizaOS/eliza_tegu_phone/tegu:",
+      "aospLockPath": "android/pixel9a.lock.json",
+      "sourceStatus": "pinned",
+      "installerEligible": false,
+      "blockedReasons": [
+        "The active Gemma ASR artifact is not yet published and digest-pinned in the application catalog.",
+        "No retained Pixel 9a flash and post-boot validation evidence exists yet."
+      ],
+      "labExperimentsEligible": false
+    },
+    {
+      "targetId": "pixel11pro-grizzly",
+      "marketingName": "Pixel 11 Pro",
+      "manufacturer": "Google",
+      "codenames": ["grizzly"],
+      "reviewedAt": "2026-09-04",
+      "authoritativeReferences": [
+        "https://developers.google.com/android/images",
+        "https://source.android.com/docs/setup/build/building-pixel-kernels",
+        "https://github.com/GrapheneOS/adevtool/commit/144f004cc484d7e7234cdd167cee48e5f240288f",
+        "https://github.com/GrapheneOS/vendor_state/commit/afd6a0c9f6ca13d395f00e98227a0866cc14de07"
+      ],
+      "productName": "eliza_grizzly_phone",
+      "lunchTarget": "eliza_grizzly_phone-trunk_staging-userdebug",
+      "expectedFingerprintPrefix": "elizaOS/eliza_grizzly_phone/grizzly:",
+      "aospLockPath": "android/pixel11pro.lock.json",
+      "sourceStatus": "pinned-generated",
+      "installerEligible": false,
+      "blockedReasons": [
+        "A complete reproducible device-kernel and vendor-module integration is not yet verified; initial bring-up intentionally uses the stock kernel extracted from the pinned factory image.",
+        "The generated vendor module has not yet completed an exact-source build and physical Pixel 11 Pro boot validation.",
+        "No retained Pixel 11 Pro rollback, flash, post-boot hardware, launcher, local inference, or voice evidence bundle exists yet."
+      ],
+      "labExperimentsEligible": false
+    },
+    {
+      "targetId": "lightphone3-tlp301",
+      "marketingName": "Light Phone III",
+      "manufacturer": "Light",
+      "codenames": ["TLP301"],
+      "reviewedAt": "2026-08-18",
+      "authoritativeReferences": [
+        "https://github.com/lightphone/light-sdk",
+        "https://developers.thelightphone.com/"
+      ],
+      "sourceStatus": "blocked",
+      "installerEligible": false,
+      "blockedReasons": [
+        "Light's official light-sdk is an application/tool SDK, not a bootable LightOS/AOSP source, signing, or flash contract.",
+        "No authoritative AOSP device tree or board configuration has been published.",
+        "No kernel source or boot-image contract has been published.",
+        "No licensed vendor-blob manifest has been published.",
+        "No validated bootloader unlock, flash, or rollback procedure exists."
+      ],
+      "labExperimentsEligible": false
+    }
+  ]
+}

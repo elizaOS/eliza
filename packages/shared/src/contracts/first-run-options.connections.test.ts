@@ -36,15 +36,6 @@ describe("subscription selection accessors", () => {
     expect(getStoredSubscriptionProvider("anthropic-subscription")).toBe(
       "anthropic-subscription",
     );
-    expect(getStoredSubscriptionProvider("openai-subscription")).toBe(
-      "openai-codex",
-    );
-    expect(getStoredSubscriptionProvider("gemini-subscription")).toBe(
-      "gemini-cli",
-    );
-    expect(getStoredSubscriptionProvider("zai-coding-subscription")).toBe(
-      "zai-coding",
-    );
     expect(getStoredSubscriptionProvider("kimi-coding-subscription")).toBe(
       "kimi-coding",
     );
@@ -56,11 +47,6 @@ describe("subscription selection accessors", () => {
   it("returns the owning family for each subscription selection", () => {
     expect(getSubscriptionProviderFamily("anthropic-subscription")).toBe(
       "anthropic",
-    );
-    expect(getSubscriptionProviderFamily("openai-subscription")).toBe("openai");
-    expect(getSubscriptionProviderFamily("gemini-subscription")).toBe("gemini");
-    expect(getSubscriptionProviderFamily("zai-coding-subscription")).toBe(
-      "zai",
     );
     expect(getSubscriptionProviderFamily("kimi-coding-subscription")).toBe(
       "moonshot",
@@ -87,17 +73,17 @@ describe("subscription selection accessors", () => {
 
 describe("stored first-run provider id mapping", () => {
   it("prefers the stored provider id over the catalog id", () => {
-    expect(getStoredFirstRunProviderId("zai-coding-subscription")).toBe(
-      "zai-coding",
+    expect(getStoredFirstRunProviderId("kimi-coding-subscription")).toBe(
+      "kimi-coding",
     );
-    expect(getStoredFirstRunProviderId("openai-subscription")).toBe(
-      "openai-codex",
+    expect(getStoredFirstRunProviderId("deepseek-coding-subscription")).toBe(
+      "deepseek-coding",
     );
   });
 
   it("falls back to the catalog id when no stored provider is configured", () => {
     expect(getStoredFirstRunProviderId("anthropic")).toBe("anthropic");
-    expect(getStoredFirstRunProviderId("ollama")).toBe("ollama");
+    expect(getStoredFirstRunProviderId("ollama")).toBeNull();
   });
 
   it("returns null for unknown or non-string inputs", () => {
@@ -530,16 +516,16 @@ describe("inferFirstRunConnectionFromConfig", () => {
       inferFirstRunConnectionFromConfig({
         serviceRouting: {
           llmText: {
-            backend: "ollama",
+            backend: "openai",
             transport: "direct",
-            primaryModel: "llama3",
+            primaryModel: "gpt-5-mini",
           },
         },
       }),
     ).toEqual({
       kind: "local-provider",
-      provider: "ollama",
-      primaryModel: "llama3",
+      provider: "openai",
+      primaryModel: "gpt-5-mini",
     });
   });
 

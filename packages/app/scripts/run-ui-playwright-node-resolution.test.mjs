@@ -10,11 +10,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { parseNodeMajor } from "./run-node-runtime.mjs";
 import {
   resolveExecutableFromPath,
   resolvePlaywrightNodeRuntime,
 } from "./lib/playwright-node-runtime.mjs";
+import { parseNodeMajor } from "./run-node-runtime.mjs";
 
 const probe = (outputs) => (candidate) =>
   outputs[candidate] ?? {

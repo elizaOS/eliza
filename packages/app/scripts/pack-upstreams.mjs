@@ -34,8 +34,8 @@ const SEED_TARGETS = [
   },
   { label: "@elizaos/ui", dir: path.join(ELIZA_ROOT, "packages", "ui") },
   {
-    label: "@elizaos/auth/vault",
-    dir: path.join(ELIZA_ROOT, "packages", "vault"),
+    label: "@elizaos/auth",
+    dir: path.join(ELIZA_ROOT, "packages", "auth"),
   },
   {
     label: "@elizaos/cloud-sdk",
@@ -44,10 +44,6 @@ const SEED_TARGETS = [
   {
     label: "@elizaos/cloud-routing",
     dir: path.join(ELIZA_ROOT, "packages", "cloud", "routing"),
-  },
-  {
-    label: "@elizaos/skills",
-    dir: path.join(ELIZA_ROOT, "packages", "skills"),
   },
   {
     label: "@elizaos/app",

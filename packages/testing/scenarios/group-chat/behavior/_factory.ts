@@ -6,7 +6,7 @@ import type {
   ScenarioDefinition,
   ScenarioSeedStep,
   ScenarioTurn,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 type MessageTurn = ScenarioTurn;
 type BehaviorSetup = Pick<

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+chmod 0755 /usr/local/lib/elizaos/capability-runner
+chmod 0440 /etc/sudoers.d/elizaos-capability-runner
+chmod 0644 /etc/elizaos/admin-mode
+chown root:root /usr/local/lib/elizaos/capability-runner \
+    /etc/sudoers.d/elizaos-capability-runner \
+    /etc/elizaos/admin-mode
+visudo -c -f /etc/sudoers.d/elizaos-capability-runner

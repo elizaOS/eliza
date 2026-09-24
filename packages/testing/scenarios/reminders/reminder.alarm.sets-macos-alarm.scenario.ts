@@ -1,6 +1,7 @@
 /** Scenario fixture for reminder alarm sets macos alarm; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectCalendarResultData } from "@elizaos/scenario-runner/scenario-assertions";
+
+import { expectCalendarResultData } from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +13,7 @@ export default scenario({
     "A Mac alarm request currently lands in the owner calendar flow, creating a calendar event instead of a native alarm helper.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

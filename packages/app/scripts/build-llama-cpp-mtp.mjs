@@ -62,6 +62,8 @@ import {
   sha256File,
 } from "./lib/ios-fused-slice-cache.mjs";
 
+import { MTP_FORK_SRC_CANDIDATES } from "./lib/mobile-build-decisions.mjs";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/app/scripts → repo root
 const repoRoot = path.resolve(here, "..", "..", "..");
@@ -102,20 +104,6 @@ const IOS_METAL_STD = process.env.ELIZA_IOS_METAL_STD?.trim() || "metal3.1";
 // pre-#11612 MSL; the physical-device slices stay at metal3.1 for A-series bf16.
 const IOS_SIM_METAL_STD =
   process.env.ELIZA_IOS_SIM_METAL_STD?.trim() || "ios-metal2.4";
-
-// ── Fork source. The canonical fork is the in-repo submodule; the vendored
-//    ios-deps tree is the historical fallback. Both carry the eliza kernels.
-const FORK_SRC_CANDIDATES = [
-  process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
-  path.join(
-    repoRoot,
-    "plugins",
-    "plugin-local-inference",
-    "native",
-    "llama.cpp",
-  ),
-  path.join(repoRoot, "packages", "native", "ios-deps", "llama.cpp", "src"),
-].filter(Boolean);
 
 const SUPPORTED_TARGETS = [
   "ios-arm64-metal",
@@ -214,12 +202,12 @@ function capture(cmd, args) {
 }
 
 function resolveForkSrc() {
-  for (const candidate of FORK_SRC_CANDIDATES) {
+  for (const candidate of MTP_FORK_SRC_CANDIDATES) {
     if (fs.existsSync(path.join(candidate, "CMakeLists.txt"))) return candidate;
   }
   die(
     `no llama.cpp fork checkout found. Run \`git submodule update --init --recursive\`.\n` +
-      `Looked in:\n  ${FORK_SRC_CANDIDATES.join("\n  ")}`,
+      `Looked in:\n  ${MTP_FORK_SRC_CANDIDATES.join("\n  ")}`,
   );
 }
 

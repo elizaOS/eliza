@@ -26,7 +26,7 @@ async function seededRuntime(count: number): Promise<{
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: { name: "ClearChannelAgent", bio: "test" } as Character,
-    
+
     logLevel: "fatal",
   });
   const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);

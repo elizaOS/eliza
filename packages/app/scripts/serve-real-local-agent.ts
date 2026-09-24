@@ -227,7 +227,7 @@ async function main(): Promise<void> {
   // browser smoke suite's synthetic registry fixture. Its Node entrypoint does
   // not load the UI bundle; app serves that bundle only when requested.
   const { default: taskCoordinatorPlugin } = await import(
-    "../../../plugins/plugin-task-coordinator/src/index.ts"
+    "../../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
   );
   const workflowPlugins: Plugin[] = [];
   if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {

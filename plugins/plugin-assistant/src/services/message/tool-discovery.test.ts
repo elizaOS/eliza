@@ -1,11 +1,9 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";
 import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
@@ -430,7 +428,7 @@ describe("planner tool discovery", () => {
       const actualRuntime = createSQLiteTestRuntime({
         plugins: [createAssistantPlugin()],
         character: { name: "Document admission", bio: "test" },
-        
+
         logLevel: "fatal",
       });
       actualRuntime.actions.length = 0;
@@ -699,7 +697,7 @@ describe("planner tool discovery", () => {
       const actualRuntime = createSQLiteTestRuntime({
         plugins: [createAssistantPlugin()],
         character: { name: "Discovery gates", bio: "test" },
-        
+
         logLevel: "fatal",
       });
       actualRuntime.actions.length = 0;

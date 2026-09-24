@@ -1,5 +1,5 @@
 // Defines the shower weekly basic LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * Live-model scenario: a weekly-shower request persists a Mon/Wed/Fri
@@ -17,7 +17,7 @@ export default scenario({
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

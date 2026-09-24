@@ -16,14 +16,14 @@ import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
 
 /** Explicit opt-out values for the bottom-bar default (the kill switch). */
 function parseFalsy(value: string | undefined): boolean {
-  if (value === undefined) return false;
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized === "0" ||
-    normalized === "false" ||
-    normalized === "no" ||
-    normalized === "off"
-  );
+	if (value === undefined) return false;
+	const normalized = value.trim().toLowerCase();
+	return (
+		normalized === "0" ||
+		normalized === "false" ||
+		normalized === "no" ||
+		normalized === "off"
+	);
 }
 
 /**
@@ -32,13 +32,13 @@ function parseFalsy(value: string | undefined): boolean {
  * `ELIZA_DESKTOP_BOTTOM_BAR=0`; never in kiosk mode.
  */
 export function shouldStartBottomBar(
-  env: Record<string, string | undefined> = process.env,
-  argv: readonly string[] = process.argv,
+	env: Record<string, string | undefined> = process.env,
+	argv: readonly string[] = process.argv,
 ): boolean {
-  if (isKioskShellMode(env, argv)) {
-    return false;
-  }
-  return !parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR);
+	if (isKioskShellMode(env, argv)) {
+		return false;
+	}
+	return !parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR);
 }
 
 /**
@@ -47,66 +47,66 @@ export function shouldStartBottomBar(
  * background. Preserves any existing query string and hash routing.
  */
 export function appendChatOverlayShellModeParam(
-  rendererUrl: string,
-  env: Record<string, string | undefined> = process.env,
+	rendererUrl: string,
+	env: Record<string, string | undefined> = process.env,
 ): string {
-  const tagged = appendShellModeParam(rendererUrl, "chat-overlay");
-  if (env.ELIZAOS_ALWAYS_ON_VOICE !== "1") return tagged;
-  try {
-    const url = new URL(tagged);
-    url.searchParams.set("elizaOSAlwaysOnVoice", "1");
-    return url.toString();
-  } catch {
-    const separator = tagged.includes("?") ? "&" : "?";
-    return `${tagged}${separator}elizaOSAlwaysOnVoice=1`;
-  }
+	const tagged = appendShellModeParam(rendererUrl, "chat-overlay");
+	if (env.ELIZAOS_ALWAYS_ON_VOICE !== "1") return tagged;
+	try {
+		const url = new URL(tagged);
+		url.searchParams.set("elizaOSAlwaysOnVoice", "1");
+		return url.toString();
+	} catch {
+		const separator = tagged.includes("?") ? "&" : "?";
+		return `${tagged}${separator}elizaOSAlwaysOnVoice=1`;
+	}
 }
 
 export interface ScreenWorkArea {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 export interface BottomBarFrame {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 export type BottomBarSurfaceState =
-  | "CLOSED"
-  | "INPUT"
-  | "INPUT_MENU"
-  | "OPEN_UNDER_HALF"
-  | "OPEN_HALF_OR_OVER"
-  | "MAXIMIZED";
+	| "CLOSED"
+	| "INPUT"
+	| "INPUT_MENU"
+	| "OPEN_UNDER_HALF"
+	| "OPEN_HALF_OR_OVER"
+	| "MAXIMIZED";
 
 export function isBottomBarSurfaceState(
-  value: unknown,
+	value: unknown,
 ): value is BottomBarSurfaceState {
-  return (
-    value === "CLOSED" ||
-    value === "INPUT" ||
-    value === "INPUT_MENU" ||
-    value === "OPEN_UNDER_HALF" ||
-    value === "OPEN_HALF_OR_OVER" ||
-    value === "MAXIMIZED"
-  );
+	return (
+		value === "CLOSED" ||
+		value === "INPUT" ||
+		value === "INPUT_MENU" ||
+		value === "OPEN_UNDER_HALF" ||
+		value === "OPEN_HALF_OR_OVER" ||
+		value === "MAXIMIZED"
+	);
 }
 
 export type DesktopShellWindowMode = "default" | "kiosk" | "bottom-bar";
 export type DesktopShellTitleBarStyle = "hidden" | "hiddenInset" | "default";
 
 export interface DesktopShellWindowPresentation {
-  mode: DesktopShellWindowMode;
-  titleBarStyle: DesktopShellTitleBarStyle;
-  transparent: boolean;
-  nativeShadow: boolean;
-  /** Display-anchored shells must not install native drag/resize hit regions. */
-  nativeInteractiveChrome: boolean;
+	mode: DesktopShellWindowMode;
+	titleBarStyle: DesktopShellTitleBarStyle;
+	transparent: boolean;
+	nativeShadow: boolean;
+	/** Display-anchored shells must not install native drag/resize hit regions. */
+	nativeInteractiveChrome: boolean;
 }
 
 /**
@@ -121,24 +121,24 @@ export interface DesktopShellWindowPresentation {
  * desktops.
  */
 export function resolveDesktopShellWindowPresentation(
-  env: Record<string, string | undefined> = process.env,
-  argv: readonly string[] = process.argv,
-  platform: typeof process.platform = process.platform,
+	env: Record<string, string | undefined> = process.env,
+	argv: readonly string[] = process.argv,
+	platform: typeof process.platform = process.platform,
 ): DesktopShellWindowPresentation {
-  const kiosk = isKioskShellMode(env, argv);
-  const bottomBar = !kiosk && shouldStartBottomBar(env, argv);
-  return {
-    mode: kiosk ? "kiosk" : bottomBar ? "bottom-bar" : "default",
-    titleBarStyle:
-      kiosk || bottomBar
-        ? "hidden"
-        : platform === "darwin"
-          ? "hiddenInset"
-          : "default",
-    transparent: bottomBar,
-    nativeShadow: !kiosk && !bottomBar,
-    nativeInteractiveChrome: !kiosk && !bottomBar,
-  };
+	const kiosk = isKioskShellMode(env, argv);
+	const bottomBar = !kiosk && shouldStartBottomBar(env, argv);
+	return {
+		mode: kiosk ? "kiosk" : bottomBar ? "bottom-bar" : "default",
+		titleBarStyle:
+			kiosk || bottomBar
+				? "hidden"
+				: platform === "darwin"
+					? "hiddenInset"
+					: "default",
+		transparent: bottomBar,
+		nativeShadow: !kiosk && !bottomBar,
+		nativeInteractiveChrome: !kiosk && !bottomBar,
+	};
 }
 
 /** Resting native hit area around the centered painted 64×12 white bar. */
@@ -167,40 +167,40 @@ export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
 export const EXPANDED_BOTTOM_BAR_HEIGHT = 820;
 
 export interface BottomBarSizeOptions {
-  expanded: boolean;
-  /** Labeled needs-auth chip. Ignored while the overlay is expanded. */
-  chip?: boolean;
-  /** Resting composer preview. Ignored by expanded and auth-gated states. */
-  hovered?: boolean;
+	expanded: boolean;
+	/** Labeled needs-auth chip. Ignored while the overlay is expanded. */
+	chip?: boolean;
+	/** Resting composer preview. Ignored by expanded and auth-gated states. */
+	hovered?: boolean;
 }
 
 /** Resolve the native bottom-bar size for rest, hover, sign-in, or overlay. */
 export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
-  width: number;
-  height: number;
+	width: number;
+	height: number;
 } {
-  if (options.expanded) {
-    return {
-      width: EXPANDED_BOTTOM_BAR_WIDTH,
-      height: EXPANDED_BOTTOM_BAR_HEIGHT,
-    };
-  }
-  if (options.chip) {
-    return {
-      width: AUTH_GATE_BOTTOM_BAR_WIDTH,
-      height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
-    };
-  }
-  if (options.hovered) {
-    return {
-      width: HOVER_BOTTOM_BAR_WIDTH,
-      height: HOVER_BOTTOM_BAR_HEIGHT,
-    };
-  }
-  return {
-    width: DEFAULT_BOTTOM_BAR_WIDTH,
-    height: DEFAULT_BOTTOM_BAR_HEIGHT,
-  };
+	if (options.expanded) {
+		return {
+			width: EXPANDED_BOTTOM_BAR_WIDTH,
+			height: EXPANDED_BOTTOM_BAR_HEIGHT,
+		};
+	}
+	if (options.chip) {
+		return {
+			width: AUTH_GATE_BOTTOM_BAR_WIDTH,
+			height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
+		};
+	}
+	if (options.hovered) {
+		return {
+			width: HOVER_BOTTOM_BAR_WIDTH,
+			height: HOVER_BOTTOM_BAR_HEIGHT,
+		};
+	}
+	return {
+		width: DEFAULT_BOTTOM_BAR_WIDTH,
+		height: DEFAULT_BOTTOM_BAR_HEIGHT,
+	};
 }
 
 /**
@@ -210,31 +210,31 @@ export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
  * other applications.
  */
 export function computeBottomBarFrame(
-  workArea: ScreenWorkArea,
-  options?: { width?: number; height?: number; margin?: number },
+	workArea: ScreenWorkArea,
+	options?: { width?: number; height?: number; margin?: number },
 ): BottomBarFrame {
-  const margin = Math.max(0, Math.round(options?.margin ?? 0));
-  const availableHeight = Math.max(1, Math.round(workArea.height) - margin);
-  const requestedHeight = Math.max(
-    DEFAULT_BOTTOM_BAR_HEIGHT,
-    Math.round(options?.height ?? DEFAULT_BOTTOM_BAR_HEIGHT),
-  );
-  const height = Math.min(requestedHeight, availableHeight);
-  const availableWidth = Math.max(1, Math.round(workArea.width) - margin * 2);
-  const requestedWidth = Math.max(
-    1,
-    Math.round(options?.width ?? DEFAULT_BOTTOM_BAR_WIDTH),
-  );
-  const width = Math.min(requestedWidth, availableWidth);
-  const x =
-    Math.round(workArea.x) + margin + Math.round((availableWidth - width) / 2);
-  const y =
-    Math.round(workArea.y) +
-    Math.round(workArea.height) -
-    height -
-    margin -
-    BOTTOM_BAR_BOTTOM_INSET;
-  return { x, y, width, height };
+	const margin = Math.max(0, Math.round(options?.margin ?? 0));
+	const availableHeight = Math.max(1, Math.round(workArea.height) - margin);
+	const requestedHeight = Math.max(
+		DEFAULT_BOTTOM_BAR_HEIGHT,
+		Math.round(options?.height ?? DEFAULT_BOTTOM_BAR_HEIGHT),
+	);
+	const height = Math.min(requestedHeight, availableHeight);
+	const availableWidth = Math.max(1, Math.round(workArea.width) - margin * 2);
+	const requestedWidth = Math.max(
+		1,
+		Math.round(options?.width ?? DEFAULT_BOTTOM_BAR_WIDTH),
+	);
+	const width = Math.min(requestedWidth, availableWidth);
+	const x =
+		Math.round(workArea.x) + margin + Math.round((availableWidth - width) / 2);
+	const y =
+		Math.round(workArea.y) +
+		Math.round(workArea.height) -
+		height -
+		margin -
+		BOTTOM_BAR_BOTTOM_INSET;
+	return { x, y, width, height };
 }
 
 /**
@@ -245,47 +245,47 @@ export function computeBottomBarFrame(
  * clipped by the native host window.
  */
 export function computeBottomBarSurfaceFrame(
-  workArea: ScreenWorkArea,
-  state: BottomBarSurfaceState,
+	workArea: ScreenWorkArea,
+	state: BottomBarSurfaceState,
 ): BottomBarFrame {
-  if (state === "CLOSED") {
-    return computeBottomBarFrame(workArea);
-  }
-  if (state === "INPUT") {
-    return computeBottomBarFrame(workArea, {
-      width: INPUT_BOTTOM_BAR_WIDTH,
-      height: INPUT_BOTTOM_BAR_HEIGHT,
-    });
-  }
-  if (state === "INPUT_MENU") {
-    return computeBottomBarFrame(workArea, {
-      width: INPUT_BOTTOM_BAR_WIDTH,
-      height: INPUT_MENU_BOTTOM_BAR_HEIGHT,
-    });
-  }
-  if (state === "MAXIMIZED") {
-    return {
-      x: Math.round(workArea.x),
-      y: Math.round(workArea.y),
-      width: Math.max(1, Math.round(workArea.width)),
-      height: Math.max(1, Math.round(workArea.height)),
-    };
-  }
-  const width = Math.min(Math.max(1, Math.round(workArea.width)), 640);
-  const heightRatio = state === "OPEN_UNDER_HALF" ? 0.42 : 0.62;
-  const minimumHeight = state === "OPEN_UNDER_HALF" ? 320 : 420;
-  const height = Math.min(
-    Math.max(minimumHeight, Math.round(workArea.height * heightRatio)),
-    Math.max(1, Math.round(workArea.height)),
-  );
-  return {
-    x: Math.round(workArea.x + (workArea.width - width) / 2),
-    y: Math.round(
-      workArea.y + workArea.height - height - BOTTOM_BAR_BOTTOM_INSET,
-    ),
-    width,
-    height,
-  };
+	if (state === "CLOSED") {
+		return computeBottomBarFrame(workArea);
+	}
+	if (state === "INPUT") {
+		return computeBottomBarFrame(workArea, {
+			width: INPUT_BOTTOM_BAR_WIDTH,
+			height: INPUT_BOTTOM_BAR_HEIGHT,
+		});
+	}
+	if (state === "INPUT_MENU") {
+		return computeBottomBarFrame(workArea, {
+			width: INPUT_BOTTOM_BAR_WIDTH,
+			height: INPUT_MENU_BOTTOM_BAR_HEIGHT,
+		});
+	}
+	if (state === "MAXIMIZED") {
+		return {
+			x: Math.round(workArea.x),
+			y: Math.round(workArea.y),
+			width: Math.max(1, Math.round(workArea.width)),
+			height: Math.max(1, Math.round(workArea.height)),
+		};
+	}
+	const width = Math.min(Math.max(1, Math.round(workArea.width)), 640);
+	const heightRatio = state === "OPEN_UNDER_HALF" ? 0.42 : 0.62;
+	const minimumHeight = state === "OPEN_UNDER_HALF" ? 320 : 420;
+	const height = Math.min(
+		Math.max(minimumHeight, Math.round(workArea.height * heightRatio)),
+		Math.max(1, Math.round(workArea.height)),
+	);
+	return {
+		x: Math.round(workArea.x + (workArea.width - width) / 2),
+		y: Math.round(
+			workArea.y + workArea.height - height - BOTTOM_BAR_BOTTOM_INSET,
+		),
+		width,
+		height,
+	};
 }
 
 /**
@@ -297,13 +297,13 @@ export function computeBottomBarSurfaceFrame(
  * `showWindow()` re-anchor decision is unit-testable.
  */
 export function shouldReanchorBottomBar(
-  prevWorkArea: ScreenWorkArea,
-  nextWorkArea: ScreenWorkArea,
+	prevWorkArea: ScreenWorkArea,
+	nextWorkArea: ScreenWorkArea,
 ): boolean {
-  return (
-    prevWorkArea.x !== nextWorkArea.x ||
-    prevWorkArea.y !== nextWorkArea.y ||
-    prevWorkArea.width !== nextWorkArea.width ||
-    prevWorkArea.height !== nextWorkArea.height
-  );
+	return (
+		prevWorkArea.x !== nextWorkArea.x ||
+		prevWorkArea.y !== nextWorkArea.y ||
+		prevWorkArea.width !== nextWorkArea.width ||
+		prevWorkArea.height !== nextWorkArea.height
+	);
 }

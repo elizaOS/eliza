@@ -4,14 +4,14 @@ Eliza-1 local inference provider: text generation, embeddings, TTS, ASR, image g
 
 ## Purpose / role
 
-This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. It also exposes the `GENERATE_MEDIA` agent action and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService`, an AOSP/Capacitor/bionic loader, or the canonical mobile bridge service); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
+This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. The assistant owns `GENERATE_MEDIA`; this plugin exposes a compatibility export and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService`, an AOSP/Capacitor/bionic loader, or the canonical mobile bridge service); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
 
 ## Plugin surface
 
 ### Actions
 | Name | Description |
 |---|---|
-| `GENERATE_MEDIA` | Classifies user text as image/audio/video intent, then dispatches to `ModelType.IMAGE` or `ModelType.TEXT_TO_SPEECH`. Video is refused cleanly. |
+| `GENERATE_MEDIA` compatibility export | Delegates to the assistant-owned action. This provider does not register another media action. |
 | `IDENTIFY_SPEAKER` | Binds the most-recently-heard *unidentified* speaker voice to a named person ("that was Jill"). Emits `VOICE_TURN_OBSERVED` to drive the merge engine; the `VOICE_ENTITY_BOUND` round-trip persists `entityId` onto the profile. Inert (logs only) if no merge-engine plugin is loaded. |
 
 ### Events (voice ⇄ entity binding seam — issue #8234)
@@ -71,7 +71,7 @@ src/
     service.ts                    LocalPiiRecognizerService — injects the recognizer behind core's PII_ENTITY_RECOGNIZER_SERVICE seam
 
   actions/
-    generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
+    generate-media.ts             Compatibility exports and legacy text-to-structured intent adapter
     identify-speaker.ts           IDENTIFY_SPEAKER action: name a recent unidentified voice → merge engine
 
   adapters/
@@ -216,13 +216,13 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 - **Catalog source of truth** lives in `@elizaos/shared` (`MODEL_CATALOG`, tier ids, HuggingFace URL builders). `src/services/catalog.ts` is a thin re-export shim.
 - **Type source of truth** for `CatalogModel`, `InstalledModel`, `AgentModelSlot`, etc. also lives in `@elizaos/shared`. `src/services/types.ts` re-exports them.
 - **Plugin priority is `−100`.** This is below cloud providers so the routing-policy layer (not raw priority) decides which provider fires per request.
-- The `GENERATE_MEDIA` action uses keyword matching first, then falls back to a `TEXT_SMALL` JSON classifier call. It does not perform intent detection on every message — the `validate` function only checks for non-empty text.
+- The assistant registers the sole `GENERATE_MEDIA` action; it dispatches image, video and speech through model/service contracts. The legacy `buildGenerateMediaHandler` export adapts text-only callers to that same action.
 - Voice pipeline (`services/voice/`) is large and self-contained. Entry points: `src/services/voice/index.ts`, `src/routes/voice-first-run-routes.ts`, `src/routes/voice-models-routes.ts`.
 - See `AGENTS.md` at the repo root for architecture rules, git workflow, and global coding standards.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

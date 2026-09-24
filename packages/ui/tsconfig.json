@@ -14,8 +14,8 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-task-coordinator": [
-        "../../plugins/plugin-task-coordinator/src/index.ts"
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
@@ -28,20 +28,8 @@
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
-      ],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
-      ],
-      "@elizaos/plugin-agent-skills": [
-        "../../plugins/plugin-agent-skills/src/index.ts"
-      ],
-      "@elizaos/plugin-app-manager": [
-        "../../plugins/plugin-app-manager/src/index.ts"
-      ],
-      "@elizaos/plugin-app-manager/*": [
-        "../../plugins/plugin-app-manager/src/*"
       ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
@@ -56,8 +44,6 @@
       ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/skills": ["../skills/src/index.ts"],
-      "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-wallet/ui": [
@@ -65,12 +51,8 @@
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/agent/*": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/auth/vault": [
-        "../../packages/auth/src/vault/index.ts"
-      ],
-      "@elizaos/auth/vault/*": [
-        "../../packages/auth/src/vault/*"
-      ],
+      "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+      "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],

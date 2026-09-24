@@ -161,15 +161,11 @@ const elizaPluginAliases = workspacePluginPackageNames.flatMap(
 );
 const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-orchestrator",
-  "plugin-agent-skills",
   "plugin-anthropic",
-  "plugin-app-control",
-  "plugin-app-manager",
   "plugin-assistant",
   "plugin-browser",
   "plugin-native-inference",
   "plugin-coding-tools",
-  "plugin-commands",
   "plugin-computeruse",
   "plugin-native-contacts",
   "plugin-discord",
@@ -184,10 +180,8 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-native-phone",
   "plugin-pty",
   "plugin-scheduling",
-  "plugin-task-coordinator",
   "plugin-video",
   "plugin-vision",
-  "plugin-whatsapp",
   "plugin-native-wifi",
   "plugin-workflow",
 ]);
@@ -301,10 +295,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/auth\/auth\/(.+)$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages/auth/src/auth/$1",
-    ),
+    replacement: path.join(elizaWorkspaceRoot, "packages/auth/src/auth/$1"),
   },
   // Server-safe DB subpaths of the carved LifeOps plugins. PA's
   // lifeops/repository.ts imports its schemas/repos/factories from these leaf
@@ -377,11 +368,13 @@ const vitestResolveAlias: ModuleAlias[] = [
     ),
   },
   {
-    find: "@elizaos/scenario-runner/schema",
+    find: "@elizaos/testing/scenario-runner/schema",
     replacement: path.join(
       elizaWorkspaceRoot,
       "packages",
-      "scenario-schema",
+      "testing",
+      "scenario-runner",
+      "schema",
       "index.js",
     ),
   },
@@ -465,9 +458,7 @@ export default defineConfig({
       "apps/chrome-extension/**/*.test.ts",
       "apps/chrome-extension/**/*.test.tsx",
     ],
-    setupFiles: [
-      path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts"),
-    ],
+    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts")],
     exclude: [
       "dist/**",
       "**/node_modules/**",

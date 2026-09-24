@@ -3,8 +3,9 @@
  * scenario per accepted row. The generator preserves every visible transcript
  * turn and withholds only the evaluation-only hidden norm fields.
  */
-import { createHash } from "node:crypto";
+
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -154,7 +155,7 @@ function render(row: LoSoNARow, index: number): string {
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run \`bun packages/testing/scenarios/group-chat/behavior/_generate-losona.ts\`.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   buildNormProbeSetup,
   type NormProbeConfig,

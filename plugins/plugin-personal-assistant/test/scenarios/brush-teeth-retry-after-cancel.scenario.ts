@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: the owner cancels a previewed brushing routine, then asks again, and the assistant re-previews and saves it on the retry.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

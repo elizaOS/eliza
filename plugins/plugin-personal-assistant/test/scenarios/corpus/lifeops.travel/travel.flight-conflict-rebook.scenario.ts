@@ -5,8 +5,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -22,7 +22,7 @@ export default scenario({
     "User has an existing United flight on file. They ask to book a Delta flight at an overlapping time. The agent must flag the conflict (not double-book) and offer a concrete rebook plan gated on approval.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

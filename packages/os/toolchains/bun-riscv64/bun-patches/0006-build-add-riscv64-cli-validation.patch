@@ -1,0 +1,15 @@
+diff --git a/scripts/build.ts b/scripts/build.ts
+index f8a3787..98b7ed2 100644
+--- a/scripts/build.ts
++++ b/scripts/build.ts
+@@ -3,6 +3,10 @@
+  *
+  *   bun scripts/build.ts --profile=debug
+  *   bun scripts/build.ts --profile=release
++ *   bun scripts/build.ts --profile=release --arch=riscv64 --abi=musl
++ *     # cross-compile to linux-riscv64-musl. Requires:
++ *     #   - $BUN_WEBKIT_PATH pointing at a built WebKitBuild dir
++ *     #   - cross-clang + riscv64-linux-musl sysroot in PATH
+  *   bun scripts/build.ts --asan=off test foo.test.ts    # override + build + run
+  *   bun scripts/build.ts --target tinycc                # build one dep
+  *   bun scripts/build.ts --configure-only               # emit ninja, don't run

@@ -12,22 +12,22 @@
 
 const SHELL_MODE_ARG_PREFIX = "--shell-mode=";
 const RENDERER_SHELL_MODES = new Set([
-  "chat-overlay",
-  "tray-popover",
-  "voice-selftest",
-  "voice-workbench",
-  "launcher",
-  "kiosk",
-  "full",
+	"chat-overlay",
+	"tray-popover",
+	"voice-selftest",
+	"voice-workbench",
+	"launcher",
+	"kiosk",
+	"full",
 ]);
 
 function readShellModeArg(argv: readonly string[]): string | null {
-  for (const arg of argv) {
-    if (arg.startsWith(SHELL_MODE_ARG_PREFIX)) {
-      return arg.slice(SHELL_MODE_ARG_PREFIX.length);
-    }
-  }
-  return null;
+	for (const arg of argv) {
+		if (arg.startsWith(SHELL_MODE_ARG_PREFIX)) {
+			return arg.slice(SHELL_MODE_ARG_PREFIX.length);
+		}
+	}
+	return null;
 }
 
 /**
@@ -36,13 +36,13 @@ function readShellModeArg(argv: readonly string[]): string | null {
  * shell surface (`voice-selftest`, `voice-workbench`, tray popover, etc.).
  */
 export function readRendererShellMode(
-  env: Record<string, string | undefined> = process.env,
-  argv: readonly string[] = process.argv,
+	env: Record<string, string | undefined> = process.env,
+	argv: readonly string[] = process.argv,
 ): string | null {
-  const raw = env.ELIZAOS_SHELL_MODE ?? readShellModeArg(argv);
-  if (!raw) return null;
-  const normalized = raw.trim();
-  return RENDERER_SHELL_MODES.has(normalized) ? normalized : null;
+	const raw = env.ELIZAOS_SHELL_MODE ?? readShellModeArg(argv);
+	if (!raw) return null;
+	const normalized = raw.trim();
+	return RENDERER_SHELL_MODES.has(normalized) ? normalized : null;
 }
 
 /**
@@ -51,10 +51,10 @@ export function readRendererShellMode(
  * argv flag so both the OS init service and manual launches agree.
  */
 export function isKioskShellMode(
-  env: Record<string, string | undefined> = process.env,
-  argv: readonly string[] = process.argv,
+	env: Record<string, string | undefined> = process.env,
+	argv: readonly string[] = process.argv,
 ): boolean {
-  return readRendererShellMode(env, argv) === "kiosk";
+	return readRendererShellMode(env, argv) === "kiosk";
 }
 
 /**
@@ -62,17 +62,17 @@ export function isKioskShellMode(
  * requested focused shell. Preserves any existing query string and hash routing.
  */
 export function appendShellModeParam(
-  rendererUrl: string,
-  shellMode: string,
+	rendererUrl: string,
+	shellMode: string,
 ): string {
-  try {
-    const url = new URL(rendererUrl);
-    url.searchParams.set("shellMode", shellMode);
-    return url.href;
-  } catch {
-    const separator = rendererUrl.includes("?") ? "&" : "?";
-    return `${rendererUrl}${separator}shellMode=${encodeURIComponent(shellMode)}`;
-  }
+	try {
+		const url = new URL(rendererUrl);
+		url.searchParams.set("shellMode", shellMode);
+		return url.href;
+	} catch {
+		const separator = rendererUrl.includes("?") ? "&" : "?";
+		return `${rendererUrl}${separator}shellMode=${encodeURIComponent(shellMode)}`;
+	}
 }
 
 /**
@@ -80,5 +80,5 @@ export function appendShellModeParam(
  * `KioskShell`. Preserves any existing query string and hash routing.
  */
 export function appendKioskShellModeParam(rendererUrl: string): string {
-  return appendShellModeParam(rendererUrl, "kiosk");
+	return appendShellModeParam(rendererUrl, "kiosk");
 }

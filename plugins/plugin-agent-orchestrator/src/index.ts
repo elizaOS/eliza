@@ -27,6 +27,7 @@ import {
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
+import { taskCoordinatorPlugin as taskCoordinatorViews } from "./ui/plugin.js";
 
 // Register coding-agent HTTP routes with the runtime route registry.
 // Re-exporting the registration sentinel (rather than a side-effect-only
@@ -228,6 +229,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS action that explains the limitation when the planner reaches for a coding-agent action."),
+    views: taskCoordinatorViews.views,
     widgets: [...AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS],
     // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
     services: orchestratorServices,
@@ -2288,7 +2290,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   };
 }
 
-export const agentOrchestratorPlugin: Plugin = createAgentOrchestratorPlugin();
+const runtimeOrchestrator = createAgentOrchestratorPlugin();
+export const agentOrchestratorPlugin: Plugin = {
+  ...runtimeOrchestrator,
+  ...taskCoordinatorViews,
+  description: runtimeOrchestrator.description,
+};
 
 export default agentOrchestratorPlugin;
 

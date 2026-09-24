@@ -8,11 +8,10 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { factsProvider } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
 import { runFactsAndRelationshipsStage } from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { ChannelType, type Character, ModelType } from "../../types";
 import type { Memory } from "../../types/memory";
 import type { UUID } from "../../types/primitives";
@@ -26,7 +25,7 @@ const JAKE = "00000000-0000-0000-0000-0000000000a1" as UUID;
 function makeRuntime(modelResponse?: string): AgentRuntime {
 	const runtime = createSQLiteTestRuntime({
 		character: { name: "Eliza", bio: "test", settings: {} } as Character,
-		
+
 		logLevel: "fatal",
 	});
 	if (modelResponse !== undefined) {

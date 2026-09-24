@@ -48,7 +48,7 @@ Common repository commands:
 
 ```bash
 bun run build       # build the workspace with Turbo
-bun run verify      # package parity, dependency, type, lint, and audit gates
+bun run verify      # dependency, type, lint, and audit gates
 bun run test        # repository unit/integration test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
@@ -152,7 +152,7 @@ patches/         dependency patches applied during installation
 
 Every maintained package or plugin should explain its public surface, scripts,
 configuration, and local constraints in its own `README.md` and paired
-`CLAUDE.md` / `AGENTS.md`. Read the nearest package guide before making changes.
+`AGENTS.md`. Read the nearest package guide before making changes.
 
 ## Contributing
 

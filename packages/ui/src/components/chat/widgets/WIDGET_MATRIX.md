@@ -63,7 +63,7 @@ affordances.
 | **Background** | `[BACKGROUND]` (bare marker) | `BACKGROUND` op=`pick` -> `plugin-app-control/src/actions/background.ts` | `message-background-parser.ts` | `background-widget.tsx` `BackgroundWidget` (`BackgroundSettingsControls` filmstrip in `ChatWidgetShell`) | none (picks drive the persisted `useBackgroundConfig` directly, applied globally) | both | wired + verified |
 | **Connector card** | `[CONNECTOR:<pluginId>]` (bare marker) | model-taught (`uiWidgets` guide) on connect-a-service turns | `message-connector-parser.ts` | `connector-card.tsx` `ConnectorCardWidget` (brand icon + description + Authorize / Add token CTA; self-contained state like `InlinePluginConfig`) | none (drives `startConnectorAccountOAuth` / `updateSecrets` + `updatePlugin` through the typed client directly) | both | wired + verified |
 
-(1) The Task widget is registered by `plugin-task-coordinator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
+(1) The Task widget is registered by `plugin-agent-orchestrator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
 
 ### Non-registry inline segments (rendered on both surfaces)
 

@@ -12,7 +12,7 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,

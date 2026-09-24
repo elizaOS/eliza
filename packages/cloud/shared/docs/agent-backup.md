@@ -296,7 +296,7 @@ reads a schema it no longer matches.
   needs it. If a value must change shape, expand (add the new column, backfill,
   dual-write), cut over reads in a later image, then contract.
 
-This mirrors the repo-wide migration rule (`CLAUDE.md`: append-only,
+This mirrors the repo-wide migration rule (`AGENTS.md`: append-only,
 `IF NOT EXISTS`/`IF EXISTS`, small targeted migrations) and makes it binding for
 the agent-image upgrade path specifically, where a shared DB + a real rollback
 path raise the stakes. A migrate-verify-on-boot gate that health-fails an

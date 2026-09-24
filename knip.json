@@ -106,7 +106,7 @@
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["redis", "wadis"]
     },
-    "packages/scenario-runner": {
+    "packages/testing/scenario-runner": {
       "entry": [
         "src/index.ts",
         "src/cli.ts",
@@ -122,11 +122,6 @@
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
     },
-    "packages/skills": {
-      "entry": ["src/index.ts", "test/**/*.test.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
     "packages/testing": {
       "entry": [
         "src/index.ts",
@@ -141,29 +136,6 @@
       "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
-    },
-    "plugins/plugin-agent-skills": {
-      "entry": [
-        "src/index.ts",
-        "auto-enable.ts",
-        "src/**/*.test.ts",
-        "tsup.config.ts",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "auto-enable.ts",
-        "tsup.config.ts",
-        "vitest.config.ts"
-      ],
-      "ignore": [
-        "dist/**",
-        ".turbo/**",
-        "src/**/*.js",
-        "src/**/*.js.map",
-        "src/**/*.d.ts",
-        "src/**/*.d.ts.map"
-      ]
     },
     "plugins/plugin-anthropic": {
       "entry": [
@@ -183,19 +155,6 @@
         "vitest.config.ts",
         "vitest.live.config.ts"
       ],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "plugins/plugin-anthropic-proxy": {
-      "entry": [
-        "index.ts",
-        "index.node.ts",
-        "index.browser.ts",
-        "auto-enable.ts",
-        "build.ts",
-        "__tests__/**/*.test.ts",
-        "vitest.config.ts"
-      ],
-      "project": ["**/*.ts", "__tests__/**/*.test.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
     "plugins/plugin-native-inference": {
@@ -342,44 +301,6 @@
     },
     "plugins/plugin-native-activity-tracker": {
       "ignoreBinaries": ["swiftc"]
-    },
-    "packages/elizaos": {
-      "entry": [
-        "src/**/*.ts",
-        "build.ts",
-        "scripts/**/*.mjs",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "build.ts",
-        "scripts/**/*.mjs",
-        "vitest.config.ts"
-      ],
-      "ignore": ["dist/**", "templates/**"]
-    },
-    "packages/homepage": {
-      "entry": [
-        "src/main.tsx",
-        "src/vite-env.d.ts",
-        "src/types/**/*.d.ts",
-        "tests/**/*.spec.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx,d.ts}",
-        "tests/**/*.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": [
-        "@fontsource-variable/geist",
-        "@fontsource-variable/geist-mono",
-        "tailwindcss",
-        "tw-animate-css"
-      ]
     },
     "packages/agent": {
       "entry": [

@@ -4,7 +4,7 @@
  * expensive architecture-specific build jobs.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -79,7 +79,8 @@ const keptPluginDirectories = [...keepBlock[1].matchAll(/"([^"]+)"/g)].map(
   (match) => match[1],
 );
 const missingPluginDirectories = keptPluginDirectories.filter(
-  (directory) => !existsSync(join(repositoryRoot, "plugins", directory, "package.json")),
+  (directory) =>
+    !existsSync(join(repositoryRoot, "plugins", directory, "package.json")),
 );
 
 if (missingPluginDirectories.length > 0) {

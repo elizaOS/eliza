@@ -12,28 +12,28 @@
  */
 
 export interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 export interface TrayPopoverSize {
-  /** Popover width in points. */
-  w: number;
-  /** Popover height in points. */
-  h: number;
-  /** Gap between the tray icon / work-area edges and the popover. */
-  margin: number;
+	/** Popover width in points. */
+	w: number;
+	/** Popover height in points. */
+	h: number;
+	/** Gap between the tray icon / work-area edges and the popover. */
+	margin: number;
 }
 
 function isZeroRect(rect: Rect): boolean {
-  return rect.x === 0 && rect.y === 0 && rect.width === 0 && rect.height === 0;
+	return rect.x === 0 && rect.y === 0 && rect.width === 0 && rect.height === 0;
 }
 
 function clamp(value: number, min: number, max: number): number {
-  if (max < min) return min;
-  return Math.min(Math.max(value, min), max);
+	if (max < min) return min;
+	return Math.min(Math.max(value, min), max);
 }
 
 /**
@@ -50,42 +50,42 @@ function clamp(value: number, min: number, max: number): number {
  * screen edge.
  */
 export function computeTrayPopoverFrame(
-  trayBounds: Rect,
-  workArea: Rect,
-  size: TrayPopoverSize,
-  primaryDisplayHeight: number,
+	trayBounds: Rect,
+	workArea: Rect,
+	size: TrayPopoverSize,
+	primaryDisplayHeight: number,
 ): Rect {
-  const { w, h, margin } = size;
+	const { w, h, margin } = size;
 
-  const minX = workArea.x + margin;
-  const maxX = workArea.x + workArea.width - w - margin;
-  const minY = workArea.y + margin;
-  const maxY = workArea.y + workArea.height - h - margin;
+	const minX = workArea.x + margin;
+	const maxX = workArea.x + workArea.width - w - margin;
+	const minY = workArea.y + margin;
+	const maxY = workArea.y + workArea.height - h - margin;
 
-  if (isZeroRect(trayBounds)) {
-    // No icon geometry (Windows/Linux): pin to the top-right of the work area.
-    return {
-      x: clamp(workArea.x + workArea.width - w - margin, minX, maxX),
-      y: clamp(minY, minY, maxY),
-      width: w,
-      height: h,
-    };
-  }
+	if (isZeroRect(trayBounds)) {
+		// No icon geometry (Windows/Linux): pin to the top-right of the work area.
+		return {
+			x: clamp(workArea.x + workArea.width - w - margin, minX, maxX),
+			y: clamp(minY, minY, maxY),
+			width: w,
+			height: h,
+		};
+	}
 
-  // Center the popover horizontally under the tray icon.
-  const centeredX = trayBounds.x + trayBounds.width / 2 - w / 2;
+	// Center the popover horizontally under the tray icon.
+	const centeredX = trayBounds.x + trayBounds.width / 2 - w / 2;
 
-  // Bottom-left → top-left origin: the icon's bottom edge (visually just under
-  // the menu bar) sits at `primaryDisplayHeight - trayBounds.y` in top-left
-  // coordinates. Hang the popover from there, then let the clamp pin it below
-  // the menu bar (which `workArea.y` already excludes).
-  const iconBottomTopLeft = primaryDisplayHeight - trayBounds.y;
-  const anchoredY = iconBottomTopLeft + margin;
+	// Bottom-left → top-left origin: the icon's bottom edge (visually just under
+	// the menu bar) sits at `primaryDisplayHeight - trayBounds.y` in top-left
+	// coordinates. Hang the popover from there, then let the clamp pin it below
+	// the menu bar (which `workArea.y` already excludes).
+	const iconBottomTopLeft = primaryDisplayHeight - trayBounds.y;
+	const anchoredY = iconBottomTopLeft + margin;
 
-  return {
-    x: Math.round(clamp(centeredX, minX, maxX)),
-    y: Math.round(clamp(anchoredY, minY, maxY)),
-    width: w,
-    height: h,
-  };
+	return {
+		x: Math.round(clamp(centeredX, minX, maxX)),
+		y: Math.round(clamp(anchoredY, minY, maxY)),
+		width: w,
+		height: h,
+	};
 }

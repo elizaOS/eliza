@@ -21,7 +21,7 @@
  * All context is synthetic (Devin Aluko / Tollgate, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { IRIS } from "./_personas";
 
 // Filler openers a terse assistant must never lead with.

@@ -389,7 +389,6 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-browser",
       "@elizaos/plugin-native-inference",
       "@elizaos/plugin-coding-tools",
-      "@elizaos/plugin-commands",
       "@elizaos/plugin-computeruse",
       "@elizaos/plugin-discord",
       "@elizaos/plugin-elizacloud",

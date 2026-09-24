@@ -94,11 +94,11 @@ None. This package reads no environment variables and has no runtime configurati
 - **Dates must be ISO 8601.** The Swift layer accepts both fractional-seconds and whole-seconds variants; always pass UTC ISO strings from TypeScript.
 - **`calendarId = "primary"` or `""` resolves to `defaultCalendarForNewEvents`** in the Swift layer.
 - **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The explicit `eliza-source` export condition resolves directly to `src/index.ts` for source-mode development.
-- See the root `CLAUDE.md` for repo-wide architecture rules, naming conventions, and logger requirements.
+- See the root `AGENTS.md` for repo-wide architecture rules, naming conventions, and logger requirements.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

@@ -68,7 +68,10 @@ Attribution status: self-reported
 }
 
 function workflowMachineFooter(path) {
-  const workflow = readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+  const workflow = readFileSync(
+    new URL(`../../${path}`, import.meta.url),
+    "utf8",
+  );
   const matches = [
     ...workflow.matchAll(
       /AI provider\/model:[^\n]*\n[\s\S]*?<!--\s*eliza-computer-attribution:v1\s+\{[^\n]*\}\s*-->/g,
@@ -283,7 +286,10 @@ Attribution status: self-reported`);
       ".github/ISSUE_TEMPLATE/epic.md",
       ".github/ISSUE_TEMPLATE/feature_request.md",
     ]) {
-      const body = readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+      const body = readFileSync(
+        new URL(`../../${path}`, import.meta.url),
+        "utf8",
+      );
       const result = evaluateCommentAttribution(body, { issueBody: true });
       assert.equal(
         result.ok,

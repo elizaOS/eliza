@@ -20,8 +20,8 @@ import type {
   Plugin,
   State,
 } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { activeSubAgentsProvider } from "../../src/providers/active-sub-agents.js";
 import {
   addSessionSpendUsd,

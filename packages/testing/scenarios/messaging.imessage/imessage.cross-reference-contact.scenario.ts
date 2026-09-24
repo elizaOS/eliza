@@ -1,9 +1,10 @@
 /** Scenario fixture for imessage cross reference contact; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -15,7 +16,7 @@ export default scenario({
     "An unknown iMessage sender lookup must resolve through SEARCH_ENTITY or READ_ENTITY, not generic fallback tooling.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

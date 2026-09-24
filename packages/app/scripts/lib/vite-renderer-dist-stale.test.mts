@@ -49,6 +49,26 @@ function makeRenderer(playwrightTestAuth?: boolean) {
 }
 
 describe("Playwright test-auth renderer reuse", () => {
+  it("checks the selected output directory and retains its test-auth boundary", () => {
+    const { appDir, distDir } = makeRenderer(true);
+    const customDistDir = path.join(appDir, "custom-renderer");
+    fs.renameSync(distDir, customDistDir);
+
+    expect(viteRendererBuildNeeded(appDir, tmp)).toBe(true);
+    expect(
+      viteRendererBuildNeeded(appDir, tmp, {
+        distDir: customDistDir,
+        expectedPlaywrightTestAuth: true,
+      }),
+    ).toBe(false);
+    expect(
+      viteRendererBuildNeeded(appDir, tmp, {
+        distDir: customDistDir,
+        expectedPlaywrightTestAuth: false,
+      }),
+    ).toBe(true);
+  });
+
   it("rejects a source edit during compilation even when the output is newer", () => {
     const { appDir, distDir } = makeRenderer(false);
     const src = path.join(appDir, "src");

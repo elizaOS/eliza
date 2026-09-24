@@ -25,11 +25,11 @@
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 
 const SCENARIO_ID = "documents.ocr-fail";
 const ROOM_ID_TOKEN = "main";
@@ -118,7 +118,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

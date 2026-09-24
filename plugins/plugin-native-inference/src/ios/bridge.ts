@@ -588,7 +588,9 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   (
     globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: boolean }
   ).__ELIZA_DISABLE_DIRECT_RUN = true;
-  process.env.ELIZA_PLATFORM = process.env.ELIZA_PLATFORM || "ios";
+  if (!readAliasedEnv("ELIZA_PLATFORM")) {
+    process.env.ELIZA_PLATFORM = "ios";
+  }
   process.env.ELIZA_MOBILE_PLATFORM =
     process.env.ELIZA_MOBILE_PLATFORM || "ios";
   process.env.ELIZA_IOS_LOCAL_BACKEND =

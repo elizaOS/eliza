@@ -222,7 +222,7 @@ describe("url-ingest", () => {
         bio: "Exercises binary URL ingestion persistence.",
         settings: {},
       } as Character,
-      
+
       logLevel: "fatal",
     });
     const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);

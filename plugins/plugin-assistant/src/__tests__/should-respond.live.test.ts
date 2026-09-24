@@ -1,3 +1,4 @@
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import {
   disposeAssistantReasoning,
   installAssistantReasoning,
@@ -103,7 +104,10 @@ liveDescribe("shouldRespond live", () => {
       settings: {},
     };
 
-    adapter = SQLiteDatabaseAdapter.create(":memory:");
+    adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      sqliteTestAgentId(character.name),
+    );
     runtime = new AgentRuntime({
       character,
       adapter,

@@ -4,12 +4,12 @@
  * The tests use small source-shaped fixtures and no network access.
  */
 import { describe, expect, test } from "bun:test";
+import { buildHeldoutSetup } from "./_factory.ts";
 import {
   convertDiscordRow,
   deterministicDiscordOffsets,
   parseDiscordChatml,
 } from "./discord-replay.ts";
-import { buildHeldoutSetup } from "./_factory.ts";
 import silentScenario from "./ishiki/groupchat.ishiki.ami.silent.001.scenario.ts";
 import { parseIshikiRow, selectIshikiPoints } from "./ishiki-generate.ts";
 

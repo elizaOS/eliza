@@ -232,12 +232,7 @@ describe("shouldKeepPackageRelativePath", () => {
 
   it("drops build/report scratch dirs for @elizaos/app", () => {
     expect(
-      shouldKeepPackageRelativePath(
-        ".tmp/x",
-        "linux",
-        "x64",
-        "@elizaos/app",
-      ),
+      shouldKeepPackageRelativePath(".tmp/x", "linux", "x64", "@elizaos/app"),
     ).toBe(false);
     expect(
       shouldKeepPackageRelativePath(

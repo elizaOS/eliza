@@ -35,12 +35,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
-  bridgeDetectorToFusedWake,
-  DesktopMicSource,
-  OpenWakeWordDetector,
-  OpenWakeWordGgmlModel,
-  PcmFrame,
-  resolveWakeWordStandalonePaths,
+	bridgeDetectorToFusedWake,
+	DesktopMicSource,
+	OpenWakeWordDetector,
+	OpenWakeWordGgmlModel,
+	PcmFrame,
+	resolveWakeWordStandalonePaths,
 } from "@elizaos/plugin-local-inference/voice-wake";
 import type { SendToWebview } from "../types.js";
 import { resolveRuntimeDistPath } from "./agent";
@@ -60,273 +60,273 @@ const SAMPLE_RATE = 16_000;
  * in `./permissions`.
  */
 interface VoiceWakeModule {
-  bridgeDetectorToFusedWake: typeof bridgeDetectorToFusedWake;
-  DesktopMicSource: typeof DesktopMicSource;
-  OpenWakeWordDetector: typeof OpenWakeWordDetector;
-  OpenWakeWordGgmlModel: typeof OpenWakeWordGgmlModel;
-  resolveWakeWordStandalonePaths: typeof resolveWakeWordStandalonePaths;
+	bridgeDetectorToFusedWake: typeof bridgeDetectorToFusedWake;
+	DesktopMicSource: typeof DesktopMicSource;
+	OpenWakeWordDetector: typeof OpenWakeWordDetector;
+	OpenWakeWordGgmlModel: typeof OpenWakeWordGgmlModel;
+	resolveWakeWordStandalonePaths: typeof resolveWakeWordStandalonePaths;
 }
 
 const VOICE_WAKE_EXPORTS = [
-  "bridgeDetectorToFusedWake",
-  "DesktopMicSource",
-  "OpenWakeWordDetector",
-  "OpenWakeWordGgmlModel",
-  "resolveWakeWordStandalonePaths",
+	"bridgeDetectorToFusedWake",
+	"DesktopMicSource",
+	"OpenWakeWordDetector",
+	"OpenWakeWordGgmlModel",
+	"resolveWakeWordStandalonePaths",
 ] as const satisfies readonly (keyof VoiceWakeModule)[];
 
 function parseVoiceWakeModule(value: unknown): VoiceWakeModule {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("voice-wake module did not export an object.");
-  }
-  const record = value as Record<string, unknown>;
-  for (const name of VOICE_WAKE_EXPORTS) {
-    if (typeof record[name] !== "function") {
-      throw new Error(`voice-wake module did not export ${name}.`);
-    }
-  }
-  return record as unknown as VoiceWakeModule;
+	if (typeof value !== "object" || value === null) {
+		throw new Error("voice-wake module did not export an object.");
+	}
+	const record = value as Record<string, unknown>;
+	for (const name of VOICE_WAKE_EXPORTS) {
+		if (typeof record[name] !== "function") {
+			throw new Error(`voice-wake module did not export ${name}.`);
+		}
+	}
+	return record as unknown as VoiceWakeModule;
 }
 
 let voiceWakeModulePromise: Promise<VoiceWakeModule> | null = null;
 
 async function importVoiceWakeModule(): Promise<VoiceWakeModule> {
-  const bundledVoiceWakePath = path.join(
-    resolveRuntimeDistPath(),
-    "node_modules",
-    "@elizaos",
-    "plugin-local-inference",
-    "dist",
-    "voice-wake.js",
-  );
-  if (existsSync(bundledVoiceWakePath)) {
-    return parseVoiceWakeModule(
-      await import(pathToFileURL(bundledVoiceWakePath).href),
-    );
-  }
+	const bundledVoiceWakePath = path.join(
+		resolveRuntimeDistPath(),
+		"node_modules",
+		"@elizaos",
+		"plugin-local-inference",
+		"dist",
+		"voice-wake.js",
+	);
+	if (existsSync(bundledVoiceWakePath)) {
+		return parseVoiceWakeModule(
+			await import(pathToFileURL(bundledVoiceWakePath).href),
+		);
+	}
 
-  try {
-    return parseVoiceWakeModule(
-      await import("@elizaos/plugin-local-inference/voice-wake"),
-    );
-  } catch (packageImportError) {
-    const cause =
-      packageImportError instanceof Error
-        ? packageImportError.message
-        : String(packageImportError);
-    throw new Error(
-      `Wake-word support is unavailable at ${bundledVoiceWakePath}; package import failed: ${cause}`,
-    );
-  }
+	try {
+		return parseVoiceWakeModule(
+			await import("@elizaos/plugin-local-inference/voice-wake"),
+		);
+	} catch (packageImportError) {
+		const cause =
+			packageImportError instanceof Error
+				? packageImportError.message
+				: String(packageImportError);
+		throw new Error(
+			`Wake-word support is unavailable at ${bundledVoiceWakePath}; package import failed: ${cause}`,
+		);
+	}
 }
 
 function loadVoiceWakeModule(): Promise<VoiceWakeModule> {
-  voiceWakeModulePromise ??= importVoiceWakeModule().catch((err) => {
-    // A failed resolve must not poison every later attempt: a reinstall or a
-    // staged runtime dist can make the module available without a restart.
-    voiceWakeModulePromise = null;
-    throw err;
-  });
-  return voiceWakeModulePromise;
+	voiceWakeModulePromise ??= importVoiceWakeModule().catch((err) => {
+		// A failed resolve must not poison every later attempt: a reinstall or a
+		// staged runtime dist can make the module available without a restart.
+		voiceWakeModulePromise = null;
+		throw err;
+	});
+	return voiceWakeModulePromise;
 }
 
 interface FusedWakeStartParams {
-  /** Wake-phrase head name. Default `hey-eliza`. */
-  head?: string;
-  /** P(wake) firing threshold (openWakeWord default ~0.5). */
-  threshold?: number;
+	/** Wake-phrase head name. Default `hey-eliza`. */
+	head?: string;
+	/** P(wake) firing threshold (openWakeWord default ~0.5). */
+	threshold?: number;
 }
 
 interface MicLike {
-  onFrame(listener: (frame: PcmFrame) => void): () => void;
-  start(): Promise<void>;
-  stop(): Promise<void>;
+	onFrame(listener: (frame: PcmFrame) => void): () => void;
+	start(): Promise<void>;
+	stop(): Promise<void>;
 }
 
 interface ModelLike {
-  readonly frameSamples: number;
-  readonly sampleRate: number;
-  scoreFrame(frame: Float32Array): Promise<number>;
-  reset(): void;
-  close(): void;
+	readonly frameSamples: number;
+	readonly sampleRate: number;
+	scoreFrame(frame: Float32Array): Promise<number>;
+	reset(): void;
+	close(): void;
 }
 
 export class FusedWakeManager {
-  private sendToWebview: SendToWebview | null = null;
-  private model: ModelLike | null = null;
-  private mic: MicLike | null = null;
-  private unsubFrame: (() => void) | null = null;
-  private listening = false;
+	private sendToWebview: SendToWebview | null = null;
+	private model: ModelLike | null = null;
+	private mic: MicLike | null = null;
+	private unsubFrame: (() => void) | null = null;
+	private listening = false;
 
-  setSendToWebview(fn: SendToWebview): void {
-    this.sendToWebview = fn;
-  }
+	setSendToWebview(fn: SendToWebview): void {
+		this.sendToWebview = fn;
+	}
 
-  async isListening(): Promise<{ listening: boolean }> {
-    return { listening: this.listening };
-  }
+	async isListening(): Promise<{ listening: boolean }> {
+		return { listening: this.listening };
+	}
 
-  async start(
-    params?: FusedWakeStartParams,
-  ): Promise<{ started: boolean; reason?: string }> {
-    if (this.listening) return { started: true };
+	async start(
+		params?: FusedWakeStartParams,
+	): Promise<{ started: boolean; reason?: string }> {
+		if (this.listening) return { started: true };
 
-    const head = params?.head?.trim() || "hey-eliza";
+		const head = params?.head?.trim() || "hey-eliza";
 
-    let voiceWake: VoiceWakeModule;
-    try {
-      voiceWake = await loadVoiceWakeModule();
-    } catch (err) {
-      // The renderer keeps its Swabble fallback; report why rather than
-      // claiming a listen that cannot happen.
-      return {
-        started: false,
-        reason: `wakeword-module-unavailable: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
-    const {
-      bridgeDetectorToFusedWake,
-      OpenWakeWordDetector,
-      OpenWakeWordGgmlModel,
-      resolveWakeWordStandalonePaths,
-    } = voiceWake;
+		let voiceWake: VoiceWakeModule;
+		try {
+			voiceWake = await loadVoiceWakeModule();
+		} catch (err) {
+			// The renderer keeps its Swabble fallback; report why rather than
+			// claiming a listen that cannot happen.
+			return {
+				started: false,
+				reason: `wakeword-module-unavailable: ${err instanceof Error ? err.message : String(err)}`,
+			};
+		}
+		const {
+			bridgeDetectorToFusedWake,
+			OpenWakeWordDetector,
+			OpenWakeWordGgmlModel,
+			resolveWakeWordStandalonePaths,
+		} = voiceWake;
 
-    const paths = resolveWakeWordStandalonePaths({ head });
-    if (!paths) {
-      // libwakeword + the three GGUFs are not staged on this install — stay
-      // inert (no mic) rather than fake a listen. The renderer keeps the
-      // Swabble fallback.
-      return { started: false, reason: "wakeword-model-not-staged" };
-    }
+		const paths = resolveWakeWordStandalonePaths({ head });
+		if (!paths) {
+			// libwakeword + the three GGUFs are not staged on this install — stay
+			// inert (no mic) rather than fake a listen. The renderer keeps the
+			// Swabble fallback.
+			return { started: false, reason: "wakeword-model-not-staged" };
+		}
 
-    let model: ModelLike;
-    try {
-      model = await OpenWakeWordGgmlModel.load({
-        libraryPath: paths.libraryPath,
-        paths: {
-          melspec: paths.melspec,
-          embedding: paths.embedding,
-          classifier: paths.classifier,
-        },
-        ...(params?.threshold !== undefined
-          ? { config: { threshold: params.threshold } }
-          : {}),
-      });
-    } catch (err) {
-      return {
-        started: false,
-        reason: `wakeword-load-failed: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
+		let model: ModelLike;
+		try {
+			model = await OpenWakeWordGgmlModel.load({
+				libraryPath: paths.libraryPath,
+				paths: {
+					melspec: paths.melspec,
+					embedding: paths.embedding,
+					classifier: paths.classifier,
+				},
+				...(params?.threshold !== undefined
+					? { config: { threshold: params.threshold } }
+					: {}),
+			});
+		} catch (err) {
+			return {
+				started: false,
+				reason: `wakeword-load-failed: ${err instanceof Error ? err.message : String(err)}`,
+			};
+		}
 
-    // Map each real detector fire to the canonical FusedWakeEventDetail and
-    // push it to the renderer. `bridgeDetectorToFusedWake` is the shared
-    // (#10373) head-fired mapping — the producer side uses the same contract
-    // the renderer consumes, so the two never drift.
-    const detector = new OpenWakeWordDetector({
-      model,
-      ...(params?.threshold !== undefined
-        ? { config: { threshold: params.threshold } }
-        : {}),
-      onWake: bridgeDetectorToFusedWake((event) => {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[FusedWakeManager] head fired (confidence=${event.confidence?.toFixed(3) ?? "?"}) → voice:fusedWake`,
-        );
-        this.sendToWebview?.("voice:fusedWake", event);
-      }),
-    });
+		// Map each real detector fire to the canonical FusedWakeEventDetail and
+		// push it to the renderer. `bridgeDetectorToFusedWake` is the shared
+		// (#10373) head-fired mapping — the producer side uses the same contract
+		// the renderer consumes, so the two never drift.
+		const detector = new OpenWakeWordDetector({
+			model,
+			...(params?.threshold !== undefined
+				? { config: { threshold: params.threshold } }
+				: {}),
+			onWake: bridgeDetectorToFusedWake((event) => {
+				// eslint-disable-next-line no-console
+				console.log(
+					`[FusedWakeManager] head fired (confidence=${event.confidence?.toFixed(3) ?? "?"}) → voice:fusedWake`,
+				);
+				this.sendToWebview?.("voice:fusedWake", event);
+			}),
+		});
 
-    const mic = this.createMicSource(voiceWake.DesktopMicSource);
+		const mic = this.createMicSource(voiceWake.DesktopMicSource);
 
-    // Re-buffer arbitrary mic frames into exact `frameSamples` (1280 = 80 ms @
-    // 16 kHz) frames the detector expects — mirrors engine.feedWakeFrame.
-    const need = model.frameSamples;
-    let acc = new Float32Array(0);
-    this.unsubFrame = mic.onFrame((frame) => {
-      const merged = new Float32Array(acc.length + frame.pcm.length);
-      merged.set(acc);
-      merged.set(frame.pcm, acc.length);
-      let off = 0;
-      while (merged.length - off >= need) {
-        void detector.pushFrame(merged.slice(off, off + need));
-        off += need;
-      }
-      acc = merged.slice(off);
-    });
+		// Re-buffer arbitrary mic frames into exact `frameSamples` (1280 = 80 ms @
+		// 16 kHz) frames the detector expects — mirrors engine.feedWakeFrame.
+		const need = model.frameSamples;
+		let acc = new Float32Array(0);
+		this.unsubFrame = mic.onFrame((frame) => {
+			const merged = new Float32Array(acc.length + frame.pcm.length);
+			merged.set(acc);
+			merged.set(frame.pcm, acc.length);
+			let off = 0;
+			while (merged.length - off >= need) {
+				void detector.pushFrame(merged.slice(off, off + need));
+				off += need;
+			}
+			acc = merged.slice(off);
+		});
 
-    try {
-      await mic.start();
-    } catch (err) {
-      this.unsubFrame?.();
-      this.unsubFrame = null;
-      model.close();
-      return {
-        started: false,
-        reason: `mic-start-failed: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
+		try {
+			await mic.start();
+		} catch (err) {
+			this.unsubFrame?.();
+			this.unsubFrame = null;
+			model.close();
+			return {
+				started: false,
+				reason: `mic-start-failed: ${err instanceof Error ? err.message : String(err)}`,
+			};
+		}
 
-    this.model = model;
-    this.mic = mic;
-    this.listening = true;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[FusedWakeManager] listening (head=${head}, backend=${(model as { activeBackend?: () => string }).activeBackend?.() ?? "native"})`,
-    );
-    this.sendToWebview?.("voice:fusedWakeState", { listening: true });
-    return { started: true };
-  }
+		this.model = model;
+		this.mic = mic;
+		this.listening = true;
+		// eslint-disable-next-line no-console
+		console.log(
+			`[FusedWakeManager] listening (head=${head}, backend=${(model as { activeBackend?: () => string }).activeBackend?.() ?? "native"})`,
+		);
+		this.sendToWebview?.("voice:fusedWakeState", { listening: true });
+		return { started: true };
+	}
 
-  async stop(): Promise<void> {
-    this.listening = false;
-    this.unsubFrame?.();
-    this.unsubFrame = null;
-    try {
-      await this.mic?.stop();
-    } finally {
-      this.mic = null;
-      this.model?.close();
-      this.model = null;
-      this.sendToWebview?.("voice:fusedWakeState", { listening: false });
-    }
-  }
+	async stop(): Promise<void> {
+		this.listening = false;
+		this.unsubFrame?.();
+		this.unsubFrame = null;
+		try {
+			await this.mic?.stop();
+		} finally {
+			this.mic = null;
+			this.model?.close();
+			this.model = null;
+			this.sendToWebview?.("voice:fusedWakeState", { listening: false });
+		}
+	}
 
-  dispose(): void {
-    void this.stop();
-    this.sendToWebview = null;
-  }
+	dispose(): void {
+		void this.stop();
+		this.sendToWebview = null;
+	}
 
-  /**
-   * Build the capture source. The default uses the OS recorder via
-   * `DesktopMicSource`; an env override feeds a deterministic clip (the
-   * on-device validation path) — e.g.
-   *   ELIZA_FUSED_WAKE_MIC_PROGRAM=ffmpeg
-   *   ELIZA_FUSED_WAKE_MIC_ARGV='-hide_banner|-loglevel|error|-re|-f|f32le|-ar|16000|-ac|1|-i|/path/hey-eliza.f32|-ar|16000|-ac|1|-f|s16le|-'
-   */
-  private createMicSource(
-    DesktopMicSource: VoiceWakeModule["DesktopMicSource"],
-  ): MicLike {
-    const program = process.env.ELIZA_FUSED_WAKE_MIC_PROGRAM?.trim();
-    const argvRaw = process.env.ELIZA_FUSED_WAKE_MIC_ARGV;
-    if (program && argvRaw) {
-      return new DesktopMicSource({
-        sampleRate: SAMPLE_RATE,
-        program,
-        argv: argvRaw.split("|"),
-      }) as MicLike;
-    }
-    return new DesktopMicSource({
-      sampleRate: SAMPLE_RATE,
-    }) as MicLike;
-  }
+	/**
+	 * Build the capture source. The default uses the OS recorder via
+	 * `DesktopMicSource`; an env override feeds a deterministic clip (the
+	 * on-device validation path) — e.g.
+	 *   ELIZA_FUSED_WAKE_MIC_PROGRAM=ffmpeg
+	 *   ELIZA_FUSED_WAKE_MIC_ARGV='-hide_banner|-loglevel|error|-re|-f|f32le|-ar|16000|-ac|1|-i|/path/hey-eliza.f32|-ar|16000|-ac|1|-f|s16le|-'
+	 */
+	private createMicSource(
+		DesktopMicSource: VoiceWakeModule["DesktopMicSource"],
+	): MicLike {
+		const program = process.env.ELIZA_FUSED_WAKE_MIC_PROGRAM?.trim();
+		const argvRaw = process.env.ELIZA_FUSED_WAKE_MIC_ARGV;
+		if (program && argvRaw) {
+			return new DesktopMicSource({
+				sampleRate: SAMPLE_RATE,
+				program,
+				argv: argvRaw.split("|"),
+			}) as MicLike;
+		}
+		return new DesktopMicSource({
+			sampleRate: SAMPLE_RATE,
+		}) as MicLike;
+	}
 }
 
 let fusedWakeManager: FusedWakeManager | null = null;
 
 export function getFusedWakeManager(): FusedWakeManager {
-  if (!fusedWakeManager) {
-    fusedWakeManager = new FusedWakeManager();
-  }
-  return fusedWakeManager;
+	if (!fusedWakeManager) {
+		fusedWakeManager = new FusedWakeManager();
+	}
+	return fusedWakeManager;
 }

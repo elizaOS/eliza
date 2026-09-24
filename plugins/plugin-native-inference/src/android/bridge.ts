@@ -38,11 +38,14 @@ import {
   type Socket as NodeSocket,
 } from "node:net";
 import process from "node:process";
+import { readAliasedEnv } from "@elizaos/shared";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
 
 // These match what ElizaAgentService passes as process.env; keep in sync.
-process.env.ELIZA_PLATFORM ||= "android";
+if (!readAliasedEnv("ELIZA_PLATFORM")) {
+  process.env.ELIZA_PLATFORM = "android";
+}
 process.env.ELIZA_MOBILE_PLATFORM ||= "android";
 process.env.ELIZA_ANDROID_LOCAL_BACKEND ||= "1";
 process.env.ELIZA_DISABLE_DIRECT_RUN ||= "1";
@@ -130,7 +133,7 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 //
 // Strategy:
 //   1. Resolve HOME (= getFilesDir) through realpathSync → canonical root.
-//   2. Update ELIZA_STATE_DIR / ELIZA_STATE_DIR / HOME to use the canonical
+//   2. Update ELIZA_STATE_DIR / HOME to use the canonical
 //      prefix so any downstream path construction produces matching strings.
 //   3. Set sandbox root = canonical HOME → covers .eliza/, agent/ assets, etc.
 let _logPath = "";
@@ -139,9 +142,7 @@ function setupAndroidBridgeEnvironment(): string {
   const rawHome =
     process.env.HOME ||
     nodePath.dirname(
-      process.env.ELIZA_STATE_DIR ||
-        process.env.ELIZA_STATE_DIR ||
-        "/data/local/tmp/.eliza",
+      readAliasedEnv("ELIZA_STATE_DIR") || "/data/local/tmp/.eliza",
     );
 
   let canonicalHome: string;
@@ -197,9 +198,7 @@ function setupAndroidBridgeEnvironment(): string {
   }
 
   const stateDir =
-    process.env.ELIZA_STATE_DIR ||
-    process.env.ELIZA_STATE_DIR ||
-    `${canonicalHome}/.eliza`;
+    readAliasedEnv("ELIZA_STATE_DIR") || `${canonicalHome}/.eliza`;
 
   installMobileFsShim(canonicalHome);
 

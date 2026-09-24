@@ -122,7 +122,10 @@ describe("google provider completion with a rejecting durable credential writer 
     const putSecret = vi.fn(async () => {
       throw new Error(WRITER_ERROR);
     });
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     const runtime = makeRuntime(putSecret, adapter);
     const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
@@ -194,7 +197,10 @@ describe("google provider completion with a rejecting durable credential writer 
     const remove = vi.fn(async (vaultRef: string) => {
       vault.delete(vaultRef);
     });
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     const runtime = makeRuntime(putSecret, adapter, remove, {
       get: async (key) => {
@@ -289,7 +295,10 @@ describe("google provider completion with a rejecting durable credential writer 
 
   it("revokes the combined grant and marks the prior account unavailable after identity validation fails", async () => {
     const putSecret = vi.fn(async () => "should-not-write");
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     const runtime = makeRuntime(putSecret, adapter);
     const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
@@ -338,7 +347,10 @@ describe("google provider completion with a rejecting durable credential writer 
     const remove = vi.fn(async (key: string) => {
       vault.delete(key);
     });
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     const runtime = makeRuntime(putSecret, adapter, remove, {
       get: async (key) => vault.get(key) ?? "",
@@ -418,7 +430,10 @@ describe("google provider completion with a rejecting durable credential writer 
     const remove = vi.fn(async (vaultRef: string) => {
       vault.delete(vaultRef);
     });
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     vi.spyOn(adapter, "setConnectorAccountCredentialRef").mockRejectedValue(
       new Error("credential ref table is read-only")
@@ -461,7 +476,10 @@ describe("google provider completion with a rejecting durable credential writer 
       return input.vaultRef;
     });
     const remove = vi.fn(async (key: string) => void vault.delete(key));
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     const runtime = makeRuntime(putSecret, adapter, remove, {
       get: async (key) => vault.get(key) ?? "",
@@ -495,7 +513,10 @@ describe("google provider completion with a rejecting durable credential writer 
   });
 
   it("marks the prior account unavailable when Google processes revoke but the response is lost", async () => {
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-4000-8000-00000000e19a"
+    );
     await adapter.initialize();
     const runtime = makeRuntime(async () => {
       throw new Error(WRITER_ERROR);

@@ -124,13 +124,13 @@ the operation truly needs lifecycle ownership; export public contracts from
 - **Snooze is additive.** `snoozed_until` is append-only schema growth on `life_inbox_triage_entries`; migration repairs old targets and maps old `app_lifeops` rows with `NULL AS snoozed_until`.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. The views bundle (`dist/views/bundle.js`) is what the view registration's `bundlePath` points to. Both must be run for a complete build.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
-- See the root `CLAUDE.md` for repo-wide architecture rules, logger requirements,
+- See the root `AGENTS.md` for repo-wide architecture rules, logger requirements,
   ESM/module standards, and the `packages/app` visual-review gate when this
   plugin changes UI rendered by the app.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

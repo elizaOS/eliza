@@ -13,15 +13,11 @@ ACP subprocesses, routes their terminal events back into the elizaOS runtime as
 synthetic inbound messages, and manages the git workspace and GitHub issue
 lifecycle that accompanies repo-hosted coding tasks.
 
-**Boundary with @elizaos/plugin-task-coordinator:** this plugin owns ALL
-agent/task state, session lifecycle, and the server-side orchestration surface.
-`@elizaos/plugin-task-coordinator` is the GUI display-and-control layer only
-(views, slot-registry fills, one view-scoped slash command) and holds no task
-state of its own. Do not add task/session state to task-coordinator, and do not
-add GUI views here. `@elizaos/plugin-pty` is likewise separate: it registers the
-generic `PTY_SERVICE` that powers the app's interactive web terminal; this
-plugin spawns its coding agents as ACP subprocesses directly and does not
-depend on it.
+The plugin owns task/session state and its GUI control surface. The `src/ui/`
+module supplies the Task Coordinator, Orchestrator and Cockpit views, native
+page registrations and UI slots. Browser hosts import the explicit `/ui` and
+`/ui/register` subpaths, which must never pull in Node subprocess services.
+`@elizaos/plugin-pty` remains the separate interactive-terminal service.
 
 Loaded by name: `@elizaos/plugin-agent-orchestrator`. Not default-enabled —
 add it explicitly in the agent's plugin list. Services and actions are only
@@ -388,9 +384,9 @@ inventory consumers must preserve the billing disclosure.
 
 ## Conventions / gotchas
 
-- **Node-only.** `package.json` `eliza.platforms` = `["node"]`. The plugin spawns
-  child processes and uses `node:child_process`; it cannot run in a browser
-  runtime or mobile.
+- **Node backend, browser-safe UI.** The root entry spawns child processes and
+  uses `node:child_process`. Browser and mobile hosts use the explicit `/ui`
+  metadata and `/ui/register` entries to control a remote backend.
 - **Gated by `isLocalCodeExecutionAllowed()` AND terminal support.**
   `detectOrchestratorTerminalSupport()` returns false in sandboxed/store-distributed
   contexts. In those cases the plugin registers only the stub action; services and
@@ -440,12 +436,12 @@ inventory consumers must preserve the billing disclosure.
 - **Route registration side-effect.** `register-routes.ts` is re-exported as
   `codingAgentRouteRegistration` from `index.ts` to prevent Bun's tree-shaker
   from dropping it. Do not convert it back to a bare side-effect import.
-- See the root `CLAUDE.md` for repo-wide rules (logger-only, ESM, architecture
+- See the root `AGENTS.md` for repo-wide rules (logger-only, ESM, architecture
   commandments, naming).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

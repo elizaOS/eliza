@@ -64,7 +64,10 @@ describe("connector account route durability (real core manager)", () => {
     const bootManager = getConnectorAccountManager(bootRuntime as never);
 
     // plugin-sql finishes and attaches the adapter to the runtime.
-    const adapter = SQLiteDatabaseAdapter.create(":memory:");
+    const adapter = SQLiteDatabaseAdapter.create(
+      ":memory:",
+      "00000000-0000-0000-0000-000000000001",
+    );
     await adapter.initialize();
     (bootRuntime as { adapter?: SQLiteDatabaseAdapter }).adapter = adapter;
 

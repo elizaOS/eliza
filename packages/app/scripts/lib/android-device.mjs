@@ -13,12 +13,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAndroidApkRendererManifest } from "./android-renderer-stamp.mjs";
+import { isDeviceLeased } from "./device-lease.mjs";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
 } from "./renderer-build-manifest.mjs";
-import { readAndroidApkRendererManifest } from "./android-renderer-stamp.mjs";
-import { isDeviceLeased } from "./device-lease.mjs";
 
 const IS_WINDOWS = process.platform === "win32";
 const here = path.dirname(fileURLToPath(import.meta.url));

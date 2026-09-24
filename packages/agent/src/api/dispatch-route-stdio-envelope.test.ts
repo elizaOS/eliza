@@ -1,6 +1,6 @@
 /**
  * Process-boundary round-trip proof for the IPC response envelope: spawns
- * `__tests__/stdio-envelope-child.ts` under a real Bun child process, writes
+ * `test/fixtures/stdio-envelope-child.ts` under a real Bun child process, writes
  * request frames to its actual stdin, reads `{ok, result}` frames from its
  * actual stdout, and asserts sha256 byte-equality of the binary body across the
  * base64 envelope — plus typed `{ok:false}` failure frames for a partial-write
@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
 
 const CHILD_PATH = join(
   import.meta.dirname,
-  "__tests__",
+  "../../test/fixtures",
   "stdio-envelope-child.ts",
 );
 

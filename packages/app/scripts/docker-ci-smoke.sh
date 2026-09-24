@@ -393,7 +393,7 @@ boot_verify() {
     # ("Optional plugin X failed to load: Cannot find package ...",
     # "Could not load plugin X: Cannot find package ..." — the resolver's other
     # message shape, which false-killed the main image build when
-    # plugin-task-coordinator hit the @elizaos/ui -> @capacitor/core import
+    # plugin-agent-orchestrator hit the @elizaos/ui -> @capacitor/core import
     # leak — and the "Failed plugins: X (...)" summary), which would
     # false-match the crash signatures below and kill a healthy boot. Filter
     # those lines out before scanning; a REAL boot crash still trips the

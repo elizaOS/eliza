@@ -80,11 +80,11 @@ Add a new variant to the `SamplerStage` union in `src/definitions.ts`. The nativ
 - **Token tree codec:** `serializeTokenTree` / `deserializeTokenTree` must stay in sync with the native C++ sampler. The wire format is versioned (version 1); bump `VERSION` in `token-tree-codec.ts` and update the native side together.
 - **No elizaOS plugin manifest:** This package does not export an elizaOS `Plugin` object and is not loaded via the normal plugin auto-enable path. It is wired manually via `registerCapacitorLlamaLoader` in the Capacitor bootstrap.
 - **`@elizaos/ui` dep avoided by design.** `TokenTreeDescriptor` / `TokenSequence` are re-declared locally in `definitions.ts` so this package does not depend on `@elizaos/ui`.
-- See the root [CLAUDE.md](../../../AGENTS.md) for repo-wide architecture rules, logger conventions, and ESM/naming standards.
+- See the root [AGENTS.md](../../../AGENTS.md) for repo-wide architecture rules, logger conventions, and ESM/naming standards.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../AGENTS.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

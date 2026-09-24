@@ -18,7 +18,7 @@
  * or replaces it is confirmed at live capture; the load-bearing outcome (exactly
  * one surviving quiet-hours rule, not two conflicting ones) does not depend on it.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

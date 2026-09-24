@@ -1,9 +1,10 @@
 /** Scenario fixture for discord gateway bot routes to user agent; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -15,7 +16,7 @@ export default scenario({
     "A Discord gateway DM resolves to the owning user agent and returns inbox-grounded context from the same Discord room.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

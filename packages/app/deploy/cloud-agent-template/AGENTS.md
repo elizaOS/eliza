@@ -32,5 +32,4 @@ This command expects the surrounding app deployment layout because the entrypoin
 
 ## Verification
 
-Follow the [app guide](../../CLAUDE.md) and the repository-wide standard in the [root CLAUDE.md](../../../../CLAUDE.md). Build the actual cloud-agent image or equivalent deployment artifact and inspect startup, plugin registration, persistence, logs, and shutdown behavior.
-
+Follow the [app guide](../../AGENTS.md) and the repository-wide standard in the [root AGENTS.md](../../../../AGENTS.md). Build the actual cloud-agent image or equivalent deployment artifact and inspect startup, plugin registration, persistence, logs, and shutdown behavior.

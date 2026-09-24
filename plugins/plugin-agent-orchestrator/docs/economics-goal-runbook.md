@@ -17,7 +17,7 @@ within a spend cap.
   mutating auto-authorizes).
 - **Economics capability profile.** `/economics` (or `/monetize`,
   `/monetized-app`) in the composer sets `metadata.capabilityProfile = "economics"`
-  (`plugin-task-coordinator` composer directives → `createOrchestratorTask`), and
+  (`plugin-agent-orchestrator` composer directives → `createOrchestratorTask`), and
   `spawnAgentForTask` reads `coerceGoalCapabilityProfile(task.metadata.capabilityProfile)`
   and widens the goal fence via `ECONOMICS_GOAL_CAPABILITIES` (`goal-prompt.ts`).
 - **The Cloud loop itself.** `apps.create → monetization.update → domains.buy

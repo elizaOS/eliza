@@ -28,8 +28,8 @@
  * which credential resolvers probe first when reading refs.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { createVault, type Vault } from "@elizaos/auth/vault";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   getAgentHostBridge,
   hasDurableHostVault,

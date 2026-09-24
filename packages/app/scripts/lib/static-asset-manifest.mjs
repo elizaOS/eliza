@@ -1,5 +1,5 @@
 /**
- * Static asset manifest for the app and homepage public trees. Repository
+ * Static asset manifest for the app public tree. Repository
  * checkouts inventory tracked and non-ignored files so normal build output
  * cannot change the source contract; standalone archives retain filesystem
  * discovery. The module also owns manifest persistence and the bootstrap
@@ -10,9 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const APP_PUBLIC_REPO_PREFIX = "packages/app/public";
-export const HOMEPAGE_PUBLIC_REPO_PREFIX = "packages/homepage/public";
 export const WRAPPER_APP_PUBLIC_REPO_PREFIX = "apps/app/public";
-export const WRAPPER_HOMEPAGE_PUBLIC_REPO_PREFIX = "apps/homepage/public";
 export const STATIC_ASSET_MANIFEST_REPO_PATH =
   "packages/scripts/generated/static-asset-manifest.json";
 export const IGNORED_STATIC_ASSET_BASENAMES = new Set([
@@ -145,28 +143,16 @@ export function buildStaticAssetManifest(rootDir) {
     APP_PUBLIC_REPO_PREFIX,
     WRAPPER_APP_PUBLIC_REPO_PREFIX,
   );
-  const homepagePrefix = resolvePublicRepoPrefix(
-    rootDir,
-    HOMEPAGE_PUBLIC_REPO_PREFIX,
-    WRAPPER_HOMEPAGE_PUBLIC_REPO_PREFIX,
-  );
 
   if (fs.existsSync(path.join(rootDir, ".git"))) {
-    const checkoutFiles = listCheckoutPublicFiles(rootDir, [
-      appPrefix,
-      homepagePrefix,
-    ]);
+    const checkoutFiles = listCheckoutPublicFiles(rootDir, [appPrefix]);
     return {
       app: checkoutFiles.filter((entry) => entry.startsWith(`${appPrefix}/`)),
-      homepage: checkoutFiles.filter((entry) =>
-        entry.startsWith(`${homepagePrefix}/`),
-      ),
     };
   }
 
   return {
     app: listPublicFiles(rootDir, appPrefix),
-    homepage: listPublicFiles(rootDir, homepagePrefix),
   };
 }
 

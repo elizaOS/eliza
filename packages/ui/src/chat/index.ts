@@ -1,6 +1,5 @@
 /**
- * Chat command utilities — slash command parsing, saved command management,
- * and the typed command registry.
+ * Shared chat display and command-palette utilities.
  */
 
 import {
@@ -10,7 +9,6 @@ import {
 } from "@elizaos/core";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
-import { shellLocalStorage } from "../surface-realm-channel";
 import type {
   DesktopClickAuditItem,
   DesktopWorkspaceSurface,
@@ -19,76 +17,6 @@ import { DESKTOP_WORKSPACE_SURFACES } from "../utils/desktop-workspace";
 
 const ROUTINE_CODING_AGENT_RE =
   /^\[.+?\] (?:Approved:|Responded:|Sent keys:|Turn done, continuing:|Idle for \d+[smh])/;
-
-// ── Saved custom commands ────────────────────────────────────────────────
-
-export const CUSTOM_COMMANDS_STORAGE_KEY = "eliza:custom-commands";
-
-export interface SavedCustomCommand {
-  name: string;
-  text: string;
-  createdAt: number;
-}
-
-function isSavedCustomCommand(value: unknown): value is SavedCustomCommand {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.name === "string" &&
-    typeof candidate.text === "string" &&
-    typeof candidate.createdAt === "number"
-  );
-}
-
-export function loadSavedCustomCommands(): SavedCustomCommand[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_COMMANDS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isSavedCustomCommand);
-  } catch {
-    // error-policy:J3 the saved custom-commands blob is untrusted persisted
-    // input (localStorage read / JSON.parse); a corrupt store must not wedge the
-    // command palette — start clean. An absent key already returns [] above, so
-    // "corrupt" and "none" render the same empty palette by design.
-    return [];
-  }
-}
-
-export function saveSavedCustomCommands(commands: SavedCustomCommand[]): void {
-  shellLocalStorage.setItem(
-    CUSTOM_COMMANDS_STORAGE_KEY,
-    JSON.stringify(commands),
-  );
-}
-
-export function appendSavedCustomCommand(command: SavedCustomCommand): void {
-  const existing = loadSavedCustomCommands();
-  existing.push(command);
-  saveSavedCustomCommands(existing);
-}
-
-export function normalizeSlashCommandName(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const withoutSlash = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
-  return withoutSlash.trim().toLowerCase();
-}
-
-export function expandSavedCustomCommand(
-  template: string,
-  argsRaw: string,
-): string {
-  const args = argsRaw.trim();
-  if (!args) {
-    return template;
-  }
-  if (template.includes("{{args}}")) {
-    return template.replaceAll("{{args}}", args);
-  }
-  return `${template}\n${args}`;
-}
 
 export function splitCommandArgs(raw: string): string[] {
   const tokens: string[] = [];

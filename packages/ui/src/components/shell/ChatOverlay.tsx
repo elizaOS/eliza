@@ -60,13 +60,6 @@ import type {
 import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
-  parseSlashDraft,
-  resolveClientShortcutExecution,
-  runSlashExecution,
-  type SlashExecution,
-} from "../../chat/slash-menu";
-import type { SlashCommandController } from "../../chat/useSlashCommandController";
-import {
   type BackIntentEventDetail,
   CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
@@ -201,7 +194,6 @@ import {
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
-import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
   type ShellMessage,
@@ -211,24 +203,6 @@ import type { ConversationNav, ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 export { __renderThreadLineForParity } from "./chat-overlay-transcript";
-
-/** No-op slash controller so the overlay renders without a provider (stories). */
-const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
-  commands: [],
-  loading: false,
-  error: false,
-  naturalShortcutsEnabled: false,
-  isAuthorized: false,
-  isElevated: false,
-  resolveChoices: () => [],
-  describeChoice: () => "",
-  resolveSection: () => undefined,
-  navigateTab: () => {},
-  navigateSettings: () => {},
-  navigateView: () => {},
-  clearChat: () => {},
-  openCommandPalette: () => {},
-};
 
 /**
  * The chat overlay: one always-present, ambient glass conversation
@@ -1334,7 +1308,6 @@ function MessageScrollerSearchBridge({
 export function ChatOverlay({
   controller,
   agentName = "Eliza",
-  slash: slashProp,
   firstRunOpen = false,
   acceptPendingFirstRunText = false,
   initialMode = "input",
@@ -1348,8 +1321,6 @@ export function ChatOverlay({
   controller: ShellController;
   /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
   agentName?: string;
-  /** Universal slash-command catalog + app-level nav effects. */
-  slash?: SlashCommandController;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay stays at the shared HALF chat detent while it
@@ -1595,8 +1566,6 @@ export function ChatOverlay({
     [send, removeConversationMessage],
   );
 
-  const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
-
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
   // a near-instant cross-fade with no positional movement when this is true.
   const reduce = useReducedMotion() ?? false;
@@ -1674,8 +1643,6 @@ export function ChatOverlay({
   // The active view can take over the composer: override the placeholder and
   // receive the live draft (e.g. Help uses the chat as its search box).
   const viewChatBinding = useViewChatBinding();
-  // Escape dismisses the slash menu without clearing the draft; typing reopens.
-  const [slashDismissed, setSlashDismissed] = React.useState(false);
   // The chat-history sheet: closed (composer + grabber) ↔ open (full scrollable
   // history). The ONLY open/close driver — opened by a pull-up drag, by focusing
   // the composer, or by sending; closed by a pull-down drag or Escape. Never by
@@ -2642,7 +2609,7 @@ export function ChatOverlay({
   }, [activeConversationId, draft]);
 
   // Send `text` (and optional images) through the normal chat pipeline, clearing
-  // the composer. Shared by the send button and the slash menu (agent commands).
+  // the composer. Shared by the send button and keyboard submission.
   const submitText = React.useCallback(
     (text: string, images: ImageAttachment[] = []) => {
       const trimmed = text.trim();
@@ -2654,7 +2621,6 @@ export function ChatOverlay({
         resetMessageHistory();
         if (trimmed && images.length === 0) sendFirstRunText?.(trimmed);
         setDraft("");
-        setSlashDismissed(false);
         setPendingImages([]);
         setImageError(null);
         inputRef.current?.focus();
@@ -2671,7 +2637,6 @@ export function ChatOverlay({
         // The submitted text is no longer a live view filter.
         viewChatBinding?.onQuery?.("");
         setDraft("");
-        setSlashDismissed(false);
         setPendingImages([]);
         setImageError(null);
         inputRef.current?.focus();
@@ -2698,13 +2663,11 @@ export function ChatOverlay({
         viewChatBinding?.onSubmit?.(trimmed)
       ) {
         setDraft("");
-        setSlashDismissed(false);
         setPendingImages([]);
         setImageError(null);
         return;
       }
       setDraft("");
-      setSlashDismissed(false);
       setPendingImages([]);
       setImageError(null);
       if (images.length) {
@@ -4479,132 +4442,9 @@ export function ChatOverlay({
     setComposerHasDraft(hasDraft);
   }, [hasDraft, setComposerHasDraft]);
 
-  // ── Slash commands ─────────────────────────────────────────────────────────
-  // Inline command autocomplete: the menu derives from the draft + the loaded
-  // catalog; Escape dismisses it (without clearing the draft); typing reopens.
-  const slashMenu = useSlashMenu(draft, slash);
-  // Short-circuit the slash parse on the common (non-slash) keystroke path — a
-  // draft that doesn't start with "/" is never a slash command, so skip the work.
-  const isSlashDraft = draft.startsWith("/") && parseSlashDraft(draft).isSlash;
-  const slashOpen = slashMenu.open && !slashDismissed;
-  // Combobox a11y for the composer input — only when a slash catalog is wired
-  // in. Spread so the input is a plain message box (no role) otherwise.
-  const comboboxAria: React.AriaAttributes & { role?: "combobox" } = slashProp
-    ? {
-        role: "combobox",
-        "aria-autocomplete": "list",
-        "aria-expanded": slashOpen,
-        "aria-controls": slashOpen ? "slash-command-listbox" : undefined,
-        "aria-activedescendant":
-          slashOpen && slashMenu.items[slashMenu.activeIndex]
-            ? `slash-option-${slashMenu.items[slashMenu.activeIndex].id}`
-            : undefined,
-      }
-    : {};
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: draft IS the trigger — any edit re-arms the menu after an Escape dismissal.
-  React.useEffect(() => {
-    setSlashDismissed(false);
-  }, [draft]);
-
-  // Run a resolved slash execution: agent commands flow through the normal send
-  // pipeline; navigation/client commands run their app- or overlay-level effect
-  // and clear the composer.
-  const runExecution = React.useCallback(
-    (exec: SlashExecution) => {
-      if (exec.kind === "send") {
-        submitText(exec.text);
-        return;
-      }
-      // The CommandPalette is a Radix dialog (Z_DIALOG=170) that paints UNDER
-      // the open chat glass (Z_SHELL_OVERLAY=9000): opening it from the
-      // composer left an invisible, focus-trapped dialog behind the sheet.
-      // Collapse first so the palette opens over the pill, fully visible and
-      // dismissible; skip the composer refocus so focus stays in the palette.
-      const opensPalette =
-        exec.kind === "client" &&
-        (exec.clientAction === "open-command-palette" ||
-          exec.clientAction === "show-commands");
-      const openPaletteCollapsed = () => {
-        collapse();
-        slash.openCommandPalette();
-      };
-      runSlashExecution(exec, {
-        navigateTab: slash.navigateTab,
-        navigateSettings: slash.navigateSettings,
-        navigateView: slash.navigateView,
-        // One continuous thread: reset plumbing remains available to internal
-        // recovery flows, but slash/client actions cannot create or switch chats.
-        clearChat: () => {},
-        newConversation: () => {},
-        toggleFullscreen: () => {},
-        openCommandPalette: openPaletteCollapsed,
-        showCommands: openPaletteCollapsed,
-        toggleTranscription: toggleTranscriptionMode,
-        send: (text) => submitText(text),
-      });
-      setDraft("");
-      setSlashDismissed(true);
-      if (!opensPalette) {
-        inputRef.current?.focus();
-      }
-    },
-    [slash, submitText, setDraft, toggleTranscriptionMode, collapse],
-  );
-
   const submit = React.useCallback(() => {
-    const shortcut =
-      !firstRunOpen && pendingImages.length === 0
-        ? resolveClientShortcutExecution(
-            slash.commands,
-            draft,
-            slash.resolveSection,
-            {
-              // Natural language is always a real agent turn. Only explicit
-              // slash syntax may execute client-side without consulting Eliza.
-              allowNatural: false,
-              resolveChoices: slash.resolveChoices,
-              // #12087 Item 20: re-apply the sender's real authority so the
-              // explicit slash path matches the visible menu.
-              isAuthorized: slash.isAuthorized,
-              isElevated: slash.isElevated,
-            },
-          )
-        : null;
-    if (shortcut) {
-      if (
-        shortcut.kind === "navigate-tab" ||
-        shortcut.kind === "navigate-settings" ||
-        shortcut.kind === "navigate-view"
-      ) {
-        runSlashExecution(shortcut, {
-          navigateTab: slash.navigateTab,
-          navigateSettings: slash.navigateSettings,
-          navigateView: slash.navigateView,
-          clearChat: () => {},
-          newConversation: () => {},
-          toggleFullscreen: () => {},
-          openCommandPalette: () => {},
-          showCommands: () => {},
-          toggleTranscription: () => {},
-          send: () => {},
-        });
-        submitText(draft, pendingImages);
-        return;
-      }
-      runExecution(shortcut);
-      return;
-    }
     submitText(draft, pendingImages);
-  }, [draft, pendingImages, firstRunOpen, runExecution, slash, submitText]);
-
-  const pickSlashItem = React.useCallback(
-    (index: number) => {
-      const exec = slashMenu.resolve(index);
-      if (exec) runExecution(exec);
-    },
-    [slashMenu, runExecution],
-  );
+  }, [draft, pendingImages, submitText]);
 
   const cycleMessageHistory = React.useCallback(
     (
@@ -4662,30 +4502,10 @@ export function ChatOverlay({
     [draft, resetMessageHistory, sentMessageHistory, setDraft],
   );
 
-  // The shared composer-core keydown: IME-commit guard (#9148) → slash-menu
-  // interception → sent-message history → Enter sends → Escape collapses the
-  // open sheet. The slash binding adapts the overlay's menu/executor onto the
-  // core's key contract.
+  // Preserve IME composition before history navigation and Enter-to-send.
   const handleComposerKeyDown = useComposerKeydown<HTMLTextAreaElement>({
     onSend: submit,
     onHistory: cycleMessageHistory,
-    slash: {
-      open: slashOpen,
-      move: (delta) => slashMenu.move(delta),
-      complete: () => {
-        const completed = slashMenu.complete();
-        if (completed == null) return false;
-        setDraft(completed);
-        return true;
-      },
-      submit: () => {
-        const exec = slashMenu.resolve();
-        if (!exec) return false;
-        runExecution(exec);
-        return true;
-      },
-      dismiss: () => setSlashDismissed(true),
-    },
     onEscape: () => {
       if (!sheetOpen) return false;
       collapse();
@@ -6735,18 +6555,6 @@ export function ChatOverlay({
                         : { marginBottom: composerCapsuleMarginBottom }),
                     }}
                   >
-                    {/* Inline slash-command autocomplete, floating just above the
-                    input row. */}
-                    {!transcriptionComposerActive &&
-                    slashProp &&
-                    !slashDismissed ? (
-                      <SlashCommandMenu
-                        state={slashMenu}
-                        loading={isSlashDraft && slash.loading}
-                        error={isSlashDraft && slash.error}
-                        onPick={pickSlashItem}
-                      />
-                    ) : null}
                     {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
@@ -6943,10 +6751,6 @@ export function ChatOverlay({
                               ? "cc-booting-hint"
                               : undefined
                         }
-                        // Combobox semantics (role + aria-*) are applied as one spread,
-                        // and only when a slash catalog is wired in — a plain message
-                        // box otherwise.
-                        {...comboboxAria}
                         // The floating composer is the primary chat affordance on the
                         // ambient home surface, so its placeholder must stay readable
                         // even when the glass pill sits over dark wallpaper. A locked

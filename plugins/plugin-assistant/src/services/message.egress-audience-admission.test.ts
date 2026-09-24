@@ -23,11 +23,10 @@
  */
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
   attestDeliveryAudienceFromCanonicalRoom,
   getTrustedDeliveryAudience,
@@ -61,7 +60,7 @@ async function makeRuntime(): Promise<AgentRuntime> {
   const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({ name: `EgressAdmission${v4().slice(0, 8)}` }),
-    
+
     logLevel: "fatal",
     enableAutonomy: false,
   });

@@ -8,7 +8,6 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   computeKmsAeadOperationKeyBundleLocalReceiptDigest,
   KMS_AEAD_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
@@ -17,6 +16,7 @@ import {
   type KmsAeadOperationKeyBundleWrapped,
   type UnwrapKmsAeadOperationKeyBundleInput,
 } from "@elizaos/auth/kms";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,

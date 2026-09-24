@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * One-command local certification fallback (#14548). Runs the exact chain
- * the vast.ai onstart runs — packages/evidence bundle:create →
+ * the vast.ai onstart runs — packages/testing bundle:create →
  * certify:rollup → certify:sign — on this machine, so when vast is down or
  * the API key is dead a certifier holding ELIZA_CERT_SIGNING_KEY can produce
  * the same signed certification.json the develop→main gate verifies. Same
@@ -111,7 +111,7 @@ function main(argv, env) {
   run("bundle:create", "bun", [
     "run",
     "--cwd",
-    "packages/evidence",
+    "packages/testing",
     "bundle:create",
     "--",
     "--tier",
@@ -125,7 +125,7 @@ function main(argv, env) {
   run("certify:rollup", "bun", [
     "run",
     "--cwd",
-    "packages/evidence",
+    "packages/testing",
     "certify:rollup",
     "--",
     "--bundle",
@@ -138,7 +138,7 @@ function main(argv, env) {
     console.log(`\n[local-certify] stopped before signing (--no-sign).`);
     console.log(`[local-certify] review ${verdictsPath}, then:`);
     console.log(
-      `  bun run --cwd packages/evidence certify:sign -- --bundle ${bundleDir} --verdicts ${verdictsPath} --reviewer-id <you> --reviewer-kind human`,
+      `  bun run --cwd packages/testing certify:sign -- --bundle ${bundleDir} --verdicts ${verdictsPath} --reviewer-id <you> --reviewer-kind human`,
     );
     return 0;
   }
@@ -146,7 +146,7 @@ function main(argv, env) {
   run("certify:sign", "bun", [
     "run",
     "--cwd",
-    "packages/evidence",
+    "packages/testing",
     "certify:sign",
     "--",
     "--bundle",

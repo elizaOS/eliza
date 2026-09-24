@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Build every Capacitor / Electrobun native plugin package under
- * `eliza/packages/native/plugins/` whose `pkg.elizaos.platforms` allowlist
+ * `eliza/plugins` (the `plugin-native-` family) whose `pkg.elizaos.platforms` allowlist
  * matches the current build host (or omits an OS allowlist entirely).
  *
  * Designed to be invoked from any elizaOS-based fork:
@@ -264,7 +264,7 @@ function hasPackageDependency(pkg, packageName) {
   return false;
 }
 
-async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries) {
+async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries, force) {
   const requiredPackages = new Set();
   for (const { pkg } of pluginEntries) {
     for (const packageName of WORKSPACE_RUNTIME_PACKAGES.keys()) {
@@ -288,7 +288,7 @@ async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries) {
         `[plugins] ${packageName} dependency is required but has no build script`,
       );
     }
-    if (isPackageBuildFresh(packageDir)) {
+    if (!force && isPackageBuildFresh(packageDir)) {
       console.log(
         `[plugins] workspace dependency ${packageName} up to date — skipping`,
       );
@@ -299,7 +299,12 @@ async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries) {
   }
 }
 
-async function main() {
+/** Builds host-compatible native plugins and their required workspace runtime dependencies. */
+export async function buildNativePlugins({
+  force = false,
+  sourceRuntime = false,
+  hostFilter = shouldBuildPluginForHost,
+} = {}) {
   const pluginsDir = NATIVE_PLUGINS_ROOT;
   const pluginNames = CAPACITOR_PLUGIN_NAMES;
 
@@ -322,7 +327,7 @@ async function main() {
         logVerbose(`[plugin:${name}] skipping — no build script declared`);
         return false;
       }
-      if (shouldBuildPluginForHost(pkg, process.platform)) {
+      if (hostFilter(pkg, process.platform)) {
         return true;
       }
       const platforms = pkg?.elizaos?.platforms;
@@ -334,14 +339,16 @@ async function main() {
       return false;
     });
 
-  await buildWorkspaceRuntimePackagesForPlugins(buildablePlugins);
+  if (!sourceRuntime) {
+    await buildWorkspaceRuntimePackagesForPlugins(buildablePlugins, force);
+  }
 
   let builtCount = 0;
   let freshCount = 0;
   await Promise.all(
     buildablePlugins.map(async ({ name }) => {
       const pluginDir = pluginDirFor(pluginsDir, name);
-      if (isPackageBuildFresh(pluginDir)) {
+      if (!force && isPackageBuildFresh(pluginDir)) {
         freshCount += 1;
         logVerbose(`[plugin:${name}] up to date — skipping`);
         return;
@@ -361,5 +368,5 @@ const isDirectRun =
   process.argv[1] && path.resolve(process.argv[1]) === path.resolve(scriptFile);
 
 if (isDirectRun) {
-  await main();
+  await buildNativePlugins();
 }

@@ -14,33 +14,33 @@ import { resolveNativeLibraryCandidate } from "@elizaos/shared/platform/native-l
  * so we declare the expected signature explicitly.
  */
 type MacEffectsSymbols = {
-  enableWindowVibrancy(ptr: Pointer): boolean;
-  setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
-  setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
-  setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
-  disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
-  orderOutWindow(ptr: Pointer): boolean;
-  makeKeyAndOrderFrontWindow(ptr: Pointer): boolean;
-  isAppActive(): boolean;
-  isWindowKey(ptr: Pointer): boolean;
-  createSecurityScopedBookmark(path: Pointer): Pointer | null;
-  startAccessingSecurityScopedBookmark(bookmark: Pointer): Pointer | null;
-  stopAccessingSecurityScopedBookmarks(): void;
-  freeNativeCString(value: Pointer): void;
-  elizaOnboardingNotificationPost(title: Pointer, body: Pointer): boolean;
-  elizaOnboardingGetChoice(): number;
-  elizaOnboardingNotificationDismiss(): void;
-  checkNotificationPermission(): number;
-  requestNotificationPermission(): number;
-  elizaCalendarStoreChangesStart(): boolean;
-  elizaCalendarStoreChangesPoll(): number;
-  elizaCalendarStoreChangesStop(): void;
-  elizaFnMonitorStart(): number;
-  elizaFnMonitorStop(): void;
-  elizaFnMonitorPoll(): number;
-  elizaFnMonitorIsHealthy(): boolean;
-  elizaFnMonitorIsFnDown(): boolean;
-  elizaFnSystemUsageType(): number;
+	enableWindowVibrancy(ptr: Pointer): boolean;
+	setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
+	setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
+	setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
+	disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
+	orderOutWindow(ptr: Pointer): boolean;
+	makeKeyAndOrderFrontWindow(ptr: Pointer): boolean;
+	isAppActive(): boolean;
+	isWindowKey(ptr: Pointer): boolean;
+	createSecurityScopedBookmark(path: Pointer): Pointer | null;
+	startAccessingSecurityScopedBookmark(bookmark: Pointer): Pointer | null;
+	stopAccessingSecurityScopedBookmarks(): void;
+	freeNativeCString(value: Pointer): void;
+	elizaOnboardingNotificationPost(title: Pointer, body: Pointer): boolean;
+	elizaOnboardingGetChoice(): number;
+	elizaOnboardingNotificationDismiss(): void;
+	checkNotificationPermission(): number;
+	requestNotificationPermission(): number;
+	elizaCalendarStoreChangesStart(): boolean;
+	elizaCalendarStoreChangesPoll(): number;
+	elizaCalendarStoreChangesStop(): void;
+	elizaFnMonitorStart(): number;
+	elizaFnMonitorStop(): void;
+	elizaFnMonitorPoll(): number;
+	elizaFnMonitorIsHealthy(): boolean;
+	elizaFnMonitorIsFnDown(): boolean;
+	elizaFnSystemUsageType(): number;
 };
 
 type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
@@ -51,133 +51,133 @@ const MAC_EFFECTS_DYLIB = "libMacWindowEffects.dylib";
 let _lib: MacEffectsLib | undefined;
 
 function loadLib(): MacEffectsLib {
-  const defaultDylibPath = join(import.meta.dir, "../", MAC_EFFECTS_DYLIB);
-  const dylibPath = resolveNativeLibraryCandidate(
-    { label: "bundled Mac window effects library", path: defaultDylibPath },
-    {
-      expectedBasename: MAC_EFFECTS_DYLIB,
-      moduleDir: import.meta.dir,
-      warn: (message) => console.warn(`[MacEffects] ${message}`),
-    },
-  );
-  if (!dylibPath) {
-    console.warn(
-      `[MacEffects] Dylib not found at ${defaultDylibPath}. Run 'bun run build:native-effects'.`,
-    );
-    return null;
-  }
-  // The host resolver has already enforced the store build's realpath,
-  // basename and running-app Contents containment before reaching dlopen.
+	const defaultDylibPath = join(import.meta.dir, "../", MAC_EFFECTS_DYLIB);
+	const dylibPath = resolveNativeLibraryCandidate(
+		{ label: "bundled Mac window effects library", path: defaultDylibPath },
+		{
+			expectedBasename: MAC_EFFECTS_DYLIB,
+			moduleDir: import.meta.dir,
+			warn: (message) => console.warn(`[MacEffects] ${message}`),
+		},
+	);
+	if (!dylibPath) {
+		console.warn(
+			`[MacEffects] Dylib not found at ${defaultDylibPath}. Run 'bun run build:native-effects'.`,
+		);
+		return null;
+	}
+	// The host resolver has already enforced the store build's realpath,
+	// basename and running-app Contents containment before reaching dlopen.
 
-  try {
-    // Cast to MacEffectsLib: bun:ffi does not infer symbol signatures from
-    // FFIType descriptors at the TypeScript level.
-    return dlopen(dylibPath, {
-      enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
-      setWindowShadowEnabled: {
-        args: [FFIType.ptr, FFIType.bool],
-        returns: FFIType.bool,
-      },
-      setWindowTrafficLightsPosition: {
-        args: [FFIType.ptr, FFIType.f64, FFIType.f64],
-        returns: FFIType.bool,
-      },
-      setNativeWindowDragRegion: {
-        args: [FFIType.ptr, FFIType.f64, FFIType.f64],
-        returns: FFIType.bool,
-      },
-      disableWindowBackForwardNavigationGestures: {
-        args: [FFIType.ptr],
-        returns: FFIType.bool,
-      },
-      orderOutWindow: { args: [FFIType.ptr], returns: FFIType.bool },
-      makeKeyAndOrderFrontWindow: {
-        args: [FFIType.ptr],
-        returns: FFIType.bool,
-      },
-      isAppActive: { args: [], returns: FFIType.bool },
-      isWindowKey: { args: [FFIType.ptr], returns: FFIType.bool },
-      createSecurityScopedBookmark: {
-        args: [FFIType.ptr],
-        returns: FFIType.ptr,
-      },
-      startAccessingSecurityScopedBookmark: {
-        args: [FFIType.ptr],
-        returns: FFIType.ptr,
-      },
-      stopAccessingSecurityScopedBookmarks: {
-        args: [],
-        returns: FFIType.void,
-      },
-      freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
-      elizaOnboardingNotificationPost: {
-        args: [FFIType.ptr, FFIType.ptr],
-        returns: FFIType.bool,
-      },
-      elizaOnboardingGetChoice: { args: [], returns: FFIType.i32 },
-      elizaOnboardingNotificationDismiss: {
-        args: [],
-        returns: FFIType.void,
-      },
-      checkNotificationPermission: { args: [], returns: FFIType.i32 },
-      requestNotificationPermission: { args: [], returns: FFIType.i32 },
-      elizaCalendarStoreChangesStart: { args: [], returns: FFIType.bool },
-      elizaCalendarStoreChangesPoll: { args: [], returns: FFIType.i32 },
-      elizaCalendarStoreChangesStop: { args: [], returns: FFIType.void },
-      elizaFnMonitorStart: { args: [], returns: FFIType.i32 },
-      elizaFnMonitorStop: { args: [], returns: FFIType.void },
-      elizaFnMonitorPoll: { args: [], returns: FFIType.i32 },
-      elizaFnMonitorIsHealthy: { args: [], returns: FFIType.bool },
-      elizaFnMonitorIsFnDown: { args: [], returns: FFIType.bool },
-      elizaFnSystemUsageType: { args: [], returns: FFIType.i32 },
-    }) as MacEffectsLib;
-  } catch (err) {
-    console.warn("[MacEffects] Failed to load dylib:", err);
-    return null;
-  }
+	try {
+		// Cast to MacEffectsLib: bun:ffi does not infer symbol signatures from
+		// FFIType descriptors at the TypeScript level.
+		return dlopen(dylibPath, {
+			enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
+			setWindowShadowEnabled: {
+				args: [FFIType.ptr, FFIType.bool],
+				returns: FFIType.bool,
+			},
+			setWindowTrafficLightsPosition: {
+				args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+				returns: FFIType.bool,
+			},
+			setNativeWindowDragRegion: {
+				args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+				returns: FFIType.bool,
+			},
+			disableWindowBackForwardNavigationGestures: {
+				args: [FFIType.ptr],
+				returns: FFIType.bool,
+			},
+			orderOutWindow: { args: [FFIType.ptr], returns: FFIType.bool },
+			makeKeyAndOrderFrontWindow: {
+				args: [FFIType.ptr],
+				returns: FFIType.bool,
+			},
+			isAppActive: { args: [], returns: FFIType.bool },
+			isWindowKey: { args: [FFIType.ptr], returns: FFIType.bool },
+			createSecurityScopedBookmark: {
+				args: [FFIType.ptr],
+				returns: FFIType.ptr,
+			},
+			startAccessingSecurityScopedBookmark: {
+				args: [FFIType.ptr],
+				returns: FFIType.ptr,
+			},
+			stopAccessingSecurityScopedBookmarks: {
+				args: [],
+				returns: FFIType.void,
+			},
+			freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
+			elizaOnboardingNotificationPost: {
+				args: [FFIType.ptr, FFIType.ptr],
+				returns: FFIType.bool,
+			},
+			elizaOnboardingGetChoice: { args: [], returns: FFIType.i32 },
+			elizaOnboardingNotificationDismiss: {
+				args: [],
+				returns: FFIType.void,
+			},
+			checkNotificationPermission: { args: [], returns: FFIType.i32 },
+			requestNotificationPermission: { args: [], returns: FFIType.i32 },
+			elizaCalendarStoreChangesStart: { args: [], returns: FFIType.bool },
+			elizaCalendarStoreChangesPoll: { args: [], returns: FFIType.i32 },
+			elizaCalendarStoreChangesStop: { args: [], returns: FFIType.void },
+			elizaFnMonitorStart: { args: [], returns: FFIType.i32 },
+			elizaFnMonitorStop: { args: [], returns: FFIType.void },
+			elizaFnMonitorPoll: { args: [], returns: FFIType.i32 },
+			elizaFnMonitorIsHealthy: { args: [], returns: FFIType.bool },
+			elizaFnMonitorIsFnDown: { args: [], returns: FFIType.bool },
+			elizaFnSystemUsageType: { args: [], returns: FFIType.i32 },
+		}) as MacEffectsLib;
+	} catch (err) {
+		console.warn("[MacEffects] Failed to load dylib:", err);
+		return null;
+	}
 }
 
 function cStringBuffer(value: string): Buffer {
-  const bytes = Buffer.from(value, "utf8");
-  const buffer = Buffer.alloc(bytes.byteLength + 1);
-  bytes.copy(buffer);
-  return buffer;
+	const bytes = Buffer.from(value, "utf8");
+	const buffer = Buffer.alloc(bytes.byteLength + 1);
+	bytes.copy(buffer);
+	return buffer;
 }
 
 function takeNativeString(
-  lib: LoadedMacEffectsLib,
-  value: Pointer | null,
+	lib: LoadedMacEffectsLib,
+	value: Pointer | null,
 ): string | null {
-  if (!value) return null;
-  try {
-    return new CString(value).toString();
-  } finally {
-    lib.symbols.freeNativeCString(value);
-  }
+	if (!value) return null;
+	try {
+		return new CString(value).toString();
+	} finally {
+		lib.symbols.freeNativeCString(value);
+	}
 }
 
 function getLib(): LoadedMacEffectsLib | null {
-  if (process.platform !== "darwin") return null;
-  if (_lib === undefined) {
-    _lib = loadLib();
-  }
-  return _lib;
+	if (process.platform !== "darwin") return null;
+	if (_lib === undefined) {
+		_lib = loadLib();
+	}
+	return _lib;
 }
 
 export function enableVibrancy(ptr: Pointer): boolean {
-  return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
+	return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
 }
 
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {
-  return getLib()?.symbols.setWindowShadowEnabled(ptr, enabled) ?? false;
+	return getLib()?.symbols.setWindowShadowEnabled(ptr, enabled) ?? false;
 }
 
 export function setTrafficLightsPosition(
-  ptr: Pointer,
-  x: number,
-  y: number,
+	ptr: Pointer,
+	x: number,
+	y: number,
 ): boolean {
-  return getLib()?.symbols.setWindowTrafficLightsPosition(ptr, x, y) ?? false;
+	return getLib()?.symbols.setWindowTrafficLightsPosition(ptr, x, y) ?? false;
 }
 
 /**
@@ -187,11 +187,11 @@ export function setTrafficLightsPosition(
  *   (native, above WKWebView).
  */
 export function setNativeDragRegion(
-  ptr: Pointer,
-  x: number,
-  height: number,
+	ptr: Pointer,
+	x: number,
+	height: number,
 ): boolean {
-  return getLib()?.symbols.setNativeWindowDragRegion(ptr, x, height) ?? false;
+	return getLib()?.symbols.setNativeWindowDragRegion(ptr, x, height) ?? false;
 }
 
 /**
@@ -204,53 +204,53 @@ export function setNativeDragRegion(
  * every restack pass. Returns true once at least one WKWebView received the flag.
  */
 export function disableBackForwardNavigationGestures(ptr: Pointer): boolean {
-  return (
-    getLib()?.symbols.disableWindowBackForwardNavigationGestures(ptr) ?? false
-  );
+	return (
+		getLib()?.symbols.disableWindowBackForwardNavigationGestures(ptr) ?? false
+	);
 }
 
 /** Hide the window — removes it from screen AND from Cmd+Tab / Mission Control */
 export function orderOut(ptr: Pointer): boolean {
-  return getLib()?.symbols.orderOutWindow(ptr) ?? false;
+	return getLib()?.symbols.orderOutWindow(ptr) ?? false;
 }
 
 /** Show the window and bring it to focus */
 export function makeKeyAndOrderFront(ptr: Pointer): boolean {
-  return getLib()?.symbols.makeKeyAndOrderFrontWindow(ptr) ?? false;
+	return getLib()?.symbols.makeKeyAndOrderFrontWindow(ptr) ?? false;
 }
 
 /** Returns true if the current app is the active foreground macOS application */
 export function isAppActive(): boolean {
-  return getLib()?.symbols.isAppActive() ?? false;
+	return getLib()?.symbols.isAppActive() ?? false;
 }
 
 /** Returns true if the window is currently the key (focused) window */
 export function isKeyWindow(ptr: Pointer): boolean {
-  return getLib()?.symbols.isWindowKey(ptr) ?? false;
+	return getLib()?.symbols.isWindowKey(ptr) ?? false;
 }
 
 export function createSecurityScopedBookmark(path: string): string | null {
-  const lib = getLib();
-  if (!lib || !path.trim()) return null;
-  const pathBuffer = cStringBuffer(path);
-  const result = lib.symbols.createSecurityScopedBookmark(ptr(pathBuffer));
-  return takeNativeString(lib, result);
+	const lib = getLib();
+	if (!lib || !path.trim()) return null;
+	const pathBuffer = cStringBuffer(path);
+	const result = lib.symbols.createSecurityScopedBookmark(ptr(pathBuffer));
+	return takeNativeString(lib, result);
 }
 
 export function startAccessingSecurityScopedBookmark(
-  bookmark: string,
+	bookmark: string,
 ): string | null {
-  const lib = getLib();
-  if (!lib || !bookmark.trim()) return null;
-  const bookmarkBuffer = cStringBuffer(bookmark);
-  const result = lib.symbols.startAccessingSecurityScopedBookmark(
-    ptr(bookmarkBuffer),
-  );
-  return takeNativeString(lib, result);
+	const lib = getLib();
+	if (!lib || !bookmark.trim()) return null;
+	const bookmarkBuffer = cStringBuffer(bookmark);
+	const result = lib.symbols.startAccessingSecurityScopedBookmark(
+		ptr(bookmarkBuffer),
+	);
+	return takeNativeString(lib, result);
 }
 
 export function stopAccessingSecurityScopedBookmarks(): void {
-  getLib()?.symbols.stopAccessingSecurityScopedBookmarks();
+	getLib()?.symbols.stopAccessingSecurityScopedBookmarks();
 }
 
 /**
@@ -261,40 +261,40 @@ export type OnboardingChoice = 0 | 1 | 2 | 3 | 4;
 
 /** Post a native macOS notification with onboarding action buttons. */
 export function postOnboardingNotification(
-  title: string,
-  body: string,
+	title: string,
+	body: string,
 ): boolean {
-  const lib = getLib();
-  if (!lib) return false;
-  const titleBuf = cStringBuffer(title);
-  const bodyBuf = cStringBuffer(body);
-  return lib.symbols.elizaOnboardingNotificationPost(
-    ptr(titleBuf),
-    ptr(bodyBuf),
-  );
+	const lib = getLib();
+	if (!lib) return false;
+	const titleBuf = cStringBuffer(title);
+	const bodyBuf = cStringBuffer(body);
+	return lib.symbols.elizaOnboardingNotificationPost(
+		ptr(titleBuf),
+		ptr(bodyBuf),
+	);
 }
 
 /** Poll the onboarding notification choice. */
 export function getOnboardingChoice(): OnboardingChoice {
-  return (getLib()?.symbols.elizaOnboardingGetChoice() ??
-    0) as OnboardingChoice;
+	return (getLib()?.symbols.elizaOnboardingGetChoice() ??
+		0) as OnboardingChoice;
 }
 
 /** Dismiss the onboarding notification if still showing. */
 export function dismissOnboardingNotification(): void {
-  getLib()?.symbols.elizaOnboardingNotificationDismiss();
+	getLib()?.symbols.elizaOnboardingNotificationDismiss();
 }
 
 /** Read the authorization bound to the signed Electrobun app process. */
 export function checkNotificationPermission(): number | null {
-  const lib = getLib();
-  return lib ? lib.symbols.checkNotificationPermission() : null;
+	const lib = getLib();
+	return lib ? lib.symbols.checkNotificationPermission() : null;
 }
 
 /** Begin authorization on the signed Electrobun app process. */
 export function requestNotificationPermission(): number | null {
-  const lib = getLib();
-  return lib ? lib.symbols.requestNotificationPermission() : null;
+	const lib = getLib();
+	return lib ? lib.symbols.requestNotificationPermission() : null;
 }
 
 // ── Fn-key hold monitor (push-to-talk quasimode, #20483) ──────────────────
@@ -303,57 +303,57 @@ export function requestNotificationPermission(): number | null {
  *  refused the listen-only event tap — Accessibility (or Input Monitoring)
  *  trust has not been granted to this app bundle. */
 export type FnMonitorStartResult =
-  | "started"
-  | "permission-missing"
-  | "failed"
-  | "unavailable";
+	| "started"
+	| "permission-missing"
+	| "failed"
+	| "unavailable";
 
 /** One drained fn-key transition. `up-chord` is a release where another key
  *  was pressed mid-hold (fn+arrow etc.) — treat as cancel, not send. */
 export type FnMonitorEvent = "down" | "up" | "up-chord";
 
 export function startFnMonitor(): FnMonitorStartResult {
-  const lib = getLib();
-  if (!lib) return "unavailable";
-  switch (lib.symbols.elizaFnMonitorStart()) {
-    case 0:
-      return "started";
-    case 1:
-      return "permission-missing";
-    default:
-      return "failed";
-  }
+	const lib = getLib();
+	if (!lib) return "unavailable";
+	switch (lib.symbols.elizaFnMonitorStart()) {
+		case 0:
+			return "started";
+		case 1:
+			return "permission-missing";
+		default:
+			return "failed";
+	}
 }
 
 export function stopFnMonitor(): void {
-  getLib()?.symbols.elizaFnMonitorStop();
+	getLib()?.symbols.elizaFnMonitorStop();
 }
 
 /** Drain one queued fn transition; null when the queue is empty. */
 export function pollFnMonitor(): FnMonitorEvent | null {
-  const lib = getLib();
-  if (!lib) return null;
-  switch (lib.symbols.elizaFnMonitorPoll()) {
-    case 1:
-      return "down";
-    case 2:
-      return "up";
-    case 3:
-      return "up-chord";
-    default:
-      return null;
-  }
+	const lib = getLib();
+	if (!lib) return null;
+	switch (lib.symbols.elizaFnMonitorPoll()) {
+		case 1:
+			return "down";
+		case 2:
+			return "up";
+		case 3:
+			return "up-chord";
+		default:
+			return null;
+	}
 }
 
 /** False while started means the tap was disabled out from under us (secure
  *  input, tap timeout) and the monitor needs a stop/start cycle. */
 export function isFnMonitorHealthy(): boolean {
-  return getLib()?.symbols.elizaFnMonitorIsHealthy() ?? false;
+	return getLib()?.symbols.elizaFnMonitorIsHealthy() ?? false;
 }
 
 /** Physical fn key state right now — resync anchor after queue overflow. */
 export function isFnKeyDown(): boolean {
-  return getLib()?.symbols.elizaFnMonitorIsFnDown() ?? false;
+	return getLib()?.symbols.elizaFnMonitorIsFnDown() ?? false;
 }
 
 /** The system "Press 🌐 key to..." action (com.apple.HIToolbox
@@ -362,8 +362,8 @@ export function isFnKeyDown(): boolean {
  *  and a listen-only tap cannot swallow it, so callers surface a "set it to
  *  Do Nothing" hint when this is not 0. */
 export function getFnSystemUsageType(): number {
-  const lib = getLib();
-  if (!lib) return -1;
-  const value = lib.symbols.elizaFnSystemUsageType();
-  return value === -1 ? 2 : value;
+	const lib = getLib();
+	if (!lib) return -1;
+	const value = lib.symbols.elizaFnSystemUsageType();
+	return value === -1 ? 2 : value;
 }

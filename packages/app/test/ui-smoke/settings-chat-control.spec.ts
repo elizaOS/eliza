@@ -240,9 +240,16 @@ test.describe("settings is fully chat-drivable", () => {
     // success. Some listed controls intentionally reject mutation in the
     // keyless harness (for example protected credential fields), so the
     // exhaustive contract above is addressability rather than forced writes.
-    expect(fillTargets, "agent-fill targets discovered").toBeGreaterThanOrEqual(1);
-    expect(fillsProven, "agent-fill round-trips proven").toBeGreaterThanOrEqual(1);
-    expect(clickTargets, "agent-click targets discovered").toBeGreaterThanOrEqual(1);
+    expect(fillTargets, "agent-fill targets discovered").toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(fillsProven, "agent-fill round-trips proven").toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(
+      clickTargets,
+      "agent-click targets discovered",
+    ).toBeGreaterThanOrEqual(1);
     expect(clicksProven, "agent-click flips proven").toBeGreaterThanOrEqual(1);
   });
 });

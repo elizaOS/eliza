@@ -35,20 +35,12 @@
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/auth/vault": [
-        "../../packages/auth/src/vault/index.ts"
-      ],
-      "@elizaos/auth/vault/*": [
-        "../../packages/auth/src/vault/*"
-      ],
+      "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+      "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],

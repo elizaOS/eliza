@@ -9,7 +9,6 @@
  * `process.env` (TOS restriction).
  */
 import crypto from "node:crypto";
-import { logger, resolveStateDir } from "@elizaos/core";
 import {
   createRuntimeAccountStoragePolicy,
   updateAccountMetadata,
@@ -21,6 +20,7 @@ import {
   type OAuthCredentials,
   type SubscriptionProvider,
 } from "@elizaos/auth/auth/types";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,

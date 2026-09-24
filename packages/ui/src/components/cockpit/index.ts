@@ -1,4 +1,4 @@
-/** Public barrel for the coding-cockpit deck primitives (consumed by plugin-task-coordinator's /cockpit route). */
+/** Public barrel for the coding-cockpit deck primitives (consumed by plugin-agent-orchestrator's /cockpit route). */
 export type { CockpitModePickerProps } from "./CockpitModePicker";
 export { CockpitModePicker } from "./CockpitModePicker";
 export type { CockpitNewSessionFormProps } from "./CockpitNewSessionForm";

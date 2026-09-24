@@ -6,11 +6,10 @@
  * AgentRuntime + SQLiteDatabaseAdapter with a stubbed useModel.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { resolveEffectiveSystemPrompt } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
   type ActionResult,
   type Character,
@@ -44,7 +43,7 @@ function makeRuntime(settings: Character["settings"] = {}): AgentRuntime {
       bio: "test",
       settings,
     } as Character,
-    
+
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;

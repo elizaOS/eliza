@@ -24,7 +24,7 @@
  * Synthetic persona (Marcus Oyelaran, invented). No real data.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 // Memory-bookkeeping narration in any of its common shapes.
 const MACHINERY =

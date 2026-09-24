@@ -7,7 +7,7 @@
  * Loads scenario ids from the filesystem
  * (plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/ and
  * packages/testing/scenarios/connector-certification/), invokes the
- * `@elizaos/scenario-runner` CLI through packages/scripts/run-live-scenarios.mjs (which
+ * `@elizaos/testing/scenario-runner` CLI through packages/scripts/run-live-scenarios.mjs (which
  * enforces SKIP_REASON + judge thresholds), and emits a markdown report to
  * artifacts/benchmark-report.md plus the raw JSON at
  * artifacts/lifeops-scenario-report.json.

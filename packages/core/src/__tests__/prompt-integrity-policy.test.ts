@@ -82,23 +82,16 @@ const nonDirectModelDispatchBoundaries: Record<
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
-	"plugins/plugin-agent-skills/src/security/skill-scanner.ts": [
-		/matchEvidence\s*=\s*source\.slice\(/,
-	],
-	"plugins/plugin-cloud-apps/src/client.ts": [
-		/appReferenceLogView[\s\S]{0,500}\.slice\(/,
-		/appReferenceLogView[\s\S]{0,500}truncateWellFormed/,
-	],
 	"plugins/plugin-personal-assistant/src/lifeops/service-helpers-reminder.ts": [
 		/normalizeSemanticReason[\s\S]{0,500}\.slice\(/,
 		/normalizeSemanticReason[\s\S]{0,500}truncateWellFormed/,
 	],
-	"packages/scenario-runner/src/final-checks/index.ts": [
+	"packages/testing/scenario-runner/src/final-checks/index.ts": [
 		/actionCallSummary[\s\S]{0,900}\.slice\(/,
 		/blob\.slice\(/,
 	],
-	"packages/scenario-runner/src/judge.ts": [/raw\.slice\(/, /const preview/],
-	"packages/scenario-runner/src/reporter.ts": [
+	"packages/testing/scenario-runner/src/judge.ts": [/raw\.slice\(/, /const preview/],
+	"packages/testing/scenario-runner/src/reporter.ts": [
 		/truncateText/,
 		/toolInputPreview/,
 		/toolOutputPreview/,
@@ -107,14 +100,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/toolSearch\.results\.slice\(/,
 		/\.slice\(0,\s*140\)/,
 	],
-	"packages/scenario-runner/src/runtime-factory.ts": [
+	"packages/testing/scenario-runner/src/runtime-factory.ts": [
 		/ownerMessage\.slice\(/,
 		/const clamped/,
 	],
-	"packages/scenario-runner/src/scenario-assertions/calendar-assertions.ts": [
+	"packages/testing/scenario-runner/src/scenario-assertions/calendar-assertions.ts": [
 		/blob\.slice\(/,
 	],
-	"packages/scenario-runner/src/scenario-assertions/effect-assertions.ts": [
+	"packages/testing/scenario-runner/src/scenario-assertions/effect-assertions.ts": [
 		/JSON\.stringify\(a\.result\?\.data[^\n]*\.slice\(/,
 	],
 	"packages/agent/src/services/agent-export.ts": [
@@ -138,9 +131,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/DEFAULT_SCAN_MAX_MESSAGES/,
 		/MAX_SENDERS_RETURNED/,
 		/Math\.min\(\s*1000/,
-	],
-	"plugins/plugin-finances/src/services/subscriptions-service.ts": [
-		/MAX_AUDIT_MESSAGES/,
 	],
 	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
 	"packages/training/scripts/rl/tokenization_utils.py": [
@@ -301,17 +291,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/finalLimit/,
 		/pullWhatsAppRecent\([^)]*\+\s*25/,
 	],
-	"plugins/plugin-inmemorydb/runtime.ts": [
-		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
-		/const limit = params\.limit \?\? 100;[\s\S]{0,200}connectorAccountsById/,
-	],
 	"packages/core/src/connectors/account-manager.ts": [
 		/listConnectorAccounts\(\{[\s\S]{0,120}limit:\s*500/,
 	],
 	"plugins/plugin-sql/src/stores/connectorAccount.store.ts": [
 		/const limit = params\.limit \?\? 100/,
 	],
-	"plugins/plugin-inmemorydb/adapter.ts": [
+	"plugins/plugin-sqlite/records.ts": [
 		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
 	],
 	"plugins/plugin-sql/src/base.ts": [
@@ -344,12 +330,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-imessage/src/chatdb-reader.ts": [
 		/options\.limit[\s\S]{0,160}:\s*50/,
 	],
-	"plugins/plugin-whatsapp/src/runtime-service.ts": [
-		/Math\.min\(Number\(params\.limit\),\s*100\)/,
-		/:\s*25;/,
-		/Math\.max\(params\.limit\s*\?\?\s*100,\s*100\)/,
-		/\.slice\(0,\s*params\.limit\s*\?\?\s*25\)/,
-	],
 	"plugins/plugin-telegram/src/service.ts": [
 		/normalizeConnectorLimit\([^)]*fallback/,
 		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
@@ -357,21 +337,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/count:\s*10/,
 	],
 	"plugins/plugin-google-workspace/src/chat/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-instagram/src/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-matrix/src/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-wechat/src/index.ts": [
 		/normalizeConnectorLimit\([^)]*fallback/,
 		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
 		/Math\.max\(limit,\s*100\)/,
@@ -502,13 +467,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/max \d+ chars/i,
 		/<=\d+ (?:action|parent|visible)/i,
 	],
-	"plugins/plugin-assistant/src/features/basic-capabilities/contact-prompts.ts": [
-		/INITIAL_SUMMARIZATION_TEMPLATE/,
-		/UPDATE_SUMMARIZATION_TEMPLATE/,
-		/Keep (?:the )?answer under \d+ words/i,
-		/max \d+ chars/i,
-		/<=\d+ (?:action|parent|visible)/i,
-	],
+	"plugins/plugin-assistant/src/features/basic-capabilities/contact-prompts.ts":
+		[
+			/INITIAL_SUMMARIZATION_TEMPLATE/,
+			/UPDATE_SUMMARIZATION_TEMPLATE/,
+			/Keep (?:the )?answer under \d+ words/i,
+			/max \d+ chars/i,
+			/<=\d+ (?:action|parent|visible)/i,
+		],
 	"plugins/plugin-assistant/src/features/basic-capabilities/prompts.ts": [
 		/INITIAL_SUMMARIZATION_TEMPLATE/,
 		/UPDATE_SUMMARIZATION_TEMPLATE/,
@@ -776,39 +742,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maxHistoryPerConversation/,
 		/history\.shift\(\)/,
 	],
-	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
-		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
-		/TOOL_PAYLOAD_.*MARKER/,
-		/payload budget/i,
-	],
-	"plugins/plugin-dropbox/src/client.ts": [/bodyText\.slice\(/],
-	"plugins/plugin-dropbox/src/connector-account-provider.ts": [/body\.slice\(/],
 	"plugins/plugin-github/src/actions/issue-op.ts": [/body\.slice\(/],
 	"plugins/plugin-github/src/actions/pr-op.ts": [/body\.slice\(/],
-	"plugins/plugin-app-control/src/params.ts": [
-		/collapsed\.slice\(/,
-		/userReferenceLogView/,
-	],
-	"plugins/plugin-app-control/src/actions/app-create.ts": [
-		/tokenize\(intent\)\.slice\(/,
-		/displayLine\.replace\([^\n]+\.slice\(/,
-	],
-	"plugins/plugin-app-control/src/actions/views-create.ts": [
-		/tokenize\(intent\)\.slice\(/,
-		/displayLine\.replace\([^\n]+\.slice\(/,
-	],
 	"plugins/plugin-workflow/src/services/smithers-runtime.ts": [
 		/MAX_STDERR_CHARS/,
 		/\$\{stderr\}\$\{chunk\}`\.slice/,
 		/\$\{stdoutNoise\}\$\{line\}\\n`\.slice/,
 	],
 	"packages/training/scripts/eval/eliza1_eval_suite.py": [/toks\s*=\s*toks\[:/],
-	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
-		/truncateWellFormed/,
-	],
-	"plugins/plugin-agent-skills/src/providers/skills.ts": [
-		/scoredSkills\.slice\(1,\s*\d+\)/,
-	],
 	"plugins/plugin-calendar/src/actions/calendar-handler.ts": [
 		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
 	],
@@ -835,9 +776,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-personal-assistant/src/actions/schedule.ts": [
 		/sleepEpisodes\.slice\(/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/subscriptions.ts": [
-		/recentConversationTexts\(\{[\s\S]{0,240}limit:/,
 	],
 	"plugins/plugin-personal-assistant/src/actions/voice-call.ts": [
 		/listRelationships\(\{\s*limit:/,
@@ -887,11 +825,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/userReferenceLogView/,
 		/excludedByFilters[\s\S]{0,300}\.slice\(/,
 	],
-	"plugins/plugin-cloud-apps/src/actions/check-app-domain.ts": [
-		/MAX_DOMAINS_PER_CHECK/,
-		/domains\.slice\(/,
-		/I checked the first/,
-	],
 	"plugins/plugin-calendar/src/actions/calendar-sources.ts": [
 		/normalized \|\| fallback\)\.slice\(/,
 		/replaceControlCharacters\(value\)\.slice\(/,
@@ -924,7 +857,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/STDERR_CAP_BYTES/,
 		/capStderr\(/,
 	],
-	"packages/skills/src/formatter.ts": [/raw\.slice\(0,\s*1024\)/],
 	"plugins/plugin-personal-assistant/src/actions/autofill.ts": [
 		/truncateWellFormed/,
 	],
@@ -1064,7 +996,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/insights\.push\([^)]*\.trim\(\)\)/,
 		/(?:return|const\s+safeResponse\s*=)[^;\n]*toWellFormedUnicode\((?:response|script|value)\)/,
 	],
-	"packages/scenario-runner/src/executor.ts": [
+	"packages/testing/scenario-runner/src/executor.ts": [
 		/serialized\.slice\(/,
 		/stringifyForJudge\([^,\n]+,\s*\d/,
 		/plannerBlob\.slice\(/,
@@ -1093,12 +1025,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-computeruse/src/actor/cascade.ts": [
 		/BRAIN_MAX_ROIS/,
 		/brainOut\.roi\.slice\(0,/,
-	],
-	"packages/browser-bridge-extension/src/page-extract.ts": [
-		/normalizeText\([^\n]+,\s*\d/,
-		/currentLength\s*>=/,
-		/\.slice\(0,\s*(?:10|12|20|40)\)/,
-		/collectVisibleText\(\d/,
 	],
 	"plugins/plugin-personal-assistant/src/providers/activity-profile.ts": [
 		/tasks\s*\.slice\(/,
@@ -1160,9 +1086,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/ui/src/components/custom-actions/custom-action-form.ts": [
 		/value\.slice\(0,\s*256\)/,
 	],
-	"plugins/plugin-cloud-apps/src/providers/cloud-apps.ts": [
-		/MAX_APPS_RENDERED/,
-	],
 	"plugins/plugin-elizacloud/src/cloud-providers/model-registry.ts": [
 		/MAX_MODEL_PROVIDERS/,
 		/MAX_MODELS_PER_PROVIDER/,
@@ -1180,7 +1103,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/repos\)\]\.slice\(/,
 		/pulls\.slice\(/,
 	],
-	"plugins/plugin-app-manager/src/services/app-manager.ts": [/MAX_RUN_EVENTS/],
 	"packages/cloud/services/gateway-discord/src/gateway-manager.ts": [
 		/response\.slice\(0,\s*2000\)/,
 		/replyText\.slice\(0,\s*2000\)/,

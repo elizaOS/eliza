@@ -1,6 +1,6 @@
 /**
  * Rejects compiler declaration debris in app source trees while allowing
- * the two ambient declaration inputs that are intentionally maintained by hand.
+ * the host and renderer declaration inputs that are intentionally maintained by hand.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -11,16 +11,16 @@ const repoRoot = path.resolve(packageDir, "../..");
 const allowed = new Set([
   "packages/app/vite-env.d.ts",
   "packages/app/platforms/electrobun/src/types/web-speech.d.ts",
+  "packages/app/src/env-prefix.d.ts",
+  "packages/app/src/types/app-plugin-module-exports.d.ts",
+  "packages/app/src/types/app-plugin-modules.d.ts",
+  "packages/app/src/types/side-effect-app-modules.d.ts",
+  "packages/app/src/types/typecheck-package-shims.d.ts",
+  "packages/app/test/utils/get-free-port.d.ts",
 ]);
 const files = execFileSync(
   "git",
-  [
-    "ls-files",
-    "--cached",
-    "--others",
-    "--exclude-standard",
-    "packages/app",
-  ],
+  ["ls-files", "--cached", "--others", "--exclude-standard", "packages/app"],
   { cwd: repoRoot, encoding: "utf8" },
 )
   .split("\n")

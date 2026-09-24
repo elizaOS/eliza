@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { decideInterruptionWithModel } from "../../../../src/services/interruption-decider.ts";
 
 export default scenario({

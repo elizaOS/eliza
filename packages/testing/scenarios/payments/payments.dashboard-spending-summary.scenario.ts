@@ -1,9 +1,10 @@
 /** Scenario fixture for payments dashboard spending summary; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/
@@ -27,7 +28,7 @@ export default scenario({
     "When the owner asks how their money is being spent, the planner should call PAYMENTS in dashboard mode (or spending_summary) and the result data must carry the structured payments dashboard.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

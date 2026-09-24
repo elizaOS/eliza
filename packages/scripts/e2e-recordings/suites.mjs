@@ -55,7 +55,10 @@ export const UI_E2E_SUITES = [
     name: "android-emu",
     displayName: "Android emulator app capture",
     configDir: "packages/app",
-    command: ["node", "packages/scripts/e2e-recordings/capture-android-emu.mjs"],
+    command: [
+      "node",
+      "packages/scripts/e2e-recordings/capture-android-emu.mjs",
+    ],
     checkCommand: [
       "node",
       "packages/scripts/e2e-recordings/capture-android-emu.mjs",

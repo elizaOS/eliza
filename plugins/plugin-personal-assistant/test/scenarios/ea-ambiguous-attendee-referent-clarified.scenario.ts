@@ -5,7 +5,7 @@
  * The owner's turns stay clipped and vague on purpose: the expected behavior
  * lives in the judge rubrics, never in the owner's own words.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -23,7 +23,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

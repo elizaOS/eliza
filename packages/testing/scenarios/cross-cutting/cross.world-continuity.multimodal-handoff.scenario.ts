@@ -3,7 +3,7 @@
  * carries an image description that must be available from a linked Telegram
  * room without exposing its private capability URL in the response.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -14,7 +14,7 @@ export default scenario({
   description:
     "A described receipt image in Discord remains understandable in a linked Telegram DM while its private media URL stays undisclosed.",
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   rooms: [
     {
       id: "discord-receipts",

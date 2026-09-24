@@ -144,7 +144,7 @@ function runChild(
 ): Promise<string> {
   const fixture = path.join(
     import.meta.dirname,
-    "__fixtures__",
+    "../../test/fixtures",
     "message-interaction-claim-child.ts",
   );
   const candidates = [

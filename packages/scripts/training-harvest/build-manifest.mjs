@@ -9,7 +9,7 @@
  * This does NOT run any scenario/benchmark/e2e. It only discovers + counts.
  *
  * Families:
- *   scenario   — @elizaos/scenario-runner drives a real AgentRuntime + PGLite.
+ *   scenario   — @elizaos/testing/scenario-runner drives a real AgentRuntime + PGLite.
  *                Emits eliza_native_v1 trajectories natively via --export-native.
  *   benchmark  — moved to https://github.com/elizaOS/benchmarks; the stub
  *                family entry records the move.
@@ -68,7 +68,7 @@ const SCENARIO_DIRS = [
   .filter((rel, index, all) => all.indexOf(rel) === index)
   .sort((a, b) => a.localeCompare(b));
 
-const SCENARIO_CLI = "packages/scenario-runner/src/cli.ts";
+const SCENARIO_CLI = "packages/testing/scenario-runner/src/cli.ts";
 
 function scenarioFamily() {
   const items = [];
@@ -139,7 +139,7 @@ function scenarioFamily() {
     verdictSource:
       "report .scenarios[].status === 'passed' | native row.scenarioStatus",
     providerSeam:
-      "ELIZA_CHAT_VIA_CLI=codex → provider 'cli', model gpt-5.5, plugin @elizaos/plugin-cli-inference, reads ~/.codex/auth.json",
+      "API-backed provider selected by packages/testing/src/live-provider.ts; credentials and model settings come from the operator environment",
     items,
   };
 }
@@ -181,13 +181,13 @@ function e2eFamily() {
     trajectoryWiring:
       "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
     providerSeam:
-      "Same ELIZA_CHAT_VIA_CLI=codex seam; the live-provider helper (packages/app/test/helpers/live-provider.ts) already recognizes CLI backends.",
+      "API-backed provider selected by packages/app/test/helpers/live-provider.ts.",
     liveLaneCount: live.length,
     lanes: live.sort(),
     scriptedRealServices: [
-      "packages/scenario-runner/scripts/real-llm-attachment-smoke.mjs",
-      "packages/scenario-runner/scripts/real-service-audio-roundtrip.mjs",
-      "packages/scenario-runner/scripts/real-service-voice-e2e.mjs",
+      "packages/testing/scenario-runner/scripts/real-llm-attachment-smoke.mjs",
+      "packages/testing/scenario-runner/scripts/real-service-audio-roundtrip.mjs",
+      "packages/testing/scenario-runner/scripts/real-service-voice-e2e.mjs",
     ],
   };
 }
@@ -197,18 +197,11 @@ const manifest = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   repoRoot: REPO_ROOT,
-  goal: "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
+  goal: "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   provider: {
-    mechanism:
-      "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/testing/src/live-provider.ts selectCliProvider)",
-    backend: "codex",
-    model: "gpt-5.5",
-    modelOverrideEnv: "ELIZA_CLI_CODEX_MODEL",
-    plugin: "@elizaos/plugin-cli-inference",
-    credentialsPath:
-      "~/.codex/auth.json (ChatGPT-OAuth; eliza never sees the token)",
-    env: { ELIZA_CHAT_VIA_CLI: "codex", ELIZA_CLI_CODEX_MODEL: "gpt-5.5" },
-    note: "Stage-1 leg S1 proves ONE real scenario through this seam live. The driver consumes S1's proven provider env verbatim.",
+    mechanism: "API provider selected by packages/testing/src/live-provider.ts",
+    configuration: "Supply provider credentials and model settings through --provider-env or inherited environment variables.",
+    note: "Validate a real scenario with the chosen provider before starting a full harvest.",
   },
   trajectoryFormat: {
     name: "eliza_native_v1",
@@ -216,7 +209,7 @@ const manifest = {
       "packages/core/src/services/trajectory-types.ts (ElizaNativeTrajectoryRow)",
     contract: "packages/training/docs/dataset/CANONICAL_RECORD.md",
     converter:
-      "packages/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
+      "packages/testing/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
     trainingPrep:
       "packages/training/scripts/prepare_eliza1_trajectory_dataset.py",
   },

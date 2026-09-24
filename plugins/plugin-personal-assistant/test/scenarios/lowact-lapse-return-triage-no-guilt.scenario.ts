@@ -18,7 +18,7 @@
  * shame-free, one tiny restart step) and definitionCountDelta proves the single
  * agreed tiny step was actually scheduled — not the whole overdue backlog.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

@@ -129,21 +129,6 @@ test("audit:app is the sole maintained app visual crawler", () => {
   );
 });
 
-test("contribution rubric documents the exact-bundle reviewer command", () => {
-  const rubric = readFileSync(
-    path.join(
-      REPO_ROOT,
-      "packages/skills/skills/contribute-to-eliza/references/evidence-review-rubric.md",
-    ),
-    "utf8",
-  );
-  assert.match(
-    rubric,
-    /evidence:review:no-open -- --bundle=evidence\/runs\/<run-id>/,
-  );
-  assert.doesNotMatch(rubric, /test:matrix:review -- --bundle/);
-});
-
 test("can skip device lanes while keeping test and visual evidence lanes", () => {
   const options = parseMatrixArgs(["--skip-devices"]);
   const steps = selectMatrixSteps(MATRIX_STEPS, options);

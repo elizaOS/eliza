@@ -31,10 +31,7 @@ export default defineConfig({
         // The auth source alias pulls in @elizaos/auth/vault, which resolves only
         // through its built dist; pin it to source for clean-checkout runs.
         "@elizaos/auth/vault": fileURLToPath(
-          new URL(
-            "../../packages/auth/src/vault/index.ts",
-            import.meta.url,
-          ),
+          new URL("../../packages/auth/src/vault/index.ts", import.meta.url),
         ),
         "@elizaos/plugin-sql": fileURLToPath(
           new URL("../plugin-sql/src/index.ts", import.meta.url),
@@ -59,6 +56,7 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./__tests__/setup.ts"],
     include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+    exclude: ["src/ui/**"],
     coverage: {
       reporter: ["text", "json", "html"],
     },

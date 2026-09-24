@@ -11,11 +11,11 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 
@@ -48,7 +48,7 @@ export default scenario({
   tags: ["lifeops", "cross-channel", "routing", "urgent", "channel-selection"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

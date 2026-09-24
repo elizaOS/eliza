@@ -1,9 +1,10 @@
 /** Scenario fixture for bluebubbles imessage send blue; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectMemoryWrite,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -15,7 +16,7 @@ export default scenario({
     "The first turn must ask for confirmation. After the explicit yes, MESSAGE should route through BlueBubbles and persist the outbound message.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

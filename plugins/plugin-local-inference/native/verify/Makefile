@@ -467,8 +467,8 @@ cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 # libraries and times their dispatched SIMD entrypoints (AVX-VNNI / AVX2
 # / NEON-dotprod) at the production attention workload, with a thread
 # sweep. Requires the plugin libs — built here via cmake first.
-QJL_CPU_DIR     = ../../../../packages/native-plugins/qjl-cpu
-POLAR_CPU_DIR   = ../../../../packages/native-plugins/polarquant-cpu
+QJL_CPU_DIR     = ../qjl-cpu
+POLAR_CPU_DIR   = ../polarquant-cpu
 QJL_CPU_LIB     = $(QJL_CPU_DIR)/build/libqjl.a
 POLAR_CPU_LIB   = $(POLAR_CPU_DIR)/build/libpolarquant.a
 

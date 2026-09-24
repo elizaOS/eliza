@@ -4,14 +4,13 @@
  * visible consumer, parsing, cancellation and ambient scope remain real.
  */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import {
-  AgentRuntime,
+  type AgentRuntime,
   getStreamingContext,
   ModelType,
   runWithStreamingContext,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
 import { rewriteActionCallbackInCharacter } from "./delivery";
 import { reviewRecoveredReply } from "./recovery-grounding";
@@ -68,7 +67,7 @@ const cases = [
 function makeRuntime() {
   return createSQLiteTestRuntime({
     character: { name: "Recovery", bio: "test", settings: {} },
-    
+
     logLevel: "fatal",
   });
 }

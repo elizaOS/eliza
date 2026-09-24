@@ -13,5 +13,7 @@ declare module "sql.js/dist/sql-asm.js" {
     getRowsModified(): number;
     close(): void;
   }
-  export default function initSqlJs(): Promise<{ Database: new () => Database }>;
+  export default function initSqlJs(): Promise<{
+    Database: new () => Database;
+  }>;
 }

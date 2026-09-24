@@ -1,14 +1,13 @@
 /** Scenario fixture for connector browser portal certify core; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+
 import {
   expectScenarioBrowserTask,
+  expectScenarioToCallAction,
   expectTurnBrowserTask,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  expectTurnToCallAction,
+  judgeRubric,
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -24,7 +23,7 @@ export default scenario({
     "Connector certification for browser automation uploads, blocked-state intervention, resumable portal sessions, and provenance after completion.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

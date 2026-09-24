@@ -20,7 +20,7 @@ cannot be combined with deterministic mode.
 ```bash
 SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1 \
   bun --conditions eliza-source --tsconfig-override tsconfig.json \
-  packages/scenario-runner/src/cli.ts run packages/testing/scenarios \
+  packages/testing/scenario-runner/src/cli.ts run packages/testing/scenarios \
   --scenario cross.live-information-routing --lane live-only \
   --provider openai --run-dir /tmp/live-info-openai/run \
   --report-dir /tmp/live-info-openai/report \

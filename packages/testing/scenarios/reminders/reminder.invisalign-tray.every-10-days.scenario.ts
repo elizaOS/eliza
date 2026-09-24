@@ -1,5 +1,5 @@
 /** Scenario fixture for reminder invisalign tray every 10 days; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -9,7 +9,7 @@ export default scenario({
   tags: ["lifeops", "reminders", "smoke", "critical", "happy-path"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

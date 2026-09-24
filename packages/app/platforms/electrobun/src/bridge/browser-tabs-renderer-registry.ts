@@ -14,47 +14,47 @@
  */
 
 export type BrowserTabsRendererImpl = {
-  evaluate: (
-    id: string,
-    script: string,
-    timeoutMs: number,
-  ) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
-  getTabRect: (id: string) => Promise<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>;
+	evaluate: (
+		id: string,
+		script: string,
+		timeoutMs: number,
+	) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
+	getTabRect: (id: string) => Promise<{
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} | null>;
 };
 
 const REGISTRY_KEY = "__ELIZA_BROWSER_TABS_REGISTRY__" as const;
 
 declare global {
-  interface Window {
-    [REGISTRY_KEY]?: BrowserTabsRendererImpl;
-  }
+	interface Window {
+		[REGISTRY_KEY]?: BrowserTabsRendererImpl;
+	}
 }
 
 const NOT_ATTACHED: BrowserTabsRendererImpl = {
-  evaluate: async (id) => ({
-    ok: false,
-    error: `BrowserWorkspaceView is not mounted — cannot evaluate tab ${id}`,
-  }),
-  getTabRect: async () => null,
+	evaluate: async (id) => ({
+		ok: false,
+		error: `BrowserWorkspaceView is not mounted — cannot evaluate tab ${id}`,
+	}),
+	getTabRect: async () => null,
 };
 
 export function getBrowserTabsRendererImpl(): BrowserTabsRendererImpl {
-  if (typeof window === "undefined") return NOT_ATTACHED;
-  return window[REGISTRY_KEY] ?? NOT_ATTACHED;
+	if (typeof window === "undefined") return NOT_ATTACHED;
+	return window[REGISTRY_KEY] ?? NOT_ATTACHED;
 }
 
 export function setBrowserTabsRendererImpl(
-  impl: BrowserTabsRendererImpl | null,
+	impl: BrowserTabsRendererImpl | null,
 ): void {
-  if (typeof window === "undefined") return;
-  if (impl) {
-    window[REGISTRY_KEY] = impl;
-  } else {
-    delete window[REGISTRY_KEY];
-  }
+	if (typeof window === "undefined") return;
+	if (impl) {
+		window[REGISTRY_KEY] = impl;
+	} else {
+		delete window[REGISTRY_KEY];
+	}
 }

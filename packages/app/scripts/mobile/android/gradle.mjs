@@ -4,6 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.mjs";
 import {
+  CAPACITOR_PLUGIN_NAMES,
+  resolveNativePluginDir,
+} from "../../lib/capacitor-plugin-names.mjs";
+import {
   resolvePackageAbsolutePath,
   resolvePackageAbsolutePathCandidates,
 } from "../build-tools.mjs";
@@ -13,7 +17,6 @@ import {
   androidUsesAppDir,
   appDir,
   elizaRepoRoot,
-  nativePluginsDir,
   platformsDir,
   repoRoot,
 } from "../context.mjs";
@@ -95,14 +98,10 @@ export function stageBackgroundRunnerAndroidJsEngineAar() {
 }
 
 export function patchNativePluginGradleForAgp9() {
-  if (!fs.existsSync(nativePluginsDir)) return;
-  for (const entry of fs.readdirSync(nativePluginsDir, {
-    withFileTypes: true,
-  })) {
-    if (!entry.isDirectory()) continue;
+  for (const name of CAPACITOR_PLUGIN_NAMES) {
     patchGradleFileForAgp9(
-      path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
-      `@elizaos/capacitor-${entry.name}`,
+      path.join(resolveNativePluginDir(name), "android", "build.gradle"),
+      `plugin-native-${name}`,
     );
   }
 }

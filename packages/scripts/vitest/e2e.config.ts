@@ -13,8 +13,8 @@ export const checkoutDependentE2EPaths = [
   // These suites depend on the coding-agent coordinator surface and are run
   // via the focused coding-agent lane instead of the default deterministic E2E
   // matrix.
-  "plugins/plugin-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
-  "plugins/plugin-task-coordinator/test/quicksort-coding-agent.live.e2e.test.ts",
+  "plugins/plugin-agent-orchestrator/ui/test/coding-agent-codex-artifact.live.e2e.test.ts",
+  "plugins/plugin-agent-orchestrator/ui/test/quicksort-coding-agent.live.e2e.test.ts",
 ];
 
 export const specializedLiveE2EPaths = [

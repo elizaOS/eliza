@@ -10,7 +10,7 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const WALLET = "WALLET";
 // USDC mainnet contract — used only as a deterministic lookup key for the mock.

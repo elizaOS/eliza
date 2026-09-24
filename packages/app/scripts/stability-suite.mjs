@@ -250,7 +250,7 @@ function writeScoreboard(scoreboardPath, results, ctx) {
 \`runtime/memory-watchdog.ts\` requests a clean restart (via \`requestRestart()\` →
 supervisor) when RSS holds at/above \`ELIZA_MEMORY_WATCHDOG_RSS_MB\` for
 \`ELIZA_MEMORY_WATCHDOG_SUSTAINED\` samples. Unit-proven in
-\`packages/agent/src/runtime/__tests__/memory-watchdog.test.ts\`; the supervisor
+\`packages/agent/src/runtime/memory-watchdog.test.ts\`; the supervisor
 relaunch it depends on is proven by the supervisor-recovery lane above.
 
 ## Other surfaces (evidence-gated — own lanes)

@@ -20,6 +20,12 @@
       "eliza-source": "./src/prompts/response-policy.ts",
       "import": "./dist/prompts/response-policy.js",
       "default": "./dist/prompts/response-policy.js"
+    },
+    "./actions/generate-media": {
+      "types": "./dist/actions/generate-media.d.ts",
+      "eliza-source": "./src/features/advanced-capabilities/actions/generateMedia.ts",
+      "import": "./dist/actions/generate-media.js",
+      "default": "./dist/actions/generate-media.js"
     }
   },
   "files": [

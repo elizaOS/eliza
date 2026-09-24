@@ -15,6 +15,12 @@
     "noEmit": true,
     "paths": {
       "@elizaos/testing": ["../testing/src/index.ts"],
+      "@elizaos/plugin-assistant": [
+        "../../plugins/plugin-assistant/src/index.ts"
+      ],
+      "@elizaos/plugin-assistant/actions/generate-media": [
+        "../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/generateMedia.ts"
+      ],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/edge": ["../core/src/index.edge.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
@@ -47,22 +53,6 @@
         "../../plugins/plugin-coding-tools/src/*"
       ],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
-      "@elizaos/plugin-agent-skills": [
-        "../../plugins/plugin-agent-skills/src/index.ts"
-      ],
-      "@elizaos/plugin-app-manager": [
-        "../../plugins/plugin-app-manager/src/index.ts"
-      ],
-      "@elizaos/plugin-app-control": [
-        "../../plugins/plugin-app-control/src/index.ts"
-      ],
-      "@elizaos/plugin-app-control/*": [
-        "../../plugins/plugin-app-control/src/*"
-      ],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/src/index.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet/diagnostic": [
         "../../plugins/plugin-wallet/src/diagnostic.ts"
@@ -78,8 +68,8 @@
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/plugin-task-coordinator": [
-        "../../plugins/plugin-task-coordinator/src/index.ts"
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-native-contacts": [
         "../../plugins/plugin-native-contacts/src/index.ts"
@@ -96,18 +86,12 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-commands": [
-        "../../plugins/plugin-commands/src/index.ts"
-      ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
       "@elizaos/plugin-computeruse/mobile/ocr-provider": [
         "../../plugins/plugin-computeruse/src/mobile/ocr-provider.ts"
-      ],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
       ],
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/src/index.ts"
@@ -126,7 +110,6 @@
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
-      "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud": [
@@ -152,7 +135,6 @@
       "@elizaos/plugin-meetings": [
         "../../plugins/plugin-meetings/src/index.ts"
       ],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
       ],
@@ -207,8 +189,11 @@
       ],
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
-      ]
+      ],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/plugin-anthropic": ["../../plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "test", "scripts/**/*.test.ts"]
 }

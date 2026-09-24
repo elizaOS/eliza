@@ -13,8 +13,8 @@ import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   createCalendarFeedConflictLoader,
   registerConflictDetectHostAdapter,
@@ -419,7 +419,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "conflict", "outcome", "declined"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

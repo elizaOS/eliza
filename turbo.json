@@ -25,9 +25,16 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "env": [
+        "LOG_LEVEL"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
       "inputs": [
         "src/**",
         "**/*.ts",
@@ -81,10 +88,16 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": ["dist/**", "web-dist/**"]
+      "outputs": [
+        "dist/**",
+        "web-dist/**"
+      ]
     },
     "@elizaos/cloud-api#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/ui#build": {
@@ -93,69 +106,86 @@
         "@elizaos/shared#build",
         "@elizaos/capacitor-secure-store#build"
       ],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
+      "env": [
+        "LOG_LEVEL"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "@elizaos/cloud-routing#build": {
       "dependsOn": [],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**"
+      ]
     },
     "@elizaos/electrobun#build": {
-      "dependsOn": ["@elizaos/app#build:dist", "^build"],
+      "dependsOn": [
+        "@elizaos/app#build:dist",
+        "^build"
+      ],
       "cache": false,
       "outputs": []
     },
-    "@elizaos/plugin-app-control#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
-    },
     "@elizaos/plugin-pdf#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/plugin-wallet#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/plugin-sql#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/plugin-assistant#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/native-activity-tracker#build": {
-      "dependsOn": ["@elizaos/core#build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/scenario-runner#build": {
       "dependsOn": [
         "@elizaos/core#build",
-        "@elizaos/agent#build",
-        "@elizaos/shared#build",
-        "@elizaos/auth#build",
-        "@elizaos/app#build:dist",
-        "@elizaos/plugin-personal-assistant#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-telegram#build",
-        "@elizaos/plugin-browser#build",
-        "@elizaos/plugin-elizacloud#build",
-        "@elizaos/ui#build"
+        "^build"
       ],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@elizaos/plugin-wallet#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@elizaos/plugin-sql#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@elizaos/plugin-assistant#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@elizaos/native-activity-tracker#build": {
+      "dependsOn": [
+        "@elizaos/core#build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "lint": {
       "outputs": [],
       "dependsOn": []
     },
     "@elizaos/capacitor-gateway#lint": {
-      "env": ["DEVELOPER_DIR"],
+      "env": [
+        "DEVELOPER_DIR"
+      ],
       "outputs": [],
       "dependsOn": []
     },
     "@elizaos/capacitor-gateway#lint:check": {
-      "env": ["DEVELOPER_DIR"],
+      "env": [
+        "DEVELOPER_DIR"
+      ],
       "outputs": [],
       "dependsOn": []
     },
@@ -184,14 +214,11 @@
         "@elizaos/shared#build",
         "@elizaos/ui#build",
         "@elizaos/app#build:dist",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-control#build",
-        "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-calendar#build",
         "@elizaos/plugin-inbox#build",
         "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-task-coordinator#build"
+        "@elizaos/plugin-agent-orchestrator#build"
       ],
       "outputs": []
     },
@@ -200,13 +227,10 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/ui#build",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-control#build",
-        "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-inbox#build",
         "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-task-coordinator#build",
+        "@elizaos/plugin-agent-orchestrator#build",
         "@elizaos/plugin-video#build"
       ],
       "outputs": []
@@ -221,15 +245,15 @@
       "outputs": []
     },
     "@elizaos/cloud-api#typecheck": {
-      "dependsOn": ["@elizaos/cloud-shared#typecheck"],
+      "dependsOn": [
+        "@elizaos/cloud-shared#typecheck"
+      ],
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
       "dependsOn": [
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
-        "@elizaos/plugin-cloud-apps#build",
-        "@elizaos/plugin-doordash#build",
         "@elizaos/plugin-sqlite#build",
         "@elizaos/plugin-scheduling#build",
         "@elizaos/plugin-todos#build",
@@ -238,11 +262,16 @@
       "outputs": []
     },
     "@elizaos/plugin-discord#typecheck": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": ["@elizaos/ui#build", "@elizaos/plugin-scheduling#build"],
+      "dependsOn": [
+        "@elizaos/ui#build",
+        "@elizaos/plugin-scheduling#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
@@ -250,7 +279,6 @@
         "@elizaos/agent#build",
         "@elizaos/plugin-blocker#build",
         "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-finances#build",
         "@elizaos/plugin-goals#build",
         "@elizaos/plugin-health#build",
         "@elizaos/plugin-inbox#build",
@@ -259,26 +287,26 @@
         "@elizaos/plugin-x#build",
         "@elizaos/capacitor-mobile-signals#build",
         "@elizaos/macosreminders#build",
-        "@elizaos/native-activity-tracker#build"
+        "@elizaos/native-activity-tracker#build",
+        "@elizaos/app#build:dist"
       ],
       "outputs": []
     },
     "@elizaos/plugin-vision#typecheck": {
-      "dependsOn": ["@elizaos/plugin-computeruse#build"],
+      "dependsOn": [
+        "@elizaos/plugin-computeruse#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-native-contacts#typecheck": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-native-inference#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/scenario-runner#typecheck": {
       "dependsOn": [
-        "@elizaos/capacitor-bun-runtime#build",
-        "@elizaos/plugin-browser#build",
+        "@elizaos/core#build",
         "^build"
       ],
       "outputs": []
@@ -292,62 +320,55 @@
       "dependsOn": []
     },
     "start": {
-      "dependsOn": ["@elizaos/core#build"],
-      "env": ["LOG_LEVEL"],
+      "dependsOn": [
+        "@elizaos/core#build"
+      ],
+      "env": [
+        "LOG_LEVEL"
+      ],
       "cache": false,
       "persistent": true
     },
     "dev": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": [
+        "@elizaos/core#build"
+      ],
       "cache": false,
       "persistent": true
     },
     "migrate": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": [
+        "@elizaos/core#build"
+      ],
       "cache": false
     },
     "migrate:generate": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": [
+        "@elizaos/core#build"
+      ],
       "cache": false
     },
     "clean": {
       "cache": false,
       "dependsOn": []
     },
-    "@elizaos/ios-native-deps#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "env": [
-        "DEVELOPER_DIR",
-        "ELIZA_IOS_MIN_VERSION",
-        "ELIZA_LLAMA_BUILD_IOS",
-        "ELIZA_LLAMA_FORCE_REBUILD",
-        "ELIZA_LLAMA_SIM_METAL",
-        "ELIZA_SQLITE_VEC_BUILD_IOS",
-        "ELIZA_SQLITE_VEC_FORCE_REBUILD",
-        "LLAMA_CPP_REPO",
-        "SQLITE_VEC_REPO"
-      ],
-      "inputs": [
-        "package.json",
-        "VERSIONS",
-        "llama.cpp/build-ios.sh",
-        "llama.cpp/shim/**",
-        "sqlite-vec/build-ios.sh"
+    "@elizaos/plugin-native-inference#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "^build"
       ],
       "outputs": [
-        ".turbo/native-deps-build/**",
-        "llama.cpp/dist/**",
-        "sqlite-vec/dist/**"
+        "dist/**"
       ]
-    },
-    "@elizaos/plugin-native-inference#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["dist/**"]
     },
     "@elizaos/core#build": {
       "dependsOn": [],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
+      "env": [
+        "LOG_LEVEL"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
       "inputs": [
         "src/**",
         "build.ts",
@@ -376,7 +397,17 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@elizaos/testing#typecheck": {
+      "dependsOn": [
+        "@elizaos/capacitor-bun-runtime#build",
+        "@elizaos/plugin-browser#build",
+        "^build"
+      ],
+      "outputs": []
     }
   }
 }

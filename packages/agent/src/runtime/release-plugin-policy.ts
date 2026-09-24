@@ -30,8 +30,6 @@ const BASELINE_DESKTOP_RUNTIME_PLUGINS = [
 // to ship in the runtime bundle, but are not auto-loaded by collectPluginNames.
 const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-health",
-  "@elizaos/plugin-app-manager",
-  "@elizaos/plugin-registry",
   "@elizaos/plugin-wallet",
   "@elizaos/plugin-imessage",
   "@elizaos/ui",
@@ -44,7 +42,7 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   // pins `/api/health` `startup.phase` at "degraded" forever, and the desktop
   // shell's boot-progress gate (which requires phase "running") then never
   // reports the runtime ready — the app renders no UI at all.
-  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-notes",
   "@elizaos/plugin-calendar",

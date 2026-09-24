@@ -6,14 +6,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const benchmarkSource = readFileSync(
-  new URL("../scripts/bench-cloud-login.mjs", import.meta.url),
-  "utf8",
+	new URL("../scripts/bench-cloud-login.mjs", import.meta.url),
+	"utf8",
 );
 
 describe("cloud-login benchmark session identity", () => {
-  it("uses cryptographic UUIDs without a Math.random downgrade", () => {
-    expect(benchmarkSource).toContain('import crypto from "node:crypto"');
-    expect(benchmarkSource).toContain("crypto.randomUUID()");
-    expect(benchmarkSource).not.toContain("Math.random");
-  });
+	it("uses cryptographic UUIDs without a Math.random downgrade", () => {
+		expect(benchmarkSource).toContain('import crypto from "node:crypto"');
+		expect(benchmarkSource).toContain("crypto.randomUUID()");
+		expect(benchmarkSource).not.toContain("Math.random");
+	});
 });

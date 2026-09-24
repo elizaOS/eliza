@@ -36,8 +36,8 @@ bun install
 bun run verify
 ```
 
-Keep package-local instructions in view. Read root `AGENTS.md` or `CLAUDE.md`,
-then the package-local `AGENTS.md` or `CLAUDE.md` before touching that package.
+Keep package-local instructions in view. Read root `AGENTS.md`,
+then the package-local `AGENTS.md` before touching that package.
 
 ## Issue and test quality gate
 
@@ -258,7 +258,7 @@ Useful commands:
 
 ```bash
 # Real-LLM agent trajectories
-packages/scenario-runner/bin/eliza-scenarios run <scenario.ts> --report <out.json>
+packages/testing/scenario-runner/bin/eliza-scenarios run <scenario.ts> --report <out.json>
 
 # E2E UI recordings
 bun run test:e2e:record:review

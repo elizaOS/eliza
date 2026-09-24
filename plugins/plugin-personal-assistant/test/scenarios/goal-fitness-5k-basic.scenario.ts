@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (LLM-judged): a fitness goal must be grounded before it is previewed and saved, proving the goal loop is not sleep-specific.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "goals", "fitness", "mvp"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -3,13 +3,13 @@
  * to Alice. Expected action: UPDATE_CONTACT.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   callPayloadBlob,
   describeCalls,
   successfulCalls,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function expectAliceSundanceUpdate(ctx: ScenarioContext): string | undefined {
   if (successfulCalls(ctx, "UPDATE_CONTACT").length === 0) {
@@ -36,7 +36,7 @@ export default scenario({
 
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
 
   rooms: [

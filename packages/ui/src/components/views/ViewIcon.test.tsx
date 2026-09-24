@@ -221,7 +221,7 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
       ["Relationships", "@elizaos/plugin-relationships", "lucide-network"],
       [
         "Task Coordinator",
-        "@elizaos/plugin-task-coordinator",
+        "@elizaos/plugin-agent-orchestrator",
         "lucide-square-terminal",
       ],
       ["Todos", "@elizaos/plugin-todos", "lucide-list-todo"],

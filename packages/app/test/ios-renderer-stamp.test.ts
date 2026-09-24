@@ -140,7 +140,7 @@ describe("freshRendererManifestPath", () => {
         "/repo",
         "packages",
         "app",
-        "dist",
+        "web-dist",
         "eliza-renderer-build.json",
       ),
     );

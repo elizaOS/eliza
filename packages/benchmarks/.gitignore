@@ -1,0 +1,28 @@
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+benchmark_results/
+results/
+*.log
+.DS_Store
+.env
+.pytest_cache/
+.ruff_cache/
+coverage/
+
+# Downloaded benchmark datasets (fetched by registry commands)
+benchmark-data/
+
+# Local benchmark artifacts and reproducible audit reports
+*_results/
+*.egg-info/
+.mypy_cache/
+/htmlcov/
+/suites/lifeops-bench/corpus-audit.json
+/suites/lifeops-bench/CORPUS_AUDIT.md

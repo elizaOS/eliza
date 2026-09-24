@@ -156,7 +156,7 @@ test("infers the standard evidence source directories", () => {
     "walkthrough",
   );
   assert.equal(
-    inferSource(root, "/repo/packages/scenario-runner/reports/run.jsonl"),
+    inferSource(root, "/repo/packages/testing/scenario-runner/reports/run.jsonl"),
     "scenario-runner",
   );
   assert.equal(inferSource(root, "/repo/evidence/matrix-run.json"), "evidence");
@@ -257,7 +257,8 @@ test("zero-argument bundle resolution selects the newest finalized run", async (
 });
 
 test("bundle review never silently truncates a verified manifest", {
-  timeout: 30_000,
+  // The real CLI verifies and copies every artifact before rendering the review.
+  timeout: 120_000,
 }, async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-complete-"));
   try {

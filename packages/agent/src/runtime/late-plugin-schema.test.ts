@@ -2,11 +2,13 @@
  * Proves late plugin schemas materialize in an isolated PGlite database before the
  * runtime publishes the plugin or starts services that query those tables.
  */
+
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
+import type { UUID } from "@elizaos/core";
 import {
   AgentRuntime,
   createCharacter,
@@ -63,8 +65,8 @@ class PGliteMigrationAdapter extends SQLiteDatabaseAdapter {
   maxConcurrentTransactions = 0;
   transactionReceiverWasAdapterDb = true;
 
-  constructor(dataDir: string) {
-    super();
+  constructor(dataDir: string, agentId: UUID) {
+    super(":memory:", agentId);
     this.pglite = new PGlite(dataDir, { extensions: { vector } });
     this.pgliteDb = drizzle(this.pglite);
     const adapterDb = this.db;
@@ -153,7 +155,7 @@ describe("late plugin schema ordering", () => {
   }> {
     dataDir = await mkdtemp(path.join(tmpdir(), "eliza-late-schema-"));
     const agentId = stringToUuid("late-schema-integration");
-    const adapter = new PGliteMigrationAdapter(dataDir);
+    const adapter = new PGliteMigrationAdapter(dataDir, agentId);
     await adapter.initialize();
     runtime = new AgentRuntime({
       character: createCharacter({

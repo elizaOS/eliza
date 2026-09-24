@@ -23,10 +23,10 @@ const PROMPT_SCAN_TS_ROOTS = [
 const PROMPT_SCAN_FILES = [
   "packages/core/src/prompts.ts",
   "packages/core/src/services/message.ts",
-  "plugins/plugin-music/src/actions/music-player-action-docs.ts",
 ];
 
 const PROMPT_SCAN_FILE_PATTERNS = [
+  /(^|\/)actions\/[^/]+-action-docs\.ts$/,
   /(^|[/-])prompts?\.ts$/,
   /(^|\/)prompts\/[^/]+\.ts$/,
   /(^|\/)workflow-prompts\/[^/]+\.ts$/,

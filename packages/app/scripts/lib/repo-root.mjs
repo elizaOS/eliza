@@ -12,9 +12,7 @@ function looksLikeConsumerRoot(dir) {
     existsSync(path.join(dir, "package.json")) &&
     (existsSync(path.join(dir, "packages", "app", "package.json")) ||
       existsSync(path.join(dir, "apps", "app", "package.json"))) &&
-    (existsSync(
-      path.join(dir, "eliza", "packages", "app", "package.json"),
-    ) ||
+    (existsSync(path.join(dir, "eliza", "packages", "app", "package.json")) ||
       existsSync(path.join(dir, "scripts", "run-eliza-app-script.mjs")))
   );
 }

@@ -11,8 +11,9 @@
  * so the registry can pass `unknown`.
  */
 
-import { ChannelType, type Content, type UUID } from "@elizaos/core";
 import {
+  ChannelType,
+  type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
   type DispatchSensitiveRequest,
@@ -23,6 +24,7 @@ import {
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestSecretTarget,
   type TargetInfo,
+  type UUID,
 } from "@elizaos/core";
 
 /**

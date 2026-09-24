@@ -249,10 +249,8 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-anthropic",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-sql",
-    "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
     "@elizaos/plugin-telegram",
-    "@elizaos/plugin-whatsapp",
     // Node-only edge-tts backend. app's runtime/ensure-text-to-speech-handler.ts
     // does `await import("@elizaos/plugin-edge-tts")`; the dist barrel pulls that
     // module into the client graph where it must be stubbed (no browser TTS path).
@@ -262,11 +260,6 @@ export function nativeModuleStubPlugin(
     // re-exports symbols from it via api/server.js — stub the bare
     // specifier so rollup's static named-import scan succeeds.
     "@elizaos/plugin-elizacloud",
-    // Plugin registry owns server-side install/discovery HTTP handlers.
-    // app's browser reach-through re-exports api/server.ts, so the
-    // renderer must resolve the symbol surface without bundling the server
-    // registry package and its agent-only dependency graph.
-    "@elizaos/plugin-registry",
     // Vault is server/native-only; browser reaches it through optional
     // autofill paths and must not resolve the OS-keychain dependency graph.
     "@elizaos/auth/vault",
@@ -743,23 +736,6 @@ export function nativeModuleStubPlugin(
           "export const DEFAULT_CLOUD_CONFIG = { enabled: false };",
           "export class CloudApiError extends Error {}",
           "export class InsufficientCreditsError extends Error {}",
-          "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
-        ].join("\n");
-      }
-
-      if (strippedId === "@elizaos/plugin-registry") {
-        return [
-          "const noop = () => undefined;",
-          "const asyncFalse = async () => false;",
-          "const emptyPluginList = () => ({ plugins: [], categories: [], installed: [] });",
-          "export const buildPluginListResponse = emptyPluginList;",
-          "export const handlePluginRoutes = asyncFalse;",
-          "export const handlePluginsCompatRoutes = asyncFalse;",
-          "export const installAndRestart = noop;",
-          "export const installPlugin = noop;",
-          "export const listInstalledPlugins = () => [];",
-          "export const uninstallAndRestart = noop;",
-          "export const uninstallPlugin = noop;",
           "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
         ].join("\n");
       }

@@ -555,7 +555,7 @@ describe("document-list capability contract", () => {
 	});
 });
 
-it("rechecks current in-memory membership for grants while preserving owner authority", async () => {
+it("rechecks current SQLite membership for grants while preserving owner authority", async () => {
 	const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 	const source = document(900);
 	const grantee = "00000000-0000-0000-0000-00000000c0df" as UUID;
@@ -610,4 +610,5 @@ it("rechecks current in-memory membership for grants while preserving owner auth
 		}),
 	).resolves.toMatchObject({ status: "updated" });
 	await expect(adapter.getDocument(reader)).resolves.toBeNull();
+	await adapter.close();
 });

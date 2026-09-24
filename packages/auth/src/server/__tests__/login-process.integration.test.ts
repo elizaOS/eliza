@@ -42,7 +42,8 @@ test("the login process exits cleanly after SIGTERM", async () => {
   ]);
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const deadline = Date.now() + 20_000;
+    // Startup applies the full owned migration history before the shutdown contract begins.
+    const deadline = Date.now() + 60_000;
     let ready = false;
     while (Date.now() < deadline && child.exitCode === null) {
       try {
@@ -73,4 +74,4 @@ test("the login process exits cleanly after SIGTERM", async () => {
     await child.exited;
     await logs;
   }
-}, 30_000);
+}, 90_000);

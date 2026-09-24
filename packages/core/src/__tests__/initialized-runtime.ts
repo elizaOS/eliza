@@ -3,7 +3,7 @@
 
 import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach } from "vitest";
-import { AgentRuntime } from "../runtime";
+import type { AgentRuntime } from "../runtime";
 
 const runtimes = new Set<AgentRuntime>();
 export async function createInitializedRuntime(

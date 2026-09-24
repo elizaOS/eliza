@@ -41,7 +41,12 @@ import {
 } from "./check-pr-evidence.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const TEMPLATE_PATH = join(HERE, "../..", ".github", "pull_request_template.md");
+const TEMPLATE_PATH = join(
+  HERE,
+  "../..",
+  ".github",
+  "pull_request_template.md",
+);
 const RETIRED_REPO_EVIDENCE_PATH = [
   ".github",
   ["issue", "evidence"].join("-"),
@@ -860,7 +865,7 @@ describe("check-pr-evidence row primitives", () => {
   it("accepts non-repo evidence directories in the diff", () => {
     assert.deepEqual(
       findRetiredRepoEvidenceFiles([
-        "packages/evidence/src/schema.ts",
+        "packages/testing/evidence/schema.ts",
         "packages/app/test-results/issue-evidence/report.json",
       ]),
       [],

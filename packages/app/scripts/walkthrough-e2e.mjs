@@ -514,7 +514,15 @@ async function main() {
     if (!args.reviewerPreflighted) {
       const preflight = await run(
         process.execPath,
-        [join(REPO_ROOT, "packages", "scripts", "ai-qa", "reviewer-preflight.mjs")],
+        [
+          join(
+            REPO_ROOT,
+            "packages",
+            "scripts",
+            "ai-qa",
+            "reviewer-preflight.mjs",
+          ),
+        ],
         { cwd: REPO_ROOT, env: childEnv },
       );
       if (preflight.code !== 0) {
@@ -578,7 +586,13 @@ async function main() {
     const review = await run(
       process.execPath,
       [
-        join(REPO_ROOT, "packages", "scripts", "ai-qa", "review-walkthrough.mjs"),
+        join(
+          REPO_ROOT,
+          "packages",
+          "scripts",
+          "ai-qa",
+          "review-walkthrough.mjs",
+        ),
         "--run-dir",
         runDir,
         "--verdict-md",

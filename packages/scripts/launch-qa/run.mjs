@@ -57,10 +57,10 @@ const TASKS = [
       "run",
       "--config",
       "packages/agent/vitest.config.ts",
-      "packages/agent/test/runtime/operations/vault-integration.test.ts",
+      "packages/agent/src/runtime/operations/vault-integration.test.ts",
     ],
     requiredFiles: [
-      "packages/agent/test/runtime/operations/vault-integration.test.ts",
+      "packages/agent/src/runtime/operations/vault-integration.test.ts",
     ],
     description: "Focused agent vault runtime tests",
   },

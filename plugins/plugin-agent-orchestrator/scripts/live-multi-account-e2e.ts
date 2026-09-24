@@ -191,9 +191,7 @@ async function main(): Promise<void> {
   process.env.ELIZA_CODING_ACCOUNT_STRATEGY ??= "least-used";
 
   // Gate passed and credentials present — now load the runtime graph.
-  const accountStorage = await import(
-    "@elizaos/auth/auth/account-storage"
-  );
+  const accountStorage = await import("@elizaos/auth/auth/account-storage");
   saveAccount = accountStorage.saveAccount;
   storagePolicy = accountStorage.createIsolatedAccountStoragePolicy(home);
   ({ getCodingAgentSelectorBridge } = await import(

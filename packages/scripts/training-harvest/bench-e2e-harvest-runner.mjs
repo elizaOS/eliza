@@ -62,7 +62,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const TSCONFIG = path.join(REPO_ROOT, "tsconfig.json");
 const NATIVE_EXPORT_TS = path.join(
   REPO_ROOT,
-  "packages/scenario-runner/src/native-export.ts",
+  "packages/testing/scenario-runner/src/native-export.ts",
 );
 const CLI_BACKENDS = new Set(["claude", "claude-sdk", "codex", "codex-sdk"]);
 

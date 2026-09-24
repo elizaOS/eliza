@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * End-to-end streaming-pipeline benchmark.
  *
@@ -23,6 +24,7 @@
  */
 
 import { performance } from "node:perf_hooks";
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { AgentRuntime } from "../../core/src/runtime";
 import { runWithStreamingContext } from "../../core/src/streaming-context";
@@ -145,7 +147,10 @@ async function runLocalPath(
 ): Promise<RunResult> {
   const runtime = new AgentRuntime({
     character: { name: "BenchAgent", bio: "bench", settings: {} } as never,
-    adapter: SQLiteDatabaseAdapter.create(":memory:"),
+    adapter: SQLiteDatabaseAdapter.create(
+      ":memory:",
+      sqliteTestAgentId("BenchAgent"),
+    ),
     logLevel: "fatal",
   });
 
@@ -181,7 +186,10 @@ async function runRemotePath(
 ): Promise<RunResult> {
   const runtime = new AgentRuntime({
     character: { name: "BenchAgent", bio: "bench", settings: {} } as never,
-    adapter: SQLiteDatabaseAdapter.create(":memory:"),
+    adapter: SQLiteDatabaseAdapter.create(
+      ":memory:",
+      sqliteTestAgentId("BenchAgent"),
+    ),
     logLevel: "fatal",
   });
 

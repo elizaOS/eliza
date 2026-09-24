@@ -2,6 +2,7 @@
 import { ElizaError } from "@elizaos/core";
 
 import type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
+
 export type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
 
 export function assertSupportedRuntime(): void {
@@ -44,4 +45,8 @@ export async function openSqlite(path: string): Promise<SqlDatabase> {
   };
 }
 
-export const nativeSQLiteDriver = { supportsFileSystem: true, assertSupportedRuntime, open: openSqlite };
+export const nativeSQLiteDriver = {
+  supportsFileSystem: true,
+  assertSupportedRuntime,
+  open: openSqlite,
+};

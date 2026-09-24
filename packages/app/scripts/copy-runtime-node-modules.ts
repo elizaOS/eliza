@@ -22,6 +22,7 @@ function envInt(raw: string | undefined, fallback: number): number {
   if (trimmed === "") return fallback;
   return /^\+?\d+$/.test(trimmed) ? Number(trimmed) : fallback;
 }
+
 import { fileURLToPath } from "node:url";
 
 import {
@@ -863,14 +864,6 @@ function shouldPreservePrunedPackageEntry(
   const relativePath = packageDir
     ? toPosixPath(path.relative(packageDir, entryPath))
     : "";
-  if (
-    packageName === "@elizaos/skills" &&
-    relativePath.startsWith("skills/") &&
-    /\.(?:md|markdown)$/i.test(relativePath)
-  ) {
-    return true;
-  }
-
   if (
     packageName === "googleapis" &&
     (relativePath === "build/src/apis/docs" ||

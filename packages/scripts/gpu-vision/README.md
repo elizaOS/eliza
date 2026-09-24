@@ -16,7 +16,7 @@ fallback. Both are served over the same OpenAI-compatible HTTP API.
 
 This directory is **only the service half** of #14543. The analyzer-registry
 integration (enqueue images, stream results into `analysis.json`, `skipped-tier`
-records when no GPU service is reachable) is a separate task in `packages/evidence`.
+records when no GPU service is reachable) is a separate task in `packages/testing`.
 
 ## Scripts
 

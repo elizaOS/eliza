@@ -13,8 +13,8 @@
  * `resetKmsClientForTests()` between cases to re-resolve the backend.
  */
 
-import { ElizaError } from "@elizaos/core";
 import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/auth/kms";
+import { ElizaError } from "@elizaos/core";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 
 let _kms: KmsClient | null = null;

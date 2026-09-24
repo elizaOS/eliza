@@ -190,8 +190,15 @@ export function collectRawAliasReads(sourceText, relPath, guardedKeys) {
   }
 
   function visit(node) {
+    // A plain assignment writes a mirror; compound assignments also read it.
+    const isWriteOnly =
+      node.parent &&
+      ts.isBinaryExpression(node.parent) &&
+      node.parent.left === node &&
+      node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
     // process.env.KEY / import.meta.env.KEY
     if (
+      !isWriteOnly &&
       ts.isPropertyAccessExpression(node) &&
       isEnvContainer(node.expression) &&
       ts.isIdentifier(node.name) &&
@@ -202,6 +209,7 @@ export function collectRawAliasReads(sourceText, relPath, guardedKeys) {
 
     // process.env["KEY"] / import.meta.env["KEY"]
     if (
+      !isWriteOnly &&
       ts.isElementAccessExpression(node) &&
       isEnvContainer(node.expression) &&
       ts.isStringLiteralLike(node.argumentExpression) &&
@@ -453,15 +461,20 @@ function runSelfTest() {
     const f = "process.env.ELIZA_STATE_DIR";          // string, not a read
     // process.env.ELIZA_PORT in a comment is not a read
     const g = obj.process.env.ELIZA_PORT;             // not the global process
+    process.env.ELIZA_STATE_DIR = "/tmp/state";       // write only
+    process.env["ELIZA_PORT"] = "3000";              // write only
+    process.env.ELIZA_PORT ||= "3000";               // read 5 (compound)
+    process.env["ELIZA_UI_PORT"] ??= "3001";          // read 6 (compound)
+    process.env.ELIZA_PORT = process.env.ELIZA_UI_PORT; // read 7 (right side)
   `;
   const findings = collectRawAliasReads(
     sample,
     "packages/x/src/sample.ts",
     guardedKeys,
   );
-  if (findings.length !== 4) {
+  if (findings.length !== 7) {
     console.error(
-      `[alias-read-guard] self-test failed: expected 4 reads, got ${findings.length}: ${JSON.stringify(findings)}`,
+      `[alias-read-guard] self-test failed: expected 7 reads, got ${findings.length}: ${JSON.stringify(findings)}`,
     );
     process.exit(1);
   }

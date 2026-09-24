@@ -13,8 +13,7 @@ import {
   resolveDefaultAgentWorkspaceDir,
   resolveUserPath,
 } from "@elizaos/agent";
-import { formatError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { formatError, logger } from "@elizaos/core";
 import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";
 import { resetPluginSqlPgliteSingleton } from "../pglite-auto-reset.js";
 
