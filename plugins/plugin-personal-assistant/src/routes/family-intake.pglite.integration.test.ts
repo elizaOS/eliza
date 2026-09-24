@@ -151,7 +151,15 @@ it("selects a canonical source, extracts private proposals and preserves review/
         isOwner: true,
       },
     );
-    expect(privateSource?.content.text).toBe(complete);
+    expect(privateSource?.content.documentSource).toMatchObject({
+      storage: "segments",
+    });
+    const privateText = await documents.readDocumentRangeWithAccessContext(
+      imported.source.documentId,
+      { unit: "byte", offset: 0 },
+      { requesterEntityId: owner, role: "OWNER", isOwner: true },
+    );
+    expect(privateText?.text).toBe(complete);
     const guestSource = await documents.getDocumentByIdWithAccessContext(
       imported.source.documentId,
       {
@@ -161,6 +169,13 @@ it("selects a canonical source, extracts private proposals and preserves review/
       },
     );
     expect(guestSource).toBeNull();
+    await expect(
+      documents.readDocumentRangeWithAccessContext(
+        imported.source.documentId,
+        { unit: "byte", offset: 0 },
+        { requesterEntityId: randomUUID(), role: "GUEST", isOwner: false },
+      ),
+    ).resolves.toBeNull();
     expect((await (await post("/import", importInput)).json()).review).toEqual(
       imported,
     );
