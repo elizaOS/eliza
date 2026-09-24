@@ -14,7 +14,7 @@ import {
   PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION,
   type ProgressiveContentTarget,
   type ProgressiveContentTargetFactory,
-} from "@elizaos/testing";
+} from "@elizaos/testing/progressive-content-target";
 import { readFileHandler } from "../actions/read.js";
 import { FileStateService } from "../services/file-state-service.js";
 import { SandboxService } from "../services/sandbox-service.js";

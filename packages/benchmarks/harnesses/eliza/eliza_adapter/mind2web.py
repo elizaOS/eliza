@@ -219,8 +219,8 @@ class ElizaMind2WebAgent:
                 {
                     "backend_node_id": elem.backend_node_id,
                     "tag": elem.tag,
-                    "attributes": dict(list(elem.attributes.items())[:5]),
-                    "text_content": elem.text_content[:50] if elem.text_content else "",
+                    "attributes": dict(elem.attributes),
+                    "text_content": elem.text_content or "",
                 }
                 for elem in all_candidates
             ]

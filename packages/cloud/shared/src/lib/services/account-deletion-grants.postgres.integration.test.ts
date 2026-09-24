@@ -33,7 +33,6 @@ const financialTables = [
   "container_billing_legacy_ledger_bindings",
   "container_billing_records",
   "compute_billing_rate_segments",
-  "agent_billing_records",
   "payment_request_receipts",
   "stripe_checkout_legacy_quarantine",
   "stripe_checkout_orders",
@@ -83,7 +82,22 @@ describe.skipIf(!url)("grant cleanup preserves billing history", () => {
         otherUser,
       ]);
     }
+    // Compute settlement/stop guards are exercised with canonical migrations in
+    // account-deletion-provider-adapters.pglite.test.ts. This fixture has no compute.
+    await db.query(`CREATE TABLE agent_sandboxes(id uuid PRIMARY KEY,organization_id uuid);
+      CREATE TABLE agent_compute_subjects(agent_id uuid PRIMARY KEY,organization_id uuid,retired_at timestamptz);
+      CREATE TABLE agent_compute_funding(id integer PRIMARY KEY,organization_id uuid,agent_id uuid,
+        funding_reservation_id integer,previous_funding_id integer,period_start timestamptz,
+        settled_through timestamptz,settled_at timestamptz,provider_node_id text,
+        provider_container_id text,provider_stopped_at timestamptz,provider_stop_receipt jsonb);
+      ALTER TABLE billing_funding_reservations ADD COLUMN status text NOT NULL DEFAULT 'finalized'`);
+    const existingTables = new Set([
+      ...financialTables,
+      "agent_compute_subjects",
+      "agent_compute_funding",
+    ]);
     for (const entry of ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY) {
+      if (existingTables.has(entry.table)) continue;
       await db.query(`CREATE TABLE ${entry.table}(id integer PRIMARY KEY,${entry.column} uuid)`);
       await db.query(`INSERT INTO ${entry.table} VALUES(1,$1),(2,$2)`, [
         entry.subject === "user" ? userId : organizationId,
@@ -125,10 +139,19 @@ describe.skipIf(!url)("grant cleanup preserves billing history", () => {
       ).rows,
     ).toEqual([{ state: "unavailable", subscription_id: null }]);
 
-    for (const table of financialTables)
-      expect((await db.query(`SELECT * FROM ${table} ORDER BY id`)).rows).toEqual(
-        before.get(table),
-      );
+    for (const table of financialTables) {
+      const expected = before
+        .get(table)
+        ?.map((row) =>
+          table === "billing_subscription_incidents" && "id" in row && row.id === 1
+            ? { ...row, resolved_by_user_id: null }
+            : row,
+        );
+      expect((await db.query(`SELECT * FROM ${table} ORDER BY id`)).rows).toEqual(expected);
+    }
+    expect((await db.query("SELECT * FROM agent_billing_records ORDER BY id")).rows).toEqual([
+      { id: 2, organization_id: otherOrganization },
+    ]);
     expect((await db.query("SELECT * FROM app_billing_members ORDER BY id")).rows).toEqual([
       { id: 2, user_id: otherUser },
     ]);

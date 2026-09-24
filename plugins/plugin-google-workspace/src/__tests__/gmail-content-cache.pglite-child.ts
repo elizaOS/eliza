@@ -8,7 +8,7 @@ import {
   loadGmailContentManifest,
   publishGmailContent,
   readGmailContentPage,
-} from "./gmail-content-cache.js";
+} from "../gmail-content-cache.js";
 
 const [mode, pgliteDir, reference] = process.argv.slice(2);
 if (!mode || !pgliteDir) throw new Error("mode and PGLite directory are required");

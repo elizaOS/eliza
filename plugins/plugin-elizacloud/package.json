@@ -203,8 +203,7 @@
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:views && node ../../packages/scripts/plugins/plugin-elizacloud/verify-built-package.mjs",
     "build:ts": "bun run build.ts",
-    "build:views": "vite build --config vite.config.views.ts",
-    "test:live": "bun run test:e2e"
+    "build:views": "vite build --config vite.config.views.ts"
   },
   "publishConfig": {
     "access": "public"

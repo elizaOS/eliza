@@ -120,7 +120,10 @@ describe("bounded foreground shell capture", () => {
     const reports = [];
     for (const bytes of [1, 10, 32].map((mib) => mib * 1024 * 1024)) {
       const child = fileURLToPath(
-        new URL("../../scripts/shell-capture-memory-child.ts", import.meta.url),
+        new URL(
+          "../../../../packages/scripts/plugins/plugin-coding-tools/shell-capture-memory-child.ts",
+          import.meta.url,
+        ),
       );
       const { stdout } = await promisify(execFile)(
         process.execPath,

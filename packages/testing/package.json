@@ -14,7 +14,8 @@
     "./package-paths": "./src/eliza-package-paths.ts",
     "./pglite-runtime": "./src/pglite-runtime.ts",
     "./synthetic-control": "./src/synthetic-control/index.ts",
-    "./synthetic-control/*": "./src/synthetic-control/*.ts"
+    "./synthetic-control/*": "./src/synthetic-control/*.ts",
+    "./progressive-content-target": "./src/progressive-content-target.ts"
   },
   "scripts": {
     "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",

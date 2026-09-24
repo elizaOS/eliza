@@ -52,9 +52,9 @@ const patchedSha256 =
 const patchSha256 =
   "b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430";
 const browserWindowOriginalSha256 =
-  "8c172878fd77bd2119d7958a1c2c8280bf9642c78abf8a1cbcb67fa3b03226cf";
+  "f48dda33323ed599690ae25d663ea4dd6ce0d8c965d91b6893de58598c402e8c";
 const browserWindowPatchedSha256 =
-  "583aa653d89eb01d55e9ee5b3f90c021e924827c811d119a2bf6100432e938bd";
+  "793897f84aa7aba7e6ee932f136b8f0f519aa9d829ad974dc92be0b09af4df21";
 const patchPath = path.join(
   repoRoot,
   "packages",

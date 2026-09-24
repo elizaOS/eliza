@@ -14,6 +14,7 @@ import {
 	SQLiteDatabaseAdapter,
 } from "@elizaos/testing";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing.js";
+import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
 import { AgentRuntime } from "../../src/runtime";
 import {
 	ChannelType,
@@ -229,7 +230,7 @@ export default async function globalSetup(): Promise<void> {
 	const providerPlugin = await resolveProviderPlugin(provider.name);
 	// ── 3. Create runtime ──────────────────────────────────────────────────
 	const agentId = uuidv4() as UUID;
-	const plugins: Plugin[] = [];
+	const plugins: Plugin[] = [createAssistantPlugin()];
 	if (providerPlugin) {
 		plugins.push(providerPlugin);
 	}

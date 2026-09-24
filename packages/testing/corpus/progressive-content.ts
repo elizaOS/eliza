@@ -1196,7 +1196,7 @@ function deterministicObjectSha256(
   format: ProgressiveContentFormat,
 ): string {
   const digest = createHash("sha256");
-  const chunkBytes = 64 * 1024;
+  const chunkBytes = 1024 * 1024;
   for (let offset = 0; offset < byteLength; offset += chunkBytes) {
     const length = Math.min(chunkBytes, byteLength - offset);
     digest.update(
@@ -1238,24 +1238,25 @@ async function writeStreamedObject(
     0o600,
   );
   const digest = createHash("sha256");
-  const chunkBytes = 64 * 1024;
+  const chunkBytes = 1024 * 1024;
   try {
-    for (let offset = 0; offset < byteLength; offset += chunkBytes) {
-      const length = Math.min(chunkBytes, byteLength - offset);
-      const chunk = deterministicObjectChunk(
-        offset,
-        length,
-        byteLength,
-        canaries,
-        format,
-      );
-      await handle.write(chunk, 0, chunk.length, offset);
-      digest.update(chunk);
+    try {
+      for (let offset = 0; offset < byteLength; offset += chunkBytes) {
+        const length = Math.min(chunkBytes, byteLength - offset);
+        const chunk = deterministicObjectChunk(
+          offset,
+          length,
+          byteLength,
+          canaries,
+          format,
+        );
+        // writeFile completes partial writes and advances the file position.
+        await handle.writeFile(chunk);
+        digest.update(chunk);
+      }
+    } finally {
+      await handle.close();
     }
-  } finally {
-    await handle.close();
-  }
-  try {
     await rename(temporary, target);
   } catch (error) {
     await unlink(temporary).catch((cleanupError: NodeJS.ErrnoException) => {

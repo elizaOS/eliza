@@ -235,7 +235,7 @@ class ElizaREALMAgent:
                     )
                 else:
                     msg = (
-                        f"Previous action result:\n{last_action_text[:2000]}\n\n"
+                        f"Previous action result:\n{last_action_text}\n\n"
                         f"Decide on the next action based on the current planning state."
                     )
 
