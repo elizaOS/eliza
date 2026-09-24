@@ -1,11 +1,16 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
+import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createDatabaseSnapshot } from "./database";
 import {
 	LaunchOrchestrator,
 	type LaunchOrchestratorOptions,
 } from "./launch/launch-orchestrator";
+import {
+	deleteRuntimeCredentialRecord,
+	desktopStoreRuntimeCredential,
+} from "./runtime-credential-rpc";
 import { readSubscriptionStatusViaHttp } from "./subscription-rpc";
 
 async function readSubscriptions(provider: Record<string, unknown>) {
@@ -131,4 +136,46 @@ describe("launch readiness", () => {
 		expect(snapshot.phase).toBe("error");
 		expect(snapshot.recovery.suggestedAction).toContain("database recovery");
 	});
+});
+
+describe("runtime credential mutations", () => {
+	it.each([false, true])(
+		"keeps deletion ordered after an in-flight write (write fails: %s)",
+		async (failWrite) => {
+			let stored: string | null = null;
+			const entered = Promise.withResolvers<void>();
+			const release = Promise.withResolvers<void>();
+			const store: PlatformSecureStore = {
+				backend: "none",
+				isAvailable: async () => true,
+				get: async () =>
+					stored === null
+						? { ok: false, reason: "not_found" }
+						: { ok: true, value: stored },
+				set: async (_vault, _kind, value) => {
+					entered.resolve();
+					await release.promise;
+					if (failWrite) throw new Error("Credential write failed");
+					stored = value;
+					return { ok: true };
+				},
+				delete: async () => {
+					const deleted = stored !== null;
+					stored = null;
+					return { ok: true, deleted };
+				},
+			};
+			const write = desktopStoreRuntimeCredential(
+				{ runtimeId: "delete-race", accessToken: "token" },
+				store,
+			);
+			await entered.promise;
+			const deletion = deleteRuntimeCredentialRecord("delete-race", store);
+			release.resolve();
+			const outcomes = await Promise.allSettled([write, deletion]);
+			expect(outcomes[0].status).toBe(failWrite ? "rejected" : "fulfilled");
+			expect(outcomes[1].status).toBe("fulfilled");
+			expect(stored).toBeNull();
+		},
+	);
 });
