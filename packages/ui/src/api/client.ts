@@ -116,15 +116,6 @@ export type {
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
 export {
-  BROWSER_BRIDGE_SESSION_STATUSES,
-  type BrowserBridgeSession,
-  type BrowserBridgeSessionAction,
-  type BrowserBridgeSessionResponse,
-  type BrowserBridgeSessionStatus,
-  type BrowserBridgeSessionsResponse,
-  type BrowserBridgeSettingsResponse,
-} from "./client-browser-bridge";
-export {
   CloudAgentWakeError,
   type CloudAgentWakePhase,
   waitForCloudAgentRunning,
@@ -259,7 +250,6 @@ import "./client-accounts";
 import "./client-approvals";
 import "./client-automations";
 import "./client-background";
-import "./client-browser-bridge";
 import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";

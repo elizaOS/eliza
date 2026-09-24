@@ -8,7 +8,7 @@ import {
   tailWellFormed,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core";
+} from "@elizaos/shared/browser-contracts";
 import { resolveAliasedEnvValue } from "./config/boot-config-store.js";
 
 /** Keys whose values are always redacted in debug dumps. */

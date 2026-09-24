@@ -19,13 +19,10 @@
  * shell key.
  */
 
-import {
-  type ResolvedSurfaceManifest,
-  resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
+import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
 import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { logger } from "@elizaos/shared/logger";
+import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import { useEffect, useMemo, useRef } from "react";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { Card } from "../ui/card";

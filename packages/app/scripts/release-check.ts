@@ -1325,9 +1325,6 @@ function assertInnoTemplateTargetsBundledLauncher() {
     '#define MyAppIconFile "ElizaOSApp.ico"',
     'Source: "{#MySetupIconFile}"; DestDir: "{app}"; DestName: "{#MyAppIconFile}"; Flags: ignoreversion',
     "UninstallDisplayIcon={app}\\{#MyAppIconFile}",
-    "[UninstallRun]",
-    "browser-bridge-unregister.ps1",
-    'RunOnceId: "BrowserBridgeNativeHost"',
     'Name: "{autoprograms}\\{#MyDefaultGroupName}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; IconFilename: "{app}\\{#MyAppIconFile}"',
     'Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\\{#MyAppIconFile}"',
   ];

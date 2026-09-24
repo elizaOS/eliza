@@ -27,7 +27,6 @@ try:
         _score_from_gsm8k_json,
         _score_from_hermes_env_json,
         _score_from_humaneval_json,
-        _score_from_hyperliquid_bench_json,
         _score_from_lifeops_bench_json,
         _score_from_meeting_transcription_proof_json,
         _score_from_mind2web_json,
@@ -41,9 +40,6 @@ try:
         _score_from_osworld_json,
         _score_from_realm_json,
         _score_from_recall_json,
-        _score_from_rlmbench_json,
-        _score_from_scambench_json,
-        _score_from_solana_json,
         _score_from_swebench_json,
         _score_from_swebench_orchestrated_json,
         _score_from_taubench_json,
@@ -57,7 +53,6 @@ try:
         _score_from_voicebench_json,
         _score_from_voicebench_quality_json,
         _score_from_webshop_json,
-        _score_from_woobench_json,
     )
 except ImportError:
     from campaign_profile import is_full_campaign_profile  # type: ignore[no-redef]
@@ -81,7 +76,6 @@ except ImportError:
         _score_from_gsm8k_json,
         _score_from_hermes_env_json,
         _score_from_humaneval_json,
-        _score_from_hyperliquid_bench_json,
         _score_from_lifeops_bench_json,
         _score_from_meeting_transcription_proof_json,
         _score_from_mind2web_json,
@@ -95,9 +89,6 @@ except ImportError:
         _score_from_osworld_json,
         _score_from_realm_json,
         _score_from_recall_json,
-        _score_from_rlmbench_json,
-        _score_from_scambench_json,
-        _score_from_solana_json,
         _score_from_swebench_json,
         _score_from_swebench_orchestrated_json,
         _score_from_taubench_json,
@@ -111,7 +102,6 @@ except ImportError:
         _score_from_voicebench_json,
         _score_from_voicebench_quality_json,
         _score_from_webshop_json,
-        _score_from_woobench_json,
     )
 
 
@@ -318,7 +308,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent or any LLM-backed provider.
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--provider", agent])
         elif provider_name in {
             "eliza",
@@ -355,7 +345,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--provider", agent])
             if model.model:
                 args.extend(["--model", model.model])
@@ -441,7 +431,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--no-docker")
         # Agent runtime selection
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"hermes", "openclaw", "smithers"}:
+        if agent in {"hermes", "openclaw"}:
             args.extend(["--runtime", agent])
         elif agent == "eliza" or extra.get("elizaos") is True:
             args.extend(["--runtime", "bridge"])
@@ -458,7 +448,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             provider_str = "eliza"
         else:
             provider = extra.get("provider")
@@ -491,7 +481,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         harness = (
             str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
         )
-        if harness in {"eliza", "hermes", "openclaw", "smithers"}:
+        if harness in {"eliza", "hermes", "openclaw"}:
             args.extend(["--harness", harness])
         quick = extra.get("quick")
         if quick is True:
@@ -565,7 +555,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # use that Python bridge surface, but their delegate clients must keep
         # the real provider/model from the orchestrator environment.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--agent-harness", str(agent)])
             if model.model:
                 args.extend(["--model", model.model])
@@ -633,7 +623,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--agent-harness", agent])
             args.extend(["--agent-provider", model.provider or "cerebras"])
             if model.model:
@@ -787,7 +777,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     ) -> list[str]:
         args = [python, "-m", "benchmarks.swe_bench.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--harness", agent])
         if model.model:
             args.extend(["--model", model.model])
@@ -820,7 +810,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--harness", agent])
         if model.model:
             args.extend(["--model", model.model])
@@ -959,7 +949,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_name = (model.provider or "").strip().lower()
         # Route LLM-backed providers through the eliza TS bridge so the actual
         # registered eliza agent + plugins are exercised, not the python mock.
-        if agent in {"eliza", "hermes", "openclaw", "smithers"} or provider_name in {
+        if agent in {"eliza", "hermes", "openclaw"} or provider_name in {
             "cerebras",
             "openai",
             "groq",
@@ -1175,97 +1165,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _vision_language_result(output_dir: Path) -> Path:
         return output_dir / "vision-language-results.json"
 
-    def _rlm_bench_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        """Build command for RLM benchmark.
 
-        Supports S-NIAH (Streaming Needle-in-a-Haystack) and OOLONG benchmarks
-        from the RLM paper (arXiv:2512.24601).
-        """
-        args = [
-            python,
-            repo("suites/rlm-bench/run_benchmark.py"),
-            "--output-dir",
-            str(output_dir),
-        ]
-        mode = extra.get("mode")
-        if isinstance(mode, str) and mode in ("stub", "rlm", "eliza", "custom"):
-            args.extend(["--mode", mode])
-        else:
-            # Default to a REAL mode (#9475): "rlm" runs real RLM-plugin
-            # inference (no Eliza server needed). The orchestrator's adapter
-            # default_extra_config overrides this to the fuller "eliza" agent
-            # loop; only the bare/no-extra path falls back here. "stub" is the
-            # heuristic mock and must be requested explicitly via extra.
-            args.extend(["--mode", "rlm"])
-        backend = extra.get("backend")
-        if isinstance(backend, str):
-            args.extend(["--backend", backend])
-        context_lengths = extra.get("context_lengths")
-        if isinstance(context_lengths, str):
-            args.extend(["--context-lengths", context_lengths])
-        elif isinstance(context_lengths, list) and all(
-            isinstance(x, int) for x in context_lengths
-        ):
-            args.extend(
-                [
-                    "--context-lengths",
-                    ",".join(str(x) for x in cast(list[int], context_lengths)),
-                ]
-            )
-        tasks_per_config = extra.get("tasks_per_config")
-        if isinstance(tasks_per_config, int) and tasks_per_config > 0:
-            args.extend(["--tasks-per-config", str(tasks_per_config)])
-        max_iterations = extra.get("max_iterations")
-        if isinstance(max_iterations, int) and max_iterations > 0:
-            args.extend(["--max-iterations", str(max_iterations)])
-        max_depth = extra.get("max_depth")
-        if isinstance(max_depth, int) and max_depth > 0:
-            args.extend(["--max-depth", str(max_depth)])
-        dual_model = extra.get("dual_model")
-        if dual_model is True:
-            args.append("--dual-model")
-        no_s_niah = extra.get("no_s_niah")
-        if no_s_niah is True:
-            args.append("--no-s-niah")
-        no_oolong = extra.get("no_oolong")
-        if no_oolong is True:
-            args.append("--no-oolong")
-        if model.model:
-            args.extend(["--root-model", model.model, "--subcall-model", model.model])
-        _append_scenario_control_flags(args, extra)
-        return args
 
-    def _rlm_bench_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="rlm_bench_results_*.json")
 
-    def _solana_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        """Build command for Solana gym benchmark.
-
-        The explorer is env-driven (no CLI flags). Caller propagates settings
-        via environment variables: ``MODEL_NAME``, ``MAX_MESSAGES``,
-        ``ENVIRONMENT_CONFIG``, ``USE_EXTERNAL_SURFPOOL``, and ``OUTPUT_DIR``.
-        """
-        args = [
-            python,
-            "-m",
-            "benchmarks.solana.eliza_explorer",
-            "--output-dir",
-            str(output_dir),
-        ]
-        harness = extra.get("agent") or extra.get("harness")
-        if isinstance(harness, str) and harness.strip():
-            args.extend(["--harness", harness.strip().lower()])
-        _append_scenario_control_flags(args, extra)
-        # All knobs flow through env vars read by ``eliza_explorer.main``.
-        _ = model
-        return args
-
-    def _solana_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="eliza_*_metrics.json")
 
     def _osworld_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -1327,84 +1229,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="osworld-eliza-results-*.json")
 
     # HyperliquidBench - perp-trading plan generation + Rust execution
-    def _hyperliquid_bench_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        """Build command for HyperliquidBench.
 
-        Defaults to the eliza TypeScript bridge. Set ``extra.agent`` to
-        ``deterministic`` or ``python`` for the local deterministic smoke path.
-        Always runs in ``--demo`` mode unless the caller
-        explicitly opts in to ``--no-demo`` (which requires ``HL_PRIVATE_KEY``
-        and a non-mainnet network).
-        """
-        args = [
-            python,
-            "-m",
-            "benchmarks.HyperliquidBench",
-            "--output",
-            str(output_dir),
-        ]
-        agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
-        if (
-            agent in {"deterministic", "python"}
-            or extra.get("mock") is True
-            or provider_name == "mock"
-        ):
-            args.extend(["--mode", "deterministic"])
-        else:
-            args.extend(["--mode", "eliza"])
-
-        if model.model:
-            args.extend(["--model", model.model])
-        if model.temperature is not None:
-            args.extend(["--temperature", str(model.temperature)])
-
-        coins = extra.get("coins")
-        if isinstance(coins, list):
-            coin_values = [str(c) for c in coins if str(c).strip()]
-            if coin_values:
-                args.extend(["--coins", ",".join(coin_values)])
-        elif isinstance(coins, str) and coins.strip():
-            args.extend(["--coins", coins.strip()])
-
-        max_steps = extra.get("max_steps")
-        if isinstance(max_steps, int) and max_steps > 0:
-            args.extend(["--max-steps", str(max_steps)])
-        max_iterations = extra.get("max_iterations")
-        if isinstance(max_iterations, int) and max_iterations > 0:
-            args.extend(["--max-iterations", str(max_iterations)])
-        _append_scenario_control_flags(args, extra)
-
-        builder_code = extra.get("builder_code")
-        if isinstance(builder_code, str) and builder_code.strip():
-            args.extend(["--builder-code", builder_code.strip()])
-
-        tasks = extra.get("tasks")
-        if isinstance(tasks, list) and tasks:
-            args.append("--tasks")
-            args.extend(str(t) for t in tasks)
-        elif extra.get("coverage") is True:
-            args.append("--coverage")
-
-        # Network + demo handling. Default behavior is demo=true with testnet.
-        network_raw = extra.get("network")
-        network = (
-            network_raw.strip().lower() if isinstance(network_raw, str) else "testnet"
-        )
-        if network in {"testnet", "mainnet", "local"}:
-            args.extend(["--network", network])
-
-        if extra.get("no_demo") is True or extra.get("demo") is False:
-            # Live trading on the chosen network — caller must have HL_PRIVATE_KEY.
-            args.append("--no-demo")
-        # else: --demo is the default in __main__.py, no flag needed
-
-        return args
-
-    def _hyperliquid_bench_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="hyperliquid_bench-*.json")
 
     def _gauntlet_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -1478,7 +1303,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             if isinstance(scenario, str) and scenario.strip()
             else "inbox_triage"
         )
-        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
+        if agent in {"eliza", "hermes", "openclaw"}:
             output_path = output_dir / f"trajectory_{scenario_name}.json"
             args = [
                 python,
@@ -1886,117 +1711,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return output_dir / "webshop-results.json"
 
     # WooBench - mystical-reading conversation benchmark.
-    def _woobench_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        args = [
-            python,
-            "-m",
-            "benchmarks.woobench",
-            "--output",
-            str(output_dir),
-        ]
-        if model.model:
-            args.extend(["--model", model.model])
 
-        agent_raw = extra.get("agent")
-        agent = str(agent_raw or extra.get("harness") or "").strip().lower()
-        provider_lower = (model.provider or "").strip().lower()
-        payment_mode = extra.get("payment") is True or extra.get("payments") is True
-        if (
-            agent_raw == "dummy"
-            or extra.get("mock") is True
-            or provider_lower == "mock"
-        ):
-            args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
-        elif agent in {"eliza", "hermes", "openclaw", "smithers"}:
-            args.extend(["--agent", agent])
-        else:
-            args.extend(["--agent", "eliza"])
 
-        evaluator = extra.get("evaluator")
-        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
-            args.extend(["--evaluator", evaluator])
-        elif (
-            agent_raw == "dummy"
-            or extra.get("mock") is True
-            or provider_lower == "mock"
-        ):
-            args.extend(["--evaluator", "heuristic"])
 
-        scenario = extra.get("scenario")
-        if isinstance(scenario, str) and scenario.strip():
-            args.extend(["--scenario", scenario.strip()])
-        scenarios = extra.get("scenarios")
-        if isinstance(scenarios, list) and all(isinstance(x, str) for x in scenarios):
-            args.extend(["--scenarios", ",".join(cast(list[str], scenarios))])
-        system = extra.get("system")
-        if isinstance(system, str) and system.strip():
-            args.extend(["--system", system.strip()])
-        persona = extra.get("persona")
-        if isinstance(persona, str) and persona.strip():
-            args.extend(["--persona", persona.strip()])
-        concurrency = extra.get("concurrency")
-        if isinstance(concurrency, int) and concurrency > 0:
-            args.extend(["--concurrency", str(concurrency)])
-        payment_mock_url = extra.get("payment_mock_url")
-        if isinstance(payment_mock_url, str) and payment_mock_url.strip():
-            args.extend(["--payment-mock-url", payment_mock_url.strip()])
-        _append_scenario_control_flags(args, extra)
-        return args
-
-    def _woobench_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="woobench_*.json")
-
-    # scambench
-    def _scambench_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        provider = (model.provider or "").strip().lower() or "vllm"
-        args = [
-            python,
-            "-m",
-            "benchmarks.scambench.cli",
-            "--provider",
-            provider,
-            "--out",
-            str(output_dir),
-        ]
-        if model.model:
-            args.extend(["--model", model.model])
-        base_url = extra.get("base_url") or extra.get("vllm_base_url")
-        if isinstance(base_url, str) and base_url.strip():
-            args.extend(["--base-url", base_url.strip()])
-        api_key_env = extra.get("api_key_env")
-        if isinstance(api_key_env, str) and api_key_env.strip():
-            args.extend(["--api-key-env", api_key_env.strip()])
-        datasets = extra.get("dataset")
-        if isinstance(datasets, list):
-            for d in datasets:
-                if isinstance(d, str) and d.strip():
-                    args.extend(["--dataset", d.strip()])
-        elif isinstance(datasets, str) and datasets.strip():
-            args.extend(["--dataset", datasets.strip()])
-        max_examples = extra.get("max_examples")
-        if isinstance(max_examples, int) and max_examples > 0:
-            args.extend(["--max-examples", str(max_examples)])
-        expected_examples = extra.get("expected_examples")
-        if isinstance(expected_examples, int) and expected_examples > 0:
-            args.extend(["--expected-examples", str(expected_examples)])
-        split = extra.get("split")
-        if isinstance(split, str) and split.strip():
-            args.extend(["--split", split.strip()])
-        max_new_tokens = extra.get("max_new_tokens")
-        if isinstance(max_new_tokens, int) and max_new_tokens > 0:
-            args.extend(["--max-new-tokens", str(max_new_tokens)])
-        temperature = extra.get("temperature")
-        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
-            args.extend(["--temperature", str(float(temperature))])
-        _append_scenario_control_flags(args, extra)
-        return args
-
-    def _scambench_result(output_dir: Path) -> Path:
-        return output_dir / "scambench-results.json"
 
     # abliteration-robustness
     def _abliteration_robustness_cmd(
@@ -2655,25 +2372,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     return [
         BenchmarkDefinition(
-            id="solana",
-            display_name="Solana-Gym",
-            description="Solana instruction discovery benchmark (surfpool sandbox)",
-            cwd_rel=".",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("suites/solana/solana-gym-env",),
-                notes=(
-                    "Deterministic phase needs Bun and the bundled skill_runner dependencies. "
-                    "Live LLM phase requires the selected harness/provider credentials and "
-                    "Surfpool running on localhost:8899; set USE_EXTERNAL_SURFPOOL=true "
-                    "to use an external Surfpool instance."
-                ),
-            ),
-            build_command=_solana_cmd,
-            locate_result=_solana_result,
-            extract_score=_score_from_solana_json,
-        ),
-        BenchmarkDefinition(
             id="bfcl",
             display_name="BFCL",
             description="Berkeley Function-Calling Leaderboard",
@@ -2931,20 +2629,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_vision_language_json,
         ),
         BenchmarkDefinition(
-            id="rlm_bench",
-            display_name="RLM-Bench",
-            description="Recursive Language Model benchmark (S-NIAH, OOLONG) - arXiv:2512.24601",
-            cwd_rel="suites/rlm-bench",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=(),
-                notes="Tests long-context processing. Modes: stub (mock), rlm (full RLM). Requires RLM plugin for rlm mode.",
-            ),
-            build_command=_rlm_bench_cmd,
-            locate_result=_rlm_bench_result,
-            extract_score=_score_from_rlmbench_json,
-        ),
-        BenchmarkDefinition(
             id="osworld",
             display_name="OSWorld",
             description="Multimodal desktop agent benchmark (369 tasks) - arXiv:2404.07972",
@@ -2961,28 +2645,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_osworld_cmd,
             locate_result=_osworld_result,
             extract_score=_score_from_osworld_json,
-        ),
-        BenchmarkDefinition(
-            id="hyperliquid_bench",
-            display_name="HyperliquidBench",
-            description="Hyperliquid perp trading-plan generation benchmark (Eliza agent + Rust runner/evaluator)",
-            cwd_rel=".",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("suites/HyperliquidBench/dataset/domains-hl.yaml",),
-                notes=(
-                    "Defaults to --mode eliza (eliza TS benchmark server) with --demo "
-                    "and --network testnet, so no funds are at risk. "
-                    "Set agent=deterministic for the local offline smoke path. "
-                    "Live network runs require building the Rust toolchain "
-                    "(cd benchmarks/HyperliquidBench && cargo build --release -p hl-runner -p hl-evaluator) "
-                    "AND HL_PRIVATE_KEY plus extra.no_demo=true. "
-                    "Score: average final_score across scenarios (Base + Bonus − Penalty from hl-evaluator)."
-                ),
-            ),
-            build_command=_hyperliquid_bench_cmd,
-            locate_result=_hyperliquid_bench_result,
-            extract_score=_score_from_hyperliquid_bench_json,
         ),
         BenchmarkDefinition(
             id="gauntlet",
@@ -3171,43 +2833,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_webshop_cmd,
             locate_result=_webshop_result,
             extract_score=_score_from_webshop_json,
-        ),
-        BenchmarkDefinition(
-            id="woobench",
-            display_name="WooBench",
-            description="Mystical reading conversation and revenue benchmark",
-            cwd_rel=".",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("suites/woobench",),
-                notes=(
-                    "Default run uses the eliza TS benchmark bridge plus the LLM evaluator. "
-                    "Set mock=true or agent=dummy with evaluator=heuristic for a deterministic "
-                    "no-credential smoke run. Score is overall_score normalized from 0..100 to 0..1."
-                ),
-            ),
-            build_command=_woobench_cmd,
-            locate_result=_woobench_result,
-            extract_score=_score_from_woobench_json,
-        ),
-        BenchmarkDefinition(
-            id="scambench",
-            display_name="ScamBench",
-            description="Adversarial scam-detection benchmark (refusal vs helpfulness)",
-            cwd_rel=".",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("training/data/normalized/scambench.jsonl",),
-                notes=(
-                    "Reads the normalized ScamBench evaluation split and fails closed if its "
-                    "expected corpus is unavailable or incomplete. "
-                    "Score is the equally-weighted mean of refusal-correctness on scam prompts "
-                    "and helpfulness on legit prompts. Higher better."
-                ),
-            ),
-            build_command=_scambench_cmd,
-            locate_result=_scambench_result,
-            extract_score=_score_from_scambench_json,
         ),
         BenchmarkDefinition(
             id="abliteration-robustness",

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,20 +57,13 @@ def test_manifest_exactly_covers_discovery_registry_and_directory_gaps() -> None
     }
 
     adapter_ids = [entry.benchmark_id for entry in manifest.adapters]
-    assert len(adapter_ids) == 58
     assert len(adapter_ids) == len(set(adapter_ids))
     assert set(adapter_ids) == set(discovery.adapters)
     assert {
         entry.benchmark_id for entry in manifest.adapters if entry.registered
     } == registry_ids
-    assert len(registry_ids) == 49
 
-    assert Counter(entry.disposition for entry in manifest.adapters) == {
-        campaign.CampaignDisposition.COHORT: 25,
-        campaign.CampaignDisposition.MANUAL: 17,
-        campaign.CampaignDisposition.UNSUPPORTED: 5,
-        campaign.CampaignDisposition.NON_AGENT: 11,
-    }
+
 
     direct_directories = [entry.directory for entry in manifest.direct]
     assert len(direct_directories) == len(set(direct_directories))

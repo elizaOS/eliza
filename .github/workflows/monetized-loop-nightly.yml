@@ -57,7 +57,7 @@ jobs:
           name: monetized-loop-${{ github.run_attempt }}
           path: |
             packages/cloud/e2e/playwright-report
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
             e2e-recordings/cloud-e2e
           retention-days: 14

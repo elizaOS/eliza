@@ -2,9 +2,10 @@
  * Playwright UI-smoke spec for the Onboarding To Home app flow using the real
  * renderer fixture.
  */
+
 import { rm } from "node:fs/promises";
-import path from "node:path";
 import { expect, type Locator, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   expectOnlyAllowedPageDiagnostics,
   installPageDiagnosticsGuard,
@@ -44,11 +45,7 @@ import {
 // The fixtures, route mocks, and flow helpers are shared with the mobile-viewport
 // lane (onboarding-to-home-mobile.spec.ts) via onboarding-to-home.shared.
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
-  "onboarding-to-home",
-);
+const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "onboarding-to-home");
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);
 
 const desktopClick = (locator: Locator) => locator.click();

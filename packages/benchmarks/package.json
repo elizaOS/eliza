@@ -5,7 +5,15 @@
   "type": "module",
   "description": "elizaOS benchmark suites, harness adapters, and the @elizaos/plugin-benchmarks action vocabulary plugin.",
   "license": "MIT",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "scripts": {
+    "test": "node --test suites/mobile-resource/metrics.test.mjs && vitest run suites/loadperf/frontend-kpi.test.mjs",
     "build:plugin": "bun run --cwd plugin-benchmarks build",
     "test:plugin": "bun run --cwd plugin-benchmarks test",
     "typecheck:plugin": "bun run --cwd plugin-benchmarks typecheck",

@@ -15,3 +15,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/shared build  # build
 bun run --cwd packages/shared test   # tests
 ```
+
+Renderers use `@elizaos/shared/browser-contracts` and `/views/*` for browser-safe
+values and view policies. The browser logger keeps canonical credential redaction;
+Node consumers retain core class identities and the runtime diagnostic stream.

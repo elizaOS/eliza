@@ -3365,7 +3365,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: deployed-renderer-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-*-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 

@@ -3,11 +3,11 @@
  * Credential feed for the live multi-account CI lane (#9960).
  *
  * Reads the machine's connected coding-agent credentials — the Codex
- * `~/.codex/auth.json` (refreshed via the same refresh logic the runtime uses)
+ * `~/.codex/auth.json` (refreshed by the owning Codex CLI)
  * and the Claude Code OAuth token — and emits the minimal blobs that
  * `live-multi-account-e2e.ts` seeds the pool from, so a scheduled lane can run
- * real-account rotation. Pair this with a scheduled refresh (the Codex token is
- * short-lived) to keep the CI secrets live.
+ * real-account rotation. Expired credentials are rejected before output; the
+ * exporter never rotates a refresh chain owned by another process.
  *
  * Usage:
  *   bun scripts/export-ci-account-secrets.ts [--index N] [--out FILE] [--gh]
@@ -24,7 +24,13 @@
  * Secrets are printed to stdout — run in a trusted shell, never in CI logs.
  */
 
-import { appendFileSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  fchmodSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -38,10 +44,29 @@ function parseArgs(argv: string[]): Args {
   const args: Args = { index: 1, gh: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--index")
-      args.index = Number.parseInt(argv[++i] ?? "1", 10) || 1;
-    else if (a === "--out") args.out = argv[++i];
-    else if (a === "--gh") args.gh = true;
+    if (a === "--index") {
+      const value = argv[++i];
+      if (
+        !value ||
+        !/^[1-9]\d*$/.test(value) ||
+        !Number.isSafeInteger(Number(value))
+      ) {
+        throw new Error("--index requires a positive safe integer");
+      }
+      args.index = Number(value);
+    } else if (a === "--out") {
+      const value = argv[++i];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--out requires a file path");
+      }
+      args.out = value;
+    } else if (a === "--gh") {
+      args.gh = true;
+    } else {
+      throw new Error(
+        "Unsupported argument; use --index N, --out FILE, or --gh",
+      );
+    }
   }
   return args;
 }
@@ -50,7 +75,14 @@ function emit(name: string, value: string, args: Args): void {
   // The value itself is never echoed to stdout in --gh mode beyond the command
   // the operator runs locally; the dotenv path is for a trusted runner.
   if (args.out) {
-    appendFileSync(args.out, `${name}=${value}\n`);
+    const output = openSync(args.out, "a", 0o600);
+    try {
+      // Tighten existing files before writing credential bytes too.
+      fchmodSync(output, 0o600);
+      appendFileSync(output, `${name}=${value}\n`);
+    } finally {
+      closeSync(output);
+    }
     console.log(`[export] wrote ${name} -> ${args.out}`);
   }
   if (args.gh) {
@@ -70,34 +102,56 @@ async function exportCodex(args: Args): Promise<boolean> {
   let raw: string;
   try {
     raw = readFileSync(authPath, "utf-8");
-  } catch {
+  } catch (error) {
+    // error-policy:J1 only an absent CLI login is an expected export boundary.
+    if (
+      !(error instanceof Error && "code" in error && error.code === "ENOENT")
+    ) {
+      throw error;
+    }
     console.error(
       `[export] no Codex auth.json at ${authPath} — skipping Codex`,
     );
     return false;
   }
-  // Refresh in place if expired, using the runtime's own refresh logic, so the
-  // exported blob is fresh for the lane.
+  // The CLI owns this rotating refresh chain. Exporting must not race it by
+  // refreshing independently; account-pool adoption owns explicit transfers.
+  // Validate it's a usable ChatGPT login before emitting.
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+  let parsed: unknown;
+  let claims: unknown;
   try {
-    const { loadCodexAuth, isExpired, refreshCodexAuth } = await import(
-      "../../plugin-codex-cli/src/codex-auth.ts"
-    );
-    const auth = await loadCodexAuth(authPath);
-    if (isExpired(auth)) {
-      console.error("[export] Codex token expired — refreshing");
-      await refreshCodexAuth(auth, authPath);
-      raw = readFileSync(authPath, "utf-8");
+    parsed = JSON.parse(raw);
+    const tokens = isRecord(parsed) ? parsed.tokens : undefined;
+    if (
+      !isRecord(tokens) ||
+      typeof tokens.access_token !== "string" ||
+      typeof tokens.refresh_token !== "string" ||
+      !tokens.refresh_token ||
+      typeof tokens.account_id !== "string" ||
+      !tokens.account_id
+    ) {
+      throw new Error("Invalid credential fields");
     }
-  } catch (err) {
-    console.error(
-      `[export] Codex refresh skipped (${err instanceof Error ? err.message : String(err)}); exporting current blob`,
+    const payload = tokens.access_token.split(".")[1];
+    if (!payload) throw new Error("Missing access-token claims");
+    claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    // error-policy:J3 malformed credential input fails without exposing bytes.
+    throw new Error(
+      "Codex auth.json is invalid; sign in with the Codex CLI before exporting.",
     );
   }
-  // Validate it's a usable ChatGPT login before emitting.
-  const parsed = JSON.parse(raw);
-  if (!parsed?.tokens?.access_token || !parsed?.tokens?.account_id) {
-    console.error("[export] Codex auth.json is not a ChatGPT login — skipping");
-    return false;
+  if (
+    !isRecord(claims) ||
+    typeof claims.exp !== "number" ||
+    !Number.isFinite(claims.exp) ||
+    claims.exp * 1000 <= Date.now() + 60_000
+  ) {
+    throw new Error(
+      "Codex credentials are expired or lack an expiry; refresh with the owning Codex CLI before exporting.",
+    );
   }
   emit(
     `ELIZA_LIVE_CODEX_AUTH_JSON_${args.index}`,

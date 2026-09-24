@@ -16,3 +16,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/core build  # build
 bun run --cwd packages/core test   # tests
 ```
+
+View declaration types remain in core; browser-safe visibility and surface-policy
+helpers live in `@elizaos/shared/views/*`.

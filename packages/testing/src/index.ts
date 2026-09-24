@@ -50,6 +50,7 @@ export {
   applyDeterministicModelFixtureBehavior,
   createDeterministicModelFixtureRegistry,
   createDeterministicModelPlugin,
+  createPerfectResultPlugin,
   type DeterministicModelCall,
   type DeterministicModelCallDiagnostic,
   type DeterministicModelDiagnostics,

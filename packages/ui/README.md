@@ -16,3 +16,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/ui build  # build
 bun run --cwd packages/ui test   # tests
 ```
+
+`bun run --cwd packages/ui audit:design` reports current component ownership
+and possible duplication. It is advisory; lint, typecheck, rendered behavior,
+and accessibility checks remain separate.

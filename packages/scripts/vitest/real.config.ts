@@ -83,12 +83,6 @@ const ciExcludedRealPaths = [
     "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "packages/agent/src/providers/media-provider.real.test.ts",
-  ),
-  elizaWorkspacePattern(
-    "packages/agent/src/actions/life-param-extractor-real.test.ts",
-  ),
-  elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/rpc-providers.live.test.ts",
   ),
   elizaWorkspacePattern(

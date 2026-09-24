@@ -14,7 +14,7 @@ import { WebSocketServer } from "ws";
 import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
-} from "../../agent/src/api/dynamic-view-host-external.mjs";
+} from "../../agent/src/api/dynamic-view-host-external.ts";
 // Pure catalog data; keep the Node-run stub aligned without loading a runtime.
 import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 // The declarations + provenance decision live in one place so a removed plugin

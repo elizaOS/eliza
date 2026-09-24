@@ -4,7 +4,7 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
-import { formatError } from "@elizaos/core";
+import { formatError } from "@elizaos/shared/browser-contracts";
 import type { ProviderStatus } from "@elizaos/shared/local-inference/providers-types";
 import { logger } from "@elizaos/shared/logger";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";

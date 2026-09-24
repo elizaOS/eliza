@@ -416,7 +416,7 @@ describe("run-all-tests plan mode", () => {
       path.join = (...parts) => {
         const joined = nativeJoin(...parts);
         const repoPath = parts.join("/");
-        return repoPath === "packages/cloud/e2e" || repoPath === "packages/homepage"
+        return repoPath === "packages/cloud/e2e"
           ? joined.replaceAll("/", "\\")
           : joined;
       };
@@ -469,21 +469,6 @@ describe("run-all-tests plan mode", () => {
         label: "@elizaos/core (packages/core)#test",
       }),
     ]);
-    const skippedResult = runWindowsPlan(
-      "--plan=json",
-      "--only=e2e",
-      "--no-cloud",
-    );
-    expect(skippedResult.stderr).toBe("");
-    expect(skippedResult.status).toBe(0);
-    expect(JSON.parse(skippedResult.stdout).skipped).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          relativeDir: "packages/homepage",
-          reason: "operator-run visual harness excluded from the pr lane",
-        }),
-      ]),
-    );
   });
 
   test("warns and preserves the unsharded plan for a partially numeric TEST_SHARD", () => {
@@ -510,16 +495,6 @@ describe("run-all-tests plan mode", () => {
         scriptName: "test",
       }),
     ]);
-  });
-
-  test("keeps the source-only homepage visual harness out of root PR smoke", () => {
-    const prResult = runPlan([
-      "--plan=json",
-      "--only=e2e",
-      "--filter=^@elizaos/homepage-source \\(packages/homepage\\)#test:e2e$",
-    ]);
-    expect(prResult.status).toBe(0);
-    expect(JSON.parse(prResult.stdout).tasks).toEqual([]);
   });
 
   test("bare --plan prints text and keeps the cloud step visible", () => {

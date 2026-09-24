@@ -115,7 +115,8 @@
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/cloud-test-mocks": "workspace:*"
+    "@elizaos/cloud-test-mocks": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@elizaos/agent": {
@@ -179,6 +180,9 @@
       "optional": true
     },
     "@elizaos/cloud-test-mocks": {
+      "optional": true
+    },
+    "@elizaos/plugin-browser": {
       "optional": true
     }
   },

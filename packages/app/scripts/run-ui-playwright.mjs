@@ -344,8 +344,7 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 
 // Every Playwright lane collects its spec files up front, and those specs pull
 // workspace helpers whose static import graph reaches source-only packages —
-// e.g. app `server.ts` → `@elizaos/agent` → `settings-actions.ts` →
-// `@elizaos/plugin-app-control`, and `@elizaos/core` → `@elizaos/cloud-routing`.
+// The agent host and cloud-routing helpers must resolve from current source.
 // Those packages publish an `eliza-source` export condition pointing at `src`;
 // on a fresh CI install (`bun install --ignore-scripts`) they have no `dist`, so
 // under default node conditions the collector resolves a missing

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { logger } from "@elizaos/core";
 /**
  * Server-side TTS pipeline tracing (opt-in). Prefix: `[eliza][tts]`.
  * Never pass secrets in `detail`. With debug on, `preview` fields may contain
@@ -26,7 +27,10 @@
  *   `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
  *   the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
  */
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/shared/browser-contracts";
 
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {

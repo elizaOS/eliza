@@ -102,7 +102,6 @@ import type {
   ExperienceMaintenanceResult,
   ExperienceRecord,
   ExperienceUpdateInput,
-  ExtensionStatus,
   LaunchSnapshot,
   LogsFilter,
   LogsResponse,
@@ -586,7 +585,6 @@ declare module "./client-base" {
       runId?: string;
       fromSeq?: number;
     }): Promise<AgentEventsResponse>;
-    getExtensionStatus(): Promise<ExtensionStatus>;
     getRelationshipsGraph(
       query?: RelationshipsGraphQuery,
     ): Promise<RelationshipsGraphSnapshot>;
@@ -2481,21 +2479,6 @@ ElizaClient.prototype.getAgentEvents = async function (
   return this.fetch(`/api/agent/events${qs ? `?${qs}` : ""}`);
 };
 
-ElizaClient.prototype.getExtensionStatus = async function (this: ElizaClient) {
-  try {
-    const viaRpc = await invokeLocalDesktopAgentRpc<ExtensionStatus>(
-      this.getBaseUrl(),
-      {
-        rpcMethod: "getExtensionStatus",
-        ipcChannel: "agent",
-      },
-    );
-    if (viaRpc) return viaRpc;
-  } catch {
-    /* fall through */
-  }
-  return this.fetch("/api/extension/status");
-};
 
 ElizaClient.prototype.getRelationshipsGraph = async function (
   this: ElizaClient,

@@ -10,13 +10,6 @@
         "desktop-packaged-macos",
         "desktop-packaged-windows"
       ]
-    },
-    "release-contract": {
-      "files": [".github/workflows/electrobun-contract.yml"],
-      "scheduledSuites": [
-        "release-contract",
-        "regression-matrix-release-contract"
-      ]
     }
   },
   "suites": {
@@ -40,17 +33,9 @@
       "tier": "heavy",
       "command": "bun run test:desktop:playwright"
     },
-    "release-contract": {
-      "tier": "required",
-      "command": "bun run test:release:contract"
-    },
     "regression-matrix-release": {
       "tier": "required",
       "command": "node packages/app/scripts/validate-regression-matrix.mjs --workflow release"
-    },
-    "regression-matrix-release-contract": {
-      "tier": "required",
-      "command": "node packages/app/scripts/validate-regression-matrix.mjs --workflow release-contract"
     }
   },
   "surfaces": [
@@ -87,7 +72,6 @@
         "scripts/electrobun-release-workflow-drift.test.ts",
         "scripts/electrobun-test-workflow-drift.test.ts",
         "scripts/validate-regression-matrix.mjs",
-        "scripts/run-release-contract-suite.mjs",
         "scripts/coverage-policy.mjs",
         "scripts/coverage-policy-drift.test.ts",
         "package.json",
@@ -98,8 +82,7 @@
         "eliza/packages/scripts/vitest/*.ts"
       ],
       "workflowSuites": {
-        "release": ["regression-matrix-release"],
-        "release-contract": ["release-contract"]
+        "release": ["regression-matrix-release"]
       }
     },
     {
@@ -134,7 +117,7 @@
     "desktopHeavyInventory": [
       {
         "id": "game-window-roundtrip",
-        "description": "gameOpenWindow — full round-trip with openGameWindow mock (needs canvas mock update)",
+        "description": "gameOpenWindow \u2014 full round-trip with openGameWindow mock (needs canvas mock update)",
         "rationale": "Needs a fuller desktop canvas harness than the required PR contract suite."
       },
       {
@@ -224,7 +207,7 @@
       },
       {
         "id": "canvas-origin-isolation",
-        "description": "Canvas window is sandboxed — cannot access main app origin (integration)",
+        "description": "Canvas window is sandboxed \u2014 cannot access main app origin (integration)",
         "rationale": "Needs a launched canvas window and origin isolation checks."
       },
       {

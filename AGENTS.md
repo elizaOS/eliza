@@ -18,7 +18,8 @@ bridges, benchmarks, and first-party plugins. Read the nearest package
   media store. Do not introduce parallel ownership or bypass SSRF guards.
 - Keep READMEs and agent guides short. Retain other Markdown only when consumed
   by runtime, build, tests, publishing, or required attribution. Generated
-  reports belong in ignored output directories.
+  reports belong in ignored repository-root `test-results/`, with one leaf per producer.
+  Use `packages/scripts/lib/test-output.mjs` for stable output paths.
 - Verify changed behavior with the owning package's tests, typecheck, and lint,
   then `bun run verify`. Validate documentation links for docs-only changes.
   UI changes require the app visual audit and desktop/mobile inspection.
@@ -27,3 +28,6 @@ bridges, benchmarks, and first-party plugins. Read the nearest package
   is retired; first-party catalog data lives in `packages/shared/src/catalog/`.
 
 Getting started, build, test, and benchmark commands: [README.md](README.md).
+
+Design inventories are advisory; do not gate builds on saved component counts,
+story percentages, or expired review metadata.

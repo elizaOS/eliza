@@ -327,76 +327,6 @@ const summarizeContribution: AnyWorkflowStepContribution = {
 
 // -- 10. browser ----------------------------------------------------------
 
-const browserStepSchema = z.object({
-  kind: z.literal("browser"),
-  ...baseStepFields,
-  sessionTitle: z.string().min(1),
-  actions: z.array(z.record(z.string(), z.unknown())).min(1),
-});
-
-const browserContribution: AnyWorkflowStepContribution = {
-  kind: "browser",
-  describe: {
-    label: "Run browser session",
-    description:
-      "Open a browser session for the workflow; honors permissionPolicy.allowBrowserActions and confirmation flags.",
-    provider: "app-lifeops:default",
-  },
-  paramSchema: browserStepSchema,
-  async execute(step, args, ctx) {
-    const typed = step as z.infer<typeof browserStepSchema>;
-    if (!args.definition.permissionPolicy.allowBrowserActions) {
-      return {
-        blocked: true,
-        reason: "browser_actions_disabled" as const,
-      };
-    }
-    const session = await ctx.createBrowserSessionInternal({
-      workflowId: args.definition.id,
-      title: typed.sessionTitle,
-      actions: typed.actions as Parameters<
-        typeof ctx.createBrowserSessionInternal
-      >[0]["actions"],
-      ownership: {
-        domain: args.definition.domain,
-        subjectType: args.definition.subjectType,
-        subjectId: args.definition.subjectId,
-        visibilityScope: args.definition.visibilityScope,
-        contextPolicy: args.definition.contextPolicy,
-      },
-    });
-    if (
-      session.awaitingConfirmationForActionId &&
-      !args.definition.permissionPolicy.trustedBrowserActions &&
-      !args.confirmBrowserActions
-    ) {
-      return {
-        sessionId: session.id,
-        status: session.status,
-        requiresConfirmation: true,
-      };
-    }
-    const updated = {
-      ...session,
-      status: "queued" as const,
-      awaitingConfirmationForActionId: null,
-      updatedAt: new Date().toISOString(),
-    };
-    await ctx.repository.updateBrowserSession(updated);
-    await ctx.recordBrowserAudit(
-      "browser_session_updated",
-      updated.id,
-      "browser session started",
-      { workflowId: args.definition.id },
-      { status: updated.status },
-    );
-    return {
-      sessionId: updated.id,
-      status: updated.status,
-      requiresConfirmation: false,
-    };
-  },
-};
 
 // ---------------------------------------------------------------------------
 
@@ -411,7 +341,6 @@ export const APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS: readonly AnyWorkflowStepCo
     getHealthSummaryContribution,
     dispatchWorkflowContribution,
     summarizeContribution,
-    browserContribution,
   ];
 
 export function registerDefaultWorkflowStepPack(

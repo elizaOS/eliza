@@ -16,14 +16,9 @@ import { bundleRequire } from "bundle-require";
 import { defineConfig, type ViteUserConfig } from "vitest/config";
 
 function elizaRepoDir(): string {
-  const raw = process.env.ELIZA_REPO_DIR?.trim();
-  if (!raw) {
-    throw new Error(
-      "ELIZA_REPO_DIR is not set. The lifeops-quality gate lanes drive real " +
-        "elizaOS plugin code — point ELIZA_REPO_DIR at an elizaOS monorepo " +
-        "checkout with dependencies installed.",
-    );
-  }
+  const raw =
+    process.env.ELIZA_REPO_DIR?.trim() ||
+    resolve(import.meta.dirname, "../../../..");
   const repo = resolve(raw);
   const probe = resolve(
     repo,

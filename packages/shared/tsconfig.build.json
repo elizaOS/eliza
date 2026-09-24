@@ -11,7 +11,8 @@
     "paths": {
       "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/shared": ["./src/index.ts"],
-      "@elizaos/shared/*": ["./src/*"]
+      "@elizaos/shared/*": ["./src/*"],
+      "@elizaos/shared/browser-contracts": ["./src/browser-contracts.ts"]
     }
   },
   "include": ["src"],

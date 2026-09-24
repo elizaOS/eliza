@@ -23,14 +23,7 @@ const repositoryRoot = path.resolve(packageRoot, "../..");
 it("ships consumer build tools without private repository test dependencies", async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "app-payload-"));
   try {
-    for (const root of [
-      "src/styles",
-      "scripts",
-      "platforms",
-      "packaging",
-      "patches",
-      "test",
-    ]) {
+    for (const root of ["src/styles", "scripts", "platforms", "test"]) {
       mkdirSync(path.dirname(path.join(fixture, root)), { recursive: true });
       cpSync(path.join(packageRoot, root), path.join(fixture, root), {
         recursive: true,
@@ -61,11 +54,6 @@ it("ships consumer build tools without private repository test dependencies", as
       if (entry !== "dist")
         rmSync(path.join(fixture, entry), { recursive: true });
     }
-    cpSync(
-      path.join(repositoryRoot, "packages/elizaos/templates/project/scripts"),
-      path.join(fixture, "scripts"),
-      { recursive: true },
-    );
     const dist = path.join(fixture, "dist");
     expect(
       existsSync(path.join(dist, "scripts/repository-maintenance.mjs")),
@@ -99,6 +87,13 @@ it("ships consumer build tools without private repository test dependencies", as
       );
     }
     const appManifest = path.join(fixture, "apps/app/package.json");
+    // Exercise the supported source-checkout layout without CLI templates.
+    const sourceApp = path.join(fixture, "eliza/packages/app");
+    mkdirSync(sourceApp, { recursive: true });
+    writeFileSync(
+      path.join(sourceApp, "package.json"),
+      JSON.stringify({ name: "@elizaos/app", private: true }),
+    );
     const workspaceCheck = path.join(dist, "scripts/fix-workspace-deps.mjs");
     execFileSync(process.execPath, [workspaceCheck, "--check"], {
       cwd: fixture,

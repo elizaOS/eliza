@@ -5,7 +5,6 @@
  * `package.json`:
  *   - `@elizaos/plugin-browser/contracts`
  *   - `@elizaos/plugin-browser/schema`
- *   - `@elizaos/plugin-browser/packaging`
  *   - `@elizaos/plugin-browser/routes`
  *   - `@elizaos/plugin-browser/plugin`
  *   - `@elizaos/plugin-browser/workspace` (browser-workspace command router)
@@ -13,11 +12,6 @@
 
 export { browserAction } from "./actions/browser.js";
 export { executeBrowserAutofillLogin } from "./actions/browser-autofill-login.js";
-export {
-  BROWSER_BRIDGE_SUBACTIONS,
-  type BrowserBridgeSubaction,
-  manageBrowserBridgeAction,
-} from "./actions/manage-browser-bridge.js";
 export {
   WAIT_FOR_URL_DEFAULT_POLL_INTERVAL_MS,
   WAIT_FOR_URL_DEFAULT_TIMEOUT_MS,
@@ -51,14 +45,10 @@ export {
   isBrowserDispatchFailure,
   isIdempotentBrowserSubaction,
 } from "./dispatch-types.js";
-export { BrowserBridgeAdapter } from "./message-adapter.js";
-export * from "./packaging.js";
 export * from "./parity/index.js";
 export * from "./password-manager-bridge.js";
 export { browserPlugin } from "./plugin.js";
-export * from "./routes/bridge.js";
 export * from "./schema.js";
-export * from "./service.js";
 export {
   type BrowserCaptureConfig,
   FRAME_FILE,
@@ -69,10 +59,6 @@ export * from "./workspace/index.js";
 
 import { browserAction as _bs_4_browserAction } from "./actions/browser.js";
 import { executeBrowserAutofillLogin as _bs_3_executeBrowserAutofillLogin } from "./actions/browser-autofill-login.js";
-import {
-  BROWSER_BRIDGE_SUBACTIONS as _bs_5_BROWSER_BRIDGE_SUBACTIONS,
-  manageBrowserBridgeAction as _bs_6_manageBrowserBridgeAction,
-} from "./actions/manage-browser-bridge.js";
 import { waitForUrl as _bs_15_waitForUrl } from "./actions/wait-for-url.js";
 import { buildWaitForUrlPredicate as _bs_14_buildWaitForUrlPredicate } from "./actions/wait-for-url-predicate.js";
 import { resolveBrowserBridgeCompanionPairingTokenExpiresAt as _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt } from "./bridge-policy.js";
@@ -104,8 +90,6 @@ const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_2_BrowserService,
   _bs_3_executeBrowserAutofillLogin,
   _bs_4_browserAction,
-  _bs_5_BROWSER_BRIDGE_SUBACTIONS,
-  _bs_6_manageBrowserBridgeAction,
   _bs_7_browserPlugin,
   _bs_8_FRAME_FILE,
   _bs_9_startBrowserCapture,

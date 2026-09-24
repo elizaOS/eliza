@@ -9,11 +9,11 @@
 //      result). No mock stands in for the broker: the assertions are on the
 //      real `view:interact:result` payload the agent receives.
 
+import type { SurfaceManifest } from "@elizaos/core";
 import {
   IMMERSIVE_WALLPAPER_SURFACE,
   resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/shared/views/surface-manifest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

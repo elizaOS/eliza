@@ -7,7 +7,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   getHouseholdOperationsService,
@@ -17,6 +16,7 @@ import {
   type ResponsibilityAssignmentDefinition,
   type SourceArtifactInput,
 } from "@elizaos/plugin-personal-assistant";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
 import { type EntityAttribute, SELF_ENTITY_ID } from "@elizaos/shared";
 import type { BenchmarkSession } from "./server-utils.js";
 
@@ -24,7 +24,6 @@ export const TRUSTED_PARENT_CONTRACT_STATE_SCHEMA =
   "lifeops.trusted-parent-contract-state.v1" as const;
 export const G15_SCENARIO_ID = "m1.g15.school_source_correction" as const;
 export const G30_SCENARIO_ID = "m1.g30.child_size_history" as const;
-export const G34_SCENARIO_ID = "m1.g34.household_wide_care_math" as const;
 export const G38_SCENARIO_ID = "m1.g38.partner_nonuse_renegotiation" as const;
 
 export const G15_NOTICE_KEY = "early-release" as const;
@@ -61,7 +60,6 @@ interface EvidenceSession {
   readonly scenarioId:
     | typeof G15_SCENARIO_ID
     | typeof G30_SCENARIO_ID
-    | typeof G34_SCENARIO_ID
     | typeof G38_SCENARIO_ID;
   readonly actions: SessionActionObservation[];
 }
@@ -75,7 +73,6 @@ function scenarioIdForTask(
   for (const scenarioId of [
     G15_SCENARIO_ID,
     G30_SCENARIO_ID,
-    G34_SCENARIO_ID,
     G38_SCENARIO_ID,
   ] as const) {
     if (taskId.startsWith(`${scenarioId}:`)) return scenarioId;
@@ -540,7 +537,8 @@ async function prepareG38(runtime: AgentRuntime): Promise<void> {
         provenance: operationsProvenance({
           sourceId: `scheduled-task:gutter:${index}`,
           sourceRevision: 1,
-          observedAt: `2026-07-${20 + index}T18:00:00.000Z`,
+          // Keep non-use evidence within the production rolling assessment window.
+          observedAt: new Date(Date.now() - index * 86_400_000).toISOString(),
           kind: "scheduled_task_state",
           authority: "provider_confirmed",
         }),
@@ -831,29 +829,6 @@ async function captureG38(
   };
 }
 
-function captureG34(
-  result: TrustedActionResult,
-  actionHistory: readonly SessionActionObservation[],
-): Record<string, unknown> {
-  const calculation = result.data.scenario;
-  if (
-    !calculation ||
-    typeof calculation !== "object" ||
-    Array.isArray(calculation)
-  ) {
-    throw new Error(
-      "trusted G34 owner-finance action returned no calculation object",
-    );
-  }
-  return {
-    schemaVersion: TRUSTED_PARENT_CONTRACT_STATE_SCHEMA,
-    scenarioId: G34_SCENARIO_ID,
-    observedAt: observedAtNow(),
-    actionHistory,
-    calculation,
-  };
-}
-
 export async function captureTrustedParentContractFinalState(
   runtime: AgentRuntime,
   session: BenchmarkSession,
@@ -880,13 +855,6 @@ export async function captureTrustedParentContractFinalState(
     discriminator === "evaluate_item_replacement"
   ) {
     return captureG30(runtime, evidence.actions);
-  }
-  if (
-    evidence.scenarioId === G34_SCENARIO_ID &&
-    actionName === "OWNER_FINANCES" &&
-    discriminator === "childcare_work_scenario"
-  ) {
-    return captureG34(result, evidence.actions);
   }
   if (
     evidence.scenarioId === G38_SCENARIO_ID &&

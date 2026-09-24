@@ -3,9 +3,11 @@
  * The checks cover rendered geometry as well as behavior because virtualized
  * transcript containment can clip an otherwise visible, interactive element.
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -18,13 +20,7 @@ const ROOM_ID = "message-actions-room";
 const ASSISTANT_TEXT = "Action row assistant reply for copy and read aloud.";
 const USER_TEXT = "draft me an action row";
 const EDITED_TEXT = "draft me a polished action row";
-const OUT_DIR = path.join(
-  process.cwd(),
-  "packages",
-  "app",
-  "test-results",
-  "10713-message-actions",
-);
+const OUT_DIR = testOutputPath("app", "10713-message-actions");
 
 type StreamCall = Record<string, unknown>;
 

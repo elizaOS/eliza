@@ -43,12 +43,6 @@ vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishHomeAttentionSpy,
 }));
 
-// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
-// stub it so the click test isolates the navigation rail (the CustomEvent).
-vi.mock("../../../chat/shortcut-report", () => ({
-  reportUserViewSwitch: vi.fn(),
-}));
-
 import { HealthSleepWidget } from "./health-sleep";
 
 // Wire shapes mirror HealthView's parse (plugins/plugin-health/src/components/

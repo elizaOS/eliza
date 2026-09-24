@@ -5,7 +5,7 @@
     "composite": false,
     "declaration": false,
     "declarationMap": false,
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
@@ -275,6 +275,9 @@
       ],
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
+      ],
+      "@elizaos/plugin-x/lifeops-message-adapter": [
+        "../../../plugins/plugin-x/src/lifeops-message-adapter.ts"
       ]
     }
   },

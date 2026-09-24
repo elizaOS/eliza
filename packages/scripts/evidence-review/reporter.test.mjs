@@ -90,7 +90,7 @@ test("summary tallies pass/fail/skip and reports overall FAILED on any failure",
       id: "app-audit",
       status: "failed",
       durationMs: 900,
-      artifactPath: "packages/app/aesthetic-audit-output",
+      artifactPath: "test-results/aesthetic-audit",
     },
     {
       id: "ios-sim-capture",

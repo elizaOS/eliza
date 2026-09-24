@@ -875,17 +875,6 @@ export interface AgentUpdateStatusSnapshot {
 	error: string | null;
 }
 
-export interface ExtensionStatusSnapshot {
-	relayReachable: boolean;
-	relayPort: number;
-	extensionPath: string | null;
-	chromeBuildPath?: string | null;
-	chromePackagePath?: string | null;
-	safariWebExtensionPath?: string | null;
-	safariAppPath?: string | null;
-	safariPackagePath?: string | null;
-	releaseManifest?: Record<string, unknown> | null;
-}
 
 export interface RuntimeDebugSnapshotParams {
 	depth?: number;
@@ -1210,10 +1199,6 @@ export type ElizaDesktopRPCSchema = {
 			getUpdateStatus: {
 				params: { force?: boolean } | undefined;
 				response: AgentUpdateStatusSnapshot;
-			};
-			getExtensionStatus: {
-				params: undefined;
-				response: ExtensionStatusSnapshot;
 			};
 			getSubscriptionStatus: {
 				params: undefined;

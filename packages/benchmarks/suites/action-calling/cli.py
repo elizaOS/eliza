@@ -36,7 +36,7 @@ log = logging.getLogger("action-calling")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRAINING_ROOT = Path(
-    os.environ.get("ELIZA_TRAINING_ROOT", str(REPO_ROOT / "training"))
+    os.environ.get("ELIZA_TRAINING_ROOT", str(REPO_ROOT.parent / "training"))
 )
 DEFAULT_TEST = TRAINING_ROOT / "data" / "native" / "records" / "hermes-fc-v1.jsonl"
 SMOKE_TEST = Path(__file__).resolve().parent / "fixtures" / "smoke.jsonl"

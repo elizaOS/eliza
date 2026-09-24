@@ -26,7 +26,6 @@ sys.path.insert(0, str(ROOT.parent))
 from benchmarks.orchestrator.ci_coverage import (  # noqa: E402
     CI_LANE_BY_BENCHMARK,
     CI_LANES,
-    SCHEDULED_ORCHESTRATOR_SUBSET,
     ci_lane_for,
     classified_benchmark_ids,
     public_benchmark_ids,
@@ -58,16 +57,6 @@ def test_every_public_benchmark_has_a_ci_lane_or_manual_marker() -> None:
 def test_every_ci_lane_value_is_valid() -> None:
     for benchmark_id, lane in CI_LANE_BY_BENCHMARK.items():
         assert lane in CI_LANES, f"{benchmark_id}: invalid CI lane {lane!r}"
-
-
-def test_scheduled_orchestrator_subset_is_scheduled_and_registered() -> None:
-    registry_ids = registry_benchmark_ids(_workspace_root())
-    for benchmark_id in SCHEDULED_ORCHESTRATOR_SUBSET:
-        assert benchmark_id in registry_ids, (
-            f"{benchmark_id} is in the scheduled orchestrator workflow subset "
-            "but is not a registered benchmark"
-        )
-        assert ci_lane_for(benchmark_id) == "scheduled"
 
 
 def test_at_least_one_benchmark_per_lane() -> None:

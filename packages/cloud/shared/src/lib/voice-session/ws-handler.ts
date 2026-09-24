@@ -254,8 +254,7 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
         );
         return;
       case "audio_meta":
-        // Codec-swap signal (on-mic -> BLE-mic). Phase 1 is pcm16-only; an opus
-        // switch is a documented seam. Accept the meta as a no-op for pcm16.
+        // PCM16 audio metadata is advisory; it does not change the session codec.
         return;
       case "audio_capabilities":
         session.setAudioCapabilities?.(frame);

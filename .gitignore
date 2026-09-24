@@ -266,10 +266,11 @@ packages/autodoc/text_objects/*
 **/.eliza/
 
 # UI Test related files
+# Canonical generated audit and test artifacts.
+/test-results/
 screenshots/
 packages/client/ui-tests/screenshots/
 **/ui-tests/screenshots/**
-test-results/
 **/test-results*/
 # Opt-in machine-readable audit reports (VIEW_AUDIT_REPORT=1, #8798)
 packages/agent/test-output/
@@ -720,7 +721,6 @@ plan-files
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-test-results/
 apps/frontend/vite.config.ts.timestamp-*.mjs
 
 # Tauri
@@ -1026,3 +1026,6 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 # Renderer assets materialized by app avatar preparation.
 /packages/app/public/vrms/
 /packages/app/public/animations/
+
+# Temporary atomic core build directories.
+/packages/core/.core-build-*/

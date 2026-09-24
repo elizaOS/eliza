@@ -1,4 +1,4 @@
-# ElizaOS Benchmark Orchestrator
+# elizaOS Benchmark Orchestrator
 
 Campaign runner for benchmark suites across agent harnesses, with resumable execution and result storage.
 

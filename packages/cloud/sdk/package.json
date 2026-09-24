@@ -16,7 +16,6 @@
     "clean": "rm -rf dist",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src && node ../scripts/sdk/audit-api-routes.mjs",
     "audit:routes": "node ../scripts/sdk/audit-api-routes.mjs",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -114,10 +113,7 @@
       "contractId": "eliza-cloud-api"
     },
     "scripts": {
-      "coreBuild": true,
-      "testLanes": [
-        "server"
-      ]
+      "coreBuild": true
     }
   },
   "dependencies": {

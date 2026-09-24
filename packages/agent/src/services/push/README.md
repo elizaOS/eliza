@@ -15,3 +15,7 @@ Test from the repository root:
 ```bash
 bun run --cwd packages/agent test
 ```
+
+Push acceptance requires an enrolled device, token registration through the
+authenticated API, and confirmation of notification delivery on that device.
+The local agent suite does not verify device delivery.

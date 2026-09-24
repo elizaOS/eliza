@@ -18,7 +18,6 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "test:linux-virtual-usb": "ELIZAOS_USB_TEST_SCSI_DEBUG=1 vitest run --config ./vitest.config.ts src/__tests__/linux-virtual-block-device-e2e.test.ts",
     "test:packaged-runtime:macos": "bash scripts/test-packaged-runtime.sh",
     "test:e2e": "playwright test",
     "lint": "bunx @biomejs/biome check --write --unsafe src tests electrobun scripts server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",

@@ -282,18 +282,6 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
             }
         ),
     ),
-    _entry(
-        "scambench",
-        "scambench",
-        phases=_phase(
-            extra={
-                "split": "test",
-                "expected_examples": 3734,
-                "max_new_tokens": 512,
-                "expand_scenarios": True,
-            }
-        ),
-    ),
     _entry("context_bench", "context-bench"),
     _entry(
         "realm",
@@ -313,24 +301,7 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
         disposition=CampaignDisposition.MANUAL,
         reason="Full MINT includes tool/feedback ablations and sandboxed code tasks; provision its runtime before dispatch.",
     ),
-    _entry(
-        "rlm_bench",
-        "rlm-bench",
-        phases=_phase(extra={"mode": "eliza", "expand_scenarios": True}),
-        reason="Runs the complete generated S-NIAH and OOLONG matrix through each native harness bridge.",
-    ),
     _entry("clawbench", "clawbench", phases=_clawbench_phases()),
-    _entry(
-        "woobench",
-        "woobench",
-        phases=_phase(
-            extra={
-                "evaluator": "llm",
-                "concurrency": 1,
-                "expand_scenarios": True,
-            }
-        ),
-    ),
     _entry(
         "webshop",
         "webshop",
@@ -510,29 +481,11 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
         reason="RecallBench uses deterministic in-bench embeddings and the selected harness never affects its score; run the direct 10k KPI lane.",
     ),
     _entry(
-        "solana",
-        "solana",
-        disposition=CampaignDisposition.MANUAL,
-        phases=_phase(
-            extra={
-                "environment_config": "voyager/environments/basic_env.json",
-            }
-        ),
-        reason="A full run requires a reachable Surfpool ledger and deployed/clone-backed program state.",
-    ),
-    _entry(
         "gauntlet",
         "gauntlet",
         disposition=CampaignDisposition.MANUAL,
         phases=_phase(extra={"clone_mainnet": True, "expand_scenarios": True}),
         reason="All 96 scenarios require a real Surfpool backend with clone support.",
-    ),
-    _entry(
-        "hyperliquid_bench",
-        "HyperliquidBench",
-        disposition=CampaignDisposition.MANUAL,
-        phases=_phase(extra={"no_demo": True, "expand_scenarios": True}),
-        reason="Comparable execution requires the Rust evaluator, a live/testnet backend, and HL_PRIVATE_KEY; demo mode is forbidden.",
     ),
     _entry(
         "terminal_bench",

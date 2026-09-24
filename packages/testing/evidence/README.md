@@ -13,3 +13,7 @@ Test from the repository root:
 ```bash
 bun run --cwd packages/testing test
 ```
+
+Generated evidence uses repository-root `test-results/`: `aesthetic-audit/`,
+`device-e2e/`, `app/`, `cloud-e2e/`, and `core/` contain their respective producers.
+Keep producer inventories and artifact uploads aligned with these paths.

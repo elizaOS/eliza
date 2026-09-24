@@ -355,21 +355,11 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/core\/edge$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "core",
-          "src",
-          "index.edge.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/auth\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "credentials",
+          "auth",
           "src",
           "vault",
           "index.ts",

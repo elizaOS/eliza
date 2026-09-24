@@ -29,7 +29,6 @@ import {
   openSelfControlPermissionLocation,
   requestSelfControlPermission,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
-import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import {
   calendarPlugin,
   handleMeetingJoinDispatch,
@@ -262,7 +261,6 @@ import {
 import { createUndatedOwnerTodoDirectRoutingRule } from "./lifeops/todos/direct-routing.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { isDarwin } from "./platform/host.js";
-import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { agreementPinsProvider } from "./providers/agreement-pins.js";
@@ -279,7 +277,6 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
-import { BrowserBridgePluginService } from "./service.js";
 import { PersonalAssistantStartupService } from "./startup-work.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
@@ -771,7 +768,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...messagingTriageActions,
   ].map(ownerPrivateAction),
   providers: [
-    browserBridgeProvider,
     firstRunProvider,
     ftuGoalProvider,
     roomPolicyProvider,
@@ -792,7 +788,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   ].map(ownerPrivateProvider),
   services: [
     PersonalAssistantStartupService,
-    BrowserBridgePluginService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
     HouseholdCoordinationRuntimeService,
@@ -1157,7 +1152,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     const triage = getDefaultTriageService();
     triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
-    triage.register(new BrowserBridgeAdapter());
 
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
@@ -1641,4 +1635,3 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export { BrowserBridgePluginService, browserBridgeProvider };

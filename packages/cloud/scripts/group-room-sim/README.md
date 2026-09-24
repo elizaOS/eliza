@@ -1,17 +1,13 @@
-# Group-room simulation (live behavioral evaluation)
+# Group-room consent and transport fixtures
 
-Replays the five homepage demo rooms (Household, Co-parenting, Friends, Trip, Community) against a running Eliza cloud stack as if real people were typing in a linked iMessage group, and scores what the live Eliza does.
+`coparent-consent-scenario.ts` defines the deterministic co-parent consent
+choreography and evidence ledger. Its tests verify ordering and cross-service
+invariants without contacting a live service.
 
-This directory is part of `.`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd . build
+```sh
+bun test packages/cloud/scripts/group-room-sim/coparent-consent-scenario.test.ts
 ```
 
-Test from the repository root:
-
-```bash
-bun run --cwd . test
-```
+`mock-blooio-provider.ts` supplies a local provider boundary for transport
+exercises. `gateway-fetch-tap.preload.ts` records gateway fetch observations.
+Use their documented environment configuration when running a local cloud stack.

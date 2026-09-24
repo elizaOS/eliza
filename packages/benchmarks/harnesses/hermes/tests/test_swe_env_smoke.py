@@ -1,3 +1,7 @@
+"""Check Hermes candidate evaluation; the real Docker boundary is explicitly opt-in."""
+
+import os
+import pytest
 import sys
 import types
 
@@ -70,6 +74,10 @@ def test_humanevalpack_source_and_evaluator_are_pinned() -> None:
     assert "@sha256:" in swe_env_smoke._EVALUATOR_IMAGE
 
 
+@pytest.mark.skipif(
+    os.environ.get("BENCHMARK_DOCKER_TESTS") != "1",
+    reason="Set BENCHMARK_DOCKER_TESTS=1 to exercise the pinned Docker evaluator",
+)
 def test_candidate_executes_in_pinned_docker_sandbox() -> None:
     ok, error = swe_env_smoke._execute_candidate(
         candidate_code="def add(a, b):\n    return a + b\n",

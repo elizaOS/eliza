@@ -2,7 +2,7 @@
 import {
   FirstRunActivationSchema,
   PostFirstRunResponseSchema,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-routes";
 
 export async function waitForFirstRunActivation(
   response: unknown,

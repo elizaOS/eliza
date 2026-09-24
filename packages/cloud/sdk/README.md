@@ -9,5 +9,5 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd packages/cloud/sdk build  # build
-bun run --cwd packages/cloud/sdk test   # tests
+bun run --cwd packages/cloud/sdk audit:routes  # route contract audit
 ```

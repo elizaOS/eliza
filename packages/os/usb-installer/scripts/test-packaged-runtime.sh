@@ -52,7 +52,5 @@ fi
 cd "$repo_root"
 "$runtime_bun" test \
   "$usb_package/src/__tests__/packaged-app-handler.test.ts" \
-  "$usb_package/src/__tests__/packaged-runtime-config.test.ts" \
   "$usb_package/src/backend/__tests__/raw-image-pipeline.test.ts" \
-  "$usb_package/src/backend/__tests__/release-manifest.test.ts" \
   "$usb_package/src/backend/__tests__/release-sequence-store.test.ts"

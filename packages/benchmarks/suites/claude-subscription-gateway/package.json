@@ -9,6 +9,13 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "scripts": {
     "start": "bun src/cli.ts",
     "test": "vitest run",

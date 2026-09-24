@@ -10,7 +10,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/shared/browser-contracts";
 import {
   type AwarenessContributor,
   type AwarenessInvalidationEvent,

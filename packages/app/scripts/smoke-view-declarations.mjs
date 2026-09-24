@@ -72,7 +72,6 @@ export const smokeViewDeclarations = [
     "gui",
     { capabilities: ["agent-surface"] },
   ],
-  ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
   ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
   [
     "goals",
@@ -113,7 +112,6 @@ export const smokeViewDeclarations = [
       capabilities: ["agent-surface", "wallpaper"],
     },
   ],
-  ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
   [
     "task-coordinator",

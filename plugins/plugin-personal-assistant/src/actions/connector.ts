@@ -46,7 +46,6 @@ const VERBOSE_DISPATCHER_KINDS = [
   "whatsapp",
   "wechat",
   "health",
-  "browser_bridge",
 ] as const;
 
 const VALID_SUBACTIONS = [
@@ -382,8 +381,6 @@ async function dispatchListAll(
     imessage,
     whatsapp,
     health,
-    browserSettings,
-    browserCompanions,
   ] = await Promise.all([
     service.getGoogleConnectorStatus(INTERNAL_URL),
     registryOrReadStatus("x", () => service.getXConnectorStatus()),
@@ -398,8 +395,6 @@ async function dispatchListAll(
       service.getWhatsAppConnectorStatus(),
     ),
     service.getHealthDataConnectorStatuses(INTERNAL_URL),
-    service.getBrowserSettings(),
-    service.listBrowserCompanions(),
   ]);
   const known = listKnownConnectorKinds(runtime);
   return {
@@ -416,10 +411,6 @@ async function dispatchListAll(
         imessage,
         whatsapp,
         health,
-        browser_bridge: {
-          settings: browserSettings,
-          companions: browserCompanions,
-        },
       },
     },
   };
@@ -1240,93 +1231,6 @@ async function dispatchWeChat(
   }
 }
 
-async function dispatchBrowserBridge(
-  { service }: ConnectorDispatchContext,
-  subaction: ConnectorSubaction,
-  _params: ConnectorActionParams,
-): Promise<ActionResult> {
-  switch (subaction) {
-    case "connect": {
-      const [settings, companions] = await Promise.all([
-        service.getBrowserSettings(),
-        service.listBrowserCompanions(),
-      ]);
-      return {
-        success: companions.length > 0,
-        text:
-          companions.length > 0
-            ? `Browser bridge is configured through @elizaos/plugin-browser (${companions.length} companion${companions.length === 1 ? "" : "s"}).`
-            : "Browser bridge setup is managed by @elizaos/plugin-browser. Configure the browser companion plugin, then check status again.",
-        data: {
-          actionName: ACTION_NAME,
-          connector: "browser_bridge",
-          subaction,
-          settings,
-          companions,
-        },
-      };
-    }
-    case "status": {
-      const [settings, companions] = await Promise.all([
-        service.getBrowserSettings(),
-        service.listBrowserCompanions(),
-      ]);
-      return {
-        success: true,
-        text: `Browser bridge status retrieved (${companions.length} companion${companions.length === 1 ? "" : "s"}).`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "browser_bridge",
-          subaction,
-          settings,
-          companions,
-        },
-      };
-    }
-    case "list": {
-      const companions = await service.listBrowserCompanions();
-      return {
-        success: true,
-        text: `${companions.length} browser companion${companions.length === 1 ? "" : "s"} listed.`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "browser_bridge",
-          subaction,
-          companions,
-        },
-      };
-    }
-    case "disconnect":
-      return unsupportedOperation(
-        "browser_bridge",
-        subaction,
-        "Browser companion disconnect is not exposed by LifeOpsService.",
-      );
-    case "verify": {
-      const [settings, companions] = await Promise.all([
-        service.getBrowserSettings(),
-        service.listBrowserCompanions(),
-      ]);
-      const connected = companions.some(
-        (companion) => companion.connectionState === "connected",
-      );
-      return {
-        success: connected,
-        text: `Browser bridge verify: ${connected ? "connected" : "disconnected"} (${companions.length} companion${companions.length === 1 ? "" : "s"}).`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "browser_bridge",
-          subaction,
-          settings,
-          companions,
-          verification: {
-            connected,
-          },
-        },
-      };
-    }
-  }
-}
 
 /**
  * Verbose dispatchers cover the rich verify probes (gmail+calendar reads,
@@ -1344,7 +1248,6 @@ const VERBOSE_DISPATCHERS: Record<VerboseConnectorKind, ConnectorDispatcher> = {
   whatsapp: dispatchWhatsApp,
   wechat: dispatchWeChat,
   health: dispatchHealth,
-  browser_bridge: dispatchBrowserBridge,
 };
 
 async function dispatchGenericRegistry(
@@ -1662,7 +1565,7 @@ export const connectorAction: Action & {
     {
       name: "connector",
       description:
-        "ConnectorRegistry kind: google, x, telegram, discord, imessage, whatsapp, wechat, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
+        "ConnectorRegistry kind: google, x, telegram, discord, imessage, whatsapp, wechat, twilio, calendly, duffel, health. Optional action=list.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1706,27 +1609,6 @@ export const connectorAction: Action & {
       name: "channelId",
       description:
         "Discord verify only: optional channel scope for the read-only search.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "browser",
-      description: "browser_bridge connect only: chrome | firefox | safari.",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: ["chrome", "firefox", "safari"],
-      },
-    },
-    {
-      name: "profileId",
-      description: "browser_bridge connect only: profile id.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "profileLabel",
-      description: "browser_bridge connect only: profile label.",
       required: false,
       schema: { type: "string" as const },
     },

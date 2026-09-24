@@ -318,17 +318,6 @@ BENCHMARK_STRATEGIES: dict[str, BaselineStrategy] = {
         "Pick uniformly from MINT tool set, junk args",
         True,
     ),
-    # Domain-specific -- random baseline is uninterpretable
-    "solana": BaselineStrategy(
-        "freeform",
-        "Random hex addresses -- uninterpretable",
-        False,
-    ),
-    "hyperliquid": BaselineStrategy(
-        "freeform",
-        "Random trading actions -- uninterpretable as a baseline",
-        False,
-    ),
     "lifeops-bench": BaselineStrategy(
         "function_call",
         "Random tool calls over allowed set",

@@ -144,8 +144,7 @@ def test_latest_readiness_includes_current_runtime_gate_findings(
 
     from benchmarks.orchestrator import adapters
 
-    monkeypatch.setattr(adapters, "_has_hyperliquid_live_backend", lambda: False)
-    monkeypatch.setattr(adapters, "_has_terminal_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(adapters, "_has_terminal_bench_docker_backend", lambda: False)
     monkeypatch.setattr(adapters, "_has_swe_bench_docker_backend", lambda: True)
     monkeypatch.setattr(adapters, "_has_osworld_docker_backend", lambda: True)
     monkeypatch.setattr(adapters, "_has_hermes_sandbox_backend", lambda: True)
@@ -156,9 +155,8 @@ def test_latest_readiness_includes_current_runtime_gate_findings(
 
     assert not report.ok
     assert any(
-        finding.scope == "runtime_gate:hyperliquid_live"
+        finding.scope == "runtime_gate:terminal_bench_docker"
         and finding.reason == "runtime_gate_blocked"
-        and finding.metadata == {"required_env": ["HL_PRIVATE_KEY"]}
         for finding in report.findings
     )
 

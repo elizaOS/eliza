@@ -300,8 +300,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/workspace-plugin-patches",
   "scripts/aosp/llama-cpp-patches",
   "platforms",
-  "packaging",
-  "patches",
 ]);
 
 export async function copyPublishAssets({

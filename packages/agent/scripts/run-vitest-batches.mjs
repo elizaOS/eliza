@@ -30,18 +30,7 @@ const roots = ["src", "test", "scripts"];
 export const agentTestInclude = roots.map(
   (root) => `${root}/**/*.test.{ts,tsx}`,
 );
-export const agentTestExclude = [
-  "**/dist/**",
-  "**/node_modules/**",
-  "**/*.e2e.test.{ts,tsx}",
-  "**/*.integration.test.{ts,tsx}",
-  "**/*.live.test.{ts,tsx}",
-  "**/*.real.test.{ts,tsx}",
-  "**/*-real.test.{ts,tsx}",
-  "**/*.cloud-smoke.test.{ts,tsx}",
-  "**/*.provider-smoke.test.{ts,tsx}",
-  "test/crash-restart-supervisor.test.ts",
-];
+export const agentTestExclude = ["**/dist/**", "**/node_modules/**"];
 
 export function isDefaultAgentTest(relativePath) {
   return (

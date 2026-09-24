@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ElectrobunConfig } from "electrobun/bun";
-import { resolveAppleTeamId } from "./src/native/browser-bridge-mac-signing";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 const PRODUCTION_CLOUD_API_ORIGIN = "https://api.eliza.app";
@@ -517,17 +516,7 @@ export function resolveElectrobunCopyMap({
 		"assets/appIcon.png": "assets/appIcon.png",
 		"assets/appIcon.ico": "assets/appIcon.ico",
 		"assets/trayIconTemplate.png": "assets/trayIconTemplate.png",
-		[`build/browser-bridge-native-host${process.platform === "win32" ? ".exe" : ""}`]: `browser-bridge-native-host${process.platform === "win32" ? ".exe" : ""}`,
-		"build/browser-bridge-release.json": "browser-bridge-release.json",
-		"scripts/browser-bridge-pipe-host.ps1": "browser-bridge-pipe-host.ps1",
-		"scripts/browser-bridge-secret.ps1": "browser-bridge-secret.ps1",
-		"scripts/browser-bridge-unregister.ps1": "browser-bridge-unregister.ps1",
 	};
-	if (process.platform === "darwin" && resolveAppleTeamId(process.env)) {
-		copy["build/browser-bridge-signing.json"] = "browser-bridge-signing.json";
-		copy["build/browser-bridge.provisionprofile"] =
-			"browser-bridge.provisionprofile";
-	}
 
 	if (buildVariant !== "store" && embedRuntime) {
 		// The runtime bundle dist is produced by the build pipeline before
@@ -663,20 +652,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	);
 	const embedRuntime = shouldEmbedRuntimeBundle(process.env);
 	const linuxRenderer = resolveLinuxRenderer(process.env);
-	const appleTeamId = resolveAppleTeamId(process.env);
-	const browserBridgeAppGroup = appleTeamId
-		? "group.ai.elizaos.browserbridge"
-		: null;
 	const storeEntitlements = parseEntitlementsPlist(
 		path.join(electrobunDir, "entitlements/mas.entitlements"),
 	);
-	if (browserBridgeAppGroup) {
-		storeEntitlements["com.apple.security.application-groups"] = [
-			browserBridgeAppGroup,
-		];
-	} else {
-		delete storeEntitlements["com.apple.security.application-groups"];
-	}
 	const brandConfigCopySource = resolveBrandConfigCopySource({
 		appName,
 		appId,
@@ -814,13 +792,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
 								"com.apple.security.personal-information.addressbook": true,
 								"com.apple.security.personal-information.calendars": true,
 								"com.apple.security.automation.apple-events": true,
-								...(browserBridgeAppGroup
-									? {
-											"com.apple.security.application-groups": [
-												browserBridgeAppGroup,
-											],
-										}
-									: {}),
 							},
 			},
 			linux: {

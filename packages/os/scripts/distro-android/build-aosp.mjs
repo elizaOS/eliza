@@ -523,7 +523,7 @@ function launchCuttlefish(aospRoot, brand) {
  * produced with <BRAND>_AOSP_BUILD=1.
  */
 function rebuildPrivilegedApk(brand) {
-  if (!fs.existsSync(path.join(elizaRoot, "packages/app-core/package.json"))) {
+  if (!fs.existsSync(path.join(elizaRoot, "packages/app/package.json"))) {
     throw new Error(
       "Set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout before rebuilding the privileged APK.",
     );

@@ -23,11 +23,11 @@
  * appear on the AOSP ElizaOS fork.
  */
 
+import type { EnabledViewKinds } from "@elizaos/core";
 import {
-  type EnabledViewKinds,
   isViewKindEnabled,
   resolveViewKind,
-} from "@elizaos/core";
+} from "@elizaos/shared/views/view-kind";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   LAUNCHER_AOSP_ONLY_VIEW_IDS,

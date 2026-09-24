@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun"]
   },
-  "include": ["metric-schema.test.ts"]
+  "include": ["metric-schema.mjs"]
 }

@@ -13,3 +13,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-messages build  # build
 bun run --cwd plugins/plugin-native-messages test   # tests
 ```
+
+The package-owned root TypeScript configuration covers its React view and
+native bridge. Production output uses `tsconfig.build.json`.

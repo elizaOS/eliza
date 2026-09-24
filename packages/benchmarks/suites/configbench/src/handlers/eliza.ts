@@ -1,4 +1,4 @@
-/** Real ElizaOS agent handler. Requires a configured LLM provider API key. */
+/** Real elizaOS agent handler. Requires a configured LLM provider API key. */
 
 import type {
   AgentContext,
@@ -19,6 +19,12 @@ import {
   ModelType,
 } from "@elizaos/core";
 import {
+  createAssistantPlugin,
+  SECRETS_SERVICE_TYPE,
+  secretsManagerPlugin,
+} from "@elizaos/plugin-assistant";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
+import {
   getNewlyActivatedPlugin,
   getNewlyDeactivatedPlugin,
 } from "../plugins/index.js";
@@ -35,7 +41,6 @@ type AgentRuntimeConstructor = Constructor<
   IAgentRuntime,
   [Record<string, unknown>]
 >;
-type InMemoryDatabaseAdapterConstructor = Constructor<Record<string, unknown>>;
 type ConfigBenchResponseHandlerEvaluator = {
   name: string;
   priority: number;
@@ -51,11 +56,6 @@ type ConfigBenchResponseHandlerEvaluator = {
 };
 
 let AgentRuntimeCtor: AgentRuntimeConstructor | null = null;
-let InMemoryDatabaseAdapterCtor: InMemoryDatabaseAdapterConstructor | null =
-  null;
-let secretsManagerPlugin: Plugin | null = null;
-let pluginManagerPlugin: Plugin | null = null;
-let SECRETS_SERVICE_TYPE: string = "SECRETS";
 let runtime: IAgentRuntime | null = null;
 let depsAvailable = false;
 
@@ -116,12 +116,6 @@ function hasConstructSignature(value: unknown): value is Constructor<unknown> {
 function isAgentRuntimeConstructor(
   value: unknown,
 ): value is AgentRuntimeConstructor {
-  return hasConstructSignature(value);
-}
-
-function isInMemoryDatabaseAdapterConstructor(
-  value: unknown,
-): value is InMemoryDatabaseAdapterConstructor {
   return hasConstructSignature(value);
 }
 
@@ -582,31 +576,6 @@ async function tryImportDeps(): Promise<boolean> {
   }
   AgentRuntimeCtor = agentRuntimeExport;
 
-  const inMemoryDatabaseAdapterExport = Reflect.get(
-    core,
-    "InMemoryDatabaseAdapter",
-  );
-  InMemoryDatabaseAdapterCtor = isInMemoryDatabaseAdapterConstructor(
-    inMemoryDatabaseAdapterExport,
-  )
-    ? inMemoryDatabaseAdapterExport
-    : null;
-
-  secretsManagerPlugin =
-    "secretsManagerPlugin" in core &&
-    core.secretsManagerPlugin != null &&
-    typeof core.secretsManagerPlugin === "object"
-      ? (core.secretsManagerPlugin as Plugin)
-      : null;
-  if (
-    "SECRETS_SERVICE_TYPE" in core &&
-    typeof core.SECRETS_SERVICE_TYPE === "string"
-  ) {
-    SECRETS_SERVICE_TYPE = core.SECRETS_SERVICE_TYPE;
-  }
-
-  pluginManagerPlugin = null;
-
   return true;
 }
 
@@ -684,169 +653,6 @@ export async function loadModelProviderPlugin(): Promise<Plugin | null> {
     }
   }
   return null;
-}
-
-async function loadSqlPlugin(): Promise<Plugin | null> {
-  try {
-    const mod = (await import("@elizaos/plugin-sql")) as Record<
-      string,
-      unknown
-    >;
-    return (mod.default ?? mod.pluginSql ?? null) as Plugin | null;
-  } catch (err) {
-    console.warn(
-      `[ElizaHandler] Failed to load SQL plugin: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
-}
-
-function addLegacyAdapterMethods(
-  adapter: Record<string, unknown>,
-): Record<string, unknown> {
-  // biome-ignore lint/suspicious/noExplicitAny: adapter is dynamically patched with compatibility DB methods; DatabaseAdapter has no stable structural type here.
-  const a = adapter as Record<string, any>;
-
-  a.getAgent ??= async (agentId: string) =>
-    (await a.getAgentsByIds([agentId]))[0] ?? null;
-  a.createAgent ??= async (agent: Record<string, unknown>) =>
-    (await a.createAgents([agent])).length > 0;
-  a.updateAgent ??= async (agentId: string, agent: Record<string, unknown>) => {
-    if (typeof a.updateAgents === "function") {
-      await a.updateAgents([{ id: agentId, agent }]);
-    } else {
-      await a.upsertAgents([{ ...agent, id: agentId }]);
-    }
-    return true;
-  };
-  a.deleteAgent ??= async (agentId: string) => a.deleteAgents([agentId]);
-
-  a.getEntitiesForRoom ??= async (roomId: string, includeComponents = false) =>
-    (await a.getEntitiesForRooms([roomId], includeComponents))[0]?.entities ??
-    [];
-  a.updateEntity ??= async (entity: Record<string, unknown>) =>
-    a.updateEntities([entity]);
-
-  a.getComponent ??= async (
-    entityId: string,
-    type: string,
-    worldId?: string,
-    sourceEntityId?: string,
-  ) =>
-    (
-      await a.getComponentsForEntities?.([
-        { entityId, type, worldId, sourceEntityId },
-      ])
-    )?.[0] ?? null;
-  a.getComponents ??= async (
-    entityId: string,
-    worldId?: string,
-    sourceEntityId?: string,
-  ) =>
-    (await a.getComponentsForEntities?.([
-      { entityId, worldId, sourceEntityId },
-    ])) ?? [];
-  a.createComponent ??= async (component: Record<string, unknown>) =>
-    (await a.createComponents([component]))[0] ?? null;
-  a.updateComponent ??= async (component: Record<string, unknown>) =>
-    a.updateComponents([component]);
-  a.deleteComponent ??= async (componentId: string) =>
-    a.deleteComponents([componentId]);
-
-  a.getMemoryById ??= async (id: string) =>
-    (await a.getMemoriesByIds([id]))[0] ?? null;
-  a.createMemory ??= async (
-    memory: Record<string, unknown>,
-    tableName = "messages",
-    unique?: boolean,
-  ) => (await a.createMemories([{ memory, tableName, unique }]))[0] ?? null;
-  a.updateMemory ??= async (memory: Record<string, unknown>) =>
-    a.updateMemories([memory]);
-  a.deleteMemory ??= async (memoryId: string) => a.deleteMemories([memoryId]);
-  a.deleteManyMemories ??= async (memoryIds: string[]) =>
-    a.deleteMemories(memoryIds);
-  const batchDeleteAllMemories = a.deleteAllMemories?.bind(a);
-  a.deleteAllMemories = async (
-    roomIdOrIds: string | string[],
-    tableName: string,
-  ) =>
-    batchDeleteAllMemories(
-      Array.isArray(roomIdOrIds) ? roomIdOrIds : [roomIdOrIds],
-      tableName,
-    );
-  const batchCountMemories = a.countMemories?.bind(a);
-  a.countMemories = async (
-    roomIdOrParams: string | Record<string, unknown>,
-    unique?: boolean,
-    tableName?: string,
-  ) =>
-    typeof roomIdOrParams === "object"
-      ? batchCountMemories(roomIdOrParams)
-      : batchCountMemories({
-          roomIds: [roomIdOrParams],
-          unique,
-          tableName: tableName ?? "messages",
-        });
-
-  a.log ??= async (params: Record<string, unknown>) => a.createLogs([params]);
-  a.deleteLog ??= async (logId: string) => a.deleteLogs([logId]);
-
-  a.createWorld ??= async (world: Record<string, unknown>) =>
-    (await a.createWorlds([world]))[0] ?? null;
-  a.getWorld ??= async (id: string) =>
-    (await a.getWorldsByIds([id]))[0] ?? null;
-  a.removeWorld ??= async (worldId: string) => a.deleteWorlds([worldId]);
-  a.updateWorld ??= async (world: Record<string, unknown>) =>
-    a.updateWorlds([world]);
-
-  a.deleteRoom ??= async (roomId: string) => a.deleteRooms([roomId]);
-  a.deleteRoomsByWorldId ??= async (worldId: string) =>
-    a.deleteRoomsByWorldIds([worldId]);
-  a.updateRoom ??= async (room: Record<string, unknown>) =>
-    a.updateRooms([room]);
-  a.getRoomsForParticipant ??= async (entityId: string) =>
-    a.getRoomsForParticipants([entityId]);
-  a.getRoomsByWorld ??= async (worldId: string) =>
-    a.getRoomsByWorlds([worldId]);
-
-  a.getParticipantsForEntity ??= async (entityId: string) =>
-    a.getParticipantsForEntities([entityId]);
-  a.getParticipantsForRoom ??= async (roomId: string) =>
-    (await a.getParticipantsForRooms([roomId]))[0]?.entityIds ?? [];
-  a.addParticipantsRoom ??= async (entityId: string, roomId: string) =>
-    a.createRoomParticipants([entityId], roomId);
-  a.removeParticipant ??= async (entityId: string, roomId: string) =>
-    a.deleteParticipants([{ entityId, roomId }]);
-  a.isRoomParticipant ??= async (entityId: string, roomId: string) =>
-    (await a.areRoomParticipants([{ entityId, roomId }]))[0] ?? false;
-  a.getParticipantUserState ??= async (roomId: string, entityId: string) =>
-    (await a.getParticipantUserStates([{ roomId, entityId }]))[0] ?? null;
-  a.setParticipantUserState ??= async (
-    roomId: string,
-    entityId: string,
-    state: string | null,
-  ) => a.updateParticipantUserStates([{ roomId, entityId, state }]);
-
-  a.createRelationship ??= async (params: Record<string, unknown>) =>
-    (await a.createRelationships([params]))[0] ?? null;
-  a.getRelationship ??= async (params: Record<string, unknown>) =>
-    (await a.getRelationshipsByPairs([params]))[0] ?? null;
-  a.updateRelationship ??= async (relationship: Record<string, unknown>) =>
-    a.updateRelationships([relationship]);
-
-  a.getCache ??= async (key: string) => (await a.getCaches([key])).get(key);
-  a.setCache ??= async (key: string, value: unknown) =>
-    a.setCaches([{ key, value }]);
-  a.deleteCache ??= async (key: string) => a.deleteCaches([key]);
-
-  a.createTask ??= async (task: Record<string, unknown>) =>
-    (await a.createTasks([task]))[0] ?? null;
-  a.getTask ??= async (id: string) => (await a.getTasksByIds([id]))[0] ?? null;
-  a.updateTask ??= async (id: string, task: Record<string, unknown>) =>
-    a.updateTasks([{ id, task }]);
-  a.deleteTask ??= async (id: string) => a.deleteTasks([id]);
-
-  return adapter;
 }
 
 export async function sendMessageAndWaitForResponseForTest(
@@ -1011,16 +817,9 @@ export const elizaHandler: Handler = {
       },
     };
 
-    const plugins: Plugin[] = [];
-    const adapter = InMemoryDatabaseAdapterCtor
-      ? addLegacyAdapterMethods(new InMemoryDatabaseAdapterCtor())
-      : undefined;
-    if (!adapter) {
-      const sqlPlugin = await loadSqlPlugin();
-      if (sqlPlugin) plugins.push(sqlPlugin);
-    }
-    if (secretsManagerPlugin) plugins.push(secretsManagerPlugin);
-    if (pluginManagerPlugin) plugins.push(pluginManagerPlugin);
+    const plugins: Plugin[] = [createAssistantPlugin(), secretsManagerPlugin];
+    const agentId = asUUID(crypto.randomUUID());
+    const adapter = await SQLiteDatabaseAdapter.create(":memory:", agentId);
 
     const modelProviderPlugin = await loadModelProviderPlugin();
     if (!modelProviderPlugin) {
@@ -1034,23 +833,17 @@ export const elizaHandler: Handler = {
     }
     plugins.push(modelProviderPlugin);
 
-    const agentId = crypto.randomUUID();
     runtime = new AgentRuntimeCtor({
       agentId,
       character,
       plugins,
-      ...(adapter ? { adapter } : {}),
+      adapter,
       settings: {
         ALLOW_NO_DATABASE: "true",
         EMBEDDING_DIMENSION: "1536",
         PGLITE_DATA_DIR: "memory://",
         ...providerSettings,
       },
-      // Basic capabilities (REPLY/IGNORE + the actions provider) must remain
-      // enabled. Without them the actions provider never injects `actionNames`
-      // into Stage 1 state, so the LLM doesn't see SET_SECRET / MANAGE_SECRET
-      // as choices and falls back to a default REPLY with roleplay text.
-      disableBasicCapabilities: false,
     });
     installConfigBenchRoutingEvaluator(runtime);
     const initializableRuntime = runtime as typeof runtime & {
