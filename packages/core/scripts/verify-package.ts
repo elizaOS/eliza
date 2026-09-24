@@ -212,6 +212,27 @@ try {
   assert.deepEqual(publicApi.rerankMemories('automobile', [semanticMemory, attachmentMemory, keywordMemory]), [keywordMemory, semanticMemory, attachmentMemory]);
   assert.equal(new publicApi.BM25([{ title: 'receipt', content: 'automobile receipt' }]).search('automobile', 1)[0].index, 0);
 
+  publicApi.registerCuratedApp({
+    slug: 'packed-core-fixture',
+    canonicalName: '@elizaos/plugin-packed-core-fixture',
+    aliases: ['packed fixture'],
+  });
+  assert.equal(publicApi.getElizaCuratedAppDefinition('packed fixture')?.canonicalName, '@elizaos/plugin-packed-core-fixture');
+  assert.ok(publicApi.getCuratedAppDefinitions().some((entry) => entry.slug === 'packed-core-fixture'));
+
+  const walletFields = Object.freeze({ ALCHEMY_API_KEY: '  fixture-alchemy  ', INFURA_API_KEY: 'fixture-retired' });
+  const walletProviders = Object.freeze({ evm: 'ALCHEMY', bsc: 'eliza-cloud', solana: 'eliza-cloud' });
+  assert.deepEqual(publicApi.buildWalletRpcUpdateRequest({
+    rpcFieldValues: walletFields,
+    selectedProviders: walletProviders,
+    selectedNetwork: 'testnet',
+  }), {
+    selections: { evm: 'alchemy', bsc: 'eliza-cloud', solana: 'eliza-cloud' },
+    walletNetwork: 'testnet',
+    credentials: { ALCHEMY_API_KEY: 'fixture-alchemy', INFURA_API_KEY: '' },
+  });
+  assert.equal(walletFields.ALCHEMY_API_KEY, '  fixture-alchemy  ', 'request construction preserves its input');
+
   for (const retired of ['loadCharacters', 'createRuntimes', 'mergeSettingsInto']) {
     assert.equal(retired in publicApi, false, retired + ' is retired from the v2 public API');
   }
@@ -225,7 +246,7 @@ try {
   }), publicApi.MediaFetchError);
   assert.equal(mediaFetchCalled, false, 'packed media API rejects loopback before transport');
   await assert.rejects(publicApi.readResponseWithLimit(new Response('12345'), 4), { code: 'max_bytes' });
-  for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'awareness', 'contracts/health', 'contracts', 'i18n/validation-keywords', 'knowledge-graph', 'lifeops-constants', 'lifeops-normalize', 'markdown', 'validation-keywords', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
