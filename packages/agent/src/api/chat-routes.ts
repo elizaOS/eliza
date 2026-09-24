@@ -876,6 +876,14 @@ function getLatestVisibleResponseMessageText(
 // Do NOT use as the generic empty-response fallback; that mislabels every
 // IGNORE / empty-action / empty-normalized-text path as a provider failure.
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
+const MESSAGE_CONTENT_FAILURE_REPLY =
+  "I couldn't process the stored message content.";
+
+function isMessageContentFailure(err: unknown): boolean {
+  const code = asRecord(err)?.code;
+  return typeof code === "string" && code.startsWith("MESSAGE_CONTENT_");
+}
+
 const REPLY_GROUNDING_FAILURE_REPLY =
   "I couldn't verify my reply against the available results.";
 // Shared with the connector failure-reply path in @elizaos/core so every
@@ -939,7 +947,10 @@ function classifySyntheticChatFailureText(
     .replace(/[’]/g, "'")
     .replace(/\s+/g, " ");
   if (!normalized) return null;
-  if (normalized === REPLY_GROUNDING_FAILURE_REPLY.toLowerCase()) {
+  if (
+    normalized === MESSAGE_CONTENT_FAILURE_REPLY.toLowerCase() ||
+    normalized === REPLY_GROUNDING_FAILURE_REPLY.toLowerCase()
+  ) {
     return "handler_error";
   }
   if (normalized === PROVIDER_ISSUE_CHAT_REPLY.toLowerCase()) {
@@ -1410,6 +1421,7 @@ export function getChatFailureReply(
   err: unknown,
   logBuffer: LogEntry[],
 ): string {
+  if (isMessageContentFailure(err)) return MESSAGE_CONTENT_FAILURE_REPLY;
   if (asRecord(err)?.code === "REPLY_GROUNDING_FAILED") {
     return REPLY_GROUNDING_FAILURE_REPLY;
   }
@@ -1435,6 +1447,7 @@ export function classifyChatFailure(
   err: unknown,
   logBuffer: LogEntry[],
 ): ChatFailureKind {
+  if (isMessageContentFailure(err)) return "handler_error";
   if (asRecord(err)?.code === "REPLY_GROUNDING_FAILED") {
     return "handler_error";
   }

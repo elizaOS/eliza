@@ -1,4 +1,5 @@
 import { randomUUID as uuidv4 } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "../errors";
 import type { Content } from "../types";
 import {
@@ -362,6 +363,41 @@ export class RuntimeDataMutations {
 			segments: projection.segments,
 		});
 		if (result.status !== "created") {
+			// Hosts can durably admit the incoming message before assistant ingress.
+			// Accept only an exact replay, never a collision with different evidence.
+			const existing = await this.runtime.adapter.getMemoriesByIds(
+				[id],
+				"messages",
+			);
+			const sameEvidence = (
+				stored: Memory | undefined,
+				expected: Memory,
+			): boolean =>
+				stored !== undefined &&
+				stored.id === expected.id &&
+				stored.agentId === expected.agentId &&
+				stored.roomId === expected.roomId &&
+				stored.entityId === expected.entityId &&
+				isDeepStrictEqual(stored.content, expected.content);
+			if (sameEvidence(existing[0], projectedParent)) {
+				const segments = projection.segments.length
+					? await this.runtime.adapter.getMemoriesByIds(
+							projection.segments.map((segment) => segment.id as UUID),
+							"message_content_segments",
+						)
+					: [];
+				if (
+					projection.segments.every((segment) => {
+						const stored = segments.find((entry) => entry.id === segment.id);
+						return (
+							sameEvidence(stored, segment) &&
+							isDeepStrictEqual(stored?.metadata, segment.metadata)
+						);
+					})
+				)
+					return id;
+			}
+
 			throw new ElizaError("Message content publication conflicted", {
 				code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
 				context: { messageId: id },

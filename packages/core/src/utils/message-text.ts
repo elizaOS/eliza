@@ -77,8 +77,23 @@ export function hasDocumentAugmentationEnvelope(text: unknown): boolean {
 export function stripAugmentationForPersistence<
 	T extends Pick<Memory, "content">,
 >(message: T): T {
-	const content = message?.content;
+	let content = message?.content;
 	if (!content || typeof content !== "object") return message;
+	// A view client identifies this request's delivery shell, not durable evidence.
+	if (
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata) &&
+		"viewClientId" in content.metadata
+	) {
+		const { viewClientId: _viewClientId, ...metadata } = content.metadata;
+		const { metadata: _metadata, ...durableContent } = content;
+		content = {
+			...durableContent,
+			...(Object.keys(metadata).length ? { metadata } : {}),
+		};
+		message = { ...message, content };
+	}
 	const rendered = (content as { text?: unknown }).text;
 	if (
 		typeof rendered !== "string" ||

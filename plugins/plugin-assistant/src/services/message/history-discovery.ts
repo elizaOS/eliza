@@ -85,9 +85,11 @@ export function withReviewedHistorySelection(
           complete: {
             ...complete,
             ...(nativeRead ? { enum: [true] } : {}),
-            description: nativeRead
-              ? "HANDLE_RESPONSE certifies that this request’s dialogue dependencies are resolved from supplied originals. If any remain missing or uncertain, choose READ_CONTEXT instead; never certify unseen content."
-              : "True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content. This certifies source selection, not completion of future tool work.",
+            description:
+              (nativeRead
+                ? "HANDLE_RESPONSE certifies that this request’s dialogue dependencies are resolved from supplied originals. If any remain missing or uncertain, choose READ_CONTEXT instead; never certify unseen content."
+                : "True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content.") +
+              " This certifies source selection, not completion of future tool work.",
           },
         },
       },
