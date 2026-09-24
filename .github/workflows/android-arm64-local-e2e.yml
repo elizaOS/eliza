@@ -47,7 +47,7 @@ jobs:
       - name: Fail-closed ARM64 device preflight
         run: |
           mkdir -p "$ELIZA_DEVICE_BUNDLE_ROOT/preflight"
-          if bash .github/scripts/device-e2e/arm64-local-preflight.sh \
+          if bash packages/app/scripts/android-arm64-local-preflight.sh \
             > "$ELIZA_DEVICE_BUNDLE_ROOT/preflight/arm64-preflight.log" 2>&1; then
             cat "$ELIZA_DEVICE_BUNDLE_ROOT/preflight/arm64-preflight.log"
           else

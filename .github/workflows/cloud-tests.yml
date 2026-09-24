@@ -274,7 +274,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Run blocking cloud stack specs
         run: >-
           bun run --cwd packages/cloud/e2e test --
