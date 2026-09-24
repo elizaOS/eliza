@@ -214,24 +214,24 @@ describe("registry (real plan discovery)", () => {
     expect(without.orphanSuites).toEqual([]);
     expect(without.connections.length).toBeGreaterThan(30);
 
-    const webSearchTask = without.tasks.find((t) =>
-      t.liveSuites.some((s) => s.file.includes("plugin-web-search")),
+    const walletTask = without.tasks.find((t) =>
+      t.liveSuites.some((s) => s.file.includes("birdeye-direct.live.test.ts")),
     );
-    expect(webSearchTask).toBeDefined();
+    expect(walletTask).toBeDefined();
 
     const suiteState = (registry: ReturnType<typeof buildRegistry>) => {
       const suite = registry.tasks
         .flatMap((t) => t.liveSuites)
-        .find((s) => s.file.includes("webSearchService.real.test.ts"));
-      if (!suite) throw new Error("web-search live suite was not discovered");
+        .find((s) => s.file.includes("birdeye-direct.live.test.ts"));
+      if (!suite) throw new Error("Birdeye live suite was not discovered");
       return suite.state;
     };
 
     // Deterministic regardless of ambient env: with an explicit key the suite
     // arms; the no-credentials expectation only holds on machines that don't
-    // already export TAVILY_API_KEY, so assert the armed side only.
+    // already export BIRDEYE_API_KEY, so assert the armed side only.
     const withKey = buildRegistry({
-      savedCredentials: { tavily: { TAVILY_API_KEY: "tvly-test" } },
+      savedCredentials: { birdeye: { BIRDEYE_API_KEY: "birdeye-test" } },
       optInToggles: {},
       history: {},
     });

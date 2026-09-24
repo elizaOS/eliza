@@ -48,7 +48,7 @@ describe("getDefaultElizaCharacterData", () => {
 
   test("web-search service starts keyless from this character's settings", async () => {
     // WebSearchService no longer requires a Google key to start: without one
-    // it serves the keyless MCP path (Parallel → Exa). Prove the service
+    // it serves the keyless MCP path (Parallel). Prove the service
     // starts from exactly what this character's settings make visible, so an
     // injected plugin can never be a dead "Service start failed" logger.
     const settings = character.settings as Record<string, unknown>;

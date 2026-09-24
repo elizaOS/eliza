@@ -1,5 +1,5 @@
 // Regression coverage for the WEB_SEARCH success gate: a synthesized provider
-// answer with an empty link list (the keyless Parallel→Exa shape) must reach
+// answer with an empty link list (the keyless Parallel shape) must reach
 // the user instead of being reported as "no relevant results". The action runs
 // real; only fetch and the runtime surface are stubbed.
 import { afterEach, describe, expect, it } from "bun:test";
