@@ -15,10 +15,10 @@ def test_extract_command_joins_multiple_xml_tags_in_sequence() -> None:
     assert _extract_command(text) == "pwd\nls -R /app"
 
 
-def test_extract_command_caps_multi_command_bursts() -> None:
+def test_extract_command_preserves_multi_command_bursts() -> None:
     text = "".join(f"<command>cmd{i}</command>" for i in range(5))
 
-    assert _extract_command(text) == "cmd0\ncmd1\ncmd2"
+    assert _extract_command(text) == "cmd0\ncmd1\ncmd2\ncmd3\ncmd4"
 
 
 def test_extract_command_accepts_json_cmd_array() -> None:
