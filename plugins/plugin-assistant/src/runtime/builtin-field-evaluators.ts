@@ -42,6 +42,7 @@ import {
   SHOULD_RESPOND_SCHEMA_DESCRIPTION,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
 
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with
@@ -252,14 +253,17 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
   description:
     NAVIGATION_REPLY_RULE +
-    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=one short conversational acknowledgment, usually 2–6 words (for example "Let me check."). Do not repeat the request, names, dates or parameters; do not speculate about results or claim missing information before checking. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
+    ACKNOWLEDGMENT_RULE +
+    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
     EXACT_REPLY_TEXT_RULE,
   descriptionCompressed:
+    ACKNOWLEDGMENT_RULE +
     "User-facing reply. simple=whole answer; navigationOnly=completed-state destination confirmation spoken after successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
   priority: 20,
   schema: {
     type: "string",
     description:
+      ACKNOWLEDGMENT_RULE +
       "User-facing reply. Simple=whole answer. navigationOnly=completed-state destination confirmation spoken only after navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
       EXACT_REPLY_TEXT_RULE,
   },
