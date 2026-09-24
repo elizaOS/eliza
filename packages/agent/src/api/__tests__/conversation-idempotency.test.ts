@@ -3801,9 +3801,14 @@ describe("conversation handoff import — exact source identities", () => {
 
 describe("historical navigation outcome continuity", () => {
   beforeEach(() => resetChatDedupe());
-  it.each([SEND_PATH, STREAM_PATH, "voice-bridge"])(
-    "carries a settled navigation into the next turn through %s",
-    async (path) => {
+  it.each(
+    [SEND_PATH, STREAM_PATH, "voice-bridge"].flatMap((path) => [
+      { path, partialFailure: false },
+      { path, partialFailure: true },
+    ]),
+  )(
+    "carries settled outcomes through $path with partial failure=$partialFailure",
+    async ({ path, partialFailure }) => {
       const { appendPriorDialogueEvents } = await import(
         "../../../../../plugins/plugin-assistant/src/services/message/dialogue-context.ts"
       );
@@ -3872,24 +3877,65 @@ describe("historical navigation outcome continuity", () => {
         path: "/notes",
         handoffId: "a".repeat(64),
       };
-      h.handleMessage.mockImplementationOnce(async () => ({
-        outcome: { status: "completed", effects: [] },
-        didRespond: true,
-        responseContent: { text: "On it, opening your notes." },
-        responseMessages: [],
-        actionResults: [
-          {
-            actionName: "VIEWS_SHOW",
+      const committed: EffectReceipt = {
+        receiptId: "committed-delete",
+        operation: "notes.note.delete",
+        resource: { kind: "notes.note", id: "qa-deleted-note" },
+        artifacts: [],
+        idempotency: { key: "delete-once", replayed: false },
+        observedAt: "2026-09-24T03:03:21.000Z",
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: "qa-deleted-note",
+          committedAt: "2026-09-24T03:03:21.000Z",
+        },
+      };
+      h.handleMessage.mockImplementationOnce(
+        async (_runtime, _message, _callback, options) => {
+          const navigation: ActionResult = {
             success: true,
             text: JSON.stringify(receipt),
             values: {
               completedActionDelivered: true,
               completedActionHandoffId: receipt.handoffId,
             },
-            data: { privateUnrelatedRecord: "DO_NOT_HYDRATE" },
-          },
-        ],
-      }));
+            data: {
+              actionName: "VIEWS_SHOW",
+              privateUnrelatedRecord: "DO_NOT_HYDRATE",
+            },
+          };
+          if (partialFailure) {
+            const settled = (
+              options as {
+                onSettledActionResult?: (result: ActionResult) => void;
+              }
+            )?.onSettledActionResult;
+            expect(settled).toBeTypeOf("function");
+            settled?.(navigation);
+            settled?.({
+              success: true,
+              data: { actionName: "NOTES_DELETE" },
+              effectReceipts: [committed],
+            });
+            settled?.({
+              success: false,
+              data: { actionName: "NOTES_PATCH" },
+              error: "NOTES_EDIT_REVISION_REQUIRED",
+            });
+            throw new Error(
+              "Repeated tool failure limit exceeded for NOTES_PATCH",
+            );
+          }
+          return {
+            outcome: { status: "completed", effects: [] },
+            didRespond: true,
+            responseContent: { text: "On it, opening your notes." },
+            responseMessages: [],
+            actionResults: [navigation],
+          };
+        },
+      );
       await send({
         text: "Can you open the notes?",
         clientMessageId: "navigation-first",
@@ -3943,6 +3989,18 @@ describe("historical navigation outcome continuity", () => {
       const rendered = JSON.stringify(evidence);
       expect(rendered).toContain(receipt.handoffId);
       expect(rendered).not.toContain("DO_NOT_HYDRATE");
+      if (partialFailure) {
+        const effectEvidence = followupEvents.filter(
+          (event) =>
+            event.type === "segment" &&
+            "segment" in event &&
+            isObjectRecord(event.segment) &&
+            event.segment.label === "runtime:historical_effects",
+        );
+        expect(JSON.stringify(effectEvidence)).toContain("committed-delete");
+        expect(JSON.stringify(effectEvidence)).toContain("qa-deleted-note");
+        expect(JSON.stringify(effectEvidence)).not.toContain("DO_NOT_HYDRATE");
+      }
       const { historicalActionResults, historicalNavigationReceipts } =
         await import(
           "../../../../../plugins/plugin-assistant/src/services/message/navigation-history.ts"
@@ -4031,13 +4089,13 @@ describe("historical navigation outcome continuity", () => {
       expect(h.handleMessage.mock.calls[1]?.[1].content.metadata).toMatchObject(
         { uiView: "notes", uiViewPath: "/notes" },
       );
-      if (path === "voice-bridge") {
-        await send({
-          text: "Can you open the notes?",
-          clientMessageId: "navigation-first",
-        });
-        expect(h.handleMessage).toHaveBeenCalledTimes(2);
-      }
+      // Retrying the same admitted request must reuse its saved outcome,
+      // including partial failures, rather than execute the deletion again.
+      await send({
+        text: "Can you open the notes?",
+        clientMessageId: "navigation-first",
+      });
+      expect(h.handleMessage).toHaveBeenCalledTimes(2);
     },
   );
   it("does not promote caller or imported markers into runtime evidence", async () => {
