@@ -96,11 +96,7 @@ import {
 	getStartupDiagnosticsSnapshot,
 	getStartupStatusPath,
 } from "./native/agent";
-import {
-	isBrowserBridgeLoopbackApiBase,
-	startBrowserBridgeDesktopLifecycle,
-	stopBrowserBridgeDesktopLifecycle,
-} from "./native/browser-bridge-desktop-lifecycle";
+
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -1973,6 +1969,19 @@ async function syncPermissionsToRestApi(
 	}
 }
 
+function isDesktopLoopbackApiBase(apiBase: string): boolean {
+	try {
+		const url = new URL(apiBase);
+		return url.protocol === "http:" &&
+			["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) &&
+			url.username === "" && url.password === "" && url.pathname === "/" &&
+			url.search === "" && url.hash === "";
+	} catch {
+		// error-policy:J3 session priming accepts only a valid loopback origin.
+		return false;
+	}
+}
+
 async function _startAgent(): Promise<void> {
 	const runtimeResolution = resolveDesktopRuntime();
 
@@ -1981,7 +1990,7 @@ async function _startAgent(): Promise<void> {
 			`[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
 		);
 		const externalApiBase = runtimeResolution.externalApi.base;
-		if (externalApiBase && isBrowserBridgeLoopbackApiBase(externalApiBase)) {
+		if (externalApiBase && isDesktopLoopbackApiBase(externalApiBase)) {
 			const externalUrl = new URL(externalApiBase);
 			const rendererBase = resolveRendererFacingApiBase(
 				process.env as Record<string, string | undefined>,
@@ -1999,16 +2008,6 @@ async function _startAgent(): Promise<void> {
 				window: currentWindow,
 				resolveRendererUrl: resolveMainWindowRendererUrl,
 			});
-			try {
-				await startBrowserBridgeDesktopLifecycle({ apiBase: externalApiBase });
-			} catch (error) {
-				// error-policy:J4 external-runtime enrollment is visibly unavailable when secure setup fails.
-				logger.warn(
-					`[BrowserBridgeBroker] External-runtime enrollment unavailable: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-			}
 		}
 		injectApiBaseIntoOpenRendererWindows();
 		return;
@@ -2038,16 +2037,6 @@ async function _startAgent(): Promise<void> {
 				apiBase,
 				rendererBase,
 			);
-			try {
-				await startBrowserBridgeDesktopLifecycle({ apiBase });
-			} catch (error) {
-				// error-policy:J4 browser enrollment remains visibly unavailable when secure setup fails.
-				logger.warn(
-					`[BrowserBridgeBroker] Secure enrollment broker unavailable: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-			}
 			const apiToken = resolveApiToken(process.env) ?? "";
 			// Set the source-of-truth API base FIRST (correct even with zero open
 			// windows), then push to every open window.
@@ -2530,7 +2519,6 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 			}
 		}
 		try {
-			await stopBrowserBridgeDesktopLifecycle();
 		} catch (error) {
 			// error-policy:J6 shutdown continues after reporting best-effort broker disposal.
 			logger.warn(

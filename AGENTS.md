@@ -123,8 +123,6 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See the
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
 | `bun run trajectory:inspect:test` | `bun test packages/scripts/__tests__/trajectory-validate.test.ts` |
 | `bun run audit:e2e-coverage:test` | retired with the historical coverage baseline; use the diagnostic coverage report |
-| `bun run test:browser-bridge` | `bun run --cwd packages/browser-bridge-extension test:smoke:installed` (requires installed browsers) |
-| `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-bridge-extension test:smoke:safari` (requires installed Safari) |
 | `bun run voice:latency-report` | `bun run --cwd packages/app voice:latency-report` |
 | `bun run voice:interactive` | `bun run --cwd packages/app voice:interactive` |
 | `bun run voice:duet` | `bun run --cwd packages/app voice:duet` |
@@ -155,7 +153,6 @@ packages/
   shared/           cross-package utilities, contracts, and brand assets
   testing/          fixtures, scenario runner, synthetic worlds, evidence and certification
   skills/           bundled runtime skills and loading utilities
-  browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
   docs/             documentation site source
   homepage/         public Eliza product and download site
   training/         Eliza-1 training, evaluation, conversion, and release tooling

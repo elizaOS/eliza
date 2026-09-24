@@ -422,16 +422,11 @@ jobs:
             exit 1
           fi
 
-  browser-bridge-windows-security:
-    name: Browser bridge Windows security
-    uses: ./.github/workflows/browser-bridge-windows-security.yml
-
   static-smoke:
     name: All Tests Passed
     if: always()
     needs:
       - source-smoke
-      - browser-bridge-windows-security
       - billing-payment-replay-e2e
       - subscription-authority-postgres
     runs-on: ubuntu-24.04
@@ -440,7 +435,6 @@ jobs:
         env:
           RESULTS: >-
             source-smoke=${{ needs.source-smoke.result }}
-            browser-bridge-windows-security=${{ needs.browser-bridge-windows-security.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
         run: |

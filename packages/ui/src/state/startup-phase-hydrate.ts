@@ -80,7 +80,6 @@ export interface HydratingDeps {
   loadWalletConfig: () => Promise<void>;
   loadInventory: () => Promise<void>;
   loadUpdateStatus: (force?: boolean) => Promise<void>;
-  checkExtensionStatus: () => Promise<void>;
   pollCloudCredits: () => void;
   fetchAutonomyReplay: () => Promise<void>;
   setSelectedVrmIndex: (v: number) => void;
@@ -368,7 +367,6 @@ export async function runHydrating(
       void deps.loadSkills();
     }
     if (urlTab === "settings") {
-      void deps.checkExtensionStatus();
       void deps.loadWalletConfig();
       void deps.loadCharacter();
       void deps.loadUpdateStatus();

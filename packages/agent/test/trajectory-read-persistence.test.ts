@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
-  type TrajectoriesService,
+  TrajectoriesService,
   trajectoriesPlugin,
   tryHandleTrajectoryReadRoutes,
 } from "@elizaos/plugin-assistant";
@@ -126,6 +126,16 @@ it("reads complete persisted calls with the same filters and failures on both lo
      SELECT ${sqlQuote(randomUUID())}, ${sqlQuote(foreignId)}, 0, payload
      FROM trajectory_steps WHERE id = ${sqlQuote(stepId)}`,
   );
+  await expect(
+    bridge.exportTrajectoriesZip({ trajectoryIds: [foreignId] }),
+  ).rejects.toMatchObject({
+    code: "TRAJECTORY_EXPORT_INCOMPLETE",
+  });
+  await expect(
+    bridge.exportTrajectoriesZip({ trajectoryIds: [randomUUID()] }),
+  ).rejects.toMatchObject({
+    code: "TRAJECTORY_EXPORT_INCOMPLETE",
+  });
   for (const reader of [direct, bridge]) {
     const filtered = await reader.listTrajectories({
       source: "read-acceptance",
@@ -241,4 +251,73 @@ it("reads complete persisted calls with the same filters and failures on both lo
     );
   }
   expect((await direct.listTrajectories({})).total).toBe(2);
+}, 120_000);
+
+it("exports every owned match beyond viewer and archive page sizes", async () => {
+  const templateId = await direct.startTrajectory(fixture.runtime.agentId, {
+    source: "export-template",
+  });
+  const templateStep = direct.startStep(templateId, { kind: "llm" });
+  direct.logLlmCall({
+    stepId: templateStep,
+    model: "export-fixture",
+    purpose: "action",
+    actionType: "runtime.useModel",
+    systemPrompt: "Export completely.",
+    userPrompt: "original request",
+    response: "original response",
+  });
+  await direct.flushWriteQueue(templateId);
+  await direct.endTrajectory(templateId, "completed");
+  await executeRawSql(
+    fixture.runtime,
+    `UPDATE trajectories SET steps_json = (SELECT jsonb_agg(payload::jsonb ORDER BY ordinal)
+      FROM trajectory_steps WHERE trajectory_id = ${sqlQuote(templateId)}) WHERE id = ${sqlQuote(templateId)}`,
+  );
+
+  await executeRawSql(
+    fixture.runtime,
+    `INSERT INTO trajectories
+    (id, trajectory_id, agent_id, source, status, start_time, end_time, duration_ms,
+     steps_json, metrics_json, reward_components_json, metadata_json, created_at, updated_at)
+    SELECT 'archive-' || n, 'archive-' || n, agent_id,
+      CASE WHEN n <= 501 THEN 'zip-pages' ELSE 'archive-pages' END,
+      status, start_time, end_time, duration_ms, steps_json, metrics_json,
+      reward_components_json, metadata_json, created_at, updated_at
+    FROM trajectories CROSS JOIN generate_series(1, 10001) n
+    WHERE id = ${sqlQuote(templateId)}`,
+  );
+  const zip = await bridge.exportTrajectoriesZip({ source: "zip-pages" });
+  expect(
+    zip.entries.filter((entry) => entry.name.endsWith("/trajectory.json")),
+  ).toHaveLength(501);
+  const manifest = zip.entries.find((entry) => entry.name === "manifest.json");
+  if (!manifest) throw new Error("ZIP export omitted its manifest");
+  const parsedManifest = JSON.parse(manifest.data) as {
+    trajectories: { trajectoryId: string }[];
+  };
+  expect(
+    new Set(parsedManifest.trajectories.map((entry) => entry.trajectoryId))
+      .size,
+  ).toBe(501);
+  const independent = new TrajectoriesService(fixture.runtime);
+  await independent.initialize();
+  try {
+    const nativeZip = await independent.exportTrajectoriesZip({
+      source: "zip-pages",
+    });
+    expect(
+      nativeZip.entries.filter((entry) =>
+        entry.name.endsWith("/trajectory.json"),
+      ),
+    ).toHaveLength(501);
+  } finally {
+    await independent.stop();
+  }
+  const archive = await direct.exportTrajectories({ format: "json" });
+  if (typeof archive.data !== "string")
+    throw new Error("JSON export did not return text");
+  const rows = JSON.parse(archive.data) as { trajectoryId: string }[];
+  expect(rows).toHaveLength(10003);
+  expect(new Set(rows.map((row) => row.trajectoryId)).size).toBe(10003);
 }, 120_000);

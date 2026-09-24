@@ -55,7 +55,6 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
-import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -313,22 +312,6 @@ function resolveBrowserWorkspaceTabPartition(
   }
 }
 
-function isBrowserBridgePlugin(plugin: {
-  id?: string;
-  name?: string;
-  npmName?: string;
-}): boolean {
-  const identifiers = [plugin.id, plugin.name, plugin.npmName]
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => value.trim().toLowerCase());
-  return identifiers.some(
-    (value) =>
-      value === "browser" ||
-      value === "browser-bridge" ||
-      value === "plugin-browser" ||
-      value === "@elizaos/plugin-browser",
-  );
-}
 
 function isBrowserWorkspaceSessionMode(
   mode: BrowserWorkspaceSnapshot["mode"],
@@ -813,12 +796,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   // leak into a user tab. The address bar remains the explicit path for opening
   // a chosen URL.
   const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
-  const browserBridgeSupported = useMemo(
-    () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
-    [plugins],
-  );
-  const browserBridgeUnsupportedInNativeLocalMode =
-    Capacitor.isNativePlatform() && mobileRuntimeMode === "local";
 
   workspaceSnapshotRef.current = workspace;
 
@@ -3081,16 +3058,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         </div>
       ) : null}
 
-      {browserBridgeSupported && !browserBridgeUnsupportedInNativeLocalMode ? (
-        <div
-          data-testid="browser-session-policy-dock"
-          className="pointer-events-none absolute inset-x-3 bottom-3 z-30 max-h-[min(40%,24rem)] overflow-y-auto"
-        >
-          <div className="pointer-events-auto mx-auto w-full max-w-xl rounded-sm bg-background/95 shadow-lg">
-            <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
-          </div>
-        </div>
-      ) : null}
 
       {workspace.tabs.length === 0 ? (
         browserWorkspaceUnavailable ? (

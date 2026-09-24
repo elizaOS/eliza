@@ -29,32 +29,6 @@ function tokenMatches(expected: string, provided: string): boolean {
   );
 }
 
-function isBrowserCompanionOwnerMutation(
-  method: string,
-  pathname: string,
-): boolean {
-  return (
-    method === "POST" &&
-    (pathname === "/api/browser-bridge/companions/pair" ||
-      /^\/api\/browser-bridge\/companions\/[^/]+\/(?:revoke|reset-revocation)$/.test(
-        pathname,
-      ))
-  );
-}
-
-function hasBrowserCompanionOwnerSessionCookie(
-  req: http.IncomingMessage,
-): boolean {
-  const cookie =
-    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
-  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
-}
-
-function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
-  const csrf = req.headers["x-eliza-csrf"];
-  return typeof csrf === "string" && csrf.trim().length > 0;
-}
-
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -259,24 +233,6 @@ function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
   return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
 }
 
-function getBrowserBridgePlugin(): Promise<BrowserPluginModule | null> {
-  return resolveDesktopBrowserPlugin("getBrowserBridgeCompanionPackageStatus");
-}
-
-const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
-  extensionPath: null,
-  chromeBuildPath: null,
-  chromePackagePath: null,
-  firefoxBuildPath: null,
-  firefoxPackagePath: null,
-  safariWebExtensionPath: null,
-  safariAppPath: null,
-  safariPackagePath: null,
-  releaseManifest: null,
-} satisfies ReturnType<
-  BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
->;
-
 async function getX402Plugin(): Promise<X402PluginModule | null> {
   if (x402PluginModule) return x402PluginModule;
   // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
@@ -361,9 +317,6 @@ async function getOptionalPluginApi<T>(
     );
   }
 }
-type BrowserBridgeKind = BrowserPluginModule["BROWSER_BRIDGE_KINDS"][number];
-type BrowserBridgePackagePathTarget =
-  BrowserPluginModule["BROWSER_BRIDGE_PACKAGE_PATH_TARGETS"][number];
 type BrowserWorkspaceCommand = Parameters<
   BrowserPluginModule["executeBrowserWorkspaceCommand"]
 >[0];
@@ -847,30 +800,6 @@ function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
 
-function parseBrowserBridgeKind(
-  browserPlugin: BrowserPluginModule,
-  value: string | undefined,
-): BrowserBridgeKind | null {
-  if (!value) return null;
-  return (browserPlugin.BROWSER_BRIDGE_KINDS as readonly string[]).includes(
-    value,
-  )
-    ? (value as BrowserBridgeKind)
-    : null;
-}
-
-function parseBrowserBridgePackageTarget(
-  browserPlugin: BrowserPluginModule,
-  value: unknown,
-): BrowserBridgePackagePathTarget | null {
-  return typeof value === "string" &&
-    (
-      browserPlugin.BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
-    ).includes(value)
-    ? (value as BrowserBridgePackagePathTarget)
-    : null;
-}
-
 async function handleBuiltinOptionalRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -913,95 +842,6 @@ async function handleBuiltinOptionalRoutes(
       absentPluginStub.buildBody(req),
       absentPluginStub.statusCode ?? 200,
     );
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    const browserPlugin = await getBrowserBridgePlugin();
-    json(res, {
-      status: browserPlugin
-        ? browserPlugin.getBrowserBridgeCompanionPackageStatus()
-        : EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS,
-    });
-    return true;
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/browser-bridge/packages/open-path"
-  ) {
-    const body =
-      (await readJsonBody<{ target?: unknown; revealOnly?: unknown }>(
-        req,
-        res,
-      )) ?? null;
-    if (!body) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
-    if (!target) {
-      error(res, "Invalid browser bridge package target", 400);
-      return true;
-    }
-    json(
-      res,
-      await browserPlugin.openBrowserBridgeCompanionPackagePath(target, {
-        revealOnly: body.revealOnly === true,
-      }),
-    );
-    return true;
-  }
-
-  const packageBuildMatch = pathname.match(
-    /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
-  );
-  if (method === "POST" && packageBuildMatch) {
-    const decodedBrowser = decodePathComponent(
-      packageBuildMatch[1],
-      res,
-      "browser bridge package browser",
-    );
-    if (decodedBrowser === null) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
-    if (!browser) {
-      error(res, "Invalid browser bridge package browser", 400);
-      return true;
-    }
-    json(res, {
-      status: await browserPlugin.buildBrowserBridgeCompanionPackage(browser),
-    });
-    return true;
-  }
-
-  const packageManagerMatch = pathname.match(
-    /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
-  );
-  if (method === "POST" && packageManagerMatch) {
-    const decodedBrowser = decodePathComponent(
-      packageManagerMatch[1],
-      res,
-      "browser bridge package browser",
-    );
-    if (decodedBrowser === null) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
-    if (!browser) {
-      error(res, "Invalid browser bridge package browser", 400);
-      return true;
-    }
-    json(res, await browserPlugin.openBrowserBridgeCompanionManager(browser));
     return true;
   }
 
@@ -1710,10 +1550,6 @@ async function handleRequestForViewClient(
   // CORS trust set; arbitrary reflected origins remain bearer-only.
   const allowHostCookieAuth =
     requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
-  const requireBrowserCompanionOwnerSession = isBrowserCompanionOwnerMutation(
-    method,
-    pathname,
-  );
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1731,8 +1567,8 @@ async function handleRequestForViewClient(
           state.runtime,
           {
             allowCookieAuth: allowHostCookieAuth,
-            allowTrustedLocalBypass: !requireBrowserCompanionOwnerSession,
-            allowBearerAuth: !requireBrowserCompanionOwnerSession,
+            allowTrustedLocalBypass: true,
+            allowBearerAuth: true,
           },
         );
         return hostSessionAuthorization;
@@ -1885,25 +1721,6 @@ async function handleRequestForViewClient(
     return;
   }
 
-  if (requireBrowserCompanionOwnerSession) {
-    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
-      json(res, { error: "Owner session required" }, 401);
-      return;
-    }
-    if (!hasBrowserCompanionCsrfHeader(req)) {
-      json(res, { error: "CSRF token required" }, 403);
-      return;
-    }
-    const ownerAuthorization = await resolveHostSessionAuthorization();
-    if (!ownerAuthorization.ok) {
-      json(res, { error: "Invalid owner session or CSRF token" }, 401);
-      return;
-    }
-    if (ownerAuthorization.role !== "OWNER") {
-      json(res, { error: "Owner role required" }, 403);
-      return;
-    }
-  }
 
   if (
     method !== "OPTIONS" &&

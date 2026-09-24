@@ -2127,7 +2127,7 @@ async function loadPersistedTrajectoriesForExport(
   try {
     const result = await executeRawSql(
       runtime,
-      `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT 10000`,
+      `SELECT id FROM trajectories ${whereClause} ORDER BY created_at DESC, id DESC`,
     );
     const rows = extractRequiredRows(result, {
       operation: "load trajectories for export",
@@ -2192,7 +2192,7 @@ async function listDatabaseTrajectories(
 
     const result = await executeRawSql(
       runtime,
-      `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT * FROM trajectories ${whereClause} ORDER BY created_at DESC, id DESC LIMIT ${limit} OFFSET ${offset}`,
     );
 
     const rows = extractRequiredRows(result, {

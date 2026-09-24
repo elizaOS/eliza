@@ -415,10 +415,6 @@ jobs:
           path: ${{ runner.temp }}/android-cloud-release-aab-audit.log
           retention-days: 3
           if-no-files-found: warn
-  browser_bridge_windows_security:
-    name: Browser bridge Windows security
-    uses: ./.github/workflows/browser-bridge-windows-security.yml
-    needs: preflight
   required:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
@@ -431,7 +427,6 @@ jobs:
       - smoke
       - smoke_lanes
       - android_aab
-      - browser_bridge_windows_security
       - preflight
       - remote-capabilities
       - desktop-contract
@@ -456,7 +451,6 @@ jobs:
             smoke=${{ needs.smoke.result }}
             smoke_lanes=${{ needs.smoke_lanes.result }}
             android_aab=${{ needs.android_aab.result }}
-            browser_bridge_windows_security=${{ needs.browser_bridge_windows_security.result }}
             preflight=${{ needs.preflight.result }}
             remote-capabilities=${{ needs.remote-capabilities.result }}
             desktop-contract=${{ needs.desktop-contract.result }}

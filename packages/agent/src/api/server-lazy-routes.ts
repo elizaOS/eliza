@@ -300,8 +300,7 @@ export async function handleDiagnosticsRoutes(
     !(
       ctx.pathname.startsWith("/api/logs") ||
       ctx.pathname === "/api/agent/events" ||
-      ctx.pathname === "/api/security/audit" ||
-      ctx.pathname === "/api/extension/status"
+      ctx.pathname === "/api/security/audit"
     )
   ) {
     return false;

@@ -215,6 +215,31 @@ safe storage destination. Recovery/archive adapters stay host-owned. Preserve
 complete raw requests/results and prove stored-data, failed-write and concurrent
 settlement behavior before deleting either writer.
 
+### Complete trajectory export selection
+
+The host bridge replaces ordinary export and read methods but retains the
+assistant service's public ZIP builder. The builder therefore needs to consume
+its public read methods rather than reach into assistant-only storage. Its old
+single 500-row list call silently omitted further matches; the host's separate
+ordinary export query also imposed an unrequested 10,000-row limit.
+
+ZIP now traverses the complete filtered inventory through the selected reader.
+Both readers order tied timestamps by ID, and traversal rejects repeated IDs,
+changed totals, unexpected offsets and premature empty pages. Missing or
+inaccessible selected details produce `TRAJECTORY_EXPORT_INCOMPLETE` instead of
+a successful partial ZIP. The ordinary host exporter has no row cap and selects
+only IDs before loading canonical details, avoiding the previous duplicate full
+row transfer. Serialization and recovery/archive ownership remain unchanged.
+
+A real PGlite regression reproduced 500 exported ZIP entries for 501 matches.
+The expanded host scenario also covers more than 10,000 stored trajectories,
+same-timestamp pagination, unique manifest IDs, both patched and independent
+assistant ZIP readers, and inaccessible/missing explicit selections. These
+checks exercise stored records without substituting the writer or reader.
+Paging detects observable inventory inconsistency; it does not promise a single
+transactional snapshot against same-count concurrent replacements. A future
+snapshot export contract must belong to the storage owner, not ZIP presentation.
+
 ### Relationship graph: retain injection, review domain authority
 
 Agent's `services/relationships-graph.ts` is a wrapper around assistant graph
@@ -480,3 +505,17 @@ across 6,529 files. Logs are in `/tmp/trajectory-read-*`. This qualifies the obs
 shared working tree, not an isolated final PR revision. Statistics DTO
 reconciliation and the two stored step representations remain open; this
 extraction does not claim to have unified those contracts.
+
+
+### Host trajectory-statistics qualification
+
+Both host statistics entry points now use one computation and retain their
+public response shapes. All four agent test files pass, along with agent
+typecheck, read-only lint (nine existing warnings), build and root verification.
+Root verify completed all 262 Turbo tasks successfully and found no focused
+tests or orphaned skips across 6,529 files. The review's local Markdown links
+resolve. Logs use `/tmp/trajectory-stats-*`; the initial regression fails on the
+old empty status breakdown, and the final real-storage lane passes. Statistics
+DTO reconciliation is complete for the two host entry points. Assistant's
+independent writer/schema, remaining ownership work and isolated PR delivery
+remain open. These checks qualify the observed shared working tree only.

@@ -146,7 +146,6 @@ export interface AppBootConfig {
   /** Coding-agent PTY drawer provided by the host app. */
   ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
   /** LifeOps browser setup panel provided by the host app. */
-  lifeOpsBrowserSetupPanel?: ComponentType<Record<string, never>>;
   /** App blocker settings card provided by the host app. */
   appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
