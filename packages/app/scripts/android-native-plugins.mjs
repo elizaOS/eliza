@@ -170,10 +170,26 @@ async function main() {
   const hardware = adb("shell", "getprop", "ro.hardware").trim();
   if (!/^(ranchu|goldfish|cutf_cvm)$/.test(hardware))
     throw new Error(`Expected an emulator, got ro.hardware=${hardware}`);
+  const networkTransitions = args.includes("--network-transitions");
+  if (networkTransitions) {
+    if (
+      !/^(ranchu|goldfish)$/.test(hardware) ||
+      selected.length !== 1 ||
+      selected[0].directory !== "plugin-native-network-policy"
+    )
+      throw new Error(
+        "Network transitions require a stock isolated emulator and --plugin plugin-native-network-policy",
+      );
+    if (adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim())
+      throw new Error(
+        "Network transitions require an emulator without the user app installed",
+      );
+  }
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
   const report = {
     serial,
     hardware,
+    networkTransitions,
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -278,6 +294,7 @@ async function main() {
             "instrument",
             "-w",
             "-r",
+            ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
             `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
           ],
           300000,

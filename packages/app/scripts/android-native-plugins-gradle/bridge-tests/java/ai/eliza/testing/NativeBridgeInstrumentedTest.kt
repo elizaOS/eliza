@@ -49,6 +49,18 @@ class NativeBridgeInstrumentedTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val descriptor = JSONObject(context.assets.open("native-plugin.json").bufferedReader().use { it.readText() })
         val script = context.assets.open("contracts.js").bufferedReader().use { it.readText() }
+        if (InstrumentationRegistry.getArguments().getString("networkTransitions") == "1") {
+            check(descriptor.getString("directory") == "plugin-native-network-policy")
+            NetworkTransitionFixture(context).use { fixture ->
+                var stage = 0
+                fixture.run { name, expected ->
+                    descriptor.put("networkStage", "${stage++}-$name")
+                    descriptor.put("expectedMetered", expected)
+                    runContract(descriptor, script)
+                }
+            }
+            return
+        }
         val phoneFixture = if (descriptor.getString("directory") == "plugin-native-phone") PhoneCallLogFixture(context) else null
         try {
             phoneFixture?.let { descriptor.put("phoneFixture", it.descriptor) }
@@ -78,6 +90,15 @@ class NativeBridgeInstrumentedTest {
                     val result = JSONObject(JSONTokener(raw).nextValue() as String)
                     assertFalse("Native contract failed: $result", result.has("error"))
                     assertTrue("Contract must assert native behavior", result.getInt("assertions") > 0)
+                    if (descriptor.has("networkStage")) {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeNetworkEvidence)")
+                        result.put("network", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        result.put("stage", descriptor.getString("networkStage"))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "network-${descriptor.getString("networkStage")}.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
                     if (descriptor.has("phoneFixture")) {
                         val evidence = evaluate(scenario, "JSON.stringify(window.nativePhoneEvidence)")
                         result.put("providerResult", JSONObject(JSONTokener(evidence).nextValue() as String))

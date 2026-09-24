@@ -49,6 +49,14 @@ transcript persistence across bridge-host recreation. They do not certify cellul
 delivery, cloud speech services, or all physical camera/audio hardware. VPN
 enforcement and embedded agent startup have separate device scenarios.
 
+For live network-policy transitions, use a stock emulator with one active Wi-Fi
+network and no installed Eliza user app:
+`node packages/app/scripts/android-native-plugins.mjs --serial emulator-5580 --plugin plugin-native-network-policy --network-transitions`.
+This opt-in lane changes metering and disables Wi-Fi/mobile data to verify the
+unmetered, metered, offline, and restored bridge results. It restores the original
+settings and exports each observed result. Device E2E runs this lane before the
+full plugin suite.
+
 The embedded-agent lifecycle lane needs a fresh x86_64 emulator with at least 4 GB
 RAM and no installed `ai.elizaos.app`. Run
 `node packages/app/scripts/android-native-agent.mjs --serial emulator-5580` with

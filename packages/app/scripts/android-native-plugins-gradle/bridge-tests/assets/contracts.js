@@ -265,6 +265,13 @@
     case "plugin-native-network-policy": {
       const result = await call("getMeteredHint");
       assert(result.source === "android-os", "Android network policy source");
+      if (Object.hasOwn(descriptor, "expectedMetered")) {
+        assert(
+          result.metered === descriptor.expectedMetered,
+          `live network transition: ${descriptor.networkStage}`,
+        );
+        window.nativeNetworkEvidence = result;
+      }
       assert(
         result.metered === null || typeof result.metered === "boolean",
         "metered state contract",
