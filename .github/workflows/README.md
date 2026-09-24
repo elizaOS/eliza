@@ -32,6 +32,9 @@ Release, deployment, native-device qualification, and operational workflows
 remain separate because they have different artifacts, permissions, and
 execution environments. Their test commands are part of the E2E migration;
 manual-only status does not exempt a unit or smoke suite from retirement.
+The device workflow retains Android and native computer-use producers. Its iOS
+callback-only lane and unreachable schedule notifier are retired; there is no
+replacement claim of a complete iOS login or chat flow.
 
 ## Source and deployment authority
 
