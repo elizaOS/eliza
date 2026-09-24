@@ -240,6 +240,8 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     for (const statement of noticeMigration.split("--> statement-breakpoint")) {
       if (statement.trim()) await setupClient.query(statement);
     }
+    const { applyAppBillingTestMigrations } = await import("./app-billing-test-migrations");
+    await applyAppBillingTestMigrations((statement) => setupClient!.query(statement));
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [LIVE_ORG]);

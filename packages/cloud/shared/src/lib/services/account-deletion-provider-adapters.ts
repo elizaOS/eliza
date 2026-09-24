@@ -8,6 +8,8 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/common";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
+import { decideAppBillingDeletionScope } from "../../db/repositories/app-billing-deletion-dispositions";
+import { readAppBillingDeletionObligations } from "../../db/repositories/app-billing-deletion-inventory";
 import { subscriptionAuthorityRepository } from "../../db/repositories/subscription-authority";
 import {
   agentBackupGcOutbox,
@@ -30,16 +32,11 @@ import {
   agentVaultKeyBackupBindings,
   agentVaultKeyGenerations,
 } from "../../db/schemas/agent-vault-key-authority";
+import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
 import { apps } from "../../db/schemas/apps";
 import { managedDomains } from "../../db/schemas/managed-domains";
-import {
-  orgStorageDeleteOperations,
-  orgStorageGcOutbox,
-  orgStorageObjects,
-  orgStoragePutOperations,
-} from "../../db/schemas/org-storage-mutations";
-import { orgStorageReadOperations } from "../../db/schemas/org-storage-reads";
 import { organizations } from "../../db/schemas/organizations";
+import { billingSubscriptionCommands } from "../../db/schemas/subscription-billing-operations";
 import { userVoices } from "../../db/schemas/user-voices";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../storage/r2-runtime-binding";
 import { getStripe } from "../stripe";
@@ -50,6 +47,16 @@ import type {
   AccountDeletionProviderInspection,
   AccountDeletionProviderPhase,
 } from "./account-deletion-saga";
+import { reconcileAccountDeletionStorage } from "./account-deletion-storage";
+import {
+  type AppBillingDeletionCheckout,
+  type AppBillingDeletionRuntime,
+  recoverAppBillingForAccountDeletion,
+} from "./app-billing-deletion-recovery";
+import {
+  type AppBillingDeletionRefund,
+  recoverAppBillingRefundsForAccountDeletion,
+} from "./app-billing-deletion-refund-recovery";
 import { deleteAppWithCleanup } from "./app-cleanup";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { oauthService } from "./oauth";
@@ -128,6 +135,9 @@ function isMissingStripeResource(error: unknown): boolean {
 }
 
 export interface AccountDeletionProviderAdapterDependencies {
+  appBillingRuntime?: AppBillingDeletionRuntime;
+  appBillingCheckout?: AppBillingDeletionCheckout;
+  appBillingRefund?: AppBillingDeletionRefund;
   backupAuthority?: AccountDeletionBackupAuthority;
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
@@ -322,37 +332,14 @@ export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventor
       action: "delete",
     },
     {
-      table: "subscription_allowance_transactions",
+      table: "subscription_billing_fences",
       column: "organization_id",
       subject: "organization",
       action: "delete",
     },
+    { table: "app_billing_members", column: "user_id", subject: "user", action: "delete" },
     {
-      table: "billing_funding_allocations",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_funding_reservations",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "subscription_allowance_periods",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_incidents",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_event_receipts",
+      table: "organization_entitlements",
       column: "organization_id",
       subject: "organization",
       action: "delete",
@@ -361,147 +348,10 @@ export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventor
       table: "billing_subscription_incidents",
       column: "resolved_by_user_id",
       subject: "user",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_commands",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "subscription_billing_fences",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_commands",
-      column: "requested_by_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "organization_entitlements",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "subscription_reconciliation_attempts",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "subscription_reconciliation_scans",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscription_revisions",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "billing_subscriptions",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "affiliate_payout_outbox",
-      column: "affiliate_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "app_reservation_settlement_quarantines",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "app_reservation_settlements",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "container_billing_legacy_ledger_bindings",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "container_billing_records",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "compute_billing_rate_segments",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "agent_billing_records",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "payment_request_receipts",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_legacy_quarantine",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_legacy_quarantine",
-      column: "initiated_by_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_orders",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_checkout_orders",
-      column: "initiated_by_user_id",
-      subject: "user",
-      action: "delete",
-    },
-    {
-      table: "stripe_customer_attempts",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    {
-      table: "stripe_customer_legacy_quarantines",
-      column: "organization_id",
-      subject: "organization",
-      action: "delete",
-    },
-    { table: "admin_users", column: "granted_by", subject: "user", action: "null" },
-    {
-      table: "app_secret_requirements",
-      column: "approved_by",
-      subject: "user",
       action: "null",
     },
+    { table: "admin_users", column: "granted_by", subject: "user", action: "null" },
+    { table: "app_secret_requirements", column: "approved_by", subject: "user", action: "null" },
     { table: "jobs", column: "user_id", subject: "user", action: "null" },
     { table: "moderation_violations", column: "reviewed_by", subject: "user", action: "null" },
     { table: "secret_bindings", column: "created_by", subject: "user", action: "null" },
@@ -597,11 +447,6 @@ async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContex
         );
       }
     }
-    // Belt-and-braces disarm for readers and future statements; the setting is
-    // transaction-local and would be cleared automatically at commit.
-    await tx.execute(
-      sql`SELECT set_config('eliza.subscription_account_deletion_authority', '', true)`,
-    );
   });
 }
 
@@ -625,6 +470,74 @@ export function createAccountDeletionProviderAdapters(
     },
     stripe: {
       async inspect(context) {
+        const appObligations = await readAppBillingDeletionObligations(context);
+        const closed = await dbWrite
+          .select({ scopeId: appBillingDeletionDispositions.scope_id })
+          .from(appBillingDeletionDispositions)
+          .where(
+            and(
+              eq(appBillingDeletionDispositions.request_id, context.requestId),
+              eq(appBillingDeletionDispositions.disposition, "close"),
+            ),
+          );
+        let requiresCleanup = closed.length > 0;
+        for (const obligation of appObligations) {
+          if (obligation.disposition !== "developer_owned" && !obligation.departingAdministrator) {
+            const [historical] = await dbWrite
+              .select({ id: billingSubscriptionCommands.id })
+              .from(billingSubscriptionCommands)
+              .where(
+                and(
+                  eq(billingSubscriptionCommands.billing_scope_id, obligation.scopeId),
+                  eq(billingSubscriptionCommands.requested_by_user_id, context.userId),
+                  sql`${billingSubscriptionCommands.request_payload}->>'domain' = 'buyer'`,
+                ),
+              )
+              .limit(1);
+            if (!historical && !closed.some((decision) => decision.scopeId === obligation.scopeId))
+              continue;
+          }
+
+          const decision = await decideAppBillingDeletionScope({
+            scopeId: obligation.scopeId,
+            authority: {
+              kind: "account_deletion",
+              requestId: context.requestId,
+              requestDigest: context.requestDigest,
+              lifecycleRevision: context.lifecycleRevision,
+              phaseReceiptId: context.phaseReceiptId,
+              phaseGeneration: context.phaseGeneration,
+            },
+          });
+          if (decision.disposition === "close") requiresCleanup = true;
+        }
+        const commandRecovery = await recoverAppBillingForAccountDeletion(
+          context,
+          dependencies.appBillingRuntime,
+          dependencies.appBillingCheckout,
+        );
+        if (commandRecovery === "pending")
+          return { state: "action_required", errorCode: "APP_BILLING_COMMAND_RECOVERY_REQUIRED" };
+        if (
+          (await recoverAppBillingRefundsForAccountDeletion(
+            context,
+            dependencies.appBillingRefund,
+          )) === "pending"
+        )
+          return { state: "action_required", errorCode: "APP_BILLING_REFUND_RECOVERY_REQUIRED" };
+        const currentClosed = await dbWrite
+          .select({ scopeId: appBillingDeletionDispositions.scope_id })
+          .from(appBillingDeletionDispositions)
+          .where(
+            and(
+              eq(appBillingDeletionDispositions.request_id, context.requestId),
+              eq(appBillingDeletionDispositions.disposition, "close"),
+            ),
+          );
+        requiresCleanup ||= currentClosed.length > 0;
+        if (requiresCleanup)
+          return { state: "action_required", errorCode: "APP_BILLING_PROVIDER_CLEANUP_REQUIRED" };
+
         const [organization] = await dbWrite
           .select({ customerId: organizations.stripe_customer_id })
           .from(organizations)
@@ -852,32 +765,17 @@ export function createAccountDeletionProviderAdapters(
     },
     primary_object_storage: {
       async inspect(context) {
-        const keys = await listOrganizationObjectKeys(context.blob, context.organizationId);
-        if (keys.length > 0) return { state: "needs_execution" };
-        const [row] = await dbWrite
-          .select({ id: orgStorageObjects.id })
-          .from(orgStorageObjects)
-          .where(eq(orgStorageObjects.organization_id, context.organizationId))
-          .limit(1);
-        if (row) {
-          await dbWrite.transaction(async (tx) => {
-            await tx
-              .delete(orgStorageReadOperations)
-              .where(eq(orgStorageReadOperations.organization_id, context.organizationId));
-            await tx
-              .delete(orgStorageDeleteOperations)
-              .where(eq(orgStorageDeleteOperations.organization_id, context.organizationId));
-            await tx
-              .delete(orgStorageGcOutbox)
-              .where(eq(orgStorageGcOutbox.organization_id, context.organizationId));
-            await tx
-              .delete(orgStoragePutOperations)
-              .where(eq(orgStoragePutOperations.organization_id, context.organizationId));
-            await tx
-              .delete(orgStorageObjects)
-              .where(eq(orgStorageObjects.organization_id, context.organizationId));
-          });
-        }
+        const result = await reconcileAccountDeletionStorage(
+          context,
+          async () =>
+            (await listOrganizationObjectKeys(context.blob, context.organizationId)).length === 0,
+        );
+        if (result === "provider_present") return { state: "needs_execution" };
+        if (result === "retained_reads")
+          return {
+            state: "action_required",
+            errorCode: "ACCOUNT_DELETION_STORAGE_FINANCIAL_RETENTION_REQUIRED",
+          };
         return complete(context, "primary_object_storage");
       },
       async execute(context) {

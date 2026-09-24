@@ -88,6 +88,20 @@ start, renewal, expiry, stale-command rejection and retained data, then removes
 only those containers. It does not pull images, supply agent credentials, install
 a system service, or change the host clock. This host boundary test does not
 establish that application billing and provisioning use the guard.
+## Purchaser identity retention
+
+App billing eligibility uses `billing_eligibility_principals`, separately from
+the original actor recorded in `billing_identity_subjects`. Financial actor
+UUIDs and command intent remain unchanged when a user is erased; only the
+subject's `live_user_id` link becomes null. These retained records grant no
+authentication or account membership. Account deletion must remove the
+departing user's memberships after reconciling provider obligations, while
+preserving shared subscription and trial history for surviving administrators.
+
+Creating another workspace for the same purchaser reuses its eligibility
+principal. Automatically linking a newly created login identity to an erased
+identity requires a separate verified-identity policy; this retention mechanism
+does not infer that link from email, display name, or a replacement provider ID.
 
 ## Config
 

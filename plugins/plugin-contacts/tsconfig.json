@@ -14,6 +14,9 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/cloud-sdk/app-billing": [
+        "../../packages/cloud/sdk/src/app-billing.ts"
+      ],
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-wallet/ui": [

@@ -1,5 +1,5 @@
 /** Reads organization subscription authority and its dependent rows through the caller's primary snapshot transaction. */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {
   billingSubscriptionRevisions,
@@ -24,7 +24,12 @@ export async function readPrimaryOrganizationSubscription(
     const existing = await tx
       .select({ id: billingSubscriptions.id })
       .from(billingSubscriptions)
-      .where(eq(billingSubscriptions.organization_id, organizationId))
+      .where(
+        and(
+          eq(billingSubscriptions.organization_id, organizationId),
+          isNull(billingSubscriptions.billing_scope_id),
+        ),
+      )
       .limit(1);
     return existing.length === 0
       ? { state: "none" as const }
@@ -39,12 +44,18 @@ export async function readPrimaryOrganizationSubscription(
       and(
         eq(billingSubscriptions.organization_id, organizationId),
         eq(billingSubscriptions.id, association.subscription_id),
+        isNull(billingSubscriptions.billing_scope_id),
       ),
     );
   const [entitlement] = await tx
     .select()
     .from(organizationEntitlements)
-    .where(eq(organizationEntitlements.organization_id, organizationId));
+    .where(
+      and(
+        eq(organizationEntitlements.organization_id, organizationId),
+        isNull(organizationEntitlements.billing_scope_id),
+      ),
+    );
   if (
     !subscription ||
     !entitlement ||

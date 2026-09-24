@@ -1,7 +1,7 @@
 /** Serializes organization cancellation intent, provider leases and atomic lifecycle publication against primary actor and subscription authority. Provider requests occur outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/common";
-import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
 import type { DbTransaction } from "../client";
@@ -108,6 +108,7 @@ async function currentSource(
     .from(billingSubscriptions)
     .where(
       and(
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.organization_id, input.organizationId),
         eq(billingSubscriptions.id, input.subscriptionId),
       ),
@@ -159,6 +160,8 @@ export async function prepareCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.idempotency_key, input.idempotencyKey),
         ),
@@ -186,6 +189,8 @@ export async function prepareCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
         ),
@@ -226,6 +231,8 @@ export async function readCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
           eq(billingSubscriptionCommands.kind, kind),
@@ -246,6 +253,8 @@ export async function claimCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
         ),
@@ -276,7 +285,13 @@ export async function claimCancellation(
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId));
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      );
     if (
       !projection ||
       projection.source_subscription_id !== source.id ||
@@ -318,6 +333,8 @@ export async function releaseCancellation(input: CancellationIdentity, claim: Ca
       .set({ lease_token: null, lease_expires_at: null, updated_at: sql`clock_timestamp()` })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, claim.command.id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
@@ -339,6 +356,8 @@ export async function finalizeCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, claim.command.id),
         ),
@@ -434,6 +453,8 @@ export async function finalizeCancellation(
       })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, command.id),
           eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
           eq(billingSubscriptionCommands.lease_token, command.lease_token!),
@@ -453,6 +474,8 @@ export async function listCancellationRecovery(limit: number) {
     .from(billingSubscriptionCommands)
     .where(
       and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
         inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
         eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
         sql`(${billingSubscriptionCommands.lease_expires_at} IS NULL OR ${billingSubscriptionCommands.lease_expires_at} <= clock_timestamp())`,
@@ -475,6 +498,8 @@ export async function assertCancellationClaimCurrent(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, claim.command.id),
         ),
@@ -513,6 +538,8 @@ export async function assertCancellationClaimCurrent(
         })
         .where(
           and(
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.id, command.id),
             eq(billingSubscriptionCommands.organization_id, input.organizationId),
             eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
@@ -547,8 +574,12 @@ export async function rotateCancellationRecovery(command: BillingSubscriptionCom
       .set({ updated_at: sql`clock_timestamp()` })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, command.id),
           eq(billingSubscriptionCommands.organization_id, command.organization_id),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
           eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
         ),
