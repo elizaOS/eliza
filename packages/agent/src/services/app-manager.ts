@@ -938,19 +938,19 @@ function applyLaunchPreparation(
   };
 }
 
-function isRuntimePluginActive(
+function findActiveRuntimePlugin(
   appInfo: RegistryAppPlugin,
   runtime: IAgentRuntime | null,
-): boolean {
+): Plugin | undefined {
   if (!runtime || !Array.isArray(runtime.plugins)) {
-    return false;
+    return undefined;
   }
 
   const pluginNames = new Set<string>([
     appInfo.name,
     appInfo.runtimePlugin ?? resolvePluginPackageName(appInfo),
   ]);
-  return runtime.plugins.some((plugin) =>
+  return runtime.plugins.find((plugin) =>
     (plugin.packageName
       ? [plugin.packageName]
       : pluginPackageNameCandidates(plugin.name)
@@ -1007,7 +1007,7 @@ async function ensureRuntimePluginRegistered(
     return false;
   }
 
-  if (isRuntimePluginActive(appInfo, runtime)) {
+  if (findActiveRuntimePlugin(appInfo, runtime)) {
     return true;
   }
 
@@ -1034,7 +1034,7 @@ async function ensureRuntimePluginRegistered(
       );
       continue;
     }
-    if (isRuntimePluginActive(appInfo, runtime)) {
+    if (findActiveRuntimePlugin(appInfo, runtime)) {
       return true;
     }
   }
@@ -2050,6 +2050,29 @@ export class AppManager {
         _runtime ?? null,
       )),
     ];
+    // Native app views are owned by the shell registry, not hosted viewer
+    // sessions. Loading Calendar/Notes must not create a permanently
+    // "launching" background run or claim that a screen was navigated.
+    if (
+      !viewer &&
+      !session &&
+      runtimePluginRegistered &&
+      findActiveRuntimePlugin(appInfo, _runtime ?? null)?.views?.some(
+        (view) => view.path,
+      )
+    ) {
+      return {
+        pluginInstalled,
+        needsRestart,
+        displayName: appInfo.displayName ?? appInfo.name,
+        launchType: appInfo.launchType ?? "connect",
+        launchUrl,
+        viewer,
+        session,
+        run: null,
+        diagnostics,
+      };
+    }
     const existingRun = this.findMatchingRun(name, session, viewer);
     const run = this.storeRun(
       existingRun

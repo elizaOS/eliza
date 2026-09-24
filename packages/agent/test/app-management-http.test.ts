@@ -77,6 +77,12 @@ it("serves catalogs, rejects anonymous launch, launches an already loaded packag
     body: JSON.stringify({ name: "@elizaos/plugin-calendar" }),
   });
   expect(launch.status, await launch.clone().text()).toBe(200);
+  expect(await launch.json()).toMatchObject({
+    pluginInstalled: true,
+    needsRestart: false,
+    displayName: "Calendar",
+    run: null,
+  });
   expect(
     fixture.runtime.plugins.filter((p) => p.name === calendarPlugin.name),
   ).toHaveLength(before);
