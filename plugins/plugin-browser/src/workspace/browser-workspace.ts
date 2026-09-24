@@ -17,6 +17,7 @@
  */
 
 import * as fsp from "node:fs/promises";
+import { ElizaError } from "@elizaos/core";
 
 export type {
   AcquireBrowserWorkspaceConnectorSessionRequest,
@@ -69,7 +70,6 @@ import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
   BrowserWorkspaceConnectorAuthState,
-  BrowserWorkspaceConnectorCompanionRef,
   BrowserWorkspaceConnectorSessionHandle,
   BrowserWorkspaceConnectorSessionRef,
   BrowserWorkspaceMode,
@@ -250,42 +250,6 @@ function createConnectorSessionHandle(args: {
   };
 }
 
-function createBrowserBridgeConnectorSessionHandle(args: {
-  provider: string;
-  accountId: string;
-  companion: BrowserWorkspaceConnectorCompanionRef;
-  authState: BrowserWorkspaceConnectorAuthState;
-  message?: string | null;
-}): BrowserWorkspaceConnectorSessionHandle {
-  const browser = args.companion.browser?.trim() || null;
-  const companionId = args.companion.companionId?.trim() || null;
-  const profileId = args.companion.profileId?.trim() || null;
-  const profileLabel = args.companion.profileLabel?.trim() || null;
-  return createConnectorSessionHandle({
-    provider: args.provider,
-    accountId: args.accountId,
-    authState: args.authState,
-    created: false,
-    message: args.message,
-    ref: {
-      kind: "browser-bridge-companion",
-      handleId: [
-        "browser-bridge",
-        browser ?? "browser",
-        companionId ?? profileId ?? "profile",
-        args.provider,
-        args.accountId,
-      ].join(":"),
-      partition: null,
-      tabId: null,
-      browser,
-      companionId,
-      profileId,
-      profileLabel,
-    },
-  });
-}
-
 async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
   command: BrowserWorkspaceCommand,
   env: NodeJS.ProcessEnv,
@@ -310,21 +274,14 @@ export async function acquireBrowserWorkspaceConnectorSession(
     throw new Error("Eliza browser connector session requires accountId.");
   }
 
-  const companion = request.companion ?? null;
-  if (companion?.profileId || companion?.companionId) {
-    const authState = normalizeConnectorAuthState(
-      request.authState,
-      "manual_handoff",
+  if (request.companion != null) {
+    throw new ElizaError(
+      "The companion extension has been retired. Acquire an internal browser workspace session instead.",
+      {
+        code: "BROWSER_COMPANION_RETIRED",
+        context: { provider, accountId },
+      },
     );
-    return createBrowserBridgeConnectorSessionHandle({
-      provider,
-      accountId,
-      companion,
-      authState,
-      message:
-        request.manualHandoffReason ??
-        "Use the paired browser companion profile to finish login, MFA, or CAPTCHA if required.",
-    });
   }
 
   if (isBrowserWorkspaceBridgeConfigured(env)) {

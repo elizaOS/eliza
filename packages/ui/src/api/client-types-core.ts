@@ -664,7 +664,6 @@ export interface AgentEventsResponse {
   replayed: boolean;
 }
 
-
 // WebSocket
 export type WsEventHandler = (data: Record<string, unknown>) => void;
 

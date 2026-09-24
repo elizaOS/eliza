@@ -194,7 +194,7 @@ Spawn → `ready:true` on a quiet host (~3.7 s) decomposes as:
 ### Boot-KPI CI gate — now ENFORCING (item 5 of #8812)
 
 The build-agent-image workflow's boot-verify step
-(`docker-ci-smoke.sh --boot-verify-only`) now runs with `BOOT_KPI_ENFORCE=1`, so
+(`verify-agent-image.sh --boot-verify-only`) now runs with `BOOT_KPI_ENFORCE=1`, so
 a cold-start `readyMs` that exceeds `boot.coldReadyMs` (25 000 ms) **fails the
 build** and blocks publishing a slow image — the server/container analog of the
 mobile resource workbench (#8800). Safety rails so the gate is trustworthy, not

@@ -10,10 +10,6 @@ declaration; it exports no HTTP routes or browser runtime. View declaration
 types remain part of the plugin contract; host visibility and surface-policy
 helpers are exported by `@elizaos/shared/views/*`.
 
-The [flow atlas](../../docs/design/runtime-consolidation/FLOWS.md) maps inputs,
-outputs and current file owners. The [implementation status](../../docs/design/runtime-consolidation/STATUS.md)
-records remaining acceptance work.
-
 Document authorization treats a document's `roomId` as its single room
 entitlement and evaluates it against current requester membership inside the
 adapter before rows, counts, fragments, or ranking are produced. Explicit
@@ -346,7 +342,7 @@ LOG_FILE=true
 
 ### Design and rationale (WHY)
 
-Per-change notes with the WHY for each addition or fix live in [CHANGELOG.md](CHANGELOG.md). The sections below document the reasoning behind the major subsystems so future changes stay consistent with intent.
+The sections below document the reasoning behind the major subsystems so future changes stay consistent with intent.
 
 ### Benchmark & Trajectory Tracing
 

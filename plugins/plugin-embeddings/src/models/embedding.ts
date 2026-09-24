@@ -86,8 +86,7 @@ function requireBaseURL(runtime: IAgentRuntime): string {
     // real vector — throw so the runtime falls through to another provider
     // instead of persisting a wrong/garbage vector (Commandment 8).
     throw new Error(
-      "No embedding endpoint configured. Set EMBEDDING_BASE_URL " +
-        "(or EMBEDDING_BROWSER_URL in a browser build)."
+      "No embedding endpoint configured. Set EMBEDDING_BASE_URL " + "for the Node host."
     );
   }
   return baseURL.replace(/\/+$/, "");
@@ -184,7 +183,7 @@ async function requestEmbeddingsFromEndpoint(
     {
       method: "POST",
       headers: {
-        ...getEndpointAuthHeader(runtime, endpoint.apiKey),
+        ...getEndpointAuthHeader(endpoint.apiKey),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

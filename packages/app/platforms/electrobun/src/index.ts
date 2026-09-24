@@ -1972,10 +1972,15 @@ async function syncPermissionsToRestApi(
 function isDesktopLoopbackApiBase(apiBase: string): boolean {
 	try {
 		const url = new URL(apiBase);
-		return url.protocol === "http:" &&
+		return (
+			url.protocol === "http:" &&
 			["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) &&
-			url.username === "" && url.password === "" && url.pathname === "/" &&
-			url.search === "" && url.hash === "";
+			url.username === "" &&
+			url.password === "" &&
+			url.pathname === "/" &&
+			url.search === "" &&
+			url.hash === ""
+		);
 	} catch {
 		// error-policy:J3 session priming accepts only a valid loopback origin.
 		return false;
@@ -2517,15 +2522,6 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 					}`,
 				);
 			}
-		}
-		try {
-		} catch (error) {
-			// error-policy:J6 shutdown continues after reporting best-effort broker disposal.
-			logger.warn(
-				`[Main] Browser bridge broker disposal failed during shutdown: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
 		}
 		try {
 			await disposeNativeModules();

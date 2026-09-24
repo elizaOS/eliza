@@ -2479,7 +2479,6 @@ ElizaClient.prototype.getAgentEvents = async function (
   return this.fetch(`/api/agent/events${qs ? `?${qs}` : ""}`);
 };
 
-
 ElizaClient.prototype.getRelationshipsGraph = async function (
   this: ElizaClient,
   query,

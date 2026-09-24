@@ -875,7 +875,6 @@ export interface AgentUpdateStatusSnapshot {
 	error: string | null;
 }
 
-
 export interface RuntimeDebugSnapshotParams {
 	depth?: number;
 	maxArrayLength?: number;

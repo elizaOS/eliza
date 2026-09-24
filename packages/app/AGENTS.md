@@ -103,7 +103,7 @@ bun run --cwd packages/app test:watch                 # Vitest watch mode
 bun run --cwd packages/app test:e2e                   # Playwright UI smoke (ui-smoke config)
 bun run --cwd packages/app audit:app                  # All-views visual audit + required packaged OCR triage
 bun run --cwd packages/app audit:app:capture          # Raw screenshot capture + manual-review stubs only
-bun run --cwd packages/app test:dev-smoke             # Playwright dev-smoke config
+bun run --cwd packages/app test:dev-auth             # Playwright dev-auth config
 bun run --cwd packages/app test:hmr                   # HMR smoke tests
 
 # Mobile

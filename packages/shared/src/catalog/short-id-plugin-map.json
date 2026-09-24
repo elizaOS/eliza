@@ -4,8 +4,6 @@
   "app-browser": "@elizaos/plugin-browser",
   "appBrowser": "@elizaos/plugin-browser",
   "browser": "@elizaos/plugin-browser",
-  "browser-bridge": "@elizaos/plugin-browser",
-  "browserBridge": "@elizaos/plugin-browser",
   "coding-agent": "@elizaos/plugin-coding-tools",
   "coding-tools": "@elizaos/plugin-coding-tools",
   "codingAgent": "@elizaos/plugin-coding-tools",

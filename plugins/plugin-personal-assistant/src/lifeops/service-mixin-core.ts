@@ -86,7 +86,7 @@ export type MixinClass<
 // Helpers used only inside the base class
 // ---------------------------------------------------------------------------
 
-function browserActionChangesState(
+function _browserActionChangesState(
   action: Pick<BrowserBridgeAction, "kind">,
 ): boolean {
   return (
@@ -260,10 +260,13 @@ export class LifeOpsServiceBase {
   public async requireBrowserAvailableForActions(
     actions: readonly BrowserBridgeAction[],
   ): Promise<BrowserBridgeSettings> {
-    throw new ElizaError("The companion browser extension has been retired. Use BROWSER with the workspace or Stagehand target.", {
-      code: "BROWSER_COMPANION_RETIRED",
-      context: { requestedActionCount: actions.length },
-    });
+    throw new ElizaError(
+      "The companion browser extension has been retired. Use BROWSER with the workspace or Stagehand target.",
+      {
+        code: "BROWSER_COMPANION_RETIRED",
+        context: { requestedActionCount: actions.length },
+      },
+    );
   }
 
   public buildBrowserCompanion(

@@ -50,7 +50,6 @@ bun run --cwd packages/core test:coverage
 Build writes only `dist`; typecheck emits nothing. Keyword values are authored in
 `@elizaos/shared/i18n/keywords`, not generated during compilation. Follow the root
 repository guide for integration, packed consumers and paired-guide checks.
-See the current [flow atlas](../../docs/design/runtime-consolidation/FLOWS.md).
 
 ## Configuration and preserved behavior
 

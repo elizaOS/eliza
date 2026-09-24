@@ -65,7 +65,6 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"test:e2e": "node ../../packages/app/scripts/run-local-plugin-live-smoke.mjs",
 		"test:live": "bun run test:e2e"
 	},
 	"dependencies": {

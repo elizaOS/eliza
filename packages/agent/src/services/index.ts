@@ -9,7 +9,6 @@
  */
 
 export * from "./agent-backup.ts";
-export * from "./agent-backup-v2-capture.ts";
 export * from "./agent-export.ts";
 export * from "./app-session-gate.ts";
 export * from "./audio-redaction-service.ts";
@@ -71,14 +70,11 @@ export {
 export * from "./registry-client.ts";
 export { resolveAppHeroImage } from "./registry-client-queries.ts";
 export * from "./remote-capability-cloud-sandbox.ts";
-export * from "./remote-capability-endpoint-conformance.ts";
 export * from "./remote-capability-endpoint-provider.ts";
-export * from "./remote-capability-live-report.ts";
 export * from "./remote-capability-router.ts";
 export * from "./remote-capability-url-endpoint-providers.ts";
 export * from "./remote-plugin-adapter.ts";
 export * from "./remote-signing-service.ts";
-export { ResearchTaskExecutor } from "./research-task-executor.ts";
 export * from "./sandbox-engine.ts";
 export * from "./sandbox-manager.ts";
 export * from "./self-updater.ts";
@@ -92,7 +88,6 @@ export {
   type ShellSandboxBackend,
 } from "./shell-execution-router.ts";
 export * from "./signing-policy.ts";
-export * from "./task-executor.ts";
 export * from "./update-checker.ts";
 export * from "./version-compat.ts";
 export * from "./virtual-filesystem.ts";

@@ -105,12 +105,6 @@
         "required": false,
         "default": false,
         "sensitive": false
-      },
-      "ANTHROPIC_BROWSER_BASE_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for Anthropic requests (no secrets in the client).",
-        "required": false,
-        "sensitive": false
       }
     }
   },

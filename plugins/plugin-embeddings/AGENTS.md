@@ -37,9 +37,8 @@ On **any** HTTP, config, or response-shape error the handler **THROWS** — it n
 
 ```
 plugins/plugin-embeddings/
-  index.ts / index.node.ts / index.browser.ts   Build entrypoints (re-export src/index)
   auto-enable.ts        Manifest entry-point — env-only shouldEnable (no transitive imports)
-  build.ts              Bun.build (node + browser + cjs) + tsc declarations
+  build.ts              Bun.build (Node ESM + CJS) + tsc declarations
   src/
     index.ts            embeddingsPlugin — models map + init() config validation/logging
     models/
@@ -59,7 +58,7 @@ plugins/plugin-embeddings/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-embeddings build        # Bun.build (node + browser + cjs) + tsc d.ts
+bun run --cwd plugins/plugin-embeddings build        # Bun.build (Node ESM + CJS) + tsc d.ts
 bun run --cwd plugins/plugin-embeddings dev          # watch build
 bun run --cwd plugins/plugin-embeddings test         # vitest unit suite
 bun run --cwd plugins/plugin-embeddings typecheck    # tsc --noEmit --noCheck
@@ -82,7 +81,6 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 | `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | no | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
 | `EMBEDDING_DIMENSIONS` | no | `1536` | Vector width. When explicitly set, sent as the request `dimensions` field. |
-| `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
 \* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
 Fallback-only settings are inert until the primary plugin opt-in and primary base URL are configured.
@@ -113,8 +111,6 @@ No central list edit is needed. The plugin lives under the repo `plugins/*` work
 
 - **Raw `fetch`, no `@ai-sdk`.** Mirrors plugin-openai's transport. The only runtime dependency is `@elizaos/core` (peer/`workspace:*`).
 - **THROW, never fabricate.** Any failure throws so the runtime falls through to another provider instead of persisting a corrupt vector.
-- **Browser key safety.** The `Authorization` header is suppressed in browser builds unless `EMBEDDING_BROWSER_URL` is set (the proxy injects auth server-side).
-- **Dual build (node + browser).** `dist/node/index.node.js` and `dist/browser/index.browser.js`.
 - See the repo-root `AGENTS.md` for logger-only, ESM, naming, and architecture rules.
 
 ## Verification

@@ -20,7 +20,7 @@ import {
   AgentBackupV2CaptureError,
   type AgentBackupV2CaptureRuntime,
   createAgentBackupV2Capture,
-} from "../services/agent-backup-v2-capture.ts";
+} from "../services/agent-backup.ts";
 
 export interface AgentBackupV2WritableResponse {
   statusCode: number;

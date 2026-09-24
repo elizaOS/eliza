@@ -148,7 +148,7 @@ session and stops at the Google authorization redirect without signing in or
 following an OAuth callback, run:
 
 ```bash
-bun run --cwd packages/app test:dev-smoke:staging-live-auth
+bun run --cwd packages/app test:dev-auth:staging-live-auth
 ```
 
 ## Config

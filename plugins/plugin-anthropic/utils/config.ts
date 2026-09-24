@@ -4,8 +4,8 @@
  * prefix taking priority over bare-name cross-provider fallbacks. Provides the
  * per-slot model selectors (`getSmallModel`, `getLargeModel`, `getNanoModel`, …)
  * with their small/large fallback chains, auth-mode / API-key / base-URL
- * resolution, the `isBrowser` guard, and the CoT-budget, temperature-lock, and
- * max-output-token override parsers documented in this package's CLAUDE.md.
+ * resolution, and the CoT-budget, temperature-lock, and
+ * max-output-token override parsers documented in this package's AGENTS.md.
  */
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
@@ -15,19 +15,7 @@ const DEFAULT_SMALL_MODEL = "claude-sonnet-5";
 const DEFAULT_LARGE_MODEL = "claude-opus-4-8";
 const DEFAULT_BASE_URL = "https://api.anthropic.com/v1";
 
-export function isBrowser(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { document?: Document }).document !== "undefined"
-  );
-}
-
 function getEnvValue(key: string): string | undefined {
-  // In real browsers, `process` is not defined. `typeof process` is safe.
-  if (typeof process === "undefined") {
-    return undefined;
-  }
-
   const envValue = process.env[key];
   if (typeof envValue === "string" && envValue.length > 0) {
     return envValue;
@@ -62,7 +50,7 @@ export type EndpointSettingReader = (key: string) => string | undefined;
  */
 export function resolveAnthropicBaseURL(
   readSetting: EndpointSettingReader,
-  options: { browser?: boolean; mockBaseURL?: string } = {}
+  options: { mockBaseURL?: string } = {}
 ): string {
   const read = (key: string): string | undefined => {
     const value = readSetting(key)?.trim();
@@ -70,16 +58,11 @@ export function resolveAnthropicBaseURL(
   };
   const mockBaseURL = options.mockBaseURL?.trim();
   if (mockBaseURL) return mockBaseURL;
-  if (options.browser) {
-    const browserURL = read("ANTHROPIC_BROWSER_BASE_URL");
-    if (browserURL) return browserURL;
-  }
   return read("ANTHROPIC_BASE_URL") ?? DEFAULT_BASE_URL;
 }
 
 export function getBaseURL(runtime: IAgentRuntime): string {
   return resolveAnthropicBaseURL((key) => getRawSetting(runtime, key), {
-    browser: isBrowser(),
     mockBaseURL: getEnvValue("ELIZA_MOCK_ANTHROPIC_BASE"),
   });
 }

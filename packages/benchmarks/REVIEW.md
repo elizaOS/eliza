@@ -22,9 +22,7 @@ Concurrent changes elsewhere in this checkout are outside this cleanup.
   inference route and its fallback. Fixed current-owner graph imports,
   lifecycle contract paths, test helpers, and account-broker resolution.
 - Migrated deterministic model responses to current Stage-1 and native tool
-  contracts. The new [HTTP smoke](scripts/runtime-smoke.py) verifies
-  authentication, execution through the real message service, captured actions,
-  and explicit nonpublishable mock labeling.
+  contracts.
 - Removed registrations, campaign entries, baseline generators, scorer functions,
   harness adapters, exports, and obsolete tests for the retired Hyperliquid,
   RLM, ScamBench, Solana, and WooBench suites. Removed the nonexistent Smithers
@@ -49,7 +47,7 @@ Concurrent changes elsewhere in this checkout are outside this cleanup.
   snapshots hidden by the root runtime-state rules. These inputs will now be
   included when the benchmark sources are committed.
 - Added the root [benchmark workflow](../../.github/workflows/benchmarks.yml)
-  for offline tests, inventory, and runtime smoke checks. Paid live framework
+  for offline tests and inventory checks. Paid live framework
   execution requires explicit manual selection. Execution classifications no
   longer claim nonexistent scheduled workflows.
 - Benchmark provenance and resume fingerprints include the enclosing runtime,
@@ -73,10 +71,6 @@ Installed dependencies are ignored and remain reproducible from the root lock.
   21 skipped**. The Docker boundary is an explicit opt-in in that offline lane.
 - Explicit Docker evaluator checks: **5 passed**, including real execution of
   the candidate in the pinned container.
-- Native HTTP smoke: passed, including rejected unauthenticated mutation and
-  a captured benchmark action through `messageService.handleMessage`.
-- Framework single-message smoke: passed with the real runtime and deterministic
-  model. Three-Agent Dialogue four-turn synthetic smoke: passed, unscored.
 - ConfigBench deterministic run: passed its 682-scenario oracle check.
 - Remaining LifeOps unit suite in this shared tree: **4 tests passed**.
 - Migrated TypeScript typechecks passed with built workspace dependencies;

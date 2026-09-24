@@ -13,7 +13,6 @@
 			"build.ts",
 			"constants.ts",
 			"index.ts",
-			"index.browser.ts",
 			"rpc-providers.ts",
 			"service.ts",
 			"package.json",

@@ -134,9 +134,7 @@ matching model names or dimensions alone cannot establish compatibility with
 existing vectors. Deploy the matching server before activating this model in
 clients, and follow the SQL adapter's migration and process-restart requirements.
 
-Browser builds must not receive secrets directly. Use
-`ELIZAOS_CLOUD_BROWSER_BASE_URL` and `ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL` for
-browser-only proxy endpoints.
+Inference runs in the Node host; renderers call the host API.
 
 The default text model is Cerebras `qwen-3.8-27b`. Native interactive calls
 send `reasoning_effort: "none"`; `ELIZAOS_CLOUD_REASONING_EFFORT` can explicitly

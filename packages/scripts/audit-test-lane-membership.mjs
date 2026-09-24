@@ -59,7 +59,7 @@ const PLUGINS_DIR = "plugins";
 export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   [
     "packages/app/platforms/electrobun",
-    "Native/macOS integration tests run through the package test command on their owning platform; browser-bridge-windows-security.yml owns Windows native-host execution. These platform-specific suites are excluded from the shared Linux lane.",
+    "Native/macOS integration tests run through the package test command on their owning platform. These platform-specific suites are excluded from the shared Linux lane.",
   ],
   [
     "packages/cloud/sdk",

@@ -17,8 +17,7 @@
  * Rules are evaluated in registration order; the first match wins.
  *
  * A rule may carry an optional `available` predicate for panels whose backing
- * component is supplied at runtime rather than statically bundled (e.g. the
- * host-provided LifeOps browser-bridge panel). When present, the rule only
+ * component is supplied at runtime rather than statically bundled (for example, a host plugin panel). When present, the rule only
  * matches while the predicate returns true — which keeps `hasConnectorSetupPanel`
  * connector-id-free: the id → panel knowledge, including its availability
  * condition, lives entirely here rather than in a per-connector branch.
@@ -100,4 +99,3 @@ registerConnectorSetupPanelRule({
   needle: "imessage",
   match: "exact",
 });
-

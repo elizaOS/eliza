@@ -90,7 +90,6 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_RESPONSE_HANDLER_MODEL` / `ANTHROPIC_SHOULD_RESPOND_MODEL` | No | falls back to small | Model for RESPONSE_HANDLER |
 | `ANTHROPIC_ACTION_PLANNER_MODEL` / `ANTHROPIC_PLANNER_MODEL` | No | falls back to large | Model for ACTION_PLANNER |
 | `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com/v1` | Node API base URL |
-| `ANTHROPIC_BROWSER_BASE_URL` | No | — | Browser proxy base URL (no API key in browser) |
 | `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No | `false` | Enable Vercel AI SDK telemetry |
 | `ANTHROPIC_COT_BUDGET` | No | `0` | Exact non-negative safe decimal integer; `0` disables chain-of-thought for both sizes. Invalid explicit values fail before dispatch. |
 | `ANTHROPIC_COT_BUDGET_SMALL` | No | — | Exact non-negative safe decimal integer for small-size models; invalid explicit values fail before dispatch. |
@@ -128,7 +127,7 @@ Follow the pattern in `utils/config.ts`: `getRawSetting(runtime, "ANTHROPIC_X_MO
 - **Prompt caching:** `cache_control: ephemeral` is emitted by default on system prompts, stable `promptSegments`, the LAST tool in the tools array, and the kept-trajectory tail (final assistant/tool turn) on the native-messages path. TTL is `5m` unless `ANTHROPIC_PROMPT_CACHE_TTL=1h`; per-segment overrides ride on `PromptSegment.ttl`. The 4-breakpoint API budget is spent system -> tools -> trajectory/segments (`models/text.ts` `buildSegmentCacheControls`); opt out per call with `anthropic.cacheTools: false` / `anthropic.cacheTrajectory: false` in `providerOptions`.
 - **Cache visibility:** every call logs a structured `[Anthropic] prompt cache hit|write|none` line (read/write token counts) via `emitModelUsageEvent` (`utils/events.ts`) at debug level.
 - **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated Claude tests without changing every Anthropic text call.
-- **Host endpoint configuration:** the endpoint-config leaf retains explicit browser-proxy URL selection for host configuration; it does not provide a browser runtime.
+- **Host endpoint configuration:** the endpoint-config leaf resolves host and scenario-runner endpoints.
 - **Multi-account OAuth pool:** The credential store reads the shared `ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core`. When present, token selection and 401/429 failover route through the pool (`utils/credential-store.ts`).
 - **Usage events:** Every successful model call emits `EventType.MODEL_USED` via `emitModelUsageEvent` (`utils/events.ts`), including cache hit/write token counts.
 - **Structured output:** Pass `responseSchema` (JSON Schema object) to any text handler. The plugin builds a native AI SDK `output` object; the response is parsed JSON, not a plain string.

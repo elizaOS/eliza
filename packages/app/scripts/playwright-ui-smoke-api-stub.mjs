@@ -4241,23 +4241,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/extension/status") {
-    sendJson(req, res, 200, {
-      installed: false,
-      connected: false,
-      relayReachable: false,
-      relayPort: 0,
-      extensionPath: null,
-      chromeBuildPath: null,
-      chromePackagePath: null,
-      safariWebExtensionPath: null,
-      safariAppPath: null,
-      safariPackagePath: null,
-      releaseManifest: null,
-    });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/lifeops/overview") {
     sendJson(req, res, 200, emptyLifeOpsOverview);
     return;
@@ -4382,24 +4365,6 @@ const server = http.createServer(async (req, res) => {
       authUrl: null,
       lastSyncedAt: null,
     });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/browser-bridge/settings") {
-    sendJson(req, res, 200, { settings: emptyBrowserBridgeSettings });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/browser-bridge/companions"
-  ) {
-    sendJson(req, res, 200, { companions: [] });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/browser-bridge/packages") {
-    sendJson(req, res, 200, { status: emptyBrowserBridgePackageStatus });
     return;
   }
 

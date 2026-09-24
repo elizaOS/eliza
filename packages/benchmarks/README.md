@@ -104,8 +104,7 @@ Integration findings and validation: [review](REVIEW.md).
 
 Install once at the repository root with `bun install`. The root
 [benchmark workflow](../../.github/workflows/benchmarks.yml) runs shared Python
-and orchestrator checks, inventory validation, and deterministic runtime smoke
-checks. Its optional live framework job requires an explicit manual selection
+and orchestrator checks and inventory validation. Its optional live framework job requires an explicit manual selection
 and an OpenAI secret; there is no scheduled paid-model run.
 
 From the monorepo root:
@@ -114,7 +113,6 @@ From the monorepo root:
 python -m pip install -r packages/benchmarks/requirements-ci.txt
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 PYTHONPATH=packages python -m pytest packages/benchmarks/tests packages/benchmarks/lib packages/benchmarks/suites/orchestrator/tests -q
-python packages/benchmarks/scripts/runtime-smoke.py
 ```
 
 Action-calling publication requires the full corpus under `packages/training`,

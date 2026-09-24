@@ -36,7 +36,6 @@ export {
   BrowserService,
   type BrowserTarget,
 } from "./browser-service.js";
-export * from "./companion-auth.js";
 export * from "./contracts.js";
 export {
   BROWSER_DISPATCH_FAILURE_KINDS,
@@ -61,7 +60,6 @@ import { browserAction as _bs_4_browserAction } from "./actions/browser.js";
 import { executeBrowserAutofillLogin as _bs_3_executeBrowserAutofillLogin } from "./actions/browser-autofill-login.js";
 import { waitForUrl as _bs_15_waitForUrl } from "./actions/wait-for-url.js";
 import { buildWaitForUrlPredicate as _bs_14_buildWaitForUrlPredicate } from "./actions/wait-for-url-predicate.js";
-import { resolveBrowserBridgeCompanionPairingTokenExpiresAt as _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt } from "./bridge-policy.js";
 import { resolveBrowserBridgeReadiness as _bs_11_resolveBrowserBridgeReadiness } from "./bridge-readiness.js";
 import { createBrowserBridgeCompanionStatus as _bs_12_createBrowserBridgeCompanionStatus } from "./bridge-records.js";
 import { BROWSER_UPLOAD_CAPABILITY_ID as _bs_17_BROWSER_UPLOAD_CAPABILITY_ID } from "./browser-command-authority.js";
@@ -96,7 +94,6 @@ const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_10_stopBrowserCapture,
   _bs_11_resolveBrowserBridgeReadiness,
   _bs_12_createBrowserBridgeCompanionStatus,
-  _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt,
   _bs_14_buildWaitForUrlPredicate,
   _bs_15_waitForUrl,
   _bs_16_validateBrowserParityMatrix,

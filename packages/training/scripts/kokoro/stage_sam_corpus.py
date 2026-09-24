@@ -33,9 +33,6 @@ Usage:
         --out packages/training/data/voice/same \\
         --retranscribe-suspicious --whisper-model large-v3
 
-    # CI smoke (no audio dependencies, 3 synthetic clips, validates schema):
-    python3 stage_same_corpus.py --synthetic-smoke \\
-        --out /tmp/same-smoke
 """
 
 from __future__ import annotations
@@ -245,74 +242,6 @@ def _stage(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_synthetic_smoke(args: argparse.Namespace) -> int:
-    """Materialize a 3-clip synthetic corpus so CI can validate the schema."""
-    out_dir = Path(args.out).resolve()
-    raw_dir = out_dir / "raw"
-    wavs_dir = out_dir / "wavs"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    wavs_dir.mkdir(parents=True, exist_ok=True)
-
-    metadata_rows: list[tuple[str, str, str]] = []
-    records: list[dict[str, Any]] = []
-    for i in range(1, 4):
-        clip_id = f"samantha_{i:03d}"
-        wav_path = raw_dir / f"{clip_id}.wav"
-        # 0.5 s of digital silence at 44.1 kHz mono 16-bit — matches the
-        # upstream sam format and lets the downstream `wave` probe work.
-        with wave.open(str(wav_path), "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(44100)
-            w.writeframes(b"\x00\x00" * 22050)
-        text = f"synthetic smoke clip {i}"
-        (raw_dir / f"{clip_id}.txt").write_text(text + "\n", encoding="utf-8")
-        wavs_dst = wavs_dir / f"{clip_id}.wav"
-        if wavs_dst.exists():
-            wavs_dst.unlink()
-        try:
-            wavs_dst.hardlink_to(wav_path)
-        except OSError:
-            shutil.copy2(wav_path, wavs_dst)
-        metadata_rows.append((clip_id, text, text))
-        records.append(
-            _build_source_record(
-                clip_id=clip_id,
-                wav=wav_path,
-                text=text,
-                suspicious=False,
-                retranscribed=False,
-            )
-        )
-
-    with (out_dir / "metadata.csv").open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.writer(fh, delimiter="|", quoting=csv.QUOTE_NONE, escapechar="\\")
-        for row in metadata_rows:
-            writer.writerow(row)
-
-    (out_dir / "source.json").write_text(
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "kind": "same-corpus-source",
-                "upstream": "synthetic://smoke",
-                "commitSha": "synthetic",
-                "clipCount": len(records),
-                "totalDurationSeconds": round(sum(r["duration_s"] for r in records), 3),
-                "licenseDeclared": "synthetic test fixture",
-                "generatedAt": datetime.now(timezone.utc).isoformat(),
-                "whisperRetranscribeModel": None,
-                "synthetic": True,
-                "clips": records,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    log.info("synthetic-smoke staged 3 clips at %s", out_dir)
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -344,18 +273,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="large-v3",
         help="Whisper model identifier for retranscription (default: large-v3).",
     )
-    p.add_argument(
-        "--synthetic-smoke",
-        action="store_true",
-        help="Emit a 3-clip synthetic corpus for CI without touching the real upstream.",
-    )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.synthetic_smoke:
-        return _run_synthetic_smoke(args)
     return _stage(args)
 
 

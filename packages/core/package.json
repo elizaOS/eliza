@@ -45,7 +45,6 @@
 		"test": "node ../scripts/run-vitest.mjs run",
 		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.mjs run --coverage",
 		"test:e2e": "npx playwright test",
-		"test:e2e:smoke": "node scripts/run-e2e-smoke.mjs",
 		"test:watch": "node ../scripts/run-vitest.mjs",
 		"lint": "bunx @biomejs/biome check --write ./src",
 		"lint:check": "bunx @biomejs/biome check ./src",

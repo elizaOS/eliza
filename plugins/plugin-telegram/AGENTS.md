@@ -82,7 +82,6 @@ bun run --cwd plugins/plugin-telegram build          # tsup + tsc type declarati
 bun run --cwd plugins/plugin-telegram dev            # tsup --watch
 bun run --cwd plugins/plugin-telegram test           # vitest run (unit)
 bun run --cwd plugins/plugin-telegram test:watch     # vitest interactive
-bun run --cwd plugins/plugin-telegram test:e2e       # live smoke via run-local-plugin-live-smoke.mjs
 bun run --cwd plugins/plugin-telegram lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-telegram lint:check     # biome check (no write)
 bun run --cwd plugins/plugin-telegram format         # biome format --write

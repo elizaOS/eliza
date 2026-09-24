@@ -84,4 +84,4 @@ ranking.) Honesty contract from `memperf`: unmeasured rows are `null`, never `0`
   the same tree to measure it.
 
 Repo-wide rules (logger-only, ESM, naming) live in the root
-[AGENTS.md](../../../AGENTS.md).
+[AGENTS.md](../../../../AGENTS.md).

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * HTTP smoke check for deployed LifeOps agents: fetches the LifeOps overview,
- * browser-bridge sessions, Google connector status, and calendar next-context
+ * Google connector status, and calendar next-context
  * from each base URL (argv or ELIZA_LIFEOPS_BASE_URLS) and reports failures.
  */
 
@@ -76,12 +76,6 @@ function hasOverviewShape(body) {
       body.summary &&
       typeof body.summary.activeOccurrenceCount === "number" &&
       typeof body.summary.activeReminderCount === "number",
-  );
-}
-
-function hasBrowserSessionsShape(body) {
-  return Boolean(
-    body && typeof body === "object" && Array.isArray(body.sessions),
   );
 }
 
@@ -178,27 +172,6 @@ export async function runSmokeLifeOps(options = {}) {
     }
     log(
       `[smoke-lifeops] OK ${overviewUrl} occurrences=${overview.body.summary.activeOccurrenceCount} reminders=${overview.body.summary.activeReminderCount}`,
-    );
-
-    const browserUrl = new URL("/api/browser-bridge/sessions", base).toString();
-    const browserSessions = await fetchJson(
-      fetchImpl,
-      browserUrl,
-      headers,
-      timeoutMs,
-    );
-    if (
-      !browserSessions.res?.ok ||
-      !hasBrowserSessionsShape(browserSessions.body)
-    ) {
-      hasFailure = true;
-      error(
-        `[smoke-lifeops] FAIL ${browserUrl} did not return a valid browser-session payload.`,
-      );
-      continue;
-    }
-    log(
-      `[smoke-lifeops] OK ${browserUrl} sessions=${browserSessions.body.sessions.length}`,
     );
 
     const googleStatusUrl = new URL(

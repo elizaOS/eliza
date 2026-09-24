@@ -23,7 +23,6 @@ decision D5): `home-launcher-surface`, `data-page`, `home-launcher-page-probe`,
 | **loop-android** | seeded model loop, device | `packages/app/test/android/launcher-gesture-loop.android.spec.ts` | `AndroidInput` real gestures, ≥200 actions (shipped by #12373) |
 | **loop-ios** | seeded model loop, simulator | `packages/app/platforms/ios/App/AppUITests/LauncherGestureLoopUITests.swift` | XCUIElement swipes/taps, AX-probe asserts |
 | **gesture-matrix** | scripted, real app | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | tap-vs-long-press, edge cases |
-| **desktop-smoke** | packaged Electrobun | `packages/app/test/electrobun-packaged/desktop-launcher-smoke.e2e.spec.ts` | bridge `eval` drives the store + screenshot (no CDP gestures) |
 | **loop-web** | seeded model loop, real browser | `__e2e__/run-launcher-loop-e2e.mjs` | ≥500 CDP-touch actions against the composed fixture, batched with video (`test:launcher-loop-e2e`) |
 | **loop-web-app** | seeded model loop, real app | `packages/app/test/ui-smoke/launcher-gesture-loop.spec.ts` | the same engine driving the booted app's surface (navigation-safe alphabet) on desktop + mobile-chromium |
 
@@ -128,10 +127,7 @@ Every `loop-*` lane checks these after each command (`checkInvariants` against a
 - **Desktop gesture loops run in the Chromium renderer lane**, not against the
   packaged binary: Electrobun ships this exact renderer bundle, and its system
   WebView (WKWebView / WebKitGTK) exposes no CDP surface for trusted touch
-  synthesis (issue prior-art §5). The packaged lane gets a thin
-  `desktop-launcher-smoke` — bridge `eval` drives the shell-surface store
-  (`goLauncher()`/`goHome()`), asserts `data-page` + AX probe, screenshots both
-  halves — no gesture synthesis.
+  synthesis (issue prior-art §5).
 - **Mobile-native loops** drive real device gestures: android via
   `AndroidInput`/`adb input` with logcat + chunked `screenrecord`, iOS via
   XCUIElement swipes/taps asserting the `home-launcher-page-probe` AX text between

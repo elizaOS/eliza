@@ -142,10 +142,30 @@ planner-loop exceeded 9,600. Size identifies review targets, not removable code.
 
 Keep authentication, HTTP/SSE framing and persistence settlement at the host
 boundary. Keep planner admission, tool-result interpretation and final-reply
-policy in assistant. Before extracting repeated code, trace JSON and SSE paths
-through cancellation, callback delivery, reply persistence and post-turn evidence.
-Do not unify these by dropping one transport's settlement behavior. Existing
-conversation-idempotency and turn-lifetime tests are acceptance owners.
+policy in assistant. The current JSON and streaming handlers already share
+`resolvePersistedAssistantTurn`, callback-history persistence, reply recovery
+and outcome construction. Their orchestration differs deliberately: streaming
+publishes `reply_ready` before durable completion, handles disconnect/voice
+fences and publishes `done` after persistence; JSON sends its response after
+settling the durable outcome. Both retain the completion promise fence and
+post-delivery failure reporting. Do not merge these state transitions into a
+single callback merely because the persistence calls resemble each other.
+
+Pure SSE framing is now extracted into host `api/chat-stream-writer.ts`.
+Conversation routes import it directly, and chat routes retain compatibility
+re-exports. The module depends on Node HTTP types and shared wire contracts;
+it has no assistant, model, filesystem or persistence import. Its twelve moved
+function/type declarations remain AST-identical after comment removal
+(`/tmp/chat-stream-extraction-equivalence.json`). Existing admission, generation,
+room leases and delivery settlement code remains in its owner.
+
+The real loopback HTTP scenario validates legacy and delta token reconstruction,
+complete Unicode/newline payloads, provisional flags, geometric snapshots,
+authoritative replacement, multiline named events, event-name injection
+rejection and writes after response end. It uses real Node responses and fetch,
+without mocked transport. This is wire-contract evidence, not live-model or
+end-to-end room-settlement evidence; those policies did not change in this
+extraction.
 
 ### Trajectories: canonical serialization in core, storage reconciliation next
 
@@ -214,6 +234,44 @@ through an explicit headless contract. A same-name plugin is not evidence of a
 safe storage destination. Recovery/archive adapters stay host-owned. Preserve
 complete raw requests/results and prove stored-data, failed-write and concurrent
 settlement behavior before deleting either writer.
+
+### Trajectory writer admission and bridge ownership
+
+The bridge's public-method inventory exposed one remaining split write path:
+`applyReward` still used assistant's private write queue after captures and
+lifecycle had been replaced by the host. The standalone host logger already
+implemented the required row lock, agent scope, persisted idempotency key and
+logging-enabled check. That transaction now lives in one private host operation;
+both the bridge and standalone service use the host capture queue and the
+current enabled state. Reward policy and event production remain outside it.
+
+The retained methods have deliberate owners:
+
+| Surface | Bridge behavior and owner |
+| --- | --- |
+| Start/step/call/provider/semantic capture, completion, reward and terminalization | Host storage queue, ownership records and admission |
+| Flush and stop | Host drain/recovery plus the captured original service shutdown |
+| List/detail/statistics/delete/clear/ordinary export | Host database operations with agent scope |
+| Legacy `logLLMCall` and provider-by-trajectory helper | Assistant compatibility forwarding into replaced public capture/current-step methods; no independent write |
+| ZIP builder | Presentation over replaced public readers, with complete selection |
+| Enablement | Existing service setting wrapped with host routing cleanup |
+| Initialization | Original schema/service setup, already complete before bridge installation |
+| Legacy in-memory inspection | Existing synchronous empty/null compatibility surfaces; persisted inspection uses detail/list |
+
+The real host scenario verifies concurrent replay through both reward entry
+points commits once, disabled bridge rewards do not write, foreign-agent rewards
+are rejected, and the committed total is read directly from storage. Detail DTOs
+do not expose the training reward field, so DTO absence is not a persistence
+assertion.
+
+Keep the independent SQL service and host persistence modes distinct in this
+change. Their step indexes, recovery ownership, late captures and archives are
+not interchangeable. Shared value serialization belongs in core; concrete
+queries stay with their storage owner. The similarly named viewer plugin still
+has production UI dependencies, so moving the SQL implementation there would
+expand headless assistant dependencies without unifying either stored schema.
+A future domain-package migration requires an explicit headless package contract
+and stored-data migration; a file relocation alone would not complete it.
 
 ### Complete trajectory export selection
 
@@ -334,15 +392,27 @@ suites pass: 140 tests before the four analysis-message cases were added.
 
 ### Tests and documentation: finish ownership migration
 
-Initial search found 206 core test files importing assistant source directly.
-Concurrent test cleanup reduced this to four matches during this pass, with a
-further deletion observed while reading them. Do not run the initial migration
-inventory against this changing tree. Core service-start and security-hook tests
-exercise kernel lifecycle/security while composing assistant and should remain
-core integration tests. The remaining attachment-action live test exercises
-assistant-owned behavior but imports an app test harness; inventory its new owner
-and discovery on a stable candidate before moving it. Assistant's own lane covers
-only `src/**/*.test.ts`; do not assume core or app live tests run there.
+The current core test inventory has one assistant-source consumer:
+`src/plugins/core-security-hooks.test.ts`, which checks kernel registration and
+boot bookkeeping while composing assistant. It stays in core. The earlier
+206-file inventory became obsolete during concurrent test cleanup and is not
+used as migration authority.
+
+The remaining attachment live test now lives beside assistant's
+`readAttachmentAction`. Its core config previously excluded it even from the
+post-merge lane. Assistant discovery includes it in that lane, while default
+runs still exclude live tests; actual execution requires `ELIZA_LIVE_TEST=1`
+and OpenAI/Cerebras credentials. The call now passes `action: read` explicitly
+(the action still supports its existing read default). Assertions observe a
+real `MODEL_USED` event for `TEXT_SMALL` and the exact visible callback, as well
+as complete attachment content in the action result. The existing live fixture
+is shared with other assistant live tests through the app test helper; no new
+production dependency or duplicate runtime harness was introduced.
+
+The migrated test passes against the live provider under pinned Node 24.15.0.
+An initial `bunx` attempt failed SQLite's runtime admission before model use;
+the explicit pinned-Node invocation passed. Discovery/opt-out evidence is
+separate from that live receipt. Logs use `/tmp/attachment-owner-*`.
 
 Assistant README/AGENTS referenced deleted `docs/design/runtime-consolidation`
 files at the initial scan. Agent's eliza-plugin header claimed automatic
@@ -355,15 +425,16 @@ this review, and local Markdown link/path validation passed.
 
 ## Implementation sequence and acceptance
 
-1. **Canonical character persistence port** — implemented; focused verification
-   in progress. Preserve host API aliases; test actual lookup and writes; build
-   and import the published subpath outside workspace aliases.
+1. **Canonical character persistence port** — implemented with host compatibility
+   aliases, published-subpath build and native consumer verification recorded
+   below. Final isolated-revision qualification remains part of item 8.
 2. **Finish ownership audit** — trace all host registrations and external
    consumers, classify assistant features and reverse dependencies, and record
    explicit keep/move/delete decisions. The inventories above are a starting
    point, not exhaustive acceptance.
-3. **Move assistant-owned tests** — inventory all affected suites and fixtures,
-   prove discovery before/after, then run owning package and remaining core lanes.
+3. **Move assistant-owned tests** — the current inventory is reconciled: core's
+   kernel security integration stays, and attachment live coverage now belongs
+   to assistant with explicit discovery, opt-in and live-provider evidence.
 4. **Remove verified dead scaffolding and stale descriptions** — distinguish
    public wildcard exports, host hooks and dynamically registered services from
    true dead code. Each deletion names the observed caller outcome.
@@ -373,10 +444,9 @@ this review, and local Markdown link/path validation passed.
    retention correctness.
 6. **Reconcile trajectory persistence** — migrate consumer by consumer with
    stored-data compatibility, concurrency and complete-record tests.
-7. **Extract message/transport seams** — make canonical shared operations own
-   actual repeated behavior; preserve final delivery, cancellation, interactive
-   callbacks, receipt binding and post-turn ordering. Capture real model paths
-   where policy or model-facing content changes.
+7. **Extract message/transport seams** — pure SSE framing is extracted and
+   verified over real HTTP. JSON/SSE completion keep their distinct ordering
+   while sharing existing persistence helpers; no model-facing policy changed.
 8. **Qualify and ship** — both package tests, typecheck, lint, assistant build,
    relevant host build/packed consumer, root `bun run verify`, required runtime
    evidence and final diff review. Prepare an isolated `chore/` or `fix/` branch
@@ -519,3 +589,51 @@ old empty status breakdown, and the final real-storage lane passes. Statistics
 DTO reconciliation is complete for the two host entry points. Assistant's
 independent writer/schema, remaining ownership work and isolated PR delivery
 remain open. These checks qualify the observed shared working tree only.
+
+
+### Complete-export qualification
+
+The final real-storage scenario passes both tests, including 501 ZIP matches
+through each reader and 10,003 complete model-call rows from more than 10,000
+stored trajectories. All four current agent files pass. Both package builds and
+typechecks pass, and the package lint runs pass with existing warnings. The full
+assistant rerun passes 400 suites and 5,228 tests. Its first attempt had 19 suite
+import failures while shared build outputs were unavailable; no assertion
+failures were reported in that attempt. Builds completed and the full retry
+passed. Test and build phases must not overlap dependency-output replacement.
+
+Root verify fails at agent formatting in concurrently changed
+`src/api/diagnostics-routes.ts` and `src/api/server.ts`; a focused read-only
+recheck confirms those failures remain. That run completed 36 of 102 Turbo
+tasks before stopping. These files were not changed by the export work.
+The review's local links and changed-source whitespace check pass. Evidence
+uses `/tmp/trajectory-export-complete-*`. This is working-tree evidence, not a
+qualified PR revision; the wider ownership/persistence review remains active.
+
+
+### Reward writer qualification
+
+All four agent scenario files pass after sharing reward persistence between the
+bridge and standalone logger. Agent typecheck and build pass. Both changed
+source/test files pass read-only Biome and the diff whitespace check; the review
+links resolve. Package lint and root verify fail on formatting in the concurrently
+changed `src/providers/page-scoped-live-state.ts`, which this change does not
+modify. Root verify stopped at agent lint. Logs use `/tmp/trajectory-reward-*`.
+The first reward test attempt incorrectly inspected the public detail DTO for a
+training-only reward field; the corrected scenario checks the persisted row.
+This is not an observed pre-fix behavior regression result. The final passing
+scenario verifies shared-entry-point replay, disabled admission and agent scope.
+The larger review and isolated PR qualification remain open.
+
+
+### Chat wire extraction qualification
+
+All five current agent scenario files pass, including three real HTTP wire
+cases. Agent typecheck, read-only lint (nine existing warnings) and build pass.
+A native Node consumer imports the built stream module and receives the exact
+Unicode SSE frame over HTTP. Root `bun run verify` passes with exit 0. The
+changed-source whitespace check and review link validation pass. Evidence uses
+`/tmp/chat-stream-*`; declaration equivalence is recorded separately in
+`/tmp/chat-stream-extraction-equivalence.json`. No model-facing or durable turn
+policy changed, and the wire harness does not claim live-model/room-settlement
+acceptance. Remaining ownership and PR qualification work stays active.

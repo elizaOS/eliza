@@ -163,9 +163,7 @@ first bring-up deliberately uses the stock `spacecraft` kernel, modules, DTB,
 and DTBO extracted by `adevtool`. Reconfirm the phone's actual firmware and
 rollback constraints before flashing.
 
-Use the dedicated Linux x86_64 builder specified in
-[`docs/grizzly-build-handoff.md`](docs/grizzly-build-handoff.md); the production
-lane requires at least 32 physical cores, 128 GiB RAM, 1.5 TB fast local
+Use a dedicated Linux x86_64 builder. The production lane requires at least 32 physical cores, 128 GiB RAM, 1.5 TB fast local
 storage, and 600 GiB free at bundle start:
 
 ```bash

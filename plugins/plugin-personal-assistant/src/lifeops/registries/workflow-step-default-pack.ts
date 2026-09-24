@@ -327,7 +327,6 @@ const summarizeContribution: AnyWorkflowStepContribution = {
 
 // -- 10. browser ----------------------------------------------------------
 
-
 // ---------------------------------------------------------------------------
 
 export const APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS: readonly AnyWorkflowStepContribution[] =

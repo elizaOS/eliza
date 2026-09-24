@@ -4,7 +4,7 @@ PDF reading and text extraction service for Eliza agents.
 
 ## Purpose / Role
 
-Adds `PdfService` (`ServiceType.PDF`) to an Eliza agent runtime, enabling PDF buffers to be parsed and their text extracted. The plugin registers no actions, providers, or evaluators — it exposes only a service that other plugins, actions, or agent code can call via `runtime.getService(ServiceType.PDF)`. It is opt-in: list `"@elizaos/plugin-pdf"` in the character's `plugins` array to enable it. Builds target both Node.js and browser environments via separate entry points.
+Adds `PdfService` (`ServiceType.PDF`) to an Eliza agent runtime, enabling PDF buffers to be parsed and their text extracted. The plugin registers no actions, providers, or evaluators — it exposes only a service that other plugins, actions, or agent code can call via `runtime.getService(ServiceType.PDF)`. It is opt-in: list `"@elizaos/plugin-pdf"` in the character's `plugins` array to enable it. The runtime plugin targets Node.js.
 
 ## Plugin Surface
 
@@ -20,7 +20,6 @@ No actions, providers, evaluators, routes, or events are registered.
 plugins/plugin-pdf/
   index.ts              Plugin definition (exports pdfPlugin, PdfService, types)
   index.node.ts         Node.js entry point re-export
-  index.browser.ts      Browser entry point re-export
   services/
     index.ts            Re-exports PdfService
     pdf.ts              PdfService implementation — all extraction logic lives here
@@ -31,7 +30,7 @@ plugins/plugin-pdf/
     core-test-mock.ts   Vitest mock for @elizaos/core (Service, ServiceType, logger)
   prompts/
     evaluators.json     (reserved; not loaded by current plugin surface)
-  build.ts              Bun.build script (node + browser dual output)
+  build.ts              Bun.build script (Node dual output)
 ```
 
 ## Commands
@@ -39,7 +38,7 @@ plugins/plugin-pdf/
 All scripts are from `package.json`. Run from repo root with `--cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-pdf build          # production build (node + browser)
+bun run --cwd plugins/plugin-pdf build          # production build (Node)
 bun run --cwd plugins/plugin-pdf dev            # watch mode build
 bun run --cwd plugins/plugin-pdf test           # vitest run
 bun run --cwd plugins/plugin-pdf typecheck      # tsc --noEmit
@@ -74,9 +73,8 @@ Edit `services/pdf.ts`. The class extends `Service` from `@elizaos/core`. Add th
 
 ## Conventions / Gotchas
 
-- **Dual build (node + browser).** `build.ts` produces `dist/node/index.node.js` and `dist/browser/index.browser.js`. The `exports` field in `package.json` routes consumers automatically. Keep both entry points in sync when adding exports.
 - **`unpdf` dependency.** Replaces the older `pdfjs-dist` reference in README; actual runtime dep is `unpdf ^1.4.0` (`getDocumentProxy`). Do not import `pdfjs-dist` directly.
-- **Buffer input.** All public methods accept `Buffer` (Node.js) and convert internally to `Uint8Array` for `unpdf`. Browser callers must supply a compatible buffer.
+- **Buffer input.** All public methods accept `Buffer` (Node.js) and convert internally to `Uint8Array` for `unpdf`.
 - **`cleanUpContent` strips control characters** (C0 except `\t`, `\r`, `\n`; also strips DEL/0x7F). Call it on any raw text before surfacing to the agent.
 - **No actions registered.** The plugin surface is service-only. To expose PDF capabilities to the LLM turn loop, an action must be added explicitly (see "How to Extend").
 - **`ServiceType.PDF`** is the lookup key. Use `runtime.getService<PdfService>(ServiceType.PDF)` — not a string literal.

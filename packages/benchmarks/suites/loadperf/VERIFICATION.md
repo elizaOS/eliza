@@ -101,7 +101,7 @@ ELIZA_UI_SMOKE_REUSE_SERVER=1 \
 
 | Requirement | Spec(s) | Asserts |
 | --- | --- | --- |
-| Pages load | `ui-smoke.spec.ts`, `all-pages-clicksafe.spec.ts`, `test/route-coverage.test.ts` | every route mounts without crash; chat composer ready signal `[data-testid="chat-composer-textarea"]` appears |
+| Pages load | `all-pages-clicksafe.spec.ts`, `test/route-coverage.test.ts` | every route mounts without crash; chat composer ready signal `[data-testid="chat-composer-textarea"]` appears |
 | Agent responds to chat | `live-agent-chat.spec.ts`, `assistant-home-flow.spec.ts` | a sent message yields an agent response |
 | View switching | `view-manager-actual-flow.spec.ts`, `plugin-views-visual.spec.ts` | navigating between plugin/builtin views mounts the right surface |
 | View-dependent actions | `test/view-interaction-coverage.test.ts`, `terminal-plugin-view-command-contract.spec.ts`, `*-gui-interactions.spec.ts` | view capabilities/actions dispatch and take effect |
@@ -109,7 +109,7 @@ ELIZA_UI_SMOKE_REUSE_SERVER=1 \
 | Perf web-vitals | `perf-load-kpi.spec.ts` | FCP/LCP/JS-payload within soft budgets on `/chat` (doubles as a measurement) |
 
 **Minimum gate for any single optimization** (fast signal):
-`ui-smoke.spec.ts` + `live-agent-chat.spec.ts` + `view-manager-actual-flow.spec.ts`
+`live-agent-chat.spec.ts` + `view-manager-actual-flow.spec.ts`
 + `perf-load-kpi.spec.ts`.
 **Full gate before declaring the effort done:** the entire `test:e2e` suite plus
 `bun run --cwd packages/app typecheck` and `bun run verify`.

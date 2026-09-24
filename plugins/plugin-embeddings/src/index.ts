@@ -71,7 +71,6 @@ export const embeddingsPlugin: Plugin = {
     EMBEDDING_FALLBACK_API_KEY: env.EMBEDDING_FALLBACK_API_KEY ?? null,
     EMBEDDING_FALLBACK_MODEL: env.EMBEDDING_FALLBACK_MODEL ?? null,
     EMBEDDING_DIMENSIONS: env.EMBEDDING_DIMENSIONS ?? null,
-    EMBEDDING_BROWSER_URL: env.EMBEDDING_BROWSER_URL ?? null,
   },
 
   async init(_config, runtime) {

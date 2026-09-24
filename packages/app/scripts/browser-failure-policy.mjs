@@ -7,9 +7,6 @@
 export const LIFEOPS_ACTIVITY_SIGNALS_PATH = "/api/lifeops/activity-signals";
 export const LIFEOPS_ACTIVITY_SIGNALS_INACTIVE_ERROR =
   "LifeOps activity signals are unavailable because the personal-assistant runtime is not active";
-export const BROWSER_BRIDGE_COMPANIONS_PATH = "/api/browser-bridge/companions";
-export const BROWSER_BRIDGE_SERVICE_UNAVAILABLE_ERROR =
-  "Browser Bridge service is not available";
 const RESOURCE_UNAVAILABLE_503 =
   "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
 const RESOURCE_ERROR_PATTERN =
@@ -30,15 +27,8 @@ export function isLifeOpsActivitySignals503(status, url) {
   return status === 503 && hasPath(url, LIFEOPS_ACTIVITY_SIGNALS_PATH);
 }
 
-export function isBrowserBridgeCompanions503(status, url) {
-  return status === 503 && hasPath(url, BROWSER_BRIDGE_COMPANIONS_PATH);
-}
-
 export function isExpectedDevSmokeResponseCandidate(status, url) {
-  return (
-    isLifeOpsActivitySignals503(status, url) ||
-    isBrowserBridgeCompanions503(status, url)
-  );
+  return isLifeOpsActivitySignals503(status, url);
 }
 
 function hasExactErrorBody(body, expectedError) {
@@ -70,29 +60,14 @@ export function isExpectedInactiveLifeOpsActivitySignalsResponse(
   );
 }
 
-export function isExpectedUnavailableBrowserBridgeCompanionsResponse(
-  status,
-  url,
-  body,
-) {
-  return (
-    isBrowserBridgeCompanions503(status, url) &&
-    hasExactErrorBody(body, BROWSER_BRIDGE_SERVICE_UNAVAILABLE_ERROR)
-  );
-}
-
 export function isExpectedDevSmokeResponse(status, url, body) {
-  return (
-    isExpectedInactiveLifeOpsActivitySignalsResponse(status, url, body) ||
-    isExpectedUnavailableBrowserBridgeCompanionsResponse(status, url, body)
-  );
+  return isExpectedInactiveLifeOpsActivitySignalsResponse(status, url, body);
 }
 
 export function isExpectedDevSmokeConsoleError(text, locationUrl) {
   return (
     text === RESOURCE_UNAVAILABLE_503 &&
-    (hasPath(locationUrl, LIFEOPS_ACTIVITY_SIGNALS_PATH) ||
-      hasPath(locationUrl, BROWSER_BRIDGE_COMPANIONS_PATH))
+    hasPath(locationUrl, LIFEOPS_ACTIVITY_SIGNALS_PATH)
   );
 }
 

@@ -277,6 +277,36 @@
       },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./services/agent-backup-v2-capture": {
+      "types": "./src/services/agent-backup.ts",
+      "eliza-source": {
+        "types": "./src/services/agent-backup.ts",
+        "import": "./src/services/agent-backup.ts",
+        "default": "./src/services/agent-backup.ts"
+      },
+      "bun": {
+        "types": "./src/services/agent-backup.ts",
+        "import": "./src/services/agent-backup.ts",
+        "default": "./src/services/agent-backup.ts"
+      },
+      "import": "./dist/services/agent-backup.js",
+      "default": "./dist/services/agent-backup.js"
+    },
+    "./api/wallet-env-sync": {
+      "types": "./src/api/wallet-keygen.ts",
+      "eliza-source": {
+        "types": "./src/api/wallet-keygen.ts",
+        "import": "./src/api/wallet-keygen.ts",
+        "default": "./src/api/wallet-keygen.ts"
+      },
+      "bun": {
+        "types": "./src/api/wallet-keygen.ts",
+        "import": "./src/api/wallet-keygen.ts",
+        "default": "./src/api/wallet-keygen.ts"
+      },
+      "import": "./dist/api/wallet-keygen.js",
+      "default": "./dist/api/wallet-keygen.js"
     }
   },
   "publishConfig": {
@@ -324,11 +354,9 @@
     "drizzle-orm": "0.45.2",
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
-    "git-workspace-service": "0.4.5",
     "hono": "^4.13.8",
     "isomorphic-git": "^1.42.2",
     "jpeg-js": "^0.4.4",
-    "jsdom": "^29.0.0",
     "json5": "^2.2.3",
     "pg": "^8.23.0",
     "pngjs": "^7.0.0",
@@ -341,7 +369,6 @@
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-embeddings": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "lucide-react": "^1.16.0",
     "react": "^19.0.0",
     "@elizaos/capacitor-system": "workspace:*"
   },
@@ -372,7 +399,6 @@
   "devDependencies": {
     "@elizaos/ui": "workspace:*",
     "@types/bun": "^1.3.12",
-    "@types/jsdom": "^30.0.0",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.21.0",
     "@types/pngjs": "^6.0.5",

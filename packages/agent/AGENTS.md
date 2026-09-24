@@ -32,7 +32,7 @@ src/
     agent-wallets.ts      Agent wallet bootstrap and TEE-gated wallet logic
     model-resolution.ts   Model name resolution helpers
     prompt-optimization.ts  Lossless prompt telemetry and active-view awareness
-    tool-call-cache/ tool-call-cache-wrapper.ts  Tool-call result caching layer
+    tool-call-cache/         Tool-call result caching library
     first-time-setup.ts   First-run initialization logic
     load-plugin-from-directory.ts / load-plugin-from-vfs.ts  Plugin loading from local dirs and VFS
     sandbox-registry.ts / sandbox-character.ts  Sandbox plugin registry and character isolation

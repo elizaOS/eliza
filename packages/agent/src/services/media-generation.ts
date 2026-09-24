@@ -43,26 +43,8 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
   };
 }
 
-function imageConfigUsesCloud(
-  config: ImageConfig | undefined,
-  options: MediaProviderFactoryOptions,
-): boolean {
-  const mode =
-    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
-  return mode === "cloud" && !options.cloudMediaDisabled;
-}
-
-function videoConfigUsesCloud(
-  config: VideoConfig | undefined,
-  options: MediaProviderFactoryOptions,
-): boolean {
-  const mode =
-    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
-  return mode === "cloud" && !options.cloudMediaDisabled;
-}
-
-function audioConfigUsesCloud(
-  config: AudioGenConfig | undefined,
+function mediaConfigUsesCloud(
+  config: ImageConfig | VideoConfig | AudioGenConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): boolean {
   const mode =
@@ -277,20 +259,20 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     const providerOptions = getMediaProviderOptions();
     try {
       if (request.mediaType === "image") {
-        if (imageConfigUsesCloud(config.media?.image, providerOptions)) {
+        if (mediaConfigUsesCloud(config.media?.image, providerOptions)) {
           return hasImageGenerationModel(this.runtime);
         }
         createImageProvider(config.media?.image, providerOptions);
         return true;
       }
       if (request.mediaType === "video") {
-        if (videoConfigUsesCloud(config.media?.video, providerOptions)) {
+        if (mediaConfigUsesCloud(config.media?.video, providerOptions)) {
           return hasGenerationModel(this.runtime, ModelType.VIDEO);
         }
         createVideoProvider(config.media?.video, providerOptions);
         return true;
       }
-      if (audioConfigUsesCloud(config.media?.audio, providerOptions)) {
+      if (mediaConfigUsesCloud(config.media?.audio, providerOptions)) {
         if (request.audioKind === "sfx") return false;
         return hasGenerationModel(
           this.runtime,
@@ -313,7 +295,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     const providerOptions = getMediaProviderOptions();
 
     if (request.mediaType === "image") {
-      if (imageConfigUsesCloud(config.media?.image, providerOptions)) {
+      if (mediaConfigUsesCloud(config.media?.image, providerOptions)) {
         return generateImageWithModel(this.runtime, request);
       }
 
@@ -344,7 +326,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     }
 
     if (request.mediaType === "video") {
-      if (videoConfigUsesCloud(config.media?.video, providerOptions)) {
+      if (mediaConfigUsesCloud(config.media?.video, providerOptions)) {
         return generateVideoWithModel(
           this.runtime,
           request,
@@ -376,7 +358,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       };
     }
 
-    if (audioConfigUsesCloud(config.media?.audio, providerOptions)) {
+    if (mediaConfigUsesCloud(config.media?.audio, providerOptions)) {
       return generateAudioWithModel(this.runtime, request);
     }
 

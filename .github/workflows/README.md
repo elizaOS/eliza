@@ -188,10 +188,10 @@ The separate `cloud-gateway-discord.yml` source-only contract keeps its
 secretless caller and configuration boundary. `ui-e2e-gate.yml` owns the core,
 extended, and gesture fixtures with non-overlapping commands; engine variants
 remain separate tests.
-`ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
-`docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
-and macOS/Windows contracts. Dev Smoke runs staging startup and HMR without
-direct model-provider credentials; billable local onboarding is excluded from
+`ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml` runs
+the HMR tests, and `platform-smoke.yml` runs the macOS/Windows contracts.
+Image boot verification belongs to `build-agent-image.yml`; there is no
+separate Docker smoke workflow. Billable local onboarding is excluded from
 automatic branch validation.
 
 UI fixture contracts and Discord gateway source tests also accept

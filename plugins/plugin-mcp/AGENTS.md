@@ -60,7 +60,6 @@ plugins/plugin-mcp/
   __tests__/
     mcp-config-security.test.ts   Config validation / security tests
     integration/                  Integration test suite
-  index.browser.ts          Browser-unavailable entry (MCP client is node-only)
 ```
 
 ## Commands
@@ -125,7 +124,6 @@ Add a branch in `src/routes-mcp.ts` `handleMcpRoutes`. The host server passes a 
 
 ## Conventions / gotchas
 
-- **Node-only.** `index.browser.ts` is a browser-unavailable entry. The MCP SDK's stdio and SSE transports require Node.js APIs. The `eliza.platforms` field in `package.json` is `["node"]`.
 - **Service type key is lowercase `"mcp"`.** `McpService.serviceType = "mcp"`, and core's service lookup is case-sensitive — always resolve via the `MCP_SERVICE_NAME` constant, never a hand-written string.
 - **Tool schema fixup runs synchronously.** `createMcpToolCompatibilitySync` uses `require()` internally; this is intentional (called lazily during tool listing in `fetchToolsList`, not at import time).
 - **Ping monitoring is stdio-only.** HTTP/SSE transports do not use the ping interval; reconnect is handled by transport error/close events.

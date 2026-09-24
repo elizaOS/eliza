@@ -20,10 +20,7 @@ import {
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
-import {
-  NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-} from "../../events";
+import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -294,7 +291,6 @@ function resolveBrowserWorkspaceTabPartition(
       return undefined;
   }
 }
-
 
 function isBrowserWorkspaceSessionMode(
   mode: BrowserWorkspaceSnapshot["mode"],
@@ -814,7 +810,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
     walletAddresses,
     walletConfig,
   ]);
-
 
   const loadBrowserWalletState = useCallback(async () => {
     try {
@@ -3019,7 +3014,6 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           {loadError.message}
         </div>
       ) : null}
-
 
       {workspace.tabs.length === 0 ? (
         browserWorkspaceUnavailable ? (

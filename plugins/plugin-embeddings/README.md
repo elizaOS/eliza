@@ -55,7 +55,6 @@ All variables are read via `runtime.getSetting(key)` first, then `process.env`, 
 | `EMBEDDING_FALLBACK_API_KEY` | _(none)_ | Bearer token for the fallback endpoint. Omit for fallback servers that need no auth. |
 | `EMBEDDING_FALLBACK_MODEL` | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
 | `EMBEDDING_DIMENSIONS` | `1536` | Vector width (see below). Sent as the request `dimensions` field when explicitly set. |
-| `EMBEDDING_BROWSER_URL` | _(none)_ | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent only when this is set, keeping the key off the client. |
 
 Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` activates the plugin.
 Fallback-only settings do **not** activate it and cannot replace a missing primary base URL.

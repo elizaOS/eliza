@@ -7,7 +7,7 @@ read-only discovery only.
 Current hardware and trust policy are unenrolled, so physical execution remains
 blocked. A candidate build is not installation authorization.
 
-Read the [shared contract and signing guide](../../../../scripts/android/README.md)
+Read the [shared contract and signing guide](../../scripts/android/README.md)
 for the complete format, trust enrollment, lab workflow and execution commands.
 
 ## Planning and discovery

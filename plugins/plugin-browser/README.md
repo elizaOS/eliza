@@ -1,6 +1,6 @@
 # @elizaos/plugin-browser
 
-Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile), and manages the Chrome, Firefox, and Safari Agent Browser Bridge companion extension.
+Browser workspace automation for elizaOS. The `BROWSER` action controls the embedded desktop BrowserView, JSDOM workspace, or an optional Stagehand target.
 
 ## What this plugin provides
 
@@ -37,8 +37,6 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 | `cursor_hide` | Hide the cursor overlay |
 | `autofill_login` | Fill saved credentials into a browser tab (vault-gated; requires `domain`) |
 
-**MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report the complete paired-companion inventory, exact count, and settings). Owner-only.
-
 Promoted Browser operations expose login fields (`domain`, `username`, `submit`)
 only for `BROWSER_AUTOFILL_LOGIN`, and URL-wait fields (`pattern`,
 `pollIntervalMs`) only for `BROWSER_WAIT_FOR_URL`. These fields belong to the
@@ -70,7 +68,6 @@ The plugin uses a pluggable target registry in `BrowserService`. Targets are sel
 | Target ID | Backend | When available |
 |---|---|---|
 | `workspace` | Electrobun `BrowserView` (desktop) or JSDOM (web) | Always |
-| `bridge` | Paired Chrome, Firefox, or Safari via companion extension | At least one companion paired |
 | `stagehand` | Playwright/Stagehand via HTTP endpoint | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` set |
 
 External plugins can register additional targets by calling `BrowserService.registerTarget(target)`.
@@ -87,7 +84,7 @@ surface, generation, operation, and action idempotency key. The receipt records
 only opaque session, account-grant, and resource identities; raw owner/profile
 handles and file handles are excluded.
 
-The built-in `workspace`, `bridge`, and `stagehand` targets do not yet expose a
+The built-in `workspace` and `stagehand` targets do not yet expose a
 proof-producing upload hook, so they reject uploads before consuming a
 confirmation. A custom target must not opt in until its underlying browser or
 provider can return authoritative acceptance evidence.
@@ -98,7 +95,7 @@ provider can return authoritative acceptance evidence.
 
 ### Routes
 
-`/api/browser-bridge/*` — HTTP surface for the companion extension: pairing, settings, tab sync, page-context ingest, session progress, and extension package build/download.
+Workspace routes provide tab management, navigation, and page observation. Companion extension pairing, sync, packaging, and native messaging are retired.
 
 ## Requirements
 
@@ -124,9 +121,6 @@ The plugin is opt-in. It activates when `config.features.browser` is truthy in t
 | `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | Set `false` to disable automatic stagehand-server install/build |
 | `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | Set `true` to allow stagehand target on mobile |
 | `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | Platform hint for target scoring (`ios`/`android`/`mobile`) |
-| `ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL` | Chrome Web Store listing override |
-| `ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL` | Firefox Add-ons listing override |
-| `ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL` | Safari App Store listing override |
 
 ### Vault keys (set by the user, not env vars)
 
@@ -136,25 +130,10 @@ The plugin is opt-in. It activates when `config.features.browser` is truthy in t
 
 Without this flag, the action returns an error rather than prompting interactively.
 
-## Companion extension authentication
+## Stored-data compatibility
 
-Companion-scoped endpoints require two headers:
-
-```
-X-Browser-Bridge-Companion-Id: <companion uuid>
-Authorization: Bearer <pairing token>
-```
-
-Legacy header aliases (`X-LifeOps-Browser-Companion-Id`, `x-eliza-browser-companion-id`) are not accepted.
-
-## Database
-
-Drizzle tables in the `browser` PostgreSQL schema (applied by elizaOS `plugin-sql` migrator):
-
-- `browser_bridge_companions`
-- `browser_bridge_settings`
-- `browser_bridge_tabs`
-- `browser_bridge_page_contexts`
+Legacy browser record contracts remain readable for LifeOps history. They do
+not enable companion enrollment or execution; new automation uses `BROWSER`.
 
 ## Registering a custom browser target
 

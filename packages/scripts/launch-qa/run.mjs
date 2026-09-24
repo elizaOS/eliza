@@ -109,13 +109,6 @@ const TASKS = [
     description: "Cloud package split typecheck",
   },
   {
-    id: "ui-smoke",
-    tier: 2,
-    command: "node",
-    args: ["packages/scripts/launch-qa/run-ui-smoke-offline.mjs"],
-    description: "Deterministic offline Playwright UI smoke suite",
-  },
-  {
     id: "cloud-api-key-redaction",
     tier: 1,
     command: "bun",

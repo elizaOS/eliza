@@ -8,7 +8,7 @@ Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings
 
 The plugin has two distinct export surfaces:
 
-- **`elizaOSCloudPlugin`** (`src/index.ts`) — inference model handlers, cloud providers, and cloud services. Safe in both browser and Node.
+- **`elizaOSCloudPlugin`** (`src/index.ts`) — inference model handlers, cloud providers, and cloud services. Runs in Node.
 - **`elizaCloudRoutePlugin`** (`src/plugin.ts`) — registers `/api/cloud/*` HTTP routes. Node-only; loaded lazily via `src/register-routes.ts`.
 
 ## Plugin surface
@@ -86,7 +86,6 @@ plugins/plugin-elizacloud/
   src/
     index.ts                        Main plugin object (elizaOSCloudPlugin)
     index.node.ts                   Node-specific re-exports
-    index.browser.ts                Browser-compatible build entry
     plugin.ts                       Route-only plugin (elizaCloudRoutePlugin)
     register-routes.ts              Lazy-loads route plugin via registerAppRoutePluginLoader
     init.ts                         OpenAI-compatible client initialization
@@ -177,14 +176,14 @@ plugins/plugin-elizacloud/
     integration/                    Integration tests
     *.test.ts                       Feature-level test suites
   auto-enable.ts                    Auto-enable entry point (package.json elizaos.plugin.autoEnableModule)
-  build.ts                          Dual-target (node + browser) build script
+  build.ts                          Node build script
   package.json
 ```
 
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-elizacloud build       # compile node + browser bundles
+bun run --cwd plugins/plugin-elizacloud build       # compile Node bundles
 bun run --cwd plugins/plugin-elizacloud typecheck   # type check only (tsc --noEmit)
 bun run --cwd plugins/plugin-elizacloud test        # run all tests via vitest
 bun run --cwd plugins/plugin-elizacloud test:unit   # unit tests only
@@ -246,13 +245,6 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | `ELIZAOS_CLOUD_USE_STT` | unset — per-service opt-in for Cloud STT in capability-only mode (`ELIZAOS_CLOUD_ENABLED` unset) |
 | `ELIZAOS_CLOUD_STT_TIMEOUT_MS` | `60000` |
 
-### Browser-only proxy vars (no secrets in client bundles)
-
-| Var |
-|---|
-| `ELIZAOS_CLOUD_BROWSER_BASE_URL` |
-| `ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL` |
-
 ## How to extend
 
 ### Add a model handler
@@ -281,7 +273,6 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 
 - **No direct `fetch()` for Cloud API calls.** Use `createCloudApiClient(runtime)` or `createElizaCloudClient(runtime)` from `src/utils/sdk-client.ts`. The one exception is the plugin test suite downloading a public audio fixture.
 - **`ELIZAOS_CLOUD_ENABLED` gates infrastructure services.** When false, only inference model handlers are active. Container, bridge, backup, and relay services start only when this flag is true.
-- **Browser build is separate.** `src/index.browser.ts` is the entry for `dist/browser/`. It must not import Node-only modules. The route plugin (`src/plugin.ts`) is Node-only and is excluded from the browser bundle.
 - **Routes use `rawPath: true`.** All `/api/cloud/*` routes bypass the plugin-name prefix so paths stay stable.
 - **TTS routing precedence.** This plugin's priority (50) does not govern TTS routing. The router-handler in `plugin-local-inference` runs at `MAX_SAFE_INTEGER` priority and enforces the `prefer-local` policy. Cloud TTS is a fallback; `CloudTtsUnavailableError` (from `src/models/speech.ts`) signals the router to try the next provider.
 - **Cloud STT gate mirrors the TTS gate.** `handleTranscription` serves when a Cloud API key is present AND (`ELIZAOS_CLOUD_ENABLED` OR `ELIZAOS_CLOUD_USE_STT`) is truthy — `isCloudSttAvailable` in `src/utils/config.ts`. Otherwise it throws `CloudSttUnavailableError` so the local-inference router falls through to the next TRANSCRIPTION provider. `audioUrl`/string inputs are fetched through core's `fetchWithSsrfGuard`.

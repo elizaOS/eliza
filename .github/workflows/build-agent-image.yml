@@ -228,7 +228,7 @@ jobs:
         # consume them) but strip per-package node_modules and the other
         # bulky CI-only inputs. Use the canonical CI dockerignore from
         # packages/app/deploy/.dockerignore.ci, mirroring what
-        # docker-ci-smoke.sh does before its `docker build`.
+        # verify-agent-image.sh does before its `docker build`.
         run: |
           cp packages/app/deploy/.dockerignore.ci .dockerignore
 
@@ -360,7 +360,7 @@ jobs:
           # runner is heavily contended, so this only fails on a genuine multi-x
           # boot-time regression — not on transient runner load.
           BOOT_KPI_ENFORCE: "1"
-        run: bash packages/app/scripts/docker-ci-smoke.sh --boot-verify-only
+        run: bash packages/app/scripts/verify-agent-image.sh --boot-verify-only
 
       # Push the EXACT verified image. This runs only if the boot verification
       # above succeeded (steps run in order; a failed step fails the job). We

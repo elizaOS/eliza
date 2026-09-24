@@ -98,12 +98,11 @@ batch runner validates every report before writing one combined JUnit artifact.
 Missing, malformed or failed batch evidence rejects the run; entirely skipped
 suites do not satisfy the repository's required-work gate.
 
-The `services/agent-backup-restore-v3-candidate-*` modules implement private
-restore staging, durable records, and verified materialization. They are
-unfinished restore-v3 integration tracked in
-[#20726](https://github.com/elizaOS/eliza/issues/20726) and
-[#20732](https://github.com/elizaOS/eliza/issues/20732), with no production caller
-in this package yet. The current backup routes still use the existing snapshot restore path.
+`services/agent-backup.ts` owns snapshot capture and restore, encrypted local
+backups, and the streaming capture-v2 producer. HTTP response framing remains
+in `api/backup-json-response.ts` and `api/backup-v2-stream-response.ts`.
+Restore routes use the snapshot path; no restore-v3 candidate implementation
+is shipped.
 
 ## Backup restore generations
 
@@ -135,13 +134,6 @@ inspect the interrupted operation and its domain journal, and reconcile any
 database or storage effects before removing that exact claim and syncing its
 parent directory. Preserve all generation records. Restart users only after
 reconciliation; removing a claim does not roll back a completed deletion.
-
-## Research tasks
-
-`ResearchTaskExecutor` requires a provider registered for
-`ModelType.RESEARCH`. Provider absence, rejection, or an empty report returns an
-unsuccessful `TaskResult` with a stable `errorCode`; it never falls back to
-ordinary `TEXT_LARGE` synthesis and labels that output as research.
 
 ## Message-interaction session persistence
 

@@ -1,6 +1,6 @@
 # eliza-adapter
 
-Python bridge that connects benchmark runners to the TypeScript [eliza](../../eliza/) agent via HTTP.
+Python bridge that connects benchmark runners to the TypeScript [eliza](../../../agent/) agent via HTTP.
 
 ## Architecture
 
@@ -93,17 +93,17 @@ campaign turn is publishable only when the server reports its exact native API
 
 ## Used by
 
-- [`benchmarks/agentbench/`](../agentbench/) -- `run_benchmark.py`
-- [`benchmarks/context-bench/`](../context-bench/) -- `run_benchmark.py`
-- [`benchmarks/mind2web/`](../mind2web/) -- `runner.py`
-- [`benchmarks/tau-bench/`](../tau-bench/) -- `elizaos_tau_bench/runner.py`
+- [`benchmarks/agentbench/`](../../suites/agentbench/) -- `run_benchmark.py`
+- [`benchmarks/context-bench/`](../../suites/context-bench/) -- `run_benchmark.py`
+- [`benchmarks/mind2web/`](../../suites/mind2web/) -- `runner.py`
+- [`benchmarks/tau-bench/`](../../suites/tau-bench/) -- `elizaos_tau_bench/runner.py`
 
 ## Server-side reference
 
 The TypeScript benchmark server and plugin that this adapter communicates with are maintained in the eliza package:
 
-- **Server:** [`suites/lifeops-bench/runner/src/server.ts`](../../lifeops-bench/src/server.ts)
+- **Server:** [`suites/lifeops-bench/runner/src/server.ts`](../../suites/lifeops-bench/runner/src/server.ts)
 - **Plugin:** [`suites/lifeops-bench/runner/src/plugin.ts`](../../suites/lifeops-bench/runner/src/plugin.ts)
 - **npm script:** `benchmark:server` in `@elizaos/lifeops-bench` (`bun run --cwd suites/lifeops-bench/runner benchmark:server`)
 
-See the [benchmark server README](../../lifeops-bench/src/README.md) for endpoint documentation and plugin details.
+See the [benchmark server README](../../suites/lifeops-bench/runner/src/README.md) for endpoint documentation and plugin details.

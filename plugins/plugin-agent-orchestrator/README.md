@@ -15,7 +15,7 @@ The canonical orchestration plugin for elizaOS task agents. Spawns local coding 
 The plugin combines three concerns:
 
 1. **Spawn** coding agents via ACP. The default path embeds ACP JSON-RPC session management in this plugin and talks directly to an ACP-compatible agent process; the legacy path can still shell out to [`acpx`](https://github.com/openclaw/acpx) when `ELIZA_ACP_TRANSPORT=cli`.
-2. **Route** sub-agent terminal events (`task_complete`, `error`, `blocked`) and swarm coordination events back into the runtime as synthetic inbound messages addressed to the task room, worktree room, or original `roomId`/`userId`/`messageId`. The main agent's normal action layer then decides whether to `REPLY` to the user, `SEND_TO_AGENT` to push the sub-agent further, ask the task creator a question, or coordinate with other agents. See [`docs/sub-agent-routing.md`](./docs/sub-agent-routing.md).
+2. **Route** sub-agent terminal events (`task_complete`, `error`, `blocked`) and swarm coordination events back into the runtime as synthetic inbound messages addressed to the task room, worktree room, or original `roomId`/`userId`/`messageId`. The main agent's normal action layer then decides whether to `REPLY` to the user, `SEND_TO_AGENT` to push the sub-agent further, ask the task creator a question, or coordinate with other agents.
 3. **Coordinate** workspace lifecycle (clone, branch, commit, push, PR open) and GitHub issue management for repo-hosted tasks.
 
 ## Installation
@@ -102,7 +102,7 @@ The same plugin supplies Task Coordinator, Orchestrator and Cockpit. Their
 route IDs and capability authority remain stable. Browser hosts import
 `@elizaos/plugin-agent-orchestrator/ui/register` for native page loaders and
 shared UI slots; this entry is separate from the Node subprocess runtime.
-See the [workbench guide](ui/README.md) and [plugin ownership audit](docs/plugin-ownership.md).
+See the [workbench guide](ui/README.md).
 
 ## Action surface
 

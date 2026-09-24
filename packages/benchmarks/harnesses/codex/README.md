@@ -45,7 +45,6 @@ Turns round-robin: turn `i` uses `accounts[i % len(accounts)]`.
 
 ## Run (live — credential-gated)
 
-See [`../docs/HITL_MULTI_CODEX_RUNBOOK.md`](../docs/HITL_MULTI_CODEX_RUNBOOK.md).
 A live run requires real authenticated Codex homes and the gpt-5.5 model those
 accounts are entitled to:
 

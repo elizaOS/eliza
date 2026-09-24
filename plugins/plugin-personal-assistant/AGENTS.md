@@ -31,7 +31,6 @@ Most umbrella actions use `promoteSubactionsToActions`, so both the umbrella and
 
 The plugin registers these owner-private providers:
 
-- `lifeops_browser` from `src/provider.ts`
 - `firstRun`, `ftuGoal`, `roomPolicy`, `agreementPins`, and `lifeops`
 - `pendingApprovals`, `delegationContracts`, and `pendingPrompts`
 - `workThreads` and `recentTaskStates`
@@ -45,7 +44,6 @@ Inbox triage context is owned and registered by `@elizaos/plugin-inbox`.
 
 - `PersonalAssistantStartupService` owns deferred initialization jobs: shutdown cancels pending admission and drains admitted work before storage closes.
 
-- `BrowserBridgePluginService`
 - `ActivityTrackerService` and `PresenceSignalBridgeService`
 - `HouseholdCoordinationRuntimeService`
 - `AgreementKnowledgeRuntimeService`
@@ -81,8 +79,6 @@ src/
   plugin.ts                     composition root and lifecycle
   index.ts                      public exports
   register.ts                   app registration entry
-  service.ts                    browser bridge facade
-  provider.ts                   browser context provider
   actions/                      owner-facing action umbrellas and direct actions
   providers/                    owner context providers
   activity-profile/             presence, activity, and proactive-task wiring
