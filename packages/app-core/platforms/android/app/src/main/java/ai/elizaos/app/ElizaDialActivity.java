@@ -18,8 +18,8 @@ import android.util.Log;
  * the outgoing call — without this, Eliza would be a dialer UI that
  * never dials anything.
  *
- * The InCallService then receives the resulting Call object and routes
- * the in-call UI back into the WebView via deep link.
+ * The InCallService then receives the resulting Call object and owns
+ * the native call screen independently of WebView and agent startup.
  */
 public class ElizaDialActivity extends Activity {
 

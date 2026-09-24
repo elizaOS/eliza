@@ -3,6 +3,7 @@ package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.IOException;
@@ -22,7 +23,7 @@ public class RuntimeInstallationIdentityTest {
             String first = results.get(0).get();
             for (var result : results) assertEquals(first, result.get());
             assertEquals(first, RuntimeInstallationIdentity.ensure(directory));
-            assertEquals(first, Files.readString(directory.resolve("runtime-installation-id")).trim());
+            assertEquals(first, new String(Files.readAllBytes(directory.resolve("runtime-installation-id")), StandardCharsets.UTF_8).trim());
         } finally {
             executor.shutdownNow();
             remove(directory);
@@ -33,9 +34,9 @@ public class RuntimeInstallationIdentityTest {
         Path directory = Files.createTempDirectory("eliza-identity-invalid-");
         try {
             Path target = directory.resolve("runtime-installation-id");
-            Files.writeString(target, "invalid");
+            Files.write(target, "invalid".getBytes(StandardCharsets.UTF_8));
             assertThrows(IOException.class, () -> RuntimeInstallationIdentity.ensure(directory));
-            assertEquals("invalid", Files.readString(target));
+            assertEquals("invalid", new String(Files.readAllBytes(target), StandardCharsets.UTF_8));
         } finally { remove(directory); }
     }
 
@@ -43,10 +44,10 @@ public class RuntimeInstallationIdentityTest {
         Path directory = Files.createTempDirectory("eliza-identity-link-");
         try {
             Path external = directory.resolve("external");
-            Files.writeString(external, "00000000-0000-4000-8000-000000000000");
+            Files.write(external, "00000000-0000-4000-8000-000000000000".getBytes(StandardCharsets.UTF_8));
             Files.createSymbolicLink(directory.resolve("runtime-installation-id"), external);
             assertThrows(IOException.class, () -> RuntimeInstallationIdentity.ensure(directory));
-            assertEquals("00000000-0000-4000-8000-000000000000", Files.readString(external));
+            assertEquals("00000000-0000-4000-8000-000000000000", new String(Files.readAllBytes(external), StandardCharsets.UTF_8));
         } finally { remove(directory); }
     }
 

@@ -418,6 +418,7 @@ export function overlayAndroid({
       "ElizaVoiceTileService",
       "ElizaAccessibilityService",
       "ElizaInCallService",
+      "ElizaInCallActivity",
       "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
@@ -448,6 +449,7 @@ export function overlayAndroid({
       "ElizaVoiceTileService",
       "ElizaAccessibilityService",
       "ElizaInCallService",
+      "ElizaInCallActivity",
       "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
@@ -463,6 +465,7 @@ export function overlayAndroid({
       "ElizaDialActivity",
       "ElizaAssistActivity",
       "ElizaInCallService",
+      "ElizaInCallActivity",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
@@ -597,6 +600,13 @@ export function overlayAndroid({
     );
     xml = appendMissingApplicationBlock(
       xml,
+      `${androidPackage}.ElizaInCallActivity`,
+      `<activity android:name="${androidPackage}.ElizaInCallActivity"
+          android:exported="false" android:launchMode="singleTop"
+          android:theme="@style/AppTheme.NoActionBar" />`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
       `${androidPackage}.ElizaInCallService`,
       `
         <service
@@ -608,12 +618,22 @@ export function overlayAndroid({
                 android:value="true" />
             <meta-data
                 android:name="android.telecom.IN_CALL_SERVICE_RINGING"
-                android:value="true" />
+                android:value="false" />
             <intent-filter>
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>
         </service>`,
     );
+    xml = xml.replace(
+      /(android:name="android.telecom.IN_CALL_SERVICE_RINGING"\s+android:value=")true"/g,
+      '$1false"',
+    );
+    if (!xml.includes("android.permission.USE_FULL_SCREEN_INTENT")) {
+      xml = xml.replace(
+        "<application",
+        '<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />\n    <application',
+      );
+    }
     xml = appendMissingApplicationBlock(
       xml,
       `${androidPackage}.ElizaSmsReceiver`,
@@ -965,6 +985,7 @@ export function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaShareActivity",
     "ElizaVoiceTileService",
     "ElizaInCallService",
+    "ElizaInCallActivity",
     "ElizaSmsReceiver",
     "ElizaMmsReceiver",
     "ElizaSmsGatewayService",

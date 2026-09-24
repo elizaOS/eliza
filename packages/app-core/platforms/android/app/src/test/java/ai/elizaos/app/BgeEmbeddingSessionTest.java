@@ -25,13 +25,13 @@ public class BgeEmbeddingSessionTest {
         try {
             assertArtifactRejected(root.toString());
             Path text = Files.createDirectory(root.resolve("text"));
-            Files.writeString(text.resolve(BgeEmbeddingSession.MODEL), "not the canonical encoder");
+            Files.write(text.resolve(BgeEmbeddingSession.MODEL), "not the canonical encoder".getBytes(StandardCharsets.UTF_8));
             assertArtifactRejected(root.toString());
-            Files.writeString(text.resolve("chat.gguf"), "chat weights");
+            Files.write(text.resolve("chat.gguf"), "chat weights".getBytes(StandardCharsets.UTF_8));
             assertArtifactRejected(root.toString());
             Files.delete(text.resolve("chat.gguf"));
             Path nested = Files.createDirectory(text.resolve("aaa"));
-            Files.writeString(nested.resolve("chat.gguf"), "native recursive picker candidate");
+            Files.write(nested.resolve("chat.gguf"), "native recursive picker candidate".getBytes(StandardCharsets.UTF_8));
             assertArtifactRejected(root.toString());
             assertArtifactRejected(root + "\u0000suffix");
             assertArtifactRejected("");
