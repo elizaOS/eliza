@@ -410,22 +410,10 @@ export function routeMessageHandlerOutput(
     (context) => context !== SIMPLE_CONTEXT_ID,
   );
 
-  // Resolve the self-contradiction shape `simple=true + requiresTool=false +
-  // candidateActions=[BASH/SHELL/TASKS/...]` by promoting to planning. The
-  // model is signaling both "no tool needed" (simple-path) AND "this tool
-  // would fulfill the request" (candidateActions hint) — those cannot both
-  // be true. The candidateActions hint is the more reliable signal because
-  // it names a specific exposed tool; honor it and run the planner.
-  //
-  // Live regression on 2026-05-25 (trajectories tj-c227b5bbff288a,
-  // tj-d5e298b2542aa0): probes "find files in /etc that contain the word
-  // hostname" and "what files are in /tmp right now" produced
-  // `{simple=true, requiresTool=false, candidateActions=["BASH"],
-  // replyText:"On it."}` — the user saw the bare-ack and nothing else
-  // because the planner was never invoked. The Stage-1 prompt rule that
-  // bans bare-ack on simple-path is a soft contract the model occasionally
-  // violates; this structural promotion catches the violation at the
-  // routing layer.
+  // Candidate hints promote a simple-context turn only when normalization
+  // has not explicitly declared requiresTool=false. A hint alone must not
+  // reopen an already completed answer. An explicit requiresTool=true still
+  // requests planning; later guards separately handle unresolved promises.
   const candidateActionsRequestPlanning =
     hasCandidateActions && output.plan.requiresTool !== false;
   // #9874's separate promotion suppression collapsed into the addressing gate

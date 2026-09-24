@@ -80,3 +80,28 @@ Cleanup retains running records, temporary writes, unrelated files and records
 belonging to another agent. It does not prune SQL trajectories or Markdown
 review artifacts. Filesystem failures remain visible through normal task error
 handling. Shutdown unregisters the worker and waits for accepted cleanup.
+
+## Simple replies and inference accounting
+
+The response-handler model already composes `replyText`. Its canonical routing
+field is `contexts: ["simple"]`; internal `plan.simple` and `requiresTool` are
+derived policy fields. A completed simple answer is delivered from that same
+response, without a second bare-text generation call. The handler still receives
+system instructions, authorized context/history and its response schemas.
+Context reads, decision repairs and delivery checks can add work.
+
+Pending work enters planning and canonical tool execution. Completion may use a
+foreground evaluator model call, continue the planner loop, or accept a verified
+terminal result without another inference. The pipeline is not a fixed three-call
+sequence. A recorded evaluation decision can be deterministic.
+
+Keep inference purposes separate when measuring a turn: handler decisions and
+reads/repairs, planner generations, foreground completion, callback rewrites and
+post-turn background evaluation. Response-handler field evaluators share the
+handler's model response; registering a field does not add one model call.
+
+Direct-message silence review can reconsider an IGNORE decision once while
+preserving confirmed silence. This is separate from ambient/group engagement
+policy and does not force a reply. Canonical action replies bypass cosmetic
+paraphrasing; ordinary planner action prose waits for final publication. These
+contracts need model-quality checks as well as deterministic regression tests.
