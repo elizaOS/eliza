@@ -436,6 +436,12 @@ export default defineConfig({
           "settings-section-meta.ts",
         ),
       },
+      // The real API client imports this leaf; mapping it to the API mock
+      // would make the mock factory await itself during module collection.
+      {
+        find: /^@elizaos\/ui\/logger$/,
+        replacement: path.join(elizaRoot, "packages/ui/src/logger.ts"),
+      },
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
