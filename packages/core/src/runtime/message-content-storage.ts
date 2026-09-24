@@ -76,7 +76,6 @@ function contentNeedsNativeSegments(content: Content): boolean {
 		(attachment) =>
 			encoder.encode(canonicalAttachmentText(attachment)).length >
 			MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
-		MESSAGE_CONTENT_SEGMENT_TABLE,
 	);
 }
 

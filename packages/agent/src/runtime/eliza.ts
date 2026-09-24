@@ -1682,7 +1682,9 @@ export async function shutdownRuntime(
     await EscalationService.stop(runtime);
   } catch (err) {
     if (!firstError) firstError = err;
-    logger.warn(`[eliza] ${context}: escalation drain failed: ${formatError(err)}`);
+    logger.warn(
+      `[eliza] ${context}: escalation drain failed: ${formatError(err)}`,
+    );
   }
 
   if (adapter && typeof adapter.close === "function") {
@@ -5507,7 +5509,14 @@ export async function startEliza(
         "This GGUF serves TEXT_EMBEDDING / memory only — not your conversation model.",
     );
     abortSignal.throwIfAborted();
-    await ensureModel(modelsDir, modelRepo, model, false, undefined, abortSignal);
+    await ensureModel(
+      modelsDir,
+      modelRepo,
+      model,
+      false,
+      undefined,
+      abortSignal,
+    );
   };
 
   const startEmbeddingWarmup = async (
