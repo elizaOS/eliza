@@ -1,10 +1,17 @@
 /** Proves a failed canonical stack boot closes its owned process and temporary state. */
 
 import { expect, test } from "bun:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createConnection, createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  trackOwnedReadiness,
+  waitForOwnedReadiness,
+} from "../fixtures/owned-readiness.ts";
+import { reserveStackPort } from "../fixtures/port-reservation.ts";
 import { startCloudStack } from "../fixtures/stack.ts";
 
 async function freePort(): Promise<number> {
@@ -66,6 +73,103 @@ async function closeServer(server: Server | undefined): Promise<void> {
     server.close((error) => (error ? reject(error) : resolve()));
   });
 }
+
+test("foreign HTTP success cannot replace a fresh child readiness announcement", async () => {
+  const foreign = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json({ healthy: true }),
+  });
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const announced = trackOwnedReadiness(child);
+  const url = `http://127.0.0.1:${foreign.port}`;
+  try {
+    expect((await fetch(`${url}/api/health`)).status).toBe(200);
+    expect(child.exitCode).toBeNull();
+    await expect(
+      waitForOwnedReadiness(child, announced, url, 150),
+    ).rejects.toThrow("did not announce");
+  } finally {
+    const exited = once(child, "exit");
+    child.kill("SIGTERM");
+    await exited;
+    foreign.stop(true);
+  }
+});
+
+test("readiness accepts only the current child's exact announced URL", async () => {
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      `
+    process.stdout.write("[wrangler:info] Ready on http://127.0.0.1:12345\\n");
+    setInterval(() => {}, 1000);
+  `,
+    ],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const announced = trackOwnedReadiness(child);
+  try {
+    await waitForOwnedReadiness(
+      child,
+      announced,
+      "http://127.0.0.1:12345",
+      2000,
+    );
+    expect(announced("http://127.0.0.1:1234")).toBe(false);
+    expect(announced("http://127.0.0.1:12345")).toBe(true);
+  } finally {
+    const exited = once(child, "exit");
+    child.kill("SIGTERM");
+    await exited;
+  }
+});
+
+test("stack reservations exclude competing listeners until handoff", async () => {
+  const reservation = await reserveStackPort();
+  let replacement: Server | undefined;
+  try {
+    expect(await occupyPortIfFree(reservation.port)).toBeUndefined();
+    await expect(reserveStackPort(reservation.port)).rejects.toHaveProperty(
+      "code",
+      "EADDRINUSE",
+    );
+    await Promise.all([reservation.release(), reservation.release()]);
+    replacement = await occupyPortIfFree(reservation.port);
+    expect(replacement).toBeDefined();
+  } finally {
+    await reservation.release();
+    await closeServer(replacement);
+  }
+});
+
+test("an unrelated HTTP server cannot satisfy stack API readiness", async () => {
+  const foreignServer = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json({ healthy: true }),
+  });
+  const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-foreign-"));
+  try {
+    await expect(
+      startCloudStack({
+        apiPort: foreignServer.port,
+        logDir,
+        frontend: false,
+        skipMigrate: true,
+      }),
+    ).rejects.toHaveProperty("code", "EADDRINUSE");
+    expect(
+      (await fetch(`http://127.0.0.1:${foreignServer.port}/api/health`)).status,
+    ).toBe(200);
+  } finally {
+    foreignServer.stop(true);
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
 
 test("partial startup failure removes PGlite process and data directory", async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-cleanup-"));
