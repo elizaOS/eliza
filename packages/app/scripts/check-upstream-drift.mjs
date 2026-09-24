@@ -10,7 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 import {
   getElizaPackageLinks,
   getPluginPackageLinks,

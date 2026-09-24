@@ -18,7 +18,7 @@ import {
 import {
   readRendererBuildManifest,
   rendererBuildManifestMatchesDist,
-} from "./renderer-build-manifest.mjs";
+} from "./renderer-build-manifest.ts";
 
 const TEXT_EXT = new Set([
   ".ts",

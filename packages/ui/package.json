@@ -585,10 +585,7 @@
       "testLanes": [
         "client"
       ],
-      "buildOnInstall": {
-        "sentinel": "dist/api/client-base.js",
-        "order": 4
-      }
+      "buildOnInstall": {}
     }
   }
 }

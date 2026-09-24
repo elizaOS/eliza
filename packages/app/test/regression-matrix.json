@@ -72,7 +72,7 @@
         "scripts/electrobun-release-workflow-drift.test.ts",
         "scripts/electrobun-test-workflow-drift.test.ts",
         "scripts/validate-regression-matrix.mjs",
-        "scripts/coverage-policy.mjs",
+        "scripts/coverage-policy.ts",
         "scripts/coverage-policy-drift.test.ts",
         "package.json",
         "vitest.config.ts",

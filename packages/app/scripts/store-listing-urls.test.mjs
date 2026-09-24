@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const appCoreRoot = path.join(repoRoot, "packages", "app");

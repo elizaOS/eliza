@@ -24,7 +24,7 @@ import {
   getUiSourceRoot,
 } from "@elizaos/testing";
 import { defineConfig } from "vitest/config";
-import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.mjs";
+import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.ts";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";

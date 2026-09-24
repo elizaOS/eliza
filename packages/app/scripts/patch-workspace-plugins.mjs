@@ -19,7 +19,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);

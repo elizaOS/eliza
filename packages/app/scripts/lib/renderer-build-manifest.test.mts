@@ -13,8 +13,8 @@ import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
   writeRendererBuildManifest,
-} from "./renderer-build-manifest.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+} from "./renderer-build-manifest.ts";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(

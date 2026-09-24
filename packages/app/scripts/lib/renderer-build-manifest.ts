@@ -30,7 +30,33 @@ import path from "node:path";
 export const RENDERER_BUILD_MANIFEST_FILENAME = "eliza-renderer-build.json";
 export const RENDERER_BUILD_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 
-function sha256(buf) {
+export interface RendererBuildManifest {
+  schema: string;
+  buildId: string;
+  indexHtmlSha256: string;
+  assetCount: number;
+  builtAt: string;
+  startedAt?: string;
+  commit: string | null;
+  variant: string | null;
+  capacitorTarget: string | null;
+  runtimeMode: string | null;
+  playwrightTestAuth: boolean | null;
+  iosApnsEnabled: boolean | null;
+}
+
+export interface RendererBuildManifestMeta {
+  builtAt?: string;
+  startedAt?: string;
+  commit?: string | null;
+  variant?: string | null;
+  capacitorTarget?: string | null;
+  runtimeMode?: string | null;
+  playwrightTestAuth?: boolean | null;
+  iosApnsEnabled?: boolean | null;
+}
+
+function sha256(buf: crypto.BinaryLike) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
@@ -39,7 +65,7 @@ function sha256(buf) {
  * @param {string} distDir absolute path to the built renderer dir (has index.html)
  * @returns {{ buildId: string, indexHtmlSha256: string, assetCount: number }}
  */
-export function computeRendererFingerprint(distDir) {
+export function computeRendererFingerprint(distDir: string) {
   const indexPath = path.join(distDir, "index.html");
   if (!fs.existsSync(indexPath)) {
     throw new Error(
@@ -48,10 +74,10 @@ export function computeRendererFingerprint(distDir) {
   }
   const indexHtmlSha256 = sha256(fs.readFileSync(indexPath));
 
-  const assetEntries = [];
+  const assetEntries: string[] = [];
   const assetsDir = path.join(distDir, "assets");
   if (fs.existsSync(assetsDir)) {
-    const walk = (dir, rel) => {
+    const walk = (dir: string, rel: string) => {
       for (const name of fs.readdirSync(dir).sort()) {
         const full = path.join(dir, name);
         const relName = rel ? `${rel}/${name}` : name;
@@ -78,7 +104,10 @@ export function computeRendererFingerprint(distDir) {
  *           playwrightTestAuth?: boolean|null,
  *           iosApnsEnabled?: boolean|null }} [meta]
  */
-export function buildRendererManifest(distDir, meta = {}) {
+export function buildRendererManifest(
+  distDir: string,
+  meta: RendererBuildManifestMeta = {},
+): RendererBuildManifest {
   const fingerprint = computeRendererFingerprint(distDir);
   const builtAt = meta.builtAt ?? new Date().toISOString();
   return {
@@ -102,7 +131,10 @@ export function buildRendererManifest(distDir, meta = {}) {
  * @param {string} distDir
  * @param {object} [meta]
  */
-export function writeRendererBuildManifest(distDir, meta = {}) {
+export function writeRendererBuildManifest(
+  distDir: string,
+  meta: RendererBuildManifestMeta = {},
+): RendererBuildManifest {
   const manifest = buildRendererManifest(distDir, meta);
   fs.writeFileSync(
     path.join(distDir, RENDERER_BUILD_MANIFEST_FILENAME),
@@ -116,7 +148,9 @@ export function writeRendererBuildManifest(distDir, meta = {}) {
  * null if absent/unparseable.
  * @param {string} dir
  */
-export function readRendererBuildManifest(dir) {
+export function readRendererBuildManifest(
+  dir: string,
+): RendererBuildManifest | null {
   const manifestPath = path.join(dir, RENDERER_BUILD_MANIFEST_FILENAME);
   if (!fs.existsSync(manifestPath)) return null;
   try {
@@ -126,7 +160,7 @@ export function readRendererBuildManifest(dir) {
   }
 }
 
-function isNullableString(value) {
+function isNullableString(value: unknown) {
   return value === null || typeof value === "string";
 }
 
@@ -138,7 +172,10 @@ function isNullableString(value) {
  * @param {string} distDir
  * @param {unknown} manifest
  */
-export function rendererBuildManifestMatchesDist(distDir, manifest) {
+export function rendererBuildManifestMatchesDist(
+  distDir: string,
+  manifest: unknown,
+): manifest is RendererBuildManifest {
   if (
     manifest === null ||
     typeof manifest !== "object" ||
@@ -147,25 +184,27 @@ export function rendererBuildManifestMatchesDist(distDir, manifest) {
     return false;
   }
 
+  const fields = manifest as Record<string, unknown>;
   if (
-    manifest.schema !== RENDERER_BUILD_MANIFEST_SCHEMA ||
-    typeof manifest.buildId !== "string" ||
-    !/^[a-f0-9]{64}$/.test(manifest.buildId) ||
-    typeof manifest.indexHtmlSha256 !== "string" ||
-    !/^[a-f0-9]{64}$/.test(manifest.indexHtmlSha256) ||
-    !Number.isInteger(manifest.assetCount) ||
-    manifest.assetCount < 0 ||
-    typeof manifest.builtAt !== "string" ||
-    !Number.isFinite(Date.parse(manifest.builtAt)) ||
-    !isNullableString(manifest.commit) ||
-    !isNullableString(manifest.variant) ||
-    !isNullableString(manifest.capacitorTarget) ||
-    !isNullableString(manifest.runtimeMode) ||
-    (manifest.playwrightTestAuth !== null &&
-      typeof manifest.playwrightTestAuth !== "boolean") ||
-    (manifest.iosApnsEnabled !== undefined &&
-      manifest.iosApnsEnabled !== null &&
-      typeof manifest.iosApnsEnabled !== "boolean")
+    fields.schema !== RENDERER_BUILD_MANIFEST_SCHEMA ||
+    typeof fields.buildId !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fields.buildId) ||
+    typeof fields.indexHtmlSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fields.indexHtmlSha256) ||
+    typeof fields.assetCount !== "number" ||
+    !Number.isInteger(fields.assetCount) ||
+    fields.assetCount < 0 ||
+    typeof fields.builtAt !== "string" ||
+    !Number.isFinite(Date.parse(fields.builtAt)) ||
+    !isNullableString(fields.commit) ||
+    !isNullableString(fields.variant) ||
+    !isNullableString(fields.capacitorTarget) ||
+    !isNullableString(fields.runtimeMode) ||
+    (fields.playwrightTestAuth !== null &&
+      typeof fields.playwrightTestAuth !== "boolean") ||
+    (fields.iosApnsEnabled !== undefined &&
+      fields.iosApnsEnabled !== null &&
+      typeof fields.iosApnsEnabled !== "boolean")
   ) {
     return false;
   }
@@ -173,9 +212,9 @@ export function rendererBuildManifestMatchesDist(distDir, manifest) {
   try {
     const fingerprint = computeRendererFingerprint(distDir);
     return (
-      manifest.buildId === fingerprint.buildId &&
-      manifest.indexHtmlSha256 === fingerprint.indexHtmlSha256 &&
-      manifest.assetCount === fingerprint.assetCount
+      fields.buildId === fingerprint.buildId &&
+      fields.indexHtmlSha256 === fingerprint.indexHtmlSha256 &&
+      fields.assetCount === fingerprint.assetCount
     );
   } catch {
     return false;
@@ -193,9 +232,9 @@ export function rendererBuildManifestMatchesDist(distDir, manifest) {
  * @returns the fresh manifest on success
  */
 export function assertStagedRendererMatchesBuild(
-  freshDistDir,
-  stagedDir,
-  { label = "renderer" } = {},
+  freshDistDir: string,
+  stagedDir: string,
+  { label = "renderer" }: { label?: string } = {},
 ) {
   const fresh = readRendererBuildManifest(freshDistDir);
   if (!fresh) {
@@ -255,9 +294,9 @@ export function assertStagedRendererMatchesBuild(
  * @returns the fresh manifest on success
  */
 export function overlayFreshRendererIntoPublic(
-  freshDistDir,
-  targetPublicDir,
-  { label = "renderer" } = {},
+  freshDistDir: string,
+  targetPublicDir: string,
+  { label = "renderer" }: { label?: string } = {},
 ) {
   if (!fs.existsSync(path.join(freshDistDir, "index.html"))) {
     throw new Error(
@@ -287,8 +326,12 @@ export function overlayFreshRendererIntoPublic(
  * @returns the manifest on success
  */
 export function assertRendererRebuiltSince(
-  distDir,
-  { notBefore, expectVariant = null, label = "renderer" },
+  distDir: string,
+  {
+    notBefore,
+    expectVariant = null,
+    label = "renderer",
+  }: { notBefore: number; expectVariant?: string | null; label?: string },
 ) {
   const manifest = readRendererBuildManifest(distDir);
   if (!manifest) {

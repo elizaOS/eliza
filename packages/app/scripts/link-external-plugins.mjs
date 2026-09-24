@@ -32,7 +32,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 import { createPackageLink } from "./setup-upstreams.mjs";
 
 const __filename = fileURLToPath(import.meta.url);

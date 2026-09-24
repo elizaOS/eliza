@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 // Stamped onto the JSON payload so a reader of the run log knows the scope up
 // front: this lane proves callback DELIVERY + in-app handler classification, not

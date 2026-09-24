@@ -1,18 +1,11 @@
 {
   "extends": "../../../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
     "composite": false,
     "incremental": false,
     "declaration": false,
     "declarationMap": false,
     "types": ["node", "bun-types"],
-    "noEmit": true,
     "paths": {
       "@/lib/*": ["../../shared/src/lib/*"],
       "@/db/*": ["../../shared/src/db/*"],

@@ -8,7 +8,7 @@ import type { Plugin } from "vite";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
-} from "../scripts/lib/renderer-build-manifest.mjs";
+} from "../scripts/lib/renderer-build-manifest.ts";
 import { viteRendererBuildNeeded } from "../scripts/lib/vite-renderer-dist-stale.ts";
 
 /**

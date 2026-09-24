@@ -35,7 +35,11 @@ const ASR_SAMPLE_RATE = 16_000;
  * @param {number} toRate
  * @returns {Float32Array}
  */
-export function resampleLinear(pcm, fromRate, toRate) {
+export function resampleLinear(
+  pcm: Float32Array,
+  fromRate: number,
+  toRate: number,
+) {
   if (!(pcm instanceof Float32Array)) {
     throw new TypeError("resampleLinear: pcm must be a Float32Array");
   }
@@ -63,6 +67,13 @@ export function resampleLinear(pcm, fromRate, toRate) {
  * samples so the harness can detect "the producer has drained".
  */
 export class DuetSink {
+  onResampled: (pcm: Float32Array, sampleRate: number) => void;
+  targetRate: number;
+  sourceRate: number;
+  private _totalWritten: number;
+  private _totalOut: number;
+  private _lastWriteAt: number;
+  private _buffered: number;
   /**
    * @param {(pcm: Float32Array, sampleRate: number) => void} onResampled
    *   called once per chunk with PCM at `targetRate`.
@@ -72,7 +83,10 @@ export class DuetSink {
    *   `write` may carry its own rate; this is only the assumed default when a
    *   write doesn't say.
    */
-  constructor(onResampled, opts = {}) {
+  constructor(
+    onResampled: (pcm: Float32Array, sampleRate: number) => void,
+    opts: { targetRate?: number; sourceRate?: number } = {},
+  ) {
     if (typeof onResampled !== "function") {
       throw new TypeError("DuetSink: onResampled must be a function");
     }
@@ -86,10 +100,12 @@ export class DuetSink {
   }
 
   /** @param {Float32Array} pcm @param {number} sampleRate */
-  write(pcm, sampleRate) {
+  write(pcm: Float32Array, sampleRate?: number) {
     if (!(pcm instanceof Float32Array) || pcm.length === 0) return;
     const sr =
-      Number.isFinite(sampleRate) && sampleRate > 0
+      typeof sampleRate === "number" &&
+      Number.isFinite(sampleRate) &&
+      sampleRate > 0
         ? sampleRate
         : this.sourceRate;
     this._totalWritten += pcm.length;
@@ -141,6 +157,9 @@ export class DuetSink {
  * streaming TTS, a too-big one adds latency. Recorded in the report.
  */
 export class DuetAudioBridge {
+  ringMs: number;
+  aToB: DuetSink;
+  bToA: DuetSink;
   /**
    * @param {object} args
    * @param {object} args.micSourceA  agent A's `PushMicSource`.
@@ -151,7 +170,19 @@ export class DuetAudioBridge {
    * @param {(dir: "aToB"|"bToA", pcm: Float32Array) => void} [args.opts.onForward]
    *   observability hook (the harness uses it to count PCM crossing each way).
    */
-  constructor({ micSourceA, micSourceB, opts = {} }) {
+  constructor({
+    micSourceA,
+    micSourceB,
+    opts = {},
+  }: {
+    micSourceA: { push(pcm: Float32Array): void };
+    micSourceB: { push(pcm: Float32Array): void };
+    opts?: {
+      ringMs?: number;
+      targetRate?: number;
+      onForward?: (dir: "aToB" | "bToA", pcm: Float32Array) => void;
+    };
+  }) {
     this.ringMs = opts.ringMs ?? 200;
     const targetRate = opts.targetRate ?? ASR_SAMPLE_RATE;
     const onForward = opts.onForward;

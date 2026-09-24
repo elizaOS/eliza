@@ -30,7 +30,6 @@
       "@elizaos/testing": ["./packages/testing/src/index.ts"],
       "@elizaos/core/atomic-json": ["./packages/core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
-      "@elizaos/logger": ["./packages/logger/src/index.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/src/index.ts"
       ],
@@ -131,9 +130,6 @@
       ],
       "@elizaos/plugin-native-messages/bridge": [
         "./plugins/plugin-native-messages/src/bridge.ts"
-      ],
-      "@elizaos/plugin-native-inference/bridge": [
-        "./plugins/plugin-native-mobile-agent-bridge/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
         "./plugins/plugin-native-mobile-signals/src/index.ts"

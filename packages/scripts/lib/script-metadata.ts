@@ -1,63 +1,9 @@
 /**
- * Per-package script metadata, read through the shared workspace-discovery seam
- * (`lib/workspaces.ts`, #12332). This is the resolver the generic build/test/
- * dev scripts use instead of naming plugin sets in their own source — a package
- * opts into a script behavior by declaring it under `elizaos.scripts` in its own
- * `package.json`, and adding or removing a package updates the resolved set with
- * zero edits to any script (the property enforced by
- * `__tests__/plugin-discovery-zero-edit.test.ts` and the `audit-scripts.mjs`
- * plugin-coupling gate, #12336).
- *
- * The `elizaos.scripts` fields (typed by ScriptMetadata below):
- *
- *   coreBuild: true
- *     Leaf package the `build:core` set must build
- *     before the server/client/plugin test lanes run. Turbo's `^build` closure
- *     pulls in transitive deps, so list only directly-imported leaves.
- *
- *   testSerial: true
- *     This package's `test` script must not run concurrently with others even in
- *     the parallel PR lane (shared DB / fixed ports). Consumed by
- *     lib/test-task-pool.mjs.
- *
- *   testLanes: string[]
- *     Named root test lanes (run-all-tests.mjs `--lane <name>`) this package
- *     belongs to, e.g. ["server"] / ["client"]. The lane resolver turns the set
- *     of member dirs into the anchored package filter the lane used to hardcode.
- *
- *   buildModel: {
- *     doubleCheck?: { reason: string },
- *     tscTypecheck?: { reason: string }
- *   }
- *     Documented exceptions to the "tsgo checks, tsc only emits" model
- *     (audit-build-typecheck.mjs). `doubleCheck` = build keeps a full tsc check;
- *     `tscTypecheck` = typecheck still runs compatibility `tsc6`. Every
- *     exception must carry a package-owned, machine-readable reason.
- *
- *   turboNonImportedBuildDeps: true
- *     This package's turbo `#build` override deliberately enumerates build deps a
- *     source scan cannot see (dynamic loaders, bundlers, filesystem-path bundling)
- *     so audit-turbo-build-deps.mjs must not flag them as phantom edges.
- *
- *   publish: { registryFallbackTag: string }
- *     When `ELIZA_SKIP_LOCAL_UPSTREAMS=1` leaves a workspace: dep unresolved,
- *     prepare-package-dist.mjs rewrites it to this npm dist-tag instead of
- *     failing. Only optional/independently-published plugins declare it.
- *
- *   devStack: { skipInDevAll?: true, harnessBuild?: true }
- *     Dev-stack membership. `skipInDevAll` = dev-all.mjs adds this plugin to the
- *     agent's ELIZA_SKIP_PLUGINS. `harnessBuild` = dev-harness.mjs builds this
- *     package's dist before the agent watch loop if it is missing.
- *
- *   buildOnInstall: { sentinel: string, order: number }
- *     Private/internal package whose dist is imported by others but produced by
- *     no install step; build-private-workspace-packages.mjs builds it on a fresh
- *     clone. `sentinel` is the dist file whose presence proves it is already
- *     built; `order` is the ascending build order (deps before dependents).
+ * Resolves package-owned automation metadata for build, test and development
+ * runners. Workspace discovery is canonical; Turbo owns install build ordering
+ * and freshness, while package metadata selects participating tasks.
  */
-
-/** Describes package-owned automation metadata consumed by repository runners. */
-import type { WorkspaceDiscoveryOptions } from "./workspaces.ts";
+import { listPackages, type WorkspaceDiscoveryOptions } from "./workspaces.ts";
 
 /** The `elizaos.scripts` block a package declares to opt into script behaviors. */
 export interface ScriptMetadata {
@@ -90,10 +36,6 @@ export interface ScriptMetadata {
   };
   /** Private package to build on a fresh clone (no other install step emits it). */
   buildOnInstall?: {
-    /** Expected distribution entry retained for package inventory consumers. */
-    sentinel: string;
-    /** Ascending build order — deps before dependents. */
-    order: number;
     /** Optional distribution-only task, avoiding application asset builds. */
     script?: string;
   };
@@ -102,12 +44,8 @@ export interface ScriptMetadata {
 export interface BuildOnInstallPackage {
   dir: string;
   name: string;
-  sentinel: string;
-  order: number;
   script?: string;
 }
-
-import { listPackages } from "./workspaces.ts";
 
 /** Additional package test entrypoints selected by the runner and lane audit. */
 export const EXTRA_SCRIPT_NAMES = Object.freeze([
@@ -282,10 +220,8 @@ export function resolveDevHarnessBuildDirs(opts?: WorkspaceDiscoveryOptions) {
 }
 
 /**
- * Workspace packages to build on a fresh clone, in ascending `order`
- * (deps before dependents). Each entry is `{ dir, name, sentinel, order }`
- * plus an optional non-default `script`.
- * Replaces the hardcoded PACKAGES list in build-private-workspace-packages.mjs.
+ * Selects install-required build tasks; Turbo orders their dependencies and
+ * restores or refreshes outputs from content hashes.
  */
 export function resolveBuildOnInstallPackages(
   opts?: WorkspaceDiscoveryOptions,
@@ -293,11 +229,7 @@ export function resolveBuildOnInstallPackages(
   return packagesWithScriptMeta(opts)
     .flatMap((pkg): BuildOnInstallPackage[] => {
       const install = pkg.scripts.buildOnInstall;
-      if (
-        !install ||
-        typeof install !== "object" ||
-        typeof install.sentinel !== "string"
-      ) {
+      if (!install || typeof install !== "object") {
         return [];
       }
       const script = install.script;
@@ -305,13 +237,11 @@ export function resolveBuildOnInstallPackages(
         {
           dir: pkg.dir,
           name: pkg.name,
-          sentinel: install.sentinel,
-          order: Number(install.order ?? 0),
           ...(typeof script === "string" && script.length > 0
             ? { script }
             : {}),
         },
       ];
     })
-    .sort((a, b) => a.order - b.order || a.dir.localeCompare(b.dir));
+    .sort((a, b) => a.dir.localeCompare(b.dir));
 }

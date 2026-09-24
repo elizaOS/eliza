@@ -10,8 +10,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
-} from "./renderer-build-manifest.mjs";
-import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+} from "./renderer-build-manifest.ts";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.ts";
 import {
   rendererDistMatchesPlaywrightTestAuth,
   resolvePlaywrightTestAuth,

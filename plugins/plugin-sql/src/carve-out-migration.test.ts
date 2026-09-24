@@ -3,13 +3,14 @@
  * models one database ledger and exercises repeated, concurrent, failed, and
  * deletion-after-completion startup without replacing the orchestrator itself.
  */
-import { describe, expect, it } from "vitest";
+
 import {
   type CarveOutDatabase,
   type CarveOutSqlExecutor,
   createDrizzleCarveOutDatabase,
   runCarveOutMigration,
-} from "./carve-out-migration.js";
+} from "@elizaos/shared";
+import { describe, expect, it } from "vitest";
 
 function transactionDatabase(exec: CarveOutSqlExecutor): CarveOutDatabase {
   return { execute: exec, transaction: (operation) => operation(exec) };

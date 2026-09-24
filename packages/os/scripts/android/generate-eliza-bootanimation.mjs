@@ -33,7 +33,10 @@ const LOGO_SVG = path.join(
   repoRoot,
   "packages/app/public/brand/logos/logo_white_nobg.svg",
 );
-const BOOTANIM_DIR = path.resolve(here, "../vendor/eliza/bootanimation");
+const BOOTANIM_DIR = path.resolve(
+  here,
+  "../../android/vendor/eliza/bootanimation",
+);
 const PART0 = path.join(BOOTANIM_DIR, "part0"); // one-shot intro: logo fades in
 const PART1 = path.join(BOOTANIM_DIR, "part1"); // idle loop until boot completes
 const rmRecursiveScript = path.resolve(
@@ -148,5 +151,5 @@ console.log(
   `Rendered elizaOS boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
 );
 console.log(
-  `Pack it with: node android/scripts/build-eliza-bootanimation.mjs --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
+  `Pack it with: node scripts/android/build-eliza-bootanimation.mjs --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
 );

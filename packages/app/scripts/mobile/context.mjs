@@ -10,7 +10,7 @@ import {
 } from "../aosp/lib/load-variant-config.mjs";
 import { resolveMainAppDir } from "../lib/app-dir.mjs";
 import { androidUsesAppDirFor } from "../lib/mobile-build-decisions.mjs";
-import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "../lib/repo-root.ts";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 

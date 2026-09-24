@@ -7,20 +7,26 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { executeSql, sqlQuote as literal, type RuntimeDb } from "@elizaos/shared/db/raw-sql";
+import { executeSql, sqlQuote as literal, type RuntimeDb } from "./raw-sql.js";
 
-export type CarveOutSqlExecutor = (statement: string) => Promise<Array<Record<string, unknown>>>;
+export type CarveOutSqlExecutor = (
+  statement: string,
+) => Promise<Array<Record<string, unknown>>>;
 
 /** A database boundary whose callback owns one connection for the full transaction. */
 export interface CarveOutDatabase {
   execute: CarveOutSqlExecutor;
-  transaction<T>(operation: (execute: CarveOutSqlExecutor) => Promise<T>): Promise<T>;
+  transaction<T>(
+    operation: (execute: CarveOutSqlExecutor) => Promise<T>,
+  ): Promise<T>;
 }
 
 type DrizzleExecutor = RuntimeDb;
 
 type DrizzleTransactionalDatabase = DrizzleExecutor & {
-  transaction?<T>(operation: (transaction: DrizzleExecutor) => Promise<T>): Promise<T>;
+  transaction?<T>(
+    operation: (transaction: DrizzleExecutor) => Promise<T>,
+  ): Promise<T>;
 };
 
 export type CarveOutRunResult<T> =
@@ -43,32 +49,43 @@ function qualifiedTable(schema: string, table: string): string {
   return `"${schema}"."${table}"`;
 }
 
-function countValue(row: Record<string, unknown> | undefined, key: string): number {
+function countValue(
+  row: Record<string, unknown> | undefined,
+  key: string,
+): number {
   const value = row?.[key];
   const count = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(count) || count < 0) {
-    throw new ElizaError("Carve-out migration verification result is unreadable", {
-      code: "CARVE_OUT_MIGRATION_VERIFICATION_INVALID",
-      context: { key, value },
-      severity: "fatal",
-    });
+    throw new ElizaError(
+      "Carve-out migration verification result is unreadable",
+      {
+        code: "CARVE_OUT_MIGRATION_VERIFICATION_INVALID",
+        context: { key, value },
+        severity: "fatal",
+      },
+    );
   }
   return count;
 }
 
 /** Adapt a real Drizzle PostgreSQL/PGlite database without losing its transaction session. */
 export async function createDrizzleCarveOutDatabase(
-  database: DrizzleTransactionalDatabase
+  database: DrizzleTransactionalDatabase,
 ): Promise<CarveOutDatabase> {
   const transaction = database.transaction;
   if (typeof transaction !== "function") {
-    throw new ElizaError("Carve-out migration requires an owned database transaction", {
-      code: "CARVE_OUT_MIGRATION_TRANSACTION_REQUIRED",
-      severity: "fatal",
-    });
+    throw new ElizaError(
+      "Carve-out migration requires an owned database transaction",
+      {
+        code: "CARVE_OUT_MIGRATION_TRANSACTION_REQUIRED",
+        severity: "fatal",
+      },
+    );
   }
   const transactionalDatabase = database as DrizzleExecutor & {
-    transaction<T>(operation: (executor: DrizzleExecutor) => Promise<T>): Promise<T>;
+    transaction<T>(
+      operation: (executor: DrizzleExecutor) => Promise<T>,
+    ): Promise<T>;
   };
   const executeWith =
     (executor: DrizzleExecutor): CarveOutSqlExecutor =>
@@ -78,7 +95,7 @@ export async function createDrizzleCarveOutDatabase(
     execute: executeWith(database),
     transaction: (operation) =>
       transactionalDatabase.transaction((transactionExecutor) =>
-        operation(executeWith(transactionExecutor))
+        operation(executeWith(transactionExecutor)),
       ),
   };
 }
@@ -96,7 +113,7 @@ export async function assertCarveOutProjectionComplete(
     source: { schema: string; table: string };
     target: { schema: string; table: string };
     keyColumns: readonly string[];
-  }
+  },
 ): Promise<void> {
   if (
     options.keyColumns.length === 0 ||
@@ -109,10 +126,18 @@ export async function assertCarveOutProjectionComplete(
   const keyJoin = options.keyColumns
     .map((column) => `t."${column}" IS NOT DISTINCT FROM s."${column}"`)
     .join(" AND ");
-  const targetAbsent = options.keyColumns.map((column) => `t."${column}" IS NULL`).join(" AND ");
-  const sourceKeyNull = options.keyColumns.map((column) => `s."${column}" IS NULL`).join(" OR ");
-  const targetKeyNull = options.keyColumns.map((column) => `t."${column}" IS NULL`).join(" OR ");
-  const groupedKeys = options.keyColumns.map((column) => `"${column}"`).join(", ");
+  const targetAbsent = options.keyColumns
+    .map((column) => `t."${column}" IS NULL`)
+    .join(" AND ");
+  const sourceKeyNull = options.keyColumns
+    .map((column) => `s."${column}" IS NULL`)
+    .join(" OR ");
+  const targetKeyNull = options.keyColumns
+    .map((column) => `t."${column}" IS NULL`)
+    .join(" OR ");
+  const groupedKeys = options.keyColumns
+    .map((column) => `"${column}"`)
+    .join(", ");
   const rows = await exec(`/* carve-out:verify-projection */
     WITH source_duplicate_keys AS (
       SELECT ${groupedKeys} FROM ${source}
@@ -134,11 +159,14 @@ export async function assertCarveOutProjectionComplete(
       FROM ${source} AS s
       LEFT JOIN ${target} AS t ON ${keyJoin}`);
   if (rows.length !== 1) {
-    throw new ElizaError("Carve-out migration verification returned an invalid row count", {
-      code: "CARVE_OUT_MIGRATION_VERIFICATION_INVALID",
-      context: { migrationKey: options.migrationKey, rowCount: rows.length },
-      severity: "fatal",
-    });
+    throw new ElizaError(
+      "Carve-out migration verification returned an invalid row count",
+      {
+        code: "CARVE_OUT_MIGRATION_VERIFICATION_INVALID",
+        context: { migrationKey: options.migrationKey, rowCount: rows.length },
+        severity: "fatal",
+      },
+    );
   }
   const keyIssues = {
     sourceNull: countValue(rows[0], "source_null_key_count"),
@@ -147,27 +175,36 @@ export async function assertCarveOutProjectionComplete(
     targetDuplicates: countValue(rows[0], "target_duplicate_key_count"),
   };
   if (Object.values(keyIssues).some((count) => count > 0)) {
-    throw new ElizaError("Carve-out migration key columns are null or ambiguous", {
-      code: "CARVE_OUT_MIGRATION_KEY_INVALID",
-      context: { migrationKey: options.migrationKey, ...keyIssues },
-      severity: "fatal",
-    });
+    throw new ElizaError(
+      "Carve-out migration key columns are null or ambiguous",
+      {
+        code: "CARVE_OUT_MIGRATION_KEY_INVALID",
+        context: { migrationKey: options.migrationKey, ...keyIssues },
+        severity: "fatal",
+      },
+    );
   }
   const conflicts = countValue(rows[0], "conflict_count");
   const missing = countValue(rows[0], "missing_count");
   if (conflicts > 0) {
-    throw new ElizaError("Carve-out migration found same-key rows with different values", {
-      code: "CARVE_OUT_MIGRATION_COLLISION",
-      context: { migrationKey: options.migrationKey, conflicts },
-      severity: "fatal",
-    });
+    throw new ElizaError(
+      "Carve-out migration found same-key rows with different values",
+      {
+        code: "CARVE_OUT_MIGRATION_COLLISION",
+        context: { migrationKey: options.migrationKey, conflicts },
+        severity: "fatal",
+      },
+    );
   }
   if (missing > 0) {
-    throw new ElizaError("Carve-out migration left source rows absent from the target", {
-      code: "CARVE_OUT_MIGRATION_INCOMPLETE",
-      context: { migrationKey: options.migrationKey, missing },
-      severity: "fatal",
-    });
+    throw new ElizaError(
+      "Carve-out migration left source rows absent from the target",
+      {
+        code: "CARVE_OUT_MIGRATION_INCOMPLETE",
+        context: { migrationKey: options.migrationKey, missing },
+        severity: "fatal",
+      },
+    );
   }
 }
 
@@ -183,7 +220,9 @@ async function ensureReceiptTable(exec: CarveOutSqlExecutor): Promise<void> {
   )`);
 }
 
-function sourceLockStatement(sources: ReadonlyArray<{ schema: string; table: string }>): string {
+function sourceLockStatement(
+  sources: ReadonlyArray<{ schema: string; table: string }>,
+): string {
   const locks = sources
     .map((source) => {
       const table = qualifiedTable(source.schema, source.table);
@@ -220,7 +259,7 @@ export async function runCarveOutMigration<T>(
     run: (execute: CarveOutSqlExecutor) => Promise<T>;
     outcome: (value: T) => string;
     shouldComplete?: (value: T) => boolean;
-  }
+  },
 ): Promise<CarveOutRunResult<T>> {
   await ensureReceiptTable(database.execute);
   const holderToken = globalThis.crypto.randomUUID();
@@ -244,7 +283,7 @@ export async function runCarveOutMigration<T>(
             code: "CARVE_OUT_MIGRATION_IN_PROGRESS",
             context: { migrationKey: options.key },
             severity: "fatal",
-          }
+          },
         );
       }
       throw new ElizaError("Carve-out migration receipt is unreadable", {
@@ -265,11 +304,17 @@ export async function runCarveOutMigration<T>(
           SELECT migration_key, status FROM ${RECEIPT_SCHEMA}.${RECEIPT_TABLE}
           WHERE migration_key IN (${options.previousKeys.map(literal).join(", ")})`);
         if (previous.some((row) => row.status !== "completed")) {
-          throw new ElizaError("An earlier carve-out ownership claim is incomplete", {
-            code: "CARVE_OUT_MIGRATION_IN_PROGRESS",
-            context: { migrationKey: options.key, previousKeys: options.previousKeys },
-            severity: "fatal",
-          });
+          throw new ElizaError(
+            "An earlier carve-out ownership claim is incomplete",
+            {
+              code: "CARVE_OUT_MIGRATION_IN_PROGRESS",
+              context: {
+                migrationKey: options.key,
+                previousKeys: options.previousKeys,
+              },
+              severity: "fatal",
+            },
+          );
         }
         if (previous.length > 0) {
           await exec(`/* carve-out:release */

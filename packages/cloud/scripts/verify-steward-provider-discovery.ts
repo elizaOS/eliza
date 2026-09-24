@@ -6,6 +6,46 @@
 
 import { pathToFileURL } from "node:url";
 
+export type ProviderDiscoverySurface = "upstream" | "proxy";
+
+export interface ProviderDiscoveryConfigInput {
+  baseUrl: string;
+  environment: string;
+  surface: string;
+}
+
+export interface ProviderDiscoveryConfig extends ProviderDiscoveryConfigInput {
+  environment: "staging";
+  surface: ProviderDiscoverySurface;
+}
+
+export interface ProviderDiscoveryResult {
+  environment: "staging";
+  surface: ProviderDiscoverySurface;
+}
+
+export type ProviderDiscoveryFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export interface ProviderDiscoveryDependencies {
+  fetchImpl?: ProviderDiscoveryFetch;
+}
+
+export interface ProviderDiscoveryRetryDependencies
+  extends ProviderDiscoveryDependencies {
+  attempts?: number;
+  retryDelayMs?: number;
+  sleepImpl?: (delayMs: number) => Promise<void>;
+}
+
+export interface ProviderDiscoveryCliDependencies
+  extends ProviderDiscoveryDependencies {
+  log?: (message: string) => void;
+  sleepImpl?: (delayMs: number) => Promise<void>;
+}
+
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_JSON_DEPTH = 16;
 const MAX_CONTAINER_ENTRIES = 256;
@@ -56,17 +96,17 @@ const OPTIONAL_STRING_ARRAY_FIELDS = ["oidc", "disabled"];
 const CAPTCHA_PROVIDERS = new Set(["turnstile", "hcaptcha"]);
 const CAPTCHA_REQUIREMENTS = new Set(["email_otp", "sms_otp"]);
 
-function isRecord(value) {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isStringArray(value) {
+function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((entry) => typeof entry === "string")
   );
 }
 
-function isCaptcha(value) {
+function isCaptcha(value: unknown) {
   if (!isRecord(value)) return false;
   if (Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") {
     return false;
@@ -90,7 +130,7 @@ function isCaptcha(value) {
   return true;
 }
 
-function isProviderDiscoveryData(value) {
+function isProviderDiscoveryData(value: unknown) {
   if (!isRecord(value)) return false;
   if (
     !REQUIRED_BOOLEAN_FIELDS.every(
@@ -121,7 +161,7 @@ function isProviderDiscoveryData(value) {
   return !Object.hasOwn(value, "captcha") || isCaptcha(value.captcha);
 }
 
-export function isProviderDiscoveryPayload(value) {
+export function isProviderDiscoveryPayload(value: unknown) {
   if (!isRecord(value) || value.ok !== true || Object.hasOwn(value, "error")) {
     return false;
   }
@@ -137,13 +177,13 @@ export function isProviderDiscoveryPayload(value) {
  * packages/cloud/api/src/steward/embedded.ts. The real-handler parity tests
  * protect duplicate-key, dangerous-key, depth, and flat-vs-nested semantics.
  */
-export function parseProviderDiscoveryJson(text) {
+export function parseProviderDiscoveryJson(text: string): unknown {
   let position = 0;
   let nodes = 0;
   const skipWhitespace = () => {
     while (/\s/.test(text[position] ?? "")) position += 1;
   };
-  const parseString = () => {
+  const parseString = (): string => {
     if (text[position] !== '"') throw new Error("expected JSON string");
     const start = position++;
     while (position < text.length) {
@@ -157,7 +197,7 @@ export function parseProviderDiscoveryJson(text) {
     }
     throw new Error("unterminated JSON string");
   };
-  const parseValue = (depth) => {
+  const parseValue = (depth: number): void => {
     nodes += 1;
     if (nodes > MAX_JSON_NODES || depth > MAX_JSON_DEPTH) {
       throw new Error("provider JSON complexity exceeded");
@@ -228,25 +268,25 @@ export function parseProviderDiscoveryJson(text) {
   return JSON.parse(text);
 }
 
-function requiredEnvironment(value) {
+function requiredEnvironment(value: unknown): "staging" {
   const normalized =
     typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!Object.hasOwn(ENVIRONMENT_CONTRACTS, normalized ?? "")) {
     throw new Error("--environment must be staging");
   }
-  return normalized;
+  return normalized as "staging";
 }
 
-function requiredSurface(value) {
+function requiredSurface(value: unknown): ProviderDiscoverySurface {
   const normalized =
     typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!normalized || !SURFACES.has(normalized)) {
     throw new Error("--surface must be upstream or proxy");
   }
-  return normalized;
+  return normalized as ProviderDiscoverySurface;
 }
 
-function requiredOrigin(value) {
+function requiredOrigin(value: unknown) {
   if (typeof value !== "string" || !value) {
     throw new Error("--base-url is required");
   }
@@ -270,7 +310,11 @@ function requiredOrigin(value) {
   return url.origin;
 }
 
-function validateProviderDiscoveryConfig(config) {
+function validateProviderDiscoveryConfig(config: {
+  baseUrl: unknown;
+  environment: unknown;
+  surface: unknown;
+}): ProviderDiscoveryConfig {
   const environment = requiredEnvironment(config.environment);
   const surface = requiredSurface(config.surface);
   const baseUrl = requiredOrigin(config.baseUrl);
@@ -285,11 +329,11 @@ function validateProviderDiscoveryConfig(config) {
   return { baseUrl, environment, surface };
 }
 
-export function parseProviderDiscoveryArgs(argv) {
+export function parseProviderDiscoveryArgs(argv: readonly string[]) {
   if (argv.length % 2 !== 0) {
     throw new Error("Arguments must be flag-value pairs");
   }
-  const values = new Map();
+  const values = new Map<string, string>();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
@@ -310,7 +354,7 @@ export function parseProviderDiscoveryArgs(argv) {
   });
 }
 
-async function readBoundedBody(response) {
+async function readBoundedBody(response: Response) {
   if (!response.body) throw new Error("provider discovery body is missing");
   const reader = response.body.getReader();
   const chunks = [];
@@ -363,6 +407,13 @@ async function fetchProviderDiscoveryBoundary({
   surface,
   method,
   fetchImpl,
+}: {
+  baseUrl: string;
+  path: string;
+  headers: Headers;
+  surface: ProviderDiscoverySurface;
+  method: "HEAD" | "GET";
+  fetchImpl: ProviderDiscoveryFetch;
 }) {
   const boundary = method === "HEAD" ? `${surface} HEAD` : surface;
   let response;
@@ -405,8 +456,8 @@ async function fetchProviderDiscoveryBoundary({
 }
 
 export async function verifyStewardProviderDiscovery(
-  config,
-  { fetchImpl = fetch } = {},
+  config: ProviderDiscoveryConfigInput,
+  { fetchImpl = fetch }: ProviderDiscoveryDependencies = {},
 ) {
   const {
     baseUrl,
@@ -461,14 +512,14 @@ export async function verifyStewardProviderDiscovery(
 }
 
 export async function verifyStewardProviderDiscoveryWithRetry(
-  config,
+  config: ProviderDiscoveryConfigInput,
   {
     fetchImpl = fetch,
     attempts = DEFAULT_ATTEMPTS,
     retryDelayMs = DEFAULT_RETRY_DELAY_MS,
     sleepImpl = (delayMs) =>
-      new Promise((resolve) => setTimeout(resolve, delayMs)),
-  } = {},
+      new Promise<void>((resolve) => setTimeout(resolve, delayMs)),
+  }: ProviderDiscoveryRetryDependencies = {},
 ) {
   if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 10) {
     throw new Error("attempts must be an integer from 1 through 10");
@@ -493,8 +544,12 @@ export async function verifyStewardProviderDiscoveryWithRetry(
 }
 
 export async function main(
-  argv = process.argv.slice(2),
-  { fetchImpl = fetch, log = console.log, sleepImpl } = {},
+  argv: readonly string[] = process.argv.slice(2),
+  {
+    fetchImpl = fetch,
+    log = console.log,
+    sleepImpl,
+  }: ProviderDiscoveryCliDependencies = {},
 ) {
   const config = parseProviderDiscoveryArgs(argv);
   const result = await verifyStewardProviderDiscoveryWithRetry(config, {

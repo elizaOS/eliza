@@ -67,8 +67,6 @@
   "elizaos": {
     "scripts": {
       "buildOnInstall": {
-        "sentinel": "dist/index.js",
-        "order": 4
       }
     }
   }

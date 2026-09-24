@@ -12,8 +12,8 @@
 // scripts/distro-android/build-bootanimation.mjs.
 //
 // Usage:
-//   node android/scripts/build-eliza-bootanimation.mjs
-//   node android/scripts/build-eliza-bootanimation.mjs --check
+//   node scripts/android/build-eliza-bootanimation.mjs
+//   node scripts/android/build-eliza-bootanimation.mjs --check
 //
 // Flags:
 //   --frames <dir>   Override the frame directory (defaults to the eliza
@@ -27,11 +27,14 @@ import { fileURLToPath } from "node:url";
 import {
   buildBootAnimationZip,
   inspectBootAnimationDir,
-} from "../../scripts/distro-android/build-bootanimation.mjs";
-import { isMainModule } from "../../scripts/distro-android/is-main.mjs";
+} from "../distro-android/build-bootanimation.mjs";
+import { isMainModule } from "../distro-android/is-main.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_FRAMES = path.resolve(here, "../vendor/eliza/bootanimation");
+const DEFAULT_FRAMES = path.resolve(
+  here,
+  "../../android/vendor/eliza/bootanimation",
+);
 
 function parseArgs(argv) {
   const args = { framesDir: DEFAULT_FRAMES, outPath: null, check: false };
@@ -54,7 +57,7 @@ function parseArgs(argv) {
       args.check = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node android/scripts/build-eliza-bootanimation.mjs [--frames <DIR>] [--out <ZIP>] [--check]",
+        "Usage: node scripts/android/build-eliza-bootanimation.mjs [--frames <DIR>] [--out <ZIP>] [--check]",
       );
       process.exit(0);
     } else {
