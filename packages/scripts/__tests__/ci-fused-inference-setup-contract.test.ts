@@ -166,7 +166,7 @@ describe("CI fused inference setup ownership", () => {
         "setup-fused-inference"
       ];
       const install = action.runs.steps.find(
-        (step) => step.uses === "./.github/actions/setup-bun-workspace",
+        (step) => step.name === "Install dependencies",
       );
       if (!install) throw new Error("Workspace setup has no install step");
       runLifecycle(
