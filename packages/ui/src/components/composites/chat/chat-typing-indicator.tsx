@@ -4,7 +4,7 @@
  * `game-modal` skins, used by ChatView and the homescreen ChatSurface);
  * `TurnStatus` is the phase-aware variant the chat overlay shows
  * while the agent works — a spinner glyph plus a debounced phase label and a
- * live elapsed-seconds clock ("Thinking · 4s", "Running WEB_SEARCH · 12s"), the
+ * concise progress label, the
  * Codex-style working indicator (#13535). All three render paths share the
  * single `TypingDots` triad so there is exactly one dots implementation.
  *
@@ -182,49 +182,10 @@ function useDebouncedTurnStatus(
   return shown;
 }
 
-// Grace before the elapsed clock appears: a fast turn settles in under a second,
-// so only a turn that outlasts this shows a timer — no "0s" flash on quick
-// replies. Once shown, the clock ticks each whole second.
-const ELAPSED_VISIBLE_AFTER_MS = 900;
-
-/** Whole-second elapsed clock for the working indicator, started the moment a
- *  status first appears (`active` goes true) and reset to 0 when it clears.
- *  Returns -1 until the grace window passes so the caller can hide the timer on
- *  a sub-second turn. The wall-clock read lives in the interval (effect
- *  context), never at render, so screenshots stay byte-stable. */
-function useElapsedSeconds(active: boolean): number {
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const startRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!active) {
-      startRef.current = null;
-      setElapsedMs(0);
-      return;
-    }
-    const start = Date.now();
-    startRef.current = start;
-    setElapsedMs(0);
-    const id = window.setInterval(() => {
-      setElapsedMs(Date.now() - start);
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [active]);
-  if (!active || elapsedMs < ELAPSED_VISIBLE_AFTER_MS) return -1;
-  return Math.floor(elapsedMs / 1000);
-}
-
-/** Compact elapsed label: "8s" under a minute, "2m 05s" beyond. */
-export function formatElapsed(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs.toString().padStart(2, "0")}s`;
-}
-
 /**
  * The Codex-style working indicator — a spinner glyph, the debounced phase label
- * (a word for every phase, including `thinking`), and a live elapsed-seconds
- * clock — WITHOUT a bubble/motion wrapper; the overlay wraps it in its own glass
+ * (a word for every phase, including `thinking`) without a running timer
+ * or bubble/motion wrapper; the overlay wraps it in its own glass
  * chrome. When `showLabel` is false (the in-flight assistant bubble) it degrades
  * to the bare breathing dots so the streamed text fills in where the dots were.
  *
@@ -240,9 +201,6 @@ export function TurnStatus({
   showLabel?: boolean;
 }) {
   const shown = useDebouncedTurnStatus(status);
-  // Clock is driven by the raw (un-debounced) status so it starts at turn open,
-  // not after the label's min-dwell debounce.
-  const elapsed = useElapsedSeconds(status !== null);
   const label = shown ? turnStatusLabel(shown) : "Thinking";
 
   if (!showLabel) {
@@ -287,11 +245,6 @@ export function TurnStatus({
         >
           {label}
         </span>
-        {elapsed >= 0 ? (
-          <span className="ml-1.5 opacity-60" data-testid="turn-status-elapsed">
-            · {formatElapsed(elapsed)}
-          </span>
-        ) : null}
       </MarkerContent>
     </Marker>
   );

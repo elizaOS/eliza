@@ -324,6 +324,8 @@ export interface AccountConnectRequest {
 }
 
 export interface ConversationMessage {
+  /** Previously delivered progress, displayed separately from the final reply. */
+  planningAcknowledgment?: string;
   id: string;
   /**
    * UI-local row identity preserved when an optimistic id is rebound to its
