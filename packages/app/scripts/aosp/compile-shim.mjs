@@ -172,20 +172,12 @@ function run(command, args, { cwd, env = process.env } = {}) {
   }
 }
 
-/**
- * Build `libsigsys-handler.so` for one ABI under the per-ABI cache dir.
- *
- * The shim is a `-shared -fPIC` musl-linked object loaded via
- * LD_PRELOAD by the loader-wrap binary. It installs a SIGSYS handler
- * at constructor time that emulates 24 legacy syscalls via their
- * AT-suffixed equivalents — see the source file's header comment.
- *
- * Exported for unit testing.
- */
-export function buildSigsysShimForAbi({
+/** Compiles and checks one musl runtime library using the ABI-specific driver. */
+function buildRuntimeLibraryForAbi({
   cacheDir,
   abi,
   shimSourcePath,
+  libraryName = "libsigsys-handler.so",
   zigBin = "zig",
   log = console.log,
   spawn = run,
@@ -206,10 +198,10 @@ export function buildSigsysShimForAbi({
   const abiCacheDir = path.join(cacheDir, abi);
   fs.mkdirSync(abiCacheDir, { recursive: true });
   const { ccPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
-  const out = path.join(abiCacheDir, "libsigsys-handler.so");
+  const out = path.join(abiCacheDir, libraryName);
 
   log(
-    `[compile-shim] Compiling libsigsys-handler.so for ${abi} (${target.zigTarget})`,
+    `[compile-shim] Compiling ${libraryName} for ${abi} (${target.zigTarget})`,
   );
   // -shared + -fPIC: position-independent shared object.
   // -O2: parity with bun's release optimisation level.
@@ -237,10 +229,24 @@ export function buildSigsysShimForAbi({
   }
   const size = fs.statSync(out).size;
   if (size === 0) {
-    throw new Error(`[compile-shim] Produced an empty libsigsys-handler.so.`);
+    throw new Error(`[compile-shim] Produced an empty ${libraryName}.`);
   }
-  log(`[compile-shim] Built libsigsys-handler.so for ${abi} (${size} bytes).`);
+  log(`[compile-shim] Built ${libraryName} for ${abi} (${size} bytes).`);
   return out;
+}
+
+/** Builds the SIGSYS handler used by the packaged musl loader. */
+export function buildSigsysShimForAbi(options) {
+  return buildRuntimeLibraryForAbi(options);
+}
+
+/** Builds the versioned no-replace primitive for the packaged Bun process. */
+export function buildAtomicFileForAbi(options) {
+  return buildRuntimeLibraryForAbi({
+    ...options,
+    shimSourcePath: path.join(here, "atomic-file.c"),
+    libraryName: "libeliza_atomic_file.so",
+  });
 }
 
 /**
@@ -353,7 +359,10 @@ export async function main(argv = process.argv.slice(2)) {
   for (const abi of args.abis) {
     if (args.skipIfPresent) {
       const located = locateCompiledShim({ cacheDir: args.cacheDir, abi });
-      if (located) {
+      if (
+        located &&
+        fs.existsSync(path.join(args.cacheDir, abi, "libeliza_atomic_file.so"))
+      ) {
         console.log(
           `[compile-shim] ${abi}: already present at ${located.shim} + ${located.wrap}; skipping.`,
         );
@@ -362,6 +371,7 @@ export async function main(argv = process.argv.slice(2)) {
     }
     buildSigsysShimForAbi({ cacheDir: args.cacheDir, abi });
     buildLoaderWrapForAbi({ cacheDir: args.cacheDir, abi });
+    buildAtomicFileForAbi({ cacheDir: args.cacheDir, abi });
   }
   console.log(
     `[compile-shim] Built SIGSYS shim + loader-wrap for ${args.abis.join(", ")}.`,

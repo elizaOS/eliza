@@ -23,6 +23,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/aosp/compile-libllama-paths.mjs",
   "scripts/aosp/compile-libllama.mjs",
   "scripts/aosp/compile-shim.mjs",
+  "scripts/aosp/atomic-file.c",
   "scripts/aosp/lib/load-variant-config.mjs",
   "scripts/aosp/seccomp-shim/loader-wrap.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-arm64.c",

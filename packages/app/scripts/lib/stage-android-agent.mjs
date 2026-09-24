@@ -1028,7 +1028,10 @@ export function autoProvisionSeccompShim({
     return false;
   }
   const abiCacheDir = path.join(cacheDir, androidAbi);
-  if (fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"))) {
+  if (
+    fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so")) &&
+    fs.existsSync(path.join(abiCacheDir, "libeliza_atomic_file.so"))
+  ) {
     return true;
   }
   const zigToolchain = resolveZigToolchain();
@@ -1105,7 +1108,10 @@ export function autoProvisionSeccompShim({
     );
     return false;
   }
-  return fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"));
+  return (
+    fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so")) &&
+    fs.existsSync(path.join(abiCacheDir, "libeliza_atomic_file.so"))
+  );
 }
 
 export function stageSeccompShimForAbi({
@@ -1118,16 +1124,25 @@ export function stageSeccompShimForAbi({
   const abiCacheDir = path.join(cacheDir, androidAbi);
   const cachedWrap = path.join(abiCacheDir, ldName);
   const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
-  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+  const cachedAtomicFile = path.join(abiCacheDir, "libeliza_atomic_file.so");
+  if (
+    !fs.existsSync(cachedWrap) ||
+    !fs.existsSync(cachedShim) ||
+    !fs.existsSync(cachedAtomicFile)
+  ) {
     // Provision in place before refusing: pinned-zig download + compile-shim,
     // the same self-sufficiency this script's bun/Alpine downloads already
     // have, so fresh hosts and CI runners build device-valid APKs without a
     // manual toolchain step.
     autoProvisionSeccompShim({ androidAbi, cacheDir, log });
   }
-  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+  if (
+    !fs.existsSync(cachedWrap) ||
+    !fs.existsSync(cachedShim) ||
+    !fs.existsSync(cachedAtomicFile)
+  ) {
     throw new Error(
-      `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}. ` +
+      `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi} or atomic-file runtime library. ` +
         `Stock Android kills the raw Alpine loader with SIGSYS during Bun's ` +
         `event loop startup; refusing to build an APK that cannot boot. Run ` +
         `\`node packages/app/scripts/aosp/compile-shim.mjs --abi ${androidAbi}\` ` +
@@ -1177,6 +1192,13 @@ export function stageSeccompShimForAbi({
   if (copyIfDifferent(cachedWrap, stagedLoader)) changes += 1;
   // Stage libsigsys-handler.so alongside.
   if (copyIfDifferent(cachedShim, stagedShim)) changes += 1;
+  if (
+    copyIfDifferent(
+      cachedAtomicFile,
+      path.join(abiAssetsDir, "libeliza_atomic_file.so"),
+    )
+  )
+    changes += 1;
 
   if (changes > 0) {
     log?.(
@@ -1512,6 +1534,13 @@ export async function stageAndroidAgentRuntime({
       jniSources.push([
         sigsysShimSrc,
         path.join(abiJniDir, "libsigsys-handler.so"),
+      ]);
+    }
+    const atomicFileSrc = path.join(abiAssetsDir, "libeliza_atomic_file.so");
+    if (fs.existsSync(atomicFileSrc)) {
+      jniSources.push([
+        atomicFileSrc,
+        path.join(abiJniDir, "libeliza_atomic_file.so"),
       ]);
     }
     for (const [src, dst] of jniSources) {

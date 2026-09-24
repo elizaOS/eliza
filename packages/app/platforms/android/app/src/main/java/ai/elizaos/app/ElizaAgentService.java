@@ -2049,6 +2049,13 @@ public class ElizaAgentService extends Service {
                 "LD_LIBRARY_PATH",
                 nativeLibraryDir().getAbsolutePath() + ":" + abiDir.getAbsolutePath()
             );
+            // Keep the FFI library beside the selected loader for both JNI and
+            // extracted-asset launches; the Bun caller verifies this boundary.
+            File atomicFileLibrary = new File(loader.getCanonicalFile().getParentFile(), "libeliza_atomic_file.so");
+            if (!atomicFileLibrary.isFile() || atomicFileLibrary.length() <= 0) {
+                throw new IOException("Packaged atomic file publication library is missing: " + atomicFileLibrary);
+            }
+            agentEnv.put("ELIZA_ATOMIC_FILE_LIBRARY", atomicFileLibrary.getCanonicalPath());
             // Native voice libs (Silero VAD + WeSpeaker/pyannote voice classifier)
             // ship as jniLibs and extract into nativeLibraryDir. The on-device bun
             // agent's bun:ffi loaders (vad-ggml.ts / encoder-ggml.ts /
