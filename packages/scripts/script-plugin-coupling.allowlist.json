@@ -85,8 +85,7 @@
       "plugins/plugin-pty",
       "plugins/plugin-sql",
       "plugins/plugin-vision",
-      "plugins/plugin-wallet",
-      "plugins/plugin-web-search"
+      "plugins/plugin-wallet"
     ],
     "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
@@ -417,18 +416,6 @@
     "file": "packages/scripts/plugins/plugin-native-bun-runtime/engine/engine-paths.mjs",
     "tokens": ["plugins/plugin-native-bun-runtime"],
     "reason": "native engine tooling retains the plugin-owned C shim, patches, and artifact directory after relocation into canonical repository scripts"
-  },
-  {
-    "file": "packages/scripts/vitest/default.config.ts",
-    "tokens": [
-      "@elizaos/plugin-telegram",
-      "plugins/plugin-browser",
-      "plugins/plugin-finances",
-      "plugins/plugin-health",
-      "plugins/plugin-inbox",
-      "plugins/plugin-sql"
-    ],
-    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
   },
   {
     "file": "packages/scripts/lib/progressive-content-production-targets.mjs",
