@@ -79,8 +79,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.mjs packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/auth",
-    "test": "bun run build && bun run test:credentials && bun run test:login",
-    "test:watch": "node ../scripts/run-vitest.mjs",
+    "test": "bun run test:e2e",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.vault.json && tsc --noEmit -p tsconfig.login.json",
     "lint": "biome check src test scripts",
     "lint:check": "biome check src test scripts",
@@ -89,10 +88,9 @@
     "format:check": "bunx @biomejs/biome format .",
     "start:embedded": "bun src/server/embedded.ts",
     "start": "bun src/server/start.ts",
-    "test:railpack": "bun test test/login/railpack-runtime.test.ts",
     "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
-    "test:credentials": "node ../scripts/run-vitest.mjs run",
-    "test:login": "bun test --isolate src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack"
+    "test:e2e": "bun run test:browser && bun test src/server/__tests__/embedded-login.integration.test.ts",
+    "test:e2e:postgres": "bun -e 'if (!process.env.LOGIN_TEST_DATABASE_URL) throw new Error(\"LOGIN_TEST_DATABASE_URL is required\")' && bun test src/server/__tests__/postgres-login.integration.test.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

@@ -65,8 +65,9 @@ bun run --cwd packages/auth format:check
 bun run --cwd packages/auth test
 ```
 
-Use `test:watch` only for local iteration. Run the focused credential, OAuth,
-expiry, and migration tests whenever their corresponding path changes.
+Use `test:e2e` for the browser and persisted HTTP session flows.
+`test:e2e:postgres` requires an explicit loopback `LOGIN_TEST_DATABASE_URL`.
+Extend these complete flows when authentication behavior changes.
 
 ## Extending the package
 
