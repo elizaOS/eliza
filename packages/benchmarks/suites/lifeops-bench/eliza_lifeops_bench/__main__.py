@@ -45,7 +45,6 @@ _AGENT_CHOICES = (
     "openclaw",
     "hermes",
     "hermes-direct",
-    "smithers",
     "cerebras-direct",
 )
 _DOMAIN_CHOICES = tuple(d.value for d in Domain)
@@ -436,10 +435,6 @@ def _build_agent_fn(
                 "tool calls whenever an operation is needed."
             ),
         )
-    if name == "smithers":
-        from .agents.smithers import build_smithers_agent  # type: ignore[attr-defined]
-
-        return build_smithers_agent(model=model_override, base_url=base_url_override)
     if name == "hermes":
         try:
             from .agents import build_hermes_agent  # type: ignore[attr-defined]

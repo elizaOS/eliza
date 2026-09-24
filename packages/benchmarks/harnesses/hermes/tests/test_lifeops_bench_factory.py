@@ -298,7 +298,7 @@ def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient
     assert tc["function"]["arguments"] == {"city": "Paris", "when": "tomorrow"}
 
 
-def test_lifeops_agent_fn_promotes_calendar_availability_call(fake_client: HermesClient) -> None:
+def test_lifeops_agent_fn_preserves_calendar_call(fake_client: HermesClient) -> None:
     _install_lifeops_stub()
     from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
 
@@ -329,6 +329,21 @@ def test_lifeops_agent_fn_promotes_calendar_availability_call(fake_client: Herme
 
     assert turn.tool_calls is not None
     tc = turn.tool_calls[0]
-    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
-    assert tc["function"]["arguments"]["subaction"] == "check_availability"
-    assert tc["function"]["arguments"]["startAt"] == "2026-05-14T09:00:00Z"
+    assert tc["function"]["name"] == "CALENDAR"
+    assert tc["function"]["arguments"] == (
+        '{"action":"search_events","windowStart":"2026-05-14T09:00:00Z",'
+        '"windowEnd":"2026-05-14T10:00:00Z","intent":"availability"}'
+    )
+
+
+@pytest.mark.parametrize("arguments", ["{broken", "[]", None, []])
+def test_lifeops_rejects_malformed_arguments(fake_client: HermesClient, arguments) -> None:
+    _install_lifeops_stub()
+    from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
+
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
+    response = MessageResponse(text="", thought=None, actions=[], params={"tool_calls": [{"name": "CALENDAR", "arguments": arguments}]})
+    with patch.object(HermesClient, "send_message", return_value=response):
+        with pytest.raises(ValueError):
+            _run(agent_fn([{"role": "user", "content": "Show my calendar"}], []))

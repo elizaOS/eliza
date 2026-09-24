@@ -211,7 +211,7 @@ def test_lifeops_bench_factory_accepts_snapshot(client: OpenClawClient, tmp_path
     assert callable(agent_fn)
 
 
-def test_lifeops_bench_factory_promotes_calendar_availability_call(
+def test_lifeops_bench_factory_preserves_calendar_call(
     client: OpenClawClient,
 ) -> None:
     pytest.importorskip(
@@ -245,5 +245,17 @@ def test_lifeops_bench_factory_promotes_calendar_availability_call(
 
     assert turn.tool_calls is not None
     tc = turn.tool_calls[0]
-    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
-    assert tc["function"]["arguments"]["subaction"] == "check_availability"
+    assert tc["function"]["name"] == "CALENDAR"
+    assert tc["function"]["arguments"] == json.loads(payload)["tool_calls"][0]["arguments"]
+
+
+@pytest.mark.parametrize("arguments", ["{broken", "[]", None, []])
+def test_lifeops_rejects_malformed_arguments(client: OpenClawClient, arguments) -> None:
+    import asyncio
+    from openclaw_adapter.client import MessageResponse
+
+    agent_fn = build_lifeops_bench_agent_fn(client=client)
+    response = MessageResponse(text="", thought=None, actions=[], params={"tool_calls": [{"name": "CALENDAR", "arguments": arguments}]})
+    with patch.object(OpenClawClient, "send_message", return_value=response):
+        with pytest.raises(ValueError):
+            asyncio.run(agent_fn([{"role": "user", "content": "Show my calendar"}], []))
