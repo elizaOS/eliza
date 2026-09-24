@@ -121,6 +121,29 @@ describe("context renderer", () => {
 			attachments: null,
 			metadata: ["connector evidence"],
 		},
+		{
+			text: "Extended source",
+			source: { original: "Evidence under a known key" },
+		},
+		{
+			text: "Extended view",
+			metadata: { uiView: { customEvidence: "Keep this" } },
+		},
+		{
+			text: "Extended diagnostic",
+			metadata: {
+				injectionRisk: { score: 0, evidence: { original: "Keep this too" } },
+			},
+		},
+		{
+			text: "Extended routing",
+			metadata: {
+				__responseContext: {
+					primaryContext: "general",
+					request: { destination: "Berlin" },
+				},
+			},
+		},
 	])(
 		"keeps structured message evidence complete in the dispatched user block",
 		(content) => {

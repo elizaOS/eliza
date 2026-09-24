@@ -157,6 +157,50 @@ const DIALOGUE_METADATA_FIELDS = new Set([
 	"injectionRisk",
 ]);
 
+function isStringArray(value: unknown): boolean {
+	return (
+		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
+}
+
+/** Unknown shapes under known diagnostic keys are evidence, not diagnostics. */
+function isDialogueMetadataValue(key: string, value: unknown): boolean {
+	if (value === undefined) return true;
+	if (
+		key === "selectedValue" ||
+		key === "selectedValues" ||
+		key === "parentMessageId"
+	)
+		return true;
+	if (key === "uiViewCapabilities" || key === "uiViewActionNames")
+		return isStringArray(value);
+	if (key === "__responseContext" || key === "injectionRisk") {
+		if (!value || typeof value !== "object" || Array.isArray(value))
+			return false;
+		return Object.entries(value).every(([field, item]) => {
+			if (key === "__responseContext") {
+				return field === "primaryContext"
+					? typeof item === "string"
+					: field === "secondaryContexts" && isStringArray(item);
+			}
+			if (field === "socialEngineeringClasses") return isStringArray(item);
+			return (
+				[
+					"hiddenCharCount",
+					"nonAsciiCount",
+					"letterSplitHits",
+					"wordReversalHits",
+					"structuralInjectionHits",
+					"score",
+				].includes(field) &&
+				typeof item === "number" &&
+				Number.isFinite(item)
+			);
+		});
+	}
+	return typeof value === "string";
+}
+
 /** Only the known chat envelope has a readable projection. Unknown connector or
  * domain evidence stays complete on the model wire, not merely in recordings. */
 function renderMessageContent(event: ContextMessageEvent): string {
@@ -174,13 +218,24 @@ function renderMessageContent(event: ContextMessageEvent): string {
 	if (typeof text !== "string") return textFromUnknown(content);
 	if (Object.keys(content).some((key) => !DIALOGUE_CONTENT_FIELDS.has(key)))
 		return textFromUnknown(content);
+	if (
+		("source" in content &&
+			content.source !== undefined &&
+			typeof content.source !== "string") ||
+		("channelType" in content &&
+			content.channelType !== undefined &&
+			typeof content.channelType !== "string")
+	)
+		return textFromUnknown(content);
 	if ("metadata" in content && content.metadata !== undefined) {
 		if (
 			!content.metadata ||
 			typeof content.metadata !== "object" ||
 			Array.isArray(content.metadata) ||
-			Object.keys(content.metadata).some(
-				(key) => !DIALOGUE_METADATA_FIELDS.has(key),
+			Object.entries(content.metadata).some(
+				([key, value]) =>
+					!DIALOGUE_METADATA_FIELDS.has(key) ||
+					!isDialogueMetadataValue(key, value),
 			)
 		)
 			return textFromUnknown(content);
