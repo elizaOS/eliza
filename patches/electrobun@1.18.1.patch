@@ -16,3 +16,33 @@ index c1a5327280b3c88ab6b14e7629838116b93066a0..68486adbaceb35b75f60ddc7da8a966d
  	},
  	"dependencies": {},
  	"trustedDependencies": []
+diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
+--- a/dist/api/bun/proc/native.ts
++++ b/dist/api/bun/proc/native.ts
+@@ -860 +860 @@
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+@@ -1240 +1240 @@
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+@@ -1355 +1355 @@
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+@@ -1463 +1463 @@
+-		wgpuViewGetNativeHandle: (params: { id: number }): Pointer | null => {
++		wgpuViewGetNativeHandle: (params: { id: number }): Pointer | bigint | null => {
+@@ -1500 +1500 @@
+-		}): FFIType.ptr => {
++		}): Pointer | bigint => {
+@@ -1633 +1633 @@
+-		}): string => {
++		}): string | null => {
+@@ -1649 +1649 @@
+-			return filePath.toString();
++			return filePath;
+diff --git a/dist/api/bun/core/Utils.ts b/dist/api/bun/core/Utils.ts
+--- a/dist/api/bun/core/Utils.ts
++++ b/dist/api/bun/core/Utils.ts
+@@ -190 +190 @@
+-	const filePaths = result.split(",");
++	const filePaths = result === null || result === "" ? [] : result.split(",");
