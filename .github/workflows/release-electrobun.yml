@@ -21,7 +21,6 @@
 #
 # Configure on elizaOS/eliza repo settings:
 #   WINDOWS_SIGN_CERT_BASE64, WINDOWS_SIGN_CERT_PASSWORD, WINDOWS_SIGN_TIMESTAMP_URL
-#   ANTHROPIC_API_KEY (used by Windows packaged smoke test as the boot AI provider)
 #   ELIZAOS_CLOUD_API_KEY / ELIZACLOUD_API_KEY / ELIZAOS_CLOUD_BASE_URL (optional cloud regression)
 #
 # Optional release-host upload secrets:
@@ -321,64 +320,6 @@ jobs:
           NODE
           node --import tsx packages/scripts/write-build-info.ts
 
-      - name: Regression matrix contract
-        run: node packages/app/scripts/validate-regression-matrix.mjs --workflow release
-
-      # The heavy suites gate on a real Chromium binary; without one they
-      # self-skip and run-heavy-e2e.mjs fails the lane closed. Install the
-      # browser revision pinned by the workspace's Playwright lock entry.
-      - name: Provision Chromium for heavy E2E regression suite
-        id: provision-chrome
-        run: |
-          packages/scripts/github/install-playwright-browsers.sh chromium
-          chrome_path="$(bun -e 'import { chromium } from "playwright"; process.stdout.write(chromium.executablePath())')"
-          if [ ! -x "$chrome_path" ]; then
-            echo "::error::Pinned Playwright Chromium is not executable at $chrome_path; the heavy E2E gate cannot run." >&2
-            exit 1
-          fi
-          echo "chrome-path=$chrome_path" >> "$GITHUB_OUTPUT"
-
-      # run-heavy-e2e.mjs fails closed: missing env here turns the step red
-      # instead of letting both suites self-skip to a vacuous green.
-      - name: Run heavy E2E regression suite
-        run: bun run test:e2e:heavy
-        env:
-          ELIZA_LIVE_TEST: "1"
-          ELIZA_CHROME_PATH: ${{ steps.provision-chrome.outputs.chrome-path }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - name: Probe optional cloud live regression key
-        id: probe-cloud-live-key
-        env:
-          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
-        run: |
-          if [ -n "${ELIZAOS_CLOUD_API_KEY:-}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::No Eliza Cloud API key configured for release validation - skipping optional cloud live regression."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run optional cloud live regression suite
-        if: steps.probe-cloud-live-key.outputs.available == 'true'
-        shell: bash
-        run: |
-          set -o pipefail
-          log_file="$(mktemp)"
-
-          if bun run --cwd packages/cloud/sdk test:e2e 2>&1 | tee "$log_file"; then
-            exit 0
-          fi
-
-          echo "::warning::Optional cloud live regression failed; release validation continues with deterministic build and packaging checks."
-          exit 0
-        env:
-          ELIZA_LIVE_TEST: "1"
-          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
-          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
-
       - name: Restore build metadata after test rebuilds
         run: node --import tsx packages/scripts/write-build-info.ts
 
@@ -392,10 +333,16 @@ jobs:
           ELIZA_VALIDATE_CDN: "1"
         run: bun run release:check
 
+  e2e:
+    needs: prepare
+    uses: ./.github/workflows/e2e.yml
+    with:
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+
   build:
     name: Build ${{ matrix.platform.name }}
-    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') && needs.authorize-release.result == 'success' }}
-    needs: [prepare, validate-release, authorize-release]
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') && needs.authorize-release.result == 'success' && needs.e2e.result == 'success' }}
+    needs: [prepare, validate-release, authorize-release, e2e]
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 150
     defaults:
@@ -916,34 +863,6 @@ jobs:
             --version=${{ needs.prepare.outputs.version }} \
             --arch=x86_64
 
-      - name: Smoke test packaged Linux desktop
-        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
-        env:
-          ELIZA_TEST_PACKAGED_AUTO_BUILD: "0"
-          STARTUP_TIMEOUT: "420"
-          LIVENESS_TIMEOUT: "10"
-          SKIP_BUILD: "1"
-          SKIP_SIGNATURE_CHECK: "1"
-        run: bun run --cwd packages/app test:desktop:packaged
-
-      - name: Install and launch Flatpak artifact
-        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
-        run: |
-          bundle="$(find packages/app/platforms/electrobun/artifacts -maxdepth 1 -type f -name '*.flatpak' -print -quit)"
-          test -n "$bundle"
-          flatpak install --user --noninteractive -y --reinstall "$bundle"
-          set +e
-          timeout 45s xvfb-run --auto-servernum \
-            --server-args="-screen 0 1280x900x24 -nolisten tcp" \
-            flatpak run ai.elizaos.app
-          status=$?
-          set -e
-          if [ "$status" -ne 124 ]; then
-            echo "::error::Flatpak app exited before the 45-second liveness window (status $status)."
-            exit 1
-          fi
-          flatpak info --user ai.elizaos.app
-
       - name: List build output
         run: |
           echo "=== Electrobun artifacts ==="
@@ -1104,104 +1023,7 @@ jobs:
           Write-Host "Verified standalone Windows installer: $($installer.Name)"
           Write-Host "Installer size: $([math]::Round($installer.Length / 1MB, 1)) MB"
 
-      - name: Cache Windows embedding model
-        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: ~/.eliza/models
-          key: embedding-model-nomic-embed-text-v1.5-Q4_K_S
-
-      - name: Seed Windows embedding model cache
-        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        shell: pwsh
-        run: |
-          $modelsDir = Join-Path $env:USERPROFILE ".eliza\models"
-          $modelName = "nomic-embed-text-v1.5.Q4_K_S.gguf"
-          $modelRepo = "nomic-ai/nomic-embed-text-v1.5-GGUF"
-          $modelPath = Join-Path $modelsDir $modelName
-
-          if (-not (Test-Path $modelPath)) {
-            New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
-            $url = "https://huggingface.co/$modelRepo/resolve/main/$modelName"
-            Write-Host "Downloading Windows embedding model cache seed: $url"
-            Invoke-WebRequest -Uri $url -OutFile $modelPath
-          }
-
-          Write-Host "Windows embedding model cache ready: $modelPath"
-
-      - name: Smoke test packaged Windows app
-        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        timeout-minutes: 30
-        shell: pwsh
-        env:
-          ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"
-          # The runtime requires at least one AI provider plugin to fully
-          # initialize — without it, startApiServer() can fail before
-          # server.listen() and the health endpoint never becomes reachable.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER: "1"
-          # Use a short path under runner.temp to avoid MAX_PATH issues with
-          # deeply nested node_modules while staying in a user-writable location.
-          ELIZA_TEST_WINDOWS_INSTALL_DIR: ${{ runner.temp }}\el
-          ELIZA_TEST_WINDOWS_LAUNCHER_DIR: ${{ runner.temp }}\eliza-windows-ui-launcher
-          ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE: ${{ runner.temp }}\eliza-windows-ui-launcher.txt
-          # Inno installer is built into platforms/electrobun/artifacts.
-          ELIZA_TEST_WINDOWS_ARTIFACTS_DIR: ${{ github.workspace }}\packages\app\platforms\electrobun\artifacts
-          ELIZA_TEST_WINDOWS_BUILD_DIR: ${{ github.workspace }}\packages\app\platforms\electrobun\build
-        run: |
-          Remove-Item $env:ELIZA_TEST_WINDOWS_INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
-
-          bun run --cwd packages/app test:desktop:packaged:windows
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."
-            exit $LASTEXITCODE
-          }
-
-          if (-not (Test-Path $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE)) {
-            Write-Error "Smoke test did not emit a reusable Windows launcher path."
-            exit 1
-          }
-
-          $launcherPath = (Get-Content $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Raw).Trim()
-          if ([string]::IsNullOrWhiteSpace($launcherPath) -or -not (Test-Path $launcherPath)) {
-            Write-Error "Reusable Windows launcher path is invalid: $launcherPath"
-            exit 1
-          }
-
-          Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LAUNCHER_PATH=$launcherPath"
-          Write-Host "Reusing packaged Windows launcher for Playwright: $launcherPath"
-
-      - name: Run Windows clean installer proof
-        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        shell: pwsh
-        env:
-          ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: ${{ runner.temp }}\el-proof
-        run: |
-          Remove-Item $env:ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
-          pwsh -File packages/app/platforms/electrobun/scripts/verify-windows-installer-proof.ps1 `
-            -ArtifactsDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") `
-            -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build") `
-            -ProofInstallDir $env:ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR `
-            -OutputDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts/windows-installer-proof")
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Windows clean installer proof exited with code $LASTEXITCODE."
-            exit $LASTEXITCODE
-          }
-
-      - name: Upload Windows installer proof artifact
-        if: always() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: electrobun-windows-installer-proof
-          path: packages/app/platforms/electrobun/artifacts/windows-installer-proof/**
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload Windows installer .exe + Inno log on smoke failure
+      - name: Upload Windows installer and packaging failure log
         if: failure() && matrix.platform.os == 'windows'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -1209,21 +1031,6 @@ jobs:
           path: |
             packages/app/platforms/electrobun/artifacts/*.exe
             ${{ runner.temp }}/eliza-inno-setup.log
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Run Windows packaged renderer bootstrap check
-        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        run: bun run --cwd packages/app test:desktop:packaged
-
-      - name: Upload Windows Playwright UI diagnostics
-        if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: electrobun-windows-ui-playwright-diagnostics
-          # TODO: confirm packaged-app Playwright result location in eliza
-          # (was apps/app/test-results/** in eliza; might be packages/app/test-results/**).
-          path: packages/app/test-results/**
           if-no-files-found: warn
           retention-days: 14
 
@@ -1442,162 +1249,6 @@ jobs:
             echo "::error::No DMG found in packages/app/platforms/electrobun/artifacts"
             exit 1
           fi
-
-      # Advisory unlike the Linux and Windows packaged smokes, which fail the
-      # job. Keep the id so the diagnostics upload below can key off this
-      # step's own outcome: continue-on-error means a smoke failure never makes
-      # failure() true, so a condition on failure() alone can never collect the
-      # evidence for the failure it was written for.
-      - name: Smoke test packaged macOS app
-        id: macos-packaged-smoke
-        if: matrix.platform.os == 'macos' && steps.build-electrobun-app.outputs.fallback != 'true'
-        continue-on-error: true
-        env:
-          SMOKE_DIAGNOSTICS_DIR: ${{ runner.temp }}/eliza-smoke-diagnostics
-        run: |
-          STARTUP_TIMEOUT=420 \
-          LIVENESS_TIMEOUT=10 \
-          SKIP_BUILD=1 \
-          SKIP_SIGNATURE_CHECK=1 \
-          bun run --cwd packages/app test:desktop:packaged
-
-      - name: Collect Windows smoke diagnostics
-        if: failure() && matrix.platform.os == 'windows'
-        shell: pwsh
-        run: |
-          $diagnosticsDir = Join-Path $PWD "packages/app/platforms/electrobun/artifacts/windows-smoke-diagnostics"
-          $appDataRoot = if ($env:ELIZA_TEST_WINDOWS_APPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_APPDATA_PATH } else { $env:APPDATA }
-          $localAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH } else { $env:LOCALAPPDATA }
-          $wrapperRoots = @(@(
-            (Join-Path $localAppDataRoot "com.elizaai.eliza"),
-            (Join-Path $localAppDataRoot "ai.elizaos.Eliza"),
-            (Join-Path $localAppDataRoot "ai.elizaos.app")
-          ) | Select-Object -Unique)
-
-          Write-Host "Diagnostics roots:"
-          Write-Host "  appDataRoot      = $appDataRoot"
-          Write-Host "  localAppDataRoot = $localAppDataRoot"
-          foreach ($wrapperRoot in $wrapperRoots) {
-            Write-Host "  wrapperRoot      = $wrapperRoot"
-          }
-
-          Remove-Item $diagnosticsDir -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path $diagnosticsDir | Out-Null
-
-          if (Test-Path $appDataRoot) {
-            Write-Host "--- APPDATA tree ($appDataRoot) ---"
-            Get-ChildItem -Path $appDataRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
-            Write-Host "--- end APPDATA tree ---"
-
-            $logFiles = Get-ChildItem -Path $appDataRoot -Recurse -File -Include "*.log" -ErrorAction SilentlyContinue
-            foreach ($log in $logFiles) {
-              $relative = $log.FullName.Substring($appDataRoot.Length).TrimStart('\','/')
-              $safeName = $relative -replace '[\\/:]', '_'
-              $dest = Join-Path $diagnosticsDir $safeName
-              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
-              Copy-Item $log.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
-              Write-Host "--- $($log.FullName) ---"
-              Get-Content $log.FullName -Tail 400 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
-              Write-Host "--- end $($log.FullName) ---"
-            }
-            if (-not $logFiles) {
-              Write-Warning "No *.log files found anywhere under $appDataRoot"
-            }
-          } else {
-            Write-Warning "APPDATA root not found: $appDataRoot"
-          }
-
-          if (Test-Path $localAppDataRoot) {
-            $localLogFiles = Get-ChildItem -Path $localAppDataRoot -Recurse -File -Include "*.log" -ErrorAction SilentlyContinue
-            foreach ($log in $localLogFiles) {
-              $relative = $log.FullName.Substring($localAppDataRoot.Length).TrimStart('\','/')
-              $safeName = "local_" + ($relative -replace '[\\/:]', '_')
-              $dest = Join-Path $diagnosticsDir $safeName
-              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
-              Copy-Item $log.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
-              Write-Host "--- $($log.FullName) ---"
-              Get-Content $log.FullName -Tail 400 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
-              Write-Host "--- end $($log.FullName) ---"
-            }
-          }
-
-          foreach ($pattern in @("eliza-windows-smoke-*.state.json", "eliza-windows-smoke-*.events.jsonl", "eliza-startup-trace-*.state.json")) {
-            $traceGlob = Join-Path $env:RUNNER_TEMP $pattern
-            $traceFiles = Get-ChildItem -Path $traceGlob -ErrorAction SilentlyContinue
-            if ($traceFiles) {
-              foreach ($f in $traceFiles) {
-                $dest = Join-Path $diagnosticsDir $f.Name
-                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
-                Copy-Item $f.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
-                Write-Host "--- startup-trace: $($f.Name) ---"
-                Get-Content $f.FullName -Tail 400 | ForEach-Object { Write-Host $_ }
-                Write-Host "--- end $($f.Name) ---"
-              }
-            }
-          }
-
-          foreach ($root in @($wrapperRoots + @("C:\\e", "D:\\a\\_temp\\el"))) {
-            if (Test-Path $root) {
-              Get-ChildItem -Path $root -Recurse -File -Filter "startup-session.json" -ErrorAction SilentlyContinue |
-                ForEach-Object {
-                  $dest = Join-Path $diagnosticsDir ("startup-session-" + ($_.FullName -replace '[\\:]', '_') + ".json")
-                  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
-                  Copy-Item $_.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
-                  Write-Host "--- $($_.FullName) ---"
-                  Get-Content $_.FullName | ForEach-Object { Write-Host $_ }
-                  Write-Host "--- end ---"
-                }
-            }
-          }
-
-          foreach ($wrapperRoot in $wrapperRoots) {
-            if (Test-Path $wrapperRoot) {
-              Get-ChildItem -Path $wrapperRoot -Recurse -File -Filter "wrapper-diagnostics.json" -ErrorAction SilentlyContinue |
-                ForEach-Object {
-                  $relativePath = $_.FullName.Substring($wrapperRoot.Length).TrimStart('\\')
-                  $destination = Join-Path $diagnosticsDir $relativePath
-                  $destinationParent = Split-Path -Parent $destination
-                  New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
-                  Copy-Item $_.FullName -Destination $destination -Force
-                }
-            } else {
-              Write-Warning "Wrapper diagnostics root not found at $wrapperRoot"
-            }
-          }
-
-      - name: Upload Windows smoke diagnostics
-        if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
-          path: packages/app/platforms/electrobun/artifacts/windows-smoke-diagnostics/**
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Report advisory macOS smoke failure
-        if: >-
-          steps.macos-packaged-smoke.outcome == 'failure' &&
-          matrix.platform.os == 'macos'
-        run: |
-          echo "::warning title=Packaged macOS smoke failed::The packaged macOS app smoke test failed. This step is advisory (continue-on-error), so the release job stays green — see the uploaded macOS smoke diagnostics artifact."
-          {
-            echo "### Packaged macOS smoke: FAILED (advisory)"
-            echo
-            echo "\`bun run --cwd packages/app test:desktop:packaged\` failed on macOS. The step is \`continue-on-error: true\`, so this did not fail the release job."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload macOS smoke diagnostics
-        if: >-
-          (failure() || steps.macos-packaged-smoke.outcome == 'failure') &&
-          matrix.platform.os == 'macos'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
-          path: |
-            ${{ runner.temp }}/eliza-smoke-diagnostics/**
-            packages/app/platforms/electrobun/build/**/wrapper-diagnostics.json
-          if-no-files-found: warn
-          retention-days: 14
 
       - name: Compress Windows artifacts before upload
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'

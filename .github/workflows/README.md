@@ -21,6 +21,11 @@ exercise real application behavior and assert resulting state.
   Broader app/provider integration is tracked in the implementation plan and
   must pass before this migration is considered complete.
 
+The separate app-live, live-smoke, voice-live, and paid ASR benchmark workflows
+are retired. Their ordinary runtime and voice checks move to the deterministic
+E2E entry point. This suite does not certify acoustic model quality or physical
+device behavior.
+
 Release, deployment, native-device qualification, and operational workflows
 remain separate because they have different artifacts, permissions, and
 execution environments. Their test commands are part of the E2E migration;
