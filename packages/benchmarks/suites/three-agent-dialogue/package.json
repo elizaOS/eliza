@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "End-to-end three-agent dialogue harness \u2014 three Eliza agents, distinct voices, shared audio bus, diarization + emotion + turn-detection capture.",
+  "description": "End-to-end three-agent dialogue harness — three Eliza agents, distinct voices, shared audio bus, diarization + emotion + turn-detection capture.",
   "main": "./runner/run-dialogue.ts",
   "types": "./runner/run-dialogue.ts",
   "scripts": {
@@ -26,6 +26,6 @@
     "bun-types": "1.3.14",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "4.1.10"
+    "vitest": "5.0.1"
   }
 }

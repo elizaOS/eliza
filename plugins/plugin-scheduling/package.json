@@ -34,7 +34,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
@@ -51,7 +51,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
@@ -63,7 +63,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@elizaos/plugin-sqlite": "workspace:*"
   }
 }

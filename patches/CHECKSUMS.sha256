@@ -1,10 +1,7 @@
 b0b53da3a1cffec57fcd52fbb86c6b7126f96582abe4eaa62eb25221a859339e  ./@capacitor%2Fbarcode-scanner@3.0.2.patch
 f0e54fe3aad565f55ae57f88a7fa1eec79bcd6d965994efec915e918756aab2d  ./@capacitor%2Fios@8.5.0.patch
-4b6411a581bd77d73166fd05e458e8fe1bd6ab6fb6b57a9bdc5e522fe98f424c  ./@farcaster%2Fquick-auth@0.0.6.patch
-4b6411a581bd77d73166fd05e458e8fe1bd6ab6fb6b57a9bdc5e522fe98f424c  ./@farcaster%2Fquick-auth@0.0.8.patch
 4c12672d4c78ae5eaa671c2ba230b078ef358945e502595623efd80028c566bf  ./@noble%2Fcurves@2.0.1.patch
-b220b98ec8bed0731d240ee68752e7ca69bd5a8adfed2c78944a6df2099d1cd7  ./@orca-so%2Fcommon-sdk@0.7.0.patch
-4f6e9e597f09ad5aaf8b03e73b666b588db5209370774debb03c8619e23dbfe8  ./@pixiv%2Fthree-vrm@3.5.2.patch
+4f6e9e597f09ad5aaf8b03e73b666b588db5209370774debb03c8619e23dbfe8  ./@pixiv%2Fthree-vrm@3.5.5.patch
 57547e93136fd42eabd563fc31b5387a4879c8e65eb45e4c4d7511c1dda725cb  ./@solana%2Faccounts@5.5.1.patch
 cf3a12de77d0f6f4d2d3511a3b87de1c24d399cf98606e2e334598191a9c956b  ./@solana%2Faddresses@5.5.1.patch
 314ba3b8eb8f9852741e2e0beb21b9235680ed49cd7c97ef8a88d24bac4c2531  ./@solana%2Fassertions@5.5.1.patch
@@ -44,10 +41,8 @@ ded0e0056445e58127e85595b60e1673e2fa77b2e4a55cad42f37dc305d49937  ./@solana%2Fsi
 eb1e6558a98efff8652869c24268810f5ed63a177dc33e797a8a628706744574  ./@solana%2Ftransaction-confirmation@5.5.1.patch
 99fb0f0123666c66fc0f540c2c6bb2475511e2d7d7895d229847fc39396ab681  ./@solana%2Ftransaction-messages@5.5.1.patch
 54d113ce8bf872cc56f25582cbe29c0b4e524327f8e6560dfd1e3b9f3a18ba79  ./@solana%2Ftransactions@5.5.1.patch
-c96584c202fcad49a0f0f4bf50ebf3ed58be4879deafb27b4db9ea3183411fc9  ./@vitest%2Fmocker@4.1.10.patch
 fa9033e52dfdaa941f137a52504117b0b5405490696a007d6fd8bab807a8dfea  ./bigint-buffer@1.1.5.patch
 ccde54ea5b08e5370e7795c6db77c05616aca4cee0cd8552d4e6500119bc86f8  ./coding-agent-adapters@0.16.3.patch
-2a6f7c08369dd2b821bf0409d002dea1a4c9422a8e30e65a232533ba06e212f3  ./electrobun/0001-diagnostic-instrumentation.patch
 8e112e92681de2bcee90500358b8a3d66f2e4b2a04582ce6a8f424177aef3d3a  ./electrobun@1.16.0.patch
 d216f37b14aea9ba505190f5cb03059fd6ef34f0ccf979ecf4dde2f3a14ca01f  ./electrobun@1.18.1.patch
 343e506742c0a7e26acadf91aa7c65a1fa9259fea615744374bc94a7a48e49ca  ./llama-cpp-capacitor@0.1.5-bge-cache-upgrade.patch
@@ -58,4 +53,3 @@ d216f37b14aea9ba505190f5cb03059fd6ef34f0ccf979ecf4dde2f3a14ca01f  ./electrobun@1
 3eed38d4a659ea3bdb6ab255e8a306b0caa9c54259de7d28b42ff101d0499311  ./sql.js@1.14.2.patch
 c8536e56a0e84b373be54656c659db6b32065753503f9d60ac781b0709653037  ./telegraf@4.16.3.patch
 8ad81f17da40044c79bea7d63f64740bf6c066384fdc5ed10c34d3d70858b0b7  ./tsup@8.5.1.patch
-080da8a2c3ab5b3cbf4840f740a7d6113844d777eda0818605a8e3215d731f88  ./vitest@4.1.10.patch
