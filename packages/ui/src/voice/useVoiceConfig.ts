@@ -36,6 +36,7 @@ export interface UseVoiceConfigResult {
  */
 export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const { defaults: voiceProviderDefaults } = useDefaultProviderPresets();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [voiceConfig, setVoiceConfig] = React.useState<VoiceConfig | null>(
     null,
   );
@@ -59,32 +60,46 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   });
   const [voiceBootstrapTick, setVoiceBootstrapTick] = React.useState(0);
   const isMountedRef = React.useRef(false);
+  const loadGenerationRef = React.useRef(0);
+  const hasLoadedConfigRef = React.useRef(false);
 
   const loadVoiceConfig = React.useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+    const isCurrent = () =>
+      isMountedRef.current && generation === loadGenerationRef.current;
     try {
       const cfg = await client.getConfig();
       const resolvedVoiceConfig = resolveCharacterVoiceConfigFromAppConfig({
         config: cfg,
         uiLanguage,
       });
-      if (!isMountedRef.current) return;
+      if (!isCurrent()) return;
+      hasLoadedConfigRef.current = true;
       setVoiceConfig(resolvedVoiceConfig);
     } catch {
-      if (!isMountedRef.current) return;
-      // error-policy:J4 no config endpoint (minimal shells) or unreadable
-      // config — voice degrades to provider defaults rather than blocking.
-      setVoiceConfig(null);
+      if (!isCurrent()) return;
+      // error-policy:J4 refresh failure is visible and retains the last loaded
+      // selection; minimal shells without an initial config keep their defaults.
+      if (hasLoadedConfigRef.current) {
+        setActionNotice(
+          "Couldn't refresh voice settings. Your last loaded settings are still in use.",
+          "error",
+        );
+      } else {
+        setVoiceConfig(null);
+      }
     } finally {
-      if (isMountedRef.current) {
+      if (isCurrent()) {
         setVoiceBootstrapTick((tick) => tick + 1);
       }
     }
-  }, [uiLanguage]);
+  }, [setActionNotice, uiLanguage]);
 
   React.useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      loadGenerationRef.current += 1;
     };
   }, []);
 
@@ -97,6 +112,8 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<VoiceConfig | undefined>).detail;
       if (detail && typeof detail === "object") {
+        loadGenerationRef.current += 1;
+        hasLoadedConfigRef.current = true;
         setVoiceConfig(detail);
         setVoiceBootstrapTick((tick) => tick + 1);
         return;
@@ -106,6 +123,21 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
     window.addEventListener(VOICE_CONFIG_UPDATED_EVENT, handler);
     return () =>
       window.removeEventListener(VOICE_CONFIG_UPDATED_EVENT, handler);
+  }, [loadVoiceConfig]);
+
+  React.useEffect(() => {
+    // Detached Settings has its own window-local update event. Returning to a
+    // voice surface must read the saved selection through the authenticated API.
+    const refresh = () => void loadVoiceConfig();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [loadVoiceConfig]);
 
   const voiceConfigWithDefaults = React.useMemo(

@@ -109,6 +109,9 @@ afterEach(() => {
 });
 
 describe("applySubscriptionCredentials", () => {
+  beforeEach(() => {
+    useTempElizaHome();
+  });
   it("does not expose Codex subscription credentials as OPENAI_API_KEY", async () => {
     useTempElizaHome();
     vi.stubEnv("OPENAI_API_KEY", "");

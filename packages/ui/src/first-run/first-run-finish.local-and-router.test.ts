@@ -1,15 +1,8 @@
-/** Verifies runFirstRunFinish — router boundaries through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * Coverage for the local-runtime finish path (`finishLocal`, exercised only
- * via the exported `runFirstRunFinish` router) and the router's own
- * validation/error boundaries. The cloud-runtime paths are covered in
- * `first-run-finish.reused-shared-handoff.test.ts` and
- * `first-run-finish.force-fresh.test.ts`; this file fills in the desktop/web
- * local-runtime branch (non-native, non-Android/iOS, no loopback proxy) that
- * neither of those exercises.
+ * Exercises local and hybrid first-run completion through the real router with
+ * mocked API/runtime boundaries, including canceled Cloud authentication.
  */
+// @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunProfileDraft } from "./first-run";
@@ -25,6 +18,8 @@ const clientMock = vi.hoisted(() => ({
   setToken: vi.fn(),
   getBaseUrl: vi.fn(() => ""),
   getAuthStatus: vi.fn(async () => ({ ok: true })),
+  getCloudStatus: vi.fn(async () => ({ connected: false })),
+  getRestAuthToken: vi.fn(() => null as string | null),
 }));
 
 vi.mock("../api", () => ({ client: clientMock }));
@@ -90,6 +85,7 @@ function ports(): FirstRunFinishPorts {
 beforeEach(() => {
   vi.clearAllMocks();
   clientMock.getBaseUrl.mockReturnValue("");
+  clientMock.getRestAuthToken.mockReturnValue(null);
   window.localStorage.clear();
 });
 
@@ -98,6 +94,23 @@ afterEach(() => {
 });
 
 describe("runFirstRunFinish — router boundaries", () => {
+  it.each([null, "local-runtime-token"])(
+    "keeps canceled hybrid Cloud sign-in incomplete (backend=%s)",
+    async (backendToken) => {
+      clientMock.getRestAuthToken.mockReturnValue(backendToken);
+      const p = ports();
+      p.elizaCloudConnected = false;
+      const outcome = await runFirstRunFinish(
+        draft({ localInference: "cloud-inference" }),
+        p,
+      );
+      expect(outcome.kind).toBe("needs-cloud-login");
+      expect(p.handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+      expect(clientMock.submitFirstRun).not.toHaveBeenCalled();
+      expect(p.completeFirstRun).not.toHaveBeenCalled();
+    },
+  );
+
   it("returns a validation error without touching the client for an invalid draft", async () => {
     const outcome = await runFirstRunFinish(
       // Cast required: `runFirstRunFinish` only accepts the runtimes it
