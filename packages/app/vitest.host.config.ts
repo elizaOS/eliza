@@ -63,6 +63,7 @@ export default defineConfig({
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
+      "scripts/android-native-sms.test.ts",
       "scripts/android-native-plugins.test.ts",
       "scripts/native-plugin-build.test.ts",
       "scripts/verify-android-native-plugins.test.ts",

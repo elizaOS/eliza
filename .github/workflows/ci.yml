@@ -18,6 +18,8 @@ jobs:
     name: Quality
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -40,7 +42,7 @@ jobs:
         run: bun run build:core
       - name: Repository verification
         env:
-          RUN_TURBO_CONCURRENCY: "4"
+          RUN_TURBO_CONCURRENCY: "2"
         run: bun run verify
       - name: Formatting
         run: bun run format:check

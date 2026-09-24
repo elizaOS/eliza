@@ -141,8 +141,8 @@ if (
 // RUN_TURBO_CONCURRENCY caps task fan-out from the environment. Hosted CI
 // runners (4 vCPU / 16 GB) die at the package-script default of 8 concurrent
 // tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
-// job exits 143 (#15140) — so CI lanes set this to 4 without forking the
-// `verify`/`typecheck` script definitions.
+// job exits 143 (#15140). CI caps concurrency and the per-process heap together
+// without forking the `verify`/`typecheck` script definitions.
 function applyConcurrencyOverride(args, concurrency) {
   const separatorIndex = args.indexOf("--");
   const turboOwnArgs =
