@@ -16,7 +16,10 @@ import {
   FamilyIntakeReviewStore,
   familyIntakeIdSchema,
 } from "./intake-review.js";
-import { getFamilyIntakeService } from "./intake-service.js";
+import {
+  getFamilyIntakeService,
+  readFamilyCorrespondenceText,
+} from "./intake-service.js";
 
 export const familyIntakeImportSchema = z.strictObject({
   id: familyIntakeIdSchema,
@@ -75,7 +78,14 @@ export async function importFamilyCorrespondence(
       isOwner: true,
     },
   );
-  if (!stored || stored.content.text !== input.text)
+  const storedText =
+    stored &&
+    (await readFamilyCorrespondenceText(documents, stored, {
+      requesterEntityId: owner,
+      role: "OWNER",
+      isOwner: true,
+    }));
+  if (!stored || storedText !== input.text)
     throw new ElizaError(
       "The document service did not preserve the complete source text",
       { code: "FAMILY_INTAKE_SOURCE_CHANGED" },
