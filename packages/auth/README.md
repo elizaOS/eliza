@@ -288,3 +288,11 @@ workspaces in the runtime image. Its ignore overrides retain workspace manifests
 that Bun needs to resolve the lockfile before filtering the install. Retain the
 service's existing variables and `/health` check when changing its repository
 source.
+
+## End-to-end verification
+
+`bun run --cwd packages/auth test` runs browser passkey signup/sign-in and
+HTTP wallet login with persisted-session restart and logout.
+`test:browser` selects the browser flow. `test:e2e:postgres` runs the real
+PostgreSQL session/isolation flow and requires `LOGIN_TEST_DATABASE_URL`
+pointing to a loopback database server.
