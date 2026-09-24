@@ -367,8 +367,9 @@ function buildDocx(): Uint8Array {
       "word/document.xml": strToU8(document),
     },
     // ZIP stores local DOS clock fields, not a timezone-aware instant. Use the
-    // same wall-clock value in every timezone so archive bytes stay identical.
-    { level: 6, mtime: new Date(2026, 0, 1, 0, 0, 0) },
+    // frozen corpus's original Pacific wall-clock value in every timezone;
+    // this preserves published archive bytes while removing host-TZ drift.
+    { level: 6, mtime: new Date(2025, 11, 31, 16, 0, 0) },
   );
 }
 

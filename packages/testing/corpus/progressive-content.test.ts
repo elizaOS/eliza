@@ -126,10 +126,10 @@ describe("progressive content corpus", () => {
     expect(first.objects).toHaveLength(20);
     expect(first.logicalBytes).toBeLessThan(2 * 1024 * 1024);
     expect(second).toEqual(first);
-    // Canonical UTC-wall-clock ZIP timestamps keep this manifest identical
-    // across timezones as well as generator chunk-size optimizations.
+    // Frozen before the native-fill optimization: generator bytes and identities
+    // remain compatible with published corpora, independent of host timezone.
     expect(first.manifestSha256).toBe(
-      "a850a08942b3fc011f2845386b22292c8178a1713c675c2cbdf2fbf691567d1e",
+      "ec930e0273c3d048e76c90316cf8ecb43636bfdf85a73724cf6c91b7467b5563",
     );
     expect(new Set(first.objects.map((object) => object.family))).toEqual(
       new Set([
