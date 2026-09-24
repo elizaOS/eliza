@@ -3,6 +3,7 @@
  * runtime settings.
  */
 import type { CapacitorConfig } from "@capacitor/cli";
+import { KeyboardResize } from "@capacitor/keyboard";
 import appConfig from "./app.config";
 import appPackage from "./package.json" with { type: "json" };
 
@@ -224,7 +225,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     Keyboard: {
-      resize: "body",
+      resize: KeyboardResize.Body,
       resizeOnFullScreen: true,
     },
     // iOS requires CFNetwork for cross-origin Cloud requests. The Android
