@@ -67,3 +67,7 @@ The build produces three outputs: `dist/index.js` (main ESM bundle), `dist/views
 ## Native bridge
 
 The Android implementation and web fallback ship in this workspace. Import device APIs from `@elizaos/plugin-native-phone/bridge`; this entry does not load UI registration. The package root exports the application surface, `/plugin` the runtime plugin, and `/register` the app-shell registration. Capacitor discovers the Android implementation through the package manifest. Builds emit ESM and declarations into `dist/`.
+
+The package owns `tsconfig.json` for its React surface and native bridge.
+Typechecking resolves the bridge self-import from `src/bridge.ts` before a
+build. Build emission remains governed by the separate build configuration.

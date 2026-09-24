@@ -51,11 +51,8 @@
         "plugins/plugin-native-network-policy/tsconfig.json",
         "plugins/plugin-native-appblocker/tsconfig.json",
         "plugins/plugin-native-location/tsconfig.json",
-        "plugins/plugin-native-messages/tsconfig.json",
-        "plugins/plugin-native-phone/tsconfig.json",
         "plugins/plugin-native-system/tsconfig.json",
-        "plugins/plugin-native-websiteblocker/tsconfig.json",
-        "plugins/plugin-native-wifi/tsconfig.json"
+        "plugins/plugin-native-websiteblocker/tsconfig.json"
       ]
     },
     {
