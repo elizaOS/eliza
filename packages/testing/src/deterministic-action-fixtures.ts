@@ -41,7 +41,8 @@ export function benignExternalMessageFixture(
 }
 const MESSAGE_USER_SUFFIX_BOUNDARY =
   /\n\n(?:event:|provider:|current_turn_boundary:|The Stage 1 router)/;
-const MESSAGE_USER_BLOCK_MARKER = /(?:^|\n\n)message:user:\n/g;
+const MESSAGE_USER_BLOCK_MARKER =
+  /(?:^|\n\n)(message:user:\n|# Current message\n)/g;
 
 type JsonObjectKeyInspection = {
   hasDuplicateRootKeys: boolean;
@@ -201,23 +202,19 @@ function decodeStage1JsonMessageEnvelope(value: string): string | null {
   return extractExternalContent(record.text) ?? record.text.trim();
 }
 
-function latestMessageUserMarkerIndex(value: string): number {
+function latestMessageUserContentIndex(value: string): number {
   let blockIndex = -1;
   for (const match of value.matchAll(MESSAGE_USER_BLOCK_MARKER)) {
-    blockIndex =
-      (match.index ?? 0) + match[0].length - MESSAGE_USER_MARKER.length;
+    blockIndex = (match.index ?? 0) + match[0].length;
   }
-  return blockIndex === -1
-    ? value.lastIndexOf(MESSAGE_USER_MARKER)
-    : blockIndex;
+  if (blockIndex !== -1) return blockIndex;
+  const legacyIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
+  return legacyIndex === -1 ? -1 : legacyIndex + MESSAGE_USER_MARKER.length;
 }
 
 function extractScenarioInput(value: string): string | null {
-  const markerIndex = latestMessageUserMarkerIndex(value);
-  const afterMarker =
-    markerIndex === -1
-      ? value
-      : value.slice(markerIndex + MESSAGE_USER_MARKER.length);
+  const markerIndex = latestMessageUserContentIndex(value);
+  const afterMarker = markerIndex === -1 ? value : value.slice(markerIndex);
   const candidate =
     afterMarker.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
   if (
