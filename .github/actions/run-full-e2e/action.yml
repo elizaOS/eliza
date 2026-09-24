@@ -1,0 +1,23 @@
+name: Run full E2E
+description: Exercise real authentication and assistant tool flows with deterministic inference.
+runs:
+  using: composite
+  steps:
+    - name: Apply dependency compatibility patches
+      shell: bash
+      run: |
+        bun packages/scripts/patch-punycode-deprecation.mjs
+        bun packages/scripts/patch-llama-cpp-capacitor.mjs
+        bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
+    - name: Build core runtime
+      shell: bash
+      run: bun run --cwd packages/core build
+    - name: Install Chromium
+      shell: bash
+      run: packages/scripts/github/install-playwright-browsers.sh chromium
+    - name: Runtime authorization, tool effects, persistence, and audio dispatch
+      shell: bash
+      run: bun test --conditions eliza-source packages/testing/e2e/perfect-result-runtime.e2e.test.ts
+    - name: Browser authentication and persistent embedded sessions
+      shell: bash
+      run: bun run --cwd packages/auth test:e2e

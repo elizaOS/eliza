@@ -54,49 +54,15 @@ jobs:
           name: bun-runtime-inventory
           path: ${{ runner.temp }}/bun-runtime-inventory.json
           retention-days: 7
-  frontend-build:
-    name: Consolidated Frontend Build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-          fetch-depth: 0
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          install-protoc: "false"
-          setup-python: "false"
-          setup-node: "false"
-      - name: Build frontend workspace dependencies
-        run: |
-          bun run build:core
-          bun run --cwd packages/ui build
-      - name: Build the only deployable frontend
-        working-directory: packages/app
-        run: bun run build:web
+      - name: Build production frontend
+        run: bun run --cwd packages/app build:web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    env:
-      BUN_VERSION: 1.3.14
-      NODE_VERSION: 24.15.0
-  e2e:
-    uses: ./.github/workflows/e2e.yml
+      - uses: ./.github/actions/run-full-e2e
   required:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
-    needs: [quality, frontend-build, e2e]
+    needs: [quality]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

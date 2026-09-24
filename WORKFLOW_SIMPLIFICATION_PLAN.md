@@ -49,13 +49,17 @@ Tracking: https://github.com/elizaOS/eliza/issues/32494
 Progress checkpoint:
 
 - Workflows: 57 to 44 compared with the pulled mega branch.
-- Canonical CI: 21 to 4 job definitions; PR: 5 to 3; Develop Full: 11 to 4.
+- Canonical CI: 21 to 2 job definitions; PR: 5 to 2; Develop Full: 11 to 4.
+  Static checks and E2E share one install through `run-full-e2e`.
 - Perfect-result provider: four runtime/tool E2Es pass with 25 assertions;
   streaming and ordinary execution create real note/file/SQL effects.
 - Authentication: browser and embedded-server E2E pass with 27 assertions.
 - Provider typecheck, changed-source Biome, workflow syntax, trigger policy,
   and cache policy pass. Core-only build passes without the 74-task bootstrap.
 - Executable script audit passes after retiring its obsolete unit-job binding.
+- Root verification attempt 1 failed in UI lint, which still invokes unit tests
+  and stale design-registry baseline checks. The manifest cleanup owner has the
+  exact failure; no all-green repository result is claimed.
 - Remaining: integrate the rest of the test retirement, review
   cloud/device/certification test entry
   points, and run terminal repository/hosted validation before develop delivery.

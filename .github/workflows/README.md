@@ -11,12 +11,14 @@ exercise real application behavior and assert resulting state.
 - `pr-static-smoke.yml` remains the PR and merge-queue entry point. Its existing
   filename and `All Tests Passed` status remain stable for branch protection.
   It checks mergeability, workflow syntax, affected builds, lint and types, and
-  calls `e2e.yml`. The aggregate rejects failed, skipped, or cancelled children.
+  runs the shared `run-full-e2e` action using the same dependency installation.
+  The aggregate rejects failed, skipped, or cancelled validation.
 - `develop-full.yml` validates pushes to develop, staging and main. It delegates
   to `ci.yml` and records the exact source manifest before reconciliation.
 - `ci.yml` owns repository source verification, the production frontend build,
-  and the same reusable `e2e.yml` suite used for PRs.
-- `e2e.yml` owns full E2E execution without inherited provider secrets. Browser
+  and the same `run-full-e2e` action used for PRs, in one installed workspace.
+- `e2e.yml` exposes that action for standalone and exact-source release runs
+  without inherited provider secrets. Browser
   authentication exercises Chromium, the SDK, the actual API, and the database.
   Broader app/provider integration is tracked in the implementation plan and
   must pass before this migration is considered complete.

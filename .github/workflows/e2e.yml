@@ -47,16 +47,4 @@ jobs:
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-      - name: Install Chromium
-        run: packages/scripts/github/install-playwright-browsers.sh chromium
-      - name: Apply dependency compatibility patches
-        run: |
-          bun packages/scripts/patch-punycode-deprecation.mjs
-          bun packages/scripts/patch-llama-cpp-capacitor.mjs
-          bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
-      - name: Build runtime dependencies
-        run: bun run --cwd packages/core build
-      - name: Assistant persistence and voice through the perfect-result provider
-        run: bun test --conditions eliza-source packages/testing/e2e/perfect-result-runtime.e2e.test.ts
-      - name: Browser authentication through the real API and database
-        run: bun run --cwd packages/auth test:e2e
+      - uses: ./.github/actions/run-full-e2e

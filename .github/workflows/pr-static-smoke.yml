@@ -147,13 +147,12 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
 
-  e2e:
-    uses: ./.github/workflows/e2e.yml
+      - uses: ./.github/actions/run-full-e2e
 
   static-smoke:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
-    needs: [source-smoke, e2e]
+    needs: [source-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
