@@ -5695,6 +5695,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "pin",
       "get_user",
       "read_message",
+      "manage_server",
     ],
     schema: { type: "string" },
   },
