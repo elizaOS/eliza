@@ -9,9 +9,11 @@ import { readFileSync } from "node:fs";
 import process from "node:process";
 import * as readline from "node:readline";
 import {
+  type ActionResult,
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type EffectReceipt,
   logger,
   stringToUuid,
   type UUID,
@@ -34,6 +36,10 @@ export interface BenchmarkResult {
   actions_taken: string[];
   duration_ms: number;
   success: boolean;
+  turn_completed?: boolean;
+  request_fulfilled?: boolean;
+  effect_receipts?: readonly EffectReceipt[];
+  action_results?: readonly ActionResult[];
   error?: string;
   failure_kind?: string;
   failure_code?: string;
@@ -184,7 +190,10 @@ export async function runBenchmarkTask(
     // the final answer with duplicated chunks or verbose action output.
     const responseText =
       resultText || messagesText || streamText || callbackText || "";
+    // Failed attempts remain in receipts. The final planner assessment can
+    // recognize recovery; independent benchmark grading must verify the result.
     const success =
+      result.requestFulfilled !== false &&
       result.outcome.status === "completed" &&
       result.didRespond &&
       responseText.trim().length > 0;
@@ -196,10 +205,19 @@ export async function runBenchmarkTask(
       actions_taken: actionsTaken,
       duration_ms: Math.round(performance.now() - start),
       success,
+      turn_completed: result.outcome.status === "completed",
+      effect_receipts: result.outcome.effects,
+      ...(result.actionResults ? { action_results: result.actionResults } : {}),
+      ...(typeof result.requestFulfilled === "boolean"
+        ? { request_fulfilled: result.requestFulfilled }
+        : {}),
       ...(!success
         ? {
             error:
               terminalFailure?.message ??
+              (result.requestFulfilled === false
+                ? "Planner finished without fulfilling the request"
+                : undefined) ??
               result.reason ??
               "Agent completed without a response",
             ...(terminalFailure

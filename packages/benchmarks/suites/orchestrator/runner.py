@@ -261,7 +261,9 @@ def _comparison_signature_for_row(
     )
 
 
-def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunRequest:
+def _effective_request(
+    adapter: BenchmarkAdapter, request: RunRequest, *, environment: dict[str, str] | None = None
+) -> RunRequest:
     request_extra = dict(request.extra_config)
     replace_adapter_defaults = request_extra.pop("_replace_adapter_defaults", False)
     if replace_adapter_defaults is not False and replace_adapter_defaults is not True:
@@ -313,6 +315,31 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
         merged_extra["handler"] = "eliza"
     if agent_label:
         merged_extra.setdefault("harness", agent_label)
+    if adapter.id in {"osworld", "visualwebbench"}:
+        resolved_env = environment if environment is not None else os.environ
+        native_image_harness = str(merged_extra.get("agent") or merged_extra.get("harness") or agent_label).strip().lower() in {"hermes", "openclaw"}
+        if native_image_harness:
+            # These native runtimes consume image blocks on the primary model.
+            # Eliza's image-description environment is not their model routing.
+            vision_model = request.model
+            configured_model = merged_extra.get("vision_model", vision_model)
+            if configured_model != vision_model:
+                raise ValueError("Native image harness vision_model must match the primary model")
+            if "vision_base_url" in merged_extra:
+                raise ValueError("Native image harness does not support an auxiliary vision_base_url")
+            vision_url = resolved_env.get("OPENAI_BASE_URL", "")
+        else:
+            vision_model = merged_extra.get("vision_model", resolved_env.get("OPENAI_IMAGE_DESCRIPTION_MODEL") or request.model)
+            vision_url = merged_extra.get("vision_base_url", resolved_env.get("OPENAI_IMAGE_DESCRIPTION_BASE_URL") or resolved_env.get("OPENAI_BASE_URL", ""))
+        if not isinstance(vision_model, str) or not vision_model.strip():
+            raise ValueError("vision_model must be a non-empty model name")
+        if not isinstance(vision_url, str) or ("vision_base_url" in merged_extra and not vision_url.strip()):
+            raise ValueError("vision_base_url must be a non-empty string when explicitly supplied")
+        merged_extra["vision_model"] = vision_model.strip()
+        # Snapshot ambient routing without copying URL credentials into result metadata.
+        merged_extra["vision_endpoint_sha256"] = hashlib.sha256(vision_url.strip().rstrip("/").encode()).hexdigest()
+        merged_extra["vision_input_contract"] = "native-image-v1"
+
     return RunRequest(
         benchmarks=request.benchmarks,
         agent=request.agent,
@@ -3054,7 +3081,7 @@ def run_benchmarks(
 
     for benchmark_id in selected_ids:
         adapter = discovery.adapters[benchmark_id]
-        effective_request = _effective_request(adapter, request)
+        effective_request = _effective_request(adapter, request, environment=base_env)
         signature = _signature_for(
             adapter, effective_request, workspace_root=workspace_root, repo_meta=repo_meta
         )

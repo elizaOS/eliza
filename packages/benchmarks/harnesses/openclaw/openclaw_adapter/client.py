@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .images import extract_benchmark_images, native_image_argv
+
 from ._retry import (
     MAX_ATTEMPTS,
     RetryExhaustedError,
@@ -675,7 +677,7 @@ class OpenClawClient:
         context: Mapping[str, object] | None,
     ) -> MessageResponse:
         """Spawn one isolated embedded OpenClaw turn and parse it."""
-        ctx = context or {}
+        ctx, images = extract_benchmark_images(context or {})
         requested_tool_choice = _coerce_optional_str(
             ctx.get("tool_choice"), fallback="auto"
         )
@@ -704,7 +706,7 @@ class OpenClawClient:
         )
         requested_system_prompt = _requested_native_system_prompt(text, ctx)
         native_system_prompt = _native_system_prompt(text, ctx)
-        native_message = _cli_prompt_text(text, context)
+        native_message = _cli_prompt_text(text, ctx)
         telemetry_prompt = _native_prompt_text(native_system_prompt, native_message)
         benchmark_workspace = _benchmark_workspace_path(ctx)
         benchmark_workspace_git_sha = _workspace_git_sha(benchmark_workspace)
@@ -739,9 +741,15 @@ class OpenClawClient:
             system_prompt=native_system_prompt,
             state_dir=state_dir,
             capture_stop=capture_stop,
+            image_input=bool(images),
         )
         self._active_native_runtime = runtime
-        argv = self.build_argv(text, context)
+        argv = self.build_argv(text, ctx)
+        if images:
+            node = _resolve_compatible_node_bin(self.binary_path) or shutil.which("node")
+            if node is None:
+                raise RuntimeError("OpenClaw native image input requires Node")
+            argv = native_image_argv(self.binary_path, str(node), runtime.state_dir, argv, images)
         env = benchmark_runtime_env(
             paths=runtime,
             gateway_token=gateway_token,
@@ -813,6 +821,7 @@ class OpenClawClient:
                 expected_thinking_level=thinking_level,
                 expected_runtime_version=self._native_runtime_version,
                 expected_runtime_git_sha=self._native_runtime_build,
+                **({"expected_images": images} if images else {}),
             )
         except RuntimeError as exc:
             _write_telemetry(
@@ -900,7 +909,9 @@ class OpenClawClient:
             extra={
                 "agent_runtime": "openclaw",
                 "native_runtime_class": "openclaw.agent.embedded",
-                "native_runtime_api": "openclaw agent --local --json",
+                "native_runtime_api": "agentCommand(images)" if images else "openclaw agent --local --json",
+                "native_image_count": len(images),
+                "native_image_bytes_verified": bool(images),
                 "tool_bridge": "native_plugin",
                 "canonicalizes_full_history": True,
                 "config_sha256": runtime.config_sha256,
