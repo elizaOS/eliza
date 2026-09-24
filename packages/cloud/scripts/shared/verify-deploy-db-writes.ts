@@ -10,19 +10,27 @@
  * jsonb / enum constraints (what typecheck alone can't prove).
  *
  * Tenant-DB DDL + image build are stubbed here (each is verified for real
- * elsewhere: verify-tenant-db-isolation.ts / verify-e2e-deploy.sh). This isolates
+ * elsewhere: verify:tenant-isolation / verify-e2e-deploy.sh). This isolates
  * the DB-write glue. Run via verify-deploy-db-writes.sh (migrates a throwaway
  * store first). Requires DATABASE_URL=pglite://<migrated dir>.
  */
 
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import { dbWrite } from "../../shared/src/db/client";
+import { dbRead, dbWrite } from "../../shared/src/db/client";
 import { containersRepository } from "../../shared/src/db/repositories/containers";
-import { appContainerStore } from "../../shared/src/lib/services/app-container-store";
-import { toNewContainer } from "../../shared/src/lib/services/app-deploy-runner";
+import { toNewContainer } from "../../shared/src/lib/services/app-container-record";
+import { ContainerRepoAppContainerStore } from "../../shared/src/lib/services/app-container-store";
 import { containerJobsWriter } from "../../shared/src/lib/services/container-jobs-writer";
 import { JOB_TYPES } from "../../shared/src/lib/services/provisioning-job-types";
+
+const appContainerStore = new ContainerRepoAppContainerStore({
+  readDatabase: dbRead,
+  writeDatabase: dbWrite,
+  repository: containersRepository,
+  errorFactory: (message, options) => new ElizaError(message, options),
+});
 
 let pass = 0;
 let fail = 0;
@@ -51,6 +59,7 @@ await dbWrite.execute(
 const created = await containersRepository.create(
   toNewContainer({
     appId,
+    deploymentGeneration: randomUUID(),
     organizationId: orgId,
     userId,
     containerName: `app-${rand}`,
@@ -131,7 +140,7 @@ check(
   "markError -> status failed + error stored",
   (await containersRepository.findById(created.id, orgId))?.status === "failed",
 );
-await appContainerStore.markDeleted(created.id);
+await appContainerStore.markDeleted(created.id, orgId);
 check(
   "markDeleted -> status deleted (row no longer counts toward quota)",
   (await containersRepository.findById(created.id, orgId))?.status ===

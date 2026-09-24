@@ -99,10 +99,10 @@
     "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@storybook/react": "^10.6.0",
     "@clack/prompts": "^1.5.1",
-    "@types/bun": "^1.3.5",
+    "@types/bun": "1.3.14",
     "@types/node": "^25.0.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -112,13 +112,13 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   },
   "peerDependencies": {
     "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "peerDependenciesMeta": {
     "@elizaos/ui": {

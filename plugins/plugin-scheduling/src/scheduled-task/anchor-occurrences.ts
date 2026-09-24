@@ -155,6 +155,19 @@ export async function resolveAnchorOccurrences(
   const nowMs = now.getTime();
   const offsetMs = trigger.offsetMinutes * MINUTE_MS;
 
+  if (context.anchors?.get(trigger.anchorKey)?.consumption === "host_claim") {
+    const anchorMs = await registryAnchorMs(trigger, context, nowMs);
+    if (anchorMs === null) return { kind: "unresolved" };
+    const occurrenceMs = anchorMs + offsetMs;
+    if (!isRepresentableMs(occurrenceMs)) return { kind: "out_of_range" };
+    return {
+      kind: "resolved",
+      currentMs: occurrenceMs <= nowMs ? occurrenceMs : null,
+      currentFired: false,
+      nextMs: occurrenceMs > nowMs ? occurrenceMs : null,
+    };
+  }
+
   const anchorForDay = async (dayOffset: number): Promise<number | null> => {
     const probeMs = registryProbeMs(now, timeZone, dayOffset);
     if (probeMs === null) return null;

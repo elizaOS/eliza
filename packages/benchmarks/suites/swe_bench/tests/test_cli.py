@@ -596,7 +596,7 @@ def test_build_repair_prompt_includes_evaluator_feedback() -> None:
     prompt = _build_repair_prompt(_mock_instance(), result.generated_patch, result)
 
     assert "Failed tests from the previous official evaluation:" in prompt
-    assert "test_hello" not in prompt
+    assert "test_hello" in prompt
     assert "assertion failed" in prompt
     assert "Previous patch:" in prompt
 
@@ -762,7 +762,7 @@ async def test_subtask_provider_uses_worktree_diff(
 async def test_elizaos_run_instance_repairs_failed_patch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("SWE_BENCH_REPAIR_ATTEMPTS", raising=False)
+    monkeypatch.setenv("SWE_BENCH_REPAIR_ATTEMPTS", "1")
 
     first_patch = (
         "diff --git a/hello.py b/hello.py\n"
@@ -980,6 +980,7 @@ async def test_eliza_worktree_records_repair_status(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setenv("SWE_BENCH_REPAIR_ATTEMPTS", "1")
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)

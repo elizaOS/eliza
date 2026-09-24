@@ -36,7 +36,7 @@ def parse_native_result(stdout: str, task_id: str) -> dict:
     return row
 
 
-async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWEBenchConfig) -> SWEBenchResult:
+async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWEBenchConfig, *, provider: str | None = None) -> SWEBenchResult:
     from .cli import _build_subtask_prompt
 
     started = time.monotonic()
@@ -60,6 +60,13 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
             "OPENAI_LARGE_MODEL": config.model_name,
             "LOG_LEVEL": "error",
         })
+        if provider == "cerebras":
+            if not env.get("CEREBRAS_API_KEY"):
+                raise ValueError("Cerebras provider requires CEREBRAS_API_KEY")
+            env["OPENAI_API_KEY"] = env["CEREBRAS_API_KEY"]
+            env["OPENAI_BASE_URL"] = env.get("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
+        elif provider not in {None, "openai", "openai-compatible"}:
+            raise ValueError(f"Native coding provider {provider!r} is not configured; use an explicit OpenAI-compatible endpoint")
         task = {
             "id": instance.instance_id,
             "type": "coding",

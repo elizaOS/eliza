@@ -7,6 +7,8 @@ This evaluator wraps that harness for a single instance at a time.
 from __future__ import annotations
 
 import asyncio
+import shutil
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -51,7 +53,9 @@ class SWEBenchEvaluator:
         namespace: str | None = None,
         instance_image_tag: str = "latest",
         env_image_tag: str = "latest",
+        artifacts_dir: str | None = None,
     ):
+        self.artifacts_dir = Path(artifacts_dir).resolve() if artifacts_dir else None
         self.workspace_dir = Path(workspace_dir) if workspace_dir else None
         self.timeout_seconds = timeout_seconds
         self.use_docker = use_docker
@@ -62,6 +66,23 @@ class SWEBenchEvaluator:
         self.instance_image_tag = instance_image_tag
         self.env_image_tag = env_image_tag
         self._docker_available: bool | None = None
+
+    @contextmanager
+    def _evaluation_directory(self):
+        """Retain evaluator evidence without copying temporary Docker credentials."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                yield tmpdir
+            finally:
+                if self.artifacts_dir is not None:
+                    self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+                    destination = Path(tempfile.mkdtemp(prefix="evaluation-", dir=self.artifacts_dir))
+                    for name in ("predictions.jsonl", "stdout.log", "stderr.log", "logs"):
+                        source = Path(tmpdir) / name
+                        if source.is_dir():
+                            shutil.copytree(source, destination / name)
+                        elif source.is_file():
+                            shutil.copy2(source, destination / name)
 
     async def check_docker_available(self) -> bool:
         """Check if Docker is available."""
@@ -339,7 +360,7 @@ class SWEBenchEvaluator:
         # Best-effort speedup: use Epoch's prebuilt images when configured.
         await self._maybe_prepare_epoch_prebuilt_image(official_instance_id)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with self._evaluation_directory() as tmpdir:
             tmp_path = Path(tmpdir)
             predictions_path = tmp_path / "predictions.jsonl"
 
@@ -421,6 +442,8 @@ class SWEBenchEvaluator:
                     ),
                     status="incompatible",
                 )
+            (tmp_path / "stdout.log").write_bytes(_stdout_bytes)
+            (tmp_path / "stderr.log").write_bytes(stderr_bytes)
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
             # Locate the per-instance report file.

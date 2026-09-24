@@ -165,6 +165,10 @@ export interface SupportedVideoModelDefinition {
     voiceControl?: boolean;
   };
   requiresReferenceImage?: boolean;
+  /** Set only when the provider cannot toggle audio generation. */
+  fixedAudio?: boolean;
+  supportsVoiceControl?: boolean;
+  minDurationSeconds?: number;
 }
 
 export interface SupportedMusicModelDefinition {
@@ -330,6 +334,12 @@ export const DEFAULT_IMAGE_MODEL_ID = "google/nano-banana-2/text-to-image";
  */
 export const DEFAULT_VIDEO_MODEL_IDS = [
   "minimax/h3-max/image-to-video",
+  "vidu/q3-turbo/text-to-video",
+] as const;
+
+/** Image-bearing requests retain the image through every fallback. */
+export const DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS = [
+  DEFAULT_VIDEO_MODEL_IDS[0],
   "vidu/image-to-video-2.0",
 ] as const;
 
@@ -368,12 +378,13 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
     label: "MiniMax H3 Max Image-to-Video",
     pageUrl: "https://fal.ai/models/minimax/h3-max/image-to-video",
     pricingParser: "h3_max",
+    fixedAudio: true,
+    supportsVoiceControl: false,
     defaultParameters: {
       durationSeconds: 5,
       resolution: "768P",
       audio: true,
     },
-    requiresReferenceImage: true,
   },
   {
     modelId: "fal-ai/veo3",
@@ -578,6 +589,8 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   },
   {
     modelId: "bytedance/seedance-2.5/text-to-video",
+    minDurationSeconds: 4,
+    supportsVoiceControl: false,
     provider: "fal",
     billingSource: "fal",
     label: "Seedance 2.5 Text to Video",
@@ -591,6 +604,9 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   },
   {
     modelId: "bytedance/seedance-2.5/image-to-video",
+    minDurationSeconds: 4,
+    supportsVoiceControl: false,
+    requiresReferenceImage: true,
     provider: "fal",
     billingSource: "fal",
     label: "Seedance 2.5 Image to Video",

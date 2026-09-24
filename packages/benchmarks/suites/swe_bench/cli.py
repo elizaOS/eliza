@@ -608,7 +608,7 @@ def _repair_attempts_for_provider(provider_label: str | None) -> int:
     """Return the configured number of native patch repair attempts."""
     raw = os.environ.get("SWE_BENCH_REPAIR_ATTEMPTS")
     if raw is None:
-        return 1 if provider_label in {"elizaos", "eliza"} else 0
+        return 0
     try:
         return max(0, int(raw))
     except ValueError:
@@ -1847,6 +1847,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     evaluator = SWEBenchEvaluator(
         workspace_dir=config.workspace_dir,
+        artifacts_dir=str(Path(config.output_dir) / "evaluator"),
         timeout_seconds=config.timeout_seconds,
         use_docker=config.use_docker_eval,
         dataset_name=(
@@ -2004,7 +2005,7 @@ async def _run(args: argparse.Namespace) -> int:
         else:
             if args.execution_mode == "native_direct" and not args.mock and config.baseline is None:
                 from .native import run_native_instance
-                results = [await run_native_instance(instance, evaluator, config) for instance in instances]
+                results = [await run_native_instance(instance, evaluator, config, provider=args.provider) for instance in instances]
             else:
                 results = await _run_instances(
                     client, instances, evaluator, model_name=config.model_name,
@@ -2028,6 +2029,7 @@ async def _run(args: argparse.Namespace) -> int:
         if eliza_server is not None:
             eliza_server.stop()
 
+    payload["evaluator_feedback_repairs"] = _repair_attempts_for_provider(None)
     payload["mock"] = bool(args.mock)
     payload["smoke"] = not config.use_docker_eval
     payload["execution"] = {
@@ -2101,7 +2103,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Seed string for the random baseline (default: swe-bench-baseline)",
     )
     p.add_argument(
-        "--orchestrated", action="store_true", help="Emit orchestrated result shape"
+        "--orchestrated", action="store_true", help="Legacy provider matrix; does not prove TASKS/ACP orchestration"
     )
     p.add_argument(
         "--execution-mode",

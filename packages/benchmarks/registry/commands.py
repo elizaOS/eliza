@@ -789,6 +789,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         variant = extra.get("variant")
         if isinstance(variant, str) and variant in ("lite", "verified", "full"):
             args.extend(["--variant", variant])
+        execution_mode = extra.get("execution_mode")
+        if execution_mode == "native_direct":
+            if agent not in {"", "eliza"}:
+                raise ValueError("native_direct executes Eliza coding tools only")
+            args.extend(["--execution-mode", "native_direct"])
         no_docker = extra.get("no_docker")
         if no_docker is True:
             args.append("--no-docker")
@@ -2543,14 +2548,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         BenchmarkDefinition(
             id="swe_bench_orchestrated",
             display_name="SWE-bench (Orchestrated)",
-            description="SWE-bench with orchestrated/direct-shell provider matrix",
+            description="Legacy SWE-bench provider matrix; orchestration publication disabled",
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
                 notes=(
-                    "Runs SWE-bench via orchestrator service or direct_shell provider path. "
-                    "Supports capability contracts and full 2x3 control-plane/provider matrix."
+                    "Current execution is Python-managed provider subprocesses or patch generation. "
+                    "Real Eliza TASKS/ACP execution receipts are required for orchestration scores."
                 ),
             ),
             build_command=_swe_orchestrated_cmd,

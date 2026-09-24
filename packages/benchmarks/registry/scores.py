@@ -557,7 +557,7 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench:root")
     results = root.get("results")
-    if root.get("mock") is True or root.get("smoke") is True or root.get("baseline") or (
+    if root.get("mock") is True or root.get("smoke") is True or root.get("baseline") or root.get("evaluator_feedback_repairs") or (
         isinstance(root.get("dataset_provenance"), dict) and root["dataset_provenance"].get("dataset") == "synthetic"
     ) or (
         isinstance(results, list)

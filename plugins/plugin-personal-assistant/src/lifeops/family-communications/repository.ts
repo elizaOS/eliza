@@ -927,7 +927,7 @@ export class FamilyCommunicationsRepository {
              input.inReplyToProviderMessageId === null
                ? "NULL"
                : sqlQuote(input.inReplyToProviderMessageId)
-},
+           },
            ${sqlQuote(contentSha256)},
            ${sqlQuote(createdAt)}
          )
