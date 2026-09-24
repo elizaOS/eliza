@@ -7,7 +7,7 @@ Capacitor plugin for geolocation within elizaOS apps. Provides current position,
 - **Get current position** — one-shot GPS/network fix with configurable accuracy and timeout
 - **Watch position** — continuous location stream with distance and interval throttling
 - **Permission management** — check and request OS location permissions
-- **Cross-platform** — identical TypeScript API on web (Geolocation API), iOS (CoreLocation), and Android (FusedLocationProviderClient)
+- **Cross-platform** — identical TypeScript API on web (Geolocation API), iOS (CoreLocation), and Android (framework LocationManager)
 
 ## Installation
 
@@ -114,8 +114,9 @@ Add to `AndroidManifest.xml`:
 ```
 
 Android support is foreground-only and does not request or report background
-location. Requires Google Play Services
-(`com.google.android.gms:play-services-location`).
+location. Uses Android framework providers without requiring Google Play Services,
+including on AOSP/Cuttlefish. Disabled or unavailable providers and fix timeouts
+are reported explicitly.
 
 ## Building
 

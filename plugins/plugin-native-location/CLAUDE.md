@@ -9,7 +9,7 @@ This is **not** an elizaOS `Plugin` object (no actions/providers/evaluators). It
 Platform support (from `package.json#elizaos.platformDetails`):
 - **browser / Electrobun desktop** — `LocationWeb` class wraps `navigator.geolocation`
 - **iOS** — Swift `ElizaLocationPlugin` using `CoreLocation / CLLocationManager`
-- **Android** — Kotlin `LocationPlugin` using Google Play Services `FusedLocationProviderClient`
+- **Android** — Kotlin `LocationPlugin` using Android framework `LocationManager`
 
 ## Plugin surface
 
@@ -41,7 +41,7 @@ plugins/plugin-native-location/
     LocationPlugin.swift — CLLocationManager bridge (getCurrentPosition, watchPosition,
                            clearWatch, checkPermissions, requestPermissions)
   android/src/main/java/ai/eliza/plugins/location/
-    LocationPlugin.kt  — FusedLocationProviderClient bridge (same API surface as Swift)
+    LocationPlugin.kt  — LocationManager bridge (same API surface as Swift)
   ElizaosCapacitorLocation.podspec — CocoaPods spec for iOS integration
   rollup.config.mjs    — Bundles ESM → IIFE (dist/plugin.js) + CJS (dist/plugin.cjs.js)
   tsconfig.json        — TS config (targets dist/esm/)
@@ -101,14 +101,15 @@ Native platform permissions are requested at runtime via `requestPermissions()` 
 
 ## Conventions / gotchas
 
-- **Instrumented test (issue #9967).** The fused current-location fetch (accuracy→Priority map, `CurrentLocationRequest` build, `getCurrentLocation`/`requestLocationUpdates`) lives in `LocationFixReader`; `LocationPlugin` delegates to it (JS shape unchanged) so an on-device `androidTest` can drive the real Play Services provider without a `Bridge`/`Activity`. The fix test `Assume`-skips when no GPS/network fix is obtainable (e.g. a headless emulator whose GNSS HAL emits nothing for `geo fix`).
+- Android uses framework GPS/network/fused/passive providers and requires no Google Play Services. One-shot requests own a timeout; watches and pending requests are cancelled on plugin teardown. Cached ages use the monotonic clock.
+- Instrumentation uses a real LocationManager test provider on a disposable emulator and requires actual fix delivery, cached read-back, watch cancellation and timeout settlement. Enable emulator location before running `:elizaos-capacitor-location:connectedDebugAndroidTest`; core assertions do not skip when a fix is missing.
+
 - **Capacitor bridge, not elizaOS Plugin object.** Do not look for `actions`, `providers`, or `services` — this package does not export any. It integrates with Capacitor, not the elizaOS agent runtime directly.
 - **`@capacitor/core` is a peer dep.** The Capacitor version in the host app must be `^8.3.1`. Do not bundle it.
 - **Web permission flow is implicit.** `requestPermissions()` on web calls `getCurrentPosition` internally to trigger the browser permission prompt — there is no direct Permissions API call for geolocation.
 - **Background status is iOS-only.** Android exposes foreground coarse/fine permission and accuracy only; it intentionally omits the `background` field and never requests `ACCESS_BACKGROUND_LOCATION`.
 - **iOS accuracy mapping.** `"high"` maps to `kCLLocationAccuracyNearestTenMeters` (not `kCLLocationAccuracyBest`). Only `"best"` gives `kCLLocationAccuracyBest`.
 - **Watch IDs are not integers.** Android and iOS both use UUID strings; web uses a prefixed timestamp string. Always treat watchId as an opaque string.
-- **Instrumented test (issue #9967).** Android fused-fix, permission/provider reads, and result shaping live in `LocationFixReader`, so they can be exercised on a real device/emulator via `./gradlew :elizaos-capacitor-location:connectedDebugAndroidTest` without a Capacitor `Bridge`/WebView. `LocationPlugin` delegates to the reader where it preserves the unchanged JS shape; the foreground permission field still comes from Capacitor `getPermissionState("location")` so the `"prompt"` state survives.
 - `LocationFixReader.readForegroundPermissionStatus(activity)` is an Activity-aware tri-state (`granted | denied | prompt`) read used only by the instrumented test + showcase Activity (which have an `Activity`); a never-asked permission reports `"prompt"` (via `shouldShowRequestPermissionRationale`, mirroring iOS `.notDetermined`), never `"denied"`. Production still sources the JS `location` field from Capacitor's `getPermissionState`.
 - **Build requires native toolchains.** TypeScript builds with `bun run build`; native iOS/Android code is compiled by Xcode / Gradle during host app builds, not here.
 - **`docgen` regenerates README.md.** If you run `bun run build:docs` or `bun run docgen`, README.md is overwritten from JSDoc in `definitions.ts`. Keep JSDoc accurate.
