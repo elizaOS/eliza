@@ -1,7 +1,11 @@
 /** Exercises Android instrumentation completion and native module wiring without replacing device behavior. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inventory, parseInstrumentation } from "./android-native-plugins.mjs";
+import {
+  inventory,
+  parseInstrumentation,
+  parseNativeArtifacts,
+} from "./android-native-plugins.mjs";
 
 function result(code = 0, name = "roundTrip") {
   return `INSTRUMENTATION_STATUS: class=example.BridgeTest\nINSTRUMENTATION_STATUS: test=${name}\nINSTRUMENTATION_STATUS_CODE: ${code}\n`;
@@ -57,4 +61,43 @@ test("discovers all Android modules and exposes missing device coverage", () => 
       `${plugin.directory} needs device tests`,
     );
   }
+});
+
+test("exports complete device artifact bytes without counting status bundles as tests", () => {
+  const bytes = Buffer.from([0, 1, 2, 128, 255]);
+  const output = `INSTRUMENTATION_STATUS: nativeArtifactName=screen.png\nINSTRUMENTATION_STATUS: nativeArtifactBase64=${bytes.toString("base64")}\nINSTRUMENTATION_STATUS_CODE: 2\n`;
+  assert.deepEqual(parseNativeArtifacts(output), [
+    { name: "screen.png", bytes },
+  ]);
+  assert.equal(
+    parseInstrumentation(output + result() + completed, 1).pass,
+    true,
+  );
+});
+
+test("rejects unsafe, duplicate, corrupt and incomplete native artifacts", () => {
+  const status = (name, data = "AQI=") =>
+    `INSTRUMENTATION_STATUS: nativeArtifactName=${name}\nINSTRUMENTATION_STATUS: nativeArtifactBase64=${data}\nINSTRUMENTATION_STATUS_CODE: 2\n`;
+  for (const name of [
+    "../screen.png",
+    "/screen.png",
+    "nested/screen.png",
+    "screen.exe",
+  ])
+    assert.throws(() => parseNativeArtifacts(status(name)));
+  assert.throws(() => parseNativeArtifacts(status("screen.png", "corrupt!")));
+  assert.throws(() =>
+    parseNativeArtifacts(
+      "INSTRUMENTATION_STATUS: nativeArtifactName=first.png\n" +
+        status("screen.png"),
+    ),
+  );
+  assert.throws(() =>
+    parseNativeArtifacts(status("screen.png") + status("screen.png")),
+  );
+  assert.throws(() =>
+    parseNativeArtifacts(
+      "INSTRUMENTATION_STATUS: nativeArtifactName=screen.png\n",
+    ),
+  );
 });

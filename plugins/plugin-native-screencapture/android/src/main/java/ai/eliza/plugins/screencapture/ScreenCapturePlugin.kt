@@ -58,6 +58,8 @@ class ScreenCapturePlugin : Plugin() {
     private var virtualDisplay: VirtualDisplay? = null
     private var mediaRecorder: MediaRecorder? = null
     private var imageReader: ImageReader? = null
+    private var latestScreenshot: Image? = null
+    private var screenshotCall: PluginCall? = null
     // Dimensions of the warm screenshot VirtualDisplay, so repeated captures at
     // the same scale reuse it instead of re-creating it each frame.
     private var screenshotVdWidth = 0
@@ -179,33 +181,39 @@ class ScreenCapturePlugin : Plugin() {
 
     @PluginMethod
     fun startRecording(call: PluginCall) {
-        if (isRecording) {
-            call.reject("Recording already in progress")
-            return
-        }
+        scope.launch {
+            if (isRecording) {
+                call.reject("Recording already in progress")
+                return@launch
+            }
 
-        // Parse recording options
-        val config = parseRecordingConfig(call)
-        pendingRecordingOptions = config
+            // A recording gets its own consent session. Release the warm screenshot
+            // mirror first so its delayed stop callback cannot tear down the recorder.
+            releaseProjection()
 
-        // Check mic permission if microphone capture requested
-        if (config.captureMicrophone &&
-            getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED
-        ) {
+            // Parse recording options
+            val config = parseRecordingConfig(call)
+            pendingRecordingOptions = config
+
+            // Check mic permission if microphone capture requested
+            if (config.captureMicrophone &&
+                getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED
+            ) {
+                pendingCall = call
+                pendingAction = "recording"
+                requestPermissionForAlias("microphone", call, "handleMicPermissionResult")
+                return@launch
+            }
+
             pendingCall = call
             pendingAction = "recording"
-            requestPermissionForAlias("microphone", call, "handleMicPermissionResult")
-            return
-        }
 
-        pendingCall = call
-        pendingAction = "recording"
-
-        val intent = mediaProjectionManager?.createScreenCaptureIntent()
-        if (intent != null) {
-            startActivityForResult(call, intent, "handleProjectionResult")
-        } else {
-            call.reject("Screen capture not available")
+            val intent = mediaProjectionManager?.createScreenCaptureIntent()
+            if (intent != null) {
+                startActivityForResult(call, intent, "handleProjectionResult")
+            } else {
+                call.reject("Screen capture not available")
+            }
         }
     }
 
@@ -383,9 +391,11 @@ class ScreenCapturePlugin : Plugin() {
                 return@postDelayed
             }
 
-            // Register stop callback for cleanup
-            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+            // Only this projection's callback may clean up its resources.
+            val grantedProjection = mediaProjection
+            grantedProjection?.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
+                    if (mediaProjection !== grantedProjection) return
                     Log.d(TAG, "MediaProjection stopped by system")
                     if (isRecording) {
                         scope.launch { stopRecordingInternal() }
@@ -395,8 +405,12 @@ class ScreenCapturePlugin : Plugin() {
                     // of using a dead projection.
                     virtualDisplay?.release()
                     virtualDisplay = null
+                    latestScreenshot?.close()
+                    latestScreenshot = null
                     imageReader?.close()
                     imageReader = null
+                    screenshotCall?.reject("Screen capture session ended", "CAPTURE_CANCELLED")
+                    screenshotCall = null
                     screenshotVdWidth = 0
                     screenshotVdHeight = 0
                     mediaProjection = null
@@ -424,92 +438,119 @@ class ScreenCapturePlugin : Plugin() {
     // ── Screenshot capture ──────────────────────────────────────────────
 
     private fun captureScreenshotInternal(call: PluginCall) {
-        val format = call.getString("format") ?: "png"
-        val quality = call.getInt("quality") ?: 100
-        val scale = call.getFloat("scale") ?: 1f
-
-        val width = Math.max(1, (screenWidth * scale).toInt())
-        val height = Math.max(1, (screenHeight * scale).toInt())
-
-        // Reuse the warm VirtualDisplay + ImageReader when the requested size
-        // matches; only (re)create them when missing or the scale changed. The
-        // resize itself is native — the VirtualDisplay renders directly at the
-        // target resolution, so the agent never resizes pixels in JS.
-        val warm = virtualDisplay != null &&
-            imageReader != null &&
-            screenshotVdWidth == width &&
-            screenshotVdHeight == height
-        if (!warm) {
-            virtualDisplay?.release()
-            imageReader?.close()
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-            virtualDisplay = mediaProjection?.createVirtualDisplay(
-                "ScreenCapture",
-                width,
-                height,
-                screenDensity,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader?.surface,
-                null,
-                null
-            )
-            screenshotVdWidth = width
-            screenshotVdHeight = height
-        }
-
-        // A freshly-created mirror needs ~250ms to render its first frame; a warm
-        // display is already mirroring continuously, so a short settle suffices.
-        val settleMs = if (warm) 60L else 250L
-        Handler(Looper.getMainLooper()).postDelayed({
-            try {
-                val image = imageReader?.acquireLatestImage()
-
-                if (image != null) {
-                    val bitmap = imageToBitmap(image, width, height)
-                    image.close()
-
-                    val outputStream = ByteArrayOutputStream()
-                    val compressFormat = when (format) {
-                        "jpeg" -> Bitmap.CompressFormat.JPEG
-                        "webp" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            Bitmap.CompressFormat.WEBP_LOSSY
-                        } else {
-                            @Suppress("DEPRECATION")
-                            Bitmap.CompressFormat.WEBP
-                        }
-                        else -> Bitmap.CompressFormat.PNG
-                    }
-
-                    bitmap.compress(compressFormat, quality, outputStream)
-                    bitmap.recycle()
-
-                    val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
-
-                    // Keep the projection + VirtualDisplay warm for the next
-                    // capture — do NOT cleanup() here (that stopped the
-                    // projection and forced a re-consent every frame).
-
-                    call.resolve(JSObject().apply {
-                        put("base64", base64)
-                        put("format", format)
-                        put("width", width)
-                        put("height", height)
-                        put("timestamp", System.currentTimeMillis())
-                    })
-                } else {
-                    // Transient empty frame — keep the session warm, just fail
-                    // this one capture so the caller can retry on the next tick.
-                    call.reject("Failed to capture screenshot")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Screenshot capture failed", e)
-                // A real error may have invalidated the projection — tear it all
-                // down so the next capture re-acquires cleanly.
-                releaseProjection()
-                notifyError("screenshot_failed", "Screenshot failed: ${e.message}")
-                call.reject("Screenshot failed: ${e.message}")
+        activity.runOnUiThread {
+            if (screenshotCall != null || isRecording) {
+                call.reject("Screen capture is busy", "CAPTURE_BUSY")
+                return@runOnUiThread
             }
-        }, settleMs)
+            val format = call.getString("format") ?: "png"
+            val quality = call.getInt("quality") ?: 100
+            val scale = call.getDouble("scale") ?: 1.0
+            if (format !in listOf("png", "jpeg", "webp") || quality !in 0..100 ||
+                !scale.isFinite() || scale <= 0 ||
+                screenWidth * scale > Int.MAX_VALUE || screenHeight * scale > Int.MAX_VALUE) {
+                call.reject("Invalid screenshot format, quality, or scale", "INVALID_INPUT")
+                return@runOnUiThread
+            }
+            val width = maxOf(1, (screenWidth * scale).toInt())
+            val height = maxOf(1, (screenHeight * scale).toInt())
+            screenshotCall = call
+            val handler = Handler(Looper.getMainLooper())
+            try {
+                if (imageReader == null || screenshotVdWidth != width || screenshotVdHeight != height) {
+                    val previousReader = imageReader
+                    val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
+                    imageReader = reader
+                    latestScreenshot?.close()
+                    latestScreenshot = null
+                    reader.setOnImageAvailableListener({ source ->
+                        if (imageReader !== source) return@setOnImageAvailableListener
+                        try {
+                            source.acquireLatestImage()?.let { image ->
+                                latestScreenshot?.close()
+                                latestScreenshot = image
+                            }
+                        } catch (error: Exception) {
+                            // error-policy:J1 Settle the pending bridge call on frame failure.
+                            Log.e(TAG, "Screenshot frame failed", error)
+                            releaseProjection()
+                        }
+                    }, handler)
+                    try {
+                        if (virtualDisplay == null) {
+                            virtualDisplay = checkNotNull(mediaProjection).createVirtualDisplay(
+                                "ScreenCapture", width, height, screenDensity,
+                                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                                reader.surface, null, null
+                            )
+                        } else {
+                            // Android 14+ permits one virtual display per consent token.
+                            // Resize and retarget that display instead of creating another.
+                            virtualDisplay?.resize(width, height, screenDensity)
+                            virtualDisplay?.surface = reader.surface
+                        }
+                    } finally {
+                        previousReader?.close()
+                    }
+                    screenshotVdWidth = width
+                    screenshotVdHeight = height
+                }
+            } catch (error: Exception) {
+                // error-policy:J1 Projection/setup failures must reject, never escape the bridge.
+                Log.e(TAG, "Screenshot setup failed", error)
+                releaseProjection()
+                return@runOnUiThread
+            }
+
+            val deadline = android.os.SystemClock.elapsedRealtime() + 2500
+            val capture = object : Runnable {
+                override fun run() {
+                    if (screenshotCall !== call) return
+                    val frame = latestScreenshot
+                    if (frame == null) {
+                        if (android.os.SystemClock.elapsedRealtime() < deadline) {
+                            handler.postDelayed(this, 20)
+                        } else {
+                            screenshotCall = null
+                            call.reject("No screen frame arrived", "CAPTURE_TIMEOUT")
+                        }
+                        return
+                    }
+                    try {
+                        val output = ByteArrayOutputStream()
+                        val compression = when (format) {
+                            "jpeg" -> Bitmap.CompressFormat.JPEG
+                            "webp" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY else {
+                                @Suppress("DEPRECATION")
+                                Bitmap.CompressFormat.WEBP
+                            }
+                            else -> Bitmap.CompressFormat.PNG
+                        }
+                        val bitmap = imageToBitmap(frame, width, height)
+                        try {
+                            check(bitmap.compress(compression, quality, output)) { "Image encoding failed" }
+                        } finally {
+                            bitmap.recycle()
+                        }
+                        screenshotCall = null
+                        call.resolve(JSObject().apply {
+                            put("base64", Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP))
+                            put("format", format)
+                            put("width", width)
+                            put("height", height)
+                            put("timestamp", System.currentTimeMillis())
+                        })
+                    } catch (error: Exception) {
+                        // error-policy:J1 Encoding failure releases the session and rejects its call.
+                        Log.e(TAG, "Screenshot encoding failed", error)
+                        releaseProjection()
+                    }
+                }
+            }
+            // An unchanged display may emit no new buffer. Retain the last actual
+            // frame, updating it on image availability, rather than consuming it once.
+            handler.postDelayed(capture, 60)
+        }
     }
 
     /**
@@ -520,8 +561,12 @@ class ScreenCapturePlugin : Plugin() {
     private fun releaseProjection() {
         virtualDisplay?.release()
         virtualDisplay = null
+        latestScreenshot?.close()
+        latestScreenshot = null
         imageReader?.close()
         imageReader = null
+        screenshotCall?.reject("Screen capture session ended", "CAPTURE_CANCELLED")
+        screenshotCall = null
         screenshotVdWidth = 0
         screenshotVdHeight = 0
         mediaProjection?.stop()
@@ -531,7 +576,7 @@ class ScreenCapturePlugin : Plugin() {
 
     private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
         val planes = image.planes
-        val buffer = planes[0].buffer
+        val buffer = planes[0].buffer.apply { rewind() }
         val pixelStride = planes[0].pixelStride
         val rowStride = planes[0].rowStride
         val rowPadding = rowStride - pixelStride * width
@@ -794,8 +839,12 @@ class ScreenCapturePlugin : Plugin() {
     private fun cleanup() {
         virtualDisplay?.release()
         virtualDisplay = null
+        latestScreenshot?.close()
+        latestScreenshot = null
         imageReader?.close()
         imageReader = null
+        screenshotCall?.reject("Screen capture session ended", "CAPTURE_CANCELLED")
+        screenshotCall = null
         screenshotVdWidth = 0
         screenshotVdHeight = 0
         mediaProjection?.stop()

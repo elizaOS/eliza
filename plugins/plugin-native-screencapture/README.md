@@ -118,3 +118,7 @@ bun run --cwd plugins/plugin-native-screencapture build
 ```
 
 This runs `tsc` then `rollup` and outputs `dist/esm/`, `dist/plugin.js` (IIFE), and `dist/plugin.cjs.js`.
+
+## Android verification
+
+Run `node packages/app/scripts/android-native-plugins.mjs --plugin plugin-native-screencapture --serial <emulator>` from the repository root. Device tests grant the real system MediaProjection consent, decode screenshot pixels, repeat and resize captures, and verify content updates. Recording tests decode the produced MP4 and check pause/resume timing. The runner saves PNG and MP4 artifacts with checksums beside its report in `test-results/android-native-plugins/`.
