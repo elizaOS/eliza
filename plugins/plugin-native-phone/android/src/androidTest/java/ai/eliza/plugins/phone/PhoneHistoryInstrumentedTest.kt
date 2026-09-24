@@ -88,8 +88,26 @@ class PhoneHistoryInstrumentedTest {
             assertEquals(old, all.getJSONObject(2).getString("id"))
             assertEquals(17, all.getJSONObject(0).getInt("durationSeconds"))
             val wireEntry = JSONObject(all.getJSONObject(0).toString())
-            for (field in listOf("cachedName", "phoneAccountId", "geocodedLocation", "transcription",
-                "voicemailUri", "agentTranscript", "agentSummary", "agentTranscriptUpdatedAt")) {
+            // CallLog may normalize inserted nulls (notably geocoded location) to
+            // empty strings. Preserve the actual provider value at the bridge.
+            val columns = linkedMapOf(
+                "cachedName" to CallLog.Calls.CACHED_NAME,
+                "phoneAccountId" to CallLog.Calls.PHONE_ACCOUNT_ID,
+                "geocodedLocation" to CallLog.Calls.GEOCODED_LOCATION,
+                "transcription" to CallLog.Calls.TRANSCRIPTION,
+                "voicemailUri" to CallLog.Calls.VOICEMAIL_URI,
+            )
+            requireNotNull(context.contentResolver.query(CallLog.Calls.CONTENT_URI,
+                columns.values.toTypedArray(), "${CallLog.Calls._ID} = ?",
+                arrayOf(wireEntry.getString("id")), null)).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                for ((field, column) in columns) {
+                    val index = cursor.getColumnIndexOrThrow(column)
+                    val expected = if (cursor.isNull(index)) JSONObject.NULL else cursor.getString(index)
+                    assertEquals("Provider data must cross the bridge unchanged: $field", expected, wireEntry.get(field))
+                }
+            }
+            for (field in listOf("agentTranscript", "agentSummary", "agentTranscriptUpdatedAt")) {
                 assertEquals("Absent data must cross the bridge as explicit null: $field", JSONObject.NULL, wireEntry.get(field))
             }
             assertEquals(1, read(JSObject().put("limit", 1)).length())
