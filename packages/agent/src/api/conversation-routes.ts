@@ -2442,6 +2442,9 @@ function buildGenerationMessageIdOutcome(
     agentName: result.agentName,
     ...(messageId ? { messageId } : {}),
     ...terminal,
+    // The streamed text does not carry display-only acknowledgment metadata.
+    // Reuse the canonical history refresh after its durable reply is saved.
+    ...(result.planningAcknowledgment ? { historyRefreshRequired: true } : {}),
     ...(result.transcriptVisibility
       ? { transcriptVisibility: result.transcriptVisibility }
       : {}),
