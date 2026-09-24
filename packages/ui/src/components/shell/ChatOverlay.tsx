@@ -833,7 +833,6 @@ function ComposerRealtimeVoiceActivity({
   microphoneMuted,
   reduceMotion,
   status,
-  transcript,
 }: {
   connecting: boolean;
   error: string | null;
@@ -843,7 +842,6 @@ function ComposerRealtimeVoiceActivity({
   microphoneMuted: boolean;
   reduceMotion: boolean;
   status: RealtimeVoiceStatus;
-  transcript: string;
 }): React.JSX.Element {
   const phaseLabel = error
     ? error
@@ -855,14 +853,6 @@ function ComposerRealtimeVoiceActivity({
             (status === "listening" || status === "transcribing")
           ? "Microphone muted"
           : REALTIME_COMPOSER_LABEL[status];
-  const liveTranscript =
-    !error &&
-    !paused &&
-    !connecting &&
-    !microphoneMuted &&
-    (status === "listening" || status === "transcribing")
-      ? transcript.trim()
-      : "";
   const visualPhase: RealtimeVoiceVisualPhase = error
     ? "error"
     : paused ||
@@ -875,29 +865,15 @@ function ComposerRealtimeVoiceActivity({
   const shimmerPhase =
     !error &&
     !paused &&
-    !liveTranscript &&
     (connecting ||
       status === "transcribing" ||
       status === "thinking" ||
       status === "speaking");
-  const visibleCopy = liveTranscript || phaseLabel;
-  const copyRef = React.useRef<HTMLSpanElement>(null);
-
-  // Live partials grow from the end, so keep the newest words in view without
-  // letting a long utterance resize the composer or cover its controls.
-  React.useLayoutEffect(() => {
-    const copy = copyRef.current;
-    if (!copy) return;
-    copy.scrollTop = liveTranscript ? copy.scrollHeight : 0;
-  }, [liveTranscript]);
-
   return (
     <div
       role="status"
       aria-live="polite"
-      aria-label={
-        liveTranscript ? `${phaseLabel}: ${liveTranscript}` : phaseLabel
-      }
+      aria-label={phaseLabel}
       data-status={status}
       data-testid="chat-composer-realtime-voice"
       className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-1.5"
@@ -908,21 +884,16 @@ function ComposerRealtimeVoiceActivity({
       />
       <div className="flex h-10 min-w-0 flex-1 items-center overflow-hidden">
         <span
-          ref={copyRef}
           data-testid="chat-composer-realtime-copy"
           className={cn(
             "block max-h-10 w-full min-w-0 overflow-hidden whitespace-pre-wrap text-start text-sm leading-5 [overflow-wrap:anywhere]",
-            error
-              ? "text-danger"
-              : liveTranscript
-                ? "text-txt"
-                : "text-white/75",
+            error ? "text-danger" : "text-white/75",
             shimmerPhase &&
               "shimmer shimmer-duration-1200 motion-reduce:shimmer-none",
           )}
-          title={visibleCopy}
+          title={phaseLabel}
         >
-          {visibleCopy}
+          {phaseLabel}
         </span>
       </div>
       {needsAudioUnlock ? (
@@ -2250,6 +2221,35 @@ export function ChatOverlay({
     return () => observer.disconnect();
   }, [activeConversationId, threadPresented]);
   const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
+  const liveVoiceTranscript =
+    realtimeVoiceComposerVisible &&
+    !realtimeVoice?.paused &&
+    !realtimeVoice?.microphoneMuted &&
+    (realtimeVoice?.status === "listening" ||
+      realtimeVoice?.status === "transcribing")
+      ? transcript.trim()
+      : "";
+  const previousVoiceTranscriptRef = React.useRef("");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: message and acknowledgment changes are explicit bottom-follow events.
+  React.useLayoutEffect(() => {
+    const startedSpeaking =
+      liveVoiceTranscript.length > 0 && !previousVoiceTranscriptRef.current;
+    previousVoiceTranscriptRef.current = liveVoiceTranscript;
+    if (firstRunOpen || !realtimeVoiceComposerVisible) return;
+    // Starting a spoken turn follows the same explicit-send policy as text.
+    // Later growth follows only while the reader remains at the bottom.
+    if (startedSpeaking || threadPinnedToEndRef.current) {
+      setScrollToEndRequest((request) => request + 1);
+    }
+  }, [
+    firstRunOpen,
+    realtimeVoiceComposerVisible,
+    liveVoiceTranscript,
+    lastId,
+    lastContent,
+    realtimeVoice?.progressText,
+  ]);
+
   // Focus the thread for keyboard scrolling when an opener requested it.
   // Deliberately NO dependency array: many requesters (drag settles, flick
   // landings, maximize) fire while the sheet is ALREADY open, so a
@@ -2513,6 +2513,12 @@ export function ChatOverlay({
         !m.attachments?.length &&
         !m.failureKind &&
         !m.secretRequest;
+      if (
+        isInFlight &&
+        realtimeVoice?.progressText &&
+        !m.planningAcknowledgment
+      )
+        return null;
       // Only the last assistant turn reads volatile status; every settled row
       // gets no renderContext so its memo identity is unchanged.
       const renderContext: ChatMessageRenderContext | undefined =
@@ -2528,12 +2534,19 @@ export function ChatOverlay({
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
           {m.role === "assistant" && m.planningAcknowledgment ? (
-            <p
-              className="px-2 pt-2 text-sm text-muted"
-              data-testid="chat-acknowledgment"
-            >
-              {m.planningAcknowledgment}
-            </p>
+            <div data-testid="chat-acknowledgment">
+              <ChatMessage
+                appearance="glass"
+                agentName={agentName}
+                message={shellToChatMessageData({
+                  id: `${m.id}:acknowledgment`,
+                  role: "assistant",
+                  content: m.planningAcknowledgment,
+                  createdAt: m.createdAt,
+                })}
+                reduceMotion={reduce}
+              />
+            </div>
           ) : null}
           <ChatMessage
             actionAccessory={
@@ -2566,6 +2579,7 @@ export function ChatOverlay({
     [
       visibleMessages.length,
       speakingSourceMessageId,
+      realtimeVoice?.progressText,
       firstRunOpen,
       agentName,
       reduce,
@@ -6345,14 +6359,41 @@ export function ChatOverlay({
                               {visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
-                              {controller.realtimeVoice?.progressText &&
+                              {liveVoiceTranscript ? (
+                                <MessageScrollerItem messageId="live-voice-user">
+                                  <div data-testid="chat-live-voice-transcript">
+                                    <ChatMessage
+                                      appearance="glass"
+                                      message={shellToChatMessageData({
+                                        id: "live-voice-user",
+                                        role: "user",
+                                        content: liveVoiceTranscript,
+                                        createdAt: 0,
+                                      })}
+                                      reduceMotion={reduce}
+                                    />
+                                  </div>
+                                </MessageScrollerItem>
+                              ) : null}
+                              {realtimeVoice?.progressText &&
                               responding &&
-                              turnStatus &&
-                              !(
-                                visibleMessages.at(-1)?.role === "assistant" &&
-                                !lastContent.trim()
-                              ) ? (
-                                <TurnStatus status={turnStatus} />
+                              visibleMessages.at(-1)?.planningAcknowledgment !==
+                                realtimeVoice.progressText ? (
+                                <MessageScrollerItem messageId="live-voice-acknowledgment">
+                                  <div data-testid="chat-live-voice-acknowledgment">
+                                    <ChatMessage
+                                      appearance="glass"
+                                      agentName={agentName}
+                                      message={shellToChatMessageData({
+                                        id: "live-voice-acknowledgment",
+                                        role: "assistant",
+                                        content: realtimeVoice.progressText,
+                                        createdAt: 0,
+                                      })}
+                                      reduceMotion={reduce}
+                                    />
+                                  </div>
+                                </MessageScrollerItem>
                               ) : null}
                             </MessageScrollerContent>
                           </MessageScrollerViewport>
@@ -6683,7 +6724,6 @@ export function ChatOverlay({
                         microphoneMuted={realtimeVoice.microphoneMuted}
                         reduceMotion={reduce}
                         status={realtimeVoice.status}
-                        transcript={transcript}
                       />
                     ) : (
                       <Textarea

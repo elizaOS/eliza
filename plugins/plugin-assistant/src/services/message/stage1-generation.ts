@@ -100,7 +100,8 @@ export function getStage1RoutingRepair(
     parsed?.shouldRespond !== "RESPOND" ||
     (parsed.replyEffectStatus !== "none" &&
       parsed.replyEffectStatus !== "non_applied") ||
-    parsed.requiresTool === true ||
+    (parsed.requiresTool === true &&
+      parsed.replyEffectStatus !== "non_applied") ||
     typeof parsed.replyText !== "string" ||
     parsed.replyText.trim().length === 0 ||
     !Array.isArray(parsed.contexts) ||
@@ -127,11 +128,12 @@ export function getStage1RoutingRepair(
     !Array.isArray(visual) &&
     "disposition" in visual &&
     visual.disposition === "none";
-  if (!simple && !missingRoute) return undefined;
+  if (!simple && !missingRoute && parsed.replyEffectStatus !== "non_applied")
+    return undefined;
   return [
     "response_contract_repair:",
-    "Your previous HANDLE_RESPONSE conflicts: a reply with replyEffectStatus=none or non_applied and no actionable route (simple context, or general context with no action candidate and no navigation) declares a completed conversational answer or a turn-ending preview, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-    'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark pending work pending. For requested navigationOnly, preserve a nonempty destination-is-open confirmation held until delivery succeeds; its future wording does not make the action already applied. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
+    "Your previous HANDLE_RESPONSE conflicts: a non_applied preview ends the turn even when a domain context or action candidate is named; a reply with replyEffectStatus=none and no actionable route also ends it. Nonempty intents instead declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+    'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. Historical errors are past outcomes, not a fresh failed attempt or proof that user details are missing; distinguish missing user information from malformed arguments you generated. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark pending work pending. For requested navigationOnly, preserve a nonempty destination-is-open confirmation held until delivery succeeds; its future wording does not make the action already applied. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
     "previous_model_response:",
     JSON.stringify(parsed),
   ].join("\n");

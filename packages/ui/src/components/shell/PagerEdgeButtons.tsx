@@ -20,11 +20,7 @@ import { Button } from "../ui/button";
  * no blue), positioned on the vertical center of the left/right edges. Each
  * arrow is hidden when there is no page to move to in that direction.
  */
-/**
- * Devices that get the resting `<` `>` affordance. FirstSessionSwipeHint keys
- * off the exact same query (inverted) so the two teaching surfaces are perfect
- * complements — every device gets exactly one of them, never both.
- */
+/** Devices that expose resting previous/next edge controls. */
 export const FINE_POINTER_EDGE_BUTTON_QUERY =
   "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
