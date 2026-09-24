@@ -20,8 +20,6 @@
       "@elizaos/plugin-web-search/edge": [
         "../../../../plugins/plugin-web-search/src/edge.ts"
       ],
-      "drizzle-orm": ["../../../node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"],
       "@/*": ["../../../*"],
       "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
       "@elizaos/plugin-scheduling": [
