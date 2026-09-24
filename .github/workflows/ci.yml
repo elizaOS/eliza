@@ -18,7 +18,6 @@ jobs:
       RUN_TURBO_CONCURRENCY: "1"
       GOMAXPROCS: "1"
       PRODUCT_SHA: ce19b58081a247c1e522537ba09f4c613aeb7927
-      EVIDENCE_DIR: ${{ runner.temp }}/calendar-source-health
       WORKFLOW_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -32,6 +31,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          export EVIDENCE_DIR="$RUNNER_TEMP/calendar-source-health"
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
           mkdir -p "$EVIDENCE_DIR"
           git status --porcelain > "$EVIDENCE_DIR/status-before.txt"
           test ! -s "$EVIDENCE_DIR/status-before.txt"
