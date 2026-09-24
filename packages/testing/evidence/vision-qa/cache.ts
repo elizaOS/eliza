@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { canonicalJson } from "../canonical.ts";
 import { EvidenceError } from "../errors.ts";
+import { SYSTEM_RUBRIC } from "./backends.ts";
 import { askResultSchema } from "./result-schema.ts";
 import type {
   AskResult,
@@ -34,8 +35,17 @@ export function queryHash(
   backend: VisionBackend,
   questions: VisionQuestion[],
   dimensions?: ImageDimensions,
+  endpoint?: string,
 ): string {
-  const canonical = canonicalJson({ model, backend, questions, dimensions });
+  const canonical = canonicalJson({
+    version: 2,
+    rubric: SYSTEM_RUBRIC,
+    model,
+    backend,
+    questions,
+    dimensions,
+    endpoint,
+  });
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
@@ -58,6 +68,7 @@ export function readCache(
   imageSha256: string,
   query: string,
   questions?: VisionQuestion[],
+  endpoint?: string,
 ): AskResult | null {
   const file = cacheFilePath(cacheRoot, imageSha256, query);
   let raw: string;
@@ -95,7 +106,8 @@ export function readCache(
     )
       return null;
     const { model, backend, dimensions } = result.data.provenance;
-    if (queryHash(model, backend, questions, dimensions) !== query) return null;
+    if (queryHash(model, backend, questions, dimensions, endpoint) !== query)
+      return null;
   }
   return result.data;
 }

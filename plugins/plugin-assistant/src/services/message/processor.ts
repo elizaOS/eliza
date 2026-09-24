@@ -39,7 +39,9 @@ import {
   parallelWithShouldRespondPipelineHookContext,
   parseBooleanFromText,
   parseContextRoutingMetadata,
+  persistMessageMemory,
   preShouldRespondPipelineHookContext,
+  replaceStoredMessageContent,
   setContextRoutingMetadata,
   stripAugmentationForPersistence,
   TurnAbortedError,
@@ -233,16 +235,16 @@ export class MessageProcessor {
       const persistableMessage = stripAugmentationForPersistence(message);
 
       if (message.id) {
-        const createdMemoryId = await runtime.createMemory(
+        const createdMemoryId = await persistMessageMemory(
+          runtime,
           persistableMessage,
-          "messages",
         );
         memoryToQueue = { ...persistableMessage, id: createdMemoryId };
         await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
-        const memoryId = await runtime.createMemory(
+        const memoryId = await persistMessageMemory(
+          runtime,
           persistableMessage,
-          "messages",
         );
         message.id = memoryId;
         memoryToQueue = { ...persistableMessage, id: memoryId };
@@ -515,17 +517,18 @@ export class MessageProcessor {
         // instructions. Preserve the canonical persisted text when available.
         const canonicalMessage = await runtime.getMemoryById(message.id);
         const canonicalText = canonicalMessage?.content?.text;
-        await runtime.updateMemory({
-          id: message.id,
-          content: {
-            ...message.content,
-            ...(typeof canonicalText === "string"
-              ? { text: canonicalText }
+        const canonicalTextSource =
+          canonicalMessage?.content?.messageTextSource;
+        await replaceStoredMessageContent(runtime, message.id, {
+          ...message.content,
+          ...(typeof canonicalText === "string"
+            ? { text: canonicalText }
+            : canonicalTextSource
+              ? { text: undefined, messageTextSource: canonicalTextSource }
               : {}),
-            attachments: sanitizeAttachmentsForStorage(
-              message.content.attachments,
-            ),
-          },
+          attachments: sanitizeAttachmentsForStorage(
+            message.content.attachments,
+          ),
         });
       }
     }
@@ -571,10 +574,7 @@ export class MessageProcessor {
         });
       }
       if (message.id) {
-        await runtime.updateMemory({
-          id: message.id,
-          content: message.content,
-        });
+        await replaceStoredMessageContent(runtime, message.id, message.content);
         await runtime.queueEmbeddingGeneration(
           { ...message, id: message.id },
           "normal",
@@ -750,7 +750,7 @@ export class MessageProcessor {
         roomId: message.roomId,
         createdAt: Date.now(),
       };
-      await runtime.createMemory(earlyMemory, "messages");
+      await persistMessageMemory(runtime, earlyMemory);
       await this.emitMessageSent(
         runtime,
         earlyMemory,
@@ -1103,10 +1103,7 @@ export class MessageProcessor {
     ) {
       message.content.text = joinedTranslation;
       if (message.id) {
-        await runtime.updateMemory({
-          id: message.id,
-          content: message.content,
-        });
+        await replaceStoredMessageContent(runtime, message.id, message.content);
         await runtime.queueEmbeddingGeneration(
           { ...message, id: message.id },
           "normal",
@@ -1261,7 +1258,7 @@ export class MessageProcessor {
             "Saving response to memory",
           );
           await timeInferenceSpan("message:delivery:persistence", () =>
-            runtime.createMemory(responseMemory, "messages"),
+            persistMessageMemory(runtime, responseMemory),
           );
           if (responseMemory.id) {
             persistedResponseMessageIds.add(responseMemory.id);
@@ -1370,7 +1367,7 @@ export class MessageProcessor {
                     "Saving response to memory",
                   );
                   await timeInferenceSpan("message:delivery:persistence", () =>
-                    runtime.createMemory(responseMemory, "messages"),
+                    persistMessageMemory(runtime, responseMemory),
                   );
                   if (responseMemory.id) {
                     persistedResponseMessageIds.add(responseMemory.id);
@@ -1515,7 +1512,7 @@ export class MessageProcessor {
         createdAt: Date.now(),
       };
       await timeInferenceSpan("message:delivery:persistence", () =>
-        runtime.createMemory(terminalMemory, "messages"),
+        persistMessageMemory(runtime, terminalMemory),
       );
       await timeInferenceSpan("message:delivery:event", () =>
         this.emitMessageSent(

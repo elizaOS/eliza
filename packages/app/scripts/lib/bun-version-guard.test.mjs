@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { getBunVersionAdvisory } from "./bun-version-guard.mjs";
 
 describe("getBunVersionAdvisory", () => {
-  it.each(["1.3.0", "1.3.14", "1.4.0-canary.1", "2.0.0"])(
+  it.each(["1.3.0", "1.4.2", "1.4.0-canary.1", "2.0.0"])(
     "accepts supported Bun %s without startup noise",
     (version) => {
       expect(getBunVersionAdvisory(version)).toBeNull();
@@ -21,7 +21,7 @@ describe("getBunVersionAdvisory", () => {
       const advisory = getBunVersionAdvisory(version);
 
       expect(advisory).toContain(`Detected Bun ${version}.`);
-      expect(advisory).toContain("repository pin: 1.3.14");
+      expect(advisory).toContain("repository pin: 1.4.2");
       expect(advisory).not.toContain("canary");
     },
   );
@@ -30,6 +30,6 @@ describe("getBunVersionAdvisory", () => {
     const advisory = getBunVersionAdvisory("development-build");
 
     expect(advisory).toContain("Detected Bun development-build.");
-    expect(advisory).toContain("repository pin: 1.3.14");
+    expect(advisory).toContain("repository pin: 1.4.2");
   });
 });

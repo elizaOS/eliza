@@ -96,7 +96,7 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.14" # Electrobun bundle creation is Bun-version-sensitive; keep this aligned with packageManager.
+  BUN_VERSION: "1.4.2" # Electrobun bundle creation is Bun-version-sensitive; keep this aligned with packageManager.
 
 jobs:
   prepare:

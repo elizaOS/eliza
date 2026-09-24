@@ -1,5 +1,3 @@
-/** Assembles message context from ordered dialogue, selected providers, and the authorized action surface. */
-
 import type {
   Action,
   AgentContext,
@@ -42,6 +40,7 @@ import {
   MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
   stage1ResponseStateProviderNames,
 } from "./provider-state.js";
+/** Assembles message context from ordered dialogue, selected providers, and the authorized action surface. */
 
 /** One owner for the current-turn policy; source-reference capability changes
  * only its recall guidance, preserving the same request and effect boundary. */

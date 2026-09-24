@@ -98,6 +98,21 @@
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
+    "./testing/*": {
+      "types": "./dist/testing/*.d.ts",
+      "eliza-source": {
+        "types": "./src/testing/*.ts",
+        "import": "./src/testing/*.ts",
+        "default": "./src/testing/*.ts"
+      },
+      "bun": {
+        "types": "./src/testing/*.ts",
+        "import": "./src/testing/*.ts",
+        "default": "./src/testing/*.ts"
+      },
+      "import": "./dist/testing/*.js",
+      "default": "./dist/testing/*.js"
+    },
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {
@@ -398,16 +413,16 @@
   },
   "devDependencies": {
     "@elizaos/ui": "workspace:*",
-    "@types/bun": "1.3.14",
+    "@types/bun": "1.4.2",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.23.1",
     "@types/pngjs": "^6.0.5",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "ai": "^6.0.134",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.2",
     "fast-check": "^4.10.2",
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",

@@ -57,7 +57,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/dev-platform.mjs",
   "scripts/dev-ui.mjs",
   "scripts/disable-local-eliza-workspace.mjs",
-  "scripts/verify-agent-image.sh",
   "scripts/docker-entrypoint.sh",
   "scripts/ensure-avatars.mjs",
   "scripts/ensure-capacitor-platform.mjs",

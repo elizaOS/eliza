@@ -424,22 +424,9 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
         "framework",
         "../framework",
         registered=False,
-        disposition=CampaignDisposition.UNSUPPORTED,
-        phases=_phase(
-            extra={
-                "mode": "harness",
-                "scenarios": _FRAMEWORK_SCENARIOS,
-                "iterations": 1,
-                "generated_limit": 10000,
-            }
-        ),
-        reason=(
-            "This is an elizaOS runtime-overhead benchmark, not a fair agent-capability "
-            "comparison. Its cross-harness runner ignores warmup, iterations, concurrency, "
-            "provider/history prepopulation, DB-only operations and counts, multi-step "
-            "execution, minimal bootstrap, and shouldRespond semantics, while fabricating "
-            "zero pipeline/resource values and a passing empty-DB score."
-        ),
+        disposition=CampaignDisposition.NON_AGENT,
+        phases=(),
+        reason="Eliza-only runtime overhead with deterministic model responses; the invalid cross-harness response-presence scorer was removed.",
     ),
     _entry("interrupt_bench", "interrupt-bench", registered=False),
     _entry(
@@ -504,7 +491,7 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
     _entry(
         "swe_bench_orchestrated",
         "swe_bench",
-        disposition=CampaignDisposition.MANUAL,
+        disposition=CampaignDisposition.UNSUPPORTED,
         phases=_phase(
             extra={
                 "variant": "full",
@@ -514,7 +501,7 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
                 "expand_scenarios": True,
             }
         ),
-        reason="The orchestrated full matrix requires Docker plus a reachable orchestrator service and capability contract.",
+        reason="The current provider matrix launches child CLIs or generates patches in Python; it does not execute Eliza TASKS/ACP orchestration. Real execution receipts and Docker evaluation are required before publication.",
     ),
     _entry(
         "osworld",
@@ -566,7 +553,7 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
     ),
     _entry(
         "voicebench_quality",
-        "voicebench-quality",
+        "voicebench/quality",
         disposition=CampaignDisposition.MANUAL,
         phases=_phase(
             extra={
@@ -730,9 +717,9 @@ DIRECT_CAMPAIGN_ENTRIES: tuple[DirectCampaignEntry, ...] = (
     ),
     DirectCampaignEntry(
         "lifeops_quality",
-        "lifeops-quality",
+        "lifeops-bench/quality",
         CampaignDisposition.NON_AGENT,
-        ("bun", "run", "--cwd", "suites/lifeops-quality", "bench"),
+        ("bun", "run", "--cwd", "suites/lifeops-bench/quality", "bench"),
         "Deterministic classifier/scheduler regression gate; no selected agent participates.",
     ),
     DirectCampaignEntry(

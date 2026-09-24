@@ -17,7 +17,6 @@ import {
   getUiRegistryStore,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
-
 import type { ComponentType } from "react";
 
 export type AppShellPageLoader = () => Promise<{

@@ -34,14 +34,6 @@ Preserve the state file through teardown. If it is missing, teardown needs the
 matching run identity for its label sweep. Cleanup is an explicit operator
 step; never assume a scheduled reaper will remove a leftover server.
 
-To validate without allocating resources, run the deterministic contract tests:
-
-```bash
-bun test packages/cloud/scripts/admin/hetzner-e2e/*.test.ts
-```
-
-These tests do not prove live provisioning, SSH readiness or model replies.
-
 ## Files
 
 - `hetzner-e2e-provision.ts` — `HetznerCloudClient.createServer()`

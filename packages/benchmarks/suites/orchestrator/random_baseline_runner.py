@@ -1136,6 +1136,12 @@ def run_synthetic_baseline(
         raise ValueError(f"unknown synthetic harness: {harness}")
 
     strategy = get_strategy(benchmark_id)
+    if benchmark_id in {"framework", "swe_bench_orchestrated"}:
+        return RandomBaselineOutcome(
+            harness=harness, status="incompatible", score=None, result_path=None,
+            strategy_name=strategy.name, is_meaningful=False,
+            note="Runtime throughput and child orchestration require execution receipts, not synthetic correctness calibration.",
+        )
     if benchmark_id == "action-calling":
         action_cli = importlib.import_module("benchmarks.action-calling.cli")
         if not action_cli.DEFAULT_TEST.is_file():

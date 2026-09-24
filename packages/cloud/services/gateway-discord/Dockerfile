@@ -18,7 +18,7 @@
 # The verified @discordjs/opus release used below publishes Alpine binaries for
 # amd64 and arm64 only. A different architecture fails closed in the selector;
 # do not treat a custom Bun base as sufficient native-addon evidence.
-ARG BUN_BASE=oven/bun:1.3.14-alpine
+ARG BUN_BASE=oven/bun:1.4.2-alpine
 
 FROM ${BUN_BASE} AS base
 
@@ -29,7 +29,7 @@ ARG COMMON_DIR=packages/cloud/services/_common
 ARG SHARED_DIR=packages/shared
 ARG CORE_DIR=packages/core
 # @discordjs/opus publishes portable N-API v3 Alpine binaries, but its bundled
-# legacy node-pre-gyp crosswalk stops at Node 18 while Bun 1.3.14 identifies its
+# legacy node-pre-gyp crosswalk stops at Node 18 while Bun 1.4.2 identifies its
 # compatibility ABI as 137. Selecting the published Node 18 ABI only for native
 # dependency installation lets amd64 and arm64 use that N-API artifact instead
 # of entering the upstream ARM64-musl source-build failure. The service itself

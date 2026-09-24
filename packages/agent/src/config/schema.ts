@@ -591,7 +591,7 @@ const FIELD_HELP: Record<string, string> = {
     'Text suffix for cross-context markers (supports "{channel}").',
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled":
-    "WEB_SEARCH is keyless (Parallel, then Exa). This legacy toggle is retained for compatibility and does not control tool availability.",
+    "WEB_SEARCH is keyless (Parallel). This legacy toggle is retained for compatibility and does not control tool availability.",
   "tools.web.search.maxResults": "Default number of results to return (1-10).",
   "tools.web.search.timeoutSeconds":
     "Timeout in seconds for web_search requests.",

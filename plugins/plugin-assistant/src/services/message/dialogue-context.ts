@@ -1,5 +1,3 @@
-/** Builds ordered dialogue and provider context events with speaker identity and platform reply references. */
-
 import type {
   ContextEvent,
   IAgentRuntime,
@@ -27,6 +25,7 @@ import {
   sourceReplyTextHash,
 } from "./source-reply-references.ts";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.ts";
+/** Builds ordered dialogue and provider context events with speaker identity and platform reply references. */
 
 export function asProviderRecord(value: unknown):
   | {

@@ -19,7 +19,20 @@ from registry.scores import (  # noqa: E402
     _score_from_action_calling_json,
     _score_from_hermes_env_json,
     _score_from_meeting_transcription_proof_json,
+    _score_from_swebench_json,
+    _score_from_swebench_orchestrated_json,
 )
+
+
+@pytest.mark.parametrize("markers", [
+    {"mock": True},
+    {"smoke": True},
+    {"results": [{"status": "smoke_validated native_worktree provider=elizaos", "success": True}]},
+])
+def test_swe_structural_smoke_is_not_a_resolution_score(markers) -> None:
+    report = {"summary": {"resolve_rate": 1.0, "total_instances": 1}, **markers}
+    with pytest.raises(ValueError, match="smoke validation"):
+        _score_from_swebench_json(report)
 
 
 def test_action_calling_registry_uses_shared_case_scorer() -> None:
@@ -717,3 +730,12 @@ def test_taubench_scorer_reports_zero_degraded_for_legacy_reports() -> None:
 
     extraction = _score_from_taubench_json(report)
     assert extraction.metrics["judge_degraded_rollouts"] == 0
+
+
+def test_provider_matrix_without_orchestration_receipts_is_not_publishable() -> None:
+    with pytest.raises(ValueError, match="TASKS/ACP"):
+        _score_from_swebench_orchestrated_json({
+            "summary": {"total_instances": 1, "resolve_rate": 1.0},
+            "metrics": {"overall_score": 1.0},
+            "execution": {"mode": "provider_matrix", "orchestration_verified": False},
+        })

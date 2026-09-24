@@ -101,30 +101,5 @@ class TestDataclasses:
         assert config.tasks_per_position > 0
 
 
-class TestLeaderboardScores:
-    """Tests for leaderboard reference scores."""
-
-    def test_leaderboard_has_models(self) -> None:
-        """Test that leaderboard scores exist."""
-        assert len(LEADERBOARD_SCORES) > 0
-
-    def test_leaderboard_model_structure(self) -> None:
-        """Test that leaderboard entries have expected structure."""
-        for model_name, scores in LEADERBOARD_SCORES.items():
-            assert isinstance(model_name, str)
-            assert isinstance(scores, dict)
-            # Should have overall score
-            assert "overall" in scores
-            # Should have lost in middle score
-            assert "lost_in_middle" in scores
-            # All scores should be floats between 0 and 1
-            for key, value in scores.items():
-                assert isinstance(value, float)
-                assert 0 <= value <= 1, f"{model_name}.{key} = {value} not in [0,1]"
-
-    def test_gpt4_turbo_scores(self) -> None:
-        """Test GPT-4-turbo reference scores."""
-        scores = LEADERBOARD_SCORES.get("gpt-4-turbo")
-        assert scores is not None
-        assert scores["overall"] >= 0.9  # GPT-4 should be good
-        assert scores["niah_4k"] >= 0.95  # Very good at short context
+def test_unverified_reference_scores_are_not_published() -> None:
+    assert LEADERBOARD_SCORES == {}

@@ -1,4 +1,4 @@
-import type { ViewCapability } from "@elizaos/core";
+import type { SurfaceManifest, ViewCapability } from "@elizaos/core";
 /**
  * ShellViewAgentSurface — makes a shell-rendered builtin view (settings,
  * character, …) agent-controllable, the same way DynamicViewLoader does for
@@ -12,7 +12,7 @@ import type { ViewCapability } from "@elizaos/core";
  * controls opt in with `useAgentElement`.
  */
 
-import { resolveSurfaceManifest, type SurfaceManifest } from "@elizaos/common";
+import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import { type ReactNode, useEffect, useRef } from "react";
 import {
   AgentElementOverlay,

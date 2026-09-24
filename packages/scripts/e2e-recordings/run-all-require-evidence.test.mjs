@@ -21,16 +21,15 @@ const skippedSuite = {
 };
 
 describe("classifyRunResults require-evidence contract (#13624)", () => {
-  it("requires OCR for generated evidence review dashboards", () => {
-    expect(parseRunAllArgs(["--review"]).reviewOcr).toBe("on");
-    expect(parseRunAllArgs(["--review", "--review-ocr=on"]).reviewOcr).toBe(
-      "on",
-    );
-    expect(() => parseRunAllArgs(["--review", "--review-ocr=off"])).toThrow(
-      /--review-ocr must be on/,
-    );
-    expect(() => parseRunAllArgs(["--review", "--review-ocr=auto"])).toThrow(
-      /--review-ocr must be on/,
+  it("keeps browsing OCR optional without changing evidence requirements", () => {
+    expect(parseRunAllArgs(["--review"]).reviewOcr).toBe("off");
+    for (const mode of ["off", "auto", "on"]) {
+      expect(
+        parseRunAllArgs(["--review", `--review-ocr=${mode}`]).reviewOcr,
+      ).toBe(mode);
+    }
+    expect(() => parseRunAllArgs(["--review-ocr=invalid"])).toThrow(
+      /--review-ocr must be/,
     );
   });
 

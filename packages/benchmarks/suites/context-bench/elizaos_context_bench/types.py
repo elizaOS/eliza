@@ -257,81 +257,9 @@ class ContextBenchResults:
     metadata: dict[str, str | int | float | bool] = field(default_factory=dict)
 
 
-# Leaderboard reference scores from NIAH papers and LongBench
-LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
-    "gpt-4-turbo": {
-        "niah_4k": 0.98,
-        "niah_8k": 0.97,
-        "niah_16k": 0.95,
-        "niah_32k": 0.93,
-        "niah_64k": 0.89,
-        "niah_128k": 0.82,
-        "lost_in_middle": 0.12,  # Lower is better
-        "multi_hop_2": 0.88,
-        "multi_hop_3": 0.72,
-        "overall": 0.91,
-    },
-    "gpt-5": {
-        "niah_4k": 0.99,
-        "niah_8k": 0.98,
-        "niah_16k": 0.97,
-        "niah_32k": 0.95,
-        "niah_64k": 0.92,
-        "niah_128k": 0.87,
-        "lost_in_middle": 0.08,
-        "multi_hop_2": 0.91,
-        "multi_hop_3": 0.78,
-        "overall": 0.94,
-    },
-    "claude-opus-4-7": {
-        "niah_4k": 0.99,
-        "niah_8k": 0.98,
-        "niah_16k": 0.97,
-        "niah_32k": 0.96,
-        "niah_64k": 0.94,
-        "niah_128k": 0.90,
-        "lost_in_middle": 0.05,
-        "multi_hop_2": 0.92,
-        "multi_hop_3": 0.81,
-        "overall": 0.95,
-    },
-    "claude-sonnet-4-6": {
-        "niah_4k": 0.98,
-        "niah_8k": 0.96,
-        "niah_16k": 0.94,
-        "niah_32k": 0.90,
-        "niah_64k": 0.85,
-        "niah_128k": 0.78,
-        "lost_in_middle": 0.15,
-        "multi_hop_2": 0.85,
-        "multi_hop_3": 0.68,
-        "overall": 0.88,
-    },
-    "llama-3.1-70b": {
-        "niah_4k": 0.95,
-        "niah_8k": 0.92,
-        "niah_16k": 0.88,
-        "niah_32k": 0.82,
-        "niah_64k": 0.75,
-        "niah_128k": 0.65,
-        "lost_in_middle": 0.22,
-        "multi_hop_2": 0.78,
-        "multi_hop_3": 0.55,
-        "overall": 0.80,
-    },
-    "mistral-large": {
-        "niah_4k": 0.94,
-        "niah_8k": 0.90,
-        "niah_16k": 0.85,
-        "niah_32k": 0.78,
-        "niah_64k": 0.70,
-        "niah_128k": 0.60,
-        "lost_in_middle": 0.25,
-        "multi_hop_2": 0.75,
-        "multi_hop_3": 0.52,
-        "overall": 0.76,
-    },
-}
+# This locally generated corpus is not a published LongBench dataset.
+# No reference scores without a reproducible source and matching protocol.
+LEADERBOARD_SCORES: dict[str, dict[str, float]] = {}
 
 # Default haystack text samples for generating contexts
 DEFAULT_HAYSTACK_PARAGRAPHS: list[str] = [

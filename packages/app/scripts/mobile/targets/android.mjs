@@ -163,7 +163,7 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
     overlayOptions: { includeAospRoleLaunchers: true },
     cleartextPolicy: { allowCleartext: true, label: "AOSP" },
     agentRuntime: {
-      bunChannel: "canary",
+      bunChannel: "stable",
       objective: true,
     },
     auditSourceKey: "system",

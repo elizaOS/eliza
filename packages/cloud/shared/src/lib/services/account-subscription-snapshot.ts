@@ -1,3 +1,4 @@
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
 
 import { ElizaError } from "@elizaos/core";
@@ -20,6 +21,7 @@ export function buildOrganizationSubscriptionSnapshot(
   if (primary.state === "unavailable")
     return { ...provenance, status: "unavailable", error: { code: primary.code, retryable: true } };
   const { subscription, entitlement, periods } = primary;
+  assertOrganizationSubscription(subscription);
   const period = periods.length === 1 ? periods[0] : undefined;
   const allowance: OrganizationSubscriptionSnapshot["allowance"] = period
     ? {

@@ -15,32 +15,14 @@ function mcp(text: string, options?: { isError?: boolean }): Response {
 }
 
 describe("searchKeylessWeb", () => {
-    it("falls back on the recorded successful Parallel zero-hit envelope", async () => {
-        const empty = JSON.stringify({
-            search_id: "search_empty",
-            results: [],
-            warnings: null,
-            metadata: null,
-            session_id: "session_empty",
-        });
-        const fetchImpl = vi
-            .fn<typeof fetch>()
-            .mockResolvedValueOnce(mcp(empty))
-            .mockResolvedValueOnce(mcp("Fresh fallback source"));
-        expect(await searchKeylessWeb("current price", { fetchImpl })).toEqual({
-            provider: "exa",
-            text: "Fresh fallback source",
-            truncated: false,
-        });
-        expect(fetchImpl).toHaveBeenCalledTimes(2);
-    });
-    it("returns no result when zero hits and fallback both fail", async () => {
-        const fetchImpl = vi
-            .fn<typeof fetch>()
-            .mockResolvedValueOnce(mcp('{"search_id":"empty","results":[]}'))
-            .mockResolvedValueOnce(mcp("", { isError: true }));
-        expect(await searchKeylessWeb("no match", { fetchImpl })).toBeUndefined();
-    });
+    it.each([JSON.stringify({ search_id: "empty", results: [] }), ""])(
+        "reports unavailable without another provider when Parallel returns %s",
+        async (text) => {
+            const fetchImpl = vi.fn(async () => mcp(text));
+            expect(await searchKeylessWeb("current price", { fetchImpl })).toBeUndefined();
+            expect(fetchImpl).toHaveBeenCalledTimes(1);
+        }
+    );
     it.each([
         '{"search_id":"hit","results":[{"url":"https://example.com"}]}',
         '{"results":[]}',
@@ -67,7 +49,7 @@ describe("searchKeylessWeb", () => {
         );
     });
 
-    it("uses Parallel first with a fixed non-redirecting MCP request", async () => {
+    it("uses Parallel with a fixed non-redirecting MCP request", async () => {
         const fetchImpl = vi.fn(async () => mcp("current result"));
         const result = await searchKeylessWeb("latest elizaOS", { fetchImpl });
 
@@ -80,19 +62,12 @@ describe("searchKeylessWeb", () => {
         const [url, init] = fetchImpl.mock.calls[0] ?? [];
         expect(url).toBe("https://search.parallel.ai/mcp");
         expect(init).toMatchObject({ method: "POST", redirect: "manual" });
-        expect(String(init?.body)).not.toContain("TAVILY");
     });
 
-    it("falls back to Exa after an unusable Parallel result", async () => {
-        const fetchImpl = vi
-            .fn<typeof fetch>()
-            .mockResolvedValueOnce(mcp("", { isError: true }))
-            .mockResolvedValueOnce(mcp("fallback result"));
-        const result = await searchKeylessWeb("fallback", { fetchImpl });
-
-        expect(result?.provider).toBe("exa");
-        expect(result?.text).toBe("fallback result");
-        expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://mcp.exa.ai/mcp");
+    it("reports provider errors without dispatching a fallback", async () => {
+        const fetchImpl = vi.fn(async () => mcp("provider error", { isError: true }));
+        expect(await searchKeylessWeb("query", { fetchImpl })).toBeUndefined();
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
 
     it("preserves complete model-visible text", async () => {
@@ -153,7 +128,7 @@ describe("searchKeylessWeb", () => {
         expect(result).toBeUndefined();
     });
 
-    it("falls through aborted providers within the configured deadline", async () => {
+    it("reports an aborted provider within the configured deadline", async () => {
         const fetchImpl = vi.fn(
             (_url: string | URL | Request, init?: RequestInit) =>
                 new Promise<Response>((_resolve, reject) => {
@@ -169,7 +144,7 @@ describe("searchKeylessWeb", () => {
         });
 
         expect(result).toBeUndefined();
-        expect(fetchImpl).toHaveBeenCalledTimes(2);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
         expect(performance.now() - started).toBeLessThan(250);
     });
 });

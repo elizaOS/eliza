@@ -7,6 +7,7 @@ import { listPackages, type WorkspaceDiscoveryOptions } from "./workspaces.ts";
 
 /** The `elizaos.scripts` block a package declares to opt into script behaviors. */
 export interface ScriptMetadata {
+  contentContextEvidence?: { role: "coding-tools" | "sql" };
   /** Leaf package the `build:core` set must build before the test lanes. */
   coreBuild?: true;
   /** `test` script must stay serial even in the parallel PR lane. */
@@ -244,4 +245,33 @@ export function resolveBuildOnInstallPackages(
       ];
     })
     .sort((a, b) => a.dir.localeCompare(b.dir));
+}
+
+export function resolveContentContextEvidencePackages(
+  opts?: WorkspaceDiscoveryOptions,
+) {
+  const packages = new Map();
+  const invalid = [];
+  for (const pkg of packagesWithScriptMeta(opts)) {
+    const declaration = pkg.scripts.contentContextEvidence;
+    if (declaration === undefined) continue;
+    const role =
+      declaration && typeof declaration === "object"
+        ? declaration.role
+        : undefined;
+    if (role !== "coding-tools" && role !== "sql") {
+      invalid.push(
+        `${pkg.name}: contentContextEvidence.role must be coding-tools or sql`,
+      );
+      continue;
+    }
+    if (packages.has(role)) {
+      invalid.push(
+        `${pkg.name}: duplicate contentContextEvidence role ${role}`,
+      );
+      continue;
+    }
+    packages.set(role, pkg);
+  }
+  return { packages, invalid };
 }

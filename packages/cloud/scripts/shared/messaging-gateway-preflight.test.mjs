@@ -43,7 +43,7 @@ const EXPECTED_SOURCE_ONLY_WORKFLOW = {
     },
   },
   env: {
-    BUN_VERSION: "1.3.14",
+    BUN_VERSION: "1.4.2",
   },
   permissions: {
     contents: "read",

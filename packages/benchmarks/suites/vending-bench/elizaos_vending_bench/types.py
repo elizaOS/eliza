@@ -482,30 +482,6 @@ class VendingBenchReport:
     summary: dict[str, str | list[str]] = field(default_factory=dict)
 
 
-# Current leaderboard scores from https://andonlabs.com/evals/vending-bench
-LEADERBOARD_SCORES: dict[str, LeaderboardEntry] = {
-    "grok_4": LeaderboardEntry(
-        model_name="Grok 4",
-        top_score=Decimal("4694.15"),
-    ),
-    "claude_3_5_sonnet": LeaderboardEntry(
-        model_name="Claude Sonnet 4.6",
-        top_score=Decimal("2217.93"),
-    ),
-    "claude_opus_4": LeaderboardEntry(
-        model_name="Claude Opus 4",
-        top_score=Decimal("2077.41"),
-    ),
-    "gpt_4o": LeaderboardEntry(
-        model_name="GPT-4o",
-        top_score=Decimal("1850.00"),  # Estimated
-    ),
-    "gpt_4": LeaderboardEntry(
-        model_name="GPT-4",
-        top_score=Decimal("1500.00"),  # Estimated
-    ),
-    "claude_3_haiku": LeaderboardEntry(
-        model_name="Claude 3 Haiku",
-        top_score=Decimal("1200.00"),  # Estimated
-    ),
-}
+# This simulator is not comparable to the private Andon Labs simulator.
+# No reference scores without a reproducible source and matching protocol.
+LEADERBOARD_SCORES: dict[str, LeaderboardEntry] = {}

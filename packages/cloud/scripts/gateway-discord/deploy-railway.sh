@@ -69,7 +69,7 @@ JSON
 cp "$SCRIPT_DIR/select-opus-prebuild.ts" "$STAGE/select-opus-prebuild.ts"
 
 cat > "$STAGE/Dockerfile" <<'DOCKER'
-FROM oven/bun:1.3.14-alpine AS deps
+FROM oven/bun:1.4.2-alpine AS deps
 WORKDIR /app
 ARG OPUS_PREBUILD_NODE_TARGET=18.4.0
 ARG TARGETARCH
@@ -79,7 +79,7 @@ COPY select-opus-prebuild.ts ./
 RUN npm_config_target="${OPUS_PREBUILD_NODE_TARGET}" bun install --production \
     && bun ./select-opus-prebuild.ts . "${TARGETARCH}"
 
-FROM oven/bun:1.3.14-alpine
+FROM oven/bun:1.4.2-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache ffmpeg opus

@@ -130,7 +130,6 @@
     "src/brand-env.ts",
     "src/main.tsx",
     "src/embed-bootstrap.ts",
-    "src/mobile-bridges.ts",
     "src/types",
     "src/app-config.ts",
     "src/native",

@@ -48,6 +48,7 @@ class ContextGenerator:
             seed: Random seed for reproducibility.
 
         """
+        self._uses_whitespace_tokenizer = tokenizer is None
         self.tokenizer = tokenizer or self._simple_tokenize
         self.haystack_sources = haystack_sources or DEFAULT_HAYSTACK_PARAGRAPHS
         if seed is not None:
@@ -85,7 +86,11 @@ class ContextGenerator:
             random.shuffle(paragraphs)
             for para in paragraphs:
                 result.append(para)
-                current_length = self.count_tokens(" ".join(result))
+                current_length = (
+                    current_length + len(para.split())
+                    if self._uses_whitespace_tokenizer
+                    else self.count_tokens(" ".join(result))
+                )
                 if current_length >= target_length:
                     break
 
@@ -374,6 +379,12 @@ class ContextGenerator:
 
         # Multi-hop reasoning chains with strongly typed structure
         hop_chains: list[MultiHopChain] = [
+            MultiHopChain(
+                hops=1,
+                needles=["Project Aurora is headquartered in Building 9."],
+                question="Where is Project Aurora headquartered?",
+                answer="Building 9",
+            ),
             # 2-hop: A -> B -> answer
             MultiHopChain(
                 hops=2,
@@ -419,7 +430,7 @@ class ContextGenerator:
         # Filter to requested hop count
         valid_chains = [c for c in hop_chains if c.hops == num_hops]
         if not valid_chains:
-            valid_chains = hop_chains  # Fallback to any
+            raise ValueError(f"Unsupported multi-hop depth: {num_hops}; supported depths are 1, 2, 3")
 
         chain = random.choice(valid_chains)
 

@@ -358,6 +358,13 @@ async function ingestSilo(
  */
 const SILO_DEFINITIONS: SiloDefinition[] = [
   {
+    silo: "android-native-plugins",
+    source: "android-native-plugins",
+    producedBy: "packages/app/scripts/android-native-plugins.mjs",
+    lane: "native",
+    roots: [{ label: "plugins", dir: "test-results/android-native-plugins" }],
+  },
+  {
     silo: "e2e-recordings",
     source: "e2e-recordings",
     producedBy: "packages/scripts/e2e-recordings/run-all.mjs",
@@ -442,6 +449,13 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     producedBy: "packages/testing/scenario-runner/bin/eliza-scenarios",
     lane: "scenario",
     roots: [{ label: "repo", dir: "reports/scenarios" }],
+  },
+  {
+    silo: "cloud-stability",
+    source: "cloud-stability",
+    producedBy: "packages/cloud/scripts/e2e/run-stability-lane.ts",
+    lane: "cloud-stability",
+    roots: [{ label: "repo", dir: "test-results/cloud-stability" }],
   },
   {
     silo: "group-chat-timing",
