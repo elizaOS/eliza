@@ -161,14 +161,15 @@ async function getOrgBalance(organizationId: string): Promise<number | null> {
   }
 }
 
-/**
- * Determine hourly rate for a sandbox based on its status.
- * Running → RUNNING_HOURLY_RATE, Stopped with backups → IDLE_HOURLY_RATE.
- */
-function getHourlyRate(status: string): number {
-  if (status === "running") return AGENT_PRICING.RUNNING_HOURLY_RATE;
-  // Stopped agents are only billed if they have snapshots (checked in query).
-  return AGENT_PRICING.IDLE_HOURLY_RATE;
+/** Resolves the retained compute or backup rate while provider deletion is unconfirmed. */
+function getHourlyRate(sandbox: AgentBillingSandbox): number {
+  const status =
+    sandbox.status === "deletion_pending" ||
+    sandbox.status === "deletion_failed"
+      ? sandbox.deletion_previous_status
+      : sandbox.status;
+  if (status !== "stopped") return AGENT_PRICING.RUNNING_HOURLY_RATE;
+  return sandbox.last_backup_at ? AGENT_PRICING.IDLE_HOURLY_RATE : 0;
 }
 
 // ── Per-Agent Billing ─────────────────────────────────────────────────
@@ -182,7 +183,10 @@ async function processSandboxBilling(
   const sandboxId = sandbox.id;
   const agentName = sandbox.agent_name ?? sandboxId;
   const organizationId = sandbox.organization_id;
-  const hourlyRate = getHourlyRate(sandbox.status);
+  const hourlyRate = getHourlyRate(sandbox);
+  const deletionPending =
+    sandbox.status === "deletion_pending" ||
+    sandbox.status === "deletion_failed";
   const currentBalance = Number(org.credit_balance);
   const periodStart =
     sandbox.last_billed_at ??
@@ -196,6 +200,16 @@ async function processSandboxBilling(
     hourlyRate * ((now.getTime() - periodStart.getTime()) / (60 * 60 * 1000));
 
   async function queueUnfundedStop(): Promise<BillingResult> {
+    // Deletion owns teardown; accrued debt cannot enqueue a competing stop.
+    if (deletionPending) {
+      return {
+        sandboxId,
+        agentName,
+        organizationId,
+        action: "skipped",
+        error: "Provider deletion is pending; accrued usage remains unsettled",
+      };
+    }
     const item = await enqueueAgentUnfundedStopForRun({
       ...runAuthority,
       sandboxId,
@@ -224,14 +238,14 @@ async function processSandboxBilling(
     billingStatus: sandbox.billing_status,
   });
 
-  // Previously warned agents are rechecked immediately; no unpaid grace remains.
-  if (sandbox.billing_status === "shutdown_pending") {
+  // Previously warned agents are rechecked immediately; deletion retains its owner.
+  if (!deletionPending && sandbox.billing_status === "shutdown_pending") {
     return queueUnfundedStop();
   }
 
   // ── Sufficient credits — bill the hour ──────────────────────────
   const billingDescription =
-    sandbox.status === "running"
+    hourlyRate === AGENT_PRICING.RUNNING_HOURLY_RATE
       ? `Eliza agent hosting (running): ${agentName}`
       : `Eliza agent storage (idle): ${agentName}`;
   const billingResult = await agentBillingRepository.recordHourlyBilling({

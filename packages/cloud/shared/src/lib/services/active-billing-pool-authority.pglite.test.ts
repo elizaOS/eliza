@@ -27,12 +27,14 @@ import {
   CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../db/schemas/api-keys";
+import { computeBillingRateSegments } from "../../db/schemas/compute-billing-rate-segments";
 import { containerComputeStopIntents } from "../../db/schemas/compute-stop-intents";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import { provisioningJobService } from "./provisioning-jobs";
 
 const { activeBillingService } = await import("./active-billing");
@@ -56,6 +58,7 @@ beforeAll(async () => {
     agentSandboxes,
     containers,
     creditTransactions,
+    computeBillingRateSegments,
   };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
@@ -129,6 +132,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentComputeStopIntents);
   await dbWrite.delete(creditTransactions);
   await dbWrite.delete(containers);
+  await dbWrite.delete(computeBillingRateSegments);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(apiKeys);
   await dbWrite.delete(userCharacters);
@@ -203,6 +207,29 @@ async function seedAgent(
       container_name: `agent-${crypto.randomUUID()}`,
     })
     .returning();
+  const state =
+    poolStatus !== null || executionTier === "shared"
+      ? "exempt"
+      : ["running", "deletion_pending", "deletion_failed"].includes(status)
+        ? "running"
+        : status === "stopped" && lastBackupAt !== null
+          ? "backup"
+          : "not_billable";
+  const rate =
+    state === "running"
+      ? AGENT_PRICING.RUNNING_HOURLY_RATE
+      : state === "backup"
+        ? AGENT_PRICING.IDLE_HOURLY_RATE
+        : 0;
+  await dbWrite.insert(computeBillingRateSegments).values({
+    organization_id: organizationId,
+    workload_kind: "agent",
+    workload_id: row.id,
+    lifecycle_revision: lifecycleRevision,
+    billing_state: state,
+    rate_per_hour: rate.toFixed(6),
+    effective_at: new Date("2026-08-20T00:00:00.000Z"),
+  });
   return row.id;
 }
 
@@ -237,6 +264,7 @@ async function seedDedicated(poolStatus: "unclaimed" | null): Promise<string> {
 async function expectSuspendAuthorityConflict(
   agentId: string,
   mutateAuthority: () => Promise<void>,
+  remainsBillable = false,
 ): Promise<void> {
   enqueueSuspendMutation = mutateAuthority;
 
@@ -256,11 +284,11 @@ async function expectSuspendAuthorityConflict(
     .from(agentSandboxes)
     .where(eq(agentSandboxes.id, agentId));
   expect(stored.billing_status).toBe("active");
-  expect(
-    (await activeBillingService.listActiveResources(organizationId)).map(
-      (resource) => resource.resourceId,
-    ),
-  ).not.toContain(agentId);
+  const listed = (await activeBillingService.listActiveResources(organizationId)).map(
+    (resource) => resource.resourceId,
+  );
+  if (remainsBillable) expect(listed).toContain(agentId);
+  else expect(listed).not.toContain(agentId);
 }
 
 describe("active billing warm-pool authority", () => {
@@ -272,6 +300,46 @@ describe("active billing warm-pool authority", () => {
     const ids = resources.map((resource) => resource.resourceId);
     expect(ids).toContain(claimedId);
     expect(ids).not.toContain(poolId);
+  });
+
+  test("deleting a provider-confirmed stopped agent without a backup never advertises a new storage charge", async () => {
+    const agentId = await seedAgent({ status: "stopped", lastBackupAt: null });
+    expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
+    for (const status of ["deletion_pending", "deletion_failed"] as const) {
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status, deletion_previous_status: "stopped" })
+        .where(eq(agentSandboxes.id, agentId));
+      expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
+    }
+    // Recovery metadata cannot authorize a rate transition after confirmed stop.
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date(), deletion_previous_status: "running" })
+      .where(eq(agentSandboxes.id, agentId));
+    expect(await activeBillingService.listActiveResources(organizationId)).toEqual([]);
+
+    // These subjects already own persisted billable history before deletion is requested.
+    const backedUpId = await seedAgent({ status: "stopped", lastBackupAt: new Date() });
+    const runningId = await seedAgent({ status: "running" });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "deletion_pending", deletion_previous_status: "stopped" })
+      .where(eq(agentSandboxes.id, backedUpId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "deletion_failed", deletion_previous_status: "running" })
+      .where(eq(agentSandboxes.id, runningId));
+    const resources = await activeBillingService.listActiveResources(organizationId);
+    expect(resources.find((resource) => resource.resourceId === backedUpId)).toMatchObject({
+      unitPrice: 0.0025,
+      metadata: { billableReason: "idle_snapshot_storage" },
+    });
+    expect(resources.find((resource) => resource.resourceId === runningId)).toMatchObject({
+      unitPrice: AGENT_PRICING.RUNNING_HOURLY_RATE,
+      metadata: { billableReason: "running_agent" },
+    });
+    expect(resources.map((resource) => resource.resourceId)).not.toContain(agentId);
   });
 
   test("pool capacity cannot be cancelled or mutated through the billing surface", async () => {
@@ -295,7 +363,7 @@ describe("active billing warm-pool authority", () => {
     expect(stored.billing_status).toBe("active");
   });
 
-  test("a claimed slot remains cancellable and billable once pool_status is null", async () => {
+  test("a claimed slot queues cancellation without suspending billing before confirmation", async () => {
     const claimedId = await seedDedicated(null);
 
     await expect(
@@ -305,14 +373,18 @@ describe("active billing warm-pool authority", () => {
         resourceType: "agent_sandbox",
         authorizeInfrastructureMutation: async () => undefined,
       }),
-    ).resolves.toMatchObject({ stoppedBilling: true });
+    ).resolves.toMatchObject({
+      stoppedBilling: false,
+      infrastructureAction: { attempted: false, status: "queued" },
+      resource: { billingStatus: "active" },
+    });
     expect(enqueueSuspendCalls).toBe(1);
     expect(triggerImmediateCalls).toBe(1);
     const [stored] = await dbWrite
       .select({ billing_status: agentSandboxes.billing_status })
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, claimedId));
-    expect(stored.billing_status).toBe("suspended");
+    expect(stored.billing_status).toBe("active");
   });
 
   test("all canonical container-backed tiers remain listed and cancellable", async () => {
@@ -336,7 +408,7 @@ describe("active billing warm-pool authority", () => {
           resourceType: "agent_sandbox",
           authorizeInfrastructureMutation: async () => undefined,
         }),
-      ).resolves.toMatchObject({ stoppedBilling: true });
+      ).resolves.toMatchObject({ stoppedBilling: false });
     }
     expect(enqueueSuspendCalls).toBe(CONTAINER_BACKED_EXECUTION_TIERS.length);
     expect(triggerImmediateCalls).toBe(CONTAINER_BACKED_EXECUTION_TIERS.length);
@@ -346,7 +418,7 @@ describe("active billing warm-pool authority", () => {
         .select({ billing_status: agentSandboxes.billing_status })
         .from(agentSandboxes)
         .where(eq(agentSandboxes.id, id));
-      expect(stored.billing_status).toBe("suspended");
+      expect(stored.billing_status).toBe("active");
     }
   });
 
@@ -381,18 +453,19 @@ describe("active billing warm-pool authority", () => {
     }
   });
 
-  test("soft-deleted and deletion-owned rows are neither listed nor cancellable", async () => {
+  test("soft-deleted rows disappear while deletion-owned provider compute stays visible", async () => {
     const deletedId = await seedAgent({ deletedAt: new Date("2026-08-22T10:00:00.000Z") });
     const deletionOwnedId = await seedAgent({
       deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       deletionStartedAt: new Date("2026-08-22T10:00:00.000Z"),
+      status: "deletion_pending",
     });
 
     const listedIds = (await activeBillingService.listActiveResources(organizationId)).map(
       (resource) => resource.resourceId,
     );
     expect(listedIds).not.toContain(deletedId);
-    expect(listedIds).not.toContain(deletionOwnedId);
+    expect(listedIds).toContain(deletionOwnedId);
 
     for (const resourceId of [deletedId, deletionOwnedId]) {
       await expect(
@@ -440,15 +513,19 @@ describe("active billing warm-pool authority", () => {
   test("a concurrent deletion attempt wins over billing suspension", async () => {
     const agentId = await seedDedicated(null);
 
-    await expectSuspendAuthorityConflict(agentId, async () => {
-      await dbWrite
-        .update(agentSandboxes)
-        .set({
-          deletion_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-          deletion_started_at: new Date("2026-08-22T10:00:00.000Z"),
-        })
-        .where(eq(agentSandboxes.id, agentId));
-    });
+    await expectSuspendAuthorityConflict(
+      agentId,
+      async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            deletion_attempt_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            deletion_started_at: new Date("2026-08-22T10:00:00.000Z"),
+          })
+          .where(eq(agentSandboxes.id, agentId));
+      },
+      true,
+    );
   });
 
   test("a concurrent soft deletion wins over billing suspension", async () => {
@@ -462,7 +539,7 @@ describe("active billing warm-pool authority", () => {
     });
   });
 
-  test("a row deleted concurrently retains the explicit deleted result", async () => {
+  test("a row deleted concurrently fails closed instead of fabricating completion", async () => {
     const agentId = await seedDedicated(null);
     enqueueSuspendMutation = async () => {
       await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, agentId));
@@ -475,16 +552,12 @@ describe("active billing warm-pool authority", () => {
         resourceType: "agent_sandbox",
         authorizeInfrastructureMutation: async () => undefined,
       }),
-    ).resolves.toMatchObject({
-      stoppedBilling: true,
-      message: "Managed agent was deleted while billing cancellation was in progress.",
-      resource: { resourceId: agentId, status: "deleted", billingStatus: "suspended" },
-    });
+    ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
     expect(enqueueSuspendCalls).toBe(1);
     expect(triggerImmediateCalls).toBe(1);
   });
 
-  test("an enqueue failure still suspends billing while authority remains valid", async () => {
+  test("an enqueue failure leaves billing active and returns a typed failure", async () => {
     const agentId = await seedDedicated(null);
     enqueueSuspendFailure = new Error("queue unavailable");
 
@@ -495,17 +568,14 @@ describe("active billing warm-pool authority", () => {
         resourceType: "agent_sandbox",
         authorizeInfrastructureMutation: async () => undefined,
       }),
-    ).resolves.toMatchObject({
-      stoppedBilling: true,
-      infrastructureAction: { attempted: true, status: "failed", error: "queue unavailable" },
-    });
+    ).rejects.toMatchObject({ code: "BILLING_CANCEL_AGENT_ENQUEUE_FAILED" });
     expect(enqueueSuspendCalls).toBe(1);
     expect(triggerImmediateCalls).toBe(0);
     const [stored] = await dbWrite
       .select({ billing_status: agentSandboxes.billing_status })
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, agentId));
-    expect(stored.billing_status).toBe("suspended");
+    expect(stored.billing_status).toBe("active");
   });
 
   test("resolves the legacy container target and current lifecycle revision", async () => {

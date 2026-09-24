@@ -360,6 +360,12 @@ beforeAll(async () => {
       user_id: USER_A,
       agent_name: `Limits A terminal ${status}`,
       execution_tier: "dedicated-lazy" as const,
+      // Quota exclusions represent deletion after an already stopped, backup-free agent.
+      deletion_previous_status:
+        status === "deletion_pending" || status === "deletion_failed"
+          ? ("stopped" as const)
+          : null,
+      last_backup_at: null,
       status,
     })),
     {

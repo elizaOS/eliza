@@ -835,7 +835,8 @@ describe("secret container environment transport (#22060)", () => {
         expect(fs.existsSync(marker)).toBe(false);
       },
     );
-  }, 10_000);
+    // Five sequential shell transactions preserve the same fence through replay.
+  }, 30_000);
 
   test("exact Docker creation clears the creation fence only after successful creation", async () => {
     await withExactCreateHarness(
