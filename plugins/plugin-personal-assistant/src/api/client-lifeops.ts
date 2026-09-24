@@ -94,7 +94,7 @@ import type {
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
 // Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
-// app-core/api/client.ts imports this file (LifeOps extension) as a side-effect
+// app/api/client.ts imports this file (LifeOps extension) as a side-effect
 // before re-exporting `ElizaClient` from its root barrel, so a root-barrel
 // import here resolves to `undefined` at module-init time (and the root barrel
 // does not re-export the class value). The `/api` subpath is the class's home
@@ -182,38 +182,6 @@ export interface LifeOpsElizaClientMethods {
     data: DisconnectLifeOpsGoogleConnectorRequest,
   ): Promise<LifeOpsGoogleConnectorStatus>;
   getLifeOpsOverview(): Promise<LifeOpsOverview>;
-  getLifeOpsPaymentsDashboard(data?: {
-    windowDays?: number | null;
-  }): Promise<import("@elizaos/plugin-finances").LifeOpsPaymentsDashboard>;
-  listLifeOpsPaymentSources(): Promise<{
-    sources: import("@elizaos/plugin-finances").LifeOpsPaymentSource[];
-  }>;
-  addLifeOpsPaymentSource(
-    data: import("@elizaos/plugin-finances").AddPaymentSourceRequest,
-  ): Promise<{
-    source: import("@elizaos/plugin-finances").LifeOpsPaymentSource;
-  }>;
-  deleteLifeOpsPaymentSource(sourceId: string): Promise<{ ok: true }>;
-  importLifeOpsPaymentCsv(
-    data: import("@elizaos/plugin-finances").ImportTransactionsCsvRequest,
-  ): Promise<import("@elizaos/plugin-finances").ImportTransactionsCsvResult>;
-  listLifeOpsPaymentTransactions(data?: {
-    sourceId?: string | null;
-    limit?: number | null;
-    merchantContains?: string | null;
-    onlyDebits?: boolean | null;
-  }): Promise<{
-    transactions: import("@elizaos/plugin-finances").LifeOpsPaymentTransaction[];
-  }>;
-  listLifeOpsRecurringCharges(data?: {
-    sourceId?: string | null;
-    sinceDays?: number | null;
-  }): Promise<{
-    charges: import("@elizaos/plugin-finances").LifeOpsRecurringCharge[];
-  }>;
-  listLifeOpsUpcomingBills(): Promise<{
-    bills: import("@elizaos/plugin-finances").LifeOpsUpcomingBill[];
-  }>;
   getLifeOpsSmartFeatureSettings(): Promise<{
     emailClassifierEnabled: boolean;
     emailClassifierModel: string;
@@ -224,77 +192,9 @@ export interface LifeOpsElizaClientMethods {
     emailClassifierModel?: string | null;
     billsAutoExtract?: boolean;
   }): Promise<{ ok: true }>;
-  markLifeOpsBillPaid(data: {
-    billId: string;
-    paidAt?: string | null;
-  }): Promise<{ ok: true }>;
-  snoozeLifeOpsBill(data: {
-    billId: string;
-    days?: number;
-  }): Promise<{ ok: true; dueDate: string }>;
   scanLifeOpsEmailSubscriptions(): Promise<
     import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
   >;
-  lookupLifeOpsSubscriptionPlaybook(merchant: string): Promise<{
-    playbook: {
-      key: string;
-      serviceName: string;
-      managementUrl: string;
-      executorPreference: "user_browser" | "agent_browser" | "desktop_native";
-    } | null;
-  }>;
-  listLifeOpsSubscriptionPlaybooks(): Promise<{
-    playbooks: Array<{
-      key: string;
-      serviceName: string;
-      aliases: string[];
-      managementUrl: string;
-      executorPreference: "user_browser" | "agent_browser" | "desktop_native";
-    }>;
-  }>;
-  cancelLifeOpsSubscription(data: {
-    serviceName?: string | null;
-    serviceSlug?: string | null;
-    candidateId?: string | null;
-    executor?: "user_browser" | "agent_browser" | "desktop_native" | null;
-    confirmed?: boolean;
-  }): Promise<unknown>;
-  createLifeOpsPlaidLinkToken(): Promise<{
-    linkToken: string;
-    expiration: string;
-    environment: string;
-  }>;
-  completeLifeOpsPlaidLink(data: {
-    publicToken: string;
-    label?: string | null;
-  }): Promise<{
-    source: import("@elizaos/plugin-finances").LifeOpsPaymentSource;
-  }>;
-  syncLifeOpsPlaidTransactions(data: { sourceId: string }): Promise<{
-    inserted: number;
-    skipped: number;
-    nextCursor: string;
-  }>;
-  createLifeOpsPaypalAuthorizeUrl(data: { state: string }): Promise<{
-    url: string;
-    scope: string;
-    environment: "live" | "sandbox";
-  }>;
-  completeLifeOpsPaypalLink(data: {
-    code: string;
-    label?: string | null;
-  }): Promise<{
-    source: import("@elizaos/plugin-finances").LifeOpsPaymentSource;
-    capability: { hasReporting: boolean; hasIdentity: boolean };
-  }>;
-  syncLifeOpsPaypalTransactions(data: {
-    sourceId: string;
-    windowDays?: number | null;
-  }): Promise<{
-    inserted: number;
-    skipped: number;
-    fallback: "csv_export" | null;
-  }>;
   unsubscribeLifeOpsEmailSender(data: {
     senderEmail: string;
     blockAfter?: boolean;
@@ -620,115 +520,10 @@ lifeOpsClientPrototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
 };
 
-lifeOpsClientPrototype.getLifeOpsPaymentsDashboard = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  const params = new URLSearchParams();
-  if (data.windowDays !== null && data.windowDays !== undefined) {
-    params.set("windowDays", String(data.windowDays));
-  }
-  const query = params.toString();
-  return this.fetch(`/api/lifeops/money/dashboard${query ? `?${query}` : ""}`);
-};
-
-lifeOpsClientPrototype.listLifeOpsPaymentSources = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/lifeops/money/sources");
-};
-
-lifeOpsClientPrototype.addLifeOpsPaymentSource = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/sources", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.deleteLifeOpsPaymentSource = async function (
-  this: ElizaClient,
-  sourceId: string,
-) {
-  return this.fetch(
-    `/api/lifeops/money/sources/${encodeURIComponent(sourceId)}`,
-    { method: "DELETE" },
-  );
-};
-
-lifeOpsClientPrototype.importLifeOpsPaymentCsv = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/import-csv", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.listLifeOpsPaymentTransactions = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  const params = new URLSearchParams();
-  if (data.sourceId) params.set("sourceId", data.sourceId);
-  if (data.limit !== null && data.limit !== undefined) {
-    params.set("limit", String(data.limit));
-  }
-  if (data.merchantContains)
-    params.set("merchantContains", data.merchantContains);
-  if (data.onlyDebits) params.set("onlyDebits", "true");
-  const query = params.toString();
-  return this.fetch(
-    `/api/lifeops/money/transactions${query ? `?${query}` : ""}`,
-  );
-};
-
-lifeOpsClientPrototype.listLifeOpsRecurringCharges = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  const params = new URLSearchParams();
-  if (data.sourceId) params.set("sourceId", data.sourceId);
-  if (data.sinceDays !== null && data.sinceDays !== undefined) {
-    params.set("sinceDays", String(data.sinceDays));
-  }
-  const query = params.toString();
-  return this.fetch(`/api/lifeops/money/recurring${query ? `?${query}` : ""}`);
-};
-
 lifeOpsClientPrototype.scanLifeOpsEmailSubscriptions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/email-unsubscribe/scan", { method: "POST" });
-};
-
-lifeOpsClientPrototype.listLifeOpsUpcomingBills = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/lifeops/money/bills");
-};
-
-lifeOpsClientPrototype.markLifeOpsBillPaid = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/bills/mark-paid", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.snoozeLifeOpsBill = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/bills/snooze", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
 };
 
 lifeOpsClientPrototype.getLifeOpsSmartFeatureSettings = async function (
@@ -742,88 +537,6 @@ lifeOpsClientPrototype.updateLifeOpsSmartFeatureSettings = async function (
   data,
 ) {
   return this.fetch("/api/lifeops/smart-features/settings", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.lookupLifeOpsSubscriptionPlaybook = async function (
-  this: ElizaClient,
-  merchant: string,
-) {
-  const params = new URLSearchParams({ merchant });
-  return this.fetch(
-    `/api/lifeops/subscriptions/playbook-lookup?${params.toString()}`,
-  );
-};
-
-lifeOpsClientPrototype.listLifeOpsSubscriptionPlaybooks = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/lifeops/subscriptions/playbooks");
-};
-
-lifeOpsClientPrototype.cancelLifeOpsSubscription = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/subscriptions/cancel", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.createLifeOpsPlaidLinkToken = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/lifeops/money/plaid/link-token", { method: "POST" });
-};
-
-lifeOpsClientPrototype.completeLifeOpsPlaidLink = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/plaid/complete", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.syncLifeOpsPlaidTransactions = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/plaid/sync", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.createLifeOpsPaypalAuthorizeUrl = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/paypal/authorize-url", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.completeLifeOpsPaypalLink = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/paypal/complete", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-lifeOpsClientPrototype.syncLifeOpsPaypalTransactions = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/money/paypal/sync", {
     method: "POST",
     body: JSON.stringify(data),
   });

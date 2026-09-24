@@ -14,7 +14,7 @@ import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import {
   type EntityStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import { reviewLegacyOwnerGraph } from "../lifeops/entities/legacy-owner-graph.js";
 import type {
   Entity,

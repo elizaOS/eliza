@@ -20,10 +20,7 @@
  * is exactly how the Phase 2 integration test exercises it.
  */
 
-import {
-  FUSED_WAKE_EVENT,
-  type FusedWakeEventDetail,
-} from "@elizaos/shared/events";
+import { FUSED_WAKE_EVENT, type FusedWakeEventDetail } from "@elizaos/shared";
 
 /**
  * A single fused-wake stage forwarded from the native runtime to the UI. This

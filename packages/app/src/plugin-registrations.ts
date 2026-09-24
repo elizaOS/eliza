@@ -15,7 +15,8 @@ export type SideEffectAppModuleLoader = {
  * server-side).
  *
  * The list is NOT hardcoded. Each app plugin self-declares
- * `"elizaos": { "appRegister": "register" | "ui" }` in its own package.json; the
+ * `"elizaos": { "appRegister": { "export": "registerApp" } }` in its own
+ * package.json. Legacy `"register"` and `"ui"` entries are also supported. The
  * renderer build scans for that marker and rewrites the array literal below with
  * the discovered loaders (see `appSideEffectModulesPlugin` in
  * `vite/app-side-effect-modules.ts`, wired in `vite.config.ts`). Adding or

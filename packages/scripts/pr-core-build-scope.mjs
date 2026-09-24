@@ -6,7 +6,7 @@
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { listPackages } from "./lib/workspaces.ts";
 
 export function planPrCoreBuild({ repoRoot = process.cwd(), base }) {
   if (!/^[0-9a-f]{40}$/.test(base ?? "")) {

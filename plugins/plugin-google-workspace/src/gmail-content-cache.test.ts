@@ -3,7 +3,8 @@
  * persistence, bounded late reads, authorization denial, corruption, restart,
  * atomic publication, and explicit retention cleanup.
  */
-import { type IAgentRuntime, InMemoryDatabaseAdapter, type UUID } from "@elizaos/core/node";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { describe, expect, it } from "vitest";
 import {
   buildGmailContentPublication,
@@ -21,7 +22,7 @@ const ROOM_ID = "00000000-0000-0000-0000-000000000003" as UUID;
 const OTHER_OWNER_ID = "00000000-0000-0000-0000-000000000004" as UUID;
 const OTHER_ROOM_ID = "00000000-0000-0000-0000-000000000005" as UUID;
 
-function runtime(adapter = new InMemoryDatabaseAdapter()): IAgentRuntime {
+function runtime(adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID)): IAgentRuntime {
   return { agentId: AGENT_ID, adapter } as unknown as IAgentRuntime;
 }
 
@@ -114,7 +115,7 @@ describe("Gmail segmented content cache", () => {
   });
 
   it("resolves repeat pages after an adapter-preserving process restart", async () => {
-    const adapter = new InMemoryDatabaseAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     const firstRuntime = runtime(adapter);
     const cached = await publish("first\nsecond\nthird\n", firstRuntime);
     const first = await readGmailContentPage({

@@ -35,14 +35,13 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-commands": "workspace:*",
     "@telegraf/types": "^7.1.0",
     "@types/node": "^24.0.10",
     "strip-literal": "^3.0.0",
     "telegraf": "4.16.3",
     "telegram": "^2.26.22",
     "type-detect": "^4.1.0",
-    "@elizaos/credentials": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
@@ -67,7 +66,6 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },
   "publishConfig": {

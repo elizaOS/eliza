@@ -35,7 +35,7 @@ import {
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/prompts/keyword-matching";
+} from "@elizaos/shared/i18n/keyword-matching-core";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];

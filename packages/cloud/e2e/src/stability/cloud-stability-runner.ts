@@ -7,14 +7,14 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import {
   createScenarioStabilityPlan,
   executeScenarioStability,
   type ScenarioStabilityExecutionAdapter,
   type ScenarioStabilityExecutionReport,
   type ScenarioStabilityExecutionTarget,
-} from "@elizaos/scenario-runner";
-import { canonicalJsonString } from "@elizaos/shared/canonical-json";
+} from "@elizaos/testing/scenario-runner";
 
 export type CloudStabilityMode = "deterministic-mock" | "real-llm";
 

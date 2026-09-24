@@ -1,29 +1,18 @@
 # @elizaos/plugin-sqlite
 
-Durable single-agent database adapter for Node 24.15.0 (`node:sqlite`) and Bun 1.3.14 (`bun:sqlite`). Each database file belongs to one agent and one process. Existing PostgreSQL/PGlite mode is unchanged.
+Durable single-agent database adapter for Node 24.15.0 (`node:sqlite`) and Bun 1.4.2
+(`bun:sqlite`).
 
-The SQLite backend supplies serialization, transactions, schema versioning, ownership and backup. The adapter reuses storage-neutral core record behavior, rebuilding its transient vector index on restart or rollback. Every public asynchronous adapter operation runs under the same transaction queue; no caller may observe a partially written batch.
+Uses node:sqlite on pinned Node or bun:sqlite on pinned Bun. Each database file belongs
+to one agent and process. Select this adapter explicitly; PostgreSQL/PGlite deployments
+continue using plugin-sql. Preserve versioned migrations and cross-runtime database
+compatibility.
 
-Native SQLite files are not encrypted by this plugin. In confidential deployments put the entire state directory, WAL and backups on encrypted guest storage, and keep temporary SQLite data in memory. PostgreSQL/Drizzle plugin schemas are not portable and must fail explicitly until migrated.
+## Development
 
-Use the pinned Node and Bun versions. Build the workspace dependency closure and this package before package tests; the portability tests launch both runtimes against built exports. Run package test, typecheck and lint:check, repository guide parity and root verify. Tests use actual temporary SQLite files and runtime adapters; do not replace SQLite with mocks.
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-For the standalone Node host, set `ELIZA_DATABASE_PROVIDER=sqlite` and an absolute `SQLITE_DATABASE_PATH` within the agent state directory. Remove a configured PostgreSQL/PGlite provider. The host substitutes SQLite for the normal SQL bootstrap; it does not fall back if SQLite initialization fails. Programmatic `AgentRuntime` callers may load this plugin explicitly before other database plugins. Do not point it at a PostgreSQL or PGlite directory.
-
-The default application plugin set is not yet portable. Plugins declaring PostgreSQL schemas or a SQL plugin dependency fail activation before preflight; plugins that use PostgreSQL directly also require a port. Scheduling supplies its own native durable-record implementation. Unported LifeOps domains and custom SQL migrations still require explicit domain ports. Core Task records and transitions are supported independently of those domain tables. This package is a durable runtime storage foundation, not a completed application database migration.
-
-Schema version 2 records use the pinned `devalue-6.0.1-buffer-v1` codec on both runtimes. It preserves Dates, arbitrary BigInts, explicit undefined, sparse arrays, cycles/shared references, Maps/Sets and supported binary values. Unsupported values fail before persistence; the codec never evaluates JavaScript. These remain record blobs, not directly queryable domain tables. Changing the pinned codec requires an explicit format migration. Queries currently scan their record collection, and startup rebuilds the in-memory vector index; benchmark memory use and startup time with production-scale data before deployment. Existing PostgreSQL/PGlite exports require an explicit validated importer; none is implied by opening a SQLite file.
-
-Use `adapter.backup(newAbsolutePath)` to produce a consistent standalone backup including committed WAL pages. Publication requires same-filesystem hard links and directory fsync: the snapshot is flushed, published without overwrite, then its parent chain is flushed before success. Unsupported filesystems fail explicitly; if publication or its durability step fails, inspect the destination before retrying because a complete but not durably confirmed file may already exist. Removable/FAT-like storage is not implicitly supported. Actual power-loss qualification remains a deployment requirement. Close the adapter before replacing/restoring the main database, retain the same agent UUID, and validate the restored adapter before serving requests. A backup is plaintext unless its storage layer encrypts it. Rollback freshness protection, attested key release, encrypted filesystem provisioning and remote backup transport belong to the deployment system.
-
-Transactions serialize concurrent callers across awaits. Sequential nested transactions use savepoints. Overlapping sibling nested transactions are rejected and rolled back; await nested work before continuing its parent. The database is exclusively owned by one process; a second SQLite connection cannot read or write while that owner is active. The public storage connection remains privileged plugin access, not a sandbox for hostile plugin code. The per-file agent UUID prevents accidental reuse across agents; document/entity authorization still belongs to the runtime's explicit access contracts.
-
-`createLogs` commits to this same database before resolving. Logs are mutable runtime records, not an independently tamper-evident compliance ledger. Retention and immutable off-host evidence require the deployment audit pipeline. Cache CRUD has no TTL parameter in the core adapter contract; expiry is honored when a stored cache record has an expiry field.
-
-## Legacy records and runtime portability
-
-Back up an existing version 1 database with the previous Node adapter before upgrading. Opening it with the new adapter on pinned Node migrates every V8 record inside one exclusive transaction, verifies each complete value after encoding/decoding, and commits schema version 2 only after all rows pass. An unsupported legacy value (including an Error object), corrupt record or format declaration aborts the entire migration. Retain the original backup and use a compatible importer; do not delete an offending row to bypass this boundary. Bun refuses version 1 databases with an actionable Node migration error. Older adapters reject version 2, so rollback requires the pre-upgrade backup and the deployment's current authority checks.
-
-After a successful migration, close the source runtime before moving the database or a consistent backup to the other runtime. Preserve the agent UUID and validate the restored state before accepting traffic. This is transfer, not concurrent replication or encrypted transport. Codec parsing and runtime guards do not replace backup freshness, key management or grant revocation policies.
-
-Node/Bun process tests on a development host are not Android qualification. The selected Android build still needs actual-device proof for native SQLite availability, filesystem protection, power-loss/restart, background execution and conversational performance. Unqualified hardware and unpinned runtimes remain unsupported deployment profiles.
+```bash
+bun run --cwd plugins/plugin-sqlite build  # build
+bun run --cwd plugins/plugin-sqlite test   # tests
+```

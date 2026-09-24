@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "vite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readRendererBuildManifest } from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
+import { readRendererBuildManifest } from "../scripts/lib/renderer-build-manifest.ts";
 import { rendererBuildManifestPlugin } from "../vite/renderer-build-manifest-plugin.ts";
 
 const cleanupHelperScript = path.resolve(

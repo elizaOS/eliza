@@ -6,7 +6,7 @@
  *
  *   - `ELIZA_DEVICE_BRIDGE_ENABLED=1`: the agent (this process) hosts the
  *     device-bridge WSS and dials whichever paired device connects. On the
- *     Capacitor APK the WebView's `@elizaos/capacitor-llama` is the intended
+ *     Capacitor APK the WebView's `@elizaos/plugin-native-inference/llama` is the intended
  *     dialer over loopback. The Capacitor build always exports this env so
  *     the bridge is ready as soon as first-run picks the local mode.
  *

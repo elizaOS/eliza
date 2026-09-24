@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   canonicalRouteMethods,
   extractMethods,
-} from "../scripts/route-discovery.mjs";
+} from "../../scripts/sdk/route-discovery.mjs";
 import { ELIZA_CLOUD_PUBLIC_ENDPOINTS } from "./public-routes.js";
 
 const ALL_HONO_METHODS = ["DELETE", "GET", "PATCH", "POST", "PUT"];

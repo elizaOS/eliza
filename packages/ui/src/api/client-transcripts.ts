@@ -5,7 +5,7 @@
  * prototype methods), matching the other `client-*` domain modules.
  */
 
-import type { ArtifactShareGrantMode } from "@elizaos/common";
+import type { ArtifactShareGrantMode } from "@elizaos/core";
 import type {
   Transcript,
   TranscriptCaptureSharingState,
@@ -13,7 +13,7 @@ import type {
   TranscriptSegment,
   TranscriptSource,
   TranscriptSummary,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 
 /** Body the recording pipeline POSTs to create a transcript record. The

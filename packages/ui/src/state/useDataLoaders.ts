@@ -4,13 +4,13 @@
  * Covers: autonomy event merge / replay / append, conversation loaders,
  * BSC trade + steward wrappers, loadInventory, ownerName hydration,
  * character language sync, loadWorkbench, loadUpdateStatus,
- * checkExtensionStatus.
  */
 
 import {
+  normalizeOwnerName,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/shared/character-presets";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import {
   type RefObject,
@@ -33,7 +33,6 @@ import {
   type Conversation,
   type ConversationMessage,
   client,
-  type ExtensionStatus,
   type StewardWebhookEventType,
   type StreamEventEnvelope,
   type StylePreset,
@@ -47,7 +46,6 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
-import { normalizeOwnerName } from "../utils/owner-name";
 import {
   type AutonomyRunHealthMap,
   buildAutonomyGapReplayRequests,
@@ -2189,30 +2187,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     setUpdateLoading(false);
   }, []);
 
-  const [extensionStatus, setExtensionStatus] =
-    useState<ExtensionStatus | null>(null);
-  const [extensionChecking, setExtensionChecking] = useState(false);
-
-  const checkExtensionStatus = useCallback(async () => {
-    setExtensionChecking(true);
-    try {
-      const ext = await client.getExtensionStatus();
-      setExtensionStatus(ext);
-    } catch {
-      setExtensionStatus({
-        relayReachable: false,
-        relayPort: 18792,
-        extensionPath: null,
-        chromeBuildPath: null,
-        chromePackagePath: null,
-        safariWebExtensionPath: null,
-        safariAppPath: null,
-        safariPackagePath: null,
-      });
-    }
-    setExtensionChecking(false);
-  }, []);
-
   // ── Channel change ──────────────────────────────────────────────────
 
   const handleChannelChange = useCallback(
@@ -2285,8 +2259,5 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     loadUpdateStatus,
     handleChannelChange,
     // Extension
-    extensionStatus,
-    extensionChecking,
-    checkExtensionStatus,
   };
 }

@@ -1,5 +1,5 @@
 /** Loads wallet-specific signing panels and forwards authentication results to the host. */
-import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/login";
+import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/auth";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 

@@ -28,13 +28,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.mjs";
+import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.ts";
 import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDeclarations,
-} from "./lib/script-metadata.mjs";
+} from "./lib/script-metadata.ts";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { listPackages } from "./lib/workspaces.ts";
 import { computeTestRoots } from "./test-cloud-run.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -58,16 +58,16 @@ const PLUGINS_DIR = "plugins";
  */
 export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   [
-    "packages/app-core/platforms/electrobun",
-    "full `test` script (vitest, unfiltered config) is not lane-tagged; ci.yml's desktop-contract job owns the supported deterministic desktop subset during full branch validation. Native/macOS-only tests require their platform owner rather than inclusion in the shared Linux lane.",
+    "packages/app/platforms/electrobun",
+    "Native/macOS integration tests run through the package test command on their owning platform. These platform-specific suites are excluded from the shared Linux lane.",
+  ],
+  [
+    "packages/cloud/sdk",
+    "Only credentialed live API tests remain; test:e2e and live-smoke.yml's cloud-sdk suite own them. They require a live Cloud account and are excluded from the keyless server lane.",
   ],
   [
     "packages/cloud/e2e",
     "plain `test` script is a Playwright suite against a live stack and is deliberately excluded from the fast/no-cloud lanes (NO_CLOUD_PACKAGE_DIRS in run-all-tests.mjs). The full suite remains operator-dispatched through monetized-loop-nightly.yml; cloud-tests.yml runs the blocking stack subset after cloud changes reach develop, while pr-static-smoke.yml runs the billing payment replay spec on exact PR and merge-group heads when its Cloud/app/UI contract surface changes.",
-  ],
-  [
-    "packages/homepage",
-    "plain `test` script (bun:test contact, wallet-linking, onboarding and auth-return contracts) runs in ci.yml's frontend-build job during full branch validation. Homepage browser tests retain their explicit owner because the root e2e sweep excludes this workspace for GPU/timing-budget reasons.",
   ],
 ]);
 

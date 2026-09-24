@@ -9,7 +9,7 @@
  * marker no parser recognizes) slipped through. This gate locks the inline
  * widget matrix exactly:
  *   - `getInlineWidgets()` equals EXACTLY the documented built-in set (`task`
- *     is plugin-owned — registered by plugin-task-coordinator, not a UI
+ *     is plugin-owned — registered by plugin-agent-orchestrator, not a UI
  *     built-in — so it is absent here and asserted absent).
  *   - every documented marker parses a representative reply into >=1 region and
  *     renders without throwing (a broken parse→render pipeline fails here).
@@ -32,7 +32,7 @@ import {
 } from "./inline-registry";
 
 // The canonical inline built-in set (WIDGET_MATRIX.md). `task` is intentionally
-// NOT here — it is registered by plugin-task-coordinator's registerTaskWidget().
+// NOT here — it is registered by plugin-agent-orchestrator's registerTaskWidget().
 const BUILTIN_INLINE_KINDS = [
   "choice",
   "followups",

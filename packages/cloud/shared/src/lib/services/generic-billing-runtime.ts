@@ -5,7 +5,7 @@
  */
 
 import type { AppBillingOperation, AppBillingUpdateQuote } from "@elizaos/cloud-sdk/app-billing";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { appBillingCommandRuntimeRepository } from "../../db/repositories/app-billing-command-runtime";

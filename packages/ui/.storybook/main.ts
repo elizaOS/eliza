@@ -129,8 +129,8 @@ const config: StorybookConfig = {
         }));
     cfg.resolve.alias = [
       {
-        find: /^@elizaos\/login$/,
-        replacement: resolve(monorepoRoot, "packages/login/src/sdk/index.ts"),
+        find: /^@elizaos\/auth$/,
+        replacement: resolve(monorepoRoot, "packages/auth/src/sdk/index.ts"),
       },
       // @elizaos/ui — bare barrel, the renderer-only styles entry, then subpaths.
       {
@@ -161,7 +161,7 @@ const config: StorybookConfig = {
       { find: /^@elizaos\/core\/(.+)$/, replacement: resolve(coreSrc, "$1") },
       // Host-only / native modules the browser catalog can't load → stubs.
       {
-        find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
+        find: /^@elizaos\/app(?:\/browser|\/ui-compat)?$/,
         replacement: hostExternalStub,
       },
       {

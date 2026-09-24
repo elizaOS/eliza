@@ -3,7 +3,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { describeLive } from "../../../../../../packages/app-core/test/helpers/live-agent-test.ts";
+import { describeLive } from "../../../../../../packages/app/test/helpers/live-agent-test.ts";
 import { ChannelTopicsService } from "../../../../../../packages/core/src/services/channel-topics.ts";
 import {
   ChannelType,

@@ -9,7 +9,8 @@
  *
  * To create a new app, copy this file and change the values below.
  */
-import type { AppConfig } from "@elizaos/app-core";
+
+import type { AppConfig } from "@elizaos/shared";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 
 interface AppWebConfig {

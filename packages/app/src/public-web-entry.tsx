@@ -22,11 +22,6 @@ const ManagedCloudPage = lazy(
   () => import("@elizaos/ui/cloud/shell/ManagedCloudPage"),
 );
 
-const MarketingHomePage = lazy(() => import("@homepage/embedded-home"));
-const MarketingDownloadsPage = lazy(
-  () => import("@homepage/embedded-downloads"),
-);
-
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;
 
@@ -78,8 +73,6 @@ function mountPublicWebEntry(): void {
       <React.StrictMode>
         <Suspense fallback={null}>
           <CloudRouterShell
-            marketingHomeElement={<MarketingHomePage />}
-            downloadsElement={<MarketingDownloadsPage />}
             appElement={<FullAppHandoff />}
             cloudManagementElement={<ManagedCloudPage />}
           />

@@ -464,7 +464,7 @@ export function buildNextCalendarEventContext(
   linkedMailError: string | null = null,
 ): Omit<
   LifeOpsNextCalendarEventContext,
-  "calendarFeedState" | "calendarSources"
+  "calendarFeedState" | "calendarSources" | "readScope"
 > {
   if (!event) {
     return {

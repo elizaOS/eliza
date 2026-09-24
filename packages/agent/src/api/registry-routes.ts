@@ -7,11 +7,8 @@
  * upstream failures surface as 502.
  */
 
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import { parseClampedInteger } from "@elizaos/shared";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared/api/route-helpers";
 import { isValidRegistryPackageName } from "@elizaos/shared/catalog/runtime-kernel";
 import type {
   RegistryPluginInfo,

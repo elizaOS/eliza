@@ -9,7 +9,7 @@
  * a callback targeting a different host or port is rejected as unreachable.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
+import { isLoopbackBindHost } from "@elizaos/shared";
 
 export const GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH = "/api/connectors/google/oauth/callback";
 

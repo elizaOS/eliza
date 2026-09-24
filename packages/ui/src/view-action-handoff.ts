@@ -4,8 +4,8 @@
  * is the reliable handoff when a platform intentionally runs without WebSockets.
  */
 
-import { ElizaError } from "@elizaos/common";
-import { normalizeCompletedActionHandoffId } from "@elizaos/shared/events";
+import { normalizeCompletedActionHandoffId } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
 import { dispatchCompletedActionNavigation } from "./completed-action-navigation";

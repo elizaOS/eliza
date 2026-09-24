@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-health",
   "version": "2.0.3-beta.7",
-  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
+  "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS \u2014 extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -68,7 +68,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
-    "test:scenarios": "cd ../.. && bun --conditions eliza-source --tsconfig-override tsconfig.json packages/scenario-runner/src/cli.ts run plugins/plugin-health/test/scenarios --lane live-only --report-dir reports/scenarios/live-health --run-dir reports/scenarios/live-health --export-native reports/scenarios/live-health/native.jsonl",
+    "test:scenarios": "cd ../.. && bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run plugins/plugin-health/test/scenarios --lane live-only --report-dir reports/scenarios/live-health --run-dir reports/scenarios/live-health --export-native reports/scenarios/live-health/native.jsonl",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",

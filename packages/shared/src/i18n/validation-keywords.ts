@@ -1,4 +1,4 @@
-/** Keyword matching uses the authored table in @elizaos/prompts/keywords. */
+/** Keyword matching uses the authored table in @elizaos/shared/i18n/keywords. */
 export {
   collectKeywordTermMatches,
   collectPreparedKeywordTermMatches,

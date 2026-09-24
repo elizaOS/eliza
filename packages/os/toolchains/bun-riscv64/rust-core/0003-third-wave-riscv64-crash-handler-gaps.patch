@@ -1,0 +1,78 @@
+Subject: [PATCH] riscv64 Rust-core bun: crash_handler riscv64 arms (third wave)
+
+The Rust-core crash_handler (src/crash_handler/lib.rs) has three arch-cfg
+sites that the 0002 second-wave patch did not cover. Of these, `Platform::CURRENT`
+is a HARD compile error on riscv64; the other two are correctness fixes.
+
+- `Platform::CURRENT` (`const CURRENT: u8`): a `#[cfg]` matrix over
+  OS x arch x baseline with NO catch-all arm. On riscv64-linux none of the
+  arms match, so the const-init block has no tail value and fails to compile
+  with `expected u8, found ()`. Add a `(linux/android, riscv64) -> b'r'` arm.
+  riscv64 ships C_LOOP-only (no Baseline JIT), so one non-baseline code is
+  enough; 'r' does not collide with the existing matrix (l/B/L/m/b/M/w/e/W/f/g/F).
+
+- `fault_context_from_ucontext`: add a `(linux, riscv64)` arm that reads
+  `(pc, fp)` from `uc_mcontext.__gregs` (index 0 = PC, index 8 = x8/s0 frame
+  pointer), and add riscv64 to the trailing `not(any(...))` exclusion so the
+  None fallback no longer also compiles on riscv64. Without this arm the code
+  still compiles (riscv64 took the None fallback), but the fault-frame seed for
+  the backtrace was lost; this restores it, mirroring the aarch64 arm.
+
+- `ARCH_DISPLAY_STRING`: add a riscv64 arm so the crash-report metadata line
+  shows "riscv64" instead of falling through to "x64".
+
+All additive; not C_LOOP-specific. Follows the 0002 second-wave pattern.
+
+diff --git a/src/crash_handler/lib.rs b/src/crash_handler/lib.rs
+index 8d79544..9517acd 100644
+--- a/src/crash_handler/lib.rs
++++ b/src/crash_handler/lib.rs
+@@ -1577,6 +1577,8 @@ mod draft {
+         } else {
+             "arm64"
+         }
++    } else if cfg!(target_arch = "riscv64") {
++        "riscv64"
+     } else {
+         "x64"
+     };
+@@ -1641,9 +1643,20 @@ mod draft {
+             }
+             Some(((*mc).__ss.__pc as usize, (*mc).__ss.__fp as usize))
+         }
++        #[cfg(all(target_os = "linux", target_arch = "riscv64"))]
++        // SAFETY: the kernel passes a valid ucontext_t as the handler's 3rd arg.
++        // riscv64 mcontext stores the integer registers in `__gregs[0..32]`:
++        // index 0 is the PC, index 8 is x8/s0 — the frame pointer under the
++        // standard RISC-V calling convention. Analog of the aarch64
++        // (pc, regs[29]) arm above.
++        unsafe {
++            let mc = &(*uc).uc_mcontext;
++            Some((mc.__gregs[0] as usize, mc.__gregs[8] as usize))
++        }
+         #[cfg(not(any(
+             all(target_os = "linux", target_arch = "x86_64"),
+             all(target_os = "linux", target_arch = "aarch64"),
++            all(target_os = "linux", target_arch = "riscv64"),
+             all(target_os = "macos", target_arch = "x86_64"),
+             all(target_os = "macos", target_arch = "aarch64"),
+         )))]
+@@ -2343,6 +2356,18 @@ mod draft {
+             {
+                 b'L'
+             }
++            // riscv64 has no Baseline JIT variant in the shipped artifact (C_LOOP
++            // only), so a single non-baseline code suffices. 'r' is unused by the
++            // existing matrix (l/B/L/m/b/M/w/e/W/f/g/F); bun.report cannot decode
++            // riscv64 traces regardless (no upstream riscv64 build), so this only
++            // needs to be a stable, collision-free single byte.
++            #[cfg(all(
++                any(target_os = "linux", target_os = "android"),
++                target_arch = "riscv64"
++            ))]
++            {
++                b'r'
++            }
+             #[cfg(all(target_os = "macos", target_arch = "x86_64", not(feature = "baseline")))]
+             {
+                 b'm'

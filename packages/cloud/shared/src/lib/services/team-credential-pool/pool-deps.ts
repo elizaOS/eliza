@@ -22,10 +22,7 @@
  * metadata records; callers resolve ciphertext via SecretsService at use time.
  */
 
-import type {
-  LinkedAccountConfig,
-  LinkedAccountHealth,
-} from "@elizaos/shared/contracts/service-routing";
+import type { LinkedAccountConfig, LinkedAccountHealth } from "@elizaos/shared";
 import {
   type PooledCredential,
   pooledCredentialsRepository,

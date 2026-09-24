@@ -79,7 +79,7 @@ export function freshAndroidRendererManifestPath({
   return path.join(
     rendererDist
       ? path.resolve(rendererDist)
-      : path.join(repoRoot, "packages", "app", "dist"),
+      : path.join(repoRoot, "packages", "app", "web-dist"),
     RENDERER_MANIFEST,
   );
 }

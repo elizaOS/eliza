@@ -5,6 +5,7 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
+import { isOverlayApp } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
@@ -16,7 +17,6 @@ import { AppIdentityTile } from "../apps/app-identity";
 import { loadMergedCatalogApps } from "../apps/catalog-loader";
 import { getAppShortName } from "../apps/helpers";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
-import { isOverlayApp } from "../apps/overlay-app-registry";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,

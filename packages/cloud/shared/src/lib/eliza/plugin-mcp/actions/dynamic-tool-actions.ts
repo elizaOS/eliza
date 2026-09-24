@@ -1,6 +1,5 @@
 // Wires hosted Eliza agent dynamic tool actions behavior for cloud runtime services.
 
-import { type Memory, toWellFormedUnicode } from "@elizaos/common";
 import {
   type Action,
   type ActionResult,
@@ -8,18 +7,21 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   logger,
+  type Memory,
   type State,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import { MCP_SERVICE_NAME } from "../types";
-import { generateSimiles, makeUniqueActionName } from "../utils/action-naming";
-import { checkMcpOAuthAccess } from "../utils/mcp";
-import { processToolResult } from "../utils/processing";
 import {
   type ActionParameter,
   convertJsonSchemaToActionParams,
+  generateSimiles,
+  makeUniqueActionName,
   validateParamsAgainstSchema,
-} from "../utils/schema-converter";
+} from "@elizaos/shared";
+import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+import { MCP_SERVICE_NAME } from "../types";
+import { checkMcpOAuthAccess } from "../utils/mcp";
+import { processToolResult } from "../utils/processing";
 
 export interface McpToolAction extends Omit<Action, "parameters"> {
   parameters?: ActionParameter[];

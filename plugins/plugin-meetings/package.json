@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-meetings",
   "version": "2.0.3-beta.7",
-  "description": "Meeting transcription plugin for elizaOS agents — browser bots that join Google Meet / Microsoft Teams / Zoom as guests, capture per-speaker audio, transcribe through the runtime model layer, and land diarized transcripts in the Transcripts view and knowledge store",
+  "description": "Meeting transcription plugin for elizaOS agents \u2014 browser bots that join Google Meet / Microsoft Teams / Zoom as guests, capture per-speaker audio, transcribe through the runtime model layer, and land diarized transcripts in the Transcripts view and knowledge store",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,8 +44,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --clean && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "test": "vitest run",
-    "test:scenarios": "SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions=eliza-source ../../packages/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
-    "test:e2e": "node --test scripts/headless-capture-e2e.test.mjs",
+    "test:scenarios": "SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions=eliza-source ../../packages/testing/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
+    "test:e2e": "node --test ../../packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

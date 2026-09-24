@@ -18,10 +18,9 @@ import {
   parseBooleanValue,
   validateUuid,
 } from "@elizaos/core";
-import { customActionGenerateTemplate } from "@elizaos/prompts";
-import { composePrompt } from "@elizaos/prompts/rendering";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
+  composePrompt,
   isAndroidMobile,
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
@@ -42,6 +41,7 @@ import {
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import { customActionGenerateTemplate } from "./custom-action-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import {

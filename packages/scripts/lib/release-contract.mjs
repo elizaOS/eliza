@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import semver from "semver";
-import { listPackages } from "./workspaces.mjs";
+import { listPackages } from "./workspaces.ts";
 
 export const RELEASE_PLAN_SCHEMA_VERSION = 2;
 export const RELEASE_STATE_SCHEMA_VERSION = 1;

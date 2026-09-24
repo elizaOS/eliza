@@ -3,22 +3,20 @@
  * inputs, and Eliza Cloud service routing for the chosen provider/topology.
  */
 
-import type { DeploymentTargetConfig } from "@elizaos/shared/contracts/deployment-types";
+import type {
+  DeploymentTargetConfig,
+  LinkedAccountFlagsConfig,
+  ServiceRouteConfig,
+  ServiceRoutingConfig,
+} from "@elizaos/shared";
 import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
   type FirstRunCredentialInputs,
   type FirstRunLocalProviderId,
   normalizeFirstRunProviderId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared/contracts/first-run-options";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-} from "@elizaos/shared/contracts/service-routing";
-import type {
-  LinkedAccountFlagsConfig,
-  ServiceRouteConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing-types";
+} from "@elizaos/shared";
 import type { FirstRunRuntime } from "./first-run";
 import {
   type FirstRunRuntimeTarget,

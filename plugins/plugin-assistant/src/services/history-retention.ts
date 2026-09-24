@@ -10,7 +10,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
-  ChannelType,
   COMPLETION_CONTEXT_SCHEMA,
   completionContextSources,
   createContextObject,
@@ -29,6 +28,7 @@ import {
 } from "../runtime/history-retention.ts";
 import { canonicalEvaluatorMessages } from "./evaluator-transcript.ts";
 import { resolveStage1SenderRole } from "./message/addressing.ts";
+import { isProgressiveContextChannel } from "./message/channel-protocol";
 import { appendPriorDialogueEvents } from "./message/dialogue-context.ts";
 
 export const HISTORY_RETENTION_EVALUATOR = "historyRetention";
@@ -164,17 +164,13 @@ export const historyRetentionEvaluator: Evaluator<
       evidence.messages.length < HISTORY_CONTINUITY_SOURCE_COUNT
     )
       return false;
-    // Reviewed-history projection applies only to supported direct-text conversations.
+    // Reviewed-history projection applies to direct conversations and text groups.
     // Older stored messages
     // may omit channelType, so use their authoritative room in that case.
     const channelType =
       message.content.channelType ??
       (await runtime.getRoom(message.roomId))?.type;
-    return (
-      channelType === ChannelType.DM ||
-      channelType === ChannelType.API ||
-      channelType === ChannelType.SELF
-    );
+    return isProgressiveContextChannel(channelType);
   },
   async prepare({ runtime, message, options }) {
     const evidence = options.extraction;

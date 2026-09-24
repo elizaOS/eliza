@@ -13,6 +13,6 @@ test("uses the parent of the eliza checkout as Docker context", () => {
   assert.equal(paths.contextRoot, "/workspace");
   assert.equal(
     paths.dockerfileRelToContext,
-    "eliza/packages/app-core/deploy/Dockerfile.cloud-agent",
+    "eliza/packages/app/deploy/Dockerfile.cloud-agent",
   );
 });

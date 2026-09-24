@@ -3,7 +3,7 @@
  * Build the "core" package set (issue #10200).
  *
  * Ensures workspace package symlinks exist, then drives `run-turbo.mjs run
- * build` over the leaf packages declared in `build-core-packages.mjs`. This
+ * build` over the leaf packages selected by package metadata. This
  * replaces the hand-maintained
  * `--filter=@elizaos/… (×27)` string that used to live inline in the root
  * `build:core` package.json script. The emitted Turbo invocation is identical to
@@ -21,7 +21,9 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { CORE_BUILD_PACKAGES } from "./build-core-packages.mjs";
+import { resolveCoreBuildPackages } from "./lib/script-metadata.ts";
+
+export const CORE_BUILD_PACKAGES = resolveCoreBuildPackages();
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_TURBO = path.join(SCRIPT_DIR, "run-turbo.mjs");

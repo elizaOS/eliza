@@ -11,7 +11,7 @@
  *   as Mock   as MockedFunction
  *
  * Whitelist (never scanned):
- *   packages/scenario-runner/test/mocks
+ *   packages/testing/scenario-runner/test/mocks
  *   node_modules
  *   dist
  *
@@ -47,7 +47,7 @@ const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo", ".git", "target"]);
 
 // Files/directories to whitelist (relative to repo root, using path.sep)
 const WHITELIST_SEGMENTS = [
-  path.join("packages", "scenario-runner", "test", "mocks"),
+  path.join("packages", "testing", "scenario-runner", "test", "mocks"),
 ];
 
 function isWhitelisted(filePath) {

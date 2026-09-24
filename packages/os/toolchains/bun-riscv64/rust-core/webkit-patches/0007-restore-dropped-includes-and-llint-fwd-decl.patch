@@ -1,0 +1,31 @@
+Subject: [PATCH] riscv64 Rust-core bun: include <wtf/Scope.h> in JSModuleLoader.cpp
+
+Building oven-sh/WebKit @ 963f8758 (the WEBKIT_VERSION pinned by the Rust-core
+bun target_commit, distinct from the Zig-era 5488984d) as JSCOnly+C_LOOP for
+riscv64: JSModuleLoader.cpp uses WTF::makeScopeExit (runtime/JSModuleLoader.cpp
+~line 1176) but does not include <wtf/Scope.h> directly, and it is not pulled in
+transitively in the JSCOnly configuration. Add the include.
+
+This is an upstream-safe, additive include; not riscv64- or C_LOOP-specific.
+
+Rebased against 963f8758 (Rust-core WebKit). The three other hunks the
+5488984d-era 0007 carried are now OBSOLETE upstream and were dropped:
+  - heap/Heap.cpp already includes <wtf/SetForScope.h> (line 110).
+  - runtime/DeferredWorkTimer.cpp already includes <wtf/SetForScope.h> (line 36).
+  - bytecode/ArithProfile.h now uses the *unqualified* `friend class
+    LLIntOffsetsExtractor;` (not the qualified `JSC::` form), which itself
+    introduces JSC::LLIntOffsetsExtractor into the namespace, so the separate
+    forward declaration is no longer required.
+
+diff --git a/Source/JavaScriptCore/runtime/JSModuleLoader.cpp b/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
+index 46bf6f4ddf..80bb07d7d6 100644
+--- a/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
++++ b/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
+@@ -50,6 +50,7 @@
+ #include "SyntheticModuleRecord.h"
+ #include "TopExceptionScope.h"
+ #include "VMTrapsInlines.h"
++#include <wtf/Scope.h>
+ #include <wtf/text/MakeString.h>
+
+ namespace JSC {

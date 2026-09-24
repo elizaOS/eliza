@@ -8,9 +8,11 @@ import {
   type LookupFn,
   type PinnedLookupFetchLike,
   type SsrfPolicy,
+} from "@elizaos/core";
+import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core";
+} from "@elizaos/shared/browser-contracts";
 import { detectMime, extensionForMime } from "./mime.js";
 
 export type FetchMediaResult = {

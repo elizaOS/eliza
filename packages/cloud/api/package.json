@@ -25,8 +25,8 @@
     "test:audit": "node test/_audit-coverage.mjs",
     "test:e2e": "node test/e2e/run-e2e-batches.mjs",
     "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000",
-    "voice:measure-warm-turns": "bun scripts/voice-warm-turn-measure.mjs",
-    "voice:local-gateway": "bun scripts/local-voice-gateway.ts"
+    "voice:measure-warm-turns": "bun ../scripts/api/voice-warm-turn-measure.mjs",
+    "voice:local-gateway": "bun ../scripts/api/local-voice-gateway.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.54",
@@ -34,7 +34,6 @@
     "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/prompts": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
     "@upstash/redis": "^1.37.0",
@@ -53,7 +52,8 @@
     "zod": "^4.6.5",
     "@elizaos/shared": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/common": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/plugin-web-search": "workspace:*",

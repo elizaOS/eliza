@@ -49,13 +49,18 @@ function harness(text: string) {
         params: {
           unit: "line" | "fragment" | "byte";
           offset: number;
-          limit: number;
+          limit?: number;
         },
       ) => {
         if (params.unit === "byte") {
           const bytes = Buffer.from(currentText, "utf8");
           const pageText = bytes
-            .subarray(params.offset, params.offset + params.limit)
+            .subarray(
+              params.offset,
+              params.limit === undefined
+                ? undefined
+                : params.offset + params.limit,
+            )
             .toString("utf8");
           return {
             unit: "byte" as const,
@@ -89,13 +94,23 @@ function harness(text: string) {
                 }, [])
                 .filter(Boolean);
         const pageText = units
-          .slice(params.offset, params.offset + params.limit)
+          .slice(
+            params.offset,
+            params.limit === undefined
+              ? undefined
+              : params.offset + params.limit,
+          )
           .join("");
         return {
           unit: params.unit,
           text: pageText,
           start: params.offset,
-          end: Math.min(params.offset + params.limit, units.length),
+          end: Math.min(
+            params.limit === undefined
+              ? units.length
+              : params.offset + params.limit,
+            units.length,
+          ),
           total: units.length,
           documentRevision: currentRevision,
           revisionAttemptId: `native-secret-${currentRevision}`,
@@ -307,7 +322,7 @@ describe("DOCUMENT progressive read", () => {
     { offset: Number.MAX_SAFE_INTEGER + 1 },
     { limit: -1 },
     { limit: 0 },
-    { limit: 101 },
+    { limit: Number.MAX_SAFE_INTEGER + 1 },
   ])("fails explicitly for an invalid read range %#", async (range) => {
     const { runtime } = harness("one\ntwo\n");
     const result = await documentAction.handler?.(

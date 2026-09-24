@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 // iOS Simulator first-run REMOTE-CONNECT smoke. WKWebView is not CDP-drivable
 // like Android, so the harness writes a Capacitor Preferences request, launches
 // the installed app, and lets the in-app verifier drive the same hardened
@@ -10,11 +15,7 @@
 // live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to have the
 // verifier drive one real post-onboarding chat turn; the harness then enforces
 // the shared non-stub assertion (`assertLiveReply`) on the reported reply.
-import { execFileSync, spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { assertLiveReply } from "../test/liveness-contract.mjs";
 import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import { assertIosMixedContentSmokeResult } from "./lib/ios-mixed-content-smoke-contract.mjs";
@@ -30,7 +31,7 @@ import {
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
-const resultDir = path.join(appDir, "test-results", "ios-onboarding-to-home");
+const resultDir = testOutputPath("app", "ios-onboarding-to-home");
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",

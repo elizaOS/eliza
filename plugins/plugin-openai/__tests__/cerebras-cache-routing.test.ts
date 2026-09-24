@@ -1,7 +1,8 @@
 /** Exercise the real AI SDK serialization. Only the HTTP response is a fixture;
  * no request may leave the test. Live cache/latency acceptance is separate. */
-import { AgentRuntime, type GenerateTextParams } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+
+import type { GenerateTextParams } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { buildProviderCachePlan } from "../../plugin-assistant/src/runtime/provider-cache-plan";
 import { handleTextSmall } from "../models/text";
@@ -14,9 +15,9 @@ async function captureRequest(
 ) {
   const hostname = cerebras ? "api.cerebras.ai" : "openai-cache-fixture.invalid";
   const base = `https://${hostname}/v1`;
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: { name: "Cache routing fixture", bio: "test", settings: {} },
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
     settings: {
       ELIZA_PROVIDER: cerebras ? "cerebras" : "openai",

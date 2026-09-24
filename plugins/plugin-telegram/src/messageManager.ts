@@ -51,12 +51,12 @@ import type {
 } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
-import { resolveTelegramSenderAuth } from "./command-registration";
 import {
   resolveTelegramRuntimeEntityId,
   telegramIdentityMetadata,
 } from "./identity";
 import { renderTelegramInteractions } from "./interactions";
+import { resolveTelegramSenderAuth } from "./sender-auth";
 import {
   type TelegramContent,
   TelegramEventTypes,

@@ -70,13 +70,9 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import {
-  imageDescriptionTemplate,
-  postCreationTemplate,
-} from "@elizaos/prompts";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import { composePromptFromState } from "@elizaos/shared";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
@@ -96,6 +92,7 @@ import {
 } from "../autonomy/providers.ts";
 import { autonomyRoutes } from "../autonomy/routes.ts";
 import { AutonomyService } from "../autonomy/service.ts";
+import { imageDescriptionTemplate, postCreationTemplate } from "./prompts.js";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";

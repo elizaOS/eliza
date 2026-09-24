@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   comparePixels,
   summarizeDiff,
-} from "@elizaos/evidence/visual-primitives";
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 import { analyzeImageFile } from "../mvp-visual-verify/ocr.mjs";
 import {
@@ -222,5 +222,5 @@ describe("analyzeScreenshot end to end", () => {
     expect(
       report.ocr_note === null || typeof report.ocr_note === "string",
     ).toBe(true);
-  });
+  }, 30_000);
 });

@@ -1,5 +1,5 @@
 /** Imports one reviewed external subscription or original local trial from an operator-owned manifest without provider writes. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { closeDatabaseConnectionsForTests } from "../../shared/src/db/client";
 import { importAppBillingHistory } from "../../shared/src/lib/services/generic-billing-import";
 import { readAppBillingOperatorManifest } from "../../shared/src/lib/services/generic-billing-operator-manifest";

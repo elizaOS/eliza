@@ -1,5 +1,5 @@
 // Defines the priority triage mixed sources LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 /**
  * Live-model scenario (live-only lane): Priority triage ranks the seeded blocker above seeded noise and schedules it.
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "prioritize", "inbox", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

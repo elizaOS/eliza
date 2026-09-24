@@ -12,8 +12,8 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { ownerRemindersAction } from "@elizaos/plugin-personal-assistant";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const request =
   "Remind me at 9 AM UTC on January 2, 2099 to review the synthetic Cloud inbox.";

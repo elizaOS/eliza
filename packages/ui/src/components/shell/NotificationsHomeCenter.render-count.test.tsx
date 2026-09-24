@@ -49,7 +49,7 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   navigateDeepLink: vi.fn(),
 }));
 
-import type { AgentNotification, NotificationCategory } from "@elizaos/common";
+import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { __resetSharedNowForTests, MINUTE_MS } from "../../hooks/useSharedNow";
 import {
   __ingestNotificationForTests,

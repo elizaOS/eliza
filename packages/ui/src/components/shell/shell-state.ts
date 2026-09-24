@@ -3,7 +3,7 @@
  * surface coordination.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared/capability-catalog";
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
@@ -50,6 +50,7 @@ export function isShellPhase(value: unknown): value is ShellPhase {
 }
 
 export interface ShellMessage {
+  planningAcknowledgment?: string;
   id: string;
   role: "user" | "assistant";
   content: string;

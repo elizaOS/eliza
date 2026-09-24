@@ -63,7 +63,7 @@ function runLifecycle(
       }),
     );
     const installer = new URL(
-      "../../app-core/scripts/ensure-fused-inference-install.mjs",
+      "../../app/scripts/ensure-fused-inference-install.mjs",
       import.meta.url,
     ).href;
     writeFileSync(

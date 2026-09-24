@@ -11,7 +11,7 @@
  * `--backend synthetic` is deterministic and CI-safe. It verifies the
  * orchestration, metrics shape, and schema-prefill accounting without
  * claiming model/hardware evidence. `--backend real` bridges to the
- * app-core voice-duet harness, which owns the live in-memory
+ * app voice-duet harness, which owns the live in-memory
  * TTS -> ASR -> agent-tool loop.
  */
 
@@ -33,7 +33,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const VOICE_DUET = path.join(
   REPO_ROOT,
   "packages",
-  "app-core",
+  "app",
   "scripts",
   "voice-duet.mjs",
 );
@@ -469,15 +469,15 @@ function realBridgeStatus(result) {
 
 function realBridgeReason(status, result) {
   if (status === "pass") {
-    return "Real fused assets were present and the app-core voice-duet harness completed live TTS->ASR->agent turns.";
+    return "Real fused assets were present and the app voice-duet harness completed live TTS->ASR->agent turns.";
   }
   if (status === "real-voice-duet-timeout") {
-    return `The app-core voice-duet bridge did not complete within ${result.wallMs}ms. Inspect the bridge stdout/stderr tail for the stage that stalled.`;
+    return `The app voice-duet bridge did not complete within ${result.wallMs}ms. Inspect the bridge stdout/stderr tail for the stage that stalled.`;
   }
   if (status === "real-voice-duet-no-turns") {
-    return "The app-core voice-duet bridge exited successfully but did not record a completed round-trip; inspect the bridge report for missing latency/turn data.";
+    return "The app voice-duet bridge exited successfully but did not record a completed round-trip; inspect the bridge report for missing latency/turn data.";
   }
-  return "The app-core voice-duet bridge exited non-zero; stdout/stderr include the concrete missing prerequisite or native runtime failure.";
+  return "The app voice-duet bridge exited non-zero; stdout/stderr include the concrete missing prerequisite or native runtime failure.";
 }
 
 async function runSynthetic(args) {

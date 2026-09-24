@@ -4,7 +4,7 @@
  */
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LegacyRouteHandler } from "@elizaos/shared/api/http-plugin";
+import type { LegacyRouteHandler } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 
 const MockCalendarService = vi.hoisted(() =>

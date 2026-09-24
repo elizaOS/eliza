@@ -17,7 +17,7 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
-import type { RouteHelpers, RouteRequestContext } from '@elizaos/shared/api/route-helpers';
+import type { RouteHelpers, RouteRequestContext } from '@elizaos/shared';
 
 export type TriggerRouteHelpers = RouteHelpers;
 

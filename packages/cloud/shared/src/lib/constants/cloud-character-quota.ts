@@ -7,7 +7,7 @@
  * `getMaxNonTerminalAgentsForOrg` in `agent-sandbox-quota.ts`.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 
 export const CLOUD_CHARACTER_LIMITS = {
   FREE_TIER: 5,

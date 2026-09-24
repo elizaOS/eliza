@@ -3,7 +3,7 @@
  *
  * All Eliza-owned files live under `<state-dir>/local-inference/` to match
  * the convention established by `plugin-installer.ts` and the rest of
- * app-core. We never write to paths outside of this root.
+ * app. We never write to paths outside of this root.
  *
  * `<state-dir>` follows the canonical `ELIZA_STATE_DIR` > XDG state
  * precedence;

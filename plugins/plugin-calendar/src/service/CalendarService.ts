@@ -7782,6 +7782,12 @@ export class CalendarService extends Service {
       ) ?? null;
     return {
       ...buildNextCalendarEventContext(nextEvent, now),
+      readScope: {
+        selection: "next_event",
+        timeMin: feed.timeMin,
+        timeMax: feed.timeMax,
+        exhaustive: false,
+      },
       calendarFeedState: feed.state,
       calendarSources: feed.sources,
     };

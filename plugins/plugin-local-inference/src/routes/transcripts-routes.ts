@@ -1,7 +1,7 @@
 /**
  * Transcript HTTP routes (#8789) — `/api/transcripts*`, served as rawPath plugin
  * routes (on `runtime.routes`, dispatched by both the upstream agent server and
- * app-core) so the Transcripts view + the recording pipeline have a backend.
+ * app) so the Transcripts view + the recording pipeline have a backend.
  * Audio is served by the existing content-addressed media store via each
  * record's `audioUrl`, so no separate audio route is needed.
  *
@@ -16,6 +16,11 @@ import type {
 	UUID,
 } from "@elizaos/core";
 import { isAdminRank, PII_ENTITY_RECOGNIZER_SERVICE } from "@elizaos/core";
+import type {
+	Route,
+	RouteHandlerContext,
+	RouteHandlerResult,
+} from "@elizaos/shared";
 import {
 	type MeetingArtifact,
 	TRANSCRIPT_SHARING_STATES,
@@ -28,11 +33,6 @@ import {
 	transcriptSpeakerCount,
 	validateMeetingArtifact,
 } from "@elizaos/shared";
-import type {
-	Route,
-	RouteHandlerContext,
-	RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,

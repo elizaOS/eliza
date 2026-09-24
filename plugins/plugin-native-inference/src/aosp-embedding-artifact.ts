@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 
 export function verifyAospEmbeddingArtifact(modelPath: string): void {
   const actualHash = createHash("sha256")

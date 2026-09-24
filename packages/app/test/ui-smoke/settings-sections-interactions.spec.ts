@@ -108,7 +108,7 @@ test("capabilities settings: the Wallet switch dispatches its config patch", asy
   // the backend) to the real pipeline: toggling the Wallet capability calls
   // client.updateConfig({ ui: { capabilities: { wallet } } }) → PUT /api/config.
   // We do NOT stub /api/config; the request hits the real backend (stub in
-  // keyless CI, app-core runtime under the live stack). Asserting the request
+  // keyless CI, app runtime under the live stack). Asserting the request
   // fired with the capability patch is the load-bearing, deterministic contract.
   // The local aria-checked flip is verified too, but it is no longer the point.
   const configWrites: Array<{ wallet: unknown }> = [];
@@ -272,7 +272,7 @@ test("backup settings: Back Up opens its modal", async ({ page }) => {
 
 // Deep character round-trip against the REAL backend. Personality now renders
 // inline and autosaves after a 700 ms debounce; there is no open step or manual
-// Save button. The shared client and app-core route currently use PUT for the
+// Save button. The shared client and app route currently use PUT for the
 // partial character edit. This test observes a successful real response and
 // proves write→reload→read-back persistence. LIVE_ONLY: the keyless stub cannot
 // persist a character edit.

@@ -1,7 +1,7 @@
 /**
  * Re-export of the shared routing-preferences module. The canonical
  * implementation lives in `@elizaos/shared/local-inference` because both
- * the server (`@elizaos/app-core`) and the UI client (`@elizaos/ui`)
+ * the server (`@elizaos/app`) and the UI client (`@elizaos/ui`)
  * read/write the same routing.json with identical semantics.
  */
 export {

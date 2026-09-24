@@ -17,7 +17,7 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // .../plugins/plugin-local-inference/src/services/voice -> repo root
 const REPO_ROOT = path.resolve(HERE, "../../../../..");
-const APP_CORE_ROOT = path.join(REPO_ROOT, "packages", "app-core");
+const APP_CORE_ROOT = path.join(REPO_ROOT, "packages", "app");
 const SCRIPT = path.join(
 	APP_CORE_ROOT,
 	"scripts",

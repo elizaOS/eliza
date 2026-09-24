@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { selectLiveProvider } from "@elizaos/testing/live-provider";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime, selectLiveProvider } from "@elizaos/testing";
 
 const {
 	default: agentOrchestratorPlugin,

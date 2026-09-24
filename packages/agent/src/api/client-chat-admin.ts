@@ -3,7 +3,7 @@
  * the runtime's canonical owner id, then a previously resolved id, then the
  * configured `agents.defaults.adminEntityId`, falling back to core's
  * `deterministicOwnerEntityId` (agent-ID seed) — the same fallback LifeOps
- * reads, the scheduler, and the pendant/PA routes use — so chat-written owner
+ * reads, the scheduler, and the PA routes use — so chat-written owner
  * rows stay visible to every reader. The agent NAME seed survives only for the
  * degenerate no-runtime case. The resolved id is written back onto state as
  * both `adminEntityId` and `chatUserId`.

@@ -8,8 +8,6 @@
  * shell catch-all.
  */
 
-import { classifyElizaHostname } from "@elizaos/shared/elizacloud/domain-contract";
-
 export interface WebEntryDecisionInput {
   pathname: string;
   hostname: string;
@@ -17,7 +15,6 @@ export interface WebEntryDecisionInput {
   chatHarnessEnabled: boolean;
   desktopShell: boolean;
   forceApexConsole: boolean;
-  forceMarketingHome: boolean;
 }
 
 const EXACT_PUBLIC_PATHS = new Set([
@@ -30,7 +27,6 @@ const EXACT_PUBLIC_PATHS = new Set([
   "/auth/error",
   "/auth/success",
   "/bsc",
-  "/downloads",
   "/get-started",
   "/invite/accept",
   "/join",
@@ -64,31 +60,6 @@ export function isHostedPublicPath(pathname: string): boolean {
   );
 }
 
-/** Whether the URL can use the marketing-only root without the auth router. */
-export function shouldUseMarketingHomeEntry(
-  input: WebEntryDecisionInput,
-): boolean {
-  const isRootPath = normalizePathname(input.pathname) === "/";
-  if (
-    input.forceMarketingHome &&
-    !input.chatHarnessEnabled &&
-    !input.desktopShell &&
-    isRootPath
-  ) {
-    return true;
-  }
-  if (
-    !input.webShellEnabled ||
-    input.chatHarnessEnabled ||
-    input.desktopShell ||
-    !isRootPath
-  ) {
-    return false;
-  }
-  const role = classifyElizaHostname(input.hostname).role;
-  return role === "marketing" || role === "legacy-marketing";
-}
-
 /** Decide which renderer entry may execute before any application modules load. */
 export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
   if (
@@ -108,6 +79,5 @@ export function shouldUsePublicWebEntry(input: WebEntryDecisionInput): boolean {
   )
     return true;
   if (normalizePathname(input.pathname) !== "/") return false;
-  if (input.forceApexConsole) return true;
-  return shouldUseMarketingHomeEntry(input);
+  return input.forceApexConsole;
 }

@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.workspace.json",
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM"],
+    "types": ["node", "bun-types"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+}

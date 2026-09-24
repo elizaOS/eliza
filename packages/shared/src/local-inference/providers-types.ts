@@ -8,7 +8,7 @@
  * The runtime-side `ProviderDefinition` (which adds a callable
  * `getEnableState()` reading env vars / fs / device-bridge sockets)
  * extends `ProviderMeta` and lives in
- * `@elizaos/app-core/src/services/local-inference/providers.ts` — it is
+ * `@elizaos/app/src/services/local-inference/providers.ts` — it is
  * the authoritative source for `/api/local-inference/providers`.
  *
  * UI consumers (`client-local-inference.ts`, `ios-local-agent-kernel.ts`)
@@ -47,7 +47,7 @@ export interface ProviderEnableState {
 
 /**
  * Data-only provider descriptor. UI-safe — contains no runtime methods.
- * The server-side `ProviderDefinition` (in `@elizaos/app-core`) extends
+ * The server-side `ProviderDefinition` (in `@elizaos/app`) extends
  * this with a `getEnableState()` callable.
  */
 export interface ProviderMeta {

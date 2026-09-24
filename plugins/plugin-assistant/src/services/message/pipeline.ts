@@ -100,6 +100,7 @@ import {
   resolveStage1ReplyGateMode,
   resolveStage1SenderRole,
 } from "./addressing.js";
+import { isProgressiveContextChannel } from "./channel-protocol";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { filterIntermediateCallbackContent } from "./delivery.js";
@@ -235,6 +236,9 @@ export async function runV5MessageRuntimeStage1(
     args.message.content?.channelType === ChannelType.VOICE_DM ||
     args.message.content?.channelType === ChannelType.API ||
     args.message.content?.channelType === ChannelType.SELF;
+  const progressiveContextChannel =
+    isProgressiveContextChannel(args.message.content?.channelType) &&
+    !args.codingMode;
   // Ambient turn = a positively-identified unaddressed text-group turn
   // (structural classifier only — channel type + addressing + source
   // metadata, never message text; anything uncertain fails open to
@@ -265,12 +269,9 @@ export async function runV5MessageRuntimeStage1(
   const context = await timeInferenceSpan("message:stage1:context", () =>
     createV5MessageContextObject({
       ...args,
-      includeActionDiscovery:
-        directMessageChannel &&
-        args.message.content?.channelType !== ChannelType.VOICE_DM &&
-        !args.codingMode
-          ? "index"
-          : true,
+      // Catalog loading is independent of history/engagement channel policy.
+      // Ordinary handlers route work; the planner owns full tool discovery.
+      includeActionDiscovery: args.codingMode ? true : "reference",
       userRoles: [senderRole],
       availableContexts,
       ambientTurn,
@@ -316,7 +317,7 @@ export async function runV5MessageRuntimeStage1(
         agentId: String(args.runtime.agentId ?? "unknown-agent"),
         roomId: args.message.roomId ? String(args.message.roomId) : undefined,
         // Run/scenario correlation the aggregator joins on. The scenario CLI
-        // sets these env vars before each scenario (packages/scenario-runner/
+        // sets these env vars before each scenario (packages/testing/scenario-runner/
         // src/cli.ts); passing them here makes this call site the source of
         // truth so file-recorder trajectories carry the join keys without the
         // recorder inferring them from env buried in its persistence layer.
@@ -377,6 +378,7 @@ export async function runV5MessageRuntimeStage1(
         context,
         availableContexts,
         directMessageChannel,
+        progressiveContextChannel,
         stage1PreprocessStartedAt,
         recorder,
         trajectoryId,
@@ -1229,9 +1231,7 @@ export async function runV5MessageRuntimeStage1(
         normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
     );
     const discoverWithoutActionHints =
-      directMessageChannel &&
-      args.message.content?.channelType !== ChannelType.VOICE_DM &&
-      stageOneCandidates.length === 0;
+      progressiveContextChannel && stageOneCandidates.length === 0;
     const canUseProgressiveActions =
       args.codingMode !== true &&
       !deterministicPlanSelection &&
@@ -1522,7 +1522,6 @@ export async function runV5MessageRuntimeStage1(
         if (
           modelType === ModelType.ACTION_PLANNER &&
           directMessageChannel &&
-          args.message.content?.channelType !== ChannelType.VOICE_DM &&
           args.codingMode !== true
         ) {
           // The provider owns capability checks. Unsupported lanes retain the

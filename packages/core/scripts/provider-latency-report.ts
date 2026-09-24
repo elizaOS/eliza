@@ -17,7 +17,7 @@ import {
 	runWithTrajectoryContext,
 	type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { createDocumentsPlugin } from "../../../plugins/plugin-assistant/src/features/documents/index.ts";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 

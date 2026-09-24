@@ -1,7 +1,6 @@
 /** ACTIONS Provider - Provides available actions with parameter schemas to the LLM. */
 
-import type { Memory } from "@elizaos/common";
-import type { Action, IAgentRuntime, Provider, State } from "@elizaos/core";
+import type { Action, IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { addHeader, logger } from "@elizaos/core";
 import { filterActionsByRouting, getContextRoutingFromMessage } from "../utils/context-routing";
 

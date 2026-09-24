@@ -20,7 +20,7 @@ import {
   type KmsAeadOperationKeyBundleHandle,
   type KmsAeadOperationKeyBundleProvider,
   type KmsAeadOperationKeyBundleWrapped,
-} from "@elizaos/credentials/kms";
+} from "@elizaos/auth/kms";
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
   AGENT_BACKUP_MANIFEST_FORMAT,

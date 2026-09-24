@@ -1,9 +1,9 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 /**
  * Propagates per-turn stream callbacks and cancellation through model and
  * action execution, using Node AsyncLocalStorage.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ElizaError } from "./errors";
 import type { StreamChunkCallback } from "./types/components";
 import type {
@@ -87,7 +87,7 @@ export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
 
 /**
  * Interface for streaming context managers.
- * Different implementations exist for Node.js (AsyncLocalStorage) and Browser (Stack).
+ * AsyncLocalStorage isolates concurrent turns across asynchronous work.
  */
 export interface IStreamingContextManager {
 	/**

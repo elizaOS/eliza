@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+kernel="$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print | sort -V | tail -n 1)"
+initrd="$(find /boot -maxdepth 1 -name 'initrd.img-*' -print | sort -V | tail -n 1)"
+[ -n "$kernel" ] || exit 0
+[ -n "$initrd" ] || exit 0
+
+kernel="$(basename "$kernel")"
+initrd="$(basename "$initrd")"
+cat <<EOF
+menuentry 'elizaOS Recovery' --id elizaos-recovery --hotkey=r {
+    search --no-floppy --label --set=recovery elizaos-recovery
+    linux (\$recovery)/boot/$kernel root=LABEL=elizaos-recovery ro systemd.unit=rescue.target elizaos.recovery=1
+    initrd (\$recovery)/boot/$initrd
+}
+EOF

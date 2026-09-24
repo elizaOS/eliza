@@ -9,16 +9,15 @@
  *
  * With no live runtime, POST /api/agent/start is a real boot request, not a
  * flag flip: it boots through the host's injected `onRestart` — the same
- * closure POST /api/agent/restart uses, which app-core's fresh-install
+ * closure POST /api/agent/restart uses, which app's fresh-install
  * deferral funnels into a single-flight boot. Reporting "running" with a null
  * runtime would be fake-ready: a host that cannot boot answers 503, and a
  * failed boot answers 500 with the reported state flipped to "error".
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
-import type { RouteHelpers } from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import { PostAgentAutonomyRequestSchema } from "@elizaos/shared";
-import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
 import { detectRuntimeModel } from "./agent-model.ts";
 
 type AgentStateStatus =

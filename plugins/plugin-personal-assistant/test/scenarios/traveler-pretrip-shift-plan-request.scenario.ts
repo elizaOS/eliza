@@ -14,7 +14,7 @@
  * durable record, and the judge grades the load-bearing nuance — a
  * destination-anchored, wellness-only shift plan with no medical dosing.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

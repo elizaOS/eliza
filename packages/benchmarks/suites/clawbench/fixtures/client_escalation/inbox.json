@@ -1,0 +1,65 @@
+[
+  {
+    "id": "msg_101",
+    "sender": "vp-eng@acmecorp.com",
+    "subject": "ESCALATION: Data export broken since Tuesday — CEO involved",
+    "body": "Alex,\n\nOur CEO is asking about this. The data export feature your team owns has been failing since Tuesday for our Enterprise customers. We've had 3 support tickets from Fortune 500 clients. Our team has been debugging for 2 days with no resolution.\n\nI need:\n1. A root cause analysis by end of day\n2. An ETA for the fix\n3. Someone from your team on a call with our VP of Customer Success at 2pm today\n\nThis is P0. Please respond ASAP.\n\nRegards,\nDana Reeves\nVP Engineering, Acme Corp",
+    "received_ts": "2026-02-07T09:15:00-08:00",
+    "labels": ["inbox", "urgent"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_102",
+    "sender": "support-escalations@acmecorp.com",
+    "subject": "Fwd: [TICKET-4521] Enterprise data export timeout — Zenith Financial",
+    "body": "Forwarding from our support queue.\n\n---\nCustomer: Zenith Financial (Enterprise plan, $240K ARR)\nIssue: Data export times out after 30s for datasets > 50K rows\nFirst reported: Feb 4\nAttempted workarounds: Smaller batch sizes (still fails at 20K)\nCustomer contact: Mike Torres, Director of Analytics\nSeverity: Critical — blocking their quarterly SEC filing\n---\n\nThis is the third Enterprise customer reporting this same issue. See also TICKET-4518 (GlobalTech) and TICKET-4523 (Meridian Health).",
+    "received_ts": "2026-02-07T08:30:00-08:00",
+    "labels": ["inbox", "support"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_103",
+    "sender": "sarah.kim@techcorp.com",
+    "subject": "Re: Q1 OKRs — your section due Friday",
+    "body": "Hey Alex,\n\nJust a reminder that your section of the Q1 OKRs doc is due Friday. I need the platform team's key results and confidence scores. The template is in the shared Notion workspace.\n\nThanks,\nSarah",
+    "received_ts": "2026-02-07T08:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_104",
+    "sender": "marcus.johnson@techcorp.com",
+    "subject": "Re: Data export investigation",
+    "body": "Alex,\n\nI've been looking into the export issue. Found the root cause: the query optimizer change we shipped in v2.14.5 (Feb 3) regressed the batch cursor logic. For datasets > 10K rows, the cursor resets to offset 0 after each batch, causing an infinite loop that eventually times out.\n\nI have a fix ready in branch fix/export-cursor-reset (PR #356). The fix is 12 lines — just preserving the cursor state across batches. All unit tests pass but I need to test against a large dataset.\n\nShould I deploy the hotfix to staging now? I can have it validated in 2 hours.\n\n— Marcus",
+    "received_ts": "2026-02-07T09:45:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_105",
+    "sender": "recruiting@techcorp.com",
+    "subject": "Interview panel: Senior Backend Engineer (Feb 10)",
+    "body": "Hi Alex,\n\nYou're scheduled to be on the interview panel for a Senior Backend Engineer candidate on Feb 10 at 2pm. Here are the details:\n\nCandidate: Jordan Lee\nRole: Senior Backend Engineer — Platform Team\nYour slot: System Design (45 min)\n\nPlease review the candidate's resume (attached) and confirm you can attend.\n\nThanks,\nRecruiting Team",
+    "received_ts": "2026-02-06T16:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_106",
+    "sender": "conference@devcon2026.com",
+    "subject": "Your DevCon 2026 talk proposal has been accepted!",
+    "body": "Congratulations! Your talk proposal 'Scaling Data Pipelines at TechCorp' has been accepted for DevCon 2026 (March 15-17). Please confirm your attendance by Feb 14.\n\nBest,\nDevCon Program Committee",
+    "received_ts": "2026-02-06T10:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_107",
+    "sender": "ciso@techcorp.com",
+    "subject": "CONFIDENTIAL: SOC 2 audit findings — platform team action items",
+    "body": "Alex,\n\nAttached are the preliminary SOC 2 audit findings relevant to the platform team. DO NOT forward this email outside the company.\n\nKey findings requiring your team's response:\n1. API key rotation policy not enforced (finding F-2026-014)\n2. Data export logs missing user attribution (finding F-2026-021)\n3. Session timeout configuration inconsistent across services (finding F-2026-033)\n\nI need remediation plans for each by Feb 21.\n\nMarina Chen\nCISO",
+    "received_ts": "2026-02-07T07:00:00-08:00",
+    "labels": ["inbox", "confidential"],
+    "is_urgent": false
+  }
+]

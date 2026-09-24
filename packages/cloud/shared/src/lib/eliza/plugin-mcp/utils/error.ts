@@ -1,16 +1,18 @@
 // Wires hosted Eliza agent error behavior for cloud runtime services.
 
-import { type Memory } from "@elizaos/common";
 import {
   type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
+  type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
-import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
+import {
+  composePromptFromState,
+  errorAnalysisTemplate as errorAnalysisPrompt,
+} from "@elizaos/shared";
 import type { McpProvider } from "../types";
 
 export async function handleMcpError(

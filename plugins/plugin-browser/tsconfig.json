@@ -19,7 +19,7 @@
     "noEmit": true,
     "types": ["node"],
     "typeRoots": [
-      "../app-core/node_modules/@types",
+      "../app/node_modules/@types",
       "../../node_modules/@types",
       "../../node_modules/.bun/node_modules/@types",
       "../../../node_modules/@types",

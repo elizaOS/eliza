@@ -8,8 +8,8 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
-import { ElizaError } from "@elizaos/common";
-import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
+import { ElizaError } from "@elizaos/core";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { WARM_POOL_ORG_ID } from "../../db/schemas/agent-sandboxes";
@@ -3671,7 +3671,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // /root/.local/state/eliza in the container's writable layer, which
         // is lost on the normal container replacement/reschedule path.
         ELIZA_STATE_DIR: environmentVars.ELIZA_STATE_DIR?.trim() || CONTAINER_DURABLE_STATE_DIR,
-        // Gateway service discovery — see SandboxRegistry in app-core.
+        // Gateway service discovery — see SandboxRegistry in app.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
         // route through Hetzner's private VPN.

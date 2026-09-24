@@ -2,7 +2,7 @@
  * AOSP-only local-inference handler bootstrap for the mobile agent bundle.
  *
  * Background: the upstream `startEliza()` in `runtime/eliza.ts` does not call
- * any local-inference wiring — that lives in the `@elizaos/app-core`
+ * any local-inference wiring — that lives in the `@elizaos/app`
  * runtime wrapper (`ensure-local-inference-handler.ts`), which the mobile
  * agent bundle does NOT import. As a result, on AOSP the runtime boots
  * with `ELIZA_LOCAL_LLAMA=1` set but no TEXT_SMALL / TEXT_LARGE /
@@ -17,8 +17,8 @@
  * single loader, single model (resolved/auto-downloaded then loaded on first
  * call).
  *
- * Why not import from `@elizaos/app-core` directly? `@elizaos/app-core`
- * already depends on `@elizaos/agent`, so an `agent → app-core` import
+ * Why not import from `@elizaos/app` directly? `@elizaos/app`
+ * already depends on `@elizaos/agent`, so an `agent → app` import
  * creates a hard cyclic workspace dependency that breaks `bun install`
  * and CI even when the bundler can inline the cycle. Keeping the AOSP
  * registration here avoids the cycle entirely.
@@ -71,7 +71,7 @@ import {
   BGE_EMBEDDING_MODEL,
   FIRST_RUN_DEFAULT_MODEL_ID,
   tierBundleSlug,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,
@@ -923,9 +923,9 @@ type LocalGenerateOutcome =
 
 /**
  * Classify a thrown error into either "let it propagate" or "rotate to
- * cloud". Mirrors `packages/app-core/src/services/local-inference/cloud-fallback.ts`
+ * cloud". Mirrors `packages/app/src/services/local-inference/cloud-fallback.ts`
  * but inlined here because the AOSP bundle deliberately does NOT import
- * `@elizaos/app-core` (cycle through `@elizaos/agent`).
+ * `@elizaos/app` (cycle through `@elizaos/agent`).
  */
 function classifyLocalError(err: unknown): {
   fallback: boolean;
@@ -1334,7 +1334,7 @@ function readBundledModelManifest(modelsDir: string): {
 }
 
 // Recommended-model auto-download for the AOSP / bun:ffi path. Mirrors
-// the helper in plugin-capacitor-bridge/mobile-device-bridge-bootstrap.ts:
+// the helper in plugin-native-inference/mobile-device-bridge-bootstrap.ts:
 // when no GGUF is staged on the device, fetch a known-good default from
 // HuggingFace into the agent state dir so first-chat-works without
 // requiring a manual `stage-default-models.mjs + APK rebuild` round.
@@ -2691,7 +2691,7 @@ function readFfiPointer(
 ): bigint {
   // NOTE: never hand the Buffer to `ffi.read.ptr` — bun's `read.ptr` takes a
   // raw Pointer NUMBER and throws "Expected a pointer" for a Buffer (verified
-  // on-device, bun 1.3.14). That throw masked every native error diagnostic
+  // on-device, bun 1.4.2). That throw masked every native error diagnostic
   // on the fused-lib error paths. The out-param bytes live in JS memory, so a
   // DataView read is always correct.
   const view = new DataView(

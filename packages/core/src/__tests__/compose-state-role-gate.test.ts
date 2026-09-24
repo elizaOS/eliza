@@ -5,10 +5,11 @@
  * senders, and both unassigned humans AND relay/webhook bridges resolve to
  * GUEST by default — so gate enforcement here would strip cross-turn recall
  * from relayed human conversation (the ZenithProxy pattern). Uses a real
- * AgentRuntime + InMemoryDatabaseAdapter with a real world and room; no model.
+ * AgentRuntime + SQLiteDatabaseAdapter with a real world and room; no model.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";
@@ -28,7 +29,10 @@ function staticProvider(name: string, extra: Partial<Provider> = {}): Provider {
 }
 
 async function makeRuntime(): Promise<AgentRuntime> {
-	const adapter = new InMemoryDatabaseAdapter();
+	const adapter = SQLiteDatabaseAdapter.create(
+		":memory:",
+		sqliteTestAgentId("role-gate-test"),
+	);
 	const runtime = await createInitializedRuntime({
 		character: { name: "role-gate-test" } as Character,
 		adapter,

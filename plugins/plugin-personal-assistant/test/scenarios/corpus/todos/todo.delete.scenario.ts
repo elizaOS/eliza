@@ -1,6 +1,6 @@
 /** Scenario fixture for todo delete; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { AgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 
 export default scenario({
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "todos", "confirms-destructive-action"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

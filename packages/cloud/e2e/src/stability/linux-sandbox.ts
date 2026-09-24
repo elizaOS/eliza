@@ -144,7 +144,7 @@ export function sandboxCommand(options: {
       "/bin/bash",
       path.join(
         options.repoRoot,
-        "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+        "packages/cloud/scripts/e2e/stability-linux-sandbox.sh",
       ),
       "run",
       options.allowedPorts,

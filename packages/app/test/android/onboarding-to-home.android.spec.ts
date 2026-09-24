@@ -20,7 +20,9 @@
 // asserted and the lane ends by proving the stub reply renders. Point the host
 // at a live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to promote
 // the final turn to the shared liveness assertion (non-empty, non-stub reply).
+
 import path from "node:path";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
   APP_ID,
@@ -72,8 +74,7 @@ async function readHostPairingCode(): Promise<string> {
   return body.code;
 }
 const ARTIFACT_DIR = path.join(
-  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(process.cwd(), "test-results", "android"),
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ?? testOutputPath("app", "android"),
   "onboarding-to-home",
 );
 

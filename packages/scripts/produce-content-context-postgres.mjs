@@ -19,10 +19,10 @@ import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-
 import { createProgressiveToolOutputTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
 import { createProgressivePostgresSqlTargetFactories } from "../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts";
 import { createProgressiveAttachmentTargetFactory } from "../agent/src/testing/progressive-content-attachment-target.ts";
-import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
-import { validateProgressiveContentPostgresEvidence } from "../corpus-tools/src/progressive-content-postgres-evidence.ts";
-import { openProgressiveContentBoundedSource } from "../corpus-tools/src/progressive-content-realization.ts";
-import { runProgressiveContentTargetHarness } from "../corpus-tools/src/progressive-content-target-harness.ts";
+import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
+import { validateProgressiveContentPostgresEvidence } from "../testing/corpus/progressive-content-postgres-evidence.ts";
+import { openProgressiveContentBoundedSource } from "../testing/corpus/progressive-content-realization.ts";
+import { runProgressiveContentTargetHarness } from "../testing/corpus/progressive-content-target-harness.ts";
 
 const SCRIPT_PATH = "packages/scripts/produce-content-context-postgres.mjs";
 const SHA256 = /^[0-9a-f]{64}$/u;

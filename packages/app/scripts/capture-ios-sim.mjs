@@ -11,7 +11,7 @@
 //   --duration <seconds>     recording length (default 6)
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { resolveApiPort } from "../../../scripts/e2e-recordings/native-capture-common.mjs";
+import { resolveApiPort } from "../../scripts/e2e-recordings/native-capture-common.mjs";
 import {
   captureBackendLog,
   evidenceBaseName,

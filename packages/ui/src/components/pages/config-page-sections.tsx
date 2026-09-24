@@ -5,7 +5,7 @@
  * `RpcSectionConfigMap`, translate-fn aliases) are exported for the parent view.
  */
 
-import { normalizeFirstRunProviderId } from "@elizaos/shared/contracts/first-run-options";
+import { normalizeFirstRunProviderId } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";

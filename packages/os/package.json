@@ -1,0 +1,58 @@
+{
+  "name": "@elizaos/os",
+  "version": "0.1.0",
+  "description": "elizaOS operating-system distributions, installers, and release infrastructure.",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "linux/installer",
+    "setup",
+    "usb-installer"
+  ],
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "bun run --cwd setup build && bun run --cwd usb-installer build",
+    "typecheck": "tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json",
+    "lint": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check",
+    "format": "bunx @biomejs/biome format --write linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
+    "test": "bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test",
+    "test:release": "node --test scripts/__tests__/*.test.mjs && bun test scripts/__tests__/*.test.ts",
+    "verify:layout": "node scripts/verify-os-repository-layout.mjs",
+    "verify": "bun run verify:layout && bun run verify:installer-native && bun run typecheck && bun run lint && bun run test && bun run test:release",
+    "verify:installer-native": "bun run --cwd linux/installer test:native:compile",
+    "verify:linux": "bash scripts/linux/mkosi-lint.sh && python3 scripts/linux/test_mkosi_reproducibility.py",
+    "verify:riscv64": "bash scripts/verify-riscv64-buildpaths.sh",
+    "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
+    "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/bun": "1.4.2",
+    "@types/node": "25.6.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "turbo": "^2.9.16",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5",
+    "@elizaos/shared": "workspace:*",
+    "@fontsource/poppins": "^5.2.7"
+  },
+  "overrides": {
+    "@biomejs/biome": "2.5.8",
+    "@elizaos/core": "2.0.11-beta.7",
+    "@elizaos/shared": "2.0.11-beta.7",
+    "@elizaos/ui": "2.0.11-beta.7",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "rollup": "npm:@rollup/wasm-node@4.60.3"
+  }
+}

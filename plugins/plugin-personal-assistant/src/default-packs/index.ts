@@ -3,7 +3,7 @@
  *
  * `getAllDefaultPacks()` is consumed by the runner spine to seed records on
  * first-run. `getOfferedDefaultPacks()` renders the first-run pick-list. The
- * lint script (`scripts/lint-default-packs.mjs`) consumes `getAllDefaultPacks()`
+ * lint script (`packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.mjs`) consumes `getAllDefaultPacks()`
  * and runs `lintPacks()` against the result.
  */
 

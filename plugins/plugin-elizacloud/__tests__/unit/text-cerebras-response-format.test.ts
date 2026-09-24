@@ -10,7 +10,7 @@
  * chat-completions response, asserting only the outgoing `response_format`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateNativeChatCompletion } from "../../src/models/text";

@@ -16,7 +16,7 @@
  *     --out output-login-transfer/report.json
  *
  *   --url          full login URL (required unless --serve-dist)
- *   --serve-dist   serve packages/app/dist on an ephemeral port and measure /login
+ *   --serve-dist   serve packages/app/web-dist on an ephemeral port and measure /login
  *   --settle-ms    wait after load before sampling (default 6000; 0..2^31-1)
  *   --timeout      navigation timeout in ms (default 90000; 1..2^31-1)
  *   --out          write JSON report
@@ -46,7 +46,7 @@ import { gzipSync } from "node:zlib";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "..");
-let distDir = join(appDir, "dist");
+let distDir = join(appDir, "web-dist");
 
 /** Node clamps `setTimeout` delays above this to 1 ms; Playwright waits share that bound. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -190,8 +190,8 @@ export function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/measure-anonymous-login-transfer.mjs [options]
   --url <url>       Login URL (default with --serve-dist: http://127.0.0.1:<port>/login)
-  --serve-dist      Serve packages/app/dist and measure /login
-  --dist-dir <path> Override dist directory (default: packages/app/dist)
+  --serve-dist      Serve packages/app/web-dist and measure /login
+  --dist-dir <path> Override dist directory (default: packages/app/web-dist)
   --settle-ms <n>   Settle time after navigation (default 6000; 0..${MAX_TIMER_DELAY_MS})
   --out <path>      Write JSON report
   --label <name>    Label this measurement (e.g. git sha)
@@ -606,7 +606,7 @@ async function main(argv = process.argv) {
       cache: "empty-context",
       interaction: "none (no form submit)",
       build: args.serveDist
-        ? "packages/app/dist production assets"
+        ? "packages/app/web-dist production assets"
         : "external-url",
     },
     capturedAtIso: new Date().toISOString(),

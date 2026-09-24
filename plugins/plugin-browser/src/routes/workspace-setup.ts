@@ -9,15 +9,12 @@
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { LegacyRouteHandler, Route } from "@elizaos/shared";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/shared/api/http-helpers";
-import type {
-  LegacyRouteHandler,
-  Route,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import {
   BROWSER_WORKSPACE_ROUTE_PATHS,
   handleBrowserWorkspaceRoutes,

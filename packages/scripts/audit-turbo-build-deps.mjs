@@ -1,34 +1,15 @@
 #!/usr/bin/env node
 /**
- * Audit hand-maintained `<pkg>#build` `dependsOn` overrides in turbo.json
- * (issue #9626). The generic `build` task derives its graph from package.json
- * via `["@elizaos/core#build", "^build"]` and never drifts. Per-package
- * overrides that enumerate explicit `@elizaos/X#build` deps DO drift: they
- * accrete names of packages that were renamed, removed, or never actually
- * depended on — forcing Turbo to build unrelated packages and obscuring the
- * real graph.
- *
- * For every override that names explicit `<dep>#build` entries, this classifies
- * each named dep against the owner package:
- *   - PHANTOM    — not in package.json deps AND never referenced in src/** .
- *                  A dead edge. FAILS the audit.
- *   - UNDECLARED — referenced in src/** (static import or dynamic/string) but
- *                  missing from package.json. The turbo edge is correct; the
- *                  fix is to ADD the package.json dependency, not drop the edge.
- *                  Reported as a warning (does not fail) — a dynamic-load
- *                  harness (e.g. scenario-runner) legitimately references a
- *                  plugin by name without a static import.
- *   - REDUNDANT  — a real dependency already covered by a co-listed `^build`.
- *                  Reported as info (the override could be simplified).
- *
- * Exits non-zero only on PHANTOM edges so it can gate CI / `verify` without
- * false-flagging correct dynamic-load edges.
+ * Validates explicit Turbo build dependencies, task owners and workspace cycles.
+ * Builds must name declared or source-referenced dependencies. Source-based
+ * typechecks may also need declarations from transitive workspace dependencies;
+ * the TypeScript resolution audit verifies that their required builds run first.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveTurboNonImportedBuildDepOwners } from "./lib/script-metadata.mjs";
-import { listPackages } from "./lib/workspaces.mjs";
+import { resolveTurboNonImportedBuildDepOwners } from "./lib/script-metadata.ts";
+import { listPackages } from "./lib/workspaces.ts";
 
 const repoRoot = path.resolve(
   process.env.AUDIT_TURBO_REPO_ROOT ??
@@ -105,7 +86,7 @@ function escapeRegExp(s) {
  * Does `needle` (a package name) appear as a whole package reference in the
  * package's source? A package name in an import/config is always followed by a
  * quote, slash, or backtick — never another name char — so the lookahead
- * `(?![\w-])` stops `@elizaos/app` from matching `@elizaos/app-core`.
+ * `(?![\w-])` stops `@elizaos/app` from matching `@elizaos/app-tools`.
  */
 function referencedInSource(dir, needle) {
   const re = new RegExp(`${escapeRegExp(needle)}(?![\\w-])`);
@@ -170,6 +151,7 @@ const redundant = [];
 const workspaceCycles = [];
 
 const workspaceDepsByPackage = new Map();
+const declaredDepsByPackage = new Map();
 for (const [name, dir] of WORKSPACE_DIRS.entries()) {
   let pkg;
   try {
@@ -177,6 +159,7 @@ for (const [name, dir] of WORKSPACE_DIRS.entries()) {
   } catch {
     continue;
   }
+  declaredDepsByPackage.set(name, declaredDeps(pkg));
   workspaceDepsByPackage.set(
     name,
     new Set([...buildGraphDeps(pkg)].filter((dep) => WORKSPACE_DIRS.has(dep))),
@@ -307,6 +290,13 @@ for (const [taskName, def] of Object.entries(tasks)) {
     continue;
   }
   const declared = declaredDeps(pkg);
+  if (taskName.endsWith("#typecheck")) {
+    for (const dependency of declared) {
+      for (const transitive of declaredDepsByPackage.get(dependency) ?? []) {
+        declared.add(transitive);
+      }
+    }
+  }
 
   for (const dep of named) {
     const depName = dep.slice(0, -"#build".length);

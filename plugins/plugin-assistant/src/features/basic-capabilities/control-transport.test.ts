@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Integration tests for basic-capabilities control-message delivery. Each test
  * boots a real AgentRuntime (explicit test storage, migrations skipped) with the

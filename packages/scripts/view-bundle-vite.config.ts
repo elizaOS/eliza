@@ -58,7 +58,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
   const outDir = options.outDir ?? "dist/views";
   const externals = new Set([
     options.packageName,
-    "@elizaos/app-core",
+    "@elizaos/app",
     "@elizaos/shared",
     "@elizaos/ui",
     "lucide-react",

@@ -578,7 +578,7 @@ def _scenario_runner_plan(
     argv = [
         "bun",
         "--bun",
-        "packages/scenario-runner/src/cli.ts",
+        "packages/testing/scenario-runner/src/cli.ts",
         "run",
         str(scenario_root),
         "--run-dir",
@@ -600,7 +600,7 @@ def _scenario_runner_plan(
     }
     return CommandPlan(
         suite="scenario-runner",
-        label="packages/scenario-runner/src/cli.ts",
+        label="packages/testing/scenario-runner/src/cli.ts",
         cwd=str(REPO_ROOT),
         argv=argv,
         env_overrides=command_env,
@@ -869,7 +869,7 @@ def build_parser() -> argparse.ArgumentParser:
     scenario = parser.add_argument_group("scenario runner options")
     scenario.add_argument(
         "--scenario-root",
-        default="packages/test/scenarios",
+        default="packages/testing/scenarios",
         help="Scenario directory for the direct scenario-runner suite.",
     )
     scenario.add_argument(

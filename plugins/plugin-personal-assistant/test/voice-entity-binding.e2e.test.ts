@@ -40,15 +40,16 @@ import {
   localInferencePlugin,
 } from "@elizaos/plugin-local-inference";
 import {
+  EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/plugin-relationships";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
   handleVoiceProfilesManagementRoutes,
   setVoiceProfilesManagementStore,
@@ -65,7 +66,6 @@ import {
 import { VoiceProfileStore } from "../../plugin-local-inference/src/services/voice/profile-store.js";
 import { WESPEAKER_RESNET34_LM_INT8_MODEL_ID } from "../../plugin-local-inference/src/services/voice/speaker/encoder.js";
 import { voiceSpeakerFromImprintMatch } from "../../plugin-local-inference/src/services/voice/speaker-imprint.js";
-import { EntityStore } from "../src/lifeops/entities/store.js";
 import { handleVoiceTurnObserved } from "../src/lifeops/entities/voice-observer-bridge.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 

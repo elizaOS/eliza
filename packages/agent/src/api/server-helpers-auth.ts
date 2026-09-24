@@ -52,8 +52,6 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Eliza-Platform",
   "X-Eliza-UI-Language",
   "X-ElizaOS-UI-Language",
-  "X-Browser-Bridge-Companion-Id",
-  "X-Eliza-Browser-Companion-Id",
   "X-Eliza-CSRF",
   "X-ElizaOS-Turn-Correlation",
   "X-ElizaOS-Turn-Attempt",
@@ -172,20 +170,6 @@ export function isCredentialedCorsOrigin(origin: string | undefined): boolean {
   );
 }
 
-function isBrowserCompanionExtensionOrigin(
-  origin: string | undefined,
-): boolean {
-  if (!origin) {
-    return false;
-  }
-  const trimmed = origin.trim();
-  return (
-    /^chrome-extension:\/\/[a-z]{32}$/i.test(trimmed) ||
-    /^moz-extension:\/\/[0-9a-f-]+$/i.test(trimmed) ||
-    /^safari-web-extension:\/\/[A-Za-z0-9.-]+$/i.test(trimmed)
-  );
-}
-
 function resolveWaifuFrameAncestors(): string | null {
   if (!process.env.WAIFU_CHAT_ACCESS_JWT_SECRET?.trim()) return null;
   const configured = process.env.WAIFU_CHAT_FRAME_ANCESTORS?.trim();
@@ -207,31 +191,14 @@ function isWaifuHostedChatOrigin(origin: string): boolean {
   }
 }
 
-function isBrowserCompanionCapabilityPath(pathname: string): boolean {
-  return (
-    pathname === "/api/browser-bridge/companions/revoke" ||
-    pathname === "/api/browser-bridge/companions/preflight" ||
-    pathname === "/api/browser-bridge/companions/sync" ||
-    /^\/api\/browser-bridge\/companions\/sessions\/[^/]+\/(?:actions\/begin|progress|complete)$/.test(
-      pathname,
-    )
-  );
-}
-
 export function applyCors(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  pathname: string,
+  _pathname: string,
 ): boolean {
   const origin =
     typeof req.headers.origin === "string" ? req.headers.origin : undefined;
-  const isBrowserCompanionOrigin = isBrowserCompanionExtensionOrigin(origin);
-  const allowBrowserCompanionOrigin =
-    isBrowserCompanionCapabilityPath(pathname) && isBrowserCompanionOrigin;
-  if (isBrowserCompanionOrigin && !allowBrowserCompanionOrigin) return false;
-  const allowed = allowBrowserCompanionOrigin
-    ? (origin?.trim() ?? null)
-    : resolveCorsOrigin(origin);
+  const allowed = resolveCorsOrigin(origin);
 
   if (origin && !allowed) return false;
 
@@ -243,7 +210,7 @@ export function applyCors(
       "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     );
     res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
-    if (!allowBrowserCompanionOrigin && isCredentialedCorsOrigin(origin)) {
+    if (isCredentialedCorsOrigin(origin)) {
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }
   }
@@ -463,7 +430,7 @@ export type BoundaryRole = "OWNER" | "GUEST";
  * authorized caller (trusted loopback owner or a valid API token) is the OWNER
  * principal; everyone else is GUEST — the server-authoritative unauthenticated
  * tier (#9948). Routes must use this instead of re-deriving `isAuthorized(req) ?
- * "OWNER" : "GUEST"` inline (which drifted to NONE elsewhere). app-core's
+ * "OWNER" : "GUEST"` inline (which drifted to NONE elsewhere). app's
  * resolveBoundaryRole is deliberately not importable from the agent, so this is
  * the agent-local equivalent with the same OWNER/GUEST vocabulary.
  */

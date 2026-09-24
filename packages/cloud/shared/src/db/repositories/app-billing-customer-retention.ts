@@ -1,5 +1,5 @@
 /** Validates customer retention under canonical scope, survivor and deletion-phase locks. This read-only decision permits skipping customer deletion; it never certifies phase completion or grants access. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { writeTransaction } from "../helpers";
 import type { AppBillingDeletionRecoveryAuthority } from "./app-billing-deletion-authority";

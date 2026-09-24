@@ -12,8 +12,8 @@
  * action options, never in `promptInstructions` (root AGENTS.md — one scheduler,
  * structural fields only).
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   expectNoExternalSendDispatch,
   expectPendingApprovalSeeded,
@@ -57,7 +57,7 @@ export default scenario({
   tags: ["lifeops", "control", "adversarial", "approval", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   rooms: [
     {
       id: "main",

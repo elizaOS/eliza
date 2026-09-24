@@ -25,9 +25,6 @@ export default defineConfig({
     ],
   },
   test: {
-    exclude: [
-      ...configDefaults.exclude,
-      "scripts/headless-capture-e2e.test.mjs",
-    ],
+    exclude: [...configDefaults.exclude],
   },
 });

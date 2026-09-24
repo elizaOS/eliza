@@ -1,6 +1,6 @@
 /**
  * Transport-neutral host controller primitives shared by the standalone agent
- * and app-core. HTTP authorization, response shaping, runtime lookup, and
+ * and app. HTTP authorization, response shaping, runtime lookup, and
  * persistence remain host-owned trust-boundary concerns.
  */
 

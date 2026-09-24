@@ -12,7 +12,7 @@ import type {
   CloudCompatAgent,
 } from "@elizaos/ui/api";
 import { pathForTab } from "@elizaos/ui/navigation";
-import { isCloudStatusReasonApiKeyOnly } from "@elizaos/ui/utils/cloud-status";
+import { isCloudStatusReasonApiKeyOnly } from "@elizaos/shared";
 
 export const ELIZA_CLOUD_INSTANCES_URL = "https://cloud.eliza.app/cloud/agents";
 /** Marketing / docs site — "Learn more" when not connected (in-app browser on desktop). */

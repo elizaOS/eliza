@@ -11,54 +11,9 @@
  */
 
 import type {
+  AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ImageConfig,
-  ImageProvider,
-  MediaConfig,
-  MediaMode,
-  ReleaseChannel,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
-} from "@elizaos/shared/contracts/config";
-import type { DropStatus, MintResult } from "@elizaos/shared/contracts/drop";
-import type {
-  CloudProviderOption,
-  FirstRunConnectorConfig as ConnectorConfig,
-  FirstRunConnection,
-  FirstRunOptions,
-  InventoryProviderOption,
-  MessageExample,
-  MessageExampleContent,
-  ModelOption,
-  OpenRouterModelOption,
-  ProviderOption,
-  RpcProviderOption,
-  StylePreset,
-  SubscriptionProviderStatus,
-  SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/first-run-options";
-import type {
-  AllPermissionsState,
-  PermissionId,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
-import type { VerificationResult } from "@elizaos/shared/contracts/verification";
-import {
-  DEFAULT_WALLET_RPC_SELECTIONS,
-  normalizeWalletRpcProviderId,
-  normalizeWalletRpcSelections,
-  WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared/contracts/wallet";
-import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -67,11 +22,45 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
+  CloudProviderOption,
+  FirstRunConnectorConfig as ConnectorConfig,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  DropStatus,
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
+  FirstRunConnection,
+  FirstRunOptions,
+  ImageConfig,
+  ImageProvider,
+  InventoryProviderOption,
+  MediaConfig,
+  MediaMode,
+  MessageExample,
+  MessageExampleContent,
+  MintResult,
+  ModelOption,
+  OpenRouterModelOption,
+  PermissionId,
+  PermissionState,
+  PermissionStatus,
+  ProviderOption,
+  ReleaseChannel,
+  RpcProviderOption,
   SolanaNft,
   SolanaTokenBalance,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -83,7 +72,13 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared/contracts/wallet-types";
+} from "@elizaos/shared";
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/shared";
 import { getBootConfig as getBootConfigForNativeUpdate } from "../config/boot-config-store";
 import type {
   BrowserWorkspaceSnapshot,
@@ -115,15 +110,6 @@ export type {
 } from "./android-native-agent-transport";
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
-export {
-  BROWSER_BRIDGE_SESSION_STATUSES,
-  type BrowserBridgeSession,
-  type BrowserBridgeSessionAction,
-  type BrowserBridgeSessionResponse,
-  type BrowserBridgeSessionStatus,
-  type BrowserBridgeSessionsResponse,
-  type BrowserBridgeSettingsResponse,
-} from "./client-browser-bridge";
 export {
   CloudAgentWakeError,
   type CloudAgentWakePhase,
@@ -259,7 +245,6 @@ import "./client-accounts";
 import "./client-approvals";
 import "./client-automations";
 import "./client-background";
-import "./client-browser-bridge";
 import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";

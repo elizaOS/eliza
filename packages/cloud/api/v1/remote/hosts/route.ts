@@ -1,9 +1,11 @@
 /** Enrolls and lists authenticated-owner remote runtime hosts. */
 
 import {
+  isRemoteConnectionMode,
+  isRemoteControlIdentifier,
   isRemoteTargetPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { Hono } from "hono";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
@@ -16,10 +18,6 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";
-import {
-  isRemoteConnectionMode,
-  isRemoteControlIdentifier,
-} from "../validation";
 
 const app = new Hono<AppEnv>();
 const REMOTE_HOST_ONLINE_WINDOW_MS = 15_000;

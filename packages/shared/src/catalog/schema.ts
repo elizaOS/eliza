@@ -342,7 +342,7 @@ export const pluginEntrySchema = z.object({
   // When true, this voice plugin is the runtime's default TEXT_TO_SPEECH
   // provider — the one wired in when no other TTS plugin has self-registered a
   // handler. Consumed by `resolveDefaultTextToSpeechProvider()` in
-  // @elizaos/app-core, which selects by this flag (data-driven) rather than by
+  // @elizaos/app, which selects by this flag (data-driven) rather than by
   // hard-coding a plugin id. Only meaningful on `subtype: "voice"`; exactly one
   // voice entry should set it. Mirrors the `mainTab` pattern above.
   defaultTextToSpeech: z.boolean().optional(),

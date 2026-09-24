@@ -16,8 +16,8 @@
  * item, so no conversation index is needed.
  */
 
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/common";
-import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";

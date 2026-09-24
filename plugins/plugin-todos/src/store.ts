@@ -1,6 +1,6 @@
 /** Storage-neutral todo contract shared by Node and edge runtime hosts. */
 
-import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared/todo-cutover";
+import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared";
 
 import type { Todo, TodoStatus } from "./types.js";
 

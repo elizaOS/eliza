@@ -22,7 +22,7 @@
  * first-party Eliza UI origins plus localhost in non-production.
  */
 
-import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
+import type { StewardSessionErrorCode } from "@elizaos/shared";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import {

@@ -1,4 +1,3 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Dispatches elizaOS AgentRuntime plugin routes (runtime.routes) on the Eliza
  * raw Node HTTP server. Core registers paths like `/music-player/stream`; without
@@ -11,16 +10,18 @@ import {
   isJsonObjectBody,
   readRequestBodyBuffer,
   writeJsonError,
-} from "@elizaos/shared/api/http-helpers";
+} from "@elizaos/shared";
 import {
   assertPublicRouteIntent,
   type PaymentEnabledRoute,
   type Route,
 } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/shared/api/runtime-route-context";
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
@@ -47,42 +48,7 @@ function getX402RoutesModule(): Promise<X402RoutesModule> {
   return x402RoutesModulePromise;
 }
 
-export function matchPluginRoutePath(
-  pattern: string,
-  pathname: string,
-): Record<string, string> | null {
-  const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
-  const pSegs = norm(pattern);
-  const pathSegs = norm(pathname);
-  const params: Record<string, string> = {};
-  for (let i = 0; i < pSegs.length; i++) {
-    const p = pSegs[i];
-    const c = pathSegs[i];
-    if (!p) return null;
-    if (p.startsWith(":") && p.endsWith("*")) {
-      const key = p.slice(1, -1);
-      const tail = pathSegs.slice(i).join("/");
-      if (!tail) return null;
-      try {
-        params[key] = decodeURIComponent(tail);
-      } catch {
-        params[key] = tail;
-      }
-      return params;
-    }
-    if (c === undefined) return null;
-    if (p.startsWith(":")) {
-      try {
-        params[p.slice(1)] = decodeURIComponent(c);
-      } catch {
-        params[p.slice(1)] = c;
-      }
-    } else if (p !== c) {
-      return null;
-    }
-  }
-  return pSegs.length === pathSegs.length ? params : null;
-}
+export { matchPluginRoutePath } from "./plugin-route-path.ts";
 
 export function isPublicRuntimePluginRoute(options: {
   runtime: AgentRuntime | null | undefined;

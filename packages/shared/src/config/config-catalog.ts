@@ -27,7 +27,7 @@
  * @module config-catalog
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import type { ReactNode } from "react";
 import z from "zod";
 import type {

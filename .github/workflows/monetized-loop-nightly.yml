@@ -42,7 +42,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
 
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # The full suite (33 specs) measured ~12 minutes of Playwright wall time
       # locally on top of the linked-workspace build; the 30-minute historical
@@ -57,7 +57,7 @@ jobs:
           name: monetized-loop-${{ github.run_attempt }}
           path: |
             packages/cloud/e2e/playwright-report
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
             e2e-recordings/cloud-e2e
           retention-days: 14

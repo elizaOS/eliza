@@ -3,7 +3,7 @@
  * and application settlement boundaries before either can mutate a ledger.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 
 /** Refuses a positive refund whose caller did not identify its backing debit. */
 export class CreditRefundReservationRequiredError extends ElizaError {

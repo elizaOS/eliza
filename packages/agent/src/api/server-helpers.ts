@@ -23,25 +23,21 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { decodeUrlPathComponent } from "@elizaos/shared";
-import { sendJsonError } from "@elizaos/shared/api/http-helpers";
-import {
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-} from "@elizaos/shared/character-presets";
+import type { ConversationMetadata } from "@elizaos/shared";
 import {
   CHAT_UPLOAD_MIME_TYPES,
+  decodeUrlPathComponent,
   MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
   MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
   MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
-} from "@elizaos/shared/chat-upload-limits";
-import type { ConversationMetadata } from "@elizaos/shared/contracts/conversation-routes";
-import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/first-run-options";
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  sendJsonError,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
@@ -197,7 +193,7 @@ export function initializeOGCodeInState(): void {
 // ---------------------------------------------------------------------------
 
 // AgentStartupDiagnostics is canonical in @elizaos/shared.
-export type { AgentStartupDiagnostics } from "@elizaos/shared/api/agent-api-types";
+export type { AgentStartupDiagnostics } from "@elizaos/shared";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {

@@ -2,8 +2,9 @@
  * Hook that loads and applies defaults to the character's voice config,
  * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
-import * as React from "react";
 
+import { hasConfiguredApiKey } from "@elizaos/shared";
+import * as React from "react";
 import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";
 import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
@@ -14,7 +15,6 @@ import {
   applyVoiceProviderDefaults,
   resolveCharacterVoiceConfigFromAppConfig,
 } from "./character-voice-config";
-import { hasConfiguredApiKey } from "./types";
 import { isCloudVoiceRunnable } from "./voice-provider-defaults";
 
 export interface UseVoiceConfigResult {

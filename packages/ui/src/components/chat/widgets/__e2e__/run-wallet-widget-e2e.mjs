@@ -22,7 +22,7 @@ import {
   closeOcrEngines,
   dominantColorsFromPng,
   ocrImage,
-} from "../../../../../../evidence/src/visual-primitives.mjs";
+} from "../../../../../../testing/evidence/visual-primitives.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const stylesDir = join(here, "../../../../styles");

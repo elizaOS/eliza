@@ -8,27 +8,24 @@ import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assi
  */
 
 import {
-  type AgentNotification,
-  ChannelType,
-  ElizaError,
-  type Memory,
-  NOTIFICATION_STREAM,
-  type UUID,
-} from "@elizaos/common";
-import {
   type ActionResult,
   type AgentEventPayload,
   AgentEventService,
+  type AgentNotification,
   AgentRuntime,
   assertModelOutputComplete,
+  ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
+  ElizaError,
   type GenerateTextParams,
   type IAgentRuntime,
   IMediaGenerationService,
   type InferenceTurnSummary,
   type MediaGenerationRequest,
+  type Memory,
   ModelType,
+  NOTIFICATION_STREAM,
   NotificationService,
   type Plugin,
   ServiceType,
@@ -38,9 +35,10 @@ import {
   type TextStreamResult,
   type ToolChoice,
   type ToolDefinition,
+  type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
-import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
+import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {
   createWebSearchEdgePlugin,
@@ -262,7 +260,7 @@ function createRuntime(options: {
   agentId?: UUID;
   actionsEnabled: boolean;
   webSearchEnabled: boolean;
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
   webSearchPlugin?: Plugin;
@@ -326,7 +324,10 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
       agentKey: "shared-runtime-kernel-prewarm",
       actionsEnabled: true,
       webSearchEnabled: true,
-      adapter: new InMemoryDatabaseAdapter(),
+      adapter: SQLiteDatabaseAdapter.create(
+        ":memory:",
+        stringToUuid("shared-runtime-kernel-prewarm"),
+      ),
       character: {
         name: "Shared Eliza",
         system: "Shared runtime initialization prewarm.",
@@ -595,7 +596,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const trustedRoomKey = input.execution.roomKey.trim();
   await ensureEdgeStreamingContext();
   timing.markEdgeContextReady();
-  const adapter = new InMemoryDatabaseAdapter();
+  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   let providerDispatched = false;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
@@ -783,7 +785,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   const mediaPlugin =
     actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
-  const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
   const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);

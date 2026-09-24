@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
@@ -40,7 +40,7 @@ async function ingestPdf(
   pdfBase64: string,
   contentType: string,
 ): Promise<ExtractionSnapshot> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
   const runtime = new AgentRuntime({
     agentId: AGENT_ID,
@@ -73,7 +73,9 @@ async function ingestPdf(
     })
   )
     .filter(
-      (fragment) => fragment.metadata?.documentId === result.clientDocumentId,
+      (fragment) =>
+        fragment.metadata?.documentId === result.clientDocumentId &&
+        fragment.metadata?.fragmentRole !== "source-segment",
     )
     .sort((left, right) => fragmentPosition(left) - fragmentPosition(right));
   expect(fragments).toHaveLength(result.fragmentCount);

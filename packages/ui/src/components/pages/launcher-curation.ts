@@ -23,11 +23,11 @@
  * appear on the AOSP ElizaOS fork.
  */
 
+import type { EnabledViewKinds } from "@elizaos/core";
 import {
-  type EnabledViewKinds,
   isViewKindEnabled,
   resolveViewKind,
-} from "@elizaos/common";
+} from "@elizaos/shared/views/view-kind";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   LAUNCHER_AOSP_ONLY_VIEW_IDS,
@@ -64,7 +64,6 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "documents",
   "memories",
   "stream",
-  "pendant-transcript",
 ];
 
 /** Developer-gated launcher surfaces, in display order. Shown on the same
@@ -83,13 +82,10 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
  * Early-stage surfaces forced to `preview` kind for the launcher regardless of
  * how their views are declared: hidden from the default grid, shown only when
  * the Preview toggle is on. Keeps the out-of-the-box launcher to the everyday
- * core (stream/the pendant transcript are not there yet). Routes stay
+ * core (stream is not there yet). Routes stay
  * addressable — this gates the tile, not the view.
  */
-export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set([
-  "stream",
-  "pendant-transcript",
-]);
+export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set(["stream"]);
 
 /**
  * Native-OS surfaces that only belong on the AOSP ElizaOS fork. Appended to the

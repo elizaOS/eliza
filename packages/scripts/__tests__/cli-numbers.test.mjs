@@ -1,6 +1,6 @@
 /**
  * Contract coverage for the shared fail-closed numeric parsers in
- * lib/cli-numbers.mjs. The harness is deterministic and pure: every case is
+ * lib/cli-numbers.ts. The harness is deterministic and pure: every case is
  * an input/throw table over parseCanonicalInt and parseTcpPort, pinning the
  * coercions that motivated the module (issue #19601): Number()/parseInt
  * silently turning "1e4", "0x10", "080", and "8abc" into different valid
@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { parseCanonicalInt, parseTcpPort } from "../lib/cli-numbers.mjs";
+import { parseCanonicalInt, parseTcpPort } from "../lib/cli-numbers.ts";
 
 describe("parseCanonicalInt", () => {
   test("accepts canonical decimals inside the bounds", () => {

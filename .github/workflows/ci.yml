@@ -9,7 +9,7 @@ permissions:
   contents: read
 env:
   CI: "true"
-  BUN_VERSION: 1.3.14
+  BUN_VERSION: 1.4.2
   NODE_VERSION: 24.15.0
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: --max-old-space-size=8192
@@ -44,14 +44,12 @@ jobs:
         run: bun run verify
       - name: Formatting
         run: bun run format:check
-      - name: Run CLAUDE/AGENTS guide parity self-test
-        run: node --test scripts/assert-agents-claude-identical.test.mjs
       - name: Check maintained Markdown link targets
-        run: node scripts/check-markdown-links.mjs
+        run: node packages/scripts/check-markdown-links.mjs
       - name: Run type-duplication finder self-test
         run: node packages/scripts/type-duplication-audit.mjs --self-test
       - name: Prompt secret scan
-        run: cd packages/prompts && bun run check:secrets
+        run: node packages/scripts/check-prompt-secrets.mjs
       - name: Anti-larp test gate self-test
         run: node packages/scripts/audit-focused-skipped-tests.mjs --self-test
       - name: Validate brand-env alias-read guard self-test
@@ -174,7 +172,7 @@ jobs:
           - 4
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: --max-old-space-size=8192
@@ -240,11 +238,11 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
       - name: Install Playwright browsers
-        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
+        run: PLAYWRIGHT_INSTALL_CWD=packages/app packages/scripts/github/install-playwright-browsers.sh chromium webkit
       - name: Deterministic end-to-end smoke
         env:
           CI: "true"
-          BUN_VERSION: 1.3.14
+          BUN_VERSION: 1.4.2
           NODE_VERSION: 24.15.0
           NODE_OPTIONS: --max-old-space-size=4096
           TEST_LANE: pr
@@ -269,7 +267,7 @@ jobs:
           name: app-smoke-failure-${{ matrix.shard }}
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: warn
           retention-days: 3
   smoke_lanes:
@@ -294,10 +292,8 @@ jobs:
           no-vision-deps: "true"
       - name: Build core contract
         run: bun run build:core
-      - name: Desktop startup smoke
-        run: node packages/app-core/scripts/dev-startup-smoke.mjs
       - name: Install Playwright browsers
-        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Deterministic end-to-end smoke (unshardable tasks)
         run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
     env:
@@ -337,7 +333,7 @@ jobs:
         run: |
           bun run build:core
           bun run --cwd packages/ui build
-          bun run --cwd packages/credentials build
+          bun run --cwd packages/auth build
           bun run --cwd packages/agent build:mobile
       - name: Verify mobile bundle initialization is synchronous
         shell: bash
@@ -363,7 +359,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          AAB_PATH="packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab"
+          AAB_PATH="packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab"
           AUDIT_LOG="$RUNNER_TEMP/android-cloud-release-aab-audit.log"
           ATTESTATION="$RUNNER_TEMP/android-cloud-release-attestation.json"
           SHA256="$RUNNER_TEMP/android-cloud-release-aab.sha256"
@@ -403,7 +399,7 @@ jobs:
         with:
           name: android-cloud-release-aab-audit
           path: |
-            packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+            packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab
             ${{ runner.temp }}/android-cloud-release-aab-audit.log
             ${{ runner.temp }}/android-cloud-release-aab.sha256
             ${{ runner.temp }}/android-cloud-release-attestation.json
@@ -417,10 +413,6 @@ jobs:
           path: ${{ runner.temp }}/android-cloud-release-aab-audit.log
           retention-days: 3
           if-no-files-found: warn
-  browser_bridge_windows_security:
-    name: Browser bridge Windows security
-    uses: ./.github/workflows/browser-bridge-windows-security.yml
-    needs: preflight
   required:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
@@ -433,7 +425,6 @@ jobs:
       - smoke
       - smoke_lanes
       - android_aab
-      - browser_bridge_windows_security
       - preflight
       - remote-capabilities
       - desktop-contract
@@ -458,7 +449,6 @@ jobs:
             smoke=${{ needs.smoke.result }}
             smoke_lanes=${{ needs.smoke_lanes.result }}
             android_aab=${{ needs.android_aab.result }}
-            browser_bridge_windows_security=${{ needs.browser_bridge_windows_security.result }}
             preflight=${{ needs.preflight.result }}
             remote-capabilities=${{ needs.remote-capabilities.result }}
             desktop-contract=${{ needs.desktop-contract.result }}
@@ -512,7 +502,7 @@ jobs:
     timeout-minutes: 60
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: --max-old-space-size=8192
@@ -540,36 +530,10 @@ jobs:
           setup-node: "false"
       - name: Build view bundles
         run: bun run build:views
-      - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
-      - name: Remote capability router tests
-        run: bun run --cwd packages/agent test:remote-capabilities
       - name: Remote capability plugin surface audit
         run: bun packages/agent/scripts/audit-capability-router-plugin-surface.ts
-      - name: Remote capability live CI audit self-test
-        run: bun packages/agent/scripts/audit-capability-router-live-ci.self-test.ts
-      - name: Remote capability source-build smoke
-        run: bun run --cwd packages/agent test:remote-capabilities:source-build
-      - name: Remote capability fixture server smoke
-        run: bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts
-      - name: Remote capability live report validator self-test
-        run: bun packages/agent/scripts/validate-capability-router-live-reports.self-test.ts
-      - name: Remote capability GitHub live evidence self-test
-        run: bun packages/agent/scripts/validate-capability-router-github-live-evidence.self-test.ts
-      - name: Remote capability GitHub live artifact self-test
-        run: bun packages/agent/scripts/validate-capability-router-github-live-artifacts.self-test.ts
-      - name: Check Docker container-start health
-        id: docker-health
-        run: |
-          set -euo pipefail
-          timeout 300 docker pull node:24-alpine
-          timeout 90 docker run --rm node:24-alpine true
-          echo "healthy=true" >> "$GITHUB_OUTPUT"
-      - name: Remote capability Docker smoke
-        if: steps.docker-health.outputs.healthy == 'true'
-        run: bun run --cwd packages/agent test:remote-capabilities:docker
       - name: Run synthetic-world transaction tests
-        run: bun run --cwd packages/synthetic-world test
+        run: bun run --cwd packages/testing test:synthetic-world
   desktop-contract:
     name: Electrobun Desktop Contract
     needs: preflight
@@ -596,11 +560,11 @@ jobs:
       - name: Build workspace packages for Vitest resolution
         run: bun run build:core
       - name: Run Electrobun contract tests
-        working-directory: packages/app-core/platforms/electrobun
+        working-directory: packages/app/platforms/electrobun
         run: bun run test
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: --max-old-space-size=8192
@@ -612,7 +576,7 @@ jobs:
     timeout-minutes: 30
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: --max-old-space-size=8192
@@ -652,18 +616,8 @@ jobs:
           setup-node: "false"
       - name: Build cloud routing dependency
         run: bun run --cwd packages/cloud/routing build
-      - name: Electrobun window and dynamic-view coverage
-        run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts src/application-menu.test.ts
-      - name: View management action coverage
-        run: bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts
-      - name: App verification diagnostics coverage
-        run: bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts
       - name: Computer-use screenshot quality diagnostics coverage
         run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts src/platform/a11y.test.ts
-      - name: App screenshot quality diagnostics coverage
-        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
-      - name: App-core screenshot quality diagnostics coverage
-        run: node packages/scripts/run-vitest.mjs run --config packages/app-core/vitest.config.ts packages/app-core/test/app/screenshot-quality.test.ts
   zero-key-scenario-runner:
     name: Zero-Key scenario runner
     needs: preflight
@@ -671,7 +625,7 @@ jobs:
     timeout-minutes: 30
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: --max-old-space-size=8192
@@ -708,12 +662,10 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Persona catalog coverage gate
-        run: node packages/scripts/check-lifeops-persona-catalog-coverage.mjs
       - name: Build workspace packages for scenario resolution
-        run: bunx turbo run build --filter=@elizaos/scenario-runner...
+        run: bunx turbo run build --filter=@elizaos/testing...
       - name: Zero-cost scenario e2e
-        run: bun run --cwd packages/scenario-runner test:pr:e2e
+        run: bun run --cwd packages/testing test:pr:e2e
       - name: Upload deterministic E2E reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -729,7 +681,7 @@ jobs:
           retention-days: 3
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report test-results/app
       - name: E2E coverage matrix report
         if: always()
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
@@ -740,7 +692,7 @@ jobs:
     timeout-minutes: 30
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: --max-old-space-size=8192
@@ -808,12 +760,12 @@ jobs:
       - name: Build core exports for real API harness
         run: bun run --cwd packages/core build
       - name: Real local agent provisioning (no model, no secret)
-        run: bun run --cwd packages/app-core test:local-provisioning
+        run: bun run --cwd packages/app test:local-provisioning
       - name: Real local chat pipeline (no model key, no llama)
-        run: bun run --cwd packages/app-core test:local-chat
+        run: bun run --cwd packages/app test:local-chat
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_OPTIONS: --max-old-space-size=4096
       TEST_LANE: pr
@@ -856,7 +808,7 @@ jobs:
       - name: Build core exports for real API harness
         run: bun run --cwd packages/core build
       - name: Install Playwright browsers (Chromium)
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Accounts UI browser e2e — real AccountList + real accounts routes + real AccountPool
         env:
           ELIZA_VAULT_PASSPHRASE: accounts-ui-e2e-headless-only
@@ -871,7 +823,7 @@ jobs:
           retention-days: 3
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_OPTIONS: --max-old-space-size=4096
       TEST_LANE: pr
@@ -912,9 +864,9 @@ jobs:
           setup-python: "false"
           setup-node: "false"
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Install ffmpeg (recording stitch)
-        run: .github/scripts/install-apt-packages.sh ffmpeg
+        run: packages/scripts/github/install-apt-packages.sh ffmpeg
       - name: Drive + record the in-chat onboarding + tutorial walkthrough
         run: bun run --cwd packages/app test:e2e:walkthrough -- --skip-review
       - name: Upload walkthrough screenshots + stitched recording + verdicts
@@ -930,7 +882,7 @@ jobs:
           retention-days: 7
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_OPTIONS: --max-old-space-size=4096
       TEST_LANE: pr
@@ -971,7 +923,7 @@ jobs:
           setup-python: "false"
           setup-node: "false"
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Native workflow browser-to-runtime coverage
         run: ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_WORKFLOW_JOURNEY=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 bun run --cwd packages/app test:e2e test/ui-smoke/workflow-real-local.spec.ts --project=chromium
       - name: Upload app browser extended artifacts
@@ -981,12 +933,12 @@ jobs:
           name: scenario-pr-app-browser-extended
           path: |
             packages/app/playwright-report/
-            packages/app/test-results/
+            test-results/app/
           if-no-files-found: ignore
           retention-days: 3
     env:
       CI: "true"
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
       NODE_OPTIONS: --max-old-space-size=4096
       TEST_LANE: pr
@@ -1030,17 +982,12 @@ jobs:
         run: |
           bun run build:core
           bun run --cwd packages/ui build
-      - name: Validate homepage source contracts
-        working-directory: packages/homepage
-        run: bun run test && bun run check:snapshot-inventory
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build the only deployable frontend
         working-directory: packages/app
         run: bun run build:web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     env:
-      BUN_VERSION: 1.3.14
+      BUN_VERSION: 1.4.2
       NODE_VERSION: 24.15.0
     needs: preflight

@@ -10,8 +10,8 @@
 
 import type { JsonValue } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { DeterministicModelFixture } from "./deterministic-model-plugin";
-import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";
+import type { DeterministicModelFixture } from "./deterministic-model-plugin.ts";
+import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture.ts";
 
 type JsonRecord = Record<string, JsonValue>;
 
@@ -281,7 +281,7 @@ export function stage1ResponseHandlerFixture(
 
 /**
  * Declare the matching Stage-1 + planner fixture pair for one action
- * invocation. Mirrors `@elizaos/scenario-runner`'s strict template.
+ * invocation. Mirrors `@elizaos/testing/scenario-runner`'s strict template.
  */
 export function strictActionRouteFixtures(
   spec: StrictActionRouteFixture,

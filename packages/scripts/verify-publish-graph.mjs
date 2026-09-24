@@ -12,7 +12,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listPackages } from "./lib/workspaces.mjs";
+import { listPackages } from "./lib/workspaces.ts";
 
 const REGISTRY_RESOLVED_DEPENDENCY_FIELDS = [
   "dependencies",

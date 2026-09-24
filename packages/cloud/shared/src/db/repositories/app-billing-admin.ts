@@ -1,7 +1,7 @@
 /** Serializes owner administration through existing billing commands and immutable provider observations. */
 import { randomUUID } from "node:crypto";
 import type { AppBillingAdminPlan, AppBillingMerchant } from "@elizaos/cloud-sdk/app-billing-admin";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type {
   AdminBillingCommandPayload,

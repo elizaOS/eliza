@@ -10,7 +10,13 @@
  * service, owner readers, and the account manager are controlled
  * collaborators; Date is pinned so relative-time lines stay deterministic.
  */
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  type ContextObject,
+  type IAgentRuntime,
+  type Memory,
+  projectDeferredProviders,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LifeOpsGmailTriageSummary,
@@ -380,6 +386,49 @@ afterEach(() => {
 });
 
 describe("lifeops provider read fan-out", () => {
+  it("defers operational details while retaining every standing instruction and owner constraint", async () => {
+    wireImmediate();
+    const result = await lifeOpsProvider.get(createRuntime(), message, state);
+    if (!result.text || !result.discoveryText)
+      throw new Error(
+        "Authorized LifeOps context must provide a complete body and reference",
+      );
+    const context: ContextObject = {
+      id: "lifeops-reference",
+      metadata: { providerDiscoveryEnabled: true },
+      events: [
+        {
+          id: "provider:lifeops",
+          type: "provider",
+          name: "lifeops",
+          source: "composeState",
+          text: result.text,
+          discoveryText: result.discoveryText,
+        },
+      ],
+    };
+    const original = structuredClone(context);
+    const projected = projectDeferredProviders(context);
+    expect(projected.available).toEqual(["lifeops"]);
+    expect(result.discoveryText).toContain(
+      result.text.split("Owner open occurrences:")[0].trim(),
+    );
+    expect(result.discoveryText).not.toContain("Ship the audit");
+    expect(result.discoveryText).not.toContain("ada.work@example.com");
+    expect(result.discoveryText.length).toBeLessThan(result.text.length);
+    const deferred = projected.context.events[0];
+    expect(deferred.type).toBe("provider");
+    if (deferred.type === "provider")
+      expect(deferred.text).toBe(result.discoveryText);
+    const restored = projectDeferredProviders({
+      ...context,
+      metadata: { ...context.metadata, loadedContextProviders: ["lifeops"] },
+    });
+    expect(restored.available).toEqual([]);
+    expect(restored.context.events).toEqual(original.events);
+    expect(context).toEqual(original);
+  });
+
   it("renders the serial fixture block when every read answers in program order", async () => {
     wireImmediate();
     const runtime = createRuntime();

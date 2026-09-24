@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec /opt/elizaos/bin/eliza-agent "$@"

@@ -10,6 +10,8 @@
  * it only muddies the legible glyph. The catalog branch keeps the image/fallback
  * order.
  */
+
+import { resolveApiUrl } from "@elizaos/shared";
 import { useState } from "react";
 import { client } from "../../api";
 import {
@@ -17,7 +19,6 @@ import {
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { resolveApiUrl } from "../../utils/asset-url";
 import { emitViewInteraction } from "../../view-telemetry";
 import { LauncherAppIcon } from "./LauncherAppIcon";
 import { ViewIcon } from "./ViewIcon";

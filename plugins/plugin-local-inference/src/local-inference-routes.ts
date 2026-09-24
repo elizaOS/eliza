@@ -1,7 +1,7 @@
 /**
  * HTTP handler for the local-inference catalog, download orchestration, active-
  * model status, hardware detection, and chat-command routes — the root
- * `@elizaos/plugin-local-inference` subpath (app-core mounts the compat variant
+ * `@elizaos/plugin-local-inference` subpath (app mounts the compat variant
  * in `routes/local-inference-compat-routes.ts`). The heavy service graph
  * (engine / voice / catalog / downloader) is imported lazily on first route use
  * to keep it off the boot critical path (#9565).
@@ -23,16 +23,14 @@ import {
 	isRoutingPolicy,
 	ROUTING_POLICIES,
 	type RoutingPreferences,
+	readJsonBody,
 	resolveElizaCloudTopology,
 	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
-} from "@elizaos/shared";
-import {
-	readJsonBody,
 	sendJson,
 	sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
+} from "@elizaos/shared";
 import {
 	readRoutingPreferences,
 	setPolicy,
@@ -124,7 +122,7 @@ let aospLocalInferenceApiPromise: Promise<AospLocalInferenceApi> | null = null;
 
 function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 	mobileDeviceBridgeApiPromise ??= import(
-		"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+		"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
 	) as Promise<MobileDeviceBridgeApi>;
 	return mobileDeviceBridgeApiPromise;
 }
@@ -1704,7 +1702,7 @@ export async function handleLocalInferenceRoutes(
 	}
 	// The authoritative device-tier assessment (tier + recommendedMode +
 	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
-	// the app-core compat route so mobile (which mounts this upstream variant)
+	// the app compat route so mobile (which mounts this upstream variant)
 	// also gets the authoritative assessment instead of the coarse client estimate.
 	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
 		sendJson(res, {

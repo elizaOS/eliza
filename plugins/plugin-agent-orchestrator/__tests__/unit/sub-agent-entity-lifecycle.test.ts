@@ -6,7 +6,7 @@
  * hidden from every entities-in-room consumer — without touching the entity
  * rows or the transcript memories that FK them. Deterministic harness (no
  * live model); the real-adapter FK/cascade semantics are pinned in
- * plugin-sql's sub-agent-entity-unlink.real.test.ts and plugin-inmemorydb's
+ * plugin-sql's sub-agent-entity-unlink.real.test.ts and plugin-sqlite's
  * participant-unlink contract test.
  */
 import type { Entity, HandlerCallback, Memory, UUID } from "@elizaos/core";

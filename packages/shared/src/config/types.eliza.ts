@@ -10,16 +10,16 @@ import type {
   SessionSendPolicyConfig,
 } from "@elizaos/core";
 import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
-import type {
   CustomActionDef,
   DatabaseProviderType,
   MediaConfig,
   ReleaseChannel,
 } from "../contracts/config.js";
+import type {
+  DeploymentTargetConfig,
+  LinkedAccountFlagsConfig,
+  ServiceRoutingConfig,
+} from "../contracts/service-routing.js";
 import type { AgentBinding, AgentsConfig } from "./types.agents.js";
 import type {
   DiscoveryConfig,
@@ -30,7 +30,6 @@ import type { HooksConfig } from "./types.hooks.js";
 import type {
   AudioConfig,
   BroadcastConfig,
-  CommandsConfig,
   MessagesConfig,
 } from "./types.messages.js";
 import type { ToolsConfig } from "./types.tools.js";
@@ -773,7 +772,6 @@ export type ElizaConfig = {
   broadcast?: BroadcastConfig;
   audio?: AudioConfig;
   messages?: MessagesConfig;
-  commands?: CommandsConfig;
   approvals?: ApprovalsConfig;
   session?: SessionConfig;
   web?: WebConfig;

@@ -7,18 +7,12 @@
 import type http from "node:http";
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import type {
+  LegacyRouteHandler,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared";
-import {
-  readJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/shared/api/http-helpers";
-import type {
-  LegacyRouteHandler,
   Route,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
 import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,

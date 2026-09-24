@@ -11,7 +11,7 @@
 import {
   NAVIGATE_VIEW_EVENT,
   VOICE_SETTINGS_APPLY_EVENT,
-} from "@elizaos/shared/events";
+} from "@elizaos/shared";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
   afterEach,
@@ -151,6 +151,7 @@ const realtimeVoiceMock = vi.hoisted(() => {
       active: false,
       connecting: false,
       status: "idle" as VoiceContinuousStatus,
+      progressText: undefined as string | undefined,
       transcriptPartial: "",
       transcriptFinal: "",
       agentSpeaking: false,
@@ -2766,6 +2767,26 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
   });
 
+  it("renders realtime acknowledgement through the existing transient turn status", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "thinking";
+    realtimeVoiceMock.state.progressText = "Checking your note.";
+    const { result, rerender } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({
+      kind: "thinking",
+      label: "Checking your note.",
+    });
+    realtimeVoiceMock.state.agentSpeaking = true;
+    rerender();
+    expect(result.current.turnStatus).toEqual({
+      kind: "speaking",
+      label: "Checking your note.",
+    });
+    realtimeVoiceMock.state.progressText = undefined;
+    rerender();
+    expect(result.current.turnStatus).toEqual({ kind: "speaking" });
+  });
+
   it("clears the committed transcript while projecting realtime playback state", () => {
     realtimeVoiceMock.state.active = true;
     realtimeVoiceMock.state.status = "speaking";
@@ -2840,6 +2861,14 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       });
 
       act(() => {
+        onServerEvent?.({ t: "reply_complete", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents[2]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-complete",
+      });
+
+      act(() => {
         onServerEvent?.({
           t: "usage",
           sttMs: 300,
@@ -2847,7 +2876,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "trace-voice-turn",
         });
       });
-      expect(resyncEvents[2]?.detail).toEqual({
+      expect(resyncEvents[3]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-complete",
       });
@@ -2858,11 +2887,11 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
           traceId: "renewed-trace",
         });
       });
-      expect(resyncEvents[3]?.detail).toEqual({
+      expect(resyncEvents[4]?.detail).toEqual({
         conversationId,
         reason: "connection-recovered",
       });
-      expect(resyncEvents).toHaveLength(4);
+      expect(resyncEvents).toHaveLength(5);
     } finally {
       window.removeEventListener(RESYNC_EVENT, onResync);
     }

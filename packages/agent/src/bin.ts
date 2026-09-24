@@ -139,7 +139,7 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
       // Bundle anchor only: eliza.ts imports and calls
       // ensureMobileDeviceBridgeInferenceHandlers on the runtime.
       await import(
-        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+        "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
       );
     } catch {
       // Device bridge is explicitly opt-in; absence just leaves cloud/local-model

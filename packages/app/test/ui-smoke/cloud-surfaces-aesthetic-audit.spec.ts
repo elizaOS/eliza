@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Cloud Surfaces Aesthetic Audit app flow
  * using the real renderer fixture.
  */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   type AestheticVerdictDebt,
   evaluateStrictGate,
@@ -60,7 +62,7 @@ import { seedStewardSession } from "./helpers/test-auth";
  * floating chat overlay, so overlay checks don't apply): `broken` on console
  * error / blank render, `needs-work` on a blue-color or hover violation,
  * otherwise `needs-eyeball` until the committed manual review upgrades it.
- * Output dir: `aesthetic-audit-output-cloud/` (override: ELIZA_AUDIT_CLOUD_DIR).
+ * Output dir: `test-results/aesthetic-audit-cloud/` (override: ELIZA_AUDIT_CLOUD_DIR).
  */
 
 const TEST_AUTH_ENABLED =
@@ -697,7 +699,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
 
   const outputDir =
     process.env.ELIZA_AUDIT_CLOUD_DIR ??
-    path.join(process.cwd(), "aesthetic-audit-output-cloud");
+    testOutputPath("aesthetic-audit-cloud");
 
   test.beforeAll(() => {
     expect(

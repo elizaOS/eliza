@@ -6,7 +6,7 @@
  * integration. Apps provide this via `app.config.ts` in their project root.
  *
  * Usage:
- *   import { AppConfig } from "@elizaos/app-core";
+ *   import { AppConfig } from "@elizaos/app";
  *
  *   export default {
  *     appName: "MyAgent",
@@ -127,7 +127,7 @@ export interface AppAndroidConfig {
 
 /**
  * Per-fork configuration for the AOSP system-app build toolkit
- * shipped under `eliza/packages/app-core/scripts/aosp/`.
+ * shipped under `eliza/packages/app/scripts/aosp/`.
  *
  * White-label forks that want their own AOSP product image declare
  * one `aosp:` block on their `AppConfig`; the build/validate/test
@@ -277,7 +277,7 @@ export interface AppConfig {
   /**
    * AOSP system-app build variant. Only set on forks that ship
    * their own AOSP product image; consumed by the toolkit under
-   * `eliza/packages/app-core/scripts/aosp/`.
+   * `eliza/packages/app/scripts/aosp/`.
    */
   aosp?: AospVariantConfig;
 

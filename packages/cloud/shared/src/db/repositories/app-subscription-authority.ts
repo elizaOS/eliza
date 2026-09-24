@@ -1,6 +1,6 @@
 /** Resolves app billing ownership and durably prepares commands and trial eligibility before provider I/O. */
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { validateAppBillingReturnUrl } from "../../lib/services/app-billing-return-url";
 import type { BuyerBillingCommandPayload } from "../../lib/services/generic-billing-command-types";

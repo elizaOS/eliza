@@ -40,7 +40,6 @@ on:
           - ios
           - linux
           - windows
-          - windows-runtime
       android_release_minify_smoke:
         description: Build, install, and launch a debug-signed minified Android release APK
         required: false
@@ -56,7 +55,7 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.14" # pinned to the repository packageManager; match .github/ci-bun-version.json (#15071)
+  BUN_VERSION: "1.4.2" # pinned to the repository packageManager; match .github/ci-bun-version.json (#15071)
   NODE_VERSION: "24.15.0"
 
 jobs:
@@ -127,7 +126,16 @@ jobs:
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
           # The runner invokes each physical line separately, so keep the
           # branch on one line and delegate the focused proof to a script.
-          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
+          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 && node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
+
+      - name: Upload Android native plugin results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-native-plugins-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/android-native-plugins/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Android device bundle
         if: always()
@@ -190,7 +198,7 @@ jobs:
       # vite.config.ts imports dist-only workspace packages; build those
       # package chains before the runner's internal Vite/Capacitor build.
       - name: Build Vite config package deps
-        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/credentials/vault
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/auth/vault
 
       # ios-e2e.mjs owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.
@@ -387,47 +395,6 @@ jobs:
             ${{ runner.temp }}/xvfb.log
             ${{ runner.temp }}/openbox.log
           if-no-files-found: error
-          retention-days: 14
-
-  windows-runtime-installation-identity:
-    name: Windows runtime installation identity
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows' || inputs.platform == 'windows-runtime'
-    runs-on: windows-2025
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install workspace
-        timeout-minutes: 20
-        run: bun install --frozen-lockfile --ignore-scripts
-
-      - name: Generate shared keyword data for runtime consumers
-        run: node packages/shared/scripts/generate-keywords.mjs
-
-      - name: Prove Windows identity storage fails closed
-        run: bunx vitest run packages/agent/src/runtime/runtime-installation-id.test.ts --config packages/agent/vitest.config.ts -t "real Windows"
-
-      - name: Prove plugin junction staging as a normal Windows user
-        shell: powershell
-        run: .\packages\agent\scripts\test-plugin-staging-windows.ps1
-
-      - name: Preserve normal-user staging evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: windows-normal-user-plugin-staging
-          path: device-e2e-artifacts/windows-staging/
-          if-no-files-found: warn
           retention-days: 14
 
   windows-computeruse-evidence:

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * List JS chunks eagerly reachable from packages/app/dist/index.html.
+ * List JS chunks eagerly reachable from packages/app/web-dist/index.html.
  * Complements #18056 cold transfer measurement with a static closure list.
  *
  * Usage (after production build):
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "..");
-const distRoot = join(appDir, "dist");
+const distRoot = join(appDir, "web-dist");
 const distAssets = join(distRoot, "assets");
 const indexHtmlPath = join(distRoot, "index.html");
 

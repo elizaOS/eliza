@@ -2,17 +2,12 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "jsx": "react-jsx",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
     "types": ["node", "bun-types"],
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
@@ -24,9 +19,7 @@
       ],
       "@elizaos/capacitor-secure-store": [
         "../../plugins/plugin-native-secure-store/src/index.ts"
-      ],
-      "@elizaos/plugin-whatsapp": ["../plugin-whatsapp/src/index.ts"],
-      "@elizaos/plugin-whatsapp/*": ["../plugin-whatsapp/src/*"]
+      ]
     }
   },
   "include": ["auto-enable.ts", "src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

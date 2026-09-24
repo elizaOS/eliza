@@ -20,7 +20,7 @@ const repoRoot = path.resolve(
 // architecture's reliance on `src/` (not `dist/`) resolution plus
 // workspace-source watching.
 const LEVELS = [
-  { name: "app (packages/app)", file: "packages/app/src/entry.ts" },
+  { name: "app (packages/app)", file: "packages/app/src/renderer-entry.ts" },
   // The chat harness deliberately skips the full App component. Target an
   // eager UI provider imported directly by main.tsx so this level is guaranteed
   // in both harness and normal full-app graphs.
@@ -36,7 +36,7 @@ const LEVELS = [
   },
   {
     name: "plugin view contacts",
-    file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
+    file: "plugins/plugin-native-contacts/src/components/ContactsAppView.tsx",
   },
   {
     // The /cloud launcher view (Eliza Cloud account at a glance), served as
@@ -49,7 +49,7 @@ const LEVELS = [
     // view container (wires the presentational @elizaos/ui CockpitView to the
     // live orchestrator client), so it is the source guaranteed in the view graph.
     name: "plugin view cockpit",
-    file: "plugins/plugin-task-coordinator/src/CockpitRoute.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/CockpitRoute.tsx",
   },
   {
     name: "plugin view focus",
@@ -61,11 +61,7 @@ const LEVELS = [
   },
   {
     name: "plugin view documents",
-    file: "plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
-  },
-  {
-    name: "plugin view finances",
-    file: "plugins/plugin-finances/src/components/finances/FinancesView.tsx",
+    file: "plugins/plugin-knowledge/src/components/documents/DocumentsView.tsx",
   },
   {
     name: "plugin view goals",
@@ -93,7 +89,7 @@ const LEVELS = [
   },
   {
     name: "plugin view messages",
-    file: "plugins/plugin-messages/src/components/MessagesView.tsx",
+    file: "plugins/plugin-native-messages/src/components/MessagesView.tsx",
   },
   {
     name: "plugin view maps",
@@ -101,15 +97,11 @@ const LEVELS = [
   },
   {
     name: "plugin view phone",
-    file: "plugins/plugin-phone/src/components/PhoneView.tsx",
+    file: "plugins/plugin-native-phone/src/components/PhoneView.tsx",
   },
   {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet/src/ui/InventoryView.tsx",
-  },
-  {
-    name: "plugin view manager",
-    file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
   },
   {
     name: "plugin view notes",
@@ -117,11 +109,11 @@ const LEVELS = [
   },
   {
     name: "plugin view task coordinator",
-    file: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/CodingAgentTasksPanel.tsx",
   },
   {
     name: "plugin view orchestrator",
-    file: "plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/OrchestratorWorkbench.tsx",
   },
   {
     name: "plugin view trajectory logger",

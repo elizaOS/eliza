@@ -6,7 +6,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/shared/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Config

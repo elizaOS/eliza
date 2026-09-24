@@ -1,10 +1,4 @@
-/**
- * Agent Browser Bridge contracts.
- *
- * Transport/domain types for the generic browser companion + packaging
- * surface. LifeOps workflow-bound browser session contracts live in this
- * plugin so runtime plugins do not depend on app/shared packages.
- */
+/** Defines legacy browser history records shared with LifeOps storage and session readers. These contracts do not enable companion enrollment or execution. */
 
 import type { LifeOpsBrowserSession } from "./lifeops-session-contracts.js";
 
@@ -317,80 +311,4 @@ export interface BrowserBridgeCompanionSessionBeginRequest {
   currentActionIndex: number;
   actionId: string;
   attemptId: string;
-}
-
-export const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = [
-  "extension_root",
-  "chrome_build",
-  "chrome_package",
-  "firefox_build",
-  "firefox_package",
-  "safari_web_extension",
-  "safari_app",
-  "safari_package",
-] as const;
-export type BrowserBridgePackagePathTarget =
-  (typeof BROWSER_BRIDGE_PACKAGE_PATH_TARGETS)[number];
-
-export interface BrowserBridgeCompanionPackageStatus {
-  extensionPath: string | null;
-  chromeBuildPath: string | null;
-  chromePackagePath: string | null;
-  firefoxBuildPath: string | null;
-  firefoxPackagePath: string | null;
-  safariWebExtensionPath: string | null;
-  safariAppPath: string | null;
-  safariPackagePath: string | null;
-  releaseManifest: BrowserBridgeCompanionReleaseManifest | null;
-}
-
-export interface BrowserBridgeCompanionReleaseAsset {
-  fileName: string;
-  downloadUrl: string | null;
-  sha256: string | null;
-}
-
-export interface BrowserBridgeCompanionReleaseTarget {
-  installKind:
-    | "chrome_web_store"
-    | "firefox_addons"
-    | "firefox_unsigned_submission"
-    | "apple_app_store"
-    | "github_release"
-    | "local_download";
-  installUrl: string | null;
-  storeListingUrl: string | null;
-  asset: BrowserBridgeCompanionReleaseAsset;
-}
-
-export interface BrowserBridgeCompanionReleaseManifest {
-  schema: "browser_bridge_release_v2";
-  releaseTag: string;
-  releaseVersion: string;
-  repository: string | null;
-  releasePageUrl: string | null;
-  chromeVersion: string;
-  chromeVersionName: string;
-  firefoxVersion: string;
-  safariMarketingVersion: string;
-  safariBuildVersion: string;
-  chrome: BrowserBridgeCompanionReleaseTarget;
-  firefox: BrowserBridgeCompanionReleaseTarget;
-  safari: BrowserBridgeCompanionReleaseTarget;
-  generatedAt: string;
-}
-
-export interface OpenBrowserBridgeCompanionPackagePathRequest {
-  target: BrowserBridgePackagePathTarget;
-  revealOnly?: boolean;
-}
-
-export interface OpenBrowserBridgeCompanionPackagePathResponse {
-  target: BrowserBridgePackagePathTarget;
-  path: string;
-  revealOnly: boolean;
-}
-
-export interface OpenBrowserBridgeCompanionManagerResponse {
-  browser: BrowserBridgeKind;
 }

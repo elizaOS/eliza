@@ -1,0 +1,491 @@
+###################### OpenHands Configuration Template ######################
+#
+# All settings have default values, so you only need to uncomment and
+# modify the options you want to change.
+# Fields in each section are sorted alphabetically.
+#
+##############################################################################
+
+#################################### Core ####################################
+# General core configuration
+##############################################################################
+[core]
+# API keys and core service configuration
+
+# Base path for workspaces
+#workspace_base = "./workspace"
+
+# Cache directory path
+#cache_dir = "/tmp/cache"
+
+# Enable debug mode
+#debug = false
+
+# Disable colored output in terminal
+#disable_color = false
+
+# Path to store trajectories; can be a directory or a file
+# If a directory is provided, the session ID will be used as the filename
+save_trajectory_path = "./trajectories"
+
+# Whether to save screenshots in trajectories
+# Screenshots are encoded and may significantly increase trajectory JSON size
+#save_screenshots_in_trajectory = false
+
+# Path to replay trajectories; must be a file path
+# If provided, the trajectory will be loaded and replayed before the agent responds to any user instructions
+#replay_trajectory_path = "./trajectories_read"
+
+# File storage path
+#file_store_path = "/tmp/file_store"
+
+# File storage backend type
+#file_store = "memory"
+
+# Maximum upload file size in megabytes
+#file_uploads_max_file_size_mb = 0
+
+# Enable browser environment
+#enable_browser = true
+
+# Maximum budget per task; 0.0 means no limit
+#max_budget_per_task = 0.0
+
+# Maximum number of iterations
+#max_iterations = 500
+
+# Workspace mount path inside sandbox
+#workspace_mount_path_in_sandbox = "/workspace"
+
+# Workspace mount path on host
+#workspace_mount_path = "/workspace"
+
+# Rewrite target path for workspace mount
+#workspace_mount_rewrite = ""
+
+# Run as openhands user
+#run_as_openhands = true
+
+# Runtime environment
+#runtime = "docker"
+
+# Default agent name
+#default_agent = "CodeActAgent"
+
+# JWT secret for authentication
+#jwt_secret = ""
+
+# Restrict file upload types
+#file_uploads_restrict_file_types = false
+
+# Allowed file extensions for upload
+#file_uploads_allowed_extensions = [".*"]
+
+# Enable default LLM summarizing condenser when no condenser is specified
+# If true, LLMSummarizingCondenserConfig is used as default
+# If false, NoOpCondenserConfig (no summarization) is used
+#enable_default_condenser = true
+
+# Maximum concurrent conversations per user
+#max_concurrent_conversations = 3
+
+# Maximum lifetime of a conversation before auto-close (seconds)
+#conversation_max_age_seconds = 864000  # 10 days
+
+#llm_config = 'gpt5_thinking_high'
+
+#################################### LLM #####################################
+# LLM model configuration (groups starting with 'llm')
+# 'llm' is used as the default LLM configuration
+##############################################################################
+[llm]
+# AWS access key ID
+#aws_access_key_id = ""
+
+# AWS region name
+#aws_region_name = ""
+
+# AWS secret access key
+#aws_secret_access_key = ""
+
+# API key to use (headless / CLI mode only; overridden by session init in Web)
+#api_key = ""
+
+# API base URL (headless / CLI mode only; overridden by session init in Web)
+#base_url = ""
+
+# API version
+#api_version = ""
+
+# Reasoning effort level for OpenAI o-series models (low, medium, high, or unset)
+#reasoning_effort = "medium"
+
+# Cost per input token
+#input_cost_per_token = 0.0
+
+# Cost per output token
+#output_cost_per_token = 0.0
+
+# Custom LLM provider
+#custom_llm_provider = ""
+
+# Maximum number of characters in observation content
+#max_message_chars = 10000
+
+# Maximum input tokens
+#max_input_tokens = 0
+
+# Maximum output tokens
+#max_output_tokens = 0
+
+# Model to use (headless / CLI mode only; overridden by session init in Web)
+#model = "gpt-4o"
+
+# Number of retries on LLM operation failure
+# Increasing this allows more attempts before giving up
+#num_retries = 8
+
+# Maximum wait time between retries (seconds)
+# Limits exponential backoff to avoid excessive waiting
+#retry_max_wait = 120
+
+# Minimum wait time between retries (seconds)
+# Initial delay before first retry
+#retry_min_wait = 15
+
+# Multiplier for exponential backoff calculation
+# A value of 2.0 means the wait time doubles after each retry
+#retry_multiplier = 2.0
+
+# Drop any unmapped (unsupported) parameters without raising exceptions
+#drop_params = false
+
+# Modify parameters for litellm conversion (e.g., add default message if empty)
+# Note: This setting is global and cannot be overridden per call
+#modify_params = true
+
+# Enable prompt caching if supported by the LLM provider
+#caching_prompt = true
+
+# Base URL for OLLAMA API
+#ollama_base_url = ""
+
+# Temperature parameter for API
+#temperature = 0.0
+
+# API timeout
+#timeout = 0
+
+# Top-p parameter for API
+#top_p = 1.0
+
+# Disable image processing for vision-capable models (useful for cost reduction)
+#disable_vision = true
+
+# Custom tokenizer for token counting
+# https://docs.litellm.ai/docs/completion/token_usage
+#custom_tokenizer = ""
+
+# Whether to use native tool calling if supported by the model
+# Can be true, false, or None (default behavior based on evaluation)
+# Note: Native function calling may lead to worse results in some cases
+# https://github.com/All-Hands-AI/OpenHands/pull/4711
+#native_tool_calling = None
+
+# Security settings of models that support security settings
+# Mistral AI Example：
+# safety_settings = [
+#   { "category" = "hate", "threshold" = "low" },
+#   { "category" = "harassment", "threshold" = "low" },
+#   { "category" = "sexual", "threshold" = "low" },
+#   { "category" = "dangerous", "threshold" = "low" }
+# ]
+#
+# Gemini Example：
+# safety_settings = [
+#   { "category" = "HARM_CATEGORY_HARASSMENT", "threshold" = "BLOCK_NONE" },
+#   { "category" = "HARM_CATEGORY_HATE_SPEECH", "threshold" = "BLOCK_NONE" },
+#   { "category" = "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold" = "BLOCK_NONE" },
+#   { "category" = "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold" = "BLOCK_NONE" }
+# ]
+#safety_settings = []
+#[llm.draft_editor]
+#The number of times llm_editor attempts to fix errors during editing
+#correct_num = 5
+
+#################################### GPT-5 Thinking Three Configurations ####################################
+{{MODULE_CONFIG}}
+
+
+# Example of routing LLM configuration for multimodal model routing
+# Uncomment and configure to enable model routing with a secondary model
+#[llm.secondary_model]
+#model = "kimi-k2"
+#api_key = ""
+#for_routing = true
+#max_input_tokens = 128000
+
+
+#################################### Agent ###################################
+# Agent configuration (group names must start with 'agent')
+# Use 'agent' as the default agent configuration
+# Otherwise, the group name must be `agent.<agent_name>` (case-sensitive), for example:
+# agent.CodeActAgent
+##############################################################################
+[agent]
+
+# Whether to enable the browsing tool
+# Note: When this is set to true, enable_browser in the core configuration must also be true
+enable_browsing = true
+
+# Whether to enable the LLM draft editor
+enable_llm_editor = false
+
+# Whether to enable the standard editor tool (str_replace_editor)
+# Only effective when enable_llm_editor is False
+enable_editor = true
+
+# Whether to enable the IPython tool
+enable_jupyter = true
+
+# Whether to enable the command tool
+enable_cmd = true
+
+# Whether to enable the thinking tool
+enable_think = true
+
+# Whether to enable the finish tool
+enable_finish = true
+
+# LLM configuration group to use
+llm_config = 'claude_opus_4_1_thinking'
+
+# Whether to use prompt extensions (e.g., micro-agents, repository/runtime information)
+#enable_prompt_extensions = true
+
+# List of micro-agents to disable
+#disabled_microagents = []
+
+# Whether to truncate history to continue the session when the LLM context length limit is reached
+enable_history_truncation = true
+
+# Whether to enable the condensation request tool
+enable_condensation_request = false
+
+[agent.RepoExplorerAgent]
+# Example: use a cheaper model for RepoExplorerAgent to reduce cost, especially
+# useful when the agent does not require high quality but consumes many tokens
+#llm_config = 'gpt3'
+
+#################################### Sandbox ###################################
+# Sandbox configuration
+##############################################################################
+[sandbox]
+# Sandbox timeout (seconds)
+#timeout = 120
+
+# Sandbox user ID
+#user_id = 1000
+
+# Container image used by the sandbox
+#base_container_image = "nikolaik/python-nodejs:python3.12-nodejs22"
+
+# Use host network
+#use_host_network = false
+
+# Additional build arguments for the runtime
+#runtime_extra_build_args = ["--network=host", "--add-host=host.docker.internal:host-gateway"]
+
+# Enable automatic code checks after editing
+#enable_auto_lint = false
+
+# Whether to initialize plugins
+#initialize_plugins = true
+
+# Extra dependencies to install in the runtime image
+#runtime_extra_deps = ""
+
+# Environment variables set at runtime startup
+#runtime_startup_env_vars = {}
+
+# BrowserGym environment used for evaluation
+#browsergym_eval_env = ""
+
+# Platform used to build the runtime image (e.g., "linux/amd64")
+#platform = ""
+
+# Force rebuild the runtime even if it already exists
+#force_rebuild_runtime = false
+
+# Runtime container image to use (if not provided, it will be built from base_container_image)
+#runtime_container_image = ""
+
+# Keep the runtime alive after the session ends
+#keep_runtime_alive = false
+
+# Pause closed runtimes instead of stopping them
+#pause_closed_runtimes = false
+
+# Delay (seconds) before closing idle runtimes
+#close_delay = 300
+
+# Remove all containers when stopping the runtime
+#rm_all_containers = false
+
+# Enable GPU support in the runtime
+#enable_gpu = false
+
+# When multiple GPUs are available, you can specify them by ID
+#cuda_visible_devices = ''
+
+# Additional Docker runtime arguments
+#docker_runtime_kwargs = {}
+
+# Specific port for VSCode. If not set, a random port will be chosen.
+# Useful when deploying OpenHands on a remote machine where you need to expose a fixed port.
+#vscode_port = 41234
+
+# Volume mounts in the format 'host_path:container_path[:mode]'
+# For example '/my/host/dir:/workspace:rw'
+# Multiple mounts can be specified with commas
+# For example '/path1:/workspace/path1,/path2:/workspace/path2:ro'
+
+# Configure volumes under the [sandbox] section:
+#volumes = "/Users/eternity/PycharmProjects/nl2repo/src:/workspace:rw"
+{{VOLUMES}}
+#################################### Security ###################################
+# Security feature configuration
+##############################################################################
+[security]
+
+# Enable confirmation mode (headless/CLI mode only – this will be overridden by session initialization in Web mode)
+#confirmation_mode = false
+
+# Security analyzer to use (headless/CLI mode only – this will be overridden by session initialization in Web mode)
+# Available options: 'llm' (default), 'invariant'
+#security_analyzer = "llm"
+
+# Whether to enable the security analyzer
+#enable_security_analyzer = true
+
+#################################### Condenser #################################
+# The condenser controls how session history is managed and compressed when the context becomes too large.
+# Each agent uses one condenser configuration.
+##############################################################################
+[condenser]
+# Condenser type to use. Available options:
+# - "noop": no compression, keep full history (default)
+# - "observation_masking": keep full event structure but mask older observations
+# - "recent": keep only recent events and discard older ones
+# - "llm": use an LLM to summarize session history
+# - "amortized": intelligently forget older events while preserving important context
+# - "llm_attention": use an LLM to prioritize the most relevant context
+type = "noop"
+
+# Examples for each condenser type (uncomment and modify as needed):
+
+# 1. NoOp condenser - no additional settings required
+#type = "noop"
+
+# 2. Observation masking condenser
+#type = "observation_masking"
+# Number of most recent events whose observations will not be masked
+#attention_window = 100
+
+# 3. Recent events condenser
+#type = "recent"
+# Number of initial events to always keep (usually includes the task description)
+#keep_first = 1
+# Maximum number of events to keep in history
+#max_events = 100
+
+# 4. LLM summarization condenser
+#type = "llm"
+# LLM configuration reference for summarization
+#llm_config = "condenser"
+# Number of initial events to always keep (usually includes the task description)
+#keep_first = 1
+# Maximum history size before triggering summarization
+#max_size = 100
+
+# 5. Amortized forgetting condenser
+#type = "amortized"
+# Number of initial events to always keep (usually includes the task description)
+#keep_first = 1
+# Maximum history size before triggering forgetting
+#max_size = 100
+
+# 6. LLM attention condenser
+#type = "llm_attention"
+# LLM configuration reference for attention scoring
+#llm_config = "condenser"
+# Number of initial events to always keep (usually includes the task description)
+#keep_first = 1
+# Maximum history size before triggering the attention mechanism
+#max_size = 100
+
+# Example of a custom LLM configuration for condensers that require an LLM
+# If not provided, it will fall back to the default LLM
+#[llm.condenser]
+#model = "gpt-4o"
+#temperature = 0.1
+#max_input_tokens = 1024
+
+#################################### Eval ####################################
+# Evaluation configuration; refer to specific evaluation plugins for available options
+##############################################################################
+
+
+########################### Kubernetes #######################################
+# Kubernetes configuration for running with a Kubernetes runtime
+##############################################################################
+[kubernetes]
+# Kubernetes namespace for OpenHands resources
+#namespace = "default"
+
+# Domain name for the ingress resource
+#ingress_domain = "localhost"
+
+# Size of the persistent volume claim
+#pvc_storage_size = "2Gi"
+
+# Storage class for the persistent volume claim
+#pvc_storage_class = "standard"
+
+# CPU request for the runtime Pod
+#resource_cpu_request = "1"
+
+# Memory request for the runtime Pod
+#resource_memory_request = "1Gi"
+
+# Memory limit for the runtime Pod
+#resource_memory_limit = "2Gi"
+
+# Image pull secret name for private registries (optional)
+#image_pull_secret = ""
+
+# TLS secret name for ingress (optional)
+#ingress_tls_secret = ""
+
+# Node selector key for Pod scheduling (optional)
+#node_selector_key = ""
+
+# Node selector value for Pod scheduling (optional)
+#node_selector_val = ""
+
+# YAML string defining Pod tolerations (optional)
+#tolerations_yaml = ""
+
+# Run the runtime sandbox container in privileged mode, used for docker-in-docker
+#privileged = false
+
+#################################### Model Routing ############################
+# Experimental model routing feature configuration
+# Supports intelligent switching between different LLM models for specific purposes
+##############################################################################
+[model_routing]
+# Router used for model selection
+# Available options:
+# - "noop_router" (default): no routing, always use the primary LLM
+# - "multimodal_router": a router that switches between the primary and secondary models based on whether the input is multimodal
+#router_name = "noop_router"

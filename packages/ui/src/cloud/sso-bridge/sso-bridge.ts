@@ -45,8 +45,8 @@
  * next sync), and the explicit app-origin logout marker prevents a bounce.
  */
 
-import { ElizaError } from "@elizaos/common";
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import {
   readStoredStewardToken,
   writeStoredStewardToken,

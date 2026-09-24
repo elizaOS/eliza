@@ -15,9 +15,9 @@ import {
   assertContainedRegularFile,
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
-} from "./repository-file-integrity.mjs";
+} from "./repository-file-integrity.ts";
 import { execFileSync } from "./spawn-sync-captured.mjs";
-import { listPackages } from "./workspaces.mjs";
+import { listPackages } from "./workspaces.ts";
 
 const VIEW_CONFIG_BASENAME =
   /^vite\.config\.views\.(?:ts|mts|cts|js|mjs|cjs)$/i;
@@ -57,8 +57,15 @@ function listRepositoryFiles(repoRoot) {
       maxBuffer: 64 * 1024 * 1024,
     },
   );
+  const deleted = new Set(
+    execFileSync("git", ["-C", repoRoot, "ls-files", "--deleted", "-z"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    }).split("\0"),
+  );
   return output
     .split("\0")
+    .filter((relativePath) => !deleted.has(relativePath))
     .filter(Boolean)
     .filter((relativePath) =>
       VIEW_CONFIG_BASENAME.test(path.posix.basename(relativePath)),

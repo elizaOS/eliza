@@ -10,13 +10,18 @@
     "vitest.e2e.config.ts",
     "playwright.*.config.ts",
     "scripts/**/*.{mjs,ts}",
-    "vite/**/*.ts"
+    "vite/**/*.ts",
+    "test/**/*.{ts,tsx}",
+    "platforms/**/*.{ts,tsx}",
+    "vitest*.config.ts"
   ],
   "project": [
     "src/**/*.{ts,tsx}",
     "scripts/**/*.{mjs,ts}",
     "vite/**/*.ts",
-    "*.ts"
+    "*.ts",
+    "test/**/*.{ts,tsx}",
+    "platforms/**/*.{ts,tsx}"
   ],
   "ignoreDependencies": [
     "@capacitor/barcode-scanner",
@@ -33,10 +38,42 @@
     "pathe",
     "tailwindcss",
     "three",
-    "ws"
+    "ws",
+    "@capacitor/background-runner",
+    "@capacitor/keyboard",
+    "@capacitor/local-notifications",
+    "@elizaos/plugin-anthropic",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-wechat"
   ],
-  "ignoreUnresolved": ["tsx"],
-  "ignore": ["dist/**", "ios/**", "android/**"],
+  "ignoreUnresolved": ["tsx", "scripts/build.mjs"],
+  "ignore": ["dist/**", "ios/**", "android/**", "web-dist/**"],
   "vite": false,
-  "vitest": false
+  "vitest": false,
+  "ignoreBinaries": [
+    "adb",
+    "afconvert",
+    "anvil",
+    "brew",
+    "cmake",
+    "file",
+    "findstr",
+    "hf",
+    "log",
+    "netstat",
+    "ninja",
+    "nm",
+    "nvidia-smi",
+    "otool",
+    "pgrep",
+    "rg",
+    "ruby",
+    "say",
+    "secret-tool",
+    "strip",
+    "swift",
+    "tsc6",
+    "where",
+    "winget"
+  ]
 }

@@ -46,7 +46,6 @@ const cloudCfRelease = readWorkflow(".github/workflows/cloud-cf-release.yml");
 const provisioning = readWorkflow(
   ".github/workflows/deploy-eliza-provisioning-worker.yml",
 );
-const aasa = readWorkflow(".github/workflows/deploy-aasa.yml");
 
 describe("admission group policy", () => {
   test("holds SHA constant and still issues distinct non-PR groups", () => {
@@ -257,7 +256,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
   });
 });
 
-describe("committed AASA and provisioning workflows match the policy", () => {
+describe("committed provisioning workflows match the policy", () => {
   test("provisioning admission is per run and SSH is one locked job", () => {
     const top = workflowConcurrencyBlock(provisioning);
     expect(top).toContain("format('run-{0}', github.run_id)");
@@ -269,18 +268,5 @@ describe("committed AASA and provisioning workflows match the policy", () => {
     expect(deploy).toContain("group: deploy-eliza-provisioning-worker-mutate-");
     expect(deploy).toContain("cancel-in-progress: false");
     expect(deploy).toContain("queue: max");
-  });
-
-  test("AASA admission is per run and CDN proof stays inside the mutate job", () => {
-    const top = workflowConcurrencyBlock(aasa);
-    expect(top).toContain("format('run-{0}', github.run_id)");
-    expect(top).not.toContain("github.sha");
-    expect(aasa).not.toContain("verify-apple-cdn:");
-    const publish = jobBlock(aasa, "deploy-and-verify-origin");
-    expect(publish).toContain("environment: production");
-    expect(publish).toContain("group: deploy-aasa-edge-mutate");
-    expect(publish).toContain("apple-cdn-live");
-    expect(publish).toContain("cancel-in-progress: false");
-    expect(publish).toContain("queue: max");
   });
 });

@@ -1,7 +1,7 @@
 /** Configures the unit shared Vitest lane used by workspace package tests. */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { getElizaCoreEntry } from "@elizaos/testing/eliza-package-paths";
+import { getElizaCoreEntry } from "@elizaos/testing/package-paths";
 import baseConfig from "./default.config";
 import { repoRoot } from "./repo-root";
 import {
@@ -36,13 +36,6 @@ const unitAliasEntries: ModuleAlias[] = [
   ...getOptionalResolvedAliases(
     localElizaCoreReplacement
       ? [
-          {
-            find: /^@elizaos\/common$/,
-            replacement: path.join(
-              elizaWorkspaceRoot,
-              "packages/common/src/index.ts",
-            ),
-          },
           {
             // Published-only CI disables the repo-local eliza checkout, so unit tests must fall back to the installed package entry in that mode.
             find: /^@elizaos\/core$/,

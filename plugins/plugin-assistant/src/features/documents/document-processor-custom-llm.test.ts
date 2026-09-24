@@ -10,10 +10,7 @@
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  createMockRuntime,
-  MOCK_AGENT_ID,
-} from "@elizaos/testing/mock-runtime";
+import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type {
   IAgentRuntime,

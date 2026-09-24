@@ -7,15 +7,17 @@
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
+  ViewCapability,
   ViewHeaderPolicy,
   ViewKind,
-} from "@elizaos/common";
-import type { ViewCapability } from "@elizaos/core";
-import type { OverlayApp } from "@elizaos/shared/apps/overlay-app-api";
-import { getAllOverlayApps } from "@elizaos/shared/apps/overlay-app-registry";
-import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
+} from "@elizaos/core";
+import type { OverlayApp } from "@elizaos/shared";
+import {
+  getAllOverlayApps,
+  getUiRegistryStore,
+  packageNameToAppRouteSlug,
+} from "@elizaos/shared";
 import type { ComponentType } from "react";
-import { getUiRegistryStore } from "./registry-host";
 
 export type AppShellPageLoader = () => Promise<{
   default: ComponentType<Record<string, unknown>>;
@@ -329,7 +331,7 @@ export function requireRegisteredAgentSurface(
 export type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
 function hostExternalImporterRegistryKey(): symbol {
-  return Symbol.for("elizaos.app-core.host-external-importer-registry");
+  return Symbol.for("elizaos.app.host-external-importer-registry");
 }
 
 function getHostExternalImporterStore(): Map<string, HostExternalImporter> {

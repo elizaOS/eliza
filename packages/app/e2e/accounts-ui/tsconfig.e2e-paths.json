@@ -7,18 +7,18 @@
   "compilerOptions": {
     "baseUrl": "../../../..",
     "paths": {
-      "@elizaos/app-core/account-pool": [
-        "packages/app-core/src/services/account-pool.ts"
+      "@elizaos/app/account-pool": [
+        "packages/app/src/services/account-pool.ts"
       ],
       "@elizaos/core": ["packages/core/src/index.ts"],
       "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
       "@elizaos/shared": ["packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["packages/shared/src/*"],
-      "@elizaos/credentials/vault": ["packages/credentials/src/vault/index.ts"],
-      "@elizaos/credentials/vault/*": ["packages/credentials/src/vault/*"],
-      "@elizaos/credentials/auth": ["packages/credentials/src/auth/index.ts"],
-      "@elizaos/credentials/auth/*": ["packages/credentials/src/auth/*"]
+      "@elizaos/auth/vault": ["packages/auth/src/vault/index.ts"],
+      "@elizaos/auth/vault/*": ["packages/auth/src/vault/*"],
+      "@elizaos/auth/auth": ["packages/auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["packages/auth/src/auth/*"]
     }
   }
 }

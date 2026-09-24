@@ -1,18 +1,11 @@
 {
   "extends": "../../../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
     "composite": false,
     "incremental": false,
     "declaration": false,
     "declarationMap": false,
     "types": ["node", "bun-types"],
-    "noEmit": true,
     "paths": {
       "@/lib/*": ["../../shared/src/lib/*"],
       "@/db/*": ["../../shared/src/db/*"],
@@ -22,9 +15,6 @@
       "@elizaos/core/edge": ["../../../../packages/core/src/index.edge.ts"],
       "@elizaos/core": ["../../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../../packages/core/src/*"],
-      "@elizaos/plugin-scheduling/edge": [
-        "../../../../plugins/plugin-scheduling/src/edge.ts"
-      ],
       "@elizaos/plugin-todos/edge": [
         "../../../../plugins/plugin-todos/src/edge.ts"
       ],
@@ -35,7 +25,11 @@
       ],
       "drizzle-orm": ["../../../node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"],
-      "@/*": ["../../../*"]
+      "@/*": ["../../../*"],
+      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
+      "@elizaos/plugin-scheduling": [
+        "../../../../plugins/plugin-scheduling/src/index.ts"
+      ]
     }
   },
   "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],

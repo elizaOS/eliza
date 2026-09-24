@@ -1,6 +1,6 @@
 /** Model-free fixture proving the source scenario CLI naturally quiesces. */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   id: "cloud-stability-natural-exit",

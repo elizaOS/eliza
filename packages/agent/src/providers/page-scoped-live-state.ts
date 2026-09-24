@@ -47,13 +47,6 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 
-interface BrowserBridgeCompanionLiveStatus {
-  connectionState: string;
-  browser: string;
-  profileLabel?: string | null;
-  extensionVersion?: string | null;
-}
-
 function getLocalApiUrls(path: string): string[] {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const configuredPort = process.env.API_PORT || process.env.SERVER_PORT;
@@ -88,27 +81,6 @@ async function fetchLocalJson<T>(
     }
   }
   return null;
-}
-
-async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
-  BrowserBridgeCompanionLiveStatus[] | null
-> {
-  const payload = await fetchLocalJson<{
-    companions?: Array<{
-      connectionState?: string;
-      browser?: string;
-      profileLabel?: string | null;
-      extensionVersion?: string | null;
-    }>;
-  }>("/api/browser-bridge/companions");
-  if (!payload) return null;
-  if (!Array.isArray(payload.companions)) return [];
-  return payload.companions.map((companion) => ({
-    connectionState: companion.connectionState ?? "unknown",
-    browser: companion.browser ?? "chrome",
-    profileLabel: companion.profileLabel ?? null,
-    extensionVersion: companion.extensionVersion ?? null,
-  }));
 }
 
 /**
@@ -149,41 +121,6 @@ async function renderBrowserLiveState(
     for (const tab of snapshot.tabs) {
       const flags = tab.visible ? "[visible]" : "";
       lines.push(`- ${tab.title || "(untitled)"} — ${tab.url} ${flags}`.trim());
-    }
-
-    // Agent Browser Bridge companion status — so the agent can tell the user
-    // to install the extension when it isn't connected and reference the
-    // connected profile accurately when it is.
-    const companions = await fetchBrowserBridgeCompanionLiveStatus();
-    if (companions === null) {
-      lines.push(
-        "Agent Browser Bridge companion: status unknown (companion API unreachable).",
-      );
-    } else if (companions.length === 0) {
-      lines.push(
-        "Agent Browser Bridge companion: not installed — tell the user to click 'Install Agent Browser Bridge' in the chat panel to build the extension and load it into Chrome.",
-      );
-    } else {
-      const connected = companions.filter(
-        (companion) => companion.connectionState === "connected",
-      );
-      if (connected.length === 0) {
-        lines.push(
-          "Agent Browser Bridge companion: extension present but not connected — ask the user to open the Agent Browser Bridge extension in Chrome so it can pair.",
-        );
-      } else {
-        lines.push(
-          `Agent Browser Bridge companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
-        );
-        for (const companion of connected) {
-          const browser = companion.browser === "safari" ? "Safari" : "Chrome";
-          const profile = companion.profileLabel?.trim() || "Default";
-          const version = companion.extensionVersion
-            ? ` v${companion.extensionVersion}`
-            : "";
-          lines.push(`- ${browser} / ${profile}${version}`);
-        }
-      }
     }
 
     return lines.join("\n");

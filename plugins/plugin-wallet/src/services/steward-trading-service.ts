@@ -12,7 +12,7 @@ import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudStewardOperationalTuple,
-} from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 import type {
   CancelOrderRequest,
   CancelResult,

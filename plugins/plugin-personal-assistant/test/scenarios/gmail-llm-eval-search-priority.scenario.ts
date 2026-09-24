@@ -1,7 +1,7 @@
 /**
  * Live-model planner-level evals for Gmail routing across cross-account search and priority-triage phrasings, guarding against calendar/send-message misrouting.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "gmail", "email", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

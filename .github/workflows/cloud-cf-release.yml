@@ -231,16 +231,16 @@ jobs:
           esac
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            canonical_source="packages/homepage/src/lib/contact.ts"
+            canonical_source="packages/cloud/shared/src/lib/public-telegram-identity.ts"
             resolved_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
             resolved_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
             valid_bot_id "$resolved_bot_id" || \
-              fail "The homepage canonical Telegram bot ID is missing or invalid"
+              fail "The cloud canonical Telegram bot ID is missing or invalid"
             [[ "$resolved_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
-              fail "The homepage canonical Telegram username is missing or invalid"
+              fail "The cloud canonical Telegram username is missing or invalid"
             resolved_bot_username_key="$(printf '%s' "$resolved_bot_username" | tr '[:upper:]' '[:lower:]')"
             [[ "$resolved_bot_username_key" == *bot ]] || \
-              fail "The homepage canonical Telegram username must use the managed bot suffix"
+              fail "The cloud canonical Telegram username must use the managed bot suffix"
           else
             valid_bot_id "$ADMITTED_TELEGRAM_BOT_ID" || \
               fail "The caller-admitted Telegram bot ID is missing or invalid; re-run all jobs"
@@ -364,7 +364,7 @@ jobs:
           # Pin the canonical released toolchain: floating `latest` first calls
           # GitHub's tags API, making deploys fail before setup during an API
           # outage, while canary has also hung in the link phase (#10839).
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install dependencies
         run: |
@@ -1008,9 +1008,9 @@ jobs:
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
           # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
+          # Bun 1.4.2 does not exhibit the hang and avoids the floating-tag API
           # lookup during setup. See elizaOS/eliza#10839.
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install API dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -1225,7 +1225,7 @@ jobs:
           STEWARD_UPSTREAM_URL: https://steward-api-staging.up.railway.app
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$STEWARD_UPSTREAM_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface upstream
@@ -2192,7 +2192,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$API_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface proxy
@@ -2485,7 +2485,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile --ignore-scripts
@@ -2524,17 +2524,17 @@ jobs:
           bunx wrangler@4.100.0 pages functions build functions \
             --outdir "$functions_bundle" \
             --project-directory . \
-            --build-output-directory dist
+            --build-output-directory web-dist
           test -s "$functions_bundle/index.js"
-          install -m 0644 "$functions_bundle/index.js" dist/_worker.js
-          node --check dist/_worker.js
+          install -m 0644 "$functions_bundle/index.js" web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
-            packages/app/dist
+            packages/app/web-dist
             packages/app/wrangler.toml
           if-no-files-found: error
           retention-days: 1
@@ -2712,9 +2712,9 @@ jobs:
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
           # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
+          # Bun 1.4.2 does not exhibit the hang and avoids the floating-tag API
           # lookup during setup. See elizaOS/eliza#10839.
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Resolve immutable app artifact
         id: pages-artifact
@@ -2752,8 +2752,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         run: |
           set -euo pipefail
-          test -s dist/_worker.js
-          node --check dist/_worker.js
+          test -s web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Legacy inline fallback - install dependencies
         if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
@@ -2972,7 +2972,7 @@ jobs:
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
-        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
+        # `pages_build_output_dir = "./web-dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
         run: |
           set -euo pipefail
@@ -3078,7 +3078,7 @@ jobs:
           for served_url in "${served_frontends[@]}"; do
             node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
               --served-url "$served_url" \
-              --dist packages/app/dist \
+              --dist packages/app/web-dist \
               --require-text "Signing in to your agent" \
               --require-text "This tab will continue automatically" \
               --require-text "Open this agent from Eliza Cloud"
@@ -3133,7 +3133,7 @@ jobs:
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-              node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+              node packages/cloud/scripts/verify-steward-provider-discovery.ts \
                 --base-url "$served_url" \
                 --environment "$DEPLOY_ENVIRONMENT" \
                 --surface proxy
@@ -3301,7 +3301,7 @@ jobs:
           ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
         with:
           setup-python: "true"
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
@@ -3309,7 +3309,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.
@@ -3365,7 +3365,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: deployed-renderer-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json
+          path: test-results/app/**/privacy-safe-*-history-network-diagnostics.json
           if-no-files-found: warn
           retention-days: 7
 

@@ -13,12 +13,12 @@ import type {
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import { entityAction } from "../src/actions/entity.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { LifeOpsService } from "../src/lifeops/service.ts";

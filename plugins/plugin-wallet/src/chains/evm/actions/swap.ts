@@ -22,8 +22,8 @@ const legacySpec = requireActionSpec("EVM_SWAP");
 const spec = { ...legacySpec, name: "WALLET" };
 
 import { logger, ModelType } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 import {
   createConfig,
   type ExtendedChain,

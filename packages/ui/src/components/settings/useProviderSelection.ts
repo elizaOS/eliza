@@ -8,10 +8,10 @@
  */
 
 import {
+  asRecord,
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/first-run-options";
-import { asRecord } from "@elizaos/shared/type-guards";
+} from "@elizaos/shared";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";

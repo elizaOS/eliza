@@ -14,7 +14,7 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
+import { sanitizeSpeechText } from "@elizaos/shared";
 import { _internalResolveCloudApiKey, ELIZA_CLOUD_TTS_MAX_TEXT_CHARS, resolveCloudProxyTtsModel, resolveCloudSttCandidateUrls, resolveCloudTtsCandidateUrls, resolveElizaCloudTtsVoiceId, shouldRetryCloudTtsUpstream } from "@elizaos/shared/elizacloud/server-cloud-tts";
 import { ttsDebug, ttsDebugTextPreview } from "@elizaos/shared/utils/tts-debug";
 import { resolveCloudTimeoutMs } from "../utils/config";
@@ -84,7 +84,7 @@ async function readRawRequestBody(req: http.IncomingMessage): Promise<Buffer> {
   // `attachJsonBodyIfPresent` already drains and JSON-parses the stream for an
   // `application/json` request, stashing `req.rawBody`/`req.body` before the
   // route runs. Re-streaming here would then read zero bytes and 400 a valid
-  // request (#16348). Honor the pre-read body first, mirroring app-core's
+  // request (#16348). Honor the pre-read body first, mirroring app's
   // `readCompatJsonBody`. The packaged app path re-streams `req` fresh and
   // leaves these unset, so it still falls through to the drain below.
   const preRead = req as http.IncomingMessage & {

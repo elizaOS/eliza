@@ -17,18 +17,16 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import {
+  type CloudPairRelaySession,
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
+  parseCloudPairRelaySession,
+  renderCloudPairHandoffHtml,
   resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+  resolveCloudPairAgentIdFromEnv,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
-import {
-  type CloudPairRelaySession,
-  parseCloudPairRelaySession,
-  renderCloudPairHandoffHtml,
-  resolveCloudPairAgentIdFromEnv,
-} from "@elizaos/shared/contracts";
 import { resolveDirectRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15_000;

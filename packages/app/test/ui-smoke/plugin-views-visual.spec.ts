@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Plugin Views Visual app flow using the real
  * renderer fixture.
  */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -67,12 +69,7 @@ test.describe("registered plugin views visual coverage", () => {
       // screenshots and audit JSON.
       const screenshotDir =
         process.env.ELIZA_VIEW_SCREENSHOT_DIR ??
-        path.join(
-          process.cwd(),
-          "test-results",
-          "plugin-views",
-          testInfo.project.name,
-        );
+        testOutputPath("app", "plugin-views", testInfo.project.name);
       await mkdir(screenshotDir, { recursive: true });
 
       const pageErrors: string[] = [];

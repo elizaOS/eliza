@@ -15,7 +15,7 @@ import {
 /**
  * Cloud first-run ends with a "Restart Eliza" CTA whose path ultimately
  * lands in `DesktopManager.relaunch()` (see
- * `eliza/packages/app-core/platforms/electrobun/src/native/desktop.ts:1439`).
+ * `eliza/packages/app/platforms/electrobun/src/native/desktop.ts:1439`).
  * That handler calls `Bun.spawn([process.execPath, ...process.argv.slice(1)])`
  * and then `Utils.quit()`. On packaged builds `process.execPath` resolves to
  * the launcher binary inside the .app/.exe bundle — if that binary is missing

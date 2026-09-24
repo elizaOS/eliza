@@ -13,8 +13,8 @@ import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   createCalendarFeedConflictLoader,
   registerConflictDetectHostAdapter,
@@ -69,7 +69,7 @@ const GYM_RESCHEDULED_END = at(5 * 60);
 
 // ---------------------------------------------------------------------------
 // Repository access (structural, same pattern as the lifeops workflow-event
-// scenarios in packages/test/scenarios).
+// scenarios in packages/testing/scenarios).
 // ---------------------------------------------------------------------------
 
 interface CalendarEventRecordLike {
@@ -419,7 +419,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "conflict", "outcome", "declined"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

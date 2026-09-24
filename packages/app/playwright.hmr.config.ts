@@ -2,10 +2,12 @@
  * Playwright configuration for the Playwright Hmr app test lane, including
  * browser projects and app-server wiring.
  */
+
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +44,7 @@ export default defineConfig({
   retries: 2,
   workers: 1,
   reporter: "list",
-  outputDir: "./test-results/hmr",
+  outputDir: testOutputPath("app", "hmr"),
   use: {
     baseURL: `http://127.0.0.1:${uiPort}`,
     trace: "retain-on-failure",

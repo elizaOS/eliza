@@ -1,5 +1,5 @@
 /** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { findPurchasedSubscriptionContract } from "../../db/repositories/subscription-purchased-binding";
 import {

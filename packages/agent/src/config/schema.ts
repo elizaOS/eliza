@@ -8,7 +8,7 @@
  * the base. The base schema/hints are computed once and cached; buildConfigSchema
  * layers any plugin/connector metadata on top per call.
  */
-import { CONNECTOR_IDS } from "@elizaos/shared/config/schema";
+import { CONNECTOR_IDS } from "@elizaos/shared";
 import { VERSION } from "../runtime/version.ts";
 import { isSensitiveConfigKey } from "./sensitive-keys.ts";
 
@@ -161,7 +161,6 @@ const GROUP_LABELS: Record<string, string> = {
   audio: "Audio",
   models: "Models",
   messages: "Messages",
-  commands: "Commands",
   session: "Session",
   cron: "Cron",
   hooks: "Hooks",
@@ -189,7 +188,6 @@ const GROUP_ORDER: Record<string, number> = {
   audio: 60,
   models: 70,
   messages: 80,
-  commands: 85,
   session: 90,
   cron: 100,
   hooks: 110,
@@ -413,15 +411,6 @@ const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.humanDelay.minMs": "Human Delay Min (ms)",
   "agents.defaults.humanDelay.maxMs": "Human Delay Max (ms)",
   "agents.defaults.cliBackends": "CLI Backends",
-  "commands.native": "Native Commands",
-  "commands.nativeSkills": "Native Skill Commands",
-  "commands.text": "Text Commands",
-  "commands.bash": "Allow Bash Chat Command",
-  "commands.bashForegroundMs": "Bash Foreground Window (ms)",
-  "commands.config": "Allow /config",
-  "commands.debug": "Allow /debug",
-  "commands.restart": "Allow Restart",
-  "commands.useAccessGroups": "Use Access Groups",
   "ui.seamColor": "Accent Color",
   "ui.assistant.name": "Assistant Name",
   "ui.assistant.avatar": "Assistant Avatar",
@@ -820,23 +809,6 @@ const FIELD_HELP: Record<string, string> = {
     "Minimum delay in ms for custom humanDelay (default: 800).",
   "agents.defaults.humanDelay.maxMs":
     "Maximum delay in ms for custom humanDelay (default: 2500).",
-  "commands.native":
-    "Register native commands with channels that support it (Discord/Slack/Telegram).",
-  "commands.nativeSkills":
-    "Register native skill commands (user-invocable skills) with channels that support it.",
-  "commands.text": "Allow text command parsing (slash commands only).",
-  "commands.bash":
-    "Allow bash chat command (`!`; `/bash` alias) to run host shell commands (default: false; requires tools.elevated).",
-  "commands.bashForegroundMs":
-    "How long bash waits before backgrounding (default: 2000; 0 backgrounds immediately).",
-  "commands.config":
-    "Allow /config chat command to read/write config on disk (default: false).",
-  "commands.debug":
-    "Allow /debug chat command for runtime-only overrides (default: false).",
-  "commands.restart":
-    "Allow /restart and gateway restart tool actions (default: false).",
-  "commands.useAccessGroups":
-    "Enforce access-group allowlists/policies for commands.",
   "session.dmScope":
     'DM session scoping: "main" keeps continuity; "per-peer", "per-channel-peer", or "per-account-channel-peer" isolates DM history (recommended for shared inboxes/multi-account).',
   "session.identityLinks":

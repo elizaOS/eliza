@@ -194,7 +194,7 @@ switch ($Backend) {
   }
 }
 
-$buildScript = Join-Path $repoRoot "packages/app-core/scripts/build-llama-cpp-mtp.mjs"
+$buildScript = Join-Path $repoRoot "packages/app/scripts/build-llama-cpp-mtp.mjs"
 if ($env:WINDOWS_BUILD_FORK -ne "0") {
   & node $buildScript --target $Target
   if ($LASTEXITCODE -ne 0) { Fail "build target failed: $Target" }

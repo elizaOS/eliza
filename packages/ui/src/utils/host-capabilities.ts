@@ -2,10 +2,7 @@
  * Narrows the shared host-capability probe to the fields UI code branches on
  * (long-running, mobile, browser, label).
  */
-import {
-  detectHostCapabilities,
-  type HostCapabilities,
-} from "@elizaos/shared/utils/host-capabilities";
+import { detectHostCapabilities, type HostCapabilities } from "@elizaos/shared";
 
 export type UiHostCapabilities = Pick<
   HostCapabilities,

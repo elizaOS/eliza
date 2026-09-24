@@ -50,7 +50,7 @@
  *   --concurrency=<n>   (env: TEST_CONCURRENCY)
  *     Run the parallel-safe `test` tasks through an n-worker pool instead of
  *     strictly serially. Only the secret-free pr lane is parallelised (minus
- *     the shared-database packages in test-task-pool.mjs); the e2e/integration
+ *     the shared-database packages in test-task-pool.ts); the e2e/integration
  *     lanes and any post-merge lane always serialize. Default 1 preserves the
  *     historical fully-serial behaviour, so existing callers are unaffected.
  *
@@ -77,7 +77,7 @@
  * TEST_TASK_TIMEOUT_MS (0 = off) bounds each child, the cloud stage included;
  * a timed-out child is a failure, never a skip.
  *
- * See `.env.test.example` and `packages/scripts/test-env.mjs` for live env setup.
+ * See `.env.example` and `packages/scripts/test-env.mjs` for live env setup.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -91,7 +91,7 @@ import {
   formatCapturedTestOutput,
   retainedCapturedTestOutput,
 } from "./lib/captured-test-output.mjs";
-import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.mjs";
+import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.ts";
 import {
   computeRealLiveAccounting,
   diffRealLiveManifest,
@@ -101,7 +101,7 @@ import {
 import {
   EXTRA_SCRIPT_NAMES,
   resolveTestLaneDirs,
-} from "./lib/script-metadata.mjs";
+} from "./lib/script-metadata.ts";
 import {
   isParallelSafeTask,
   parseShardSpec,
@@ -109,8 +109,8 @@ import {
   resolveConcurrency,
   runPool,
   taskBelongsToShard,
-} from "./lib/test-task-pool.mjs";
-import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.mjs";
+} from "./lib/test-task-pool.ts";
+import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -284,7 +284,7 @@ if (helpFlag) {
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
       "",
-      "See `.env.test.example` for deterministic PR and live lane env setup.",
+      "See `.env.example` for deterministic PR and live lane env setup.",
       "",
     ].join("\n"),
   );
@@ -435,7 +435,7 @@ const TEST_FILE_SKIP_DIRS = new Set([
   "target",
 ]);
 const ADDITIONAL_PACKAGE_DIRS = [
-  path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
+  path.join(repoRoot, "packages", "app", "platforms", "electrobun"),
 ];
 const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
 const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([
@@ -813,7 +813,7 @@ function isSingleVitestWrapperCommand(command) {
 function isSingleVitestBatchWrapperCommand(command) {
   // The agent's mobile-entry preflight must succeed before its final batch
   // runner receives the JUnit arguments appended to the package command.
-  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.mjs$/.test(
+  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.ts$/.test(
     stripLeadingEnvAssignments(command),
   );
 }
@@ -856,7 +856,7 @@ function unwrapKnownBunTestSupervisors(command) {
 }
 
 function isSingleIsolatedBunTestWrapperCommand(command) {
-  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+  return /^node\s+(?:scripts|(?:\.\.\/)+packages\/scripts\/plugins\/plugin-workflow)\/run-isolated-tests\.mjs$/.test(
     unwrapKnownBunTestSupervisors(command),
   );
 }

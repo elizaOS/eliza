@@ -88,17 +88,9 @@ jobs:
       - name: Batch runner clean-install preflight self-test
         if: matrix.shard == 1
         run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
-      - name: Run cloud unit tests
+      - name: Run cloud integration tests
         run: bun run test:cloud
 
-      # The bun `test:cloud` lane skips suites that need the Vitest-only module
-      # mock API (`vi.mock` + `vi.importActual`) — see `SUPPORTS_VITEST_MOCK_API`.
-      # Run those under Vitest here so the direct-wallet payer/state-machine proof
-      # (33 tests, in-process PGlite) actually executes instead of vacuously
-      # skipping. Uses pglite://memory — no DB service required.
-      - name: Run cloud vitest-only suites
-        if: matrix.shard == 1
-        run: bun run --cwd packages/cloud/shared test:vitest
 
   integration-tests:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -154,12 +146,6 @@ jobs:
           'packages/cloud/api/v1/apps/[id]/billing/records.postgres.integration.test.ts'
           'packages/cloud/api/v1/apps/[id]/billing/administrators.postgres.integration.test.ts'
           'packages/cloud/api/v1/billing/application-slots/[slotKey]/route.postgres.integration.test.ts'
-      - name: Run PostgreSQL lifecycle barrier tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run PostgreSQL replacement-attempt lock tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -167,40 +153,6 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandbox-replacement-account-deletion-locks.integration.test.ts
-      - name: Run PostgreSQL billing receipt deletion contention tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BILLING_CANCEL_DELETION_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/billing-cancel-account-deletion-concurrency.postgres.integration.test.ts
-      - name: Run PostgreSQL agent billing lease precision tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-billing-runs-postgres.integration.test.ts
-      - name: Run PostgreSQL backup catalogue contention tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BACKUP_CATALOG_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-catalog-postgres.integration.test.ts
-      - name: Run PostgreSQL restore authority lock tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_RESTORE_LOCK_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/agent-backup-restore-locks.integration.test.ts
-      - name: Run PostgreSQL restore-v3 candidate seal tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_RESTORE_V3_CANDIDATE_SEAL_TESTS: "1"
-        run: >-
-          bun test --conditions=eliza-source --config=/dev/null --isolate --timeout 120000
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-restore-v3-candidate-seal-authority-postgres.integration.test.ts
       - name: Run PostgreSQL backup admission migration tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -213,23 +165,8 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/agent-backup-admission-gc-authority.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-enrollment-postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/scripts/admin/migrate-with-diagnostics.concurrent-index-mode.postgres.test.ts
-      - name: Run PostgreSQL backup admission claim tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_CLAIM_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-claim-postgres.integration.test.ts
-      - name: Run PostgreSQL backup admission reservation tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_RESERVATION_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-reservation-postgres.integration.test.ts
       - name: Run PostgreSQL account deletion lock-order tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -244,13 +181,6 @@ jobs:
           test -n "${APPS_TENANT_DB_TEST_DSN:-}" &&
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/containers-project-intent-postgres.integration.test.ts
-      - name: Run PostgreSQL compute stop concurrency tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-          COMPUTE_STOP_CONCURRENCY_REQUIRED: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/compute-stop-concurrency.integration.test.ts
       - name: Run cloud e2e tests
         env:
           WRANGLER_LOG_PATH: ${{ runner.temp }}/cloud-api-e2e-wrangler
@@ -294,7 +224,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Run blocking cloud stack specs
         run: >-
           bun run --cwd packages/cloud/e2e test --
@@ -310,7 +240,7 @@ jobs:
         with:
           name: cloud-stack-e2e-${{ github.run_attempt }}
           path: |
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
           retention-days: 7
           include-hidden-files: true

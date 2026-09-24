@@ -41,6 +41,8 @@ function redactedNodeFrame(containerName, diagnostics) {
   const result = spawnSync(
     "node",
     [
+      "--import",
+      "tsx",
       "--input-type=module",
       "-e",
       `

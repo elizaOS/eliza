@@ -1,7 +1,7 @@
 /**
  * Captures synchronous child output through files for Bun test compatibility.
  *
- * Bun 1.3.14 can return empty stdout and stderr pipes from both
+ * Bun 1.4.2 can return empty stdout and stderr pipes from both
  * node:child_process.spawnSync and Bun.spawnSync while its test runner is
  * active. Numeric descriptors still behave correctly, so script contract
  * tests use this adapter until the runtime's pipe capture is reliable.
@@ -115,7 +115,8 @@ export function execFileSync(command, argsOrOptions, maybeOptions) {
   const hasArgs = Array.isArray(argsOrOptions);
   const result = spawnSync(command, argsOrOptions, maybeOptions);
   if (result.error || result.status !== 0) {
-    const error = result.error ?? new Error(`${command} exited ${result.status}`);
+    const error =
+      result.error ?? new Error(`${command} exited ${result.status}`);
     Object.assign(error, {
       status: result.status,
       stderr: result.stderr,

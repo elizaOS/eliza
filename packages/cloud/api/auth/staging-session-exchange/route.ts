@@ -5,7 +5,7 @@
  * and performs no user, organization, identity, or tenant provisioning.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import {

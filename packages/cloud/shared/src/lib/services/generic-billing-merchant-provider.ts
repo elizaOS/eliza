@@ -4,7 +4,7 @@
  * confirms that binding when reconciling provider objects and cannot authorize an app on its own.
  */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type Stripe from "stripe";
 import { z } from "zod";
 import {

@@ -27,14 +27,11 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { MeetingPlatform } from "@elizaos/shared";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
-import {
-  getMeetingTranscriptAction,
-  joinMeetingAction,
-  leaveMeetingAction,
-} from "./actions/index.js";
-import { createMeetingTranscriptionPipeline } from "./pipeline/index.js";
+import type { MeetingPlatform, HttpPlugin as Plugin } from "@elizaos/shared";
+import { getMeetingTranscriptAction } from "./actions/get-meeting-transcript.js";
+import { joinMeetingAction } from "./actions/join-meeting.js";
+import { leaveMeetingAction } from "./actions/leave-meeting.js";
+import { createMeetingTranscriptionPipeline } from "./pipeline/pipeline.js";
 import { GoogleMeetAdapter } from "./platforms/googlemeet/adapter.js";
 import { MsTeamsAdapter } from "./platforms/msteams/adapter.js";
 import { ZoomAdapter } from "./platforms/zoom/adapter.js";
@@ -45,7 +42,23 @@ import { MeetingService } from "./service.js";
 import type { MeetingPlatformAdapter } from "./types.js";
 
 export { MeetingEventEmitter } from "./events.js";
-export { createMeetingTranscriptionPipeline } from "./pipeline/index.js";
+export { isHallucination } from "./pipeline/hallucination-filter";
+export { createMeetingTranscriptionPipeline } from "./pipeline/pipeline";
+export {
+  type AsrSegment,
+  type AsrSegmentWord,
+  type ConfirmedSegmentEvent,
+  SpeakerStreamManager,
+  type SpeakerStreamManagerConfig,
+} from "./pipeline/speaker-streams";
+export {
+  type AsrBackend,
+  type AsrTranscribeOptions,
+  type AsrTranscribeResult,
+  RuntimeModelAsrBackend,
+  type RuntimeModelAsrBackendConfig,
+} from "./pipeline/transcriber";
+export { concatFloat32, float32ToWav, wavToFloat32 } from "./pipeline/wav";
 export {
   type BrowserChannel,
   type ChromiumSource,
@@ -72,6 +85,7 @@ export {
   readTranscriptRow,
 } from "./transcripts/meeting-transcript-writer.js";
 export * from "./types.js";
+export { getMeetingTranscriptAction, joinMeetingAction, leaveMeetingAction };
 
 // Concrete wiring for the injectable seams: the browser platform adapters and
 // the ASR pipeline. Kept here (not in service.ts) so the orchestration layer

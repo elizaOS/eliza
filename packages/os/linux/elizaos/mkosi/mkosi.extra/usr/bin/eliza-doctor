@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ ! -x /opt/elizaos/bin/eliza-doctor ]; then
+    echo "eliza-doctor is not installed by the staged desktop artifact" >&2
+    exit 127
+fi
+exec /opt/elizaos/bin/eliza-doctor "$@"

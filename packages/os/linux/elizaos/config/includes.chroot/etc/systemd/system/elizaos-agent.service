@@ -1,0 +1,29 @@
+[Unit]
+Description=elizaOS local agent runtime (system-wide)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=elizaos
+Group=elizaos
+WorkingDirectory=/var/lib/elizaos
+Environment=ELIZA_STATE_DIR=/var/lib/elizaos
+Environment=ELIZA_API_PORT=31337
+ExecStart=/usr/lib/elizaos/run-agent.sh
+ExecStartPost=/usr/lib/elizaos/wait-agent-health.sh http://127.0.0.1:31337/api/health
+Restart=on-failure
+RestartSec=2
+SyslogIdentifier=elizaos-agent
+StandardOutput=journal+console
+StandardError=journal+console
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+ReadWritePaths=/var/lib/elizaos /var/log/elizaos
+
+[Install]
+WantedBy=multi-user.target

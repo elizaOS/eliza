@@ -10,16 +10,16 @@ import type { ViewCapability } from "@elizaos/core";
 //      result). No mock stands in for the broker: the assertions are on the
 //      real `view:interact:result` payload the agent receives.
 
+import type { SurfaceManifest } from "@elizaos/core";
 import {
   IMMERSIVE_WALLPAPER_SURFACE,
   resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/common";
+} from "@elizaos/shared/views/surface-manifest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-contacts/src/view-capabilities";
-import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-messages/src/view-capabilities";
-import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-phone/src/view-capabilities";
+import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-contacts/src/view-capabilities";
+import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-messages/src/view-capabilities";
+import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-phone/src/view-capabilities";
 import {
   brokerViewInteract,
   isReadOnlyViewCapability,

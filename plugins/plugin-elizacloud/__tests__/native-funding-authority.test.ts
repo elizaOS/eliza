@@ -1,7 +1,7 @@
 /** Exercises the actual Cloud handler, SDK HTTP and AgentRuntime fallback against a controlled local provider failure. */
 import { createServer } from "node:http";
-import { AgentRuntime, ModelType } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb";
+import { ModelType } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { expect, test, vi } from "vitest";
 import { handleTextLarge } from "../src/models/text";
 import { handleCloudStatusRoutes } from "../src/routes/cloud-status-routes";
@@ -29,9 +29,8 @@ test("a native product provider failure retains funding authority instead of usi
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Expected local HTTP listener");
   try {
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: { name: "Funded fixture", bio: "tests" },
-      adapter: new InMemoryDatabaseAdapter(),
       settings: {
         ELIZAOS_CLOUD_API_KEY: "eliza_controlled_native",
         ELIZAOS_CLOUD_BASE_URL: `http://127.0.0.1:${address.port}/api/v1`,

@@ -26,10 +26,9 @@ const repoRoot = path.resolve(appDir, "..", "..");
 const smokeScript = path.join(
   repoRoot,
   "packages",
-  "app-core",
-  "platforms",
-  "electrobun",
+  "app",
   "scripts",
+  "electrobun",
   "smoke-test-windows.ps1",
 );
 

@@ -2,7 +2,7 @@
  * Resolves the entity id representing an agent's owner: prefers the canonical
  * configured owner id, otherwise scans the agent's rooms for a world whose
  * metadata carries ownership.ownerId, and finally falls back to core's
- * deterministic agent-ID-seeded owner id — the same fallback the chat, pendant,
+ * deterministic agent-ID-seeded owner id — the same fallback the chat,
  * and LifeOps surfaces use, so owner trust attaches to the entity those
  * surfaces write under. Lookup failures reject instead of selecting another identity. Used to attribute owner-scoped trust and permissions.
  */

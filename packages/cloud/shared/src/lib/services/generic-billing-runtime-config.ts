@@ -1,5 +1,5 @@
 /** Selects server-owned app billing credentials and validates their actual Stripe mode before dispatch. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import Stripe from "stripe";
 import { z } from "zod";
 import { isProductionDeployment } from "../config/deployment-environment";

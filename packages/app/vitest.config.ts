@@ -47,28 +47,21 @@ export default defineConfig({
     ...baseConfig.resolve,
     alias: [
       {
-        // The renderer imports the public marketing entrypoints through the
-        // same source boundary as the Vite build. Keep unit entrypoint tests
-        // independent of a separately built homepage package.
-        find: /^@homepage\//,
-        replacement: `${path.resolve(here, "../homepage/src")}/`,
-      },
-      {
         // Entrypoint tests exercise the shipped iOS bridge import in source mode;
         // the changed-test lane intentionally builds core only, so they cannot
-        // depend on a pre-existing app-core dist directory.
-        find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+        // depend on a pre-existing app dist directory.
+        find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
         replacement: path.join(
           here,
-          "../app-core/src/api/ios-local-agent-transport.ts",
+          "../app/src/api/ios-local-agent-transport.ts",
         ),
       },
       {
         // Same source-mode rule for the desktop-shell subpath the entrypoint
         // tests import (runIosFullBunSmokeIfRequested): the export maps to
-        // app-core's dist, which the changed-test lane never builds.
-        find: /^@elizaos\/app-core\/desktop-shell$/,
-        replacement: path.join(here, "../app-core/src/desktop-shell.ts"),
+        // app's dist, which the changed-test lane never builds.
+        find: /^@elizaos\/app\/desktop-shell$/,
+        replacement: path.join(here, "../app/src/desktop-shell.ts"),
       },
       {
         // main.tsx imports "@elizaos/ui/styles"; the ui package otherwise
@@ -98,10 +91,10 @@ export default defineConfig({
         // Entrypoint tests import the device-bridge types/loader from source;
         // the package's published exports point at a dist directory this lane
         // never builds.
-        find: /^@elizaos\/capacitor-llama$/,
+        find: /^@elizaos\/plugin-native-inference\/llama$/,
         replacement: path.join(
           here,
-          "../../plugins/plugin-native-llama/src/index.ts",
+          "../../plugins/plugin-native-inference/src/llama/index.ts",
         ),
       },
       {
@@ -123,10 +116,10 @@ export default defineConfig({
         replacement: path.join(here, "../cloud-ui/src/$1"),
       },
       {
-        find: /^@elizaos\/plugin-task-coordinator\/register$/,
+        find: /^@elizaos\/plugin-agent-orchestrator\/ui\/register$/,
         replacement: path.join(
           here,
-          "../../plugins/plugin-task-coordinator/src/register.ts",
+          "../../plugins/plugin-agent-orchestrator/src/ui/register.ts",
         ),
       },
       {
@@ -145,7 +138,31 @@ export default defineConfig({
     ...baseConfig.test,
     environment: "jsdom",
     setupFiles: [path.join(here, "test/setup.ts")],
-    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
+    include: [
+      "src/types/**/*.test.{ts,tsx,mjs}",
+      "src/native/**/*.test.{ts,tsx,mjs}",
+      "src/public-web-entry.test.tsx",
+      "src/public-web-boot-config.test.ts",
+      "src/web-entry-policy.test.ts",
+      "src/__tests__/**/*.test.{ts,tsx,mjs}",
+      "src/shims/**/*.test.{ts,tsx,mjs}",
+      "src/renderer-build-manifest-plugin.test.ts",
+      "test/vite-source-resolution.test.ts",
+      "test/android-browser/**/*.test.{ts,tsx,mjs}",
+      "test/hmr/**/*.test.{ts,tsx,mjs}",
+      "test/utils/**/*.test.{ts,tsx,mjs}",
+      "test/ui-smoke/**/*.test.{ts,tsx,mjs}",
+      "test/view-screenshots/**/*.test.{ts,tsx,mjs}",
+      "test/electrobun-packaged/**/*.test.{ts,tsx,mjs}",
+      "test/audit/**/*.test.{ts,tsx,mjs}",
+      "test/android/**/*.test.{ts,tsx,mjs}",
+      "test/main-bootstrap.test.tsx",
+      "test/fixtures/**/*.test.{ts,tsx,mjs}",
+      "test/dev-auth/**/*.test.{ts,tsx,mjs}",
+      "test/design-review/**/*.test.{ts,tsx,mjs}",
+      "test/pages-middleware-serving.test.ts",
+      "test/dev-http-proxy.test.ts",
+    ],
     exclude: unitExcludes,
     coverage: {
       ...baseConfig.test?.coverage,

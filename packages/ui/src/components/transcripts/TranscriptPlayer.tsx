@@ -6,7 +6,7 @@
  * seeks). The waveform is a separate progressive enhancement.
  */
 
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 import { Pause, Play } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";

@@ -5,10 +5,9 @@
  * param since EventSource cannot set headers.
  */
 
+import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
 import { useEffect, useState } from "react";
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
-import { resolveApiUrl } from "../../utils/asset-url";
-import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
 
 export function buildDeviceBridgeStatusStreamUrl(

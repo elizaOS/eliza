@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { decideAppBillingDeletionScope } from "../../db/repositories/app-billing-deletion-dispositions";

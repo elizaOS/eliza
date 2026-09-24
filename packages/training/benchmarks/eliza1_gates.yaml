@@ -2,7 +2,7 @@
 #
 # Source of truth for the publish-blocking eval gates referenced by
 # `packages/inference/AGENTS.md` §8 and the manifest `evals` block
-# (`packages/app-core/src/services/local-inference/manifest/schema.ts` →
+# (`packages/app/src/services/local-inference/manifest/schema.ts` →
 # `Eliza1EvalsSchema`). The publish orchestrator
 # (`packages/training/scripts/publish/orchestrator.py`) loads this file via
 # `benchmarks/eliza1_gates.py::load_gates` and runs `apply_gates(results, tier)`

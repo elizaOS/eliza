@@ -1,15 +1,15 @@
 // Wires hosted Eliza agent wrapper behavior for cloud runtime services.
 
-import { type Memory } from "@elizaos/common";
 import {
   type HandlerCallback,
   type IAgentRuntime,
   logger,
+  type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";
+import { parseJSON } from "@elizaos/shared";
 import { DEFAULT_MAX_RETRIES, type ValidationResult } from "../types";
-import { parseJSON } from "./json";
 
 export interface WithModelRetryOptions<T> {
   runtime: IAgentRuntime;

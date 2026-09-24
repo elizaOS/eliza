@@ -5,11 +5,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
-import {
-  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
-  SnapshotPayloadTooLargeError,
-} from "@elizaos/shared/agent-backup-limits";
+import { ElizaError } from "@elizaos/core";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES, SnapshotPayloadTooLargeError } from "@elizaos/shared";
 import {
   and,
   asc,

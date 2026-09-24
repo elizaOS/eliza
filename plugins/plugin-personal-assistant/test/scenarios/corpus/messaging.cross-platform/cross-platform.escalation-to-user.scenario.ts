@@ -3,8 +3,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 import { receivePendingIntents } from "../../../../src/lifeops/intent-sync.ts";
 
 export default scenario({
@@ -17,7 +17,7 @@ export default scenario({
     "A request that requires the owner's direct negotiation or signature should route through the real cross-platform gateway and create an owner-action intent instead of falling back to inbox/calendar actions.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

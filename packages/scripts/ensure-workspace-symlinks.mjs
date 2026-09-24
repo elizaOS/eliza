@@ -37,7 +37,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 // Workspace globs to walk (mirrors package.json `workspaces`).
 const WORKSPACE_DIRS = [
   "packages",
-  "packages/app-core/platforms",
+  "packages/app/platforms",
   "cloud/packages",
   "plugins",
 ];

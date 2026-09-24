@@ -779,6 +779,7 @@ export async function searchCanonicalConversationMemories(
 		? normalizeConnectorSource(input.source)
 		: undefined;
 	const allCandidates: Memory[] = [];
+	const excludedRooms = new Set(input.excludeRoomIds);
 	let candidateWindowComplete = true;
 	const seenIds = new Set<string>();
 	let roundCount = initialCount;
@@ -827,8 +828,8 @@ export async function searchCanonicalConversationMemories(
 
 		// Deduplicate against what we already have and accumulate.
 		for (const mem of roundCandidates) {
-			// Preserve exclusions even when an older/custom adapter ignores them.
-			if (input.excludeRoomIds?.includes(mem.roomId)) continue;
+			// Enforce exclusions even for an adapter that ignores the optional filter.
+			if (excludedRooms.has(mem.roomId)) continue;
 			const memId = mem.id?.toString();
 			if (memId && seenIds.has(memId)) continue;
 			if (memId) seenIds.add(memId);

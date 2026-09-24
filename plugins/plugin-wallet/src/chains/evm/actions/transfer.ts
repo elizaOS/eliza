@@ -7,8 +7,8 @@
  */
 
 import { type IAgentRuntime, type Memory, ModelType, type State } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { composePromptFromState } from "@elizaos/shared";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 import { type Hex, parseEther } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
 import type { WalletProvider } from "../providers/wallet";

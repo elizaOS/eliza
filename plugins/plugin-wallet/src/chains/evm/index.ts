@@ -6,7 +6,7 @@
  */
 import type { Action, IAgentRuntime, ServiceClass } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { walletRouterAction } from "../wallet-action";
 import { tokenBalanceProvider } from "./providers/get-balance";
 import { evmWalletProvider } from "./providers/wallet";

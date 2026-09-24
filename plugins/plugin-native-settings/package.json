@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-settings",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
+  "description": "Android Device Settings overlay app for ElizaOS \u2014 brightness, volume, Android roles, and system settings shortcuts.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -36,7 +36,6 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",

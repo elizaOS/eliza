@@ -2,7 +2,7 @@
 // Drives repo automation ensure tsc nested output dir with explicit CLI and CI behavior.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { findWorkspaceRoot } from "./lib/repo-root.mjs";
+import { findWorkspaceRoot } from "./lib/repo-root.ts";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {

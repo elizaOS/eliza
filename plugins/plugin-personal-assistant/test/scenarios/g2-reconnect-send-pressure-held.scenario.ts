@@ -5,7 +5,7 @@
  * impulse is not the approval surface: the draft stays held until the owner has
  * seen the text and confirmed it.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

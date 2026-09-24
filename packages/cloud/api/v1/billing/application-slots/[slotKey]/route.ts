@@ -1,5 +1,5 @@
 /** Resolves operator-configured native product billing for a free signed-in purchaser before account creation. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { readAppBillingApplicationProduct } from "@/db/repositories/app-billing-application-slots";

@@ -4,7 +4,7 @@
  * Unlike `inbox-routes.test.ts` (pure auth-gate unit with the service
  * mocked out), this suite registers the REAL `inboxPlugin` on a REAL
  * PGLite-backed AgentRuntime and drives the registered route handlers the
- * way app-core's HTTP adapter does: host-owned route lookup + a
+ * way app's HTTP adapter does: host-owned route lookup + a
  * RouteHandlerContext. The InboxService / InboxRepository / migration
  * service / `app_inbox` tables are all real; only the TEXT_SMALL model is a
  * deterministic handler (the LLM boundary).
@@ -19,16 +19,13 @@ import {
   ModelType,
   type ModelTypeName,
 } from "@elizaos/core";
-import type {
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+import type { RouteHandlerContext, RouteHandlerResult } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import { InboxRepository } from "../src/inbox/repository.ts";
 import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
 import { inboxPlugin } from "../src/plugin.ts";

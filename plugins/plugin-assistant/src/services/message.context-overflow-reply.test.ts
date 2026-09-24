@@ -14,7 +14,7 @@
  * cause-specific default is what a connector would post.
  */
 
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../../../packages/core/src/errors.ts";

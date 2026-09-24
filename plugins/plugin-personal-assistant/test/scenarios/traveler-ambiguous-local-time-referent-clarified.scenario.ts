@@ -6,7 +6,7 @@
  * exactly the failure this persona exists to catch. The first turn withholds
  * both facts; the clarification then names the destination and local clock.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

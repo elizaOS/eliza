@@ -20,6 +20,7 @@ import type {
   PermissionState,
   PermissionStatus,
   Platform,
+  RouteRequestContext,
 } from "@elizaos/shared";
 import {
   assertNativePersonalDataProjectionMetadataOnly,
@@ -30,7 +31,6 @@ import {
   PutPermissionsStateRequestSchema,
   projectNativePersonalDataCapabilities,
 } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 

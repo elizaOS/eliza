@@ -21,7 +21,7 @@
  * `resolveAndroidRuntimeMode` (platform/android-runtime.ts) read the
  * `VITE_ELIZA_{IOS,ANDROID,MOBILE}_RUNTIME_MODE` / `..._API_BASE` values the
  * mobile build lanes stamp into the renderer bundle
- * (packages/app-core/scripts/run-mobile-build.mjs).
+ * (packages/app/scripts/run-mobile-build.mjs).
  */
 
 import { logger } from "@elizaos/shared/logger";

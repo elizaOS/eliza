@@ -222,4 +222,4 @@ export {
   writeCompressedJsonlRows,
 } from "./trajectory-internals.ts";
 
-import { serializeTrajectoryExport } from "@elizaos/plugin-assistant";
+import { serializeTrajectoryExport } from "@elizaos/core";

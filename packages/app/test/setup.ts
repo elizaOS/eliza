@@ -10,7 +10,7 @@ import {
   createMemoryStorage,
   hasStorageApi,
   suppressReactTestConsoleErrors,
-} from "../../app-core/test/helpers/browser-mocks";
+} from "./helpers/browser-mocks";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
@@ -47,7 +47,7 @@ function ensureStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Mock @elizaos/app-core bridge modules — the real electrobun RPC module
+// Mock @elizaos/app bridge modules — the real electrobun RPC module
 // relies on native Electrobun bindings that are unavailable in the test
 // environment.
 // ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ function createBridgeMock(extraExports: Record<string, unknown> = {}) {
   };
 }
 
-vi.mock("@elizaos/app-core", () =>
+vi.mock("@elizaos/app", () =>
   createBridgeMock({
     platform: "web",
     isNative: false,
@@ -209,7 +209,7 @@ vi.mock("@elizaos/app-core", () =>
   }),
 );
 
-vi.mock("@elizaos/app-core/desktop-shell", () => ({
+vi.mock("@elizaos/app/desktop-shell", () => ({
   buildLocalizedTrayMenu: vi.fn(() => []),
   DesktopSurfaceNavigationRuntime: class {},
   DesktopTrayRuntime: class {},
@@ -400,41 +400,6 @@ if (!nav.userAgent) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// DOM mocks
-// ---------------------------------------------------------------------------
-
-if (typeof globalThis.document === "undefined") {
-  const mockHead = { appendChild: vi.fn(), removeChild: vi.fn() };
-  Object.defineProperty(globalThis, "document", {
-    value: {
-      createElement: vi.fn(() => ({
-        getContext: vi.fn(() => ({ drawImage: vi.fn() })),
-        toDataURL: vi.fn(() => "data:image/jpeg;base64,dGVzdA=="),
-        appendChild: vi.fn(),
-        removeChild: vi.fn(),
-        play: vi.fn(() => Promise.resolve()),
-        style: {},
-        width: 0,
-        height: 0,
-        videoWidth: 1920,
-        videoHeight: 1080,
-      })),
-      createTextNode: vi.fn((text: string) => ({ textContent: text })),
-      getElementsByTagName: vi.fn((tagName: string) =>
-        tagName?.toLowerCase() === "head" ? [mockHead] : [],
-      ),
-      head: mockHead,
-      hidden: false,
-      hasFocus: vi.fn(() => true),
-      documentElement: { requestFullscreen: vi.fn() },
-      exitFullscreen: vi.fn(),
-    },
-    writable: true,
-    configurable: true,
-  });
-}
-
 const sharedLocalStorage = ensureStorage(
   globalThis as Record<string, unknown>,
   "localStorage",
@@ -444,33 +409,7 @@ const sharedSessionStorage = ensureStorage(
   "sessionStorage",
 );
 
-if (typeof globalThis.window === "undefined") {
-  Object.defineProperty(globalThis, "window", {
-    value: {
-      close: vi.fn(),
-      encodeURIComponent,
-      focus: vi.fn(),
-      open: vi.fn(),
-      location: {
-        href: "http://localhost/",
-        origin: "http://localhost",
-        pathname: "/",
-        reload: vi.fn(),
-      },
-      screenX: 0,
-      screenY: 0,
-      outerWidth: 1920,
-      outerHeight: 1080,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      localStorage: sharedLocalStorage,
-      sessionStorage: sharedSessionStorage,
-      navigator: globalThis.navigator,
-    },
-    writable: true,
-    configurable: true,
-  });
-} else {
+if (typeof globalThis.window !== "undefined") {
   const win = globalThis.window as Record<string, unknown>;
   ensureStorage(win, "sessionStorage", sharedSessionStorage);
   ensureStorage(win, "localStorage", sharedLocalStorage);

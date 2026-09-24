@@ -1,5 +1,5 @@
 /** Reconciles local storage metadata only under the current irreversible deletion lease and a fresh provider absence observation. Immutable read receipts require unified financial retention before this phase can complete. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import {

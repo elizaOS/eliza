@@ -1,5 +1,5 @@
 /** Serves canonical BGE through TEI only after verifying the endpoint's loaded model and pooling. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { APICallError } from "ai";
 import { z } from "zod";
 import { isKnownUnacceptedProviderError } from "../services/inference-provider-outcome";

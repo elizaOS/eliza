@@ -48,7 +48,7 @@
  * sibling slices of #14808).
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
 import {
   hashPiiScrubContent,

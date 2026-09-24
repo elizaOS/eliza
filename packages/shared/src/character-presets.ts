@@ -5,11 +5,6 @@
  * ~49KB of preset data; import from there for language helpers on hot paths.
  */
 
-import type {
-  CharacterLanguage,
-  StylePreset,
-} from "@elizaos/shared/contracts/first-run-options";
-import { CHARACTER_LANGUAGES } from "@elizaos/shared/contracts/first-run-options";
 import {
   addLanguageRule,
   DEFAULT_CHARACTER_LANGUAGE as DEFAULT_LANGUAGE,
@@ -20,6 +15,11 @@ import {
   type CharacterDefinition,
 } from "./character-presets.characters.js";
 import { SHARED_STYLE_RULES } from "./character-presets.shared.js";
+import type {
+  CharacterLanguage,
+  StylePreset,
+} from "./contracts/first-run-options.js";
+import { CHARACTER_LANGUAGES } from "./contracts/first-run-options.js";
 
 // Re-export for backward compatibility — the data-free implementation now lives
 // in ./character-language.js so the i18n keyword matcher can import it without

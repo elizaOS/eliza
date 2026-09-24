@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-browser",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Browser plugin: BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome, Firefox, and Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
+  "description": "Browser automation through the embedded desktop workspace, JSDOM, and optional Stagehand targets.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -45,13 +45,13 @@
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
     "linkify-it": "5.0.2",
-    "@elizaos/credentials": "workspace:*",
+    "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
     "@types/linkify-it": "5.0.0",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.2",
     "jsdom": "^29.0.0",
     "puppeteer-core": "^24.37.5",
     "tsup": "^8.5.1",

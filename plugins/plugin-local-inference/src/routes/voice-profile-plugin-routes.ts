@@ -9,15 +9,15 @@
  * speaker-profiles` nor the `/api/voice/profiles` namespace was reachable
  * over HTTP. Registering them as `rawPath` routes on the plugin object puts
  * them on `runtime.routes`, which both the upstream agent server and the
- * app-core dashboard server dispatch.
+ * app dashboard server dispatch.
  *
  * Every route is private: the host dispatcher answers 401 for
  * unauthenticated callers before the handler runs.
  */
 
 import type * as http from "node:http";
-import { sendJsonError } from "@elizaos/shared/api/http-helpers";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
+import { sendJsonError } from "@elizaos/shared";
 
 type VoicePrefixHandler = (
 	req: http.IncomingMessage,

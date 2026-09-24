@@ -30,11 +30,9 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectScenarioToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
 
@@ -111,7 +109,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "dst", "timezone", "robustness"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

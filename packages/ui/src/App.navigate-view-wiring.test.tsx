@@ -16,7 +16,8 @@ import type { PluginAppNavTab } from "@elizaos/core";
 import {
   createNavigateViewEvent,
   NAVIGATE_VIEW_EVENT,
-} from "@elizaos/shared/events";
+  resetUiRegistryHostForTests,
+} from "@elizaos/shared";
 import {
   act,
   cleanup,
@@ -41,7 +42,6 @@ import {
   resolveInitialTabForPath,
   type Tab,
 } from "./navigation";
-import { resetUiRegistryHostForTests } from "./registry-host";
 import { useNavigationPathSync } from "./state/useAppProviderEffects";
 import { useNavigationState } from "./state/useNavigationState";
 import {
@@ -84,7 +84,9 @@ const nativeContacts = vi.hoisted(() => ({
   createContact: vi.fn(),
   importVCard: vi.fn(),
 }));
-vi.mock("@elizaos/capacitor-contacts", () => ({ Contacts: nativeContacts }));
+vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({
+  Contacts: nativeContacts,
+}));
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
@@ -298,7 +300,7 @@ const documentsView = {
   id: "documents",
   label: "Knowledge",
   available: true,
-  pluginName: "@elizaos/plugin-documents",
+  pluginName: "@elizaos/plugin-knowledge",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,
@@ -443,12 +445,7 @@ vi.mock("./hooks", () => ({
   ),
   useOptionalBugReport: () => null,
   useBugReportState: () => ({}),
-  useContextMenu: () => ({
-    closeSaveCommandModal: vi.fn(),
-    confirmSaveCommand: vi.fn(),
-    saveCommandModalOpen: false,
-    saveCommandText: "",
-  }),
+  useContextMenu: () => undefined,
   useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
@@ -577,10 +574,6 @@ vi.mock("./components/shell/SystemWarningBanner", () => ({
 
 vi.mock("./components/shell/ShellOverlays", () => ({
   ShellOverlays: () => null,
-}));
-
-vi.mock("./components/chat/SaveCommandModal", () => ({
-  SaveCommandModal: () => null,
 }));
 
 vi.mock("./components/pages/ChatView", () => ({
@@ -1408,7 +1401,7 @@ describe("App navigate-view event wiring", () => {
     async (path) => {
       registerAppShellPage({
         id: "documents",
-        pluginId: "@elizaos/plugin-documents",
+        pluginId: "@elizaos/plugin-knowledge",
         label: "Knowledge",
         path: "/documents",
         pathPatterns: ["/character/documents"],
@@ -1655,7 +1648,7 @@ describe("App navigate-view event wiring", () => {
     const platform = vi
       .spyOn(Capacitor, "getPlatform")
       .mockReturnValue("android");
-    await import("../../../plugins/plugin-contacts/src/register");
+    await import("../../../plugins/plugin-native-contacts/src/register");
     const registration = listAppShellPages().find(
       (entry) => entry.id === "contacts",
     );
@@ -1968,12 +1961,6 @@ describe("App navigate-view event wiring", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/commands")) {
-          return new Response(JSON.stringify({ commands: [] }), {
-            headers: { "Content-Type": "application/json" },
-            status: 200,
-          });
-        }
         if (url.includes("/api/custom-actions")) {
           return new Response(JSON.stringify({ actions: [] }), {
             headers: { "Content-Type": "application/json" },
@@ -2014,12 +2001,6 @@ describe("App navigate-view event wiring", () => {
     let viewNavigationAttempts = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/commands")) {
-        return new Response(JSON.stringify({ commands: [] }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        });
-      }
       if (url.includes("/api/custom-actions")) {
         return new Response(JSON.stringify({ actions: [] }), {
           headers: { "Content-Type": "application/json" },

@@ -12,8 +12,13 @@
  * and the turn path is byte-identical to before.
  */
 
-import { BGE_SMALL_VECTOR_SPACE, ElizaError, getEmbeddingVectorSpace } from "@elizaos/common";
-import { stringToUuid, validateUuid } from "@elizaos/core";
+import {
+  BGE_SMALL_VECTOR_SPACE,
+  ElizaError,
+  getEmbeddingVectorSpace,
+  stringToUuid,
+  validateUuid,
+} from "@elizaos/core";
 import {
   type SharedAgentMemoriesReader,
   type SharedAgentMemoriesWriter,

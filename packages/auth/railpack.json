@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "24.15.0",
+    "bun": "1.4.2"
+  },
+  "steps": {
+    "install": {
+      "commands": [
+        "bun install --filter @elizaos/auth --production --ignore-scripts --frozen-lockfile"
+      ]
+    },
+    "build": {
+      "inputs": [
+        {
+          "step": "install"
+        }
+      ],
+      "commands": [
+        "bun build packages/core/src/index.ts --target=bun --packages=external --outdir=packages/core/dist"
+      ]
+    }
+  },
+  "deploy": {
+    "startCommand": "bun --conditions=eliza-source packages/auth/src/server/start.ts",
+    "variables": {
+      "LOGIN_BIND_HOST": "0.0.0.0"
+    },
+    "inputs": [
+      {
+        "step": "packages:mise",
+        "include": [
+          "/mise/shims",
+          "/mise/installs",
+          "/usr/local/bin/mise",
+          "/etc/mise/config.toml",
+          "/root/.local/state/mise"
+        ]
+      },
+      {
+        "step": "build",
+        "include": [
+          "node_modules",
+          "package.json",
+          "packages/auth",
+          "packages/core",
+          "packages/shared"
+        ]
+      }
+    ]
+  },
+  "exclude": [
+    "!plugins/*/package.json",
+    "!packages/*/package.json",
+    "!packages/app/platforms/*/package.json"
+  ]
+}

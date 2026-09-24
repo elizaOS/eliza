@@ -54,13 +54,13 @@ const REQUIRED_ANDROID_PLUGINS = [
 ];
 
 const REQUIRED_ANDROID_ASSETS = [
-  "packages/app-core/platforms/android/app/src/main/assets/capacitor.config.json",
-  "packages/app-core/platforms/android/app/src/main/assets/capacitor.plugins.json",
-  "packages/app-core/platforms/android/app/src/main/assets/public/index.html",
-  "packages/app-core/platforms/android/app/src/main/assets/agent/agent-bundle.js",
-  "packages/app-core/platforms/android/app/src/main/assets/agent/launch.sh",
-  "packages/app-core/platforms/android/app/src/main/assets/agent/arm64-v8a/bun",
-  "packages/app-core/platforms/android/app/src/main/assets/agent/x86_64/bun",
+  "packages/app/platforms/android/app/src/main/assets/capacitor.config.json",
+  "packages/app/platforms/android/app/src/main/assets/capacitor.plugins.json",
+  "packages/app/platforms/android/app/src/main/assets/public/index.html",
+  "packages/app/platforms/android/app/src/main/assets/agent/agent-bundle.js",
+  "packages/app/platforms/android/app/src/main/assets/agent/launch.sh",
+  "packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a/bun",
+  "packages/app/platforms/android/app/src/main/assets/agent/x86_64/bun",
 ];
 
 function rel(repoRoot, filePath) {
@@ -123,7 +123,7 @@ function extractCapacitorConfig(repoRoot) {
   const sourcePath = path.join(repoRoot, "packages/app/capacitor.config.ts");
   const assetPath = path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/assets/capacitor.config.json",
+    "packages/app/platforms/android/app/src/main/assets/capacitor.config.json",
   );
   const source = readText(sourcePath);
   const assetConfig = readJson(assetPath);
@@ -351,7 +351,7 @@ function androidPermissions(manifest) {
 
 function checkAndroidManifest(repoRoot, appId, errors, checks) {
   const relativePath =
-    "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml";
+    "packages/app/platforms/android/app/src/main/AndroidManifest.xml";
   const filePath = path.join(repoRoot, relativePath);
   const content = readText(filePath);
   if (!content) {
@@ -432,7 +432,7 @@ function extractGradleString(content, key) {
 }
 
 function checkAndroidIdentity(repoRoot, appConfig, errors, checks) {
-  const relativePath = "packages/app-core/platforms/android/app/build.gradle";
+  const relativePath = "packages/app/platforms/android/app/build.gradle";
   const content = readText(path.join(repoRoot, relativePath));
   if (!content) {
     checks.push({ id: "android-identity", ok: false, file: relativePath });
@@ -500,7 +500,7 @@ function checkAndroidPluginAssets(
 
   const pluginsPath = path.join(
     repoRoot,
-    "packages/app-core/platforms/android/app/src/main/assets/capacitor.plugins.json",
+    "packages/app/platforms/android/app/src/main/assets/capacitor.plugins.json",
   );
   const plugins = readJson(pluginsPath);
   const pluginNames = new Set(
@@ -613,7 +613,7 @@ export function checkMobileArtifacts(options = {}) {
   }
   checkPodfile(
     repoRoot,
-    "packages/app-core/platforms/ios/App/Podfile",
+    "packages/app/platforms/ios/App/Podfile",
     errors,
     checks,
   );
@@ -628,7 +628,7 @@ export function checkMobileArtifacts(options = {}) {
   }
   checkInfoPlist(
     repoRoot,
-    "packages/app-core/platforms/ios/App/App/Info.plist",
+    "packages/app/platforms/ios/App/App/Info.plist",
     errors,
     checks,
   );
@@ -644,7 +644,7 @@ export function checkMobileArtifacts(options = {}) {
   }
   checkEntitlements(
     repoRoot,
-    "packages/app-core/platforms/ios/App/App/App.entitlements",
+    "packages/app/platforms/ios/App/App/App.entitlements",
     appConfig.appId,
     errors,
     checks,
@@ -661,7 +661,7 @@ export function checkMobileArtifacts(options = {}) {
     // Skip when the assets dir is empty — i.e. no build has run.
     const androidAssetsDir = path.join(
       repoRoot,
-      "packages/app-core/platforms/android/app/src/main/assets",
+      "packages/app/platforms/android/app/src/main/assets",
     );
     const hasBuiltAndroidAssets =
       exists(path.join(androidAssetsDir, "capacitor.config.json")) ||

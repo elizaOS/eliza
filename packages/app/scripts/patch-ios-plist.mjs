@@ -23,12 +23,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";
-import { readAppIdentity } from "../../app-core/scripts/lib/read-app-identity.mjs";
+import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
+import { readAppIdentity } from "./lib/read-app-identity.mjs";
 import {
   IOS_APNS_ENABLED_KEY,
   readIosApnsBuildFlag,
-} from "../../app-core/scripts/mobile/ios-plist.mjs";
+} from "./mobile/ios-plist.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, "..");
@@ -44,7 +44,7 @@ const KEYS =
     { key: "NSMicrophoneUsageDescription", value: MIC_PURPOSE },
     { key: "NSSpeechRecognitionUsageDescription", value: SPEECH_PURPOSE },
     // Live Activities for the voice/dictation session (#12185 D10). Kept in
-    // sync with the app-core merger (scripts/mobile/ios-plist.mjs) so the two
+    // sync with the app merger (scripts/mobile/ios-plist.mjs) so the two
     // plist patchers agree.
     { key: "NSSupportsLiveActivities", value: true },
   ]);

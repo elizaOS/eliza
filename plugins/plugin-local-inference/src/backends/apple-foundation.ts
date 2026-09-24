@@ -12,9 +12,9 @@
  *   - Otherwise we do nothing, and the existing llama-cpp-capacitor
  *     (Gemma-VL / eliza-1 2b) path remains the active local-inference handler.
  *
- * Why this lives in plugin-local-inference (not plugin-capacitor-bridge):
+ * Why this lives in plugin-local-inference (not plugin-native-inference):
  *
- *   - The plugin-capacitor-bridge package is a thin JS↔native shim. The
+ *   - The plugin-native-inference package is a thin JS↔native shim. The
  *     decision of *when* to use Apple's model vs. llama.cpp is an
  *     inference-routing decision, which is plugin-local-inference's job.
  *     Co-locating the adapter with the rest of the routing logic

@@ -7,7 +7,6 @@
     "paths": {
       "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
       "@elizaos/shared/*": ["../../packages/shared/dist/*"]
-    },
-    "types": ["node", "bun-types"]
+    }
   }
 }

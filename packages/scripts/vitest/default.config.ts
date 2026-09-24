@@ -22,9 +22,9 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "@elizaos/testing/eliza-package-paths";
+} from "@elizaos/testing/package-paths";
 import { defineConfig } from "vitest/config";
-import { coverageSummaryReporters } from "../../app-core/scripts/coverage-policy.mjs";
+import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.ts";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
@@ -161,17 +161,13 @@ const elizaPluginAliases = workspacePluginPackageNames.flatMap(
 );
 const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-orchestrator",
-  "plugin-agent-skills",
   "plugin-anthropic",
-  "plugin-app-control",
-  "plugin-app-manager",
   "plugin-assistant",
   "plugin-browser",
-  "plugin-capacitor-bridge",
+  "plugin-native-inference",
   "plugin-coding-tools",
-  "plugin-commands",
   "plugin-computeruse",
-  "plugin-contacts",
+  "plugin-native-contacts",
   "plugin-discord",
   "plugin-elizacloud",
   "plugin-health",
@@ -181,14 +177,12 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-mcp",
   "plugin-native-filesystem",
   "plugin-openai",
-  "plugin-phone",
+  "plugin-native-phone",
   "plugin-pty",
   "plugin-scheduling",
-  "plugin-task-coordinator",
   "plugin-video",
   "plugin-vision",
-  "plugin-whatsapp",
-  "plugin-wifi",
+  "plugin-native-wifi",
   "plugin-workflow",
 ]);
 const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
@@ -210,7 +204,7 @@ const vitestInlineDeps = [
   "@testing-library/react",
   "@elizaos/core",
   "@elizaos/agent",
-  "@elizaos/app-core",
+  "@elizaos/app",
   "react",
   "react-dom",
   "react-test-renderer",
@@ -221,219 +215,7 @@ const vitestInlineDeps = [
   "zod",
 ];
 
-const vitestResolveAlias: ModuleAlias[] = [
-  {
-    find: /^@elizaos\/login$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages/login/src/sdk/index.ts",
-    ),
-  },
-  {
-    // Keep React pinned to one installed copy so jsdom does not mix workspace and hoisted peers.
-    find: /^react$/,
-    replacement: asViteFsPath(workspaceReactEntry),
-  },
-  {
-    find: /^react\/jsx-runtime$/,
-    replacement: asViteFsPath(workspaceReactJsxRuntimeEntry),
-  },
-  {
-    find: /^react\/jsx-dev-runtime$/,
-    replacement: asViteFsPath(workspaceReactJsxDevRuntimeEntry),
-  },
-  {
-    find: /^react\/(.*)$/,
-    replacement: asViteFsPath(path.join(workspaceReactDir, "$1")),
-  },
-  {
-    find: /^react-dom$/,
-    replacement: asViteFsPath(workspaceReactDomEntry),
-  },
-  {
-    find: /^react-dom\/client$/,
-    replacement: asViteFsPath(workspaceReactDomClientEntry),
-  },
-  {
-    find: /^react-dom\/server$/,
-    replacement: asViteFsPath(workspaceReactDomServerEntry),
-  },
-  {
-    find: /^react-dom\/test-utils$/,
-    replacement: asViteFsPath(workspaceReactDomTestUtilsEntry),
-  },
-  {
-    find: /^react-dom\/(.*)$/,
-    replacement: asViteFsPath(path.join(workspaceReactDomDir, "$1")),
-  },
-  {
-    find: /^react-test-renderer$/,
-    replacement: asViteFsPath(workspaceReactTestRendererEntry),
-  },
-  {
-    find: /^react-test-renderer\/(.*)$/,
-    replacement: asViteFsPath(path.join(workspaceReactTestRendererDir, "$1")),
-  },
-  {
-    find: /^adze$/,
-    replacement: asViteFsPath(workspaceAdzeEntry),
-  },
-  {
-    find: /^adze\/(.*)$/,
-    replacement: asViteFsPath(path.join(workspaceAdzeDir, "$1")),
-  },
-  {
-    find: /^@elizaos\/plugin-sql$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-sql/src/index.ts",
-    ),
-  },
-  // Leaf auth package (account storage, credentials, oauth flows, atomic-json).
-  // Sits below @elizaos/agent and @elizaos/app-core; source-aliased here so every
-  // base-config consumer resolves it without needing its dist built.
-  {
-    find: /^@elizaos\/credentials\/auth$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages/credentials/src/auth/index.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/credentials\/auth\/(.+)$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages/credentials/src/auth/$1",
-    ),
-  },
-  // Server-safe DB subpaths of the carved LifeOps plugins. PA's
-  // lifeops/repository.ts imports its schemas/repos/factories from these leaf
-  // modules (not the package barrels, which re-export React views → @elizaos/ui).
-  // The `./*` wildcard export is skipped by the auto-alias builder, so anchor the
-  // exact subpaths to source here for every base-config consumer.
-  {
-    find: /^@elizaos\/plugin-inbox\/db\/schema$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-inbox/src/db/schema.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-finances/src/db/finances-repository.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-health\/health-bridge\/health-records$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-health/src/health-bridge/health-records.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-health\/sleep\/sleep-episode-types$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-health/src/sleep/sleep-episode-types.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-browser\/schema$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-browser/src/schema.ts",
-    ),
-  },
-  {
-    find: /^@elizaos\/cloud-routing$/,
-    replacement: path.join(cloudRoutingSourceRoot, "index.ts"),
-  },
-  {
-    find: /^@elizaos\/cloud-sdk$/,
-    replacement: path.join(cloudSdkSourceRoot, "index.ts"),
-  },
-  {
-    find: /^@elizaos\/credentials\/vault$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages/credentials/src/vault/index.ts",
-    ),
-  },
-  {
-    // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
-    find: "@elizaos/capacitor-agent",
-    replacement: appCoreModuleFallbackPath,
-  },
-  {
-    find: "@elizaos/plugin-telegram",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins",
-      "plugin-telegram",
-      "src",
-      "index.ts",
-    ),
-  },
-  {
-    find: "@elizaos/scenario-runner/schema",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "packages",
-      "scenario-schema",
-      "index.js",
-    ),
-  },
-  {
-    find: /^@elizaos\/plugin-pdf$/,
-    replacement: path.join(pluginPdfSrc, "index.node.ts"),
-  },
-  ...workspacePluginSourceAliases,
-  ...getOptionalPluginSdkAliases(repoRoot),
-  ...(elizaCoreEntry
-    ? [
-        {
-          find: /^@elizaos\/testing$/,
-          replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
-        },
-        {
-          find: /^@elizaos\/common$/,
-          replacement: path.join(
-            elizaWorkspaceRoot,
-            "packages/common/src/index.ts",
-          ),
-        },
-        {
-          find: /^@elizaos\/core$/,
-          replacement: elizaCoreEntry,
-        },
-        ...elizaPluginAliases,
-        ...unresolvedPluginStubs,
-      ]
-    : []),
-  ...(autonomousSourceRoot
-    ? getAgentSourceAliases(autonomousSourceRoot)
-    : getAgentSourceAliases(undefined, {
-        // Stub missing @elizaos/agent subpaths so transitive imports keep resolving.
-        fallbackReplacement: appCoreModuleFallbackPath,
-      })),
-  ...getAppCoreSourceAliases(appCoreSourceRoot, {
-    bridgeReplacement: appCoreBridgeStubPath,
-    fallbackReplacement: appCorePluginFallbackPath,
-    stubRootSpecifier: true,
-  }),
-  ...getWorkspaceAppAliases(repoRoot, [
-    "plugin-personal-assistant",
-    "plugin-documents",
-    "plugin-wallet",
-  ]),
-  ...getSharedSourceAliases(sharedSourceRoot, {
-    includeElizaAlias: true,
-  }),
-  ...getUiSourceAliases(uiSourceRoot),
-  ...buildWorkspaceSourceAliases(elizaWorkspaceRoot),
-];
+const vitestResolveAlias: ModuleAlias[] = buildWorkspaceSourceAliases(repoRoot);
 
 export default defineConfig({
   plugins: [dependencySourcemapLoggerPlugin()],
@@ -459,9 +241,9 @@ export default defineConfig({
       // the default suite; add them here when that package is meant to run in
       // the shared root Vitest job. apps/app test/vite/** lives under
       // apps/app/vitest.config.ts instead of this root config.
-      // app-core src-colocated tests run here; real-runtime suites run in
+      // app src-colocated tests run here; real-runtime suites run in
       // the app-unit config (apps/app/vitest.config.ts) which provides the
-      // correct @elizaos/app-core alias resolution. Running both in parallel
+      // correct @elizaos/app alias resolution. Running both in parallel
       // causes file-system race conditions on shared test fixtures.
       // Keep the standalone-safe Electrobun tests in the default unit suite.
       // native/agent.test.ts requires the full desktop runtime, so it runs only
@@ -472,9 +254,7 @@ export default defineConfig({
       "apps/chrome-extension/**/*.test.ts",
       "apps/chrome-extension/**/*.test.tsx",
     ],
-    setupFiles: [
-      path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts"),
-    ],
+    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts")],
     exclude: [
       "dist/**",
       "**/node_modules/**",
@@ -494,8 +274,6 @@ export default defineConfig({
       // --- wired via turbo, not root vitest ---
       // Template plugin tests need a scaffolded environment to run.
       // Skills tests use their own package-level runner.
-      // Homepage tests need jsdom environment (run via packages/homepage vitest config).
-      "packages/homepage/**",
     ],
     coverage: {
       provider: "v8",

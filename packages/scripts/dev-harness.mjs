@@ -11,7 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { resolveDevHarnessBuildDirs } from "./lib/script-metadata.mjs";
+import { resolveDevHarnessBuildDirs } from "./lib/script-metadata.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const INSTALL_STAMP = join(ROOT, ".eliza", "plugin-dev-needs-install");

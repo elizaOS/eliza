@@ -58,7 +58,7 @@ const browserWindowPatchedSha256 =
 const patchPath = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "platforms",
   "electrobun",
   "native",
@@ -130,7 +130,7 @@ const manifestCandidates = [
   path.join(
     repoRoot,
     "packages",
-    "app-core",
+    "app",
     "platforms",
     "electrobun",
     "node_modules",

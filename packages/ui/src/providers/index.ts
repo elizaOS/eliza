@@ -17,9 +17,9 @@ export {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
   sortFirstRunProviders,
-} from "@elizaos/shared/contracts/first-run-options";
+} from "@elizaos/shared";
 
-import { resolveAppAssetUrl } from "../utils/asset-url";
+import { resolveAppAssetUrl } from "@elizaos/shared";
 
 const PROVIDER_LOGO_MAP_DARK: Record<string, string> = {
   openai: "logos/openai-icon-white.png",

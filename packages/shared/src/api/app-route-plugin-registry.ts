@@ -13,7 +13,7 @@ export interface AppRoutePluginRegistryEntry {
  * its plugin is intentionally absent from this deployment (optional plugin).
  *
  * This single string literal is the whole cross-package contract: hosts
- * (`@elizaos/app-core`) construct {@link OptionalAppRoutePluginUnavailableError}
+ * (`@elizaos/app`) construct {@link OptionalAppRoutePluginUnavailableError}
  * and {@link drainAppRoutePluginLoaders} recognizes it. Matching is by name (not
  * `instanceof`) so it stays robust when a combined deployment bundles two copies
  * of `@elizaos/core` — the class identity differs across bundles but the name

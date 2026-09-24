@@ -1,6 +1,6 @@
 /**
  * `DatabaseAdapter` — the abstract base every concrete persistence adapter
- * (plugin-sql's Drizzle adapters, `InMemoryDatabaseAdapter`, …) extends to
+ * (plugin-sql's Drizzle adapters, `SQLiteDatabaseAdapter`, …) extends to
  * satisfy the {@link IDatabaseAdapter} contract declared in `types/database.ts`.
  * It carries no storage logic: it re-declares the batch-first CRUD surface
  * (arrays in, arrays out) as `abstract` methods, so a missing override is a
@@ -141,7 +141,7 @@ export function compareTasksForQuery(left: Task, right: Task): number {
  * - Serves as the compile-time contract: if you extend this class and miss
  *   a method, TypeScript tells you immediately.
  * - Contains no persistence logic. Concrete adapters (plugin-sql's Drizzle
- *   adapters, InMemoryDatabaseAdapter, etc.) own storage behavior; unsupported
+ *   adapters, SQLiteDatabaseAdapter, etc.) own storage behavior; unsupported
  *   optional domains throw a clear adapter-level error.
  *
  * All CRUD methods are batch-first (arrays in, arrays out). See
@@ -507,6 +507,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract searchMemories(params: {
 		tableName: string;
 		embedding: number[];
+		/** Omit returned vectors only; similarity still uses the stored embedding. */
+		includeEmbedding?: boolean;
+		/** Narrow eligible rooms before ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		match_threshold?: number;
 		count?: number;
 		limit?: number;

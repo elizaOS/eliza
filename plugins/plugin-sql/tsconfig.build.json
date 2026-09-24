@@ -1,7 +1,6 @@
 {
   "extends": "./src/tsconfig.typecheck.json",
   "compilerOptions": {
-    "noEmit": true,
     "incremental": false,
     "composite": false
   },

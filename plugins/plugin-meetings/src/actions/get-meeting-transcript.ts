@@ -12,8 +12,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/shared";
-import { transcriptPlainText } from "@elizaos/shared/transcripts";
+import { MEETING_PLATFORM_LABELS, transcriptPlainText } from "@elizaos/shared";
 import type { MeetingService } from "../service.js";
 import { readTranscriptRow } from "../transcripts/meeting-transcript-writer.js";
 import {

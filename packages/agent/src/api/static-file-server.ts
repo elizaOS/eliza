@@ -1,7 +1,7 @@
 /**
  * Static file serving for the built React dashboard (production mode).
  *
- * Serves packages/app/dist/ with SPA fallback, caching, and API-base
+ * Serves packages/app/web-dist/ with SPA fallback, caching, and API-base
  * injection for reverse-proxy deployments.
  */
 
@@ -10,8 +10,11 @@ import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isTruthyEnvValue, logger } from "@elizaos/core";
-import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
-import { sendJsonError } from "@elizaos/shared/api/http-helpers";
+import {
+  isCloudProvisionedContainer,
+  resolveApiToken,
+  sendJsonError,
+} from "@elizaos/shared";
 import { serializeInlineScriptValue } from "./inline-script-serialization.ts";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import {
@@ -74,10 +77,10 @@ export function resolveUiDir(): string | null {
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const packageRoot = findOwnPackageRoot(thisDir);
   const candidates = [
-    path.resolve("packages/app/dist"),
-    path.resolve("apps/app/dist"),
-    path.resolve(packageRoot, "packages", "app", "dist"),
-    path.resolve(packageRoot, "apps", "app", "dist"),
+    path.resolve("packages/app/web-dist"),
+    path.resolve("apps/app/web-dist"),
+    path.resolve(packageRoot, "packages", "app", "web-dist"),
+    path.resolve(packageRoot, "apps", "app", "web-dist"),
   ];
 
   for (const candidate of candidates) {
@@ -142,7 +145,7 @@ function getCachedFile(filePath: string, mtimeMs: number): Buffer {
 // ---------------------------------------------------------------------------
 
 /**
- * Serve built dashboard assets from packages/app/dist with SPA fallback.
+ * Serve built dashboard assets from packages/app/web-dist with SPA fallback.
  * Returns true when the request is handled.
  */
 export function injectApiBaseIntoHtml(

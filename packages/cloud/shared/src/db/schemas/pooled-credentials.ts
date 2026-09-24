@@ -5,7 +5,7 @@
  * organization's shared pool. The key material itself is NEVER stored here:
  * it lives as a `secrets` row (AES-256-GCM envelope encryption, versioning,
  * audit log) referenced by `secret_id`. This table stores only the pool
- * metadata the rotation brain (`AccountPool` in @elizaos/app-core) reads and
+ * metadata the rotation brain (`AccountPool` in @elizaos/app) reads and
  * writes — the columns mirror `LinkedAccountConfig` /
  * runtime `LinkedAccountHealthDetail` / `LinkedAccountUsage` contracts
  * 1:1 on purpose so the pool maps rows to accounts without translation.
@@ -15,10 +15,7 @@
  * answerable. Replaces the self-host JSONL usage log in cloud.
  */
 
-import type {
-  LinkedAccountHealthDetail,
-  LinkedAccountUsage,
-} from "@elizaos/shared/contracts/service-routing";
+import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/shared";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
   boolean,

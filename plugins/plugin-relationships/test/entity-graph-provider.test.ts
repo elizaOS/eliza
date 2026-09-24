@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   resolveKnowledgeGraphService: vi.fn(),
 }));
 
-vi.mock("../src/knowledge-graph/index.ts", () => ({
+vi.mock("../src/knowledge-graph/service.js", () => ({
   resolveKnowledgeGraphService: mocks.resolveKnowledgeGraphService,
 }));
 

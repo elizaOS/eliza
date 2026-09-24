@@ -1,6 +1,6 @@
 /** Changes billing administrators under purchaser authority and the shared membership revision. Transfers retain seats, eligibility and authority in the other billing environment. */
 import type { AppBillingAdministratorsSnapshot } from "@elizaos/cloud-sdk/app-billing-membership";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "../../db/client";

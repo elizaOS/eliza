@@ -5,7 +5,7 @@
  * is served, so callers fail closed rather than silently mounting an unvalidated
  * paid route.
  */
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 
 type MaybeX402Route = Route & {
   x402?: unknown;

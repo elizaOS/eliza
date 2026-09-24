@@ -411,7 +411,7 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
 					`[KokoroFfiRuntime] fused libelizainference not found for the in-process Eliza-1 Kokoro engine (anchored at ${bundleRoot}). ` +
-						"Set ELIZA_INFERENCE_LIBRARY or build via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
+						"Set ELIZA_INFERENCE_LIBRARY or build via packages/app/scripts/build-llama-cpp-mtp.mjs.",
 				);
 			}
 			this.ffi = loadElizaInferenceFfi(libPath);

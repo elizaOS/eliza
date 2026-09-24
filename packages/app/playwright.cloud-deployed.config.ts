@@ -4,7 +4,9 @@
  * recording, screenshot, or trace; failed tests may retain only the smoke's
  * closed-schema privacy-safe diagnostic output.
  */
+
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
 import {
   CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
@@ -13,6 +15,7 @@ import {
 const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
 
 export default defineConfig({
+  outputDir: testOutputPath("app", "cloud-deployed"),
   testDir: "./test/ui-smoke",
   testMatch: "cloud-live.spec.ts",
   fullyParallel: false,

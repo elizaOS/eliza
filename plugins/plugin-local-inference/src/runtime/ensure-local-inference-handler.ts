@@ -1531,7 +1531,7 @@ async function tryRegisterCapacitorLoader(
 	if (!cap?.isNativePlatform?.()) return false;
 	try {
 		const { registerCapacitorLlamaLoader } = await import(
-			"@elizaos/capacitor-llama"
+			"@elizaos/plugin-native-inference/llama"
 		);
 		const registered = await registerCapacitorLlamaLoader(runtime);
 		if (!registered) return false;
@@ -1742,7 +1742,7 @@ export async function ensureLocalInferenceHandler(
 		return;
 	}
 
-	// Stock device-bridge handlers belong to plugin-capacitor-bridge and are
+	// Stock device-bridge handlers belong to plugin-native-inference and are
 	// registered only after its canonical singleton has a real attached device.
 	// Resolve that singleton through the core service seam for lifecycle
 	// ownership, but never manufacture a second loader/provider from the env flag.

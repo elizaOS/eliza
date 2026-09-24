@@ -7,12 +7,12 @@
  * Overlay apps are in-memory fixtures; no real plugin modules are loaded.
  */
 
+import type { OverlayApp, OverlayAppContext } from "@elizaos/shared";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetRetainedLazyModulesForTests } from "../../retained-lazy";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
-import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 
 describe("getOverlayAppLazyComponent", () => {
   beforeEach(() => {

@@ -20,7 +20,7 @@ defaults:
     working-directory: packages/cloud/shared
 
 env:
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -48,7 +48,7 @@ jobs:
 
       - name: Verify source-only workflow contract
         working-directory: .
-        run: bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
+        run: bun test packages/cloud/scripts/shared/messaging-gateway-preflight.test.mjs
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord

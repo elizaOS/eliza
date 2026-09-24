@@ -5,6 +5,7 @@
  * in a `WeakMap` so repeated renders of the same app reuse one lazy component.
  */
 
+import type { OverlayApp, OverlayAppContext } from "@elizaos/shared";
 import { type ComponentType, createElement } from "react";
 import { RetainedLazyComponent } from "../../retained-lazy";
 import {
@@ -12,7 +13,6 @@ import {
   ViewErrorState,
   ViewLoadingSkeleton,
 } from "../views/ViewStatusStates";
-import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 
 const lazyComponentCache = new WeakMap<
   NonNullable<OverlayApp["loader"]>,

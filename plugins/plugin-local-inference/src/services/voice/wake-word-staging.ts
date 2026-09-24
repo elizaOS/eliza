@@ -17,7 +17,7 @@
 
 import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { VoiceModelVersion } from "@elizaos/shared/local-inference";
+import type { VoiceModelVersion } from "@elizaos/shared";
 import { localInferenceRoot } from "../paths";
 import { OPENWAKEWORD_DIR_REL_PATH } from "./wake-word";
 

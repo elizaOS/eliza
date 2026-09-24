@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";
+import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import {
   APNS_ENABLED_KEY,
   hasKey,

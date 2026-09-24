@@ -4,7 +4,7 @@
  * same-origin requests without trusting arbitrary eliza.app subdomains.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 
 const ELIZA_BROWSER_ORIGIN_HOSTS: ReadonlySet<string> = new Set([
   ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
@@ -34,7 +34,7 @@ export type BrowserOriginCheck = { ok: true } | { ok: false; reason: string };
  * without a CORS preflight — cannot set custom headers or a JSON content
  * type, so requiring one of those markers on a cookie-authenticated mutation
  * forces a preflight that the first-party-only CORS layer fails for
- * user-content origins. Same convention as the app-core session CSRF header.
+ * user-content origins. Same convention as the app session CSRF header.
  */
 export const ELIZA_CSRF_HEADER = "x-eliza-csrf";
 

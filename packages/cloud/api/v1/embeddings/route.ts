@@ -8,7 +8,7 @@
  * admission/settle chain runs either way, only the middle hop changes.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
 import {

@@ -1,4 +1,5 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+// @vitest-environment node
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
@@ -19,7 +20,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   interact,

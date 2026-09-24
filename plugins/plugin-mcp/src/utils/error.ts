@@ -13,8 +13,10 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
-import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
+import {
+  composePromptFromState,
+  errorAnalysisTemplate as errorAnalysisPrompt,
+} from "@elizaos/shared";
 import type { McpProvider } from "../types";
 
 export async function handleMcpError(

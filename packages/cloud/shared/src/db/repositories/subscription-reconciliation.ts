@@ -1,6 +1,6 @@
 /** Claims fair primary-database recovery work and atomically publishes terminal and paid-renewal observations with immutable attempt provenance. Provider reads happen outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { PaidRenewalObjects } from "../../lib/services/stripe-paid-renewal-validation";
 import type { DbTransaction } from "../client";

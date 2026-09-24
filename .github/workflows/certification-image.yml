@@ -1,5 +1,5 @@
 # certification-image — builds and publishes the GPU certification image
-# (scripts/vast/Dockerfile.gpu) that vast.ai certification runs boot
+# (packages/scripts/vast/Dockerfile.gpu) that vast.ai certification runs boot
 # (#14548, epic #14541). The image bakes everything the 16 KB onstart script
 # cannot carry: CUDA llama-server, the sha256-pinned gpu-vision models,
 # node24/bun/playwright/tesseract/ffmpeg. Pushes
@@ -104,7 +104,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
-          file: scripts/vast/Dockerfile.gpu
+          file: packages/scripts/vast/Dockerfile.gpu
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -122,5 +122,5 @@ jobs:
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
             echo ""
-            echo "Boot it on vast: \`node scripts/vast/run-certification.mjs --image ${{ steps.image.outputs.name }}:latest ...\`"
+            echo "Boot it on vast: \`node packages/scripts/vast/run-certification.mjs --image ${{ steps.image.outputs.name }}:latest ...\`"
           } >> "$GITHUB_STEP_SUMMARY"

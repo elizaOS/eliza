@@ -55,6 +55,7 @@ import {
   hasOnlyWeakDirectReplyPlanningSignals,
   inferAckIntentCandidateActions,
   inferDirectCurrentRequestCandidateInference,
+  looksLikeProgressOnlyReply,
   modelProvidedRunnableDelegationCandidate,
   shouldPreferCompleteDirectReply,
   shouldPreferDirectCurrentCandidateActions,
@@ -664,13 +665,25 @@ export function messageHandlerFromFieldResult(
     replyEffectStatus === "non_applied" &&
     !modelRequiresTool &&
     replyTextRaw.trim().length > 0;
+  // Context tags identify a domain, not unfinished work. A model-declared
+  // complete reply with no action votes uses the normal guarded direct path.
+  const terminalConversationReply =
+    result.replyEffectStatus === "none" &&
+    !modelRequiresTool &&
+    actionableIntents.length === 0 &&
+    candidateActions.length === 0 &&
+    runnableCandidateActions.length === 0 &&
+    replyTextRaw.trim().length > 0 &&
+    !looksLikeProgressOnlyReply(replyTextRaw);
   const shouldPlan =
     !preemptDirect &&
     requestedPlanning &&
     !terminalNonAppliedReply &&
+    !terminalConversationReply &&
     !preferCompleteDirectReply &&
     !preferInlineCodeSnippetDirectReply;
   const finalContexts =
+    terminalConversationReply ||
     terminalNonAppliedReply ||
     preferCompleteDirectReply ||
     preferInlineCodeSnippetDirectReply

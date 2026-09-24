@@ -91,8 +91,8 @@ function ensureGradleMtpContract(pkgDir) {
     `}\n` +
     `\n` +
     `// Per-ABI resolver for the MTP cross-compile output produced by\n` +
-    `// \`packages/app-core/scripts/build-llama-cpp-mtp.mjs\` and\n` +
-    `// \`packages/app-core/scripts/aosp/compile-libllama.mjs\`. Each ABI has\n` +
+    `// \`packages/app/scripts/build-llama-cpp-mtp.mjs\` and\n` +
+    `// \`packages/app/scripts/aosp/compile-libllama.mjs\`. Each ABI has\n` +
     `// its own gradle property (\`eliza.mtp.android.libdir.<abi>\`) and env\n` +
     `// var (\`ELIZA_MTP_ANDROID_LIBDIR_<ABI>\`). For arm64-v8a the legacy\n` +
     `// unsuffixed names are still honored for backwards compatibility.\n` +

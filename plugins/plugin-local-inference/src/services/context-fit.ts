@@ -6,7 +6,7 @@
  * do so without shrinking the window (#8809). Consumed by load-args and
  * recommendation to pick the boot context.
  */
-import { ELIZA_1_MIN_LOCAL_CONTEXT } from "@elizaos/shared/local-inference";
+import { ELIZA_1_MIN_LOCAL_CONTEXT } from "@elizaos/shared";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
 
 const BYTES_PER_MIB = 1024 * 1024;

@@ -3,7 +3,7 @@
  *
  * What runs where:
  *   - API: `accounts-api-server.ts` under bun — the REAL `handleAccountsRoutes`
- *     (packages/agent) + REAL `AccountPool` (packages/app-core src, pinned via
+ *     (packages/agent) + REAL `AccountPool` (packages/app src, pinned via
  *     tsconfig.e2e-paths.json) over a scratch on-disk credential store.
  *   - UI: the REAL `AccountList` component tree (AccountCard, AddAccountDialog,
  *     RotationStrategyPicker, EditableAccountLabel, useAccounts, ElizaClient)

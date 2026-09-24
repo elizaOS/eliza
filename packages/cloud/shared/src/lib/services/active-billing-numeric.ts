@@ -23,7 +23,7 @@
  * non-negative bounds for accumulated resource totals and rates.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 
 export class CorruptActiveBillingNumberError extends ElizaError {
   override readonly name = "CorruptActiveBillingNumberError";

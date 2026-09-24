@@ -1,5 +1,5 @@
 /** Freezes customer identity only after every sharing scope has a canonical close decision. Every call, including another request's replay, revalidates its current deletion lease; retained scopes require separate canonical decisions and never inherit closure from a sibling. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import { writeTransaction } from "../helpers";
 import { appBillingAccounts, appBillingCustomers, billingMerchants } from "../schemas/app-billing";

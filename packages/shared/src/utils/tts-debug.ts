@@ -1,13 +1,13 @@
 /// <reference types="vite/client" />
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { logger } from "@elizaos/core";
 /**
  * Server-side TTS pipeline tracing (opt-in). Prefix: `[eliza][tts]`.
  * Never pass secrets in `detail`. With debug on, `preview` fields may contain
  * user-visible spoken text — disable in shared logs / production.
  *
  * `ttsDebug` emits straight through the structured logger, so setting the env
- * flag is sufficient on every server host (bare agent server, app-core API,
+ * flag is sufficient on every server host (bare agent server, app API,
  * packaged desktop) — no per-host wiring exists to forget (#16347). The
  * emission level is `info` normally, but escalates to match the logger's
  * active threshold (`warn`/`error`/`fatal`) when `LOG_LEVEL` is stricter:
@@ -27,7 +27,10 @@ import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
  *   `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
  *   the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
  */
-import { logger } from "@elizaos/core";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/shared/browser-contracts";
 
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {

@@ -1,5 +1,5 @@
 /** Translates generic buyer billing HTTP requests into scoped identity and billing use-cases. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { appBillingCommandRuntimeRepository } from "@/db/repositories/app-billing-command-runtime";

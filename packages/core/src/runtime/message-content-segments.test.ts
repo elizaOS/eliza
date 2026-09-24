@@ -5,6 +5,7 @@ import {
 	type Memory,
 	type UUID,
 } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 /**
  * Deterministic unit coverage for native message/attachment source projection:
  * exercises Unicode-safe segmentation, bounded traversal, identity stability,
@@ -12,7 +13,6 @@ import {
  */
 import { describe, expect, it } from "vitest";
 import { readCompleteMessageContent } from "../../../../plugins/plugin-assistant/src/features/messaging/complete-content-read.ts";
-import { InMemoryDatabaseAdapter } from "../../../../plugins/plugin-inmemorydb/runtime.ts";
 import {
 	attachmentTextSourceDescriptor,
 	authorizeMessageContentRead,
@@ -61,7 +61,7 @@ function rowsForRange(
 
 describe("message content segments", () => {
 	it("assembles an omitted-limit read from real stored Unicode segments and rejects mid-read revocation", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
 		const text = `${"complete 🙂עברית漢字e\u0301\n".repeat(20_000)}FINAL EVIDENCE`;
 		const original = memory(text);
@@ -112,7 +112,7 @@ describe("message content segments", () => {
 	});
 
 	it("publishes, replaces by CAS, and reauthorizes in memory", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
 		const original = memory("first revision 🙂\n".repeat(20_000));
 		original.metadata = { type: "message", scope: "room" };
@@ -188,7 +188,7 @@ describe("message content segments", () => {
 	});
 
 	it("rejects oversized legacy inline sources with a typed reindex error", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
 		await adapter.createMemories([
 			{
@@ -223,6 +223,8 @@ describe("message content segments", () => {
 		expect(first.segments.map(({ id }) => id)).toEqual(
 			second.segments.map(({ id }) => id),
 		);
+		// Fixed pre-migration v5 identity: stored segment references must remain valid.
+		expect(first.segments[0]?.id).toBe("9c61621b-1b0c-5b0f-a5f1-257e6b0686b0");
 		expect(first.segments.length).toBeGreaterThan(1);
 		for (const segment of first.segments) {
 			const stored = new TextEncoder().encode(segment.content.text ?? "");
@@ -235,12 +237,30 @@ describe("message content segments", () => {
 		}
 	});
 
+	it("preserves persisted RFC v5 IDs when projecting and locating Unicode content", () => {
+		const projection = buildMessageContentProjection(
+			memory("🙂漢字e\u0301\n".repeat(6000)),
+		);
+		// Independent Python uuid.uuid5 reference values for previously persisted rows.
+		const persistedIds = [
+			"8cd10d53-a020-5aeb-b876-b7bd45113ea8",
+			"24404d3e-d895-51bb-bfda-83ac24898ba5",
+		];
+		expect(projection.segments.map(({ id }) => id)).toEqual(persistedIds);
+		expect(
+			collectMessageContentSegmentIds(MESSAGE_ID, projection.content),
+		).toEqual(persistedIds);
+	});
+
 	it("accepts deterministic elizaOS parent IDs with non-RFC version nibbles", () => {
 		const projection = buildMessageContentProjection({
 			...memory("non-rfc parent\n".repeat(20_000)),
 			id: "af14ea58-6002-0262-999b-708b87c485dd" as UUID,
 		});
-		expect(projection.segments.length).toBeGreaterThan(0);
+		expect(projection.segments.slice(0, 2).map(({ id }) => id)).toEqual([
+			"6710a169-849c-5ec3-9b22-38a9f8947058",
+			"dbf0f8a3-9b2b-5ef0-894e-bcb223c328fe",
+		]);
 		expect(projection.segments.every((segment) => segment.id)).toBe(true);
 		expect(new Set(projection.segments.map((segment) => segment.id)).size).toBe(
 			projection.segments.length,

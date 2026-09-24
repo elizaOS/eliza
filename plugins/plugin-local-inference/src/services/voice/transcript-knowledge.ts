@@ -18,11 +18,11 @@ import type {
 	Transcript,
 	TranscriptKnowledgeFragment,
 	TranscriptScope,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import {
 	transcriptKnowledgeFragments,
 	transcriptPlainText,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 
 /** The documents-store fields derived from a transcript (sans runtime UUIDs). */
 export interface TranscriptKnowledgePayload {

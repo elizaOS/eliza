@@ -1,13 +1,13 @@
 /**
  * Proves the worldId/roomId/entityId scope-id validation added to
  * DocumentService.addDocument (see requireDocumentScopeUuid in service.ts)
- * against a real PGLite-backed AgentRuntime, not just InMemoryDatabaseAdapter.
+ * against a real PGLite-backed AgentRuntime, not just SQLiteDatabaseAdapter.
  * worldId/roomId/entityId are UUID-typed Postgres columns
  * (plugins/plugin-sql/src/schema/memory.ts); an in-memory-only test can't
  * prove a rejected write never reaches that column. This one can.
  */
 
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {

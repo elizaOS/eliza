@@ -30,19 +30,17 @@ import {
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
+import type { RouteRequestMeta } from "@elizaos/shared";
 import {
+  AGENT_SURFACE_CAPABILITY_IDS,
   createShellNavigateViewWsFrame,
   normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
   type ShellNavigateViewPayload,
-} from "@elizaos/shared";
-import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
-import {
-  AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,
-} from "@elizaos/shared/views/view-interact-protocol";
+} from "@elizaos/shared";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type ActiveViewElement,
@@ -869,7 +867,7 @@ export async function handleViewsRoutes(
     // caller-scoped terminal handoff by id after one path is actually handled.
     const shouldTargetCompletedAction =
       body?.delivery === "completed-action" && Boolean(originatingClientId);
-    const completedActionHandoffId = shouldTargetCompletedAction
+    const completedActionHandoffId = callerOwnedDelivery
       ? normalizeCompletedActionHandoffId(body?.completedActionHandoffId)
       : undefined;
     let completedActionDelivered = false;
@@ -950,7 +948,11 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
-      ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
+      ...(shouldTargetCompletedAction
+        ? { completedActionDelivered }
+        : body?.delivery === "originating-client" && completedActionHandoffId
+          ? { completedActionDelivered: originatingClientDelivered }
+          : {}),
       ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
     });
     return true;

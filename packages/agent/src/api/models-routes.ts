@@ -10,10 +10,7 @@
  * transport-agnostic and unit-testable.
  */
 import { parseBooleanValue } from "@elizaos/core";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared/api/route-helpers";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
 import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";
 
@@ -85,7 +82,7 @@ export async function handleModelsRoutes(
   // at call time so a refreshed server catalog shows up without a restart.
   const catalog = (ctx.buildCatalog ?? buildModelCatalog)();
 
-  // Catalog consumers (the settings model panel, slash-command completions)
+  // Catalog consumers (the settings model panel)
   // only need the validated catalog — local static tables + one file read.
   // The all-providers fan-out below hits every provider's live model-list API
   // and takes tens of seconds on a cold cache, which blows the UI client's

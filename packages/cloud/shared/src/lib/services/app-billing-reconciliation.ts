@@ -4,7 +4,7 @@
  * acquiring its current lease; a losing worker never refreshes CAS around an old response.
  */
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { appBillingProviderBindings } from "../../db/repositories/app-billing-provider-bindings";

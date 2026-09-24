@@ -345,20 +345,20 @@ export function sanitizeForSettingsDebug<T>(value: T): T {
 export function settingsDebugCloudSummary(): Record<string, unknown> {
   return {};
 }
+
+export { toSwarmActivity } from "@elizaos/shared/views/swarm-activity";
+export {
+  isViewKindEnabled,
+  isViewVisible,
+  resolveViewKind,
+} from "@elizaos/shared/views/view-kind";
 export { activityEventToPlaintext } from "../../../core/src/activity-plaintext.ts";
 export { findInteractionRegions } from "../../../core/src/messaging/interactions/parse.ts";
-export { matchShortcut } from "../../../core/src/runtime/shortcut-registry.ts";
 export {
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
   tierForPriority,
 } from "../../../core/src/types/notification.ts";
-export { toSwarmActivity } from "../../../core/src/types/swarm-coordinator.ts";
-export {
-  isViewKindEnabled,
-  isViewVisible,
-  resolveViewKind,
-} from "../../../core/src/types/view-kind.ts";
 // surface-manifest.ts + types/plugin.ts pull the runtime graph (route-helpers,
 // response handlers, trajectory context) — the exact node-heavy barrel the shim
 // exists to avoid. These four functions are pure, so mirror them as faithful

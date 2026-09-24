@@ -3,7 +3,7 @@
  * the shared preflight rejects malformed or oversized schemas before rewriting.
  */
 
-import { transformMcpToolSchema } from "@elizaos/shared/mcp";
+import { transformMcpToolSchema } from "@elizaos/shared";
 import type { JSONSchema7 } from "json-schema";
 
 export type ModelProvider = "openai" | "anthropic" | "google" | "bitrouter" | "unknown";

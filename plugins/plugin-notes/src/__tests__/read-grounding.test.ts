@@ -1,3 +1,4 @@
+// @vitest-environment node
 /** Exercises owner-authorized Notes reads against real filesystem state, trusted dispatch, the planner loop and reply-egress guard with bounded scripted models. */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -13,7 +14,7 @@ import {
   evaluatePlannedReplyEgress,
   plannedReplyHasClaimGroundingReceipt,
 } from "@elizaos/plugin-assistant";
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, test } from "vitest";
 import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { notesAction } from "../action.js";

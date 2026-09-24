@@ -3,7 +3,7 @@
  * Scope, member, environment and entitlement authority come from the primary database. A provider
  * admission is a durable dispatch intent: a repeated logical operation cannot invoke the provider again.
  */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNull, lte } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";

@@ -7,7 +7,7 @@ export function resolveCloudAgentBuildPaths(scriptDirectory) {
   const contextRoot = path.dirname(elizaRoot);
   const dockerfile = path.join(
     elizaRoot,
-    "packages/app-core/deploy/Dockerfile.cloud-agent",
+    "packages/app/deploy/Dockerfile.cloud-agent",
   );
   return {
     elizaRoot,

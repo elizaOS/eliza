@@ -9,7 +9,7 @@ import {
   type AppBillingNotificationConfig,
   createAppNotificationSignature,
 } from "@elizaos/cloud-sdk/app-notifications";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite, writeTransaction } from "../../db/helpers";

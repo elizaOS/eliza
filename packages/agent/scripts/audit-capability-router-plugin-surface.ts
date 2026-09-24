@@ -8,7 +8,7 @@ import ts from "typescript";
 const pluginFile = "packages/core/src/types/plugin.ts";
 const capabilityFile = "packages/core/src/capabilities/index.ts";
 const conformanceFile =
-  "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
+  "packages/agent/scripts/lib/remote-capability-endpoint-conformance.ts";
 const fixtureServerFile =
   "packages/agent/scripts/capability-router-fixture-server.ts";
 const liveReportValidatorFile =
@@ -51,10 +51,6 @@ const localOnly = new Set([
   "dependencies",
   "testDependencies",
   "autoEnable",
-  // Pre-LLM shortcut gate (#8791): registered into the runtime ShortcutRegistry,
-  // not exposed over the capability-router remote boundary (RemotePluginModuleManifest
-  // has no shortcuts key and no remote-manifest builder reads it).
-  "shortcuts",
   // Pre-action dispatch hooks drained at the top of the chat loop; registered
   // into the runtime ChatPreHandlerRegistry in-process, never mirrored over the
   // remote wire (no manifest key, no builder reads it).

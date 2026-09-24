@@ -29,8 +29,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-const distRoot = path.join(process.cwd(), "dist");
-const distAssets = path.join(process.cwd(), "dist", "assets");
+const distRoot = path.join(process.cwd(), "web-dist");
+const distAssets = path.join(process.cwd(), "web-dist", "assets");
 const indexHtmlPath = path.join(distRoot, "index.html");
 
 // bn.js's `toArrayLike` is the method that calls `Buffer.allocUnsafe` at
@@ -269,7 +269,7 @@ if (shaderChunks.length > 0) {
 // relative builds don't set the flag, so this guard is skipped for them — their
 // relative base is correct (Electrobun views:// / Capacitor file://).
 if (process.env.ELIZA_WEB_ABSOLUTE_BASE === "1") {
-  const indexHtmlPath = path.join(process.cwd(), "dist", "index.html");
+  const indexHtmlPath = path.join(process.cwd(), "web-dist", "index.html");
   let indexHtml;
   try {
     indexHtml = readFileSync(indexHtmlPath, "utf8");

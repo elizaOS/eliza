@@ -1,6 +1,6 @@
 /** Resolves native product selections to current purchaser identity and server-owned developer funding without exposing infrastructure credentials. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import { decryptApiKey } from "../../db/crypto/api-keys";
 import { dbWrite } from "../../db/helpers";

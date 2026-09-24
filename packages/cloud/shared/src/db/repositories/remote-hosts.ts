@@ -4,11 +4,8 @@
  * sessions and commands so relay operations cannot outlive revocation.
  */
 
-import { ElizaError } from "@elizaos/common";
-import {
-  canonicalizeRemoteControlValue,
-  type RemoteConnectionMode,
-} from "@elizaos/shared/contracts/remote-control";
+import { ElizaError } from "@elizaos/core";
+import { canonicalizeRemoteControlValue, type RemoteConnectionMode } from "@elizaos/shared";
 import { and, asc, desc, eq, inArray, isNotNull, lte, or, type SQL } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";

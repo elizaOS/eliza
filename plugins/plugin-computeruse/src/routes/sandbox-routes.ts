@@ -10,7 +10,7 @@ import {
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
-} from "@elizaos/shared/api/http-helpers";
+} from "@elizaos/shared";
 
 interface SandboxExecResult {
   exitCode: number;

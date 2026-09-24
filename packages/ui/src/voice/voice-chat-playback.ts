@@ -3,8 +3,8 @@
  * speech text extraction, and mouth animation helpers.
  */
 
-import { ElizaError } from "@elizaos/common";
-import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
+import { sanitizeSpeechText } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { MOUTH_OPEN_STEP, type SpeechSegmentKind } from "./voice-chat-types";
 
 // ── Text processing helpers ───────────────────────────────────────────

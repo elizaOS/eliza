@@ -1,9 +1,7 @@
 /**
- * Eliza plugin for elizaOS — workspace context, session keys, and agent
- * lifecycle actions (restart).
- *
- * Compaction is handled by core auto-compaction in the recent-messages provider.
- * Memory search/get actions are superseded by the todos plugin.
+ * Composes the agent host's workspace providers, lifecycle actions, HTTP routes
+ * and concrete services. Assistant policy is registered separately; this plugin
+ * supplies host storage, permissions, media and runtime integration.
  */
 
 import type { IAgentRuntime, ServiceClass } from "@elizaos/core";
@@ -22,8 +20,8 @@ import {
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships/knowledge-graph";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/plugin-relationships";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -52,7 +50,6 @@ import {
   registerMediaGcWorker,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
-import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -68,7 +65,6 @@ import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
 } from "../providers/session-utils.ts";
-import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
@@ -78,7 +74,6 @@ import { LocalFileStorageService } from "../services/file-storage.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
-import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -109,7 +104,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
-    createDynamicSkillProvider(),
     pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),
@@ -124,7 +118,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     // migrates the runtime data model whenever the agent runs.
     schema: {
       ...knowledgeGraphSchema,
-      ...pendantSessionSchema,
     },
 
     services: [
@@ -201,7 +194,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
-      ...pendantSessionRoutes,
     ],
 
     actions: [

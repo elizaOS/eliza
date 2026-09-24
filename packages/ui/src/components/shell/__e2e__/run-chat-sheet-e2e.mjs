@@ -2284,9 +2284,8 @@ try {
     // without importing Chromium's full pixel/animation tolerance matrix. This
     // still mounts the real overlay, captures screenshots, and drives WebKit
     // pointer paths through the grabber/composer controls in desktop and mobile
-    // viewports. Mobile Safari visual coverage lives in
-    // run-chat-sheet-mobile-safari-smoke.mjs because Playwright WebKit does not
-    // expose Chromium's low-level touch-drag injection API.
+    // viewports. Playwright WebKit does not expose Chromium's low-level
+    // touch-drag injection API.
     const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
     attachConsole(desktop, sink);
     await gotoFixture(desktop);

@@ -3,12 +3,13 @@
  * presets to voices, and normalizes the persisted VoiceConfig shape.
  */
 import {
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-} from "@elizaos/shared/character-presets";
+} from "@elizaos/shared";
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
-import { hasConfiguredApiKey, PREMADE_VOICES } from "./types";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";

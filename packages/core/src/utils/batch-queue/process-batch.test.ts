@@ -5,7 +5,7 @@
  * falls back to the per-item `process` if the batched call throws.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import { isModelFundingAuthorityError } from "../model-errors";
 import { BatchQueue } from "./index";

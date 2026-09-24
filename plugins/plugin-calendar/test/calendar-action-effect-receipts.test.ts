@@ -354,8 +354,10 @@ describe("CALENDAR effect receipt settlement", () => {
       expectInternalHandoff(delivered, result);
       expect(result.data?.replyContext).toMatchObject({
         scenario: "feed_results",
-        context: { events: [EVENT] },
+        context: { label: expect.any(String) },
       });
+      expect(result.data?.events).toEqual([EVENT]);
+      expect(result.data?.replyContext).not.toHaveProperty("context.events");
       expect(renderGroundedReply).not.toHaveBeenCalled();
     },
   );
@@ -450,7 +452,7 @@ describe("CALENDAR effect receipt settlement", () => {
           subaction === "feed" ? "feed_results" : `${subaction}_completed`,
         context:
           subaction === "feed"
-            ? { events: [ELIZA_EVENT] }
+            ? { label: expect.any(String) }
             : {
                 event:
                   subaction === "update_event"
@@ -458,6 +460,10 @@ describe("CALENDAR effect receipt settlement", () => {
                     : ELIZA_EVENT,
               },
       });
+      if (subaction === "feed") {
+        expect(result.data?.events).toEqual([ELIZA_EVENT]);
+        expect(result.data?.replyContext).not.toHaveProperty("context.events");
+      }
       expect(renderGroundedReply).not.toHaveBeenCalled();
       expect(service.createCalendarEvent).toHaveBeenCalledTimes(
         subaction === "create_event" ? 1 : 0,
@@ -506,7 +512,7 @@ describe("CALENDAR effect receipt settlement", () => {
           domain: "calendar",
           intent: "What is on my calendar this week?",
           scenario: "feed_results",
-          context: { events: [EVENT] },
+          context: { label: expect.any(String) },
         },
       },
       effectReceipts: [
@@ -1514,8 +1520,10 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(result.data?.replyContext).toMatchObject({
       scenario: "search_results",
       facts: expect.stringContaining('"query"'),
-      context: { query: "query", queries: ["query"] },
+      context: { label: expect.any(String) },
     });
+    expect(result.data).toMatchObject({ query: "query", queries: ["query"] });
+    expect(result.data?.replyContext).not.toHaveProperty("context.queries");
   });
 
   it("preserves event content literally equal to its field names", async () => {

@@ -46,9 +46,9 @@
  * session).
  */
 
+import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/shared";
 import type { BackgroundConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 
 /**
  * Resolve a wallpaper `imageUrl` into one reachable from the renderer in every

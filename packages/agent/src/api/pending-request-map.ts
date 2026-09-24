@@ -7,9 +7,9 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import type { ViewInteractResult } from "@elizaos/shared/views/view-interact-protocol";
+import type { ViewInteractResult } from "@elizaos/shared";
 
-export type { ViewInteractResult } from "@elizaos/shared/views/view-interact-protocol";
+export type { ViewInteractResult } from "@elizaos/shared";
 
 export class PendingRequestMap {
   private readonly map = new Map<

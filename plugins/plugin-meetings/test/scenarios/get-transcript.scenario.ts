@@ -9,12 +9,10 @@ import type { UUID } from "@elizaos/core";
 import {
   callPayloadBlob,
   describeCalls,
-  successfulActionData,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+  successfulActionData,
+} from "@elizaos/testing";
 import {
   assertMeetingMockLedger,
   finalizeMeetingMockLedger,

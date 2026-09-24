@@ -11,6 +11,12 @@
 
 import fs from "node:fs";
 import os from "node:os";
+import type {
+  HardwareProbe,
+  ModelBucket,
+  OpenVinoDeviceKind,
+  OpenVinoHardwareProbe,
+} from "@elizaos/shared";
 import {
   adviseDiskSpace,
   type DiskSpace,
@@ -18,12 +24,6 @@ import {
   probeDiskSpace,
 } from "./disk-space";
 import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
-import type {
-  HardwareProbe,
-  ModelBucket,
-  OpenVinoDeviceKind,
-  OpenVinoHardwareProbe,
-} from "./types";
 
 const BYTES_PER_GB = 1024 ** 3;
 

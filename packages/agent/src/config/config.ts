@@ -22,7 +22,7 @@ import {
 } from "@elizaos/shared";
 import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
-import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
+import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
 import {
   captureDevCloudEnvAuthority,

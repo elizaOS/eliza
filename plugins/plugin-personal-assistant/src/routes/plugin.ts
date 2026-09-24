@@ -20,26 +20,24 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "@elizaos/app-core/api/auth";
-import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
-import { authStoreForRuntime } from "@elizaos/app-core/services/auth-store";
+} from "@elizaos/app/api/auth";
+import { isTrustedLocalRequest } from "@elizaos/app/api/compat-route-shared";
+import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
-import {
-  readJsonBody as httpReadJsonBody,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
-import {
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-} from "@elizaos/shared/api/http-helpers";
 import type {
   LegacyRouteHandler,
   HttpPlugin as Plugin,
   Route,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
+import {
+  readJsonBody as httpReadJsonBody,
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+  SELF_ENTITY_ID,
+} from "@elizaos/shared";
 import {
   AGREEMENT_UPLOAD_CHUNK_BYTES,
   AGREEMENT_UPLOAD_METADATA_BYTES,

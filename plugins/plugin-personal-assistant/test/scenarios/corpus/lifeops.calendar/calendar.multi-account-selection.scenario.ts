@@ -5,11 +5,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
 
 function checkAgentAsksWhichAccount(ctx: ScenarioContext): string | undefined {
@@ -35,7 +31,7 @@ export default scenario({
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "multi-account", "clarification"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

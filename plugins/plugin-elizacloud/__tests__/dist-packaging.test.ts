@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(packageRoot, "dist");
 
-const SHIM_FILES = ["node/index.d.ts", "browser/index.d.ts", "cjs/index.d.ts"] as const;
+const SHIM_FILES = ["node/index.d.ts", "cjs/index.d.ts"] as const;
 
 function distFile(relative: string): string {
   return path.join(distDir, relative);

@@ -23,10 +23,12 @@
  * installed `tesseract.js` package so CI and local verification do not depend on
  * Homebrew/apt state. Every pixel-broken regression fails the gate directly.
  */
+
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import sharp from "sharp";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   type EvaluateArgs,
@@ -383,7 +385,8 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   // sat in the default directory — a false evidence binding.
   const auditDir =
     args["audit-dir"] ??
-    (process.env.ELIZA_AUDIT_APP_DIR?.trim() || "aesthetic-audit-output");
+    (process.env.ELIZA_AUDIT_APP_DIR?.trim() ||
+      testOutputPath("aesthetic-audit"));
   const outPath = args.out ?? join(auditDir, "ocr-triage.json");
 
   const reportPath = join(auditDir, "report.json");

@@ -1,11 +1,11 @@
 import {
-	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
-	isSensitiveLogKey,
-} from "@elizaos/common";
-import {
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
+import {
+	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+	isSensitiveLogKey,
+} from "./log-redaction.js";
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**

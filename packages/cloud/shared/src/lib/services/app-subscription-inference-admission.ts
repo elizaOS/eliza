@@ -1,5 +1,5 @@
 /** Bridges the existing chat billing callbacks to paired app allowance and developer infrastructure funding. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { appsRepository } from "../../db/repositories/apps";
 import {

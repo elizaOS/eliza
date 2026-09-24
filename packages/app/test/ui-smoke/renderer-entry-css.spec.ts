@@ -11,8 +11,8 @@ import { expect, test } from "@playwright/test";
 import { build, normalizePath } from "vite";
 
 const appRoot = fileURLToPath(new URL("../..", import.meta.url));
-const entryPath = path.join(appRoot, "src/entry.ts");
-const renderers = ["marketing-home-entry", "public-web-entry", "main"] as const;
+const entryPath = path.join(appRoot, "src/renderer-entry.ts");
+const renderers = ["public-web-entry", "main"] as const;
 let fixtureRoot: string;
 
 test.beforeAll(async () => {
@@ -96,13 +96,11 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-for (const [index, [route, renderer]] of (
-  [
-    ["/", "marketing-home-entry"],
-    ["/login", "public-web-entry"],
-    ["/agent", "main"],
-  ] as const
-).entries()) {
+for (const [route, renderer] of [
+  ["/", "main"],
+  ["/login", "public-web-entry"],
+  ["/agent", "main"],
+] as const) {
   test(`${renderer} loads its own CSS without evaluating other renderers`, async ({
     page,
   }) => {
@@ -110,7 +108,7 @@ for (const [index, [route, renderer]] of (
     await expect(page.locator("#root")).toHaveText(renderer);
     await expect(page.locator("#root")).toHaveCSS(
       "padding-left",
-      `${(index + 1) * 11}px`,
+      `${(renderers.indexOf(renderer) + 1) * 11}px`,
     );
     expect(
       await page.evaluate(

@@ -1,4 +1,4 @@
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 
 export interface DedicatedActivationConfirmationQuote {
   quoteId: string;

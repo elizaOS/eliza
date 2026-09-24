@@ -17,7 +17,7 @@ import { type Page, test } from "@playwright/test";
 import {
   SETTINGS_SECTIONS,
   VIEWPORT_SIZES,
-} from "../../../../scripts/ai-qa/route-catalog.ts";
+} from "../../../scripts/ai-qa/route-catalog.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,

@@ -17,12 +17,6 @@
  */
 
 import {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicShuffle,
-	getDeterministicNames,
-} from "@elizaos/common";
-import {
 	parseActionParams,
 	toActionParameterValue,
 } from "./action-parameter-value.ts";
@@ -36,6 +30,12 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
+import {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicShuffle,
+	getDeterministicNames,
+} from "./utils/deterministic.js";
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,

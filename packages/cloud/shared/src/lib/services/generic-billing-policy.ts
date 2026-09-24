@@ -4,7 +4,7 @@
  * database clock; redirects and webhook payloads are not entitlement evidence.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type {
   BillingProviderInvoice,
   BillingProviderSubscription,

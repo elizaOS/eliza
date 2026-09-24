@@ -13,7 +13,7 @@ import {
   type ThemeColorSet,
   type ThemeDefinition,
   type ThemeFonts,
-} from "@elizaos/shared/contracts/theme";
+} from "@elizaos/shared";
 
 /**
  * Apply a theme's color set for the given mode to the document root.

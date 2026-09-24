@@ -8,12 +8,12 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveMainAppDir } from "../../app-core/scripts/lib/app-dir.mjs";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import {
   isCapacitorPlatformReady,
   syncPlatformTemplateFiles,
-} from "../../app-core/scripts/lib/capacitor-platform-templates.mjs";
-import { resolveRepoRootFromImportMeta } from "../../app-core/scripts/lib/repo-root.mjs";
+} from "./lib/capacitor-platform-templates.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const validPlatforms = new Set(["android", "ios"]);
 const platform = process.argv[2];

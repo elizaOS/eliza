@@ -1,4 +1,10 @@
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+/**
+ * Exercises MESSAGE's real stored-memory read branch with deterministic runtime
+ * doubles. The tests pin byte-exact continuation, live authorization, stale
+ * revision rejection, Unicode boundaries, and the single-carrier prompt shape.
+ */
+
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,

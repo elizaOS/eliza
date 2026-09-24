@@ -11,8 +11,8 @@ import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionState,
-} from "@elizaos/shared/contracts/permissions";
-import { openPermissionSettings } from "@elizaos/shared/utils/permission-deep-links";
+} from "@elizaos/shared";
+import { openPermissionSettings } from "@elizaos/shared";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 

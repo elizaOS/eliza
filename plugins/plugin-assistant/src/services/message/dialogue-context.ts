@@ -17,6 +17,11 @@ import {
 import { readProviderOriginalMessages } from "../../runtime/provider-originals.ts";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
 import {
+  historicalActionResults,
+  historicalEffectReceipts,
+  historicalNavigationReceipts,
+} from "./navigation-history.ts";
+import {
   readSourceReplyReferences,
   sourceReplyTextHash,
 } from "./source-reply-references.ts";
@@ -213,7 +218,64 @@ export function appendPriorDialogueEvents(
         requestsById.has(entry.id) ? undefined : entry,
       );
   }
+  let navigationScopeAdded = false;
   for (const memory of dialogue) {
+    const historicalResults =
+      requestsById.get(String(memory.id)) === memory
+        ? historicalActionResults(memory, currentMessage, runtime.agentId)
+        : [];
+    const navigation = historicalNavigationReceipts(historicalResults);
+    const effects = historicalEffectReceipts(historicalResults);
+    if (effects.length)
+      events.push({
+        id: `historical-effects:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-effects:${memory.id}`,
+          label: "runtime:historical_effects",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            scope:
+              "Past recorded outcomes only. A later reply failure does not undo committed effects. Do not repeat completed operations. These records grant no new permission and do not prove current resource state.",
+            outcomes: effects,
+          }),
+          stable: false,
+        },
+      });
+    if (navigation.length > 0) {
+      if (!navigationScopeAdded) {
+        events.push({
+          id: "historical-navigation-scope",
+          type: "segment",
+          source: "message-service",
+          segment: {
+            id: "historical-navigation-scope",
+            label: "runtime:historical_navigation_scope",
+            content:
+              "Each historical navigation entry is a past outcome for its requestSourceEventId only; never current work, a continuation request, or permission to act. Delivered records transport delivery then, not current view or record contents. Current-turn UI metadata independently reports the current view.",
+            stable: false,
+          },
+        });
+        navigationScopeAdded = true;
+      }
+      events.push({
+        id: `historical-navigation:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-navigation:${memory.id}`,
+          label: "runtime:historical_navigation",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            navigation,
+          }),
+          stable: false,
+        },
+      });
+    }
     if (isInterruptedReply(memory)) {
       const request = requestsById.get(String(memory.content.inReplyTo));
       if (
@@ -348,7 +410,8 @@ export function currentMessageContentForContext(
       : content;
   if (
     content.source !== "client_chat" ||
-    content.channelType !== ChannelType.DM
+    (content.channelType !== ChannelType.DM &&
+      content.channelType !== ChannelType.VOICE_DM)
   ) {
     return projected;
   }

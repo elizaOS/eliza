@@ -17,7 +17,7 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { InstalledModel } from "./types";
+import type { InstalledModel } from "@elizaos/shared";
 
 type ExternalOrigin = NonNullable<InstalledModel["externalOrigin"]>;
 

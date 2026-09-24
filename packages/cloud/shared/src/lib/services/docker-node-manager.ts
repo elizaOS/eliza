@@ -8,7 +8,7 @@
  */
 
 import crypto from "node:crypto";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { parseLinuxBootId } from "../../db/repositories/agent-backup-source-authority";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";

@@ -56,7 +56,7 @@ vi.mock("../../login/index", () => ({
     verifyEmailCallback: async () => ({ token: "" }),
   }),
 }));
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginClient: class {},
 }));
 

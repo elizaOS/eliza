@@ -380,7 +380,7 @@ describe("view bundle import guard", () => {
         `
           function importCoreViewCompat() { return {}; }
           const HOST_EXTERNAL_IMPORTERS = {
-            "@elizaos/app-core": importCoreViewCompat,
+            "@elizaos/app": importCoreViewCompat,
           };
           export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
         `,

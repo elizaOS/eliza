@@ -12,7 +12,7 @@
  * Usage:
  *   node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
  *     --served-url https://cloud.eliza.app \
- *     --dist packages/app/dist \
+ *     --dist packages/app/web-dist \
  *     --require-text "Signing in to your agent"
  */
 import fs from "node:fs";

@@ -9,8 +9,8 @@
  * registry itself NEVER throws from composeSummary / getDetail.
  */
 
-import { toWellFormedUnicode } from "@elizaos/common";
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/shared/browser-contracts";
 import {
   type AwarenessContributor,
   type AwarenessInvalidationEvent,

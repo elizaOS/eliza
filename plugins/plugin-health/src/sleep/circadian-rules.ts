@@ -12,6 +12,7 @@
  * file so spec and code never drift.
  */
 
+import { parseIsoMs } from "@elizaos/shared";
 import type {
   LifeOpsActivitySignal,
   LifeOpsCircadianRuleFiring,
@@ -20,7 +21,6 @@ import type {
   LifeOpsRegularityClass,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-import { parseIsoMs } from "../util/time-util.js";
 import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 
 export const MIN_STABILITY_WINDOW_MS = 5 * 60_000;
