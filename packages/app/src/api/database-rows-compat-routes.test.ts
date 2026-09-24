@@ -6,7 +6,7 @@ const { executeRawSql, ensureOwner } = vi.hoisted(() => ({
   executeRawSql: vi.fn(),
   ensureOwner: vi.fn(async () => true),
 }));
-vi.mock("@elizaos/shared/utils/sql-compat", async (importOriginal) => ({
+vi.mock("@elizaos/shared", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   executeRawSql,
 }));
