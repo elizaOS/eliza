@@ -27,7 +27,7 @@ const DEFAULT_BUNDLE_ROOT = path.join(REPO_ROOT, "evidence", "runs");
 export const MATRIX_STEPS = [
   {
     id: "test-all",
-    label: "Unit, integration, and e2e test matrix",
+    label: "Full end-to-end test flows",
     command: ["bun", "run", "test:all"],
     tags: ["tests"],
   },

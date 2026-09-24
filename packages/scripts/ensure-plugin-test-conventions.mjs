@@ -360,8 +360,7 @@ const VITEST_DEFAULT_CONFIG_FILENAMES = [
  * config's `include` glob currently reaches. Each entry must name a file
  * that both exists and is currently orphaned; the guard throws the moment
  * either stops holding, so a stale entry can never quietly outlive the gap it
- * was recorded for. Mirrors SCRIPT_TEST_EXCLUSIONS in
- * packages/scripts/lib/script-test-inventory.mjs.
+ * was recorded for.
  */
 export const ORPHANED_PLUGIN_TEST_EXCEPTIONS = new Map([
   // Intentionally empty: every on-disk plugin test file is reachable by its

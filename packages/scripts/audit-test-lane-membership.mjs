@@ -17,9 +17,7 @@
  *       imported directly so this can never drift from the real cloud runner; or
  *   (d) named in `TEST_LANE_MEMBERSHIP_EXCLUSIONS` below with a durable, still-
  *       true reason. An exclusion whose package now matches (a)/(b)/(c), or no
- *       longer carries a test-shaped script/file, is stale and throws — the
- *       same fail-closed contract as `SCRIPT_TEST_EXCLUSIONS` in
- *       lib/script-test-inventory.mjs.
+ *       longer carries a test-shaped script/file, is stale and throws.
  *
  * A malformed `testLanes` declaration (not a non-empty array of known lanes)
  * is always a hard failure — it is a mistake to fix, never something to
