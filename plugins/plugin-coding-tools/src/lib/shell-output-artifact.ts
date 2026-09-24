@@ -27,6 +27,19 @@ const ARTIFACT_HANDLE_PATTERN =
 const PENDING_DIRECTORY_PATTERN =
   /^\.pending-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SEGMENT_FILE_PATTERN = /^(stdout|stderr)-\d{6}\.seg$/;
+const PARSED_MANIFEST_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+let lastParsedManifest: { bytes: Buffer; value: unknown } | undefined;
+
+/** Reuse parsing only when newly read bytes match; never cache filesystem authority. */
+function parseFreshManifest(bytes: Buffer): unknown {
+  if (lastParsedManifest?.bytes.equals(bytes)) return lastParsedManifest.value;
+  const value: unknown = JSON.parse(bytes.toString("utf8"));
+  lastParsedManifest =
+    bytes.byteLength <= PARSED_MANIFEST_CACHE_MAX_BYTES
+      ? { bytes, value }
+      : undefined;
+  return value;
+}
 
 export interface ShellStreamMetrics {
   characters: number;
@@ -1370,10 +1383,8 @@ export async function readShellOutputArtifactPage(options: {
         message: "shell-output artifact is unavailable for this conversation",
       };
     }
-    const parsed: unknown = JSON.parse(
-      (
-        await readRegularFile(path.join(realArtifactDirectory, "manifest.json"))
-      ).toString("utf8"),
+    const parsed = parseFreshManifest(
+      await readRegularFile(path.join(realArtifactDirectory, "manifest.json")),
     );
     const requestedOffset =
       options.offset !== undefined && Number.isFinite(options.offset)
