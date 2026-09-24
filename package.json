@@ -349,6 +349,7 @@
     "packages/app-core/scripts"
   ],
   "dependencies": {
+    "@evozim/eliza-plugin-x402": "^1.0.5",
     "@electric-sql/pglite": "^0.4.5",
     "@electric-sql/pglite-socket": "0.1.6",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
