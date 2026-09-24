@@ -200,9 +200,23 @@ class AppBlockerBridgeInstrumentedTest {
             block(scenario, target)
             val waitMs = oldDeadline - System.currentTimeMillis() + 1500
             assertTrue("Unexpected one-minute deadline: $waitMs", waitMs in 1..65000)
+            device.sleep()
             Thread.sleep(waitMs)
-            assertTrue("Replacement shield disappeared at the old deadline", device.hasObject(By.text("App Blocked")))
+            val saved = AppBlockerStateStore.load(instrumentation.targetContext)
+            export("app-timer-observation.json", JSONObject()
+                .put("foregroundPackage", device.currentPackageName)
+                .put("screenOn", device.isScreenOn)
+                .put("packageNames", JSONArray(saved?.packageNames ?: emptyList<String>()))
+                .put("endsAtEpochMs", saved?.endsAtEpochMs ?: JSONObject.NULL)
+                .put("oldDeadline", oldDeadline).put("observedAt", System.currentTimeMillis())
+                .toString(2).toByteArray())
+            assertNotNull("Old timer erased the replacement policy", saved)
+            assertNull("Replacement must be indefinite", saved!!.endsAtEpochMs)
+            device.wakeUp()
+            shell("wm dismiss-keyguard")
+            val visible = device.wait(Until.hasObject(By.text("App Blocked")), 6000)
             capture("app-replaced-timer-shield.png")
+            assertTrue("Replacement shield must remain after the old deadline and wake", visible)
             // A stopped WebView may be frozen after a minute. Inspect the shield
             // first, then bring the host forward before querying its JS bridge.
             scenario.onActivity { it.startActivity(Intent(it, AppBlockerBridgeTestActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)) }
