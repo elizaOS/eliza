@@ -8,10 +8,6 @@
  */
 import { FRAME_SAMPLER_INIT } from "../../../hooks/frame-budget.ts";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../../testing/layout-stability.ts";
-import { SWIPE_HINT_DISPLAY_MS } from "../FirstSessionSwipeHint.tsx";
-import { SWIPE_HINT_FADE_MS } from "../FirstSessionSwipeHint.tsx";
-import { SWIPE_HINT_SHOW_DELAY_MS } from "../FirstSessionSwipeHint.tsx";
-import { SWIPE_HINT_WIDGET_KEY } from "../FirstSessionSwipeHint.tsx";
 import { chromium } from "playwright";
 import { compileTailwindTheme } from "../../../testing/e2e-runner/index.ts";
 import { createAssertGate } from "../../../testing/e2e-runner/index.ts";
@@ -662,32 +658,14 @@ try {
     await mobile.goto(`${url}?homeData=quiet`);
     await assertQuietHome(mobile, "quiet account");
     await snap(mobile, "mobile-home-quiet");
-    // The preceding quiet-state capture must not consume the one-time lesson;
-    // isolate this certification from runner timing before loading its subject.
-    await mobile.evaluate(() => localStorage.removeItem("eliza:home-dismissed:v1"));
     await mobile.goto(`${url}?native&homeData=attention`);
     await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
     await mobile.waitForSelector('[data-testid="home-screen"]');
     await mobile.waitForTimeout(600);
-    const firstSessionSwipeHint = mobile.getByTestId("first-session-swipe-hint");
-    await firstSessionSwipeHint.waitFor({
-        state: "visible",
-        timeout: SWIPE_HINT_SHOW_DELAY_MS + 2000,
-    });
-    assert((await firstSessionSwipeHint.getByText("Swipe for apps").count()) === 1, "mobile coarse-pointer: first session renders the swipe lesson");
-    await snap(mobile, "mobile-first-session-swipe-hint");
-    await firstSessionSwipeHint.waitFor({
-        state: "hidden",
-        timeout: SWIPE_HINT_DISPLAY_MS + SWIPE_HINT_FADE_MS + 2000,
-    });
-    const persistedSwipeHintLife = await mobile.evaluate((widgetKey) => JSON.parse(localStorage.getItem("eliza:home-dismissed:v1") ?? "{}")?.[widgetKey], SWIPE_HINT_WIDGET_KEY);
-    assert(persistedSwipeHintLife?.seen === 1 &&
-        persistedSwipeHintLife?.dismissed === true, "mobile coarse-pointer: completed lesson persists its retirement");
-    await mobile.reload();
-    await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
     await waitForSurfacePageSettled(mobile, "home");
     await waitForHomeEnterSettled(mobile);
-    await mobile.waitForTimeout(SWIPE_HINT_SHOW_DELAY_MS + 1000);
+    assert((await mobile.getByTestId("first-session-swipe-hint").count()) === 0,
+        "home does not show the removed swipe onboarding overlay");
     // The current dashboard contract opens a populated notification inbox on
     // mount. Push it closed through the real gesture surface before certifying
     // the home widgets that intentionally stay inert behind an expanded shade.
@@ -726,7 +704,7 @@ try {
     // capture path, then require another stable frame before recording evidence.
     await mobile.screenshot();
     await waitForRenderedHomeSettled(mobile);
-    await snap(mobile, "mobile-after-swipe-hint-retired");
+    await snap(mobile, "mobile-home-without-swipe-hint");
     assert((await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
         (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
         (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
