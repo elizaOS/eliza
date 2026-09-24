@@ -3,12 +3,14 @@
  * and production query plans across real PGlite/Postgres and in-memory storage.
  */
 import {
+  buildDocumentSourceProjection,
   ChannelType,
   type DocumentListCursor,
   type DocumentListQueryParams,
   type Entity,
   type Memory,
   MemoryType,
+  projectDocumentParentContent,
   type Room,
   readDocumentMutationSnapshot,
   type UUID,
@@ -115,6 +117,30 @@ describe("document list query (real SQL parity)", () => {
         ...metadata,
       },
       ...memoryOverrides,
+    };
+  }
+
+  function canonicalRevision(original: Memory, text: string, revision: number) {
+    const documentMetadata = {
+      ...(original.metadata as Record<string, unknown>),
+      documentRevision: revision,
+    };
+    const projection = buildDocumentSourceProjection({
+      text,
+      documentId: original.id!,
+      agentId,
+      roomId: original.roomId!,
+      entityId: original.entityId!,
+      worldId: original.worldId,
+      documentMetadata: documentMetadata as never,
+    });
+    return {
+      replacement: {
+        ...original,
+        content: projectDocumentParentContent({ text, projection: projection.metadata }),
+        metadata: { ...documentMetadata, ...projection.metadata },
+      },
+      sourceSegments: projection.segments,
     };
   }
 
@@ -1030,11 +1056,7 @@ describe("document list query (real SQL parity)", () => {
       requesterRole: "OWNER" as const,
     };
     const snapshot = readDocumentMutationSnapshot(original)!;
-    const replacement = {
-      ...original,
-      content: { text: "new body" },
-      metadata: { ...original.metadata, documentRevision: 1 },
-    };
+    const { replacement, sourceSegments } = canonicalRevision(original, "new body", 1);
     const conflictingFragment = {
       ...oldFragment,
       id: collision.id,
@@ -1048,7 +1070,7 @@ describe("document list query (real SQL parity)", () => {
         documentId: original.id!,
         expected: snapshot,
         replacement,
-        fragments: [conflictingFragment],
+        fragments: [...sourceSegments, conflictingFragment],
       })
     ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
 
@@ -1088,11 +1110,7 @@ describe("document list query (real SQL parity)", () => {
       requesterRole: "OWNER" as const,
     };
     const snapshot = readDocumentMutationSnapshot(original)!;
-    const replacement = {
-      ...original,
-      content: { text: "new body" },
-      metadata: { ...original.metadata, documentRevision: 1 },
-    };
+    const { replacement, sourceSegments } = canonicalRevision(original, "new body", 1);
     const reusedFragment = {
       ...oldFragment,
       content: { text: "new fragment with reused id" },
@@ -1105,7 +1123,7 @@ describe("document list query (real SQL parity)", () => {
         documentId: original.id!,
         expected: snapshot,
         replacement,
-        fragments: [reusedFragment],
+        fragments: [...sourceSegments, reusedFragment],
       })
     ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
     await expect(adapter.getMemoryById(original.id!)).resolves.toMatchObject({
@@ -1144,16 +1162,14 @@ describe("document list query (real SQL parity)", () => {
     const snapshot = readDocumentMutationSnapshot(original)!;
     const revision = (label: string) => {
       const fragmentId = v4() as UUID;
+      const canonical = canonicalRevision(original, `${label} body`, 1);
       return {
         ...context,
         documentId: original.id!,
         expected: snapshot,
-        replacement: {
-          ...original,
-          content: { text: `${label} body` },
-          metadata: { ...original.metadata, documentRevision: 1 },
-        },
+        replacement: canonical.replacement,
         fragments: [
+          ...canonical.sourceSegments,
           {
             ...original,
             id: fragmentId,
@@ -1192,7 +1208,7 @@ describe("document list query (real SQL parity)", () => {
   });
 
   it("stores and searches complete oversized tokens without admitting partial-word candidates", async () => {
-    const token = "界".repeat(9000) + "finish";
+    const token = `${"界".repeat(9000)}finish`;
     const queryToken = "文".repeat(256);
     const source = document(801, { content: { text: `Before ${token} ${queryToken} after` } });
     const different = document(802, { content: { text: `Before ${token}extra after` } });
@@ -1233,6 +1249,75 @@ describe("document list query (real SQL parity)", () => {
 
     expect(definitions.get("idx_memories_document_search")).toContain("USING gin");
     expect(definitions.get("idx_memories_document_search")).toContain("regexp_split_to_array");
+  });
+
+  it("pages canonical UTF-8 segments without parent reconstruction and rejects legacy parents", async () => {
+    const source = `${"alpha\n".repeat(12_000)}LATE_SEGMENT_CANARY\n${"omega\n".repeat(12_000)}`;
+    const parentBase = document(40, {
+      content: { text: source },
+      metadata: {
+        documentRevision: 0,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      },
+    });
+    const canonical = canonicalRevision(parentBase, source, 0);
+    await adapter.createMemories([
+      { memory: canonical.replacement, tableName: "documents" },
+      ...canonical.sourceSegments.map((memory) => ({
+        memory,
+        tableName: "document_fragments",
+      })),
+    ]);
+    const requester = {
+      agentId,
+      requesterEntityId: DIRECT_GRANTEE_ID,
+      requesterRoomIds: [] as UUID[],
+      requesterRole: "USER" as const,
+      documentId: parentBase.id!,
+    };
+    const pages: string[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = await adapter.readDocumentRange({
+        ...requester,
+        unit: "byte",
+        offset,
+        limit: 32 * 1024,
+      });
+      expect(page).not.toBeNull();
+      expect(page!.sourceQueryCount).toBeLessThanOrEqual(2);
+      expect(page!.examinedSourceSegments).toBeLessThanOrEqual(5);
+      pages.push(page!.text);
+      if (page!.end === page!.total) break;
+      expect(page!.end).toBeGreaterThan(offset);
+      offset = page!.end;
+    }
+    expect(pages.join("")).toBe(source);
+    expect(
+      await adapter.queryDocuments({
+        ...requester,
+        query: "LATE_SEGMENT_CANARY",
+        limit: 10,
+        offset: 0,
+      })
+    ).toMatchObject({ totalMatched: 1 });
+
+    const legacy = document(41, {
+      metadata: {
+        documentRevision: 0,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      },
+    });
+    await adapter.createMemories([{ memory: legacy, tableName: "documents" }]);
+    await expect(
+      adapter.readDocumentRange({
+        ...requester,
+        documentId: legacy.id!,
+        unit: "line",
+        offset: 0,
+        limit: 1,
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_REINDEX_REQUIRED" });
   });
 
   postgresIt(

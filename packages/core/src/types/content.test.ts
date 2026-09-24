@@ -28,6 +28,24 @@ describe("progressive content contract", () => {
 			}),
 		).toBe(false);
 	});
+	it("validates explicit restart resumability and expiry", () => {
+		expect(
+			buildContentReference({
+				kind: "tool-result",
+				ref: "shell:opaque:stdout",
+				resumability: "restart-safe",
+				expiresAt: "2026-08-25T12:00:00.000Z",
+			}),
+		).toMatchObject({ resumability: "restart-safe" });
+		expect(() =>
+			buildContentReference({
+				kind: "file",
+				ref: "file:opaque",
+				resumability: "non-resumable",
+				expiresAt: "2026-08-25T12:00:00.000Z",
+			}),
+		).toThrow(/expiresAt requires resumability=restart-safe/u);
+	});
 	it("builds a complete empty view", () => {
 		const view = buildReadView({
 			reference: buildContentReference({ kind: "document", ref: "doc_123" }),

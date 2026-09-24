@@ -22,6 +22,9 @@ vi.mock("@elizaos/core", () => ({
       });
     }
   },
+  createPreparedModelRequestGuard: vi.fn(() => ({
+    assertBeforeAttempt: vi.fn(),
+  })),
   ElizaError: class ElizaError extends Error {
     code?: string;
     context?: Record<string, unknown>;

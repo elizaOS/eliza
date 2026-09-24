@@ -1,9 +1,3 @@
-/**
- * Exercises document revision publication, failed replacement recovery and
- * reader isolation with a real runtime and PGlite adapter. Embedding gates and
- * injected adapter failures control failure timing; durable rows are read back.
- */
-
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
@@ -13,6 +7,12 @@ import type {
 } from "../../../../../packages/core/src/types/index.ts";
 import { ModelType } from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
+
+/**
+ * Exercises document revision publication, failed replacement recovery and
+ * reader isolation with a real runtime and PGlite adapter. Embedding gates and
+ * injected adapter failures control failure timing; durable rows are read back.
+ */
 
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 

@@ -1221,3 +1221,21 @@ describe("prompt integrity policy", () => {
 		}
 	});
 });
+
+describe("prepared request integrity", () => {
+	it("allows prepared-request rejection only from exact counts and explicit limits", () => {
+		const source = readFileSync(
+			resolve(
+				repositoryRoot,
+				"packages/core/src/runtime/prepared-model-request.ts",
+			),
+			"utf8",
+		);
+		expect(source).toMatch(
+			/args\.countInputTokensIsExact === true &&[\s\S]{0,180}args\.contextWindowTokens !== undefined &&[\s\S]{0,120}args\.outputReserveTokens !== undefined/,
+		);
+		expect(source).toMatch(
+			/rejectionAuthority === "exact-provider-tokenizer-with-explicit-limits" &&[\s\S]{0,100}counted\.count >= dispatchThresholdTokens/,
+		);
+	});
+});

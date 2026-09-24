@@ -1,3 +1,8 @@
+import { randomUUID } from "node:crypto";
+import type { Memory, UUID } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../runtime";
+
 /**
  * Drives the real {@link InMemoryDatabaseAdapter} searchMemories / embedding-
  * reclaim path with no stand-in for the adapter. Pins the plugin-sql contract:
@@ -5,10 +10,6 @@
  * skipped rather than scored, and clearEmbeddingsOutsideActiveDimension
  * actually strips stale-width embeddings so a later search cannot rank them.
  */
-import { randomUUID } from "node:crypto";
-import type { Memory, UUID } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../runtime";
 
 const DIM = 4;
 
@@ -44,6 +45,29 @@ describe("InMemoryDatabaseAdapter.searchMemories", () => {
     await adapter.createMemories(memories.map((memory) => ({ memory, tableName })));
     return adapter;
   }
+
+  it("returns every ranked match without an explicit limit and preserves offset pagination", async () => {
+    const memories: Memory[] = Array.from({ length: 15 }, (_, index) => ({
+      entityId: entityA,
+      roomId: roomA,
+      agentId,
+      content: { text: `complete match ${index}` },
+      embedding: offAxis(index / 100),
+    }));
+    const adapter = await seed(memories);
+    const query = { tableName: "memories", embedding: onAxis(), roomId: roomA };
+    expect((await adapter.searchMemories(query)).map((row) => row.content.text)).toEqual(
+      memories.map((row) => row.content.text)
+    );
+    expect(
+      (await adapter.searchMemories({ ...query, offset: 12 })).map((row) => row.content.text)
+    ).toEqual(memories.slice(12).map((row) => row.content.text));
+    expect(
+      (await adapter.searchMemories({ ...query, count: 2, offset: 12 })).map(
+        (row) => row.content.text
+      )
+    ).toEqual(memories.slice(12, 14).map((row) => row.content.text));
+  });
 
   it("returns the in-room top-K even when a larger off-room corpus holds closer vectors", async () => {
     const crowd: Memory[] = Array.from({ length: 20 }, (_, i) => ({

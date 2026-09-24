@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { createPreparedModelRequestGuard, logger } from "@elizaos/core";
 import {
   __setSpawnForTests as __setClaudeSpawn,
   type ClaudeGenerateParams,
@@ -203,6 +203,13 @@ export class CodexCli {
         "--json",
         "-",
       ];
+
+      const preparedRequest = createPreparedModelRequestGuard({
+        provider: "codex-cli-exec",
+        model: this.model,
+        projectRequest: () => ({ argv, prompt }),
+      });
+      preparedRequest.assertBeforeAttempt();
 
       const result: SpawnResult = await spawnImpl(argv, {
         cwd,

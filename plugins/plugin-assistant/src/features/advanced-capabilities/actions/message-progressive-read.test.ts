@@ -1,9 +1,3 @@
-/**
- * Exercises MESSAGE's real stored-memory read branch with deterministic runtime
- * doubles. The tests pin byte-exact continuation, live authorization, stale
- * revision rejection, Unicode boundaries, and the single-carrier prompt shape.
- */
-
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -14,6 +8,12 @@ import type {
   UUID,
 } from "../../../../../../packages/core/src/types/index.ts";
 import { messageAction } from "./message.ts";
+
+/**
+ * Exercises MESSAGE's real stored-memory read branch with deterministic runtime
+ * doubles. The tests pin byte-exact continuation, live authorization, stale
+ * revision rejection, Unicode boundaries, and the single-carrier prompt shape.
+ */
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const REQUESTER_ID = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -86,6 +86,23 @@ function view(result: ActionResult): ReadView {
 }
 
 describe("MESSAGE stored-memory progressive read", () => {
+  it.each([null, "invalid", "", NaN, Infinity, -1, 1.5])(
+    "rejects malformed read boundaries %s",
+    async (value) => {
+      const runtime = runtimeFor(async () =>
+        storedMemory("PRIVATE COMPLETE BODY"),
+      );
+      for (const field of ["offset", "limit"]) {
+        const result = await read(runtime, { [field]: value });
+        expect(result.success).toBe(false);
+        expect(result.text).not.toContain("PRIVATE COMPLETE BODY");
+        expect((result.data as { error: string }).error).toBe(
+          "MESSAGE_MEMORY_INVALID_RANGE",
+        );
+      }
+    },
+  );
+
   it("returns the complete stored message when pagination was not requested", async () => {
     const source = `${"a".repeat(1_000_000)}COMPLETE-END`;
     const result = await read(
