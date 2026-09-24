@@ -8,7 +8,8 @@ scheduling/reminder domain for timed delivery.
 
 Import all Todos APIs from `@elizaos/plugin-todos`. The root exports the
 runtime plugin, injected-store `createTodosEdgePlugin` factory, SQL store,
-mutation contracts, and dashboard. Implementation subpaths are private.
+and mutation contracts. The dashboard loads from its separate view bundle.
+Implementation subpaths are private.
 
 ## Development
 

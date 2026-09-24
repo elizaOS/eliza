@@ -1,19 +1,6 @@
-/**
- * Public entry for `@elizaos/plugin-todos`: assembles the plugin (the `TODO`
- * umbrella action, the `CURRENT_TODOS` provider, `TodosService`, the todos
- * schema, and the `TodosView` dashboard view) and re-exports its types, service,
- * schema, and views. Hard-depends on `@elizaos/plugin-sql`.
- */
+/** Runtime, storage, and mutation APIs. The dashboard loads from its view bundle. */
 
 export { todoAction } from "./actions/todo.js";
-export {
-  type LaneId,
-  type TodoCard,
-  type TodosSnapshot,
-  TodosSpatialView,
-  type TodosViewState,
-} from "./components/todos/TodosSpatialView.js";
-export { TodosView } from "./components/todos/TodosView.js";
 export {
   type TodoInsert,
   type TodoMutationInsert,
