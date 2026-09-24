@@ -1,5 +1,5 @@
 /** Exercises exact contact selection and uncapped reads through MESSAGE with a deterministic relationship query and storage boundary. */
-import { type Memory, type UUID, stringToUuid } from "@elizaos/core";
+import { type Memory, stringToUuid, type UUID } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createNativeRelationshipsGraphService } from "../../../services/relationships-graph-builder.ts";

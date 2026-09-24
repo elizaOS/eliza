@@ -7,9 +7,9 @@
  */
 
 import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../../../../../../packages/core/src/actions/promote-subactions.ts";
 import { validateToolArgs } from "../../../../../../packages/core/src/actions/validate-tool-args.ts";
-import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,
   IAgentRuntime,
