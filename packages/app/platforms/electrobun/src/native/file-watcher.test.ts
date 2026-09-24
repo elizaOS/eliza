@@ -20,11 +20,19 @@ it("delivers source edits beneath hidden ancestors while ignoring generated desc
 			path.join(root, "node_modules", "generated.js"),
 			"ignored",
 		);
-		fs.writeFileSync(source, "changed");
+		let revision = 0;
 		await expect
-			.poll(() => events.some((event) => event.filePath === source), {
-				timeout: 3000,
-			})
+			.poll(
+				() => {
+					// Recursive OS watchers can finish subscribing after startWatch returns.
+					// Keep editing until a real event arrives instead of racing that setup.
+					fs.writeFileSync(source, `changed ${++revision}`);
+					return events.some((event) => event.filePath === source);
+				},
+				{
+					timeout: 3000,
+				},
+			)
 			.toBe(true);
 		expect(
 			events.some((event) => event.relativePath.includes("node_modules")),
