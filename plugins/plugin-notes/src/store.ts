@@ -15,6 +15,7 @@ import {
   logger,
   resolveStateDir,
 } from "@elizaos/core";
+import { publishNotesDocumentIfAbsent } from "./publication.js";
 import {
   NOTES_SCHEMA_VERSION,
   type NotesDocument,
@@ -340,17 +341,7 @@ export class NotesStore {
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await this.writeTemporaryDocument(temporaryPath, document);
-      try {
-        // A hard link installs the fully fsynced inode in one step and fails
-        // with EEXIST instead of replacing a scoped state created by a rival.
-        await fs.link(temporaryPath, this.filePath);
-        return true;
-      } catch (error) {
-        // error-policy:J3 EEXIST is an explicit concurrent-writer result; other
-        // link failures must abort initialization.
-        if (isNodeErrorWithCode(error, "EEXIST")) return false;
-        throw error;
-      }
+      return await publishNotesDocumentIfAbsent(temporaryPath, this.filePath);
     } catch (error) {
       // error-policy:J2 preserve the failed filesystem operation as the cause.
       throw this.writeFailure(error);

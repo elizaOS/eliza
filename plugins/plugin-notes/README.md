@@ -85,3 +85,18 @@ replacement tokens return `NOTES_EDIT_REVISION_REQUIRED`; this deliberately
 rejects older unguarded replacement calls. Literal `textEdit` retains its atomic
 unique-current-substring contract and can omit the token; supplied tokens still
 apply. Storage remains the existing per-agent JSON file and in-process barrier.
+
+## Atomic initialization
+
+Notes keeps one flat `state.json` document. The store writes and fsyncs a complete
+private candidate before publication. Ordinary hosts install it with a hard link.
+The Android launcher explicitly supplies `ELIZA_ATOMIC_FILE_LIBRARY` for its
+packaged no-replace primitive, which returns installed, existing destination, or
+an error. Existing state is read and validated; malformed state cannot become an
+empty healthy store. A failed advertised capability never falls back to ordinary
+rename or a second storage format. The native library must be the canonical
+`libeliza_atomic_file.so` sibling of the packaged Bun executable/loader.
+
+This guarantees nonreplacement during initialization. Later writes retain the
+existing in-process barrier and atomic replacement contract; it does not add
+cross-process update serialization or claim power-loss durability.
