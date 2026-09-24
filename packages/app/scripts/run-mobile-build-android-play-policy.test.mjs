@@ -413,10 +413,10 @@ describe("Android Play manifest policy", () => {
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
+        "@capacitor-community/sqlite",
         "@capacitor/background-runner",
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
-        "@elizaos/capacitor-screencapture",
         "@elizaos/capacitor-talkmode",
         "llama-cpp-capacitor",
       ]),

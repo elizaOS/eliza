@@ -287,6 +287,10 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/agent\/api\/loopback-trust$/,
+        replacement: path.join(agentSourceRoot, "api", "loopback-trust.ts"),
+      },
+      {
         find: /^@elizaos\/agent\/api\/server-helpers$/,
         replacement: path.join(agentSourceRoot, "api", "server-helpers.ts"),
       },
@@ -488,7 +492,7 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
       {
@@ -835,7 +839,7 @@ export default defineConfig({
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
     ],
