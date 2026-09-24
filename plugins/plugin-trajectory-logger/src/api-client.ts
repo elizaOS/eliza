@@ -28,6 +28,7 @@ export interface UILlmCall {
   stepType: string;
   timestamp?: number;
   latencyMs?: number;
+  tokenUsageEstimated?: boolean;
   promptTokens?: number;
   completionTokens?: number;
 }

@@ -11,6 +11,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildProviderAttributionsFromState,
+  composeToolDiagnosticRedactor,
   flattenTrajectoryMessages,
   ModelType,
 } from "@elizaos/core";
@@ -18,36 +19,46 @@ import type { FactsAndRelationshipsRunResult } from "../../runtime/facts-and-rel
 import { getStage1FinishReason } from "./stage1-completion.js";
 import { parseToolArguments } from "./tool-arguments.js";
 
-export async function recordMessageHandlerStage(args: {
-  recorder: TrajectoryRecorder;
-  trajectoryId: string;
-  stageId?: string;
-  messages?: ChatMessage[];
-  tools?: ToolDefinition[];
-  toolChoice?: unknown;
-  providerOptions?: Record<string, unknown>;
-  raw: string | GenerateTextResult;
-  parsed?: MessageHandlerResult;
-  startedAt: number;
-  endedAt: number;
-  segmentHashes?: string[];
-  prefixHash?: string;
-  /**
-   * The provider that actually served the Stage-1 call (resolved from the
-   * runtime after the call completed). Threaded so the recorded stage names
-   * the real provider instead of the fabricated `"default"` literal (#13623).
-   */
-  provider?: string;
-  state?: State;
-  runtime: IAgentRuntime;
-}): Promise<void> {
+export async function recordMessageHandlerStage(
+  args: {
+    recorder: TrajectoryRecorder;
+    trajectoryId: string;
+    stageId?: string;
+    messages?: ChatMessage[];
+    tools?: ToolDefinition[];
+    toolChoice?: unknown;
+    providerOptions?: Record<string, unknown>;
+    parsed?: MessageHandlerResult;
+    startedAt: number;
+    endedAt: number;
+    segmentHashes?: string[];
+    prefixHash?: string;
+    /**
+     * The provider that actually served the Stage-1 call (resolved from the
+     * runtime after the call completed). Threaded so the recorded stage names
+     * the real provider instead of the fabricated `"default"` literal (#13623).
+     */
+    provider?: string;
+    state?: State;
+    runtime: IAgentRuntime;
+  } & ({ raw: string | GenerateTextResult } | { error: unknown }),
+): Promise<void> {
   try {
-    const responseText = getMessageHandlerResponseText(args.raw, args.parsed);
+    const failed = "error" in args;
+    const raw = "raw" in args ? args.raw : undefined;
+    const responseText = failed
+      ? `[messageHandler stage failed] ${composeToolDiagnosticRedactor(
+          args.runtime,
+        )(
+          args.error instanceof Error ? args.error.message : String(args.error),
+        )}`
+      : getMessageHandlerResponseText(args.raw, args.parsed);
     const usage =
-      typeof args.raw === "string"
+      raw === undefined || typeof raw === "string"
         ? undefined
-        : extractMessageHandlerUsage(args.raw);
-    const modelName = extractMessageHandlerModelName(args.raw);
+        : extractMessageHandlerUsage(raw);
+    const modelName =
+      raw === undefined ? undefined : extractMessageHandlerModelName(raw);
     // Flatten `messages` only to locate provider spans; the flattened form is
     // not persisted — `messages` is the canonical record and spans index into
     // `flattenTrajectoryMessages(messages)` reconstructed at read time.
@@ -64,15 +75,20 @@ export async function recordMessageHandlerStage(args: {
       model: {
         modelType: String(ModelType.RESPONSE_HANDLER),
         modelName,
-        provider: resolveRecordedStageProvider(args.raw, args.provider),
+        provider: failed
+          ? undefined
+          : resolveRecordedStageProvider(args.raw, args.provider),
         messages: args.messages,
         tools: args.tools,
         toolChoice: args.toolChoice,
         providerOptions: args.providerOptions,
         response: responseText,
-        toolCalls: extractMessageHandlerToolCalls(args.raw),
+        toolCalls:
+          raw === undefined ? undefined : extractMessageHandlerToolCalls(raw),
         usage,
-        finishReason: getStage1FinishReason(args.raw) || undefined,
+        finishReason: failed
+          ? "error"
+          : getStage1FinishReason(args.raw) || undefined,
         providerOrder: providerAttribution.providerOrder,
         providerAttributions: providerAttribution.providerAttributions,
       },

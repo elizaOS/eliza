@@ -627,40 +627,57 @@ export async function generateStage1Decision(
   };
   let recordedCallCount = 0;
   const generateRecordedStage1 = async (params: typeof stage1ModelParams) => {
+    // A cancelled turn that never enters useModel has no attempted model stage.
+    params.signal.throwIfAborted();
     const startedAt = Date.now();
-    const raw = (await args.runtime.useModel(
-      ModelType.RESPONSE_HANDLER,
-      params,
-    )) as string | GenerateTextResult;
-    // Record every completed provider call before parsing, discovery validation,
-    // or field effects can reject it. Keep the exact request for each retry.
-    if (recorder && trajectoryId) {
-      recordedCallCount += 1;
-      registerStageTask(
-        recordMessageHandlerStage({
-          recorder,
-          trajectoryId,
-          stageId: `stage-msghandler-${messageHandlerStartedAt}-${recordedCallCount}`,
-          messages: params.messages,
-          tools: params.tools,
-          toolChoice: params.toolChoice,
-          providerOptions: params.providerOptions,
-          raw,
-          startedAt,
-          endedAt: Date.now(),
-          segmentHashes: computePrefixHashes(params.promptSegments).map(
-            (entry) => entry.segmentHash,
-          ),
-          prefixHash: stage1PrefixHash,
-          provider: args.runtime.getLastResolvedModelProvider?.(
-            ModelType.RESPONSE_HANDLER,
-          ),
-          state: args.state,
-          runtime: args.runtime,
-        }),
-      );
+    let outcome:
+      | { raw: string | GenerateTextResult }
+      | { error: unknown }
+      | undefined;
+    try {
+      const raw = (await args.runtime.useModel(
+        ModelType.RESPONSE_HANDLER,
+        params,
+      )) as string | GenerateTextResult;
+      outcome = { raw };
+      return raw;
+    } catch (error) {
+      outcome = { error };
+      throw error;
+    } finally {
+      // This semantic stage records an attempted runtime request, not proof of
+      // provider dispatch. Only completed results supply provider identity/usage.
+      // Keep every retry before parsing, discovery validation or field effects.
+      if (recorder && trajectoryId && outcome) {
+        recordedCallCount += 1;
+        registerStageTask(
+          recordMessageHandlerStage({
+            recorder,
+            trajectoryId,
+            stageId: `stage-msghandler-${messageHandlerStartedAt}-${recordedCallCount}`,
+            messages: params.messages,
+            tools: params.tools,
+            toolChoice: params.toolChoice,
+            providerOptions: params.providerOptions,
+            ...outcome,
+            startedAt,
+            endedAt: Date.now(),
+            segmentHashes: computePrefixHashes(params.promptSegments).map(
+              (entry) => entry.segmentHash,
+            ),
+            prefixHash: stage1PrefixHash,
+            provider:
+              "raw" in outcome
+                ? args.runtime.getLastResolvedModelProvider?.(
+                    ModelType.RESPONSE_HANDLER,
+                  )
+                : undefined,
+            state: args.state,
+            runtime: args.runtime,
+          }),
+        );
+      }
     }
-    return raw;
   };
   // Provider-shape retry: cloud reasoning models reached over
   // OpenAI-compatible providers can intermittently return either no

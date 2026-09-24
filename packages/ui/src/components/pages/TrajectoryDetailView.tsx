@@ -56,6 +56,7 @@ import {
   TrajectoryRecordedSteps,
   trajectoryStageLabel,
 } from "../composites/trajectories/trajectory-recorded-steps";
+import { buildTrajectoryReaderData } from "../developer/trajectory-reader-data";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import {
   getToolCallEventDisplayState,
@@ -270,9 +271,9 @@ export function buildTrajectoryCallText(
   return {
     systemPromptText: normalizeTrajectoryCallText(call.systemPrompt),
     inputText: normalizeTrajectoryCallText(
+      call.messages,
       call.userPrompt,
       call.prompt,
-      call.messages,
     ),
     outputText: normalizeTrajectoryCallText(call.response, call.output),
   };
@@ -842,6 +843,7 @@ export function TrajectoryDetailView({
               <option key={call.id} value={call.id}>
                 {index + 1} of {llmCalls.length} ·{" "}
                 {compactCallLabel(call, detail)} · {call.model} ·{" "}
+                {call.tokenUsageEstimated ? "≈ " : ""}
                 {call.promptTokens == null
                   ? "Unknown"
                   : call.promptTokens.toLocaleString()}{" "}
@@ -851,13 +853,14 @@ export function TrajectoryDetailView({
           </NativeSelect>
           <p className="text-xs text-muted">
             {selectedCall.provider || "Provider not recorded"} ·{" "}
+            {selectedCall.tokenUsageEstimated ? "≈ " : ""}
             {selectedCall.promptTokens == null
               ? "Unknown input"
               : `${selectedCall.promptTokens.toLocaleString()} in`}{" "}
             /{" "}
             {selectedCall.completionTokens == null
               ? "unknown output"
-              : `${selectedCall.completionTokens.toLocaleString()} out`}{" "}
+              : `${selectedCall.tokenUsageEstimated ? "≈ " : ""}${selectedCall.completionTokens.toLocaleString()} out`}{" "}
             · {formatTrajectoryDuration(selectedCall.latencyMs)}
           </p>
         </div>
@@ -916,16 +919,19 @@ export function TrajectoryDetailView({
                 })}
                 latencyValue={formatTrajectoryDuration(call.latencyMs)}
                 tokensLabel={t("common.tokens")}
-                totalTokensValue={formatTrajectoryTokenCount(
+                totalTokensValue={`${call.tokenUsageEstimated ? "≈ " : ""}${formatTrajectoryTokenCount(
                   (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
                   { emptyLabel: "—" },
-                )}
-                tokenBreakdownMeta={`${formatTrajectoryTokenCount(
+                )}`}
+                tokenBreakdownMeta={`${call.tokenUsageEstimated ? "≈ " : ""}${formatTrajectoryTokenCount(
                   call.promptTokens ?? 0,
                   { emptyLabel: "—" },
-                )}↑ • ${formatTrajectoryTokenCount(call.completionTokens ?? 0, {
-                  emptyLabel: "—",
-                })} ↓`}
+                )}↑ • ${call.tokenUsageEstimated ? "≈ " : ""}${formatTrajectoryTokenCount(
+                  call.completionTokens ?? 0,
+                  {
+                    emptyLabel: "—",
+                  },
+                )} ↓`}
                 temperatureLabel={t("trajectorydetailview.Temp")}
                 temperatureValue={call.temperature}
                 maxLabel={t("trajectorydetailview.Max")}
@@ -944,7 +950,11 @@ export function TrajectoryDetailView({
                 systemExpandLabel={t("common.expand", {
                   defaultValue: "Expand",
                 })}
-                inputLabel={t("trajectorydetailview.InputUser")}
+                inputLabel={
+                  hasRenderableContent(call.messages)
+                    ? "Recorded messages"
+                    : "Recorded flattened prompt"
+                }
                 outputLabel={t("trajectorydetailview.OutputResponse")}
                 inputLinesLabel={`${countTrajectoryTextLines(
                   inputText,
@@ -962,7 +972,40 @@ export function TrajectoryDetailView({
                 }}
               />
             );
-            return card;
+            return (
+              <div key={call.id} className="space-y-2">
+                <p className="text-xs text-muted">
+                  {hasRenderableContent(call.messages)
+                    ? "Input shows recorded messages. System instructions are shown separately."
+                    : "Recorded messages are unavailable or empty; Input shows a flattened prompt alternative that may include system instructions."}
+                  {call.tokenUsageEstimated ? " Token counts estimated." : ""}
+                </p>
+                {card}
+                {buildTrajectoryReaderData(call)
+                  .input.filter(
+                    (section) =>
+                      section.id === "userPrompt" || section.id === "prompt",
+                  )
+                  .map((section) => (
+                    <details key={section.id}>
+                      <summary>{section.label}</summary>
+                      <p className="text-xs text-muted">
+                        {section.representationNote}
+                      </p>
+                      <TrajectoryCodeBlock
+                        compact
+                        label={section.label}
+                        content={section.text}
+                        linesLabel=""
+                        copyLabel="Copy"
+                        collapseLabel="Collapse"
+                        expandLabel="Expand"
+                        onCopy={(content) => void copyToClipboard(content)}
+                      />
+                    </details>
+                  ))}
+              </div>
+            );
           })
         )}
       </div>
@@ -1028,9 +1071,12 @@ export function TrajectoryDetailView({
                 value:
                   tokenCount === undefined
                     ? "—"
-                    : formatTrajectoryTokenCount(tokenCount, {
-                        emptyLabel: "0",
-                      }),
+                    : `${llmCalls.some((call) => call.tokenUsageEstimated) ? "≈ " : ""}${formatTrajectoryTokenCount(
+                        tokenCount,
+                        {
+                          emptyLabel: "0",
+                        },
+                      )}`,
               },
               {
                 label: "Provider reads",
