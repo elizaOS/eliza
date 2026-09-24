@@ -197,7 +197,7 @@ def _imagegen_command(accelerator: str, eval_python: str) -> str:
     return _guarded(
         eval_python,
         f"ELIZA_IMAGEGEN_ACCELERATOR={accelerator} "
-        "node plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json "
+        "node packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.mjs --json "
         f"| python3 -c \"import json,sys; p=json.load(sys.stdin); "
         f"assert p.get('available') is True, p; "
         f"assert p.get('requiredAccelerator') == '{accelerator}', p; "

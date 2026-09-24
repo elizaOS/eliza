@@ -6,10 +6,7 @@
  * `registerContactsApp` is ever invoked.
  */
 
-import {
-  type OverlayApp,
-  registerOverlayApp,
-} from "@elizaos/shared/apps/index";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/shared";
 
 export const CONTACTS_APP_NAME = "@elizaos/plugin-native-contacts";
 

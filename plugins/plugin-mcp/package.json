@@ -3,8 +3,8 @@
   "version": "2.0.3-beta.7",
   "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
   "type": "module",
-  "main": "dist/node/index.js",
-  "module": "dist/node/index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "sideEffects": false,
   "repository": {
@@ -14,27 +14,14 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": {
         "types": "./src/index.ts",
         "import": "./src/index.ts",
         "default": "./src/index.ts"
       },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.js",
-        "require": "./dist/cjs/index.cjs",
-        "default": "./dist/node/index.js"
-      },
-      "import": "./dist/node/index.js",
-      "require": "./dist/cjs/index.cjs",
-      "default": "./dist/node/index.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -98,7 +85,7 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Node.js build available via exports.node"
+      "node": "Node.js ESM package root"
     }
   }
 }

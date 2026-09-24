@@ -26,8 +26,7 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
-import { composePrompt } from "@elizaos/shared/text/template-rendering";
+import { asRecord, composePrompt } from "@elizaos/shared";
 import { observationExtractionTemplate } from "./observation-prompt.js";
 
 export { asRecord };

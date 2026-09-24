@@ -105,9 +105,9 @@ const requiredWorkflowSnippets = [
   "name: Ensure avatar assets",
   "node packages/app/scripts/ensure-avatars.mjs",
   "Install quiet macOS packaging wrappers",
-  "packages/app/platforms/electrobun/scripts/hdiutil-wrapper.sh",
-  "packages/app/platforms/electrobun/scripts/xcrun-wrapper.sh",
-  "packages/app/platforms/electrobun/scripts/zip-wrapper.sh",
+  "packages/app/scripts/electrobun/hdiutil-wrapper.sh",
+  "packages/app/scripts/electrobun/xcrun-wrapper.sh",
+  "packages/app/scripts/electrobun/zip-wrapper.sh",
   "ELECTROBUN_REAL_HDIUTIL: /usr/bin/hdiutil",
   "ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun",
   "ELECTROBUN_REAL_ZIP: /usr/bin/zip",
@@ -117,7 +117,7 @@ const requiredWorkflowSnippets = [
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
   "Stage standard macOS release app",
-  "packages/app/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
+  "packages/app/scripts/electrobun/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",
   "Smoke test packaged macOS app",
   "SMOKE_DIAGNOSTICS_DIR:",
@@ -260,7 +260,7 @@ export function containsContiguousBlock(
  *
  * Every line here is individually ambiguous or individually meaningless; the
  * contract lives in their arrangement. Keep this in sync with
- * `platforms/electrobun/scripts/stage-macos-release-artifacts.sh`.
+ * `scripts/electrobun/stage-macos-release-artifacts.sh`.
  */
 export const requiredMacStaplerFailureBlock = [
   'if ! retry_command "$STAPLER_ATTEMPTS" "$STAPLER_DELAY_SECONDS" xcrun stapler staple "$TEMP_DMG_PATH"; then',
@@ -352,8 +352,8 @@ const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
   "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
 };
 const requiredElectrobunConfigSnippets = [
-  'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
-  'postWrap: "scripts/postwrap-diagnostics.ts"',
+  'postBuild: "../../scripts/electrobun/postwrap-sign-runtime-macos.ts"',
+  'postWrap: "../../scripts/electrobun/postwrap-diagnostics.ts"',
   "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
   "copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`",
   "copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`",

@@ -13,7 +13,7 @@ import type {
   TranscriptSegment,
   TranscriptSource,
   TranscriptSummary,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 
 /** Body the recording pipeline POSTs to create a transcript record. The

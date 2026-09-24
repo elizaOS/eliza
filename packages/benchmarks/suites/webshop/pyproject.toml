@@ -73,6 +73,7 @@ webshop-bench = "elizaos_webshop.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["elizaos_webshop*"]
+namespaces = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

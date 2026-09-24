@@ -3,7 +3,7 @@
  * the child runtime's environment and invalidating port-derived CORS caches.
  */
 
-import { syncResolvedApiPort } from "@elizaos/shared/runtime-env";
+import { syncResolvedApiPort } from "@elizaos/shared";
 import { advertisePort } from "../../../scripts/e2e-ports.mjs";
 import { invalidateCorsAllowedPorts } from "../../src/api/server-cors.ts";
 

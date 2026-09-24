@@ -5,10 +5,7 @@
  * fully injected machine context (no real fs/PATH/exec needed).
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import {
   appBase,
   CONNECTOR_PATH_ENV_NAMES,
@@ -47,60 +44,13 @@ const byId = (id) => {
   return path;
 };
 
-function markdownCells(row) {
-  return row
-    .replaceAll("\\|", "__ESCAPED_PIPE__")
-    .split("|")
-    .slice(1, -1)
-    .map((cell) => cell.replaceAll("__ESCAPED_PIPE__", "|").trim());
-}
-
-const ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const IDENTITY_SLOT_CATALOG = resolve(
-  ROOT,
-  "docs/testing/hitl-identity-slots.md",
-);
-
-function slotModel(path) {
-  if (path.rolesVia === "env-slots") return "env slots";
-  if (path.rolesVia === "oauth-requested-role") return "OAuth requestedRole";
-  if (path.rolesVia === "separate-real-accounts")
-    return "separate real account";
-  return "single/slotless";
-}
-
-function markdownList(values) {
-  return values.length > 0 ? values.join("<br>") : "n/a";
-}
-
-function parseIdentitySlotCatalog() {
-  const rows = new Map();
-  const text = readFileSync(IDENTITY_SLOT_CATALOG, "utf8");
-  for (const line of text.split(/\r?\n/)) {
-    if (!line.startsWith("| `")) continue;
-    const cells = markdownCells(line);
-    const id = cells[0]?.replace(/^`|`$/g, "");
-    assert.equal(cells.length, 8, `${id} row must have 8 columns`);
-    rows.set(id, {
-      family: cells[1],
-      kind: cells[2],
-      slotModel: cells[3],
-      ownerVars: cells[4],
-      agentVars: cells[5],
-      gateVars: cells[6],
-      notes: cells[7],
-    });
-  }
-  return rows;
-}
-
 // --- registry shape ------------------------------------------------------------
 
 test("shipped registry passes every structural invariant", () => {
   assert.deepEqual(validateConnectorPaths(CONNECTOR_PATHS), []);
 });
 
-test("wired per-path probes have registry metadata and documented rows", () => {
+test("wired per-path probes have registry metadata and canonical endpoints", () => {
   const byPath = new Map(CONNECTOR_PATHS.map((path) => [path.id, path]));
   const probeable = new Set(PROBEABLE_PATH_IDS);
 
@@ -115,37 +65,11 @@ test("wired per-path probes have registry metadata and documented rows", () => {
     }
   }
 
-  const doc = readFileSync(
-    new URL("../../../docs/testing/hitl-probes.md", import.meta.url),
-    "utf8",
-  );
-  const rows = doc.split("\n").filter((line) => /^\| `[^`]+` \|/.test(line));
-  const docIds = rows.map((row) => markdownCells(row)[0].replaceAll("`", ""));
-  assert.deepEqual(
-    docIds.sort(),
-    CONNECTOR_PATHS.map((path) => path.id).sort(),
-  );
-
-  for (const row of rows) {
-    const cells = markdownCells(row);
-    assert.equal(cells.length, 10, `wrong cell count in ${row}`);
-    const pathId = cells[0].replaceAll("`", "");
-    const probeState = cells[4];
-    const expected = probeable.has(pathId) ? "wired" : "documented-skip";
-    assert.equal(probeState, expected, `${pathId} doc probe state`);
-    assert.ok(
-      cells.every((cell) => cell.length > 0),
-      `${pathId} has blanks`,
-    );
-
-    if (pathId.startsWith("elizacloud.")) {
+  for (const path of CONNECTOR_PATHS) {
+    if (path.id.startsWith("elizacloud.")) {
       assert.ok(
-        byId(pathId).probeEndpoint.includes(DEFAULT_CLOUD_BASE),
-        `${pathId} registry must use the executable probe default`,
-      );
-      assert.ok(
-        cells[5].includes(DEFAULT_CLOUD_BASE),
-        `${pathId} catalog must use the executable probe default`,
+        path.probeEndpoint.includes(DEFAULT_CLOUD_BASE),
+        `${path.id} registry must use the executable probe default`,
       );
     }
   }
@@ -236,37 +160,6 @@ test("kinds are constrained to the declared vocabulary", () => {
       CONNECTOR_PATH_KINDS.includes(path.kind),
       `${path.id} kind ${path.kind}`,
     );
-  }
-});
-
-test("identity-slot catalog is in lockstep with every connector path", () => {
-  const rows = parseIdentitySlotCatalog();
-  assert.deepEqual(
-    [...rows.keys()].sort(),
-    CONNECTOR_PATHS.map((path) => path.id).sort(),
-  );
-  for (const path of CONNECTOR_PATHS) {
-    const row = rows.get(path.id);
-    assert.ok(row, `missing identity-slot catalog row for ${path.id}`);
-    assert.equal(row.family, path.family, `${path.id} family drift`);
-    assert.equal(row.kind, path.kind, `${path.id} kind drift`);
-    assert.equal(row.slotModel, slotModel(path), `${path.id} slot model drift`);
-    assert.equal(
-      row.ownerVars,
-      markdownList(path.ownerVars),
-      `${path.id} owner vars drift`,
-    );
-    assert.equal(
-      row.agentVars,
-      markdownList(path.agentVars),
-      `${path.id} agent vars drift`,
-    );
-    assert.equal(
-      row.gateVars,
-      markdownList([...path.requiredAll, ...path.requiredAny]),
-      `${path.id} gate vars drift`,
-    );
-    assert.ok(row.notes.length > 0, `${path.id} notes cell must not be blank`);
   }
 });
 

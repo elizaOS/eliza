@@ -6,14 +6,14 @@
  * graphs: cyclic `items` used to RangeError `processSchema`.
  */
 import { ElizaError } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { GoogleMcpCompatibility } from "../src/tool-compatibility/providers/google.ts";
-import { OpenAIMcpCompatibility } from "../src/tool-compatibility/providers/openai.ts";
 import {
   MAX_MCP_SCHEMA_DEPTH,
   MAX_MCP_SCHEMA_NODES,
   MCP_TOOL_SCHEMA_UNBOUNDED,
-} from "../src/utils/schema-budget.ts";
+} from "@elizaos/shared";
+import { describe, expect, it } from "vitest";
+import { GoogleMcpCompatibility } from "../src/tool-compatibility/providers/google.ts";
+import { OpenAIMcpCompatibility } from "../src/tool-compatibility/providers/openai.ts";
 
 describe("MCP tool compatibility", () => {
   it("preserves zero upper bounds in Google descriptions", () => {

@@ -38,7 +38,7 @@ import { ElizaError, logger } from "@elizaos/core";
 import {
 	computeGenerationThroughput,
 	type GenerationThroughput,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import { localInferenceRoot } from "./paths";
 

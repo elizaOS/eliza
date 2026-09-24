@@ -289,7 +289,7 @@ jobs:
           <!-- attribution-row:status -->
           - Attribution status: self-reported
           EOF
-          node scripts/check-pr-evidence.mjs --body-file "$pr_body"
+          node ../scripts/check-pr-evidence.ts --body-file "$pr_body"
           node scripts/check-pr-agent-attribution.mjs --body-file "$pr_body"
 
           git switch -c "$BRANCH"

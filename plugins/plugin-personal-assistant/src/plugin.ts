@@ -58,13 +58,13 @@ import type {
   MeetingTranscriptFinalizedPayload,
   PermissionState,
   Platform,
+  HttpPlugin as Plugin,
   Prober,
 } from "@elizaos/shared";
 import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   registerCalendarTimeZoneResolver,
 } from "@elizaos/shared";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";

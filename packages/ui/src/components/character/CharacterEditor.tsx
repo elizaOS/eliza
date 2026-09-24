@@ -7,7 +7,13 @@
  * can land here without a chunk fetch.
  */
 
-import { getStylePresets } from "@elizaos/shared/character-presets";
+import {
+  getStylePresets,
+  hasConfiguredApiKey,
+  normalizeCharacterMessageExamples,
+  PREMADE_VOICES,
+  sanitizeApiKey,
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";
@@ -21,12 +27,6 @@ import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { useAppSelectorShallow } from "../../state";
-import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
-import {
-  hasConfiguredApiKey,
-  PREMADE_VOICES,
-  sanitizeApiKey,
-} from "../../voice/types";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CharacterExamplesPanel,

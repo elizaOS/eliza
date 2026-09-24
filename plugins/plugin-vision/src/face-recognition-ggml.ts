@@ -304,7 +304,7 @@ export class FaceEmbedGgmlRecognizer {
       await fs.access(ggufPath);
     } catch {
       throw new Error(
-        `${MODULE_TAG} face-embed GGUF missing at ${ggufPath} — see scripts/face_embed_to_gguf.py.`,
+        `${MODULE_TAG} face-embed GGUF missing at ${ggufPath} — see packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py.`,
       );
     }
     this.handle = this.bindings.open(ggufPath);

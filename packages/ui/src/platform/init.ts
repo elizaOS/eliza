@@ -1,16 +1,16 @@
 /** Platform detection and initialization utilities. */
 
 import { Capacitor } from "@capacitor/core";
+import { userAgentHasElizaOSMarker } from "@elizaos/shared";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
-import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
   shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
 
-export { userAgentHasElizaOSMarker } from "./aosp-user-agent";
+export { userAgentHasElizaOSMarker } from "@elizaos/shared";
 
 // ── Platform detection ──────────────────────────────────────────────
 

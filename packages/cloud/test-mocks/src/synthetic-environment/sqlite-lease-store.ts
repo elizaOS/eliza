@@ -17,12 +17,12 @@ import type {
   SyntheticEnvironmentLeaseReceipt,
   SyntheticEnvironmentLeaseSnapshot,
   SyntheticEnvironmentLeaseStore,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
+} from "@elizaos/shared";
 import {
   isSyntheticEnvironmentNamespace,
   SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
   SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
-} from "@elizaos/shared/contracts/synthetic-environment-lease";
+} from "@elizaos/shared";
 
 interface LeaseRow {
   namespace: string;

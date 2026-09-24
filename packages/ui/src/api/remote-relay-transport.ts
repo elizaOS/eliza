@@ -4,16 +4,16 @@
  * receipt the client only polls status and never replays the effect.
  */
 
-import {
-  parseRemoteAgentRequest,
-  type RemoteAgentRequest,
-} from "@elizaos/shared/contracts/remote-agent-request";
 import type {
   RemoteCommandAction,
   RemoteJsonValue,
   RemoteTargetPublicIdentity,
   SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
+import {
+  parseRemoteAgentRequest,
+  type RemoteAgentRequest,
+} from "@elizaos/shared";
 import {
   acknowledgeRemoteCommandEnqueue,
   createRemoteCommand,

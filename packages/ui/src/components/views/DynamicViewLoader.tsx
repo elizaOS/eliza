@@ -20,14 +20,19 @@
  */
 
 import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
-import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,
   type HostExternalBundleFactory,
   type HostModuleImporter,
-} from "@elizaos/shared/views/host-external-contract";
+  isValidTimeZone,
+  normalizeTimeZone,
+  registerDetailExtension,
+  registerOverlayApp,
+  resolveAppBranding,
+  resolveDefaultTimeZone,
+} from "@elizaos/shared";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import {
   type ComponentType,
@@ -83,7 +88,6 @@ import {
   subscribeActiveSurfaceRealmScope,
 } from "../../surface-realm-broker";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
-import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
   selectLatestRunForApp,
@@ -97,7 +101,6 @@ import {
   SurfaceGrid,
   SurfaceSection,
 } from "../apps/extensions/surface.tsx";
-import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
 import { PagePanel } from "../composites/page-panel/index.ts";
 import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -384,6 +387,18 @@ async function importCoreViewCompat(): Promise<Record<string, unknown>> {
   return CORE_VIEW_COMPAT;
 }
 
+// Plugin views receive explicitly admitted shared utilities. Loading the entire
+// namespace would expose host configuration and mutable shell registries.
+const SHARED_VIEW_COMPAT = Object.freeze({
+  isValidTimeZone,
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+});
+
+async function importSharedViewCompat(): Promise<Record<string, unknown>> {
+  return SHARED_VIEW_COMPAT;
+}
+
 const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   client,
   resolveAppBranding,
@@ -533,10 +548,9 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/app/browser": importAppCoreViewCompat,
   "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
+  "@elizaos/shared": importSharedViewCompat,
   "@elizaos/shared/browser-contracts": () =>
     import("@elizaos/shared/browser-contracts"),
-  "@elizaos/shared/lifeops-normalize/time-zone": () =>
-    import("@elizaos/shared/lifeops-normalize/time-zone"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,

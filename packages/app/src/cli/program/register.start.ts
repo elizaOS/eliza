@@ -9,15 +9,15 @@
  */
 import crypto from "node:crypto";
 import {
+  formatDocsLink,
   isLoopbackBindHost,
   resolveApiBindHost,
   resolveApiSecurityConfig,
   resolveApiToken,
   resolveServerOnlyPort,
   setApiToken,
-} from "@elizaos/shared/runtime-env";
-import { formatDocsLink } from "@elizaos/shared/terminal/links";
-import { theme } from "@elizaos/shared/terminal/theme";
+  theme,
+} from "@elizaos/shared";
 import type { Command } from "commander";
 import { bootLap } from "../../boot-profile";
 import { runCommandWithRuntime } from "../cli-utils";

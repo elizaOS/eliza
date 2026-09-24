@@ -10,7 +10,7 @@ import {
   isJsonObjectBody,
   readRequestBodyBuffer,
   writeJsonError,
-} from "@elizaos/shared/api/http-helpers";
+} from "@elizaos/shared";
 import {
   assertPublicRouteIntent,
   type PaymentEnabledRoute,

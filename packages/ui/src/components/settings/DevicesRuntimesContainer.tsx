@@ -1,6 +1,6 @@
 /** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
-import type { RemoteControllerPublicIdentity } from "@elizaos/shared/contracts/remote-control";
+import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   RemoteHostDirectory,

@@ -42,7 +42,7 @@ extern "C" {
 #endif
 
 /* Pinned model variants this header is dimensioned around. The GGUF
- * conversion script (`scripts/doctr_to_gguf.py`) emits artifacts that
+ * conversion script (`packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py`) emits artifacts that
  * declare these as their `doctr.detector` / `doctr.recognizer` keys.
  * Decoders refuse to load a GGUF whose tags don't match. */
 #define DOCTR_DETECTOR_DB_RESNET50      "db_resnet50"
@@ -91,7 +91,7 @@ typedef struct doctr_session doctr_session;
 
 /*
  * Open a session against a docTR GGUF file produced by
- * `scripts/doctr_to_gguf.py`. The GGUF must declare both the detector
+ * `packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py`. The GGUF must declare both the detector
  * and recognizer variants this header is dimensioned around (see
  * macros above). Returns 0 on success and writes the new handle into
  * `*out`.

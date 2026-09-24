@@ -200,7 +200,7 @@ jobs:
           process.stdout.write(keys[0]);
           NODE
           )"
-          python3 linux/elizaos/scripts/verify-desktop-artifact.py \
+          python3 scripts/linux/verify-desktop-artifact.py \
             --manifest "$WORK_ROOT/desktop/desktop-artifact-manifest.json" \
             --architecture "${{ matrix.architecture }}" \
             --public-key "$WORK_ROOT/desktop/${key_name}" \
@@ -232,7 +232,7 @@ jobs:
           # race another mkosi invocation.
           sudo --preserve-env=SOURCE_DATE_EPOCH,ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY,ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256 \
             flock --exclusive "$cache/.build.lock" \
-            python3 linux/elizaos/scripts/mkosi-linux-build.py \
+            python3 scripts/linux/mkosi-linux-build.py \
               --architecture "${{ matrix.build-architecture }}" \
               --build-mode release \
               --debian-snapshot-url "$SNAPSHOT_URL" \
@@ -279,13 +279,13 @@ jobs:
               --bios "/opt/elizaos/release/firmware/${{ matrix.build-architecture }}/fw_payload.bin"
             )
           fi
-          linux/elizaos/scripts/mkosi-qemu-qualify.py "${common[@]}"
+          scripts/linux/mkosi-qemu-qualify.py "${common[@]}"
 
       - name: QEMU legacy-BIOS boot exact x86_64 disk as removable USB
         if: ${{ matrix.architecture == 'x86_64' }}
         run: |
           set -euo pipefail
-          linux/elizaos/scripts/mkosi-qemu-qualify.py \
+          scripts/linux/mkosi-qemu-qualify.py \
             --architecture amd64 \
             --image "$WORK_ROOT/canonical/elizaos-${{ inputs.version }}-x86_64.raw" \
             --disk-interface usb \
@@ -316,14 +316,14 @@ jobs:
               --bios "/opt/elizaos/release/firmware/${{ matrix.build-architecture }}/fw_payload.bin"
             )
           fi
-          sudo linux/elizaos/scripts/mkosi-persistence-qualify.py "${common[@]}"
+          sudo scripts/linux/mkosi-persistence-qualify.py "${common[@]}"
           sudo chown -R "$(id -u):$(id -g)" "$WORK_ROOT/evidence" "$WORK_ROOT/qualification"
 
       - name: Generate SPDX from exact mounted image filesystem
         env:
           SYFT_BIN: ${{ steps.syft.outputs.cmd }}
         run: |
-          sudo linux/elizaos/scripts/generate-mkosi-sbom.sh \
+          sudo scripts/linux/generate-mkosi-sbom.sh \
             "$WORK_ROOT/canonical/elizaos-${{ inputs.version }}-${{ matrix.architecture }}.raw" \
             "$WORK_ROOT/canonical/elizaos-${{ inputs.version }}-${{ matrix.architecture }}.spdx.json" \
             "$SYFT_BIN"

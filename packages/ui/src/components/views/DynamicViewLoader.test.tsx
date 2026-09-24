@@ -156,6 +156,21 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(typeof api.fetchWithCsrf).toBe("function");
   });
 
+  it("resolves shared root time-zone helpers without exposing host mutation APIs", async () => {
+    const shared = await resolveHostExternal("@elizaos/shared");
+    const normalize = shared.normalizeTimeZone;
+    const isValid = shared.isValidTimeZone;
+    if (typeof normalize !== "function" || typeof isValid !== "function") {
+      throw new Error("Shared view time-zone helpers are unavailable");
+    }
+    expect(normalize("Zulu")).toBe("UTC");
+    expect(normalize("America/Los_Angeles")).toBe("America/Los_Angeles");
+    expect(isValid("not-a-time-zone")).toBe(false);
+    expect(shared.registerOverlayApp).toBeUndefined();
+    expect(shared.loadElizaConfig).toBeUndefined();
+    expect(Object.isFrozen(shared)).toBe(true);
+  });
+
   it("provides the canonical view header to plugin view bundles", async () => {
     const header = await resolveHostExternal(
       "@elizaos/ui/components/shared/ViewHeader",

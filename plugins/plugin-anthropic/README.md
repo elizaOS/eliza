@@ -7,7 +7,8 @@ generation, reasoning, image description, and structured output across all eliza
 Register the plugin and configure `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`).
 `ANTHROPIC_AUTH_MODE` also supports configured OAuth and Claude CLI credentials. Model
 tier and endpoint overrides are defined in the package configuration; use
-runtime.useModel for dispatch.
+runtime.useModel for dispatch. Import the provider and endpoint configuration
+from the package root; the provider runs in Node.
 
 ## Development
 

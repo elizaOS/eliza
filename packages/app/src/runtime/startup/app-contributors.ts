@@ -10,13 +10,13 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { resolvePackageEntry } from "@elizaos/agent/runtime/plugin-types";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import { formatErrorWithStack } from "@elizaos/shared";
 import {
   isOptionalAppRoutePluginUnavailableError,
   OptionalAppRoutePluginUnavailableError,
 } from "@elizaos/shared/api/app-route-plugin-registry";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { getApps, loadRegistry } from "@elizaos/shared/catalog";
-import { formatErrorWithStack } from "@elizaos/shared/format-error";
 import {
   type AppRoutePluginRegistryEntry,
   drainAppRoutePluginLoaders,

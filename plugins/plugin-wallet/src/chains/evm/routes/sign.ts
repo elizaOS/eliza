@@ -11,7 +11,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LegacyRouteHandler, Route, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
+import type { LegacyRouteHandler, Route, RouteRequest, RouteResponse } from "@elizaos/shared";
 import { logger } from "@elizaos/core";
 import {
   type Address,

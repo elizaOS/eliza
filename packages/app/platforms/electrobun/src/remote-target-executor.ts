@@ -4,14 +4,15 @@
  * primitive; the paired controller can reach only the routes required for the
  * selected runtime's readiness and conversation surface.
  */
+
+import type { RemoteJsonValue } from "@elizaos/shared";
 import {
 	classifyRemoteAgentRequestPath,
 	parseRemoteAgentRequest,
 	REMOTE_AGENT_CHAT_TIMEOUT_MS,
 	REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
 	type RemoteAgentRequest,
-} from "@elizaos/shared/contracts/remote-agent-request";
-import type { RemoteJsonValue } from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import type {
 	RemoteTargetCommandExecutor,
 	RemoteTargetEffectResult,

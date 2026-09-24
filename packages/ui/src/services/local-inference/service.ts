@@ -8,11 +8,23 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import type {
+  ActiveModelState,
+  AgentModelSlot,
+  CatalogModel,
+  DownloadEvent,
+  DownloadJob,
+  HardwareProbe,
+  LocalInferenceReadiness,
+  ModelAssignments,
+  ModelHubSnapshot,
+  TextGenerationSlot,
+} from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
-import { MODEL_CATALOG } from "./catalog";
 import { filterSettingsDefaultLocalModels } from "./catalog-policy";
 import {
   CUSTOM_MODEL_SEARCH_DISABLED_MESSAGE,
@@ -34,18 +46,6 @@ import {
   removeElizaModel,
   upsertElizaModel,
 } from "./registry";
-import type {
-  ActiveModelState,
-  AgentModelSlot,
-  CatalogModel,
-  DownloadEvent,
-  DownloadJob,
-  HardwareProbe,
-  LocalInferenceReadiness,
-  ModelAssignments,
-  ModelHubSnapshot,
-  TextGenerationSlot,
-} from "./types";
 import { type VerifyResult, verifyInstalledModel } from "./verify";
 
 export class LocalInferenceService {

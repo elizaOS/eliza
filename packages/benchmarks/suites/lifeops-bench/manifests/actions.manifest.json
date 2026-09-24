@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generator": "suites/lifeops-bench/scripts/export-action-manifest.ts",
+  "generator": "scripts/lifeops-bench/export-action-manifest.ts",
   "sourcePlugins": [
     "@elizaos/plugin-contacts",
     "@elizaos/plugin-calendar",

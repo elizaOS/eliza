@@ -5,7 +5,7 @@
  * settings-only), explicit request/re-check failures, and the initial loading
  * state.
  */
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+import type { PermissionId } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";

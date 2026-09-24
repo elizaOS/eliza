@@ -18,6 +18,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { isDiscordDmSenderAllowed as isDmSenderAllowed } from "@elizaos/shared";
 import { createHash } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { discordConnectionsRepository, userCharactersRepository } from "../../../db/repositories";
@@ -34,7 +35,6 @@ import {
   DISCORD_RATE_LIMIT_REQUESTS,
   DISCORD_RATE_LIMIT_WINDOW_MS,
 } from "./constants";
-import { isDmSenderAllowed } from "./dm-policy";
 import type { DiscordEventPayload, MessageCreateData } from "./schemas";
 import { MessageCreateDataSchema } from "./schemas";
 

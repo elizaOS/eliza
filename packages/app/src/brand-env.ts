@@ -6,7 +6,7 @@
  * `APP_ENV_ALIASES` is the concrete table resolved for this app's configured
  * prefix (`APP_ENV_PREFIX`).
  */
-import { buildBrandEnvAliases } from "@elizaos/shared/config/brand-env-aliases";
+import { buildBrandEnvAliases } from "@elizaos/shared";
 import { APP_CONFIG } from "./app-config";
 import { normalizeEnvPrefix } from "./env-prefix.js";
 

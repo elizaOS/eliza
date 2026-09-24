@@ -13,10 +13,9 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
+import { composePromptFromState, resourceSelectionTemplate } from "@elizaos/shared";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import type { McpService } from "../service";
-import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
 import { MCP_SERVICE_NAME, type McpServerInfo } from "../types";
 import { handleMcpError } from "../utils/error";
 import { checkMcpOAuthAccess } from "../utils/mcp";

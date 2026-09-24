@@ -3,7 +3,7 @@
  * contradicts the only event carrying the requested title. Pure function under
  * test; no runtime, model, or calendar service.
  */
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { resolveCalendarMutationCandidates } from "./calendar-handler.js";
 

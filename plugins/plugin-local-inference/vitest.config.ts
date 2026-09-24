@@ -30,7 +30,7 @@ export default defineConfig({
 		include: [
 			"__tests__/**/*.test.ts",
 			"src/**/*.test.ts",
-			"scripts/**/*.test.mjs",
+			"../../packages/scripts/plugins/plugin-local-inference/*.test.mjs",
 			"native/verify/voice_duet_sweep.test.mjs",
 		],
 		exclude: [

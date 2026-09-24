@@ -40,11 +40,11 @@ import {
 	identifyEmbeddingVector,
 	logger,
 } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 import {
 	assertBgeTokenAgreement,
 	prepareBgeEmbeddingInput,
 } from "@elizaos/shared/local-inference/bge-input";
-import { BGE_EMBEDDING_MODEL } from "../runtime/bge-embedding-model";
 import {
 	normalizeEmbeddingVector,
 	verifyBgeEmbeddingFile,

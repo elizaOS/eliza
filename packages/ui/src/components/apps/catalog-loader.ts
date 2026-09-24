@@ -7,16 +7,16 @@
  * `load-apps-catalog.ts` instead.
  */
 
-import { client, type RegistryAppInfo } from "../../api";
-import { fetchAvailableViews } from "../../hooks/useAvailableViews";
-import { isHiddenFromAppsView } from "./helpers";
-import { getInternalToolApps } from "./internal-tool-apps";
 import {
   getAllOverlayApps,
   getAvailableOverlayApps,
   isAospAndroid,
   overlayAppToRegistryInfo,
-} from "./overlay-app-registry";
+} from "@elizaos/shared";
+import { client, type RegistryAppInfo } from "../../api";
+import { fetchAvailableViews } from "../../hooks/useAvailableViews";
+import { isHiddenFromAppsView } from "./helpers";
+import { getInternalToolApps } from "./internal-tool-apps";
 
 interface LoadMergedCatalogAppsOptions {
   includeHiddenApps?: boolean;

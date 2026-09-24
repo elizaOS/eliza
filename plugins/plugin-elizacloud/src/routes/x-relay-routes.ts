@@ -14,7 +14,7 @@
 
 import type http from "node:http";
 import { type IAgentRuntime, type Service } from "@elizaos/core";
-import { readRequestBody, sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
+import { readRequestBody, sendJson, sendJsonError } from "@elizaos/shared";
 import {
   isCloudAuthApiKeyService,
   normalizeCloudApiKey,

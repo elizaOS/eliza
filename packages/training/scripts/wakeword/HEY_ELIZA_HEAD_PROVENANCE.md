@@ -124,7 +124,7 @@ python3 packages/training/scripts/wakeword/train_eliza1_wakeword_head.py \
     --front-end-dir <front-end> --out hey-eliza.onnx --epochs 40
 
 # 3. convert to the runtime's three GGUFs
-python3 plugins/plugin-local-inference/native/wakeword-cpp/scripts/wakeword_to_gguf.py \
+python3 packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py \
     --melspec-onnx <front-end>/melspectrogram.onnx \
     --embedding-onnx <front-end>/embedding_model.onnx \
     --classifier-onnx hey-eliza.onnx --phrase "hey eliza" --out-dir gguf

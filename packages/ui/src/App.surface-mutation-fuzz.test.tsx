@@ -33,7 +33,7 @@
  * while hash-only mutation and the shell's privileged channel keep working.
  */
 
-import { createNavigateViewEvent } from "@elizaos/shared/events";
+import { createNavigateViewEvent } from "@elizaos/shared";
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

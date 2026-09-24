@@ -29,7 +29,8 @@
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
-      ]
+      ],
+      "@elizaos/plugin-scheduling": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

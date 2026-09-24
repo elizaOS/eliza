@@ -103,7 +103,7 @@ typedef void *voice_emotion_handle;
 
 /*
  * Open an emotion-classifier session against a GGUF file produced by
- * `scripts/voice_emotion_to_gguf.py`. Writes the new handle into `*out`.
+ * `packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_emotion_to_gguf.py`. Writes the new handle into `*out`.
  *
  * Returns 0 on success.
  * Returns `-ENOENT` if `gguf` does not name a readable file.
@@ -163,7 +163,7 @@ typedef void *voice_eot_handle;
 
 /*
  * Open an EOT detector session against a GGUF file produced by
- * `scripts/voice_eot_to_gguf.py`. Same contract as the other `*_open`
+ * `packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_eot_to_gguf.py`. Same contract as the other `*_open`
  * entry points. The current implementation validates metadata and can
  * return 0 for a readable compatible GGUF even though `voice_eot_score`
  * remains unavailable.
@@ -195,7 +195,7 @@ typedef void *voice_speaker_handle;
 
 /*
  * Open a speaker-encoder session against a GGUF file produced by
- * `scripts/voice_speaker_to_gguf.py`. Same contract as the other
+ * `packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_speaker_to_gguf.py`. Same contract as the other
  * `*_open` entry points.
  */
 VOICE_CLASSIFIER_API int voice_speaker_open(const char *gguf, voice_speaker_handle *out);
@@ -268,7 +268,7 @@ typedef void *voice_diarizer_handle;
 
 /*
  * Open a diarizer session against a GGUF file produced by
- * `scripts/voice_diarizer_to_gguf.py`. Same contract as the other
+ * `packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py`. Same contract as the other
  * `*_open` entry points.
  */
 VOICE_CLASSIFIER_API int voice_diarizer_open(const char *gguf, voice_diarizer_handle *out);

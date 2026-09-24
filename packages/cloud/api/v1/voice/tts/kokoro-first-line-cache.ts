@@ -12,7 +12,7 @@
  * `getCloudFirstLineCacheService` get/put paths.
  */
 
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared/voice/first-sentence-snip";
+import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
 import type { CloudFirstLineCacheKey } from "@/lib/services/tts-first-line-cache";
 import { fingerprintCloudVoiceSettings } from "@/lib/services/tts-first-line-cache";
 

@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
                 "  melspec=%s exists=%d\n"
                 "  embedding=%s exists=%d\n"
                 "  classifier=%s exists=%d\n"
-                "  Build the GGUFs with plugins/plugin-local-inference/native/wakeword-cpp/scripts/wakeword_to_gguf.py\n",
+                "  Build the GGUFs with packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py\n",
                 mel, file_exists(mel),
                 emb, file_exists(emb),
                 cls, file_exists(cls));

@@ -15,7 +15,7 @@ import {
   REMOTE_COMMAND_CLOCK_SKEW_MS,
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_MAX_REPLAY_ENTRIES_PER_SESSION,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { Database, DbTransaction } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";

@@ -12,7 +12,7 @@
  * collapse the unreported state into a healthy-looking empty list.
  */
 
-import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/shared/connector-account-catalog";
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/shared";
 import type {
   ConnectorAccountRecord,
   ConnectorAccountStatus,

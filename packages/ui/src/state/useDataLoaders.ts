@@ -7,9 +7,10 @@
  */
 
 import {
+  normalizeOwnerName,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/shared/character-presets";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import {
   type RefObject,
@@ -45,7 +46,6 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
-import { normalizeOwnerName } from "../utils/owner-name";
 import {
   type AutonomyRunHealthMap,
   buildAutonomyGapReplayRequests,

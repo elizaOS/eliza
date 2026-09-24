@@ -25,7 +25,7 @@ import { CloudSyntheticCommandJournalRepository } from "@elizaos/cloud-shared/db
 import { agentTable } from "@elizaos/cloud-shared/db/schemas/eliza";
 import { syntheticEnvironmentLeases } from "@elizaos/cloud-shared/db/schemas/synthetic-environment-leases";
 import { syntheticWorldCommands } from "@elizaos/cloud-shared/db/schemas/synthetic-world-commands";
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import {

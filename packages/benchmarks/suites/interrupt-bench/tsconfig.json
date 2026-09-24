@@ -14,7 +14,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "scripts/**/*.ts",
+    "../../scripts/interrupt-bench/**/*.ts",
     "tests/**/*.ts",
     "scenarios/**/*.json"
   ]

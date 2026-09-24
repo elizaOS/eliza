@@ -18,7 +18,7 @@ import {
 	type RecommendationOptions as SharedRecommendationOptions,
 	selectRecommendedModelForSlot as selectSharedRecommendedModelForSlot,
 	selectRecommendedModels as selectSharedRecommendedModels,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import {
 	canSetAsDefault,
 	type Eliza1Backend,

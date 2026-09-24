@@ -40,8 +40,8 @@ import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,

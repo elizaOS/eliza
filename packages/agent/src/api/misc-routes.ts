@@ -20,6 +20,7 @@ import {
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
+  composePrompt,
   isAndroidMobile,
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
@@ -33,7 +34,6 @@ import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
 } from "@elizaos/shared/platform/sandbox-policy";
-import { composePrompt } from "@elizaos/shared/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type { CustomActionDef } from "../config/types.eliza.ts";
 import {

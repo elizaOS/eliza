@@ -34,8 +34,6 @@ import {
   parseCanonicalInteger,
   readAliasedEnv,
   setBootConfig,
-} from "@elizaos/shared";
-import {
   summarizeTranscript,
   type Transcript,
   type TranscriptScope,
@@ -45,7 +43,7 @@ import {
   transcriptDurationMs,
   transcriptPreview,
   transcriptSpeakerCount,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import {
   closeDownloadWriter,
   teardownFailedDownload,

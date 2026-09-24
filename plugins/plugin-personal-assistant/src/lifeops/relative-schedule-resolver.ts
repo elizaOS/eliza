@@ -8,9 +8,9 @@ import type {
   LifeOpsRegularityClass,
   LifeOpsWorkflowSchedule,
 } from "@elizaos/shared";
+import { parseIsoMs } from "@elizaos/shared";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
-import { parseIsoMs } from "./time-util.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {
   insufficient_data: 0,

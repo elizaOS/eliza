@@ -9,7 +9,7 @@ import { Buffer } from "node:buffer";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { AccessContext, IAgentRuntime, UUID } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 import type { Hono } from "hono";
 
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";

@@ -13,7 +13,7 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import { getAcpService } from "./actions/common.js";
 import type { RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";

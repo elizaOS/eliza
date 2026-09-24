@@ -1175,7 +1175,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """Build command for OSWorld benchmark."""
         args = [
             python,
-            repo("suites/OSWorld/scripts/python/run_multienv_eliza.py"),
+            repo("scripts/osworld/python/run_multienv_eliza.py"),
             "--result_dir",
             str(output_dir),
         ]

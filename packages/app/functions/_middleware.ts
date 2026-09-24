@@ -35,7 +35,7 @@ import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
-} from "@elizaos/shared/elizacloud/domain-contract";
+} from "@elizaos/shared";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {

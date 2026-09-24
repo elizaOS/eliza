@@ -3,6 +3,7 @@
  * shared across the plugin management UI.
  */
 
+import { autoLabel } from "@elizaos/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Binary,
@@ -81,7 +82,6 @@ import type { PluginInfo, PluginParamDef } from "../../api";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
-import { autoLabel } from "../../utils/labels";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
 
 const DISCORD_DEVELOPER_PORTAL_URL =

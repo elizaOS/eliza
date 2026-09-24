@@ -29,32 +29,13 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": [
-        "src/**",
-        "**/*.ts",
-        "**/*.tsx",
+        "$TURBO_DEFAULT$",
         "!dist/**",
         "!**/*.test.ts",
         "!**/*.test.tsx",
         "!**/*.spec.ts",
         "!**/*.spec.tsx",
         "!**/__tests__/**",
-        "index.ts",
-        "index.node.ts",
-        "index.browser.ts",
-        "build.ts",
-        "build.mjs",
-        "build.config.ts",
-        "scripts/**",
-        "tsup.config.ts",
-        "tsup.config.*.ts",
-        "tsdown.config.ts",
-        "vite.config.ts",
-        "vite.config.*.ts",
-        "tsconfig.json",
-        "tsconfig.*.json",
-        "package.json",
-        "assets/**",
-        "public/**",
         "$TURBO_ROOT$/plugins/plugin-build.ts",
         "$TURBO_ROOT$/plugins/plugin-build-externals.ts",
         "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
@@ -78,7 +59,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
+        "$TURBO_ROOT$/packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
         "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
         "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
         "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
@@ -111,27 +92,31 @@
         "@elizaos/capacitor-secure-store#build"
       ],
       "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/cloud-routing#build": {
-      "dependsOn": [],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
+        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
+        "$TURBO_ROOT$/packages/scripts/verify-package-runtime-exports.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs"
+      ]
     },
     "@elizaos/electrobun#build": {
       "dependsOn": ["@elizaos/app#build:dist", "^build"],
       "cache": false,
       "outputs": []
     },
-    "@elizaos/plugin-sql#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
-      "outputs": ["dist/**"]
-    },
     "@elizaos/plugin-assistant#build": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/native-activity-tracker#build": {
-      "dependsOn": ["@elizaos/core#build"],
       "outputs": ["dist/**"]
     },
     "lint": {
@@ -168,59 +153,93 @@
       "dependsOn": []
     },
     "typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/core#typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["typecheck:deps"],
       "outputs": []
     },
     "@elizaos/agent#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
+      "dependsOn": [
+        "typecheck:deps",
+        "^build",
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-wallet#build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/plugin-agent-orchestrator#build",
+        "@elizaos/plugin-video#build",
+        "@elizaos/plugin-calendar#build",
+        "@elizaos/plugin-embeddings#build",
+        "@elizaos/plugin-knowledge#build",
+        "@elizaos/plugin-native-filesystem#build",
+        "@elizaos/plugin-pty#build",
+        "@elizaos/plugin-relationships#build",
+        "@elizaos/plugin-web-search#build"
+      ]
     },
     "@elizaos/app#typecheck": {
       "dependsOn": [
-        "@elizaos/app#build",
+        "typecheck:deps",
+        "@elizaos/app#build:dist",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-personal-assistant#build",
-        "@elizaos/ui#build"
-      ],
-      "outputs": []
+        "@elizaos/ui#build",
+        "@elizaos/plugin-knowledge#build"
+      ]
     },
     "@elizaos/cloud-api#typecheck": {
-      "dependsOn": ["@elizaos/cloud-shared#typecheck"],
-      "outputs": []
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/cloud-shared#typecheck",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/plugin-sqlite#build",
+        "@elizaos/plugin-web-search#build"
+      ]
     },
     "@elizaos/cloud-shared#typecheck": {
       "dependsOn": [
+        "typecheck:deps",
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
         "@elizaos/plugin-scheduling#build",
         "@elizaos/plugin-todos#build",
         "@elizaos/plugin-web-search#build"
-      ],
-      "outputs": []
+      ]
     },
     "@elizaos/plugin-discord#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-relationships#typecheck": {
-      "dependsOn": ["^build", "@elizaos/plugin-sql#build"],
-      "outputs": []
+      "dependsOn": [
+        "typecheck:deps",
+        "^build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/auth#build"
+      ]
     },
     "@elizaos/plugin-scheduling#typecheck": {
-      "dependsOn": ["^build", "@elizaos/plugin-sql#build"],
-      "outputs": []
+      "dependsOn": [
+        "typecheck:deps",
+        "^build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/plugin-scheduling#build",
+        "@elizaos/ui#typecheck:deps"
+      ]
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": ["@elizaos/ui#build", "@elizaos/plugin-scheduling#build"],
-      "outputs": []
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-scheduling#build",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-assistant#build"
+      ]
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
       "dependsOn": [
+        "typecheck:deps",
         "@elizaos/agent#build",
         "@elizaos/plugin-blocker#build",
         "@elizaos/plugin-calendar#build",
@@ -234,24 +253,21 @@
         "@elizaos/macosreminders#build",
         "@elizaos/native-activity-tracker#build",
         "@elizaos/app#build:dist"
-      ],
-      "outputs": []
+      ]
     },
     "@elizaos/plugin-vision#typecheck": {
       "dependsOn": [
+        "typecheck:deps",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-computeruse#build"
-      ],
-      "outputs": []
+      ]
     },
     "@elizaos/plugin-native-contacts#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-inference#typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "format": {
       "outputs": [],
@@ -301,7 +317,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
+        "$TURBO_ROOT$/packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
         "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
         "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
         "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
@@ -329,16 +345,274 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": ["@elizaos/app#build:dist", "^build"],
-      "outputs": []
+      "dependsOn": ["typecheck:deps", "@elizaos/app#build:dist", "^build"]
     },
     "@elizaos/testing#typecheck": {
       "dependsOn": [
+        "typecheck:deps",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-personal-assistant#build",
-        "^build"
-      ],
+        "^build",
+        "@elizaos/plugin-knowledge#build",
+        "@elizaos/app#typecheck:deps"
+      ]
+    },
+    "typecheck:deps": {
+      "dependsOn": ["^typecheck:deps"],
       "outputs": []
+    },
+    "@elizaos/agent-server#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-sql#build"]
+    },
+    "@elizaos/cloud-e2e#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-web-search#build"
+      ]
+    },
+    "@elizaos/container-control-plane#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/shared#build",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/plugin-sqlite#build",
+        "@elizaos/plugin-web-search#build"
+      ]
+    },
+    "@elizaos/electrobun#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/auth#build",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-calendar#build",
+        "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-knowledge#build",
+        "@elizaos/plugin-meetings#build",
+        "@elizaos/plugin-native-filesystem#build",
+        "@elizaos/plugin-notes#build",
+        "@elizaos/plugin-pty#build",
+        "@elizaos/plugin-relationships#build",
+        "@elizaos/plugin-todos#build",
+        "@elizaos/plugin-vision#build",
+        "@elizaos/plugin-web-search#build"
+      ]
+    },
+    "@elizaos/plugin-agent-orchestrator#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/app#typecheck:deps"
+      ]
+    },
+    "@elizaos/plugin-anthropic#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-assistant#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-browser#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
+    },
+    "@elizaos/plugin-maps#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+    },
+    "@elizaos/plugin-mcp#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-native-messages#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/capacitor-system#build",
+        "@elizaos/ui#build"
+      ]
+    },
+    "@elizaos/plugin-native-phone#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+    },
+    "@elizaos/plugin-native-settings#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
+    },
+    "@elizaos/plugin-native-wifi#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/capacitor-system#build",
+        "@elizaos/ui#build"
+      ]
+    },
+    "@elizaos/plugin-notes#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-assistant#build",
+        "@elizaos/plugin-openai#typecheck:deps"
+      ]
+    },
+    "@elizaos/plugin-openai#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-sql#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-wallet#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/ui#build",
+        "@elizaos/cloud-routing#build"
+      ]
+    },
+    "@elizaos/auth#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/bench-eliza-1#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/bench-eliza-1-vision-cua-e2e#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-computeruse#build"]
+    },
+    "@elizaos/bench-vision-language#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/benchmark-framework#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-openai#build"]
+    },
+    "@elizaos/cloud-services-common#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/cloud-test-mocks#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-web-search#build"
+      ]
+    },
+    "@elizaos/configbench#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/plugin-anthropic#build",
+        "@elizaos/plugin-openai#build"
+      ]
+    },
+    "@elizaos/gateway-discord#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/gateway-webhook#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/native-activity-tracker#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/os#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-benchmarks#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-coding-tools#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-web-search#build"]
+    },
+    "@elizaos/plugin-computeruse#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
+    },
+    "@elizaos/plugin-elizacloud#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/auth#build",
+        "@elizaos/ui#typecheck:deps"
+      ]
+    },
+    "@elizaos/plugin-embeddings#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-form#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "@elizaos/plugin-github#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-goals#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
+    },
+    "@elizaos/plugin-google-workspace#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "@elizaos/plugin-health#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
+    },
+    "@elizaos/plugin-imessage#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "@elizaos/plugin-inbox#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "@elizaos/plugin-knowledge#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-assistant#build"
+      ]
+    },
+    "@elizaos/plugin-local-inference#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "@elizaos/plugin-meetings#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-native-filesystem#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-pdf#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-pty#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-slack#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-sqlite#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-telegram#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/auth#build",
+        "@elizaos/plugin-assistant#build"
+      ]
+    },
+    "@elizaos/plugin-trajectory-logger#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
+    },
+    "@elizaos/plugin-video#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-web-search#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
+    "@elizaos/plugin-workflow#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/plugin-x#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "@elizaos/three-agent-dialogue#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+    },
+    "memperf-suite#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+    },
+    "@elizaos/ui#typecheck": {
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/plugin-agent-orchestrator#typecheck:deps"
+      ]
+    },
+    "@elizaos/plugin-todos#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/ui#typecheck:deps"]
     }
   }
 }

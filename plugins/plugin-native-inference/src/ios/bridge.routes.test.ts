@@ -18,7 +18,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+import type { TranscriptSegment } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleDirectCoreRoute,

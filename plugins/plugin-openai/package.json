@@ -12,14 +12,9 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    "./endpoint-config": {
-      "types": "./dist/endpoint-config.d.ts",
-      "eliza-source": "./utils/config.ts",
-      "import": "./dist/endpoint-config.js",
-      "default": "./dist/endpoint-config.js"
-    },
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": "./index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }

@@ -216,8 +216,7 @@ function createHarnessRuntime(args: {
   const python = process.env.PYTHON ?? process.env.PYTHON_BIN ?? "python";
   const script = path.join(
     PACKAGE_ROOT,
-    "scripts",
-    "vision_harness_runtime.py",
+    "../../scripts/vision-language/vision_harness_runtime.py",
   );
 
   async function askHarness({

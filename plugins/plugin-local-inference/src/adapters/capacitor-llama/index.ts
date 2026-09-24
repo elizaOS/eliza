@@ -40,6 +40,7 @@ import {
 	type Plugin,
 	resolveStateDir,
 } from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 import {
 	assertBgeTokenAgreement,
 	prepareBgeEmbeddingInput,
@@ -48,7 +49,6 @@ import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 } from "../..";
-import { BGE_EMBEDDING_MODEL } from "../../runtime/bge-embedding-model";
 import {
 	normalizeEmbeddingVector,
 	verifyBgeEmbeddingFile,

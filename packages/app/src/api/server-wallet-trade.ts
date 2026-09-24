@@ -14,7 +14,7 @@ import { logger } from "@elizaos/core";
 import type {
   WalletExportRejection as CompatWalletExportRejection,
   WalletExportRequestBody,
-} from "@elizaos/shared/contracts/wallet-types";
+} from "@elizaos/shared";
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,

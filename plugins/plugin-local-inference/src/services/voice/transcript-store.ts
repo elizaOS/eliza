@@ -40,13 +40,13 @@ import type {
 	TranscriptRetentionState,
 	TranscriptSharingState,
 	TranscriptSummary,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import {
 	normalizeTranscriptScope,
 	summarizeTranscript,
 	transcriptCapturePrivacyState,
 	transcriptPreview,
-} from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";

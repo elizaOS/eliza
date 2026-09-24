@@ -105,7 +105,7 @@ target_compile_options(voice_diarizer_metadata_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME voice_diarizer_metadata_test COMMAND voice_diarizer_metadata_test)
 
 # K3 — pyannote-3 forward parity gate. Loads the GGUF emitted by
-# scripts/voice_diarizer_to_gguf.py and asserts ≥ 99% per-frame label
+# packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py and asserts ≥ 99% per-frame label
 # agreement against the ONNX reference (labels precomputed into
 # test/voice_diarizer_parity_fixtures.h). Skipped when GGUF/fixtures
 # are absent so devs without HF_TOKEN can still run the unit suite.
@@ -118,7 +118,7 @@ set_tests_properties(voice_diarizer_parity_test PROPERTIES
 )
 
 # K2 — WeSpeaker speaker-encoder ONNX parity gate. Loads the GGUF
-# emitted by scripts/voice_speaker_to_gguf.py and 10 PCM/ONNX
+# emitted by packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_speaker_to_gguf.py and 10 PCM/ONNX
 # embedding fixtures from /tmp/k2-parity (or
 # $VOICE_SPEAKER_FIXTURE_DIR). Asserts cos(c-side, onnx) ≥ 0.99 plus
 # same/different-speaker discriminative gates. Returns 77 (skip) when

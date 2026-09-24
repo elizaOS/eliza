@@ -15,7 +15,7 @@
  */
 
 import { ElizaError, isElizaError } from "@elizaos/core";
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import {

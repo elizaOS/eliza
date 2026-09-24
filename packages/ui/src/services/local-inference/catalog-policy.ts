@@ -2,8 +2,12 @@
  * Policy predicates over the model catalog: which models are the default Eliza-1
  * family and thus eligible for the first-run local path.
  */
-import { DEFAULT_ELIGIBLE_MODEL_IDS, eliza1TierPublishStatus } from "./catalog";
-import type { CatalogModel, InstalledModel } from "./types";
+
+import type { CatalogModel, InstalledModel } from "@elizaos/shared";
+import {
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  eliza1TierPublishStatus,
+} from "@elizaos/shared";
 
 export function isEliza1ModelFamilyId(id: string): boolean {
   return id.startsWith("eliza-1-");

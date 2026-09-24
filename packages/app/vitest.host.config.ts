@@ -131,7 +131,6 @@ export default defineConfig({
       "test/browser-extension/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/live-agent/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/benchmarks/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "test/scripts/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/fixtures/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/automations/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/helpers/**/*.{test,spec}.?(c|m)[jt]s?(x)",

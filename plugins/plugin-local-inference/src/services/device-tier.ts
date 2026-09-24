@@ -27,14 +27,14 @@
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
 
-import { isMobilePlatform } from "@elizaos/shared";
 import {
 	type Eliza1Fit,
+	isMobilePlatform,
 	// Aliased to a distinct name (no shared `selectBestEliza1Fit*` prefix with the
 	// local `selectBestEliza1FitForDevice`) — the mobile Bun.build minifier was
 	// observed to mangle the same-prefix pair into a dangling `…Fit2` reference.
 	selectBestEliza1Fit as resolveBestEliza1FitForRam,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import type { HardwareProbe } from "./types";
 
 /** The four device tiers used by the runtime + UI. */

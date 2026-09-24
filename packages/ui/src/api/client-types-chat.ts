@@ -4,14 +4,14 @@
  * surface, re-exported through client-types.ts.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared/capability-catalog";
 import type {
+  CapabilityHandoffRequest,
   ChatFailureKind,
   ChatTerminalFailure,
   ChatToolCallEvent,
   ChatTurnStatus,
-} from "@elizaos/shared/contracts";
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+  LinkedAccountProviderId,
+} from "@elizaos/shared";
 import type { NativeToolCallEvent } from "./client-types-cloud";
 import type {
   ConversationMetadata,

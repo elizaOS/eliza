@@ -2,7 +2,7 @@
  * wakeword_runtime.c — real openWakeWord runtime, three-GGUF edition.
  *
  * Implements the public ABI with three GGUFs
- * produced by `scripts/wakeword_to_gguf.py`:
+ * produced by `packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py`:
  *
  *   1. melspec.gguf    — fp16 STFT real/imag bases (257, 1, 512) and
  *                        mel filter matrix (257, 32). The C runtime

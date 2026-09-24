@@ -2,6 +2,8 @@
  * Shared Steward session plumbing for the cloud shell: token storage keys and the
  * session/refresh endpoints the Steward auth provider uses.
  */
+
+import { clearElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -17,7 +19,6 @@ import {
 } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account-binding";
-import { clearElizaApiToken } from "../../utils/eliza-globals";
 import { decodeJwtPayload } from "../lib/jwt";
 import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";

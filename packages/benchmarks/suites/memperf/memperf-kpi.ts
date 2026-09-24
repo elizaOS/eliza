@@ -45,7 +45,7 @@ import type {
   ArbiterCapability,
   ArbiterEvent,
 } from "@elizaos/plugin-local-inference/services/memory-arbiter";
-import type { Eliza1TierId } from "@elizaos/shared/local-inference/catalog";
+import type { Eliza1TierId } from "@elizaos/shared";
 import { loadBudgets, ms, REPO_ROOT, recordResult, rssMb } from "./lib.mjs";
 
 // The measured code is the ELIZA_REPO_DIR checkout's source, imported directly

@@ -9,7 +9,7 @@ import {
   type HfResolveUrlCandidate,
   resolveHfDownloadBases,
   tierBundleSlug,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 
 export type AospRecommendedModel = {
   id: string;

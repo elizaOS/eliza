@@ -6,11 +6,11 @@
  *   2. Secrets (modal)
  */
 
+import type { WalletRpcSelections } from "@elizaos/shared";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-} from "@elizaos/shared/contracts/wallet";
-import type { WalletRpcSelections } from "@elizaos/shared/contracts/wallet-types";
+} from "@elizaos/shared";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

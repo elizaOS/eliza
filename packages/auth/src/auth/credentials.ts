@@ -27,7 +27,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
+import type { SubscriptionCredentialSource } from "@elizaos/shared";
 import {
   type AccountCredentialRecord,
   type AccountDeletionPlan,
@@ -529,7 +529,7 @@ function readConfiguredAnthropicSetupToken(): string | null {
   }
 }
 
-export type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
+export type { SubscriptionCredentialSource } from "@elizaos/shared";
 
 /**
  * Per-account subscription status row used by the dashboard / API.

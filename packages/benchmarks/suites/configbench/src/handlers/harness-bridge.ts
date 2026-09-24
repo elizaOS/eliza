@@ -21,7 +21,7 @@ type HarnessPayload = {
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BRIDGE_SCRIPT = resolve(HERE, "../../scripts/harness_bridge_turn.py");
+const BRIDGE_SCRIPT = resolve(HERE, "../../../../scripts/harness-turn.py");
 
 function harnessName(): string {
   return (
@@ -197,12 +197,16 @@ function callHarness(
   prompt: string,
   context: Record<string, unknown>,
 ): HarnessPayload {
-  const completed = spawnSync(pythonExecutable(), [BRIDGE_SCRIPT], {
-    input: JSON.stringify({ prompt, context }),
-    encoding: "utf8",
-    env: process.env,
-    maxBuffer: 2 * 1024 * 1024,
-  });
+  const completed = spawnSync(
+    pythonExecutable(),
+    [BRIDGE_SCRIPT, "--benchmark", "configbench"],
+    {
+      input: JSON.stringify({ prompt, context }),
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 2 * 1024 * 1024,
+    },
+  );
   if (completed.error) throw completed.error;
   if (completed.status !== 0) {
     throw new Error(

@@ -5,10 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import {
-  canonicalizeRemoteControlValue,
-  type RemoteConnectionMode,
-} from "@elizaos/shared/contracts/remote-control";
+import { canonicalizeRemoteControlValue, type RemoteConnectionMode } from "@elizaos/shared";
 import { and, asc, desc, eq, inArray, isNotNull, lte, or, type SQL } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";

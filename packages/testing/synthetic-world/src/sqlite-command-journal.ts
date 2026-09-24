@@ -1,7 +1,7 @@
 /** Adapts the storage-neutral command journal to the lease store's SQLite transaction. */
 
 import type { Database } from "bun:sqlite";
-import type { SyntheticEnvironmentLeaseStore } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseStore } from "@elizaos/shared";
 import { LeaseFencedSyntheticCommandJournal } from "./command-journal";
 import type {
   SyntheticCommandJournalExpected,

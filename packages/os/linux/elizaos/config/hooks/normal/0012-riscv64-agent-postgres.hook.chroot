@@ -4,7 +4,7 @@ set -eu
 ARCH="$(dpkg --print-architecture 2>/dev/null || true)"
 [ "${ARCH}" = "riscv64" ] || exit 0
 
-# Runtime contract markers consumed by scripts/test_riscv64_agent_staging.py:
+# Runtime contract markers consumed by ../../scripts/linux/test_riscv64_agent_staging.py:
 # ELIZA_PLATFORM=android
 # ELIZA_MOBILE_PLATFORM=android
 

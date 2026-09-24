@@ -6,10 +6,7 @@
  * recordings list + player pairing and meeting-aware summary handling.
  */
 
-import type {
-  Transcript,
-  TranscriptSummary,
-} from "@elizaos/shared/transcripts";
+import type { Transcript, TranscriptSummary } from "@elizaos/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

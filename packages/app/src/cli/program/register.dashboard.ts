@@ -10,8 +10,7 @@
  */
 
 import type { ChildProcess } from "node:child_process";
-import { resolveDesktopUiPort } from "@elizaos/shared/runtime-env";
-import { theme } from "@elizaos/shared/terminal/theme";
+import { resolveDesktopUiPort, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 
 async function isPortListening(

@@ -11,7 +11,7 @@ import {
   type Todo,
   type TodoStore,
 } from "@elizaos/plugin-todos/edge";
-import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared/todo-cutover";
+import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared";
 import { dbWrite } from "../../../db/client";
 import {
   type SharedTodoSourceScope,

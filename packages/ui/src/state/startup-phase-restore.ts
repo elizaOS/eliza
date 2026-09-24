@@ -5,9 +5,11 @@
  */
 
 import {
+  getElizaApiBase,
+  getElizaApiToken,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
@@ -62,7 +64,6 @@ import {
   isPersonalSharedElizaId,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
-import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import {
   detectExistingFirstRunConnection,
   type ExistingFirstRunProbeResult,

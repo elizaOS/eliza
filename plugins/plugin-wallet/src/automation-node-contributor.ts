@@ -11,7 +11,7 @@ import {
   buildRuntimeCapabilityNodes,
   type RuntimeCapabilityNodeSpec,
   registerAutomationNodeContributor,
-} from "@elizaos/shared/automation-node-contributors";
+} from "@elizaos/shared";
 
 const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
   {

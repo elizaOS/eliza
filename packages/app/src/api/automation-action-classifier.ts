@@ -5,7 +5,7 @@
  */
 import type { Action } from "@elizaos/core";
 import { hasActionTags } from "@elizaos/plugin-assistant";
-import type { AutomationNodeDescriptor } from "@elizaos/shared/contracts/automation-nodes";
+import type { AutomationNodeDescriptor } from "@elizaos/shared";
 
 const AGENT_AUTOMATION_ACTION_TAGS = [
   "domain:agent-orchestration",

@@ -7,7 +7,11 @@
  * limited cloud-agent hosts don't request routes they can't serve.
  */
 
-import { getAppHeroThemeKey } from "@elizaos/shared/app-hero-art";
+import {
+  getAppHeroThemeKey,
+  resolveApiUrl,
+  resolveAppAssetUrl,
+} from "@elizaos/shared";
 import {
   Bot,
   Briefcase,
@@ -23,7 +27,6 @@ import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
-import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import type { AppIdentitySource } from "./app-identity";
 
 export function iconImageSource(

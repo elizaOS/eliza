@@ -8,7 +8,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
-} from "@elizaos/shared/elizacloud/domain-contract";
+} from "@elizaos/shared";
 
 // On every frontend host, the
 // browser talks to the Cloud API over same-origin `/api/*` and `/steward/*`

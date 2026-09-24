@@ -9,7 +9,7 @@
  * otherwise retired domains are intentionally excluded and fail validation.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
+import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
 
 export const DOMAIN_ALIAS_GROUPS: readonly (readonly string[])[] = [
   [

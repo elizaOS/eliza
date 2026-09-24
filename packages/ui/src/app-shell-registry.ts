@@ -10,11 +10,13 @@ import type {
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
-import type { OverlayApp } from "@elizaos/shared/apps/overlay-app-api";
-import { getAllOverlayApps } from "@elizaos/shared/apps/overlay-app-registry";
-import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
+import type { OverlayApp } from "@elizaos/shared";
+import {
+  getAllOverlayApps,
+  getUiRegistryStore,
+  packageNameToAppRouteSlug,
+} from "@elizaos/shared";
 import type { ComponentType } from "react";
-import { getUiRegistryStore } from "./registry-host";
 
 export type AppShellPageLoader = () => Promise<{
   default: ComponentType<Record<string, unknown>>;

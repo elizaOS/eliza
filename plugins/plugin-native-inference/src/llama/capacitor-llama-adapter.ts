@@ -18,12 +18,12 @@
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
+import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
 import {
   BGE_SMALL_VECTOR_SPACE,
   ElizaError,
   identifyEmbeddingVector,
 } from "@elizaos/shared/browser-contracts";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared/local-inference";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,

@@ -6,8 +6,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
+import { readRequestBodyBuffer, SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   AgreementKnowledgeError,
   getAgreementKnowledgeService,

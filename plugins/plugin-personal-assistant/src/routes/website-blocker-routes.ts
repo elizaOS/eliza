@@ -17,7 +17,7 @@ import {
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/shared";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,

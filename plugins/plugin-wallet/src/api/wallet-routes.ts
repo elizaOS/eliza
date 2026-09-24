@@ -12,6 +12,7 @@ import { logger } from "@elizaos/core";
 import type {
   ElizaConfig,
   RouteHelpers,
+  RouteRequestMeta,
   WalletBalancesResponse,
   WalletChain,
   WalletChainKind,
@@ -24,7 +25,6 @@ import type {
   WalletRpcChain,
   WalletSource,
 } from "@elizaos/shared";
-import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
 
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
 // Defined structurally here so this plugin module stays free of

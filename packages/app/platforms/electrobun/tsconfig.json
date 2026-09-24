@@ -120,12 +120,9 @@
 				"../../../../plugins/plugin-native-inference/src/index.ts"
 			],
 			"@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"],
-			"@elizaos/plugin-openai/endpoint-config": [
-				"../../../../plugins/plugin-openai/utils/config.ts"
-			],
 			"@elizaos/plugin-video": ["../../../../plugins/plugin-video/src/index.ts"]
 		}
 	},
-	"include": ["src/**/*.ts", "scripts/**/*.ts"],
+	"include": ["src/**/*.ts", "../../scripts/electrobun/**/*.ts"],
 	"exclude": ["node_modules", "dist"]
 }

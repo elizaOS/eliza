@@ -1,5 +1,5 @@
 /** Word-synced and untimed transcript reading states. */
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type { Transcript } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
 import { assert } from "../../storybook/home-widget-decorator";
 import { TranscriptBody } from "./TranscriptBody";

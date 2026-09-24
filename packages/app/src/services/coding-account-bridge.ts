@@ -65,8 +65,8 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared/contracts/coding-agent-capabilities";
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,

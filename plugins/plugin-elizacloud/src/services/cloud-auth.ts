@@ -19,7 +19,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { type RuntimeEnvRecord, resolveApiSecurityConfig, resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
+import { type RuntimeEnvRecord, resolveApiSecurityConfig, resolveDesktopApiPort } from "@elizaos/shared";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CloudCredentials, DeviceAuthResponse, DevicePlatform } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";

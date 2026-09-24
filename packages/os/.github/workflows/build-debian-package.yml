@@ -37,7 +37,7 @@ on:
       - ".github/workflows/build-debian-package.yml"
       - "linux/packaging/debian/**"
       - "linux/elizaos/assets/logo_blue_nobg.svg"
-      - "linux/elizaos/scripts/verify-desktop-artifact.py"
+      - "scripts/linux/verify-desktop-artifact.py"
 
 permissions:
   contents: read
@@ -173,7 +173,7 @@ jobs:
           NODE
           key_name="$(sed -n 's/^key-name=//p' "$RUNNER_TEMP/upstream.outputs")"
           test -n "$key_name"
-          python3 linux/elizaos/scripts/verify-desktop-artifact.py \
+          python3 scripts/linux/verify-desktop-artifact.py \
             --manifest "$WORK_ROOT/upstream/desktop-artifact-manifest.json" \
             --architecture "${{ matrix.architecture }}" \
             --public-key "$WORK_ROOT/upstream/$key_name" \

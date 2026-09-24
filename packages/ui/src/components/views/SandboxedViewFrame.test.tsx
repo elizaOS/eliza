@@ -13,7 +13,7 @@
 // navigate event / write the storage key), so this is a genuine red→green guard.
 
 import type { SurfaceManifest } from "@elizaos/core";
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

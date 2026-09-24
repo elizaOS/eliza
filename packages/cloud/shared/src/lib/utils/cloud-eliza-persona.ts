@@ -11,7 +11,7 @@
  * Keep this delta minimal. Anything not specifically about cloud-side
  * persistence belongs in the preset, where every host gets it.
  */
-import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
+import { getDefaultStylePreset } from "@elizaos/shared";
 
 /** Leads the bio: it is the promise the rest of the persona is read against. */
 export const CLOUD_MEMORY_BIO =

@@ -22,7 +22,7 @@ import { ElizaError, logger } from "@elizaos/core";
 import {
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
-} from "@elizaos/shared/chat-upload-limits";
+} from "@elizaos/shared";
 import { resolveStateDir } from "../config/paths.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 

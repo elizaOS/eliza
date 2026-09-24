@@ -24,10 +24,10 @@ import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   isLoopbackBindHost,
+  readAliasedEnv,
   resolveApiBindHost,
-} from "@elizaos/shared/runtime-env";
-import { theme } from "@elizaos/shared/terminal/theme";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+  theme,
+} from "@elizaos/shared";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 

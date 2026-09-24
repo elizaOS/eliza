@@ -5,7 +5,7 @@
  */
 import { matchPluginRoutePath } from "@elizaos/agent/api/runtime-plugin-routes";
 import type { DeferredBootPhaseStatus } from "@elizaos/agent/runtime/deferred-boot-status";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 
 export const DEFERRED_FEATURE_ROUTE_PREFIXES = [
   "/api/asr/cloud",

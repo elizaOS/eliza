@@ -10,15 +10,13 @@
 import process from "node:process";
 import {
   type DevSettingsRow,
-  formatDevSettingsTable,
-} from "@elizaos/shared/dev-settings-table";
-import {
   ELIZA_RUNTIME_ENV_KEYS,
   firstWinningEnvString,
+  formatDevSettingsTable,
+  isElizaSettingsDebugEnabled,
   resolveApiSecurityConfig,
   resolveApiToken,
-} from "@elizaos/shared/runtime-env";
-import { isElizaSettingsDebugEnabled } from "@elizaos/shared/settings-debug";
+} from "@elizaos/shared";
 import { prependDevSubsystemFigletHeading } from "./dev-settings-figlet-heading";
 
 function summarizeList(label: string, items: string[], maxLen: number): string {

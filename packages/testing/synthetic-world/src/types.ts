@@ -1,6 +1,6 @@
 /** Defines durable command records and the truthful incremental synthetic-world capability surface. */
 
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
 
 export const SYNTHETIC_WORLD_COMMAND_VERSION = 1 as const;
 

@@ -47,9 +47,9 @@
     "format": "bunx @biomejs/biome format --write src test scripts vitest*.ts",
     "format:check": "bunx @biomejs/biome format src test scripts vitest*.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "test": "node scripts/run-vitest-batches.mjs",
-    "test:e2e": "node scripts/run-vitest-batches.mjs",
-    "test:integration": "node scripts/run-vitest-batches.mjs"
+    "test": "node scripts/run-vitest-batches.ts",
+    "test:e2e": "node scripts/run-vitest-batches.ts",
+    "test:integration": "node scripts/run-vitest-batches.ts"
   },
   "exports": {
     ".": {

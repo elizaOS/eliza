@@ -18,7 +18,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts/cloud-topology";
+import { isElizaCloudServiceSelectedInConfig } from "../contracts/cloud-topology.js";
 import { resolveCloudApiBaseUrl } from "./base-url.js";
 import { getCloudSecret } from "./cloud-secrets.js";
 import {

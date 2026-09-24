@@ -3,10 +3,11 @@
  * draft lifecycle metadata to the agent while keeping unsent text entirely
  * client-side.
  */
+
+import { getElizaApiBase, getElizaApiToken } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 
 export type ComposerActivityKind =
   | "typing_started"

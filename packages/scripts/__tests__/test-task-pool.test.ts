@@ -14,7 +14,7 @@ import {
   runPool,
   serialPackages,
   taskBelongsToShard,
-} from "../lib/test-task-pool.mjs";
+} from "../lib/test-task-pool.ts";
 
 test("serial package discovery is lazy and memoized", () => {
   let calls = 0;

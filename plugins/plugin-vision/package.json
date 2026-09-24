@@ -103,7 +103,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "build:native": "bun run native/yolo.cpp/build.mjs",
-    "build:weights": "python native/yolo.cpp/scripts/convert.py --variant yolov8n",
+    "build:weights": "python ../../packages/scripts/plugins/plugin-vision/native/yolo.cpp/convert.py --variant yolov8n",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },

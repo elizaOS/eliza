@@ -2,7 +2,7 @@
  * Combined parity-test + microbenchmark for the qjl-cpu library.
  *
  * Modes:
- *   --parity <fixture>   load a fixture emitted by scripts/gen_fixtures.py,
+ *   --parity <fixture>   load a fixture emitted by packages/scripts/plugins/plugin-local-inference/native/qjl-cpu/gen_fixtures.py,
  *                        re-quantize the input keys with the AVX2/NEON/ref
  *                        paths, and verify bit-exact match against the
  *                        bytes recorded in the fixture (signs + bf16 norm).

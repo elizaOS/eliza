@@ -7,12 +7,12 @@ import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import { formatError, logger } from "@elizaos/core";
 import {
+  readAliasedEnv,
   resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncResolvedApiPort,
-} from "@elizaos/shared/runtime-env";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+} from "@elizaos/shared";
 import {
   isRuntimeBootDeferred,
   registerDeferredRuntimeBoot,

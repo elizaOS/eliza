@@ -63,8 +63,8 @@ import type {
   LinkedAccountProviderId,
   LinkedAccountsConfig,
   LinkedAccountUsage,
-} from "@elizaos/shared/contracts/service-routing";
-import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
+} from "@elizaos/shared";
+import { isLinkedAccountProviderId } from "@elizaos/shared";
 import {
   pollAnthropicUsage,
   pollCodexUsage,

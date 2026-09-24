@@ -2,7 +2,7 @@
 
 Mirrors the canonical taxonomy at
 ``docs/audits/lifeops-2026-05-09/14-capability-taxonomy.md`` and the exporter at
-``suites/lifeops-bench/scripts/export-action-manifest.ts``. Scenario-side validation
+``scripts/lifeops-bench/export-action-manifest.ts``. Scenario-side validation
 in :mod:`validate` uses these to cross-check that ground-truth actions land in
 the same domain the scenario is testing.
 

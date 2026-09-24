@@ -57,7 +57,7 @@ import { resolveRepoRootFromImportMeta } from "../lib/repo-root.ts";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,
-} from "./lib/load-variant-config.mjs";
+} from "./lib/load-variant-config.ts";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 

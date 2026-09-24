@@ -7,7 +7,16 @@ import os
 import lib_run_single
 from desktop_env.controllers.python import PythonController
 from eliza_adapter.osworld import ElizaBridgeOSWorldAgent
-from scripts.python import run_multienv_eliza
+import importlib.util
+from pathlib import Path
+
+_spec = importlib.util.spec_from_file_location(
+    "run_multienv_eliza",
+    Path(__file__).resolve().parents[3] / "scripts/osworld/python/run_multienv_eliza.py",
+)
+assert _spec is not None and _spec.loader is not None
+run_multienv_eliza = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(run_multienv_eliza)
 
 
 def _dry_args(tmp_path) -> argparse.Namespace:

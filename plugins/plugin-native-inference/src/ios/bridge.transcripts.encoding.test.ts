@@ -1,6 +1,6 @@
 /** Exercises malformed iOS transcript identifiers across read, update, and delete routes. */
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+import type { TranscriptSegment } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { handleDirectCoreRoute, type IosBridgeBackend } from "./bridge.ts";
 

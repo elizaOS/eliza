@@ -13,7 +13,7 @@
   },
   "scripts": {
     "bench": "bun run src/runner.ts",
-    "bench:smoke": "bun run scripts/cerebras-smoke.ts",
+    "bench:smoke": "bun run ../../scripts/interrupt-bench/cerebras-smoke.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"

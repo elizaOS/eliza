@@ -7,7 +7,7 @@
  */
 
 import type { TopicSearchHit } from "@elizaos/core";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
 
 interface TopicSearchService {
   searchTopics(query: string, limit?: number): TopicSearchHit[];
