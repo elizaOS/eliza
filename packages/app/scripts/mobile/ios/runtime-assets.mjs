@@ -50,7 +50,6 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "fuzzystrmatch.tar.gz",
   "pg_trgm.tar.gz",
   "plugins-manifest.json",
-  "skills",
 ];
 
 export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
