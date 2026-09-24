@@ -1,10 +1,10 @@
 /**
  * Builds and validates immutable UTF-8 document source segments, then
  * reconstructs one bounded byte, line, or fragment page from authorized rows.
- * The module is browser-safe and never materializes source outside the rows a
+ * The module never materializes source outside the rows a
  * storage adapter already selected.
  */
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "node:crypto";
 import { ElizaError } from "../errors";
 import type {
 	Content,
