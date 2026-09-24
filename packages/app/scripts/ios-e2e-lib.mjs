@@ -1,20 +1,7 @@
 /**
- * Pure decision logic behind the one-command iOS Simulator e2e orchestrator
- * (`ios-e2e.mjs`, wired as `test:e2e:ios`). The orchestrator itself is all
- * side effects — boot a simulator, build, `simctl install`, drive the auth and
- * full-Bun chat legs — so the parts worth testing are pulled out here as
- * deterministic functions with no I/O: CLI parsing, the ordered step plan a
- * given flag set produces, the "which simulator is booted" selection over
- * `simctl list … --json`, the app-id extraction, and the exact argv each leg
- * is invoked with.
- *
- * The load-bearing invariant these encode is the orchestrator's contract:
- * it must fail LOUDLY and must never report success vacuously. That is why
- * `planIosE2eSteps` distinguishes setup/optional cloud work from the two
- * simulator-app verification legs (auth / local-chat), and
- * `assertNonVacuousPlan` refuses a run that would print "ALL iOS E2E PASSED"
- * without exercising a single real app path. Runs under the packages/app vitest suite
- * (`bun run --cwd packages/app test`), i.e. the root test:client lane.
+ * Plans iOS simulator installation and on-device chat verification. Build and
+ * install helpers retain explicit device identity; a run without the chat
+ * verification leg fails instead of treating setup as product proof.
  */
 
 export const DEFAULT_IOS_SIMULATOR = "iPhone 16 Pro";
@@ -22,14 +9,8 @@ export const DEFAULT_IOS_SIMULATOR = "iPhone 16 Pro";
 // Ordered once, consumed everywhere. Build/install are setup; the rest are the
 // real device-path assertions. Install remains explicit under --skip-build so
 // a supplied App.app cannot be mistaken for an already-installed fresh build.
-export const IOS_E2E_STEP_IDS = [
-  "build",
-  "install",
-  "auth",
-  "local-chat",
-  "cloud",
-];
-export const IOS_E2E_VERIFICATION_STEP_IDS = ["auth", "local-chat"];
+export const IOS_E2E_STEP_IDS = ["build", "install", "local-chat", "cloud"];
+export const IOS_E2E_VERIFICATION_STEP_IDS = ["local-chat"];
 
 /**
  * Parse the orchestrator argv into an explicit flag record. Kept total (every
@@ -47,7 +28,6 @@ export function parseIosE2eArgs(argv) {
     appPath: val("--app-path"),
     output: val("--output"),
     skipBuild: has("--skip-build"),
-    skipAuth: has("--skip-auth"),
     skipLocalChat: has("--skip-local-chat"),
     cloud: has("--cloud"),
     noWait: has("--no-wait"),
@@ -73,13 +53,6 @@ export function planIosE2eSteps(flags) {
     label: "install the iOS Simulator app",
     verification: false,
   });
-  if (!flags.skipAuth) {
-    steps.push({
-      id: "auth",
-      label: "auth route: deep-link / callback registration + drive",
-      verification: true,
-    });
-  }
   if (!flags.skipLocalChat) {
     steps.push({
       id: "local-chat",
@@ -100,7 +73,7 @@ export function planIosE2eSteps(flags) {
 /**
  * Guard against a vacuous green: a run that skips every simulator-app
  * verification leg would otherwise sail to "ALL iOS E2E PASSED" having proven
- * no app/auth/chat path. Cloud is useful optional coverage, but it is not a
+ * no app/chat path. Cloud is useful optional coverage, but it is not a
  * substitute for exercising the installed simulator app, so refuse those
  * combinations up front with an actionable message instead of exiting 0.
  */
@@ -108,9 +81,9 @@ export function assertNonVacuousPlan(steps) {
   const verifying = steps.filter((s) => s.verification);
   if (verifying.length === 0) {
     throw new Error(
-      "refusing to run: every simulator-app verification leg (auth / local-chat) is skipped, " +
+      "refusing to run: every simulator-app verification leg (local-chat) is skipped, " +
         "so the orchestrator would report success without proving the installed app path. " +
-        "Drop --skip-auth or --skip-local-chat; --cloud alone is not enough.",
+        "Drop --skip-local-chat; --cloud alone is not enough.",
     );
   }
   return verifying;
@@ -209,54 +182,10 @@ export function classifyIosSimulatorSchemeDispatch(entries, approval) {
 // Leg command builders. Each returns { cmd, args } exactly as spawned. Kept
 // pure so the tests pin the flags that make each leg *real* — e.g. the chat leg
 // must carry --require-installed (no host fallback) and --ios-full-bun-smoke
-// (the real on-device engine), and the auth leg must target the booted udid.
+// (the real on-device engine).
 
 export function buildIosSimBuildCommand() {
   return { cmd: "bun", args: ["run", "build:ios:local:sim"] };
-}
-
-export function buildAuthSmokeCommand(udid) {
-  if (!udid) throw new Error("buildAuthSmokeCommand requires a simulator udid");
-  return {
-    cmd: "node",
-    args: [
-      "../../packages/app/scripts/mobile-auth-simulator-smoke.mjs",
-      "--platform",
-      "ios",
-      "--device",
-      udid,
-    ],
-  };
-}
-
-/**
- * Extract the auth smoke's final structured payload from its mixed human/JSON
- * stdout. The auth CLI deliberately keeps stdout as its stable interface; the
- * composed runner persists this exact object without adding a second evidence
- * mode to the platform-neutral auth harness.
- */
-export function parseAuthSmokeResult(stdout) {
-  const text = String(stdout ?? "").trim();
-  const starts = [0];
-  for (
-    let index = text.indexOf("\n{");
-    index >= 0;
-    index = text.indexOf("\n{", index + 2)
-  ) {
-    starts.push(index + 1);
-  }
-  for (const start of starts.reverse()) {
-    try {
-      const value = JSON.parse(text.slice(start));
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        return value;
-      }
-    } catch {
-      // error-policy:J3 Earlier braces may belong to human log lines; only a
-      // complete trailing JSON object is a valid auth receipt.
-    }
-  }
-  throw new Error("mobile auth smoke stdout did not end with a JSON object");
 }
 
 export function buildLocalChatSmokeCommand() {

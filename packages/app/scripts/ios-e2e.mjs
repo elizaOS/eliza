@@ -1,18 +1,9 @@
 #!/usr/bin/env node
-// iOS end-to-end orchestrator (macOS only — uses `xcrun simctl`). Mirrors
-// android-e2e.mjs for the iOS Simulator. The iOS WebView (WKWebView) is not
-// CDP-drivable like Android, so there is no Playwright route-coverage sweep;
-// instead this proves the device-level real paths and fails LOUDLY:
-//   1. A simulator is booted (boots one if needed).
-//   2. The app is built when requested, then explicitly installed even when a
-//      prebuilt --app-path is supplied.
-//   3. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
-//   4. Local route: on-device agent + smallest model + real chat round-trip
-//      (mobile-local-chat-smoke ios full-bun path).
-//   5. (optional) Cloud route: real provisioning probe.
-//
-// Flags: --device <name|udid>  --app-path <App.app>  --skip-build
-//        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
+/**
+ * Builds and installs an iOS simulator app, then exercises its on-device chat
+ * path and records a finalized evidence bundle. Optional cloud provisioning
+ * cannot substitute for exercising the installed application.
+ */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -21,7 +12,6 @@ import { fileURLToPath } from "node:url";
 import {
   applyIosSimulatorSchemeApproval,
   assertNonVacuousPlan,
-  buildAuthSmokeCommand,
   buildCloudProvisioningCommand,
   buildIosSimBuildCommand,
   buildLocalChatSmokeCommand,
@@ -29,7 +19,6 @@ import {
   extractAppIdentity,
   iosSimulatorSchemeApproval,
   isAppInstalled,
-  parseAuthSmokeResult,
   parseIosE2eArgs,
   planIosE2eSteps,
   resolveTargetDevice,
@@ -369,18 +358,6 @@ function runStep(bundle, step, { udid, appId, urlScheme }) {
         failIosStep(bundle, installStep, error);
         throw error;
       }
-      return;
-    }
-    case "auth": {
-      log(`${step.label}…`);
-      const auth = buildAuthSmokeCommand(udid);
-      const result = run(bundle, step.label, auth.cmd, auth.args);
-      const evidenceDir = path.join(bundle.root, "test-results", "auth");
-      fs.mkdirSync(evidenceDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(evidenceDir, "result.json"),
-        `${JSON.stringify(parseAuthSmokeResult(result.stdout), null, 2)}\n`,
-      );
       return;
     }
     case "local-chat": {

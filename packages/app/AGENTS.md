@@ -231,29 +231,6 @@ must provide the WebView-side session seed (`steward_session_token` /
 `POST /api/cloud/login/persist`) before claiming device-UI cloud-onboarding
 evidence.
 
-### What `test:sim:auth` proves (and does not) (#13693)
-
-`test:sim:auth[:ios|:android]` (`packages/app/scripts/mobile-auth-simulator-smoke.mjs`)
-is a **callback-delivery + in-app-handler smoke, not a login smoke.** It fires a
-synthetic `<scheme>://auth/callback?state=…&code=…` deep link that no token
-endpoint would accept, then reads back — through the Capacitor-Preferences
-handshake the onboarding smoke pioneered — what the renderer's `auth/callback`
-handler wrote (`recordIosAuthCallbackSmoke` in `src/main.tsx`, armed by the
-smoke's `eliza:auth-callback-smoke:request`/`:result` keys). The shared
-`assertAuthCallbackResult` contract then asserts the security end state: the
-OS-delivered callback is explicitly rejected (`accepted:false`), classified
-(`classification:"synthetic_callback_rejected"`), and **left the active session
-untouched** (`sessionChanged:false`) — a deep link must never authenticate or
-swap the app session. A handler that merely echoed the URL back, dropped it, or
-authenticated off it now fails the lane instead of passing on delivery alone.
-
-It does **not** exercise a genuine OAuth exchange or a logged-in end state; that
-`--real` mode is blocked on the headless staging-Cloud session seed tracked in
-#13578 / #13693 done-when #2. The pure end-state contract is verifiable without a
-device via `node --test packages/app/scripts/mobile-auth-simulator-smoke-endstate.test.mjs`
-(which additionally round-trips the assertion through a booted simulator's real
-`xcrun simctl defaults` store when one is available).
-
 ## Config / env vars
 
 All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "ELIZA"`). Key vars read at runtime or build:

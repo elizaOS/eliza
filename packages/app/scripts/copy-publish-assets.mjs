@@ -178,7 +178,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/linux-distribution-contract.mjs",
   "scripts/maintain-cloud-api-production-gateway.mjs",
   "scripts/mas-smoke.mjs",
-  "scripts/mobile-auth-simulator-smoke.mjs",
   "scripts/mobile/agent-bundle.mjs",
   "scripts/mobile/android-gradle.mjs",
   "scripts/mobile/android-manifest.mjs",

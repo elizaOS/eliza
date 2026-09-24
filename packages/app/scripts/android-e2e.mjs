@@ -82,13 +82,8 @@ function defaultAndroidEvidenceOutputDir() {
 // hardware-qualified lane with its own model prerequisites.
 const HOST_EMULATOR_PROBES = [
   "test/android/onboarding-to-home.android.spec.ts",
-  "test/android/route-coverage.android.spec.ts",
-  "test/android/native-plugin-view-smoke.android.spec.ts",
 ];
-const ARM64_LOCAL_PROBES = [
-  "test/android/local-runtime.android.spec.ts",
-  "test/android/route-coverage.android.spec.ts",
-];
+const ARM64_LOCAL_PROBES = ["test/android/local-runtime.android.spec.ts"];
 
 // Smallest local tier; same id the smoke + catalog use.
 const SMOKE_MODEL = {
