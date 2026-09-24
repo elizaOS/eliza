@@ -430,7 +430,10 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
       const value = stdout.endsWith("\n") ? stdout.slice(0, -1) : stdout;
       return decodeLinuxSecret(value);
     } catch (err: unknown) {
-      const e = err as { stderr?: string; code?: number };
+      const e =
+        err !== null && typeof err === "object"
+          ? (err as { stderr?: string; code?: number })
+          : {};
       const stderr = String(e.stderr ?? "");
       const normalized = stderr.trim().toLowerCase();
       if (
