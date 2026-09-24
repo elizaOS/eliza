@@ -35,18 +35,15 @@ test("shared builder preserves freshness, forced development builds, and depende
       runner,
     );
     fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
-    fs.symlinkSync(
-      fs.realpathSync(path.join(repoRoot, "node_modules/turbo")),
-      path.join(root, "node_modules/turbo"),
-      "junction",
-    );
     fs.writeFileSync(
       path.join(root, "package.json"),
       JSON.stringify({
         name: "native-build-fixture",
         type: "module",
         private: true,
-        packageManager: "bun@1.3.14",
+        packageManager: JSON.parse(
+          fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+        ).packageManager,
         workspaces: ["packages/core", "plugins/*"],
       }),
     );
@@ -96,15 +93,44 @@ test("shared builder preserves freshness, forced development builds, and depende
       spawnSync("git", ["init", "--quiet"], { cwd: root }).status,
       0,
     );
+    // Match the repository's supported v1 lockfile rather than generating a
+    // newer format that the pinned Turbo cannot hash. Frozen install verifies it.
+    fs.writeFileSync(
+      path.join(root, "bun.lock"),
+      JSON.stringify({
+        lockfileVersion: 1,
+        configVersion: 1,
+        workspaces: {
+          "": { name: "native-build-fixture" },
+          "packages/core": { name: "@elizaos/core", version: "1.0.0" },
+          "plugins/plugin-native-fixture": {
+            name: "@fixture/native",
+            version: "1.0.0",
+            dependencies: { "@elizaos/core": "workspace:*" },
+          },
+        },
+        packages: {
+          "@elizaos/core": ["@elizaos/core@workspace:packages/core"],
+          "@fixture/native": [
+            "@fixture/native@workspace:plugins/plugin-native-fixture",
+          ],
+        },
+      }),
+    );
     const install = spawnSync(
       "bun",
-      ["install", "--lockfile-only", "--ignore-scripts"],
+      ["install", "--frozen-lockfile", "--ignore-scripts"],
       {
         cwd: root,
         encoding: "utf8",
       },
     );
     assert.equal(install.status, 0, install.stderr);
+    fs.symlinkSync(
+      fs.realpathSync(path.join(repoRoot, "node_modules/turbo")),
+      path.join(root, "node_modules/turbo"),
+      "junction",
+    );
     assert.equal(spawnSync("git", ["add", "."], { cwd: root }).status, 0);
     assert.equal(
       spawnSync(
