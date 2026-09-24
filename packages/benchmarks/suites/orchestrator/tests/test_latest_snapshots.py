@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from benchmarks.publication_contracts import (
     WEBSHOP_FULL_REPORT_CONTRACT,
     WEBSHOP_FULL_SCENARIO_ID_MANIFEST_SHA256,
@@ -1321,11 +1323,10 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
                 "agent": agent,
                 "harness": agent,
                 "scenario": "skeptic_tarot_01",
-                **(
-                    {"openclaw_timeout_s": 60, "reasoning_effort": "low"}
-                    if agent == "hermes"
-                    else {}
-                ),
+                "openclaw_timeout_s": 60,
+                "hermes_timeout_s": 60,
+                "eliza_bench_http_timeout_s": 60,
+                "reasoning_effort": "low",
             },
         )
 
@@ -2472,3 +2473,49 @@ def test_rebuild_latest_prunes_unknown_benchmark_snapshots(
     }
     indexed_files = {Path(row["path"]).name for row in index["latest"].values()}
     assert latest_files == indexed_files == {"bfcl__eliza.json"}
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ({"timeout_s": 30}, {"timeout_s": 1200}),
+        ({"eliza_bench_http_timeout_s": 30}, {"eliza_bench_http_timeout_s": 1200}),
+        ({"openclaw_timeout_s": 30}, {"openclaw_timeout_s": 1200}),
+        ({"hermes_timeout_s": 30}, {"hermes_timeout_s": 1200}),
+        ({}, {"reasoning_effort": "low"}),
+    ],
+)
+def test_rebuild_latest_separates_execution_budgets(
+    tmp_path: Path, first: dict[str, Any], second: dict[str, Any]
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    try:
+        create_run_group(
+            conn,
+            run_group_id="rg_test",
+            created_at="2026-05-12T00:00:00+00:00",
+            request={},
+            benchmarks=["woobench"],
+            repo_meta={},
+        )
+        for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
+            _seed_run(
+                conn,
+                benchmark_id="woobench",
+                agent=agent,
+                run_id=f"budget_{agent}",
+                started_at=f"2026-05-12T00:0{offset}:00+00:00",
+                extra_config=second if agent == "openclaw" else first,
+            )
+        _rebuild_latest_result_snapshots(
+            conn, tmp_path, {"woobench": _adapter("woobench")}
+        )
+        index = json.loads((tmp_path / "latest/index.json").read_text())
+        assert len(index["latest"]) == 3
+        assert len({
+            row["comparison_signature"] for row in index["latest"].values()
+        }) == 2
+        assert index["benchmark_comparability"]["woobench"]["comparable"] is False
+    finally:
+        conn.close()

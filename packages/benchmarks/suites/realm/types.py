@@ -175,7 +175,7 @@ class PlanningTrajectory:
     duration_ms: float = 0.0
     planning_time_ms: float = 0.0
     execution_time_ms: float = 0.0
-    tokens_used: int = 0
+    tokens_used: int | None = None
     adaptation_count: int = 0
     start_time_ms: float = 0.0
     end_time_ms: float = 0.0
@@ -281,7 +281,7 @@ class REALMResultMetrics:
     # 5. Resource Usage
     planning_time_ms: float = 0.0
     execution_time_ms: float = 0.0
-    tokens: int = 0
+    tokens: int | None = None
     # 6. Adaptation to Disruption (P4/P7/P8/P9/P10)
     adaptation_success_rate: float = 1.0
     # Per-problem extras (e.g. number of TW violations, served-passenger ratio)
@@ -292,7 +292,7 @@ class REALMResultMetrics:
 class REALMResultDetails:
     plan_adaptations: int = 0
     error_recoveries: int = 0
-    tokens: int = 0
+    tokens: int | None = None
     duration: float = 0.0
 
 
@@ -305,7 +305,7 @@ class REALMResult:
     steps_executed: int
     actions_performed: list[str]
     duration_ms: float = 0.0
-    token_usage: int = 0
+    token_usage: int | None = None
     error: Optional[str] = None
     metrics: REALMResultMetrics = field(default_factory=REALMResultMetrics)
     details: REALMResultDetails = field(default_factory=REALMResultDetails)
@@ -334,8 +334,8 @@ class REALMMetrics:
     avg_adaptation_success_rate: float = 0.0
     avg_planning_time_ms: float = 0.0
     avg_execution_time_ms: float = 0.0
-    avg_tokens_per_task: float = 0.0
-    total_tokens: int = 0
+    avg_tokens_per_task: float | None = None
+    total_tokens: int | None = None
     total_duration_ms: float = 0.0
     avg_latency_ms: float = 0.0
 

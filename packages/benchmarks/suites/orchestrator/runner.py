@@ -227,14 +227,10 @@ def _comparison_extra_config(
         normalized_extra.pop("agent", None)
     if injected_harness in comparable_agents:
         normalized_extra.pop("harness", None)
-    for runtime_key in (
-        "eliza_bench_http_timeout_s",
-        "openclaw_timeout_s",
-        "timeout_s",
-    ):
-        normalized_extra.pop(runtime_key, None)
-    if str(normalized_extra.get("reasoning_effort") or "").strip().lower() == "low":
-        normalized_extra.pop("reasoning_effort", None)
+    # Time limits and explicit reasoning settings affect the available work.
+    # Preserve them even when a harness consumes a differently named setting;
+    # campaigns must supply the same budget configuration to every lane.
+    # Unspecified reasoning is not necessarily the provider's "low" setting.
     dataset = str(normalized_extra.get("dataset") or "").strip()
     suite = str(normalized_extra.get("suite") or "").strip()
     if dataset and suite and dataset == suite:
