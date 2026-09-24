@@ -96,7 +96,7 @@ export const evaluatorSchema: JSONSchema = {
       type: "string",
       enum: ["history", "providers", "full"],
       description:
-        "Read omitted history, deferred provider bodies, or both (full); request only missing sources reported by completion_context. Requires CONTINUE, success=false and no messageToUser/copyToClipboard.",
+        "Omit this field when the supplied evidence suffices, especially for FINISH. Read only a needed missing source reported by completion_context: history, providers, or both (full). Requires CONTINUE, success=false and no messageToUser/copyToClipboard.",
     },
     effectReceiptIds: {
       type: "array",
