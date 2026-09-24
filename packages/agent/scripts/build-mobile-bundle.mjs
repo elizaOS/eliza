@@ -1470,7 +1470,7 @@ if (!existsSync(bundlePath)) {
 //      now-bound original where one exists. No-op when the original
 //      isn't there either.
 let bundleSrc = await Bun.file(bundlePath).text();
-// Bun.build (1.3.14+) injects its `createRequire` ESM shim at the very top of
+// Bun.build (1.4.2+) injects its `createRequire` ESM shim at the very top of
 // the output — ABOVE the entry's `#!/usr/bin/env node` — so the shebang lands
 // on ~line 4. A shebang anywhere but line 1 is a SyntaxError when Node loads
 // the file as an ES module (compileSourceTextModule), which crash-loops the

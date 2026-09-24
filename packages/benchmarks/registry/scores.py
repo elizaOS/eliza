@@ -556,6 +556,14 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench:root")
+    results = root.get("results")
+    if root.get("mock") is True or root.get("smoke") is True or root.get("baseline") or root.get("evaluator_feedback_repairs") or (
+        isinstance(root.get("dataset_provenance"), dict) and root["dataset_provenance"].get("dataset") == "synthetic"
+    ) or (
+        isinstance(results, list)
+        and any(isinstance(row, dict) and "smoke_validated" in str(row.get("status", "")) for row in results)
+    ):
+        raise ValueError("swe_bench: structural smoke validation is not a publishable resolution score")
     summary = expect_dict(
         get_required(root, "summary", ctx="swe_bench:root"), ctx="swe_bench:summary"
     )
@@ -584,6 +592,10 @@ def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_swebench_orchestrated_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench_orchestrated:root")
+    execution = root.get("execution")
+    if not isinstance(execution, dict) or execution.get("orchestration_verified") is not True:
+        raise ValueError("swe_bench_orchestrated: missing real TASKS/ACP orchestration evidence")
+    _score_from_swebench_json(root)
     metrics_obj = get_optional(root, "metrics")
     if isinstance(metrics_obj, dict):
         overall_raw = get_optional(metrics_obj, "overall_score")

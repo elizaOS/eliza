@@ -1,30 +1,19 @@
-"""One-shot client to the Codex CLI harness (#10193/#10199).
+"""Codex CLI client with full conversation replay and JSONL execution receipts.
 
-Skeleton counterpart of ``smithers_adapter.client.SmithersClient``: each turn
-spawns a one-shot ``codex exec`` subprocess (non-interactive) that reads the
-prompt on stdin and prints the assistant output on stdout. The subprocess is
-authenticated AS a selected account by pointing ``CODEX_HOME`` at that account's
-materialized home (see ``codex_adapter.accounts``), so an operator with N Codex
-accounts round-robins turns across them.
-
-The orchestrator process never imports any Codex/Bun/Node dependency — it only
-needs the ``codex`` binary on PATH (or ``CODEX_BIN``) and at least one
-materialized ``CODEX_HOME``. A **live** run is credential-gated: it requires a
-real logged-in Codex account (``auth.json`` present) and the gpt-5.5 model the
-account is entitled to. This module never fabricates a response — if the binary
-is absent or the account is unauthenticated, ``send_message`` raises.
-"""
+Each turn runs codex exec with an explicit sandbox. Account-file presence is
+only a readiness hint; subprocess authentication and execution must succeed."""
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
 
 from .accounts import CodexAccount, account_for_turn, select_codex_accounts
 
@@ -71,11 +60,14 @@ class CodexClient:
         model: str = _DEFAULT_MODEL,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         reasoning_effort: str | None = None,
+        cwd: Path | None = None,
     ) -> None:
         self._codex_bin_explicit = codex_bin
         self.model = model
         self.timeout_s = float(timeout_s)
         self.reasoning_effort = reasoning_effort or os.environ.get("ELIZA_CODEX_REASONING_EFFORT")
+        self.cwd = cwd.resolve() if cwd is not None else None
+        self._history: list[dict[str, object]] = []
         # Account selection is resolved eagerly so a bad --accounts value fails
         # at construction, not mid-run. When `accounts` is passed directly
         # (tests / pre-resolved), it is used verbatim.
@@ -116,6 +108,7 @@ class CodexClient:
         self._task_id = task_id
         self._benchmark = benchmark
         self._turn_index = 0
+        self._history.clear()
         return {"task_id": task_id, "benchmark": benchmark, "status": "ready"}
 
     def account_for_current_turn(self) -> CodexAccount:
@@ -123,14 +116,19 @@ class CodexClient:
 
     def build_command(self) -> list[str]:
         """Non-interactive ``codex exec`` command; the prompt is sent on stdin."""
-        return [
+        command = [
             self.codex_bin,
             "exec",
+            "--json",
             "--skip-git-repo-check",
+            "--sandbox",
+            "workspace-write" if self.cwd is not None else "read-only",
             "--model",
             self.model,
-            "-",
         ]
+        if self.reasoning_effort:
+            command.extend(["-c", f"model_reasoning_effort={json.dumps(self.reasoning_effort)}"])
+        return [*command, "-"]
 
     def build_env(self, account: CodexAccount) -> dict[str, str]:
         env = dict(os.environ)
@@ -146,7 +144,16 @@ class CodexClient:
         response. ``context`` is accepted for API compatibility with the other
         harness clients.
         """
-        del context
+        turn: dict[str, object] = {"role": "user", "text": text}
+        if context is not None:
+            turn["context"] = dict(context)
+        # Each exec is a fresh process. Replay the complete task transcript so
+        # observations and prior tool outcomes survive process/account changes.
+        prompt = json.dumps(
+            {"benchmark": self._benchmark, "task_id": self._task_id,
+             "messages": [*self._history, turn]},
+            ensure_ascii=False,
+        )
         account = self.account_for_current_turn()
         if not account.is_authenticated:
             raise RuntimeError(
@@ -156,11 +163,13 @@ class CodexClient:
         cmd = self.build_command()
         env = self.build_env(account)
         started = time.monotonic()
-        result = subprocess.run(  # noqa: S603 — argv constructed, not shell
+        result = subprocess.run(
             cmd,
-            input=text,
+            input=prompt,
             env=env,
+            cwd=self.cwd,
             capture_output=True,
+            check=False,
             text=True,
             timeout=self.timeout_s,
         )
@@ -171,12 +180,38 @@ class CodexClient:
                 f"codex exec failed (rc={result.returncode}) for account "
                 f"'{account.account_id}':\n{(result.stderr or '')[-4000:]}"
             )
-        text_out = (result.stdout or "").strip()
+        events: list[dict[str, object]] = []
+        messages: list[str] = []
+        usage: dict[str, object] | None = None
+        for line in (result.stdout or "").splitlines():
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if not isinstance(event, dict):
+                raise TypeError("codex exec emitted a non-object JSONL event")
+            events.append(event)
+            if event.get("type") in {"turn.failed", "error"}:
+                raise RuntimeError(f"codex exec failed: {json.dumps(event)}")
+            if event.get("type") == "turn.completed":
+                raw_usage = event.get("usage")
+                usage = raw_usage if isinstance(raw_usage, dict) else {}
+            item = event.get("item")
+            if (
+                event.get("type") == "item.completed"
+                and isinstance(item, dict)
+                and item.get("type") == "agent_message"
+                and isinstance(item.get("text"), str)
+            ):
+                messages.append(item["text"])
+        if usage is None:
+            raise RuntimeError("codex exec did not emit turn.completed")
+        text_out = "\n".join(messages).strip()
         if not text_out:
             raise RuntimeError(
                 f"codex exec produced no output for account '{account.account_id}'. "
                 f"STDERR:\n{(result.stderr or '')[-2000:]}"
             )
+        self._history.extend([turn, {"role": "assistant", "text": text_out, "events": events}])
         return MessageResponse(
             text=text_out,
             params={
@@ -185,5 +220,7 @@ class CodexClient:
                 "model": self.model,
                 "turn_index": self._turn_index - 1,
                 "latency_ms": latency_ms,
+                "usage": usage,
+                "events": events,
             },
         )

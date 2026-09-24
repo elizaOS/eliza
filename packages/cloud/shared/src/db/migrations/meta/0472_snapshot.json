@@ -41326,6 +41326,138 @@
       },
       "isRLSEnabled": false
     },
+    "public.outreachr_delegations": {
+      "name": "outreachr_delegations",
+      "schema": "",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "authorization_code_hash": {
+          "name": "authorization_code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registration_digest": {
+          "name": "registration_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "outreachr_delegations_expiry_idx": {
+          "name": "outreachr_delegations_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "outreachr_delegations_app_id_apps_id_fk": {
+          "name": "outreachr_delegations_app_id_apps_id_fk",
+          "tableFrom": "outreachr_delegations",
+          "columnsFrom": [
+            "app_id"
+          ],
+          "tableTo": "apps",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "outreachr_delegations_user_id_users_id_fk": {
+          "name": "outreachr_delegations_user_id_users_id_fk",
+          "tableFrom": "outreachr_delegations",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "outreachr_delegations_organization_id_organizations_id_fk": {
+          "name": "outreachr_delegations_organization_id_organizations_id_fk",
+          "tableFrom": "outreachr_delegations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "tableTo": "organizations",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "outreachr_delegations_authorization_code_hash_unique": {
+          "name": "outreachr_delegations_authorization_code_hash_unique",
+          "columns": [
+            "authorization_code_hash"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.participants": {
       "name": "participants",
       "schema": "",
@@ -62312,5 +62444,5 @@
     "columns": {}
   },
   "id": "33d7dc8e-aca3-49c3-890a-a19da80f77d4",
-  "prevId": "ce2881c4-579d-4d95-a6e0-29a22e0e6c40"
+  "prevId": "4d4d5582-c509-4438-b659-b26154ae26c6"
 }

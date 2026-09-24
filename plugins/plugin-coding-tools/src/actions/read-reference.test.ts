@@ -45,7 +45,10 @@ async function child(input: {
   blockedPath?: string;
 }) {
   const script = fileURLToPath(
-    new URL("../../scripts/file-reference-read-child.ts", import.meta.url),
+    new URL(
+      "../../../../packages/scripts/plugins/plugin-coding-tools/file-reference-read-child.ts",
+      import.meta.url,
+    ),
   );
   const { stdout } = await promisify(execFile)(
     process.execPath,

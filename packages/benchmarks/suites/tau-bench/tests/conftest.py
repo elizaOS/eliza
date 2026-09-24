@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-# The smoke tests drive the eliza harness adapter directly; make it importable
-# from a plain checkout (it is an editable install when running under uv).
-_ELIZA_HARNESS = str(Path(__file__).resolve().parents[3] / "harnesses" / "eliza")
-if _ELIZA_HARNESS not in sys.path:
-    sys.path.insert(0, _ELIZA_HARNESS)
+# Adapter contracts run from a source checkout without editable installs.
+for harness in ("eliza", "hermes", "openclaw"):
+    harness_path = str(Path(__file__).resolve().parents[3] / "harnesses" / harness)
+    if harness_path not in sys.path:
+        sys.path.insert(0, harness_path)
 
 from elizaos_tau_bench.types import TauBenchConfig
 

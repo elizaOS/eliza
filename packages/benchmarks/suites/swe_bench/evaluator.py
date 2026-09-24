@@ -12,9 +12,11 @@ import logging
 import os
 import platform as _platform
 import re
+import shutil
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,7 +53,9 @@ class SWEBenchEvaluator:
         namespace: str | None = None,
         instance_image_tag: str = "latest",
         env_image_tag: str = "latest",
+        artifacts_dir: str | None = None,
     ):
+        self.artifacts_dir = Path(artifacts_dir).resolve() if artifacts_dir else None
         self.workspace_dir = Path(workspace_dir) if workspace_dir else None
         self.timeout_seconds = timeout_seconds
         self.use_docker = use_docker
@@ -62,6 +66,23 @@ class SWEBenchEvaluator:
         self.instance_image_tag = instance_image_tag
         self.env_image_tag = env_image_tag
         self._docker_available: bool | None = None
+
+    @contextmanager
+    def _evaluation_directory(self):
+        """Retain evaluator evidence without copying temporary Docker credentials."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                yield tmpdir
+            finally:
+                if self.artifacts_dir is not None:
+                    self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+                    destination = Path(tempfile.mkdtemp(prefix="evaluation-", dir=self.artifacts_dir))
+                    for name in ("predictions.jsonl", "stdout.log", "stderr.log", "logs"):
+                        source = Path(tmpdir) / name
+                        if source.is_dir():
+                            shutil.copytree(source, destination / name)
+                        elif source.is_file():
+                            shutil.copy2(source, destination / name)
 
     async def check_docker_available(self) -> bool:
         """Check if Docker is available."""
@@ -105,7 +126,7 @@ class SWEBenchEvaluator:
             )
 
         # Non-Docker smoke path: structurally validate the patch and mark
-        # PASS only when it parses as a unified diff with at least one hunk
+        # GENERATED only when it resembles a unified diff with at least one hunk
         # AND references at least one plausible file path. This is a
         # smoke-grade evaluator only — it never executes tests and CANNOT
         # tell whether the patch fixes anything. Used so the harness runs
@@ -120,7 +141,7 @@ class SWEBenchEvaluator:
             # Surface ``incompatible`` so the orchestrator publication gate sees
             # ``success=False`` and routes the result accordingly.
             reason = (
-                "Docker unavailable and use_docker=False; SWE-bench cannot "
+                "Docker unavailable; SWE-bench cannot "
                 "execute tests without Docker. Refusing to fall back to "
                 "ground-truth-leakage similarity scoring."
             )
@@ -168,10 +189,9 @@ class SWEBenchEvaluator:
           * references at least one file path that looks like a real source
             file (non-empty, no leading slash, has an extension).
 
-        This does NOT execute tests. ``PatchStatus.PASS`` here means only
-        "the patch is well-formed enough that a real harness COULD try to
-        apply it" — it is not a SWE-bench resolution. Use Docker mode for
-        real scoring.
+        This does NOT execute tests or prove the patch applies. A structurally
+        plausible patch remains GENERATED with success=False; only the official
+        evaluator may mark a task resolved. Use Docker mode for real scoring.
         """
         lines = patch.splitlines()
         has_header = any(line.startswith("diff --git ") for line in lines)
@@ -220,13 +240,13 @@ class SWEBenchEvaluator:
         return SWEBenchResult(
             instance_id=instance.instance_id,
             generated_patch=patch,
-            patch_status=PatchStatus.PASS,
+            patch_status=PatchStatus.GENERATED,
             tests_passed=[],
             tests_failed=[],
-            success=True,
+            success=False,
             duration_seconds=time.time() - start_time,
             tokens_used=None,
-            error=None,
+            error="Structural smoke validation only; repository tests were not executed",
             status="smoke_validated",
         )
 
@@ -340,7 +360,7 @@ class SWEBenchEvaluator:
         # Best-effort speedup: use Epoch's prebuilt images when configured.
         await self._maybe_prepare_epoch_prebuilt_image(official_instance_id)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with self._evaluation_directory() as tmpdir:
             tmp_path = Path(tmpdir)
             predictions_path = tmp_path / "predictions.jsonl"
 
@@ -422,6 +442,8 @@ class SWEBenchEvaluator:
                     ),
                     status="incompatible",
                 )
+            (tmp_path / "stdout.log").write_bytes(_stdout_bytes)
+            (tmp_path / "stderr.log").write_bytes(stderr_bytes)
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
             # Locate the per-instance report file.

@@ -6,33 +6,21 @@
  * platform secure store. State dir honors ELIZA_STATE_DIR > XDG state home.
  * Environment variables always override persisted values.
  */
-import { createHash, randomUUID } from "node:crypto";
+
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {
-  type PlatformSecureStore,
-  type SecureStoreSecretKind,
+  deriveAgentVaultId,
+  resolveCanonicalStateDir,
+} from "../security/agent-vault-id";
+import type {
+  PlatformSecureStore,
+  SecureStoreSecretKind,
 } from "../security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../security/platform-secure-store-node";
 
-// Inlined copy of @elizaos/core's state-dir helper so this module doesn't pull
-// the heavier core runtime-composition graph. Env reads go through the
-// alias-aware `readAliasedEnv` so branded prefixes (e.g. `MILADY_STATE_DIR`)
-// resolve from the alias table, with no `process.env` mirror involved.
-function resolveStateDir(): string {
-  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
-  if (explicit) return explicit;
-  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
-  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
-  const stateHome = xdgStateHome
-    ? path.isAbsolute(xdgStateHome)
-      ? xdgStateHome
-      : path.join(homedir(), xdgStateHome)
-    : path.join(homedir(), ".local", "state");
-  return path.join(stateHome, namespace);
-}
 export interface PersistedStewardCredentials {
   apiUrl: string;
   tenantId: string;
@@ -46,6 +34,7 @@ export interface PersistedStewardCredentials {
   agentName?: string;
   createdAt?: string;
 }
+
 const CREDENTIALS_FILENAME = "steward-credentials.json";
 const STEWARD_SECRET_KINDS = {
   apiUrl: "steward.api_url",
@@ -54,35 +43,28 @@ const STEWARD_SECRET_KINDS = {
   apiKey: "steward.api_key",
   agentToken: "steward.agent_token",
 } as const satisfies Record<string, SecureStoreSecretKind>;
+
 type StewardCredentialSecretField = keyof typeof STEWARD_SECRET_KINDS;
 type StewardCredentialsMetadata = Omit<
   PersistedStewardCredentials,
   StewardCredentialSecretField
 > &
   Partial<Pick<PersistedStewardCredentials, "apiUrl" | "tenantId" | "agentId">>;
+
 interface StewardCredentialPersistenceOptions {
   secureStore?: PlatformSecureStore;
 }
+
 function resolveCredentialsPath(): string {
-  return path.join(resolveStateDir(), CREDENTIALS_FILENAME);
+  return path.join(resolveCanonicalStateDir(), CREDENTIALS_FILENAME);
 }
-function deriveStewardVaultId(): string {
-  const resolved = path.resolve(resolveStateDir());
-  let canonicalStateDir = resolved;
-  try {
-    canonicalStateDir = fs.realpathSync(resolved);
-  } catch {
-    // Directory may not exist before first save.
-  }
-  const hash = createHash("sha256").update(canonicalStateDir, "utf8").digest();
-  const token = Buffer.from(hash).toString("base64url").slice(0, 16);
-  return `mldy1-${token}`;
-}
+
 function createStewardSecureStore(
   options: StewardCredentialPersistenceOptions = {},
 ): PlatformSecureStore {
   return options.secureStore ?? createNodePlatformSecureStore();
 }
+
 function readCredentialsFile():
   | (Partial<PersistedStewardCredentials> & StewardCredentialsMetadata)
   | null {
@@ -99,6 +81,7 @@ function readCredentialsFile():
     return null;
   }
 }
+
 function fsyncMetadataDirectory(directory: string): void {
   if (process.platform === "win32") return;
   const descriptor = fs.openSync(
@@ -111,6 +94,7 @@ function fsyncMetadataDirectory(directory: string): void {
     fs.closeSync(descriptor);
   }
 }
+
 function writeCredentialsMetadata(
   credentials: PersistedStewardCredentials | StewardCredentialsMetadata,
 ): void {
@@ -127,6 +111,7 @@ function writeCredentialsMetadata(
   if (credentials.apiUrl) data.apiUrl = credentials.apiUrl;
   if (credentials.tenantId) data.tenantId = credentials.tenantId;
   if (credentials.agentId) data.agentId = credentials.agentId;
+
   // Write to a private temporary file and rename into place so an interrupted
   // process can never leave a truncated steward-credentials.json behind: the
   // loader treats unparseable metadata as "steward not configured", silently
@@ -153,6 +138,7 @@ function writeCredentialsMetadata(
     fs.rmSync(tmp, { force: true });
   }
 }
+
 async function readStewardSecret(
   store: PlatformSecureStore,
   vaultId: string,
@@ -161,6 +147,7 @@ async function readStewardSecret(
   const got = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
   return got.ok && got.value.trim() ? got.value.trim() : null;
 }
+
 async function writeStewardSecret(
   store: PlatformSecureStore,
   vaultId: string,
@@ -196,6 +183,7 @@ async function writeStewardSecret(
     );
   }
 }
+
 async function snapshotStewardSecrets(
   store: PlatformSecureStore,
   vaultId: string,
@@ -215,6 +203,7 @@ async function snapshotStewardSecrets(
   }
   return snapshot;
 }
+
 async function restoreStewardSecrets(
   store: PlatformSecureStore,
   vaultId: string,
@@ -244,6 +233,7 @@ async function restoreStewardSecrets(
     }
   }
 }
+
 async function migrateLegacyFileSecrets(
   store: PlatformSecureStore,
   vaultId: string,
@@ -263,6 +253,7 @@ async function migrateLegacyFileSecrets(
     writeCredentialsMetadata({ ...parsed, ...migrated });
   }
 }
+
 /**
  * Load persisted steward credentials from metadata + platform secure store.
  * Returns null if credentials are missing or unreadable.
@@ -272,6 +263,7 @@ export async function loadStewardCredentials(
 ): Promise<PersistedStewardCredentials | null> {
   const parsed = readCredentialsFile();
   if (!parsed) return null;
+
   const store = createStewardSecureStore(options);
   const hasLegacySecrets = (
     Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]
@@ -280,8 +272,9 @@ export async function loadStewardCredentials(
     return typeof value === "string" && value.trim().length > 0;
   });
   if (await store.isAvailable()) {
-    const vaultId = deriveStewardVaultId();
+    const vaultId = deriveAgentVaultId();
     await migrateLegacyFileSecrets(store, vaultId, parsed);
+
     const secureValues: Partial<
       Pick<PersistedStewardCredentials, StewardCredentialSecretField>
     > = {};
@@ -293,12 +286,14 @@ export async function loadStewardCredentials(
         secureValues[field] = value;
       }
     }
+
     const apiUrl = secureValues.apiUrl || parsed.apiUrl || null;
     const tenantId = secureValues.tenantId || parsed.tenantId || null;
     const agentId = secureValues.agentId || parsed.agentId || null;
     if (!apiUrl || !tenantId || !agentId) {
       return null;
     }
+
     return {
       apiUrl,
       tenantId,
@@ -310,11 +305,13 @@ export async function loadStewardCredentials(
       createdAt: parsed.createdAt,
     };
   }
+
   if (hasLegacySecrets) {
     throw new Error(
       "platform secure store is unavailable; plaintext Steward credentials were retained for recovery",
     );
   }
+
   const apiUrl = parsed.apiUrl || null;
   const tenantId = parsed.tenantId || null;
   const agentId = parsed.agentId || null;
@@ -330,6 +327,7 @@ export async function loadStewardCredentials(
     createdAt: parsed.createdAt,
   };
 }
+
 /**
  * Save steward credentials to the platform secure store and metadata to disk.
  */
@@ -343,7 +341,7 @@ export async function saveStewardCredentials(
       "platform secure store is unavailable; Steward credentials were not persisted",
     );
   }
-  const vaultId = deriveStewardVaultId();
+  const vaultId = deriveAgentVaultId();
   const snapshot = await snapshotStewardSecrets(store, vaultId);
   const attempted: StewardCredentialSecretField[] = [];
   try {
@@ -373,6 +371,7 @@ export async function saveStewardCredentials(
     );
   }
 }
+
 /**
  * Resolve effective steward configuration by merging:
  *   env vars > persisted file > defaults
@@ -384,10 +383,12 @@ export async function resolveEffectiveStewardConfig(
   options: StewardCredentialPersistenceOptions = {},
 ): Promise<PersistedStewardCredentials | null> {
   const persisted = await loadStewardCredentials(options);
+
   const apiUrl = env.STEWARD_API_URL?.trim() || persisted?.apiUrl || null;
   if (!apiUrl) {
     return null;
   }
+
   const tenantId = env.STEWARD_TENANT_ID?.trim() || persisted?.tenantId || null;
   const agentId =
     env.STEWARD_AGENT_ID?.trim() ||
@@ -397,6 +398,7 @@ export async function resolveEffectiveStewardConfig(
   const apiKey = env.STEWARD_API_KEY?.trim() || persisted?.apiKey || "";
   const agentToken =
     env.STEWARD_AGENT_TOKEN?.trim() || persisted?.agentToken || "";
+
   return {
     apiUrl,
     tenantId: tenantId || "",

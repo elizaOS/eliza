@@ -335,7 +335,7 @@ export const webSearch: Action & Record<string, unknown> = {
         source,
       });
       // A successful response carries either link results or a synthesized
-      // answer. The keyless MCP path (Parallel → Exa) returns the answer with
+      // answer. The keyless MCP path (Parallel) returns the answer with
       // an empty results list, so requiring links here discarded real answers.
       const hasResults =
         Array.isArray(searchResponse?.results) && searchResponse.results.length > 0;

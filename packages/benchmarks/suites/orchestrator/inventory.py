@@ -8,6 +8,7 @@ from typing import Any
 from benchmarks.registry import get_benchmark_registry
 
 from .adapters import discover_adapters
+from .full_campaign import ADAPTER_CAMPAIGN_ENTRIES, DIRECT_CAMPAIGN_ENTRIES
 from .matrix_validation import _result_patterns_for, _trajectory_expectations
 
 
@@ -27,6 +28,8 @@ class BenchmarkInventoryRow:
     command_cwd: str
     has_adapter: bool
     has_registry_entry: bool
+    comparison_disposition: str = "unclassified"
+    comparison_notes: str = "No reviewed comparison contract."
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,7 @@ class BenchmarkInventoryReport:
     adapters_without_registry_entries: tuple[str, ...]
     benchmark_directories_without_adapters: tuple[str, ...]
     rows: list[BenchmarkInventoryRow]
+    direct_workloads: tuple[dict[str, Any], ...] = ()
 
     @property
     def has_gaps(self) -> bool:
@@ -57,12 +61,14 @@ def build_inventory_report(repo_root: Path) -> BenchmarkInventoryReport:
     discovery = discover_adapters(workspace_root)
     registry_entries = get_benchmark_registry(workspace_root)
     registry_by_id = {entry.id: entry for entry in registry_entries}
+    campaign_by_id = {entry.benchmark_id: entry for entry in ADAPTER_CAMPAIGN_ENTRIES}
 
     rows: list[BenchmarkInventoryRow] = []
     for benchmark_id in sorted(discovery.adapters):
         adapter = discovery.adapters[benchmark_id]
         registry_entry = registry_by_id.get(benchmark_id)
         source = "registry" if registry_entry is not None else "adapter-only"
+        campaign_entry = campaign_by_id.get(benchmark_id)
         rows.append(
             BenchmarkInventoryRow(
                 benchmark_id=benchmark_id,
@@ -81,6 +87,8 @@ def build_inventory_report(repo_root: Path) -> BenchmarkInventoryReport:
                 command_cwd=adapter.cwd,
                 has_adapter=True,
                 has_registry_entry=registry_entry is not None,
+                comparison_disposition=campaign_entry.disposition.value if campaign_entry else "unclassified",
+                comparison_notes=campaign_entry.reason if campaign_entry else "No reviewed comparison contract.",
             )
         )
 
@@ -105,6 +113,7 @@ def build_inventory_report(repo_root: Path) -> BenchmarkInventoryReport:
         adapters_without_registry_entries=adapter_only,
         benchmark_directories_without_adapters=directory_gaps,
         rows=rows,
+        direct_workloads=tuple(asdict(entry) for entry in DIRECT_CAMPAIGN_ENTRIES),
     )
 
 
@@ -151,8 +160,10 @@ def report_to_markdown(report: BenchmarkInventoryReport) -> str:
 
     lines.extend(
         [
-            "| benchmark | source | directory | harnesses | required env | result locators | trajectories |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "Harnesses below are dispatch declarations, not proof of fair comparison or a successful live run.",
+            "",
+            "| benchmark | source | directory | harnesses | comparison | required env | result locators | trajectories |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for row in report.rows:
@@ -164,6 +175,7 @@ def report_to_markdown(report: BenchmarkInventoryReport) -> str:
                     row.source,
                     row.directory,
                     _csv(row.harnesses),
+                    row.comparison_disposition,
                     _csv(row.required_env),
                     _csv(row.result_locator_patterns),
                     _csv(row.trajectory_expectations),
@@ -171,4 +183,10 @@ def report_to_markdown(report: BenchmarkInventoryReport) -> str:
             )
             + " |"
         )
+    lines.extend(["", "## Comparison limits", ""])
+    for row in report.rows:
+        lines.append(f"- **{row.benchmark_id}** ({row.comparison_disposition}): {row.comparison_notes}")
+    lines.extend(["", "## Direct workloads and infrastructure", ""])
+    for entry in report.direct_workloads:
+        lines.append(f"- **{entry['entry_id']}** (`{entry['directory']}`, {entry['disposition']}): {entry['reason']}")
     return "\n".join(lines)

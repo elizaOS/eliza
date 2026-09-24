@@ -306,7 +306,8 @@ describe("gateway CLI", () => {
       }
       await rm(directory, { recursive: true, force: true });
     }
-  });
+    // Readiness has its own 30-second deadline; allow shutdown and cleanup too.
+  }, 40_000);
 
   it("rejects ambient API billing credentials before server startup or readiness", async () => {
     const directory = await mkdtemp(join(tmpdir(), "claude-gateway-policy-"));

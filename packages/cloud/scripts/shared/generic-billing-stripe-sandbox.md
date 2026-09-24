@@ -23,7 +23,7 @@ a delayed request never starts a fresh seven-day promise.
 Run the controlled HTTP boundary suite from the repository root:
 
 ```sh
-bun test packages/cloud/shared/src/lib/services/generic-billing-provider.test.ts packages/cloud/shared/src/lib/services/generic-billing-merchant-provider.test.ts packages/cloud/shared/scripts/certify-generic-billing-stripe.test.ts
+bun test packages/cloud/shared/src/lib/services/generic-billing-provider.test.ts packages/cloud/shared/src/lib/services/generic-billing-merchant-provider.test.ts packages/cloud/scripts/shared/certify-generic-billing-stripe.test.ts
 ```
 
 These tests use the installed Stripe SDK and a controlled HTTP transport. They
@@ -40,7 +40,7 @@ through a secret manager or private shell environment:
 - `GENERIC_BILLING_STRIPE_RECEIPT_PATH`: optional new, private receipt file
 
 ```sh
-bun packages/cloud/shared/scripts/certify-generic-billing-stripe.ts
+bun packages/cloud/scripts/shared/certify-generic-billing-stripe.ts
 ```
 
 The command rejects live-key prefixes, never falls back to `STRIPE_SECRET_KEY`,

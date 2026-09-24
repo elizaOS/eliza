@@ -219,22 +219,6 @@ class SWEBenchConfig:
             )
 
 
-# Leaderboard data for comparison (as of late 2024/early 2025)
-LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
-    "SWE-bench Lite": {
-        "OpenHands + Claude Sonnet 4.6": 53.0,
-        "Agentless + GPT-4o": 33.2,
-        "SWE-agent + GPT-4": 33.2,
-        "AutoCodeRover + GPT-4o": 30.67,
-        "Aider + Claude Sonnet 4.6": 26.3,
-        "Aider + GPT-4o": 18.3,
-        "RAG + GPT-4": 6.67,
-        "GPT-4 (no agent)": 1.74,
-    },
-    "SWE-bench Verified": {
-        "OpenHands + Claude Sonnet 4.6": 41.0,
-        "Agentless + GPT-4o": 27.3,
-        "SWE-agent + Claude Sonnet 4.6": 33.6,
-        "AutoCodeRover + GPT-4o": 25.7,
-    },
-}
+# Historical unverified model aliases and scores removed.
+# No reference scores without a reproducible source and matching protocol.
+LEADERBOARD_SCORES: dict[str, dict[str, float]] = {}

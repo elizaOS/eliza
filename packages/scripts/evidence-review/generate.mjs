@@ -76,7 +76,7 @@ export function parseArgs(argv) {
   const options = {
     outputDir: DEFAULT_OUTPUT_DIR,
     open: false,
-    ocr: "on",
+    ocr: "off",
     maxArtifacts: 900,
     maxImages: 240,
     maxFilesPerDir: 6000,
@@ -135,7 +135,7 @@ Options:
                           BundleManifest inventory) and review its artifacts. Without
                           --bundle or --source, the newest evidence/runs/* bundle is used.
                           Add --source only to compare deliberate external artifacts.
-  --ocr=on|auto|off       Run OCR with the packaged tesseract.js engine. Default: on.
+  --ocr=on|auto|off       Run OCR with the packaged tesseract.js engine. Default: off.
   --max-artifacts=<n>     Limit total artifacts in the dashboard. Default: 900.
   --max-images=<n>        Limit image heuristic work. Default: 240.
   --max-files-per-dir=<n> Bound each scan root. Default: 6000.`);
@@ -326,22 +326,22 @@ function readTextPreview(filePath) {
 function walkFiles(scanRoot, maxFiles) {
   const files = [];
   const stack = [scanRoot];
-  while (stack.length > 0 && files.length < maxFiles) {
+  while (stack.length > 0) {
     const dir = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
-      if (files.length >= maxFiles) break;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (!SKIP_DIR_NAMES.has(entry.name)) stack.push(full);
       } else if (entry.isFile()) {
         const type = classifyArtifactPath(full);
-        if (type) files.push({ full, type });
+        if (type) {
+          if (files.length >= maxFiles)
+            throw new Error(
+              `--max-files-per-dir exceeded for ${scanRoot}; raise the limit or select a narrower source`,
+            );
+          files.push({ full, type });
+        }
       }
     }
   }
@@ -638,11 +638,13 @@ async function collectArtifacts(options) {
   }
 
   for (const [scanIndex, scanRoot] of scanDirs.entries()) {
-    if (artifacts.length >= options.maxArtifacts) break;
     const files = walkFiles(scanRoot, options.maxFilesPerDir);
     for (const { full, type } of files) {
-      if (artifacts.length >= options.maxArtifacts) break;
       if (seen.has(full)) continue;
+      if (artifacts.length >= options.maxArtifacts)
+        throw new Error(
+          "--max-artifacts exceeded; raise the limit or select a narrower source",
+        );
       seen.add(full);
       const relative = path.relative(scanRoot, full);
       const owned = path.join(

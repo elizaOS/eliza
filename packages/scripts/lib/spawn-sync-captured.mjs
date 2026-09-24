@@ -1,7 +1,7 @@
 /**
  * Captures synchronous child output through files for Bun test compatibility.
  *
- * Bun 1.3.14 can return empty stdout and stderr pipes from both
+ * Bun 1.4.2 can return empty stdout and stderr pipes from both
  * node:child_process.spawnSync and Bun.spawnSync while its test runner is
  * active. Numeric descriptors still behave correctly, so script contract
  * tests use this adapter until the runtime's pipe capture is reliable.

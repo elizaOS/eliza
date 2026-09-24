@@ -158,6 +158,19 @@ export async function runBenchmarkTask(
       },
     );
 
+    // Planner actions need not emit a delivery callback. The message service
+    // retains their authoritative results after planner state is released.
+    for (const actionResult of result.actionResults ?? []) {
+      const actionName = actionResult.data?.actionName;
+      if (
+        typeof actionName === "string" &&
+        actionName &&
+        !actionsTaken.includes(actionName)
+      ) {
+        actionsTaken.push(actionName);
+      }
+    }
+
     const terminalFailure =
       result.outcome.status === "failed" ? result.outcome.error : undefined;
     const resultText = result.responseContent?.text ?? "";
@@ -360,10 +373,12 @@ type RuntimeShutdown = (
 /** @internal Installs the benchmark process boundary's SIGINT/SIGTERM owner. */
 export function installOwnerSignalHandlers(
   controller: AbortController,
+  onExitCode?: (code: number) => void,
 ): () => void {
   const handleSignal = (signal: NodeJS.Signals) => {
     if (controller.signal.aborted) return;
     process.exitCode = signal === "SIGINT" ? 130 : 143;
+    onExitCode?.(process.exitCode);
     controller.abort(new Error(`Benchmark owner received ${signal}`));
   };
   const handleInterrupt = () => handleSignal("SIGINT");
@@ -480,7 +495,13 @@ export async function runBenchmark(
   process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS = "1";
 
   const ownerController = new AbortController();
-  const removeSignalHandlers = installOwnerSignalHandlers(ownerController);
+  let ownerExitCode: number | undefined;
+  const removeSignalHandlers = installOwnerSignalHandlers(
+    ownerController,
+    (code) => {
+      ownerExitCode = code;
+    },
+  );
   let runtime: AgentRuntime | undefined;
   let shutdownRuntime: RuntimeShutdown | undefined;
   try {
@@ -507,7 +528,8 @@ export async function runBenchmark(
         success: false,
         error: `Runtime boot failed: ${err instanceof Error ? err.message : String(err)}`,
       });
-      if (process.exitCode === undefined) process.exitCode = 1;
+      if (process.exitCode === undefined || process.exitCode === 0)
+        process.exitCode = 1;
       return;
     }
 
@@ -535,12 +557,18 @@ export async function runBenchmark(
       process.exitCode = result.success ? 0 : 1;
     }
   } finally {
+    // PGlite/WASM teardown can reset process.exitCode to zero. The CLI owns
+    // its task/cancellation status independently of database cleanup.
+    const taskExitCode = process.exitCode;
+    let shutdownFailed = false;
     try {
       if (runtime && shutdownRuntime) {
         await shutdownRuntime(runtime, "benchmark shutdown");
+        logger.debug("[benchmark] Runtime shutdown completed");
       }
     } catch (err) {
       // error-policy:J1 shutdown failure is visible through stderr and exit status.
+      shutdownFailed = true;
       process.stderr.write(
         `[benchmark] Runtime shutdown failed: ${err instanceof Error ? err.message : String(err)}\n`,
       );
@@ -549,6 +577,7 @@ export async function runBenchmark(
       }
     } finally {
       removeSignalHandlers();
+      process.exitCode = ownerExitCode ?? (shutdownFailed ? 1 : taskExitCode);
       if (previousBlockDeferred === undefined) {
         delete process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
       } else {

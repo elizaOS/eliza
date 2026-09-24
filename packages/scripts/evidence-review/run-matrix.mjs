@@ -18,6 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { UI_E2E_SUITES } from "../e2e-recordings/suites.mjs";
 import { createMatrixReporter, renderMatrixSummary } from "./reporter.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,7 +36,16 @@ export const MATRIX_STEPS = [
   {
     id: "e2e-recordings",
     label: "Recorded UI e2e sweep",
-    command: ["node", "packages/scripts/e2e-recordings/run-all.mjs"],
+    command: [
+      "node",
+      "packages/scripts/e2e-recordings/run-all.mjs",
+      "--skip-sheets",
+      "--skip-viewer",
+      // Native captures have their own probed lanes below.
+      `--packages=${UI_E2E_SUITES.filter((suite) => suite.script)
+        .map((suite) => suite.name)
+        .join(",")}`,
+    ],
     tags: ["ui", "recordings"],
   },
   {
@@ -127,7 +137,7 @@ Options:
   --tier=<cpu|gpu|full>    Bundle evidence tier. Default: cpu.
   --review / --no-review   Generate the evidence reviewer after the matrix.
   --open / --no-open       Open the reviewer after generation. Default: no-open.
-  --review-ocr=on          OCR mode passed to evidence:review. Packaged OCR is required.
+  --review-ocr=off|auto|on  Optional OCR for browsing. Default: off.
   --stop-on-failure        Stop after the first failed step.
   --dry-run                Write a planned manifest without executing commands.
   --help, -h               Show this help.`);
@@ -141,7 +151,7 @@ export function parseMatrixArgs(argv) {
     tier: "cpu",
     review: true,
     open: false,
-    reviewOcr: "on",
+    reviewOcr: "off",
     stopOnFailure: false,
     dryRun: false,
     contentContextSource: null,
@@ -179,10 +189,8 @@ export function parseMatrixArgs(argv) {
     }
   }
 
-  if (options.reviewOcr !== "on") {
-    throw new Error(
-      "--review-ocr must be on; OCR is required for evidence review and uses the packaged tesseract.js dependency",
-    );
+  if (!["off", "auto", "on"].includes(options.reviewOcr)) {
+    throw new Error("--review-ocr must be off, auto, or on");
   }
   if (!["cpu", "gpu", "full"].includes(options.tier)) {
     throw new Error("--tier must be cpu, gpu, or full");

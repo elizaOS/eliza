@@ -1,6 +1,6 @@
 /** Preserves complete iOS native requests and rejects incomplete host output before delivery. The native host owns remaining-context exhaustion; an omitted caller boundary never becomes a reply-token clamp. */
 import { ElizaError } from "@elizaos/core";
-import { createNativeModelRequestGuard } from "../shared/native-model-request";
+import { createNativeModelRequestGuard } from "../../../plugin-native-inference/src/shared/native-model-request";
 
 interface IosNativeTextRequest {
   context_id: number;

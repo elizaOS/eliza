@@ -29,11 +29,11 @@ import {
   Service,
   sanitizeTrajectoryJsonValue,
   sanitizeTrajectoryJsonValueInBudget,
+  serializeTrajectoryExport,
   type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
 /**
  * Persists runtime trajectories, step indexes, model calls, and reward metadata
  * for replay, UI inspection, export, and training-data collection.

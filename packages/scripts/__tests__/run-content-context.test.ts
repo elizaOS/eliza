@@ -12,16 +12,16 @@ import {
   PROGRESSIVE_CONTENT_ANCHOR_TIME,
   PROGRESSIVE_CONTENT_SCHEMA_VERSION,
   progressiveContentManifestDigest,
-} from "../../testing/src/content-evidence/progressive-content.ts";
+} from "../../testing/corpus/progressive-content.ts";
 import {
   CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
-} from "../../testing/src/content-evidence/progressive-content-evidence.ts";
-import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../testing/src/content-evidence/progressive-content-realization.ts";
-import { createProgressiveContentLiveTrajectoryEvidenceFixture } from "../../testing/src/content-evidence/testing/progressive-content-live-trajectory-evidence-fixture.ts";
-import { createProgressiveContentPostgresEvidenceFixture } from "../../testing/src/content-evidence/testing/progressive-content-postgres-evidence-fixture.ts";
-import { createProgressiveContentScenarioNativeEvidenceFixture } from "../../testing/src/content-evidence/testing/progressive-content-scenario-native-evidence-fixture.ts";
-import { createProgressiveContentSoakEvidenceFixture } from "../../testing/src/content-evidence/testing/progressive-content-soak-evidence-fixture.ts";
+} from "../../testing/corpus/progressive-content-evidence.ts";
+import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../testing/corpus/progressive-content-realization.ts";
+import { createProgressiveContentLiveTrajectoryEvidenceFixture } from "../../testing/corpus/testing/progressive-content-live-trajectory-evidence-fixture.ts";
+import { createProgressiveContentPostgresEvidenceFixture } from "../../testing/corpus/testing/progressive-content-postgres-evidence-fixture.ts";
+import { createProgressiveContentScenarioNativeEvidenceFixture } from "../../testing/corpus/testing/progressive-content-scenario-native-evidence-fixture.ts";
+import { createProgressiveContentSoakEvidenceFixture } from "../../testing/corpus/testing/progressive-content-soak-evidence-fixture.ts";
 import { createBundle } from "../../testing/evidence/bundle.ts";
 import {
   captureSiloSnapshot,

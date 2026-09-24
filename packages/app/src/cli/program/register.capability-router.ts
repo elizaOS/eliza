@@ -11,10 +11,10 @@
  * options and parse capability-invoke responses.
  */
 
-import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { type Command } from "commander";
-import { theme } from "../../terminal/theme.js";
+import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
+import { theme } from "@elizaos/app/terminal/theme";
+import type { Command } from "commander";
 
 function resolveDefaultAgentApiBase(): string {
   return (
@@ -22,11 +22,13 @@ function resolveDefaultAgentApiBase(): string {
     `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`
   );
 }
+
 export type CapabilityRouterEndpointProvider =
   | "direct"
   | "home-machine"
   | "mobile-companion"
   | "desktop-companion";
+
 export type CapabilityRouterConnectOptions = {
   provider?: CapabilityRouterEndpointProvider;
   id?: string;
@@ -44,11 +46,13 @@ export type CapabilityRouterConnectOptions = {
   cloudTimeoutMs?: string;
   cloudPollIntervalMs?: string;
 };
+
 export type CapabilityRouterConformanceOptions = {
   token?: string;
   requestTimeoutMs?: string;
   require?: string[];
 };
+
 export type CapabilityRouterConformanceSurface =
   | "action"
   | "provider"
@@ -62,10 +66,12 @@ export type CapabilityRouterConformanceSurface =
   | "evaluator"
   | "response-handler-evaluator"
   | "response-handler-field-evaluator";
+
 export function registerCapabilityRouterCommand(program: Command) {
   const capabilityRouter = program
     .command("capability-router")
     .description("Connect remote capability-router plugin endpoints");
+
   capabilityRouter
     .command("connect [baseUrl]")
     .description(
@@ -118,9 +124,7 @@ export function registerCapabilityRouterCommand(program: Command) {
     .action(
       async (
         baseUrl: string | undefined,
-        opts: CapabilityRouterConnectOptions & {
-          apiBase: string;
-        },
+        opts: CapabilityRouterConnectOptions & { apiBase: string },
       ) => {
         const payload = buildCapabilityRouterConnectPayload(baseUrl, opts);
         const endpoint = `${normalizeApiBase(opts.apiBase)}/api/capability-router/connect`;
@@ -141,13 +145,7 @@ export function registerCapabilityRouterCommand(program: Command) {
         if (!response.ok) {
           const message =
             body && typeof body === "object" && "error" in body
-              ? String(
-                  (
-                    body as {
-                      error?: unknown;
-                    }
-                  ).error,
-                )
+              ? String((body as { error?: unknown }).error)
               : text || `HTTP ${response.status}`;
           throw new Error(`Capability-router connect failed: ${message}`);
         }
@@ -155,6 +153,7 @@ export function registerCapabilityRouterCommand(program: Command) {
         console.log(JSON.stringify(body, null, 2));
       },
     );
+
   capabilityRouter
     .command("conformance <baseUrl>")
     .description(
@@ -179,6 +178,7 @@ export function registerCapabilityRouterCommand(program: Command) {
       },
     );
 }
+
 export async function runCapabilityRouterConformance(
   baseUrl: string,
   opts: CapabilityRouterConformanceOptions = {},
@@ -186,8 +186,9 @@ export async function runCapabilityRouterConformance(
   const endpoint = normalizeApiBase(requireNonEmpty(baseUrl, "baseUrl"));
   const requestTimeoutMs =
     parseOptionalPositiveInteger(opts.requestTimeoutMs, "requestTimeoutMs") ??
-    60000;
+    60_000;
   const requiredSurfaces = normalizeConformanceSurfaces(opts.require);
+
   const availability = await requestCapabilityJson(
     endpoint,
     "GET",
@@ -204,6 +205,7 @@ export async function runCapabilityRouterConformance(
       "Capability endpoint must report available plugin capability.",
     );
   }
+
   const moduleResult = await invokeCapability(
     endpoint,
     "plugin.modules.list",
@@ -219,6 +221,7 @@ export async function runCapabilityRouterConformance(
     exercised: {},
   };
   const exercised = report.exercised as Record<string, string>;
+
   if (requiredSurfaces.includes("action")) {
     const target = modules.find((module) => module.actions[0]);
     if (!target) throw new Error("Endpoint did not expose a remote action.");
@@ -236,6 +239,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.action = `${target.id}:${action.name}`;
   }
+
   if (requiredSurfaces.includes("provider")) {
     const target = modules.find((module) => module.providers[0]);
     if (!target) throw new Error("Endpoint did not expose a remote provider.");
@@ -249,6 +253,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.provider = `${target.id}:${provider.name}`;
   }
+
   if (requiredSurfaces.includes("route")) {
     const target = modules.find((module) => module.routes[0]);
     if (!target) throw new Error("Endpoint did not expose a remote route.");
@@ -270,6 +275,7 @@ export async function runCapabilityRouterConformance(
     report.routeStatus = status;
     exercised.route = `${target.id}:${route.method} ${route.path}`;
   }
+
   if (requiredSurfaces.includes("view-asset")) {
     const target = modules.find((module) =>
       module.views.find((view) => view.bundlePath),
@@ -296,6 +302,7 @@ export async function runCapabilityRouterConformance(
     };
     exercised.viewAsset = `${target.id}:${view.bundlePath}`;
   }
+
   if (requiredSurfaces.includes("model")) {
     const target = modules.find((module) => module.models[0]);
     if (!target) throw new Error("Endpoint did not expose a remote model.");
@@ -313,6 +320,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.model = `${target.id}:${model.modelType}`;
   }
+
   if (requiredSurfaces.includes("lifecycle")) {
     const target = modules.find((module) => module.lifecycleHooks[0]);
     if (!target) {
@@ -328,6 +336,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.lifecycle = `${target.id}:${hook}`;
   }
+
   if (requiredSurfaces.includes("event")) {
     const target = modules.find((module) => module.events[0]);
     if (!target) {
@@ -347,6 +356,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.event = `${target.id}:${event.eventName}`;
   }
+
   if (requiredSurfaces.includes("service")) {
     const target = modules.find((module) =>
       module.services.find((service) => service.methods[0]),
@@ -373,6 +383,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.service = `${target.id}:${service.serviceType}.${method}`;
   }
+
   if (requiredSurfaces.includes("app-bridge")) {
     const target = modules.find((module) => module.appBridgeHooks[0]);
     if (!target) {
@@ -398,6 +409,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.appBridge = `${target.id}:${hook}`;
   }
+
   if (requiredSurfaces.includes("evaluator")) {
     const target = modules.find((module) => module.evaluators[0]);
     if (!target) throw new Error("Endpoint did not expose a remote evaluator.");
@@ -444,6 +456,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.evaluator = `${target.id}:${evaluator.name}`;
   }
+
   if (requiredSurfaces.includes("response-handler-evaluator")) {
     const target = modules.find(
       (module) => module.responseHandlerEvaluators[0],
@@ -475,6 +488,7 @@ export async function runCapabilityRouterConformance(
     );
     exercised.responseHandlerEvaluator = `${target.id}:${evaluator.name}`;
   }
+
   if (requiredSurfaces.includes("response-handler-field-evaluator")) {
     const target = modules.find(
       (module) => module.responseHandlerFieldEvaluators[0],
@@ -518,8 +532,10 @@ export async function runCapabilityRouterConformance(
     );
     exercised.responseHandlerFieldEvaluator = `${target.id}:${field.name}`;
   }
+
   return report;
 }
+
 export function buildCapabilityRouterConnectPayload(
   baseUrl: string | undefined,
   opts: CapabilityRouterConnectOptions,
@@ -535,6 +551,7 @@ export function buildCapabilityRouterConnectPayload(
     ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
     ...(persist ? {} : { persist: false }),
   };
+
   if (opts.cloud) {
     return {
       ...common,
@@ -550,6 +567,7 @@ export function buildCapabilityRouterConnectPayload(
       },
     };
   }
+
   const provider = normalizeProvider(opts.provider);
   return {
     ...common,
@@ -561,9 +579,11 @@ export function buildCapabilityRouterConnectPayload(
     },
   };
 }
+
 function normalizeApiBase(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
+
 function normalizeProvider(
   value: CapabilityRouterConnectOptions["provider"],
 ): CapabilityRouterEndpointProvider {
@@ -580,9 +600,11 @@ function normalizeProvider(
     "provider must be one of direct, home-machine, mobile-companion, or desktop-companion.",
   );
 }
+
 function collectValues(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
+
 function normalizeConformanceSurfaces(
   value: string[] | undefined,
 ): CapabilityRouterConformanceSurface[] {
@@ -626,9 +648,11 @@ function normalizeConformanceSurfaces(
     );
   });
 }
+
 function normalizeStringList(value: string[] | undefined): string[] {
   return [...new Set((value ?? []).map((item) => item.trim()).filter(Boolean))];
 }
+
 function optionalStringList(
   value: string[] | undefined,
   key: string,
@@ -636,6 +660,7 @@ function optionalStringList(
   const values = normalizeStringList(value);
   return values.length === 0 ? {} : { [key]: values };
 }
+
 function optionalString(
   value: string | undefined,
   key: string,
@@ -643,6 +668,7 @@ function optionalString(
   const trimmed = value?.trim();
   return trimmed ? { [key]: trimmed } : {};
 }
+
 function optionalPositiveInteger(
   value: string | undefined,
   key: string,
@@ -650,6 +676,7 @@ function optionalPositiveInteger(
   const parsed = parseOptionalPositiveInteger(value, key);
   return parsed === undefined ? {} : { [key]: parsed };
 }
+
 function parseOptionalPositiveInteger(
   value: string | undefined,
   key: string,
@@ -661,6 +688,7 @@ function parseOptionalPositiveInteger(
   }
   return parsed;
 }
+
 function requireNonEmpty(value: string | undefined, key: string): string {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -668,6 +696,7 @@ function requireNonEmpty(value: string | undefined, key: string): string {
   }
   return trimmed;
 }
+
 async function requestCapabilityJson(
   baseUrl: string,
   method: "GET" | "POST",
@@ -701,6 +730,7 @@ async function requestCapabilityJson(
     clearTimeout(timeout);
   }
 }
+
 async function invokeCapability(
   baseUrl: string,
   method: string,
@@ -726,44 +756,24 @@ async function invokeCapability(
   }
   return "result" in response ? response.result : response;
 }
+
 type ConformanceModule = {
   id: string;
   name: string;
-  actions: Array<{
-    name: string;
-  }>;
-  providers: Array<{
-    name: string;
-  }>;
-  routes: Array<{
-    method: string;
-    path: string;
-  }>;
-  views: Array<{
-    bundlePath?: string;
-  }>;
-  models: Array<{
-    modelType: string;
-  }>;
+  actions: Array<{ name: string }>;
+  providers: Array<{ name: string }>;
+  routes: Array<{ method: string; path: string }>;
+  views: Array<{ bundlePath?: string }>;
+  models: Array<{ modelType: string }>;
   lifecycleHooks: string[];
-  events: Array<{
-    eventName: string;
-  }>;
-  services: Array<{
-    serviceType: string;
-    methods: string[];
-  }>;
+  events: Array<{ eventName: string }>;
+  services: Array<{ serviceType: string; methods: string[] }>;
   appBridgeHooks: string[];
-  evaluators: Array<{
-    name: string;
-  }>;
-  responseHandlerEvaluators: Array<{
-    name: string;
-  }>;
-  responseHandlerFieldEvaluators: Array<{
-    name: string;
-  }>;
+  evaluators: Array<{ name: string }>;
+  responseHandlerEvaluators: Array<{ name: string }>;
+  responseHandlerFieldEvaluators: Array<{ name: string }>;
 };
+
 function readConformanceModules(value: unknown): ConformanceModule[] {
   if (!isRecord(value) || !Array.isArray(value.modules)) {
     throw new Error("plugin.modules.list result must include modules.");
@@ -791,10 +801,10 @@ function readConformanceModules(value: unknown): ConformanceModule[] {
       routes: readRouteList(item.routes),
       views: readViewList(item.views),
       models: readModelList(item.models),
-      lifecycleHooks: readLifecycleHooks(item.lifecycle),
+      lifecycleHooks: readHooks(item.lifecycle),
       events: readEventList(item.events),
       services: readServiceList(item.services),
-      appBridgeHooks: readAppBridgeHooks(item.appBridge),
+      appBridgeHooks: readHooks(item.appBridge),
       evaluators: readNamedList(item.evaluators),
       responseHandlerEvaluators: readNamedList(item.responseHandlerEvaluators),
       responseHandlerFieldEvaluators: readNamedList(
@@ -803,19 +813,18 @@ function readConformanceModules(value: unknown): ConformanceModule[] {
     };
   });
 }
-function readNamedList(value: unknown): Array<{
-  name: string;
-}> {
+
+function readNamedList(value: unknown): Array<{ name: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
     .filter((item) => typeof item.name === "string" && item.name.trim())
     .map((item) => ({ name: item.name as string }));
 }
-function readRouteList(value: unknown): Array<{
-  method: string;
-  path: string;
-}> {
+
+function readRouteList(
+  value: unknown,
+): Array<{ method: string; path: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -831,9 +840,8 @@ function readRouteList(value: unknown): Array<{
       path: item.path as string,
     }));
 }
-function readViewList(value: unknown): Array<{
-  bundlePath?: string;
-}> {
+
+function readViewList(value: unknown): Array<{ bundlePath?: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -843,9 +851,8 @@ function readViewList(value: unknown): Array<{
         : {}),
     }));
 }
-function readModelList(value: unknown): Array<{
-  modelType: string;
-}> {
+
+function readModelList(value: unknown): Array<{ modelType: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -854,16 +861,16 @@ function readModelList(value: unknown): Array<{
     )
     .map((item) => ({ modelType: item.modelType as string }));
 }
-function readLifecycleHooks(value: unknown): string[] {
+
+function readHooks(value: unknown): string[] {
   if (!isRecord(value) || !Array.isArray(value.hooks)) return [];
   return value.hooks.filter(
     (item): item is string =>
       typeof item === "string" && item.trim().length > 0,
   );
 }
-function readEventList(value: unknown): Array<{
-  eventName: string;
-}> {
+
+function readEventList(value: unknown): Array<{ eventName: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -872,10 +879,10 @@ function readEventList(value: unknown): Array<{
     )
     .map((item) => ({ eventName: item.eventName as string }));
 }
-function readServiceList(value: unknown): Array<{
-  serviceType: string;
-  methods: string[];
-}> {
+
+function readServiceList(
+  value: unknown,
+): Array<{ serviceType: string; methods: string[] }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -892,13 +899,7 @@ function readServiceList(value: unknown): Array<{
         : [],
     }));
 }
-function readAppBridgeHooks(value: unknown): string[] {
-  if (!isRecord(value) || !Array.isArray(value.hooks)) return [];
-  return value.hooks.filter(
-    (item): item is string =>
-      typeof item === "string" && item.trim().length > 0,
-  );
-}
+
 function readRouteStatus(value: unknown): number {
   if (!isRecord(value) || typeof value.status !== "number") {
     throw new Error("plugin.route.call result must include numeric status.");
@@ -908,6 +909,7 @@ function readRouteStatus(value: unknown): number {
   }
   return value.status;
 }
+
 function readAssetResult(value: unknown): {
   path: string;
   contentType: string;
@@ -933,11 +935,10 @@ function readAssetResult(value: unknown): {
     bodyBase64: value.bodyBase64,
   };
 }
+
 function isCapabilityAvailability(value: unknown): value is {
   available: boolean;
-  capabilities: {
-    plugin?: boolean;
-  };
+  capabilities: { plugin?: boolean };
 } {
   return (
     isRecord(value) &&
@@ -945,6 +946,7 @@ function isCapabilityAvailability(value: unknown): value is {
     isRecord(value.capabilities)
   );
 }
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

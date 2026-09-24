@@ -12,7 +12,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { inflateRawSync } from "node:zlib";
-import { parseStrictJson } from "../testing/src/content-evidence/strict-json.ts";
+import { parseStrictJson } from "../testing/corpus/strict-json.ts";
 
 export const CONTENT_CONTEXT_E2E_RAW_ARTIFACTS = [
   {

@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import {
   type AccessContext,
   type Agent,
+  type AtomicMemoryPublicationParams,
+  type AtomicMemoryPublicationResult,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
   authorizeMessageContentRead,
@@ -19,6 +21,7 @@ import {
   compareTasksForQuery,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
   type DocumentDirectGrantUpdateParams,
@@ -27,6 +30,8 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRangeReadParams,
+  type DocumentRangeReadResult,
   type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
@@ -72,7 +77,9 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
+  readDocumentSourceProjection,
   readMessageContentProjection,
+  requireDocumentSourceReadMetadata,
   requireFreshWorldMetadataRevision,
   rerankMemories,
   resolveMessageContentSourceDescriptor,
@@ -974,6 +981,89 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return isDocumentVisibleToRequester(memory, params) ? memory : null;
   }
 
+  readonly documentRangeReadCapability = 2 as const;
+
+  async readDocumentRange(
+    params: DocumentRangeReadParams,
+  ): Promise<DocumentRangeReadResult | null> {
+    if (
+      !["line", "fragment", "byte"].includes(params.unit) ||
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
+    ) {
+      throw new ElizaError(
+        "Document range read requires a bounded safe-integer range",
+        { code: "DOCUMENT_READ_INVALID_RANGE" },
+      );
+    }
+    const document = await this.getDocument(params);
+    if (!document) return null;
+    const parent = requireDocumentSourceReadMetadata(
+      (document.metadata ?? {}) as Record<string, unknown>,
+      params.documentId,
+    );
+    const prefix =
+      params.unit === "byte"
+        ? "sourceByte"
+        : params.unit === "line"
+          ? "sourceLine"
+          : "sourceFragment";
+    const total =
+      params.unit === "byte"
+        ? parent.sourceByteLength
+        : params.unit === "line"
+          ? parent.sourceLineCount
+          : parent.sourceFragmentCount;
+    const end = Math.min(params.offset + params.limit, total);
+    const rows =
+      params.offset >= total
+        ? []
+        : await this.storage.getWhere<StoredMemory>(
+            COLLECTIONS.MEMORIES,
+            (memory) => {
+              const metadata = memory.metadata as
+                | Record<string, unknown>
+                | undefined;
+              return (
+                storedMemoryTableName(memory) === "document_fragments" &&
+                memory.agentId === params.agentId &&
+                metadata?.documentId === params.documentId &&
+                metadata.fragmentRole === "source-segment" &&
+                metadata.sourceSegmentVersion === 1 &&
+                typeof metadata[`${prefix}Start`] === "number" &&
+                typeof metadata[`${prefix}End`] === "number" &&
+                Number(metadata[`${prefix}Start`]) < end &&
+                Number(metadata[`${prefix}End`]) > params.offset
+              );
+            },
+          );
+    const segments = rows
+      .sort(
+        (left, right) =>
+          Number(
+            (left.metadata as Record<string, unknown> | undefined)
+              ?.sourceByteStart,
+          ) -
+          Number(
+            (right.metadata as Record<string, unknown> | undefined)
+              ?.sourceByteStart,
+          ),
+      )
+      .slice(0, DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS)
+      .map(toMemory);
+    return readDocumentSourceProjection({
+      segments,
+      params,
+      parent,
+      documentId: params.documentId,
+      examinedSourceSegments: rows.length,
+      sourceQueryCount: params.offset >= total ? 1 : 2,
+    });
+  }
+
   async queryDocumentFragments(
     params: DocumentFragmentQueryParams,
   ): Promise<Memory[]> {
@@ -1632,7 +1722,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       }
       const now = Date.now();
       const storedSegments: StoredMemory[] = params.segments.map((segment) => ({
-        ...segment,
+        ...persistableMemory(segment),
         id: segment.id,
         tableName: "message_content_segments",
         agentId: publicationAgentId,
@@ -1641,7 +1731,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const storedParent: StoredMemory =
         params.mode === "create"
           ? {
-              ...params.parent,
+              ...persistableMemory(params.parent),
               id: parentId,
               tableName: "messages",
               agentId: publicationAgentId,
@@ -1649,7 +1739,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             }
           : {
               ...(existing as StoredMemory),
-              content: params.replacementContent,
+              content: persistableMemory({ content: params.replacementContent })
+                .content,
             };
       let parentIndexStaged = false;
       try {
@@ -1938,12 +2029,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           memory.id ? [[memory.id, memory] as const] : [],
         ),
       );
-      const limit = requestedLimit;
-      const requestedCount =
-        limit === undefined ? memoriesById.size : limit + offset;
+      const limit = requestedLimit ?? memoriesById.size;
       const results = await this.vectorIndex.searchExact(
         params.embedding,
-        requestedCount,
+        offset + limit,
         threshold,
         new Set(memoriesById.keys()),
       );
@@ -1956,6 +2045,113 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       return params.includeEmbedding === false
         ? ranked.map(({ embedding, ...memory }) => memory)
         : ranked;
+    });
+  }
+
+  async compareAndSwapMemoryPublication(
+    params: AtomicMemoryPublicationParams,
+  ): Promise<AtomicMemoryPublicationResult> {
+    return this.withMemoryMutationLock(async () => {
+      const headId = params.head.memory.id;
+      if (!headId)
+        throw new TypeError("Atomic memory publication head requires an id");
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "Atomic memory publication requires transactional storage",
+          {
+            code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+          },
+        );
+      }
+      const current = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        headId,
+      );
+      const revision = (
+        current?.metadata as Record<string, unknown> | undefined
+      )?.revision;
+      if (
+        (params.expectedRevision === null && current) ||
+        (params.expectedRevision !== null &&
+          revision !== params.expectedRevision)
+      ) {
+        return { status: "conflict" };
+      }
+      const staged = new Map<string, StoredMemory>();
+      const prepare = (memory: Memory, tableName: string): StoredMemory => {
+        if (!memory.id)
+          throw new TypeError("Atomic memory publication requires row ids");
+        if (memory.agentId !== undefined && memory.agentId !== this.agentId) {
+          throw new ElizaError(
+            "Atomic publication cannot target another agent",
+            { code: "SQLITE_AGENT_MISMATCH" },
+          );
+        }
+        return {
+          ...persistableMemory(memory),
+          id: memory.id,
+          tableName,
+          agentId: this.agentId,
+          unique: true,
+          createdAt: memory.createdAt ?? Date.now(),
+        };
+      };
+      const head = prepare(params.head.memory, params.head.tableName);
+      const sameOwner = (left: StoredMemory, right: StoredMemory): boolean =>
+        left.agentId === right.agentId &&
+        left.roomId === right.roomId &&
+        left.entityId === right.entityId &&
+        storedMemoryTableName(left) === storedMemoryTableName(right);
+      if (current && !sameOwner(current, head)) {
+        throw new ElizaError(
+          "Atomic publication cannot replace another owner's head",
+          {
+            code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+            context: { memoryId: headId },
+          },
+        );
+      }
+      for (const dependency of params.dependencies) {
+        const row = prepare(dependency.memory, dependency.tableName);
+        const id = row.id as string;
+        const existing =
+          staged.get(id) ??
+          (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id));
+        if (
+          id === headId ||
+          (existing &&
+            (!sameOwner(existing, row) ||
+              JSON.stringify(existing.content) !== JSON.stringify(row.content)))
+        ) {
+          throw new ElizaError(
+            "Immutable memory dependency id has different content or ownership",
+            {
+              code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+              context: { memoryId: id },
+            },
+          );
+        }
+        if (!existing) staged.set(id, row);
+      }
+      staged.set(headId, {
+        ...current,
+        ...head,
+        createdAt: current?.createdAt ?? head.createdAt,
+      });
+      for (const [id, row] of staged) {
+        if (row.embedding?.length)
+          await this.vectorIndex.add(id, row.embedding);
+        else await this.vectorIndex.remove(id);
+      }
+      await this.storage.applyBatch({
+        collection: COLLECTIONS.MEMORIES,
+        deletes: [],
+        sets: [...staged].map(([id, data]) => ({ id, data })),
+      });
+      return {
+        status: "published",
+        head: toMemory(staged.get(headId) as StoredMemory),
+      };
     });
   }
 

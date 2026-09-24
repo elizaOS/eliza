@@ -112,7 +112,7 @@
     "@scure/btc-signer": "^2.2.0",
     "@solana/web3.js": "^1",
     "viem": "^2.30.0",
-    "@aws-sdk/client-kms": "^3.700.0",
+    "@aws-sdk/client-kms": "^3.1136.0",
     "graphene-pk11": "^2.2.0",
     "hono": "^4.13.8",
     "jose": "^6.2.1",
@@ -125,9 +125,9 @@
     "@types/node": "^25.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
-    "@types/bun": "1.3.14",
-    "@playwright/test": "^1.62.1"
+    "vitest": "^5.0.1",
+    "@types/bun": "1.4.2",
+    "@playwright/test": "^1.63.0"
   },
   "elizaos": {
     "scripts": {

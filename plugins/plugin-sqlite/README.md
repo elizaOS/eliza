@@ -1,6 +1,6 @@
 # @elizaos/plugin-sqlite
 
-Durable single-agent database adapter for Node 24.15.0 (`node:sqlite`) and Bun 1.3.14
+Durable single-agent database adapter for Node 24.15.0 (`node:sqlite`) and Bun 1.4.2
 (`bun:sqlite`).
 
 Uses node:sqlite on pinned Node or bun:sqlite on pinned Bun. Each database file belongs

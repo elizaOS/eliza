@@ -96,7 +96,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--mock", action="store_true", help="Use mock ground-truth-replay agent.")
     p.add_argument(
         "--agent-harness",
-        choices=["litellm", "eliza", "hermes", "openclaw", "smithers"],
+        choices=["litellm", "eliza", "hermes", "openclaw"],
         default="litellm",
         help="Which agent harness drives the per-turn completion. "
         "'litellm' (default) uses the built-in LiteLLM tool-calling agent; "

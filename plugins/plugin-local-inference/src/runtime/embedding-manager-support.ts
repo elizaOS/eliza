@@ -326,6 +326,7 @@ function downloadFile(
 	dest: string,
 	maxRedirects = 5,
 	onProgress?: DownloadProgressCallback,
+	signal?: AbortSignal,
 ): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		let settled = false;
@@ -400,72 +401,76 @@ function downloadFile(
 				downloadHeaders.Authorization = `Bearer ${hfToken}`;
 			}
 			https
-				.get(validatedUrl.toString(), { headers: downloadHeaders }, (res) => {
-					// A response can fail after the request succeeds; pipe does not
-					// forward that failure to the destination file.
-					res.on("error", settleError);
-					expectedBytes = parseContentLength(res.headers["content-length"]);
-					if (
-						res.statusCode &&
-						res.statusCode >= 300 &&
-						res.statusCode < 400 &&
-						res.headers.location
-					) {
-						res.resume();
-						redirectCount += 1;
-						if (redirectCount > maxRedirects) {
-							settleError(
-								new Error(
-									`Download failed: too many redirects (>${maxRedirects})`,
-								),
-							);
-							return;
-						}
-						let next: string;
-						try {
-							next = new URL(
-								res.headers.location,
-								validatedUrl.toString(),
-							).toString();
-						} catch {
-							settleError(
-								new Error(
-									`Download failed: malformed redirect URL "${res.headers.location}"`,
-								),
-							);
-							return;
-						}
-						request(next);
-						return;
-					}
-					if (res.statusCode !== 200) {
-						settleError(
-							new Error(
-								`Download failed: HTTP ${res.statusCode} for ${validatedUrl.toString()}`,
-							),
-						);
-						return;
-					}
-					// Redirect bodies never own the output path. Only the final
-					// admitted response may open or publish downloaded bytes.
-					file = fs.createWriteStream(dest);
-					file.on("error", settleError);
-					res.on("data", (chunk: Buffer) => {
-						bytesReceived += chunk.length;
-						if (onProgress) {
-							// Throttle callbacks to every 2% to avoid excessive updates
-							const pct = expectedBytes
-								? Math.floor((bytesReceived / expectedBytes) * 50)
-								: -1;
-							if (pct !== lastProgressPercent) {
-								lastProgressPercent = pct;
-								onProgress(bytesReceived, expectedBytes);
+				.get(
+					validatedUrl.toString(),
+					{ headers: downloadHeaders, signal },
+					(res) => {
+						// A response can fail after the request succeeds; pipe does not
+						// forward that failure to the destination file.
+						res.on("error", settleError);
+						expectedBytes = parseContentLength(res.headers["content-length"]);
+						if (
+							res.statusCode &&
+							res.statusCode >= 300 &&
+							res.statusCode < 400 &&
+							res.headers.location
+						) {
+							res.resume();
+							redirectCount += 1;
+							if (redirectCount > maxRedirects) {
+								settleError(
+									new Error(
+										`Download failed: too many redirects (>${maxRedirects})`,
+									),
+								);
+								return;
 							}
+							let next: string;
+							try {
+								next = new URL(
+									res.headers.location,
+									validatedUrl.toString(),
+								).toString();
+							} catch {
+								settleError(
+									new Error(
+										`Download failed: malformed redirect URL "${res.headers.location}"`,
+									),
+								);
+								return;
+							}
+							request(next);
+							return;
 						}
-					});
-					res.pipe(file);
-					file.on("finish", settleSuccess);
-				})
+						if (res.statusCode !== 200) {
+							settleError(
+								new Error(
+									`Download failed: HTTP ${res.statusCode} for ${validatedUrl.toString()}`,
+								),
+							);
+							return;
+						}
+						// Redirect bodies never own the output path. Only the final
+						// admitted response may open or publish downloaded bytes.
+						file = fs.createWriteStream(dest);
+						file.on("error", settleError);
+						res.on("data", (chunk: Buffer) => {
+							bytesReceived += chunk.length;
+							if (onProgress) {
+								// Throttle callbacks to every 2% to avoid excessive updates
+								const pct = expectedBytes
+									? Math.floor((bytesReceived / expectedBytes) * 50)
+									: -1;
+								if (pct !== lastProgressPercent) {
+									lastProgressPercent = pct;
+									onProgress(bytesReceived, expectedBytes);
+								}
+							}
+						});
+						res.pipe(file);
+						file.on("finish", settleSuccess);
+					},
+				)
 				.on("error", settleError);
 		};
 		request(url);
@@ -478,7 +483,9 @@ export async function ensureModel(
 	filename: string,
 	force?: boolean,
 	onProgress?: EmbeddingProgressCallback,
+	signal?: AbortSignal,
 ): Promise<string> {
+	signal?.throwIfAborted();
 	const safeRepo = sanitizeModelRepo(repo);
 	const safeFilename = sanitizeModelFilename(filename);
 	const modelPath = resolveModelPath(modelsDir, safeFilename);
@@ -517,7 +524,8 @@ export async function ensureModel(
 	// expose in-progress bytes there, or replace a working model on failed refresh.
 	const temporaryPath = `${modelPath}.${randomUUID()}.download`;
 	try {
-		await downloadFile(url, temporaryPath, 5, downloadOnProgress);
+		await downloadFile(url, temporaryPath, 5, downloadOnProgress, signal);
+		signal?.throwIfAborted();
 		await fs.promises.rename(temporaryPath, modelPath);
 	} finally {
 		safeUnlink(temporaryPath);

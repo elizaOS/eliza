@@ -188,7 +188,7 @@ const mediaModels: NonNullable<Plugin["models"]> = {
 
 // Cerebras serves text models only: vision chat completions, /audio/transcriptions,
 // /audio/speech, and /images/generations all fail against its endpoint. Mirror the
-// embedding shouldUseLocalEmbeddingFallback gate (models/embedding.ts): in Cerebras
+// embedding endpoint availability gate (models/embedding.ts): in Cerebras
 // mode these capabilities stay unregistered unless an explicit per-capability
 // override points them at an endpoint that serves them, so consumers (e.g.
 // plugin-discord's isImageDescriptionEnabled) skip gracefully instead of failing

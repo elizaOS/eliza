@@ -13,8 +13,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { generateProgressiveContentCorpus } from "../testing/src/content-evidence/progressive-content.ts";
-import { contentContextE2EArtifactDeclarations } from "../testing/src/content-evidence/progressive-content-evidence.ts";
+import { generateProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
+import { contentContextE2EArtifactDeclarations } from "../testing/corpus/progressive-content-evidence.ts";
 import { publishContentContextEvidence } from "./run-content-context.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));

@@ -3,9 +3,9 @@
  * persistence, bounded late reads, authorization denial, corruption, restart,
  * atomic publication, and explicit retention cleanup.
  */
-import { ChannelType, type IAgentRuntime, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
+import { describe, expect, it } from "vitest";
 import {
   buildGmailContentPublication,
   cleanupExpiredGmailContent,
@@ -22,25 +22,8 @@ const ROOM_ID = "00000000-0000-0000-0000-000000000003" as UUID;
 const OTHER_OWNER_ID = "00000000-0000-0000-0000-000000000004" as UUID;
 const OTHER_ROOM_ID = "00000000-0000-0000-0000-000000000005" as UUID;
 
-let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
-beforeEach(async () => {
-  fixture = await createTestRuntime({ characterName: "GmailSegmentCache" });
-  const rt = fixture.runtime;
-  for (const id of [OWNER_ID, OTHER_OWNER_ID])
-    await rt.createEntity({ id, names: [id], agentId: rt.agentId });
-  const worldId = AGENT_ID;
-  await rt.createWorld({ id: worldId, name: "Gmail Cache", agentId: rt.agentId });
-  for (const id of [ROOM_ID, OTHER_ROOM_ID])
-    await rt.createRoom({ id, source: "gmail-cache-test", type: ChannelType.DM, worldId });
-}, 180_000);
-afterEach(async () => {
-  await fixture?.cleanup();
-});
-function createAdapter() {
-  return fixture.runtime.adapter;
-}
-function runtime(adapter = createAdapter()): IAgentRuntime {
-  return { agentId: fixture.runtime.agentId, adapter } as unknown as IAgentRuntime;
+function runtime(adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID)): IAgentRuntime {
+  return { agentId: AGENT_ID, adapter } as unknown as IAgentRuntime;
 }
 
 function projection(value: string, rt = runtime(), now?: number) {
@@ -107,9 +90,8 @@ describe("Gmail segmented content cache", () => {
     }
   );
 
-  it.each([1024 * 1024, 10 * 1024 * 1024])(
-    "preserves Unicode boundaries at %i bytes with bounded late reads",
-    async (size) => {
+  it("preserves Unicode boundaries and reads 1 MiB and 10 MiB late canaries with bounded rows", async () => {
+    for (const size of [1024 * 1024, 10 * 1024 * 1024]) {
       const canary = "😀LATE-CANARY";
       const source = `${"x".repeat(size)}${canary}`;
       const cached = await publish(source);
@@ -130,10 +112,10 @@ describe("Gmail segmented content cache", () => {
       expect(page.text).toBe(canary);
       expect(page.sourceWork).toEqual({ headReads: 1, segmentRows: 1 });
     }
-  );
+  });
 
   it("resolves repeat pages after an adapter-preserving process restart", async () => {
-    const adapter = createAdapter();
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
     const firstRuntime = runtime(adapter);
     const cached = await publish("first\nsecond\nthird\n", firstRuntime);
     const first = await readGmailContentPage({

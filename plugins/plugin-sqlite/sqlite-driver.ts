@@ -7,11 +7,11 @@ export type { SqlDatabase, SqlRow, SqlValue } from "./sqlite-driver-types";
 
 export function assertSupportedRuntime(): void {
   const supported = process.versions.bun
-    ? process.versions.bun === "1.3.14"
+    ? process.versions.bun === "1.4.2"
     : process.versions.node === "24.15.0";
   if (!supported) {
     throw new ElizaError(
-      "Run SQLite storage with pinned Node 24.15.0 or Bun 1.3.14",
+      "Run SQLite storage with pinned Node 24.15.0 or Bun 1.4.2",
       {
         code: "SQLITE_RUNTIME_UNSUPPORTED",
       },

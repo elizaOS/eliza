@@ -247,10 +247,11 @@ export function resolveBuildOnInstallPackages(
     .sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
-/** Production packages required by progressive-content PostgreSQL evidence. */
-export function resolveContentContextEvidencePackages(opts?: WorkspaceDiscoveryOptions) {
-  const packages = new Map<string, ReturnType<typeof packagesWithScriptMeta>[number]>();
-  const invalid: string[] = [];
+export function resolveContentContextEvidencePackages(
+  opts?: WorkspaceDiscoveryOptions,
+) {
+  const packages = new Map();
+  const invalid = [];
   for (const pkg of packagesWithScriptMeta(opts)) {
     const declaration = pkg.scripts.contentContextEvidence;
     if (declaration === undefined) continue;

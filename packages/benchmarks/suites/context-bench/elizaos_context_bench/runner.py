@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 
-from elizaos_context_bench.edge_cases import count_tasks, validate_tasks
+from elizaos_context_bench.edge_cases import EDGE_VARIANTS, validate_tasks
 from elizaos_context_bench.evaluators.position import PositionAnalyzer
 from elizaos_context_bench.suites.multihop import MultiHopBenchmarkSuite
 from elizaos_context_bench.suites.niah import NIAHBenchmarkSuite
@@ -67,7 +67,18 @@ class ContextBenchRunner:
 
     def count_scenarios(self) -> dict[str, int]:
         """Return counts for the configured generated scenario set."""
-        return count_tasks(self.generate_tasks())
+        lengths = len(self.config.context_lengths)
+        positions = len(self.config.positions)
+        base = 0
+        if self.config.run_niah_basic:
+            base += lengths * positions * self.config.tasks_per_position
+        if self.config.run_niah_semantic:
+            base += lengths * positions
+        if self.config.run_multi_hop:
+            base += lengths * len(self.config.multi_hop_depths) * self.config.tasks_per_position
+        multiplier = len(EDGE_VARIANTS)
+        edge = base * multiplier if self.config.include_edge_scenarios else 0
+        return {"base": base, "edge": edge, "total": base + edge, "edge_multiplier": multiplier}
 
     def validate_scenarios(self) -> list[str]:
         """Validate the configured generated scenario set."""

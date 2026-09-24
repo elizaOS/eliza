@@ -5,8 +5,11 @@
  * services, first-run config, and diagnostics. Frontend surfaces live in
  * `@elizaos/ui`; pure contracts/utilities live in `@elizaos/core`. Star
  * re-exports are used except where a name collides with `@elizaos/ui`
- * (`ConfigField`/`getPlugins`, re-exported explicitly).
+ * (`ConfigField`/`getPlugins`, re-exported explicitly); `./platform/empty-node-module`
+ * is deliberately excluded so its browser aliases can't shadow the real Node
+ * exports.
  */
+
 // Runtime-mode resolution moved into @elizaos/agent (api/runtime-mode/) so the
 // bare agent server enforces the same route-visibility gate as this wrapper.
 // Re-exported by name to keep this barrel's public surface stable without
@@ -25,32 +28,24 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
+export { type AllPermissionsState, type PermissionCheckResult, type PermissionManagerConfig, type PermissionState, type PermissionStatus, type Platform, type SystemPermissionDefinition, type SystemPermissionId } from "@elizaos/core/contracts/permissions";
+export { type AndroidUserAgentMarker, type AospVariantConfig, type AppAndroidConfig, type AppConfig, type AppDesktopConfig, type AppPackagingConfig, type AppWebConfig, DEFAULT_APP_CONFIG, resolveAppBranding } from "@elizaos/core/config/app-config";
 export * from "@elizaos/core/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app registry versions explicitly so the Node barrel stays authoritative
 // and avoids ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "@elizaos/core/catalog";
+export * from "@elizaos/core/integration-observability";
 export {
-  type AndroidUserAgentMarker,
-  type AospVariantConfig,
-  type AppAndroidConfig,
-  type AppConfig,
-  type AppDesktopConfig,
-  type AppPackagingConfig,
-  type AppWebConfig,
-  DEFAULT_APP_CONFIG,
-  resolveAppBranding,
-} from "@elizaos/core/config/app-config";
-export {
-  type AllPermissionsState,
-  type PermissionCheckResult,
-  type PermissionManagerConfig,
-  type PermissionState,
-  type PermissionStatus,
-  type Platform,
-  type SystemPermissionDefinition,
-  type SystemPermissionId,
-} from "@elizaos/core/contracts/permissions";
+  _resetBuildVariantForTests,
+  BUILD_VARIANTS,
+  type BuildVariant,
+  DEFAULT_BUILD_VARIANT,
+  getBuildVariant,
+  getDirectDownloadUrl,
+  isDirectBuild,
+  isStoreBuild,
+} from "@elizaos/core/platform/build-variant";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -63,8 +58,12 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
-export * from "./diagnostics/integration-observability";
 export * from "./first-run/first-run-config";
+// `./platform/empty-node-module` is intentionally NOT re-exported here.
+// It exists as a tsconfig-paths target for browser builds — re-exporting it
+// would shadow the real api/server, runtime/eliza, etc. exports above with
+// inert browser aliases. Browser bundlers alias it in via the path map; Node imports
+// the originals directly through this barrel.
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export * from "./platform/ios-runtime-backends";
 export {
@@ -75,7 +74,6 @@ export {
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
-export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";

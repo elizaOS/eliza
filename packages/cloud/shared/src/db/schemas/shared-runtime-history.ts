@@ -7,7 +7,8 @@ export type SharedRuntimePublicGrounding =
   | {
       kind: "web_search";
       query: string;
-      provider: KeylessWebSearchProvider;
+      // Retain historical receipts from the retired provider. New searches use Parallel.
+      provider: KeylessWebSearchProvider | "exa";
       text: string;
       observedAt: number;
       /** Traceable public sources extracted from the successful tool receipt. */

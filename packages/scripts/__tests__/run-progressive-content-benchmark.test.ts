@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { generateProgressiveContentCorpus } from "../../testing/src/content-evidence/progressive-content";
+import { generateProgressiveContentCorpus } from "../../testing/corpus/progressive-content";
 import {
   PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS,
   PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY,

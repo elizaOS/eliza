@@ -59,7 +59,7 @@ endpoint's current Acacia support before running; an incompatible event version
 is a failure, not grounds to rewrite or locally re-sign the event.
 
 ```sh
-bun packages/cloud/shared/scripts/certify-generic-billing-runtime-sandbox.ts
+bun packages/cloud/scripts/shared/certify-generic-billing-runtime-sandbox.ts
 ```
 
 Preflight makes read-only `/v1/account` and `/v1/balance` calls with the selected
@@ -82,8 +82,8 @@ provider outcomes first.
 ## Local validation
 
 ```sh
-bun test --config=/dev/null packages/cloud/shared/scripts/billing-sandbox-preflight.test.ts
-APP_BILLING_TEST_POSTGRES_URL=postgresql://user@127.0.0.1:55437/postgres bun test --config=/dev/null --isolate packages/cloud/shared/scripts/billing-sandbox-database.postgres.test.ts
+bun test --config=/dev/null packages/cloud/scripts/shared/billing-sandbox-preflight.test.ts
+APP_BILLING_TEST_POSTGRES_URL=postgresql://user@127.0.0.1:55437/postgres bun test --config=/dev/null --isolate packages/cloud/scripts/shared/billing-sandbox-database.postgres.test.ts
 ```
 
 The preflight suite uses the real Stripe SDK with controlled HTTP. The schema

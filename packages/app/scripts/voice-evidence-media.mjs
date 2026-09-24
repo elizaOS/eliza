@@ -826,7 +826,7 @@ function assertPublicationTrust(parent, trust) {
   }
 }
 
-function prepareOutputPublication(outDir) {
+function assertOutputDestinationAvailable(outDir) {
   if (!outDir) throw new Error("Voice evidence output directory is required.");
   const requestedDestination = path.resolve(outDir);
   if (requestedDestination === path.parse(requestedDestination).root) {
@@ -841,6 +841,14 @@ function prepareOutputPublication(outDir) {
   if (requestedDestinationStat && !requestedDestinationStat.isDirectory()) {
     throw new Error("Voice evidence output path must be a directory.");
   }
+  if (requestedDestinationStat) {
+    throw new Error("Voice evidence output directory must not already exist.");
+  }
+  return requestedDestination;
+}
+
+function prepareOutputPublication(outDir) {
+  const requestedDestination = assertOutputDestinationAvailable(outDir);
   const requestedParent = path.dirname(requestedDestination);
   fs.mkdirSync(requestedParent, { recursive: true, mode: 0o700 });
   const parent = fs.realpathSync(requestedParent);
@@ -1229,6 +1237,7 @@ function transcodeFailures(root, outDir, tools) {
 }
 
 export function finalizeWebVoiceEvidence(args) {
+  assertOutputDestinationAvailable(args.outDir);
   const snapshotRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-voice-web-evidence-"),
   );
@@ -1634,6 +1643,7 @@ function assertPhysicalCaptureProvenance(
 }
 
 export function finalizeDesktopVoiceEvidence(args) {
+  assertOutputDestinationAvailable(args.outDir);
   const snapshotRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-voice-desktop-evidence-"),
   );

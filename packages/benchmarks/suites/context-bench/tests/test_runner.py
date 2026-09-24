@@ -147,7 +147,7 @@ class TestContextBenchRunnerAsync:
         results = await runner.run_quick_eval()
 
         assert results.comparison_to_leaderboard is not None
-        assert len(results.comparison_to_leaderboard) > 0
+        assert results.comparison_to_leaderboard == {}
 
     async def test_results_contain_summary(self) -> None:
         """Test that results contain summary."""

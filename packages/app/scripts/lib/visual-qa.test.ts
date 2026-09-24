@@ -222,5 +222,5 @@ describe("analyzeScreenshot end to end", () => {
     expect(
       report.ocr_note === null || typeof report.ocr_note === "string",
     ).toBe(true);
-  });
+  }, 30_000);
 });

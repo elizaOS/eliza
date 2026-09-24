@@ -10,6 +10,7 @@
  * wallet-export guard. Route helpers are re-exported here so tests can import
  * them from `./server`.
  */
+
 import fs from "node:fs";
 import type http from "node:http";
 import { createRequire } from "node:module";
@@ -20,7 +21,6 @@ import {
   type ConversationMeta,
   clearPersistedFirstRunConfig,
   cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
@@ -50,26 +50,11 @@ import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-e
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
 import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
+// Override the wallet export rejection function with the hardened version
+// that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import { resolveLinkedAccountsInConfig } from "@elizaos/core/contracts/first-run-options";
-import {
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/core/settings-debug";
-import {
-  clearCloudSecrets,
-  getCloudSecret,
-} from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
-import {
-  ensureCloudTtsApiKeyAlias,
-  mirrorCompatHeaders,
-} from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
-import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql/database-utils/sql-compat";
-import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
-import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
-import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
-import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
@@ -79,12 +64,6 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
 } from "./auth.ts";
-import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
-import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
-import { handleAuthSessionRoutes } from "./auth-session-routes";
-import { handleBackgroundTasksRoute } from "./background-tasks-routes";
-import { handleCatalogRoutes } from "./catalog-routes";
-import { handleCloudPairRoute } from "./cloud-pair-route";
 import {
   type CompatRouteChainEntry,
   type CompatRouteContext,
@@ -93,43 +72,11 @@ import {
   getConfiguredCompatAgentName,
   runCompatRouteChain,
 } from "./compat-route-shared";
-import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
-import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
-import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes";
-import { handleDevCompatRoutes } from "./dev-compat-routes";
-import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
-import { handleEmbedAuthRoutes } from "./embed-auth-routes";
-import {
-  isFeatureRouteHandlerAvailable,
-  resolveFeatureRouteReadinessFailure,
-} from "./feature-route-readiness.js";
-import { handleFirstRunRoute } from "./first-run-routes";
-import { handleI18nLocaleRoute } from "./i18n-locale-routes";
-import { handleInternalWakeRoute } from "./internal-routes";
-import {
-  isPerfInstrumentEnabled,
-  normalizeRouteKey,
-  recordRouteTiming,
-} from "./perf-instrument";
-import {
-  PLUGIN_REGISTRY_LOAD_DEADLINE_MS,
-  resolveWithinDeadline,
-} from "./plugin-registry-load-deadline";
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
-import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
-import { handleSecretsManagerRoute } from "./secrets-manager-routes";
-import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
-import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
-import {
-  CORS_ALLOWED_HEADERS,
-  getCorsAllowedPorts,
-  isAllowedOrigin,
-} from "./server-cors";
 
-// Override the wallet export rejection function with the hardened version
-// that adds rate limiting, audit logging, and a forced confirmation delay.
+export { injectApiBaseIntoHtml } from "@elizaos/agent";
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
@@ -152,7 +99,6 @@ export {
   buildCorsAllowedPorts,
   invalidateCorsAllowedPorts,
 } from "./server-cors";
-export { injectApiBaseIntoHtml } from "./server-html";
 // Re-export helpers from split-out modules so tests can import from "./server"
 export {
   ensureApiTokenForBindHost,
@@ -200,27 +146,82 @@ async function getLocalInferenceRoutes() {
   }
   return _localInferenceRoutes;
 }
+
+import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql/database-utils/sql-compat";
+import { isElizaSettingsDebugEnabled, settingsDebugCloudSummary } from "@elizaos/core/settings-debug";
+import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
+import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
+import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
+import { handleAuthSessionRoutes } from "./auth-session-routes";
+import { handleBackgroundTasksRoute } from "./background-tasks-routes";
+import { handleCatalogRoutes } from "./catalog-routes";
+import { handleCloudPairRoute } from "./cloud-pair-route";
+import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
+import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
+import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes";
+import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
+import { handleEmbedAuthRoutes } from "./embed-auth-routes";
+import {
+  isFeatureRouteHandlerAvailable,
+  resolveFeatureRouteReadinessFailure,
+} from "./feature-route-readiness.js";
+import { handleFirstRunRoute } from "./first-run-routes";
+import { handleI18nLocaleRoute } from "./i18n-locale-routes";
+import { handleInternalWakeRoute } from "./internal-routes";
+import {
+  isPerfInstrumentEnabled,
+  normalizeRouteKey,
+  recordRouteTiming,
+} from "./perf-instrument";
+import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
+import { handleSecretsManagerRoute } from "./secrets-manager-routes";
+import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
+import {
+  CORS_ALLOWED_HEADERS,
+  getCorsAllowedPorts,
+  isAllowedOrigin,
+} from "./server-cors";
+
 const _require = createRequire(import.meta.url);
+
 const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-local-inference",
   "capacitor-llama",
   "eliza-device-bridge",
   "eliza-aosp-llama",
 ] as const;
+
+import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
+import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
+import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
+
 // ---------------------------------------------------------------------------
 // Import from extracted modules for use within this file
 // ---------------------------------------------------------------------------
+
+import {
+  ensureCloudTtsApiKeyAlias,
+  mirrorCompatHeaders,
+} from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
+import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
+
 // ---------------------------------------------------------------------------
 // Module-level constants and types that stay in server.ts
 // ---------------------------------------------------------------------------
+
 const _PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
+
 // ---------------------------------------------------------------------------
 // Internal helpers used by the compatibility request pipeline.
 // ---------------------------------------------------------------------------
+
 function hydrateWalletOsStoreFlagFromConfig(): void {
   if (process.env.ELIZA_WALLET_OS_STORE?.trim()) {
     return;
   }
+
   const config = loadElizaConfig();
   const persistedEnv =
     config.env && typeof config.env === "object" && !Array.isArray(config.env)
@@ -231,28 +232,35 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
     process.env.ELIZA_WALLET_OS_STORE = raw.trim();
     return;
   }
+
   if (process.env.ELIZA_WALLET_OS_STORE_DEV_DEFAULT?.trim() === "0") {
     process.env.ELIZA_WALLET_OS_STORE = "0";
     return;
   }
+
   if (isNodePlatformSecureStoreDefaultAvailable()) {
     process.env.ELIZA_WALLET_OS_STORE = "1";
   }
 }
-const RUNTIME_STOP_RESET_TIMEOUT_MS = 20000;
+
+const RUNTIME_STOP_RESET_TIMEOUT_MS = 20_000;
+
 function resolveCompatPgliteDataDir(config: ElizaConfig): string {
   const explicitDataDir = process.env.PGLITE_DATA_DIR?.trim();
   if (explicitDataDir) {
     return resolveUserPath(explicitDataDir);
   }
+
   const configuredDataDir = config.database?.pglite?.dataDir?.trim();
   if (configuredDataDir) {
     return resolveUserPath(configuredDataDir);
   }
+
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   return path.join(resolveUserPath(workspaceDir), ".elizadb");
 }
+
 /**
  * Reset hop for `POST /api/agent/reset`. Deliberately operates entirely
  * in-process: stops the runtime then removes the PGlite data dir.
@@ -294,10 +302,12 @@ async function clearCompatPgliteDataDir(
       }
     }
   }
+
   const dataDir = resolveCompatPgliteDataDir(config);
   if (path.basename(dataDir) !== ".elizadb") {
     throw new Error(`Refusing to delete unexpected PGlite dir: ${dataDir}`);
   }
+
   if (fs.existsSync(dataDir)) {
     fs.rmSync(dataDir, { recursive: true, force: true });
     logger.info(
@@ -305,42 +315,53 @@ async function clearCompatPgliteDataDir(
     );
   }
 }
+
 export const _clearCompatPgliteDataDirForTests = clearCompatPgliteDataDir;
+
 function resolveCompatStatusAgentName(
   state: CompatRuntimeState,
 ): string | null {
   if (state.pendingAgentName) {
     return state.pendingAgentName;
   }
+
   if (state.current) {
     return null;
   }
+
   return getConfiguredCompatAgentName();
 }
+
 function mergeEmbeddingIntoStatusPayload(
   payload: Record<string, unknown>,
 ): void {
   const aug = getStartupEmbeddingAugmentation();
   if (!aug) return;
+
   const existing = payload.startup;
   const base =
     existing && typeof existing === "object" && !Array.isArray(existing)
       ? { ...(existing as Record<string, unknown>) }
       : { phase: "embedding-warmup", attempt: 0 };
+
   payload.startup = { ...base, ...aug };
 }
+
 function rewriteCompatStatusBody(
   bodyText: string,
   state: CompatRuntimeState,
 ): string {
   const agentName = resolveCompatStatusAgentName(state);
+
   try {
     const parsed = JSON.parse(bodyText) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return bodyText;
     }
+
     const payload = parsed as Record<string, unknown>;
     mergeEmbeddingIntoStatusPayload(payload);
+
     const upstreamPendingRestartReasons = Array.isArray(
       payload.pendingRestartReasons,
     )
@@ -361,12 +382,15 @@ function rewriteCompatStatusBody(
       payload.pendingRestart = pendingRestartReasons.length > 0;
       payload.pendingRestartReasons = pendingRestartReasons;
     }
+
     if (!agentName) {
       return JSON.stringify(payload);
     }
+
     if (payload.agentName === agentName) {
       return JSON.stringify(payload);
     }
+
     return JSON.stringify({
       ...payload,
       agentName,
@@ -377,6 +401,7 @@ function rewriteCompatStatusBody(
     return bodyText;
   }
 }
+
 function patchCompatStatusResponse(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -387,7 +412,9 @@ function patchCompatStatusResponse(
   if (method !== "GET" || pathname !== "/api/status") {
     return;
   }
+
   const originalEnd = res.end.bind(res);
+
   res.end = ((
     chunk?: string | Uint8Array,
     encoding?: unknown,
@@ -395,19 +422,23 @@ function patchCompatStatusResponse(
   ) => {
     let resolvedEncoding: BufferEncoding | undefined;
     let resolvedCallback: (() => void) | undefined;
+
     if (typeof encoding === "function") {
       resolvedCallback = encoding as () => void;
     } else {
       resolvedEncoding = encoding as BufferEncoding | undefined;
       resolvedCallback = cb as (() => void) | undefined;
     }
+
     if (chunk == null) {
       return resolvedCallback ? originalEnd(resolvedCallback) : originalEnd();
     }
+
     const bodyText =
       typeof chunk === "string"
         ? chunk
         : Buffer.from(chunk).toString(resolvedEncoding ?? "utf8");
+
     return originalEnd(
       rewriteCompatStatusBody(bodyText, state),
       "utf8",
@@ -415,6 +446,7 @@ function patchCompatStatusResponse(
     );
   }) as typeof res.end;
 }
+
 /**
  * Resolve the Cloud config used by app's compatibility routes. A valid
  * development Cloud authority owns the complete operational connection and is
@@ -464,13 +496,8 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
     const backfillKey =
       getCloudSecret("ELIZAOS_CLOUD_API_KEY") ||
       process.env.ELIZAOS_CLOUD_API_KEY ||
-      (
-        runtime as {
-          character?: {
-            secrets?: Record<string, string>;
-          };
-        } | null
-      )?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
+      (runtime as { character?: { secrets?: Record<string, string> } } | null)
+        ?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
     if (backfillKey) {
       if (isElizaSettingsDebugEnabled()) {
         logger.debug(
@@ -494,9 +521,11 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
   }
   return config;
 }
+
 // Cloud login / disconnect loopback sync helpers were moved alongside the
 // cloud route handlers into plugin-elizacloud (see plugins/plugin-elizacloud/
 // plugin.ts → compatLoopbackConfigPut + makeCloudRouteHandler).
+
 async function handleCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -517,6 +546,7 @@ async function handleCompatRoute(
   }
   return handled;
 }
+
 async function handleCompatRouteInner(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -524,6 +554,7 @@ async function handleCompatRouteInner(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
+
   // ── Mode visibility gate ───────────────────────────────────────────────
   // Shared hook from @elizaos/agent (also enforced in the bare agent
   // server's own dispatch): cloud mode hides /api/local-inference/*,
@@ -531,6 +562,7 @@ async function handleCompatRouteInner(
   // probe mode state). It must run here because the compat chain below handles
   // some routes before the request ever reaches the upstream agent listener.
   if (await handleRuntimeModePreDispatch(req, res, state.current)) return true;
+
   const authPolicyDecision = await enforceCompatRouteAuthPolicy(
     req,
     res,
@@ -540,10 +572,12 @@ async function handleCompatRouteInner(
   );
   if (authPolicyDecision === "denied") return true;
   if (authPolicyDecision === "unmanaged") return false;
+
   // Remote-mode cloud mutations forward only after compat auth allows the
   // request; the forwarder attaches the controller's target token, so it must
   // not run as a pre-auth bypass.
   if (await handleRuntimeModeRemoteForward(req, res)) return true;
+
   // #12089 item 5: the compat route surface below used to be a ~30-branch
   // order-dependent if-chain (each branch `if (await handleX(...)) return true`)
   // with the plugin-local-inference handlers hardwired inline. It is now an
@@ -557,12 +591,14 @@ async function handleCompatRouteInner(
   if (await runCompatRouteChain(COMPAT_ROUTE_CHAIN, ctx)) {
     return true;
   }
+
   // Terminal fallthrough: database-rows compat surface owns any request the
   // ordered chain declined. Kept as the explicit chain terminator (not a
   // registry entry) because it never falls through: it always resolves the
   // request (200/404/503), so it must run last and unconditionally.
   return handleDatabaseRowsCompatRoute(req, res, state);
 }
+
 // Ordered compat-route registry (#12089 item 5). Replaces the former fixed
 // if-chain in `handleCompatRouteInner`. Entries run in ARRAY ORDER
 // (data-driven), first `true` wins. Preserves the exact legacy ordering and
@@ -762,6 +798,7 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         );
         return true;
       }
+
       try {
         logger.info(
           "[eliza][reset] POST /api/agent/reset: loading config, will clear first-run state, persisted provider config, and cloud keys (GGUF / MODELS_DIR untouched)",
@@ -868,6 +905,7 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     },
   },
 ];
+
 export async function handleElizaCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -875,6 +913,7 @@ export async function handleElizaCompatRoute(
 ): Promise<boolean> {
   return handleCompatRoute(req, res, state);
 }
+
 async function runCompatRequestPipeline(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -886,6 +925,7 @@ async function runCompatRequestPipeline(
   ensureCloudTtsApiKeyAlias();
   mirrorCompatHeaders(req);
   patchCompatStatusResponse(req, res, state);
+
   // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
   // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
   // only when Origin is absent so we never reflect an arbitrary Origin.
@@ -913,11 +953,13 @@ async function runCompatRequestPipeline(
       return null;
     }
   })();
+
   if (originHeader !== "" && !allowOrigin) {
     res.writeHead(403, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "cors_origin_denied" }));
     return;
   }
+
   if (allowOrigin) {
     res.setHeader("Access-Control-Allow-Origin", allowOrigin);
     res.setHeader(
@@ -927,11 +969,13 @@ async function runCompatRequestPipeline(
     res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }
+
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
     return;
   }
+
   {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     if (
@@ -940,6 +984,7 @@ async function runCompatRequestPipeline(
     ) {
       await ensureRuntimeSqlCompatibility(state.current);
     }
+
     try {
       if (await handleCompatRoute(req, res, state)) {
         return;
@@ -962,6 +1007,7 @@ async function runCompatRequestPipeline(
       return;
     }
   }
+
   const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
   const deferredBoot = getDeferredBootStatus();
   const readinessFailure = resolveFeatureRouteReadinessFailure(
@@ -983,8 +1029,10 @@ async function runCompatRequestPipeline(
     sendJsonResponse(res, 503, readinessFailure);
     return;
   }
+
   await next();
 }
+
 export async function startApiServer(
   ...args: Parameters<typeof upstreamStartApiServer>
 ): Promise<Awaited<ReturnType<typeof upstreamStartApiServer>>> {
@@ -993,14 +1041,17 @@ export async function startApiServer(
   // passes through to upstream which checks this env var).
   ensureCloudTtsApiKeyAlias();
   hydrateWalletOsStoreFlagFromConfig();
+
   const compatState: CompatRuntimeState = {
     current: (args[0]?.runtime as AgentRuntime | undefined) ?? null,
     pendingAgentName: null,
     pendingRestartReasons: [],
   };
+
   if (compatState.current && !args[0]?.skipDeferredStartupWork) {
     await ensureRuntimeSqlCompatibility(compatState.current);
   }
+
   const callerOptions = args[0];
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
@@ -1052,7 +1103,9 @@ export async function startApiServer(
             // an unavailable auth store rejects the session instead of
             // degrading to an authenticated socket.
             logger.error(
-              `[eliza][auth] WebSocket session lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+              `[eliza][auth] WebSocket session lookup failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
             );
             compatState.current?.reportError(
               "appCore.webSocketSessionAuth",
@@ -1071,17 +1124,21 @@ export async function startApiServer(
   logger.info(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
   );
+
   compatState.runtimeOperations = server.runtimeOperations;
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
+
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
+
   server.updateRuntime = (runtime: AgentRuntime) => {
     compatState.current = runtime;
     clearCompatRuntimeRestart(compatState);
     // Make the runtime immediately visible to upstream routes so hot swaps do
     // not briefly return 503s while compat setup finishes in the background.
     originalUpdateRuntime(runtime);
+
     // Continue repairing SQL compatibility asynchronously without blocking
     // the runtime from becoming available to unrelated routes.
     void (async () => {
@@ -1091,7 +1148,9 @@ export async function startApiServer(
         // error-policy:J7 post-swap diagnostics must not roll back a runtime
         // already published to request handlers; report the degraded feature.
         logger.error(
-          `[eliza][runtime] SQL compatibility init failed: ${err instanceof Error ? err.message : String(err)}`,
+          `[eliza][runtime] SQL compatibility init failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
         );
         runtime.reportError("appCore.sqlCompatibility", err, {
           phase: "runtime-swap",
@@ -1099,5 +1158,6 @@ export async function startApiServer(
       }
     })();
   };
+
   return server;
 }

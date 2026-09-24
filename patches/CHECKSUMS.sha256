@@ -1,7 +1,6 @@
 b0b53da3a1cffec57fcd52fbb86c6b7126f96582abe4eaa62eb25221a859339e  ./@capacitor%2Fbarcode-scanner@3.0.2.patch
 f0e54fe3aad565f55ae57f88a7fa1eec79bcd6d965994efec915e918756aab2d  ./@capacitor%2Fios@8.5.0.patch
 4c12672d4c78ae5eaa671c2ba230b078ef358945e502595623efd80028c566bf  ./@noble%2Fcurves@2.0.1.patch
-4f6e9e597f09ad5aaf8b03e73b666b588db5209370774debb03c8619e23dbfe8  ./@pixiv%2Fthree-vrm@3.5.2.patch
 4f6e9e597f09ad5aaf8b03e73b666b588db5209370774debb03c8619e23dbfe8  ./@pixiv%2Fthree-vrm@3.5.5.patch
 57547e93136fd42eabd563fc31b5387a4879c8e65eb45e4c4d7511c1dda725cb  ./@solana%2Faccounts@5.5.1.patch
 cf3a12de77d0f6f4d2d3511a3b87de1c24d399cf98606e2e334598191a9c956b  ./@solana%2Faddresses@5.5.1.patch
@@ -44,6 +43,7 @@ eb1e6558a98efff8652869c24268810f5ed63a177dc33e797a8a628706744574  ./@solana%2Ftr
 54d113ce8bf872cc56f25582cbe29c0b4e524327f8e6560dfd1e3b9f3a18ba79  ./@solana%2Ftransactions@5.5.1.patch
 fa9033e52dfdaa941f137a52504117b0b5405490696a007d6fd8bab807a8dfea  ./bigint-buffer@1.1.5.patch
 ccde54ea5b08e5370e7795c6db77c05616aca4cee0cd8552d4e6500119bc86f8  ./coding-agent-adapters@0.16.3.patch
+2a6f7c08369dd2b821bf0409d002dea1a4c9422a8e30e65a232533ba06e212f3  ./electrobun/0001-diagnostic-instrumentation.patch
 8e112e92681de2bcee90500358b8a3d66f2e4b2a04582ce6a8f424177aef3d3a  ./electrobun@1.16.0.patch
 d216f37b14aea9ba505190f5cb03059fd6ef34f0ccf979ecf4dde2f3a14ca01f  ./electrobun@1.18.1.patch
 343e506742c0a7e26acadf91aa7c65a1fa9259fea615744374bc94a7a48e49ca  ./llama-cpp-capacitor@0.1.5-bge-cache-upgrade.patch

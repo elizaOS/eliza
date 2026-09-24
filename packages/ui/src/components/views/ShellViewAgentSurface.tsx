@@ -1,4 +1,4 @@
-import type { ViewCapability } from "@elizaos/core";
+import type { SurfaceManifest, ViewCapability } from "@elizaos/core";
 /**
  * ShellViewAgentSurface — makes a shell-rendered builtin view (settings,
  * character, …) agent-controllable, the same way DynamicViewLoader does for

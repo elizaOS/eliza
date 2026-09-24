@@ -5,7 +5,7 @@
  * attach the developer's account to that organization.
  */
 import { sql } from "drizzle-orm";
-import { loadEnvFiles } from "../../scripts/admin/local-dev-helpers";
+import { loadEnvFiles } from "../admin/local-dev-helpers";
 
 loadEnvFiles([".env", { path: ".env.local", override: true }]);
 
@@ -13,9 +13,9 @@ const DEFAULT_ELIZA_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 
 async function seedLocalDev() {
   const [{ db }, schema, { agentTable, entityTable }] = await Promise.all([
-    import("../src/db/client"),
-    import("../src/db/schemas"),
-    import("../src/db/schemas/eliza"),
+    import("../../shared/src/db/client"),
+    import("../../shared/src/db/schemas"),
+    import("../../shared/src/db/schemas/eliza"),
   ]);
 
   console.log("🌱 Seeding Local Development Data");
@@ -88,8 +88,10 @@ async function seedLocalDev() {
         description: "50,000 credits for AI generations",
         credits: 50000,
         price_cents: 4999,
-        stripe_price_id: process.env.STRIPE_SMALL_PACK_PRICE_ID || "price_test_small",
-        stripe_product_id: process.env.STRIPE_SMALL_PACK_PRODUCT_ID || "prod_test_small",
+        stripe_price_id:
+          process.env.STRIPE_SMALL_PACK_PRICE_ID || "price_test_small",
+        stripe_product_id:
+          process.env.STRIPE_SMALL_PACK_PRODUCT_ID || "prod_test_small",
         sort_order: 1,
       },
       {
@@ -97,8 +99,10 @@ async function seedLocalDev() {
         description: "150,000 credits for AI generations",
         credits: 150000,
         price_cents: 12999,
-        stripe_price_id: process.env.STRIPE_MEDIUM_PACK_PRICE_ID || "price_test_medium",
-        stripe_product_id: process.env.STRIPE_MEDIUM_PACK_PRODUCT_ID || "prod_test_medium",
+        stripe_price_id:
+          process.env.STRIPE_MEDIUM_PACK_PRICE_ID || "price_test_medium",
+        stripe_product_id:
+          process.env.STRIPE_MEDIUM_PACK_PRODUCT_ID || "prod_test_medium",
         sort_order: 2,
       },
       {
@@ -106,8 +110,10 @@ async function seedLocalDev() {
         description: "500,000 credits for AI generations",
         credits: 500000,
         price_cents: 39999,
-        stripe_price_id: process.env.STRIPE_LARGE_PACK_PRICE_ID || "price_test_large",
-        stripe_product_id: process.env.STRIPE_LARGE_PACK_PRODUCT_ID || "prod_test_large",
+        stripe_price_id:
+          process.env.STRIPE_LARGE_PACK_PRICE_ID || "price_test_large",
+        stripe_product_id:
+          process.env.STRIPE_LARGE_PACK_PRODUCT_ID || "prod_test_large",
         sort_order: 3,
       },
     ];
@@ -162,7 +168,10 @@ async function seedLocalDev() {
     console.log("   Organization: Local Dev Organization");
     console.log(`   Credits: ${org.credit_balance}`);
   } catch (error) {
-    console.error("\n❌ Seeding failed:", error instanceof Error ? error.message : String(error));
+    console.error(
+      "\n❌ Seeding failed:",
+      error instanceof Error ? error.message : String(error),
+    );
     process.exit(1);
   }
 }

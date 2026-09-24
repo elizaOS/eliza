@@ -105,7 +105,7 @@ describe("parent-agent explicit coding-mode negative conformance", () => {
               {
                 id: "write-parent-mutation",
                 name: "WRITE",
-                args: {
+                arguments: {
                   file_path: "parent-mutation.txt",
                   content: "mutated but unverified\n",
                 },
@@ -119,7 +119,7 @@ describe("parent-agent explicit coding-mode negative conformance", () => {
             {
               id: `premature-reply-${plannerCalls}`,
               name: "REPLY",
-              args: { text: "The parent coding change is complete." },
+              arguments: { text: "The parent coding change is complete." },
             },
           ],
         };

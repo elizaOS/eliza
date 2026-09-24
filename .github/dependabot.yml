@@ -9,17 +9,22 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      react-stack:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-test-renderer"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@types/react-test-renderer"
       dev-dependencies:
         dependency-type: "development"
     ignore:
       # Bun types must match the repository's pinned runtime API baseline.
       - dependency-name: "@types/bun"
-        versions: ["> 1.3.14"]
+        versions: ["> 1.4.2"]
       - dependency-name: "bun-types"
-        versions: ["> 1.3.14"]
-      # React's renderer must move with the host React version.
-      - dependency-name: "react-test-renderer"
-        versions: ["> 19.2.7"]
+        versions: ["> 1.4.2"]
       # RainbowKit 2.2.11 requires Wagmi 2; migrate the wallet stack together.
       - dependency-name: "wagmi"
         versions: [">= 3.0.0"]

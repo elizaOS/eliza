@@ -15,6 +15,6 @@
     "composite": false,
     "incremental": false
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
+  "include": ["src/**/*.ts", "corpus/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**", "corpus/**/*.test.ts"]
 }

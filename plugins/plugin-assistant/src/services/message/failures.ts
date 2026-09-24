@@ -362,6 +362,11 @@ export class MessageFailures {
       responseMessages,
       state,
       mode: "simple",
+      terminalFailure: {
+        kind: failureKind,
+        transient: responseContent.transient === true,
+        message: replyText,
+      },
     };
   }
 
@@ -415,6 +420,11 @@ export class MessageFailures {
       responseMessages,
       state,
       mode: "simple",
+      terminalFailure: {
+        kind: "no_provider",
+        transient: false,
+        message: replyText,
+      },
     };
   }
 }

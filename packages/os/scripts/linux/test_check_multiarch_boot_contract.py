@@ -29,7 +29,7 @@ def complete_row(arch: str) -> dict:
         "evidence": f"evidence/{arch}.json",
         "os_commit": "1" * 40,
         "source_commit": "2" * 40,
-        "runtime_version": "1.3.14",
+        "runtime_version": "1.4.2",
         "proves": list(gate.ARCH_RUNTIME_EVIDENCE_REQUIREMENTS[arch]),
         "gaps": ["not physical silicon evidence"],
     }

@@ -11,7 +11,7 @@
   "devDependencies": {
     "@elizaos/plugin-local-inference": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@types/bun": "^1.2.0",
+    "@types/bun": "1.4.2",
     "@types/node": "^24.0.0",
     "@elizaos/plugin-native-inference": "workspace:*"
   },

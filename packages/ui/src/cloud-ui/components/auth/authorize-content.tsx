@@ -9,7 +9,6 @@ import {
   APP_DELEGATION_SCOPES,
   type AppDelegationScope,
 } from "@elizaos/cloud-sdk/app-delegation";
-
 import {
   clearStoredStewardToken,
   readStoredStewardToken,

@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { openProgressiveContentBoundedSource } from "../../testing/src/content-evidence/progressive-content-realization.ts";
+import { openProgressiveContentBoundedSource } from "../../testing/corpus/progressive-content-realization.ts";
 import { createCoreProgressiveContentExternalMutantExecutors } from "../../testing/src/progressive-content-external-mutant-executors.ts";
 import {
   cleanupProgressiveContentProductionFaults,

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { verifyProgressiveContentCorpus } from "../testing/src/content-evidence/progressive-content.ts";
+import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
 import { runProgressiveContentMixedSoak } from "../testing/src/progressive-content-mixed-soak.ts";
 import { createProgressiveContentProductionSoakContract } from "./lib/progressive-content-production-targets.mjs";
 

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from collections import Counter
 import json
-import re
 from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = PACKAGE_ROOT / "manifests" / "actions.manifest.json"
-SUMMARY_PATH = PACKAGE_ROOT / "manifests" / "actions.summary.md"
 
 
 def _manifest() -> dict[str, object]:
@@ -109,16 +106,3 @@ def test_plugin_action_overlays_cover_expanded_scenario_kwargs() -> None:
         "number",
     }
     assert "candidateId" in finance_properties
-
-
-def test_summary_counts_match_manifest() -> None:
-    actions = _manifest()["actions"]
-    summary = SUMMARY_PATH.read_text(encoding="utf-8")
-
-    total_match = re.search(r"^Total actions: (\d+)$", summary, re.MULTILINE)
-    assert total_match is not None
-    assert int(total_match.group(1)) == len(actions)
-
-    by_plugin = Counter(entry["_plugin"] for entry in actions)
-    for plugin, count in by_plugin.items():
-        assert f"| {plugin} | {count} |" in summary

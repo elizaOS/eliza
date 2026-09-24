@@ -8,6 +8,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/capacitor-bun-runtime": [

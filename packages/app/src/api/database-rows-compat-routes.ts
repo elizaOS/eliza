@@ -242,8 +242,13 @@ export async function handleDatabaseRowsCompatRoute(
     `SELECT count(*)::int AS total FROM ${qualifiedTable} ${whereClause}`,
   );
   const rawTotal = countResult.rows[0]?.total;
-  const total = typeof rawTotal === "number" ? rawTotal : Number(rawTotal);
-  if (!Number.isFinite(total)) {
+  const total =
+    typeof rawTotal === "number"
+      ? rawTotal
+      : typeof rawTotal === "string" && /^(0|[1-9]\d*)$/.test(rawTotal)
+        ? Number(rawTotal)
+        : Number.NaN;
+  if (!Number.isSafeInteger(total) || total < 0) {
     throw new ElizaError("Database row count is unavailable.", {
       code: "DB_COUNT_UNAVAILABLE",
       context: { table: qualifiedTable },

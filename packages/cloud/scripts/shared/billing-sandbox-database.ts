@@ -13,6 +13,7 @@ export async function initializeBillingSandboxDatabase(db: Client) {
     `);
   for (const tag of [
     "0373_subscription_authority",
+    "0397_subscription_checkout_contract",
     "0383_subscription_cancellation_result",
     "0384_subscription_cancellation_undo",
     "0438_app_billing_applied_revision",
@@ -52,7 +53,7 @@ export async function initializeBillingSandboxDatabase(db: Client) {
     "0439_app_billing_completed_checkout",
   ]) {
     const migration = await readFile(
-      new URL(`../src/db/migrations/${tag}.sql`, import.meta.url),
+      new URL(`../../shared/src/db/migrations/${tag}.sql`, import.meta.url),
       "utf8",
     );
     for (const statement of migration.split("--> statement-breakpoint"))

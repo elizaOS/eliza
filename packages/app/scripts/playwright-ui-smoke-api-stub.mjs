@@ -4071,7 +4071,6 @@ const server = http.createServer(async (req, res) => {
     url.pathname === "/api/coding-agents/coordinator/threads"
   ) {
     sendJson(req, res, 200, { threads: [], total: 0 });
-
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/extension/status") {

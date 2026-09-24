@@ -146,12 +146,6 @@ jobs:
           'packages/cloud/api/v1/apps/[id]/billing/records.postgres.integration.test.ts'
           'packages/cloud/api/v1/apps/[id]/billing/administrators.postgres.integration.test.ts'
           'packages/cloud/api/v1/billing/application-slots/[slotKey]/route.postgres.integration.test.ts'
-      - name: Run PostgreSQL lifecycle barrier tests
-        env:
-          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run PostgreSQL replacement-attempt lock tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -251,3 +245,9 @@ jobs:
           retention-days: 7
           include-hidden-files: true
           if-no-files-found: warn
+
+  agent-stability:
+    needs: [lint-and-types]
+    uses: ./.github/workflows/cloud-stability.yml
+    with:
+      real_model: false

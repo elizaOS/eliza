@@ -1,9 +1,12 @@
-import { promises as fs } from "node:fs";
+// @vitest-environment node
+import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
  * capability, and invoke the authenticated state route against the real service.
  */
+
+import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -13,12 +16,7 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { type Route, type RouteHandlerContext, type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   interact,
@@ -28,14 +26,16 @@ import {
 import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
 import { NotesStore, notesStateFilePath } from "../store.js";
-import { type StickyNote } from "../types.js";
+import type { StickyNote } from "../types.js";
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
 let runtimeSequence = 0;
+
 function testAgentId(seed: string): ReturnType<typeof stringToUuid> {
   return stringToUuid(seed);
 }
+
 afterEach(async () => {
   await Promise.all(testRuntimes.splice(0).map((runtime) => runtime.stop()));
   await Promise.all(
@@ -44,30 +44,32 @@ afterEach(async () => {
       .map((directory) => fs.rm(directory, { recursive: true, force: true })),
   );
 });
+
 async function temporaryStateDirectory(): Promise<string> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "notes-backend-"));
   temporaryDirectories.push(directory);
   return directory;
 }
+
 async function temporaryStateFile(): Promise<string> {
   return path.join(await temporaryStateDirectory(), "notes", "state.json");
 }
+
 function clock(start = "2026-07-16T12:00:00.000Z"): () => Date {
   let tick = 0;
   const epoch = Date.parse(start);
-  return () => new Date(epoch + tick++ * 1000);
+  return () => new Date(epoch + tick++ * 1_000);
 }
+
 function idFactory(): () => string {
   let next = 1;
   return () => `note-test-${next++}`;
 }
+
 function expectAppliedMutationReceipt(
   result: NotesInteractResult,
   capability: string,
-  resource: {
-    kind: string;
-    id: string;
-  },
+  resource: { kind: string; id: string },
 ): void {
   if (!result.state) throw new Error("Mutation result state is required.");
   expect(result.effectReceipts).toHaveLength(1);
@@ -91,21 +93,28 @@ function expectAppliedMutationReceipt(
   expect(receipt.commit.committedAt).toBe(receipt.observedAt);
   expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
 }
+
 class ConnectorSetupTestService extends Service {
   static override readonly serviceType = "connector-setup";
+
   override capabilityDescription =
     "Captures Notes websocket broadcasts in the backend harness.";
+
   readonly broadcasts: object[] = [];
+
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<ConnectorSetupTestService> {
     return new ConnectorSetupTestService(runtime);
   }
+
   broadcastWs(data: object): void {
     this.broadcasts.push(data);
   }
+
   override async stop(): Promise<void> {}
 }
+
 async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     agentId: testAgentId(agentId),
@@ -117,6 +126,7 @@ async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
   await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
+
 async function serviceFor(filePath: string): Promise<NotesService> {
   const now = clock();
   const service = new NotesService(undefined, {
@@ -127,6 +137,7 @@ async function serviceFor(filePath: string): Promise<NotesService> {
   await service.initialize();
   return service;
 }
+
 async function runtimeFor(service: NotesService): Promise<AgentRuntime> {
   const runtime = await createTestRuntime(`route-runtime-${runtimeSequence++}`);
   class BoundNotesService extends NotesService {
@@ -140,11 +151,13 @@ async function runtimeFor(service: NotesService): Promise<AgentRuntime> {
   await runtime.getServiceLoadPromise(NOTES_SERVICE_TYPE);
   return runtime;
 }
+
 async function defaultStoreRuntime(agentId: string): Promise<AgentRuntime> {
   const runtime = await createTestRuntime(agentId);
   await runtime.registerService(ConnectorSetupTestService);
   return runtime;
 }
+
 function route(type: Route["type"], pathValue: string): Route {
   const match = notesRoutes.find(
     (candidate) => candidate.type === type && candidate.path === pathValue,
@@ -154,6 +167,7 @@ function route(type: Route["type"], pathValue: string): Route {
   }
   return match;
 }
+
 async function invokeRoute(
   routeValue: Route,
   runtime: IAgentRuntime,
@@ -177,6 +191,7 @@ async function invokeRoute(
   } satisfies RouteHandlerContext;
   return routeValue.routeHandler(context);
 }
+
 describe("NotesStore", () => {
   it("persists one document and restores notes after restart", async () => {
     const filePath = await temporaryStateFile();
@@ -193,10 +208,12 @@ describe("NotesStore", () => {
     });
     const beforeRestart = first.snapshot();
     await first.stop();
+
     const second = await serviceFor(filePath);
     const afterRestart = second.snapshot();
     expect(afterRestart).toEqual(beforeRestart);
     expect(second.getNote(note.id)).toMatchObject({ title: "Split-pane QA" });
+
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
       schemaVersion: 1,
@@ -206,6 +223,7 @@ describe("NotesStore", () => {
       ["notes", "persistedAt", "revision", "schemaVersion"].sort(),
     );
   });
+
   it("serializes concurrent writes without losing a mutation", async () => {
     const filePath = await temporaryStateFile();
     const service = await serviceFor(filePath);
@@ -221,10 +239,12 @@ describe("NotesStore", () => {
     expect(service.snapshot()).toMatchObject({ revision: 24 });
     expect(service.listNotes()).toHaveLength(24);
     await service.stop();
+
     const restarted = await serviceFor(filePath);
     expect(restarted.listNotes()).toHaveLength(24);
     expect(new Set(restarted.listNotes().map((note) => note.id)).size).toBe(24);
   });
+
   it("scopes default stores per agent and shares serialization for duplicate runtime construction", async () => {
     const stateDir = await temporaryStateDirectory();
     const first = new NotesService(await defaultStoreRuntime("agent-a"), {
@@ -241,6 +261,7 @@ describe("NotesStore", () => {
       duplicate.initialize(),
       isolated.initialize(),
     ]);
+
     await Promise.all([
       ...Array.from({ length: 12 }, (_, index) =>
         first.createNote({ title: `First ${index}` }),
@@ -250,6 +271,7 @@ describe("NotesStore", () => {
       ),
       isolated.createNote({ title: "Other agent" }),
     ]);
+
     expect(first.store.filePath).toBe(duplicate.store.filePath);
     expect(first.store.filePath).toBe(
       notesStateFilePath(stateDir, testAgentId("agent-a")),
@@ -263,10 +285,12 @@ describe("NotesStore", () => {
     expect(isolated.listNotes().map((note) => note.title)).toEqual([
       "Other agent",
     ]);
+
     await first.stop();
     expect(duplicate.listNotes()).toHaveLength(24);
     await duplicate.stop();
     await isolated.stop();
+
     const restarted = new NotesService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
@@ -275,6 +299,7 @@ describe("NotesStore", () => {
     expect(restarted.listNotes()).toHaveLength(24);
     await restarted.stop();
   });
+
   it("keeps unscoped workbench state outside the agent-scoped durable store", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = notesStateFilePath(stateDir);
@@ -283,6 +308,7 @@ describe("NotesStore", () => {
     await legacy.createNote({ title: "Legacy note", body: "Keep this" });
     await legacy.stop();
     const legacyBytes = await fs.readFile(legacyPath, "utf8");
+
     const first = new NotesService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
@@ -290,13 +316,16 @@ describe("NotesStore", () => {
       stateDir,
     });
     await Promise.all([first.initialize(), duplicate.initialize()]);
+
     expect(first.snapshot()).toMatchObject({ revision: 0, notes: [] });
     expect(duplicate.snapshot()).toMatchObject({ revision: 0, notes: [] });
     expect(await fs.readFile(scopedPath, "utf8")).not.toBe(legacyBytes);
     expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
+
     await first.createNote({ title: "Scoped note" });
     await first.stop();
     await duplicate.stop();
+
     const restarted = new NotesService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
@@ -308,6 +337,7 @@ describe("NotesStore", () => {
     expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
     await restarted.stop();
   });
+
   it("ignores malformed unscoped workbench state instead of importing it", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = notesStateFilePath(stateDir);
@@ -318,6 +348,7 @@ describe("NotesStore", () => {
       JSON.stringify({ schemaVersion: 1, revision: "not-a-number" }),
       "utf8",
     );
+
     const service = new NotesService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
@@ -326,11 +357,13 @@ describe("NotesStore", () => {
     await fs.access(scopedPath);
     await service.stop();
   });
+
   it("surfaces corrupt persisted bytes as an error instead of healthy empty state", async () => {
     const filePath = await temporaryStateFile();
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, "{ definitely not json", "utf8");
     const store = new NotesStore({ filePath });
+
     await expect(store.initialize()).rejects.toMatchObject({
       code: "NOTES_STORE_INVALID_JSON",
     });
@@ -341,12 +374,14 @@ describe("NotesStore", () => {
     expect(() => store.snapshot()).toThrow("not valid JSON");
   });
 });
+
 describe("Notes capabilities", () => {
   it("dispatches server capabilities to the owning runtime service", async () => {
     const first = await serviceFor(await temporaryStateFile());
     const second = await serviceFor(await temporaryStateFile());
     const firstRuntime = await runtimeFor(first);
     const secondRuntime = await runtimeFor(second);
+
     await expect(
       serverInteract(
         "create-note",
@@ -361,6 +396,7 @@ describe("Notes capabilities", () => {
         { runtime: secondRuntime },
       ),
     ).resolves.toMatchObject({ success: true });
+
     expect(first.listNotes().map((note) => note.title)).toEqual([
       "First runtime",
     ]);
@@ -372,6 +408,7 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_SERVICE_UNAVAILABLE" },
     });
   });
+
   it("preserves colon punctuation through the create-note capability", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const created = await interact(
@@ -387,8 +424,10 @@ describe("Notes capabilities", () => {
       { title: "Demo Checklist: mic, charger, water", body: "" },
     ]);
   });
+
   it("drives full note CRUD against the durable service", async () => {
     const service = await serviceFor(await temporaryStateFile());
+
     const createdNote = await interact(
       "create-note",
       { content: "Workbench\nFirst draft", color: "yellow" },
@@ -401,12 +440,14 @@ describe("Notes capabilities", () => {
       kind: "notes.note",
       id: noteId,
     });
+
     await expect(
       interact("get-notes", { query: "Workbench" }, service),
     ).resolves.toMatchObject({
       success: true,
       data: { notes: [{ id: noteId, title: "Workbench" }] },
     });
+
     const originalSnapshot = service.snapshot();
     const updatedNote = await interact(
       "update-note",
@@ -460,6 +501,7 @@ describe("Notes capabilities", () => {
       id: noteId,
     });
     expect(service.listNotes()).toEqual([]);
+
     await interact("create-note", { content: "One", color: "slate" }, service);
     await interact("create-note", { content: "Two", color: "rose" }, service);
     const clearedNotes = await interact(
@@ -476,6 +518,7 @@ describe("Notes capabilities", () => {
       id: "notes",
     });
   });
+
   it("returns replay and multi-record outcomes for one logical note", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const first = await interact(
@@ -483,16 +526,13 @@ describe("Notes capabilities", () => {
       { content: "Milk\nBuy oat milk", color: "green" },
       service,
     );
-    const note = (
-      first.data as {
-        note: StickyNote;
-      }
-    ).note;
+    const note = (first.data as { note: StickyNote }).note;
     const beforeReplay = service.snapshot();
     const persistedBeforeReplay = await fs.readFile(
       service.store.filePath,
       "utf8",
     );
+
     const replay = await interact(
       "create-note",
       { content: "Milk\nBuy oat milk", color: "green" },
@@ -513,6 +553,7 @@ describe("Notes capabilities", () => {
     expect(await fs.readFile(service.store.filePath, "utf8")).toBe(
       persistedBeforeReplay,
     );
+
     await service.store.transact((draft) => {
       draft.notes.push(
         { ...note, id: "legacy-milk-2" },
@@ -520,6 +561,7 @@ describe("Notes capabilities", () => {
       );
     });
     expect(service.snapshot().notes).toHaveLength(1);
+
     const originalSnapshot = service.snapshot();
     const updated = await interact(
       "update-note",
@@ -538,6 +580,7 @@ describe("Notes capabilities", () => {
       },
     });
     expect(updated.text).toContain("consolidated 3 identical copies");
+
     await service.store.transact((draft) => {
       const current = draft.notes[0];
       if (!current) throw new Error("Updated note is required");
@@ -558,6 +601,7 @@ describe("Notes capabilities", () => {
     expect(deleted.text).toContain("removed 2 identical copies");
     expect(service.listNotes()).toEqual([]);
   });
+
   it("requires structural confirmation before clear-notes mutates the collection", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -566,6 +610,7 @@ describe("Notes capabilities", () => {
       service,
     );
     const revision = service.snapshot().revision;
+
     await expect(interact("clear-notes", {}, service)).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
@@ -617,6 +662,7 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
     expect(service.listNotes()).toHaveLength(1);
+
     const cleared = await interact(
       "clear-notes",
       { confirm: true, expectedRevision: revision },
@@ -632,6 +678,7 @@ describe("Notes capabilities", () => {
     });
     expect(service.listNotes()).toEqual([]);
   });
+
   it("rejects stale clear-notes confirmation after another mutation", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -645,6 +692,7 @@ describe("Notes capabilities", () => {
       { content: "Second", color: "green" },
       service,
     );
+
     await expect(
       interact(
         "clear-notes",
@@ -656,6 +704,7 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
     expect(service.listNotes()).toHaveLength(2);
+
     const cleared = await interact(
       "clear-notes",
       { confirm: true, expectedRevision: service.snapshot().revision },
@@ -667,12 +716,14 @@ describe("Notes capabilities", () => {
     });
     expect(service.listNotes()).toEqual([]);
   });
+
   it("rejects a clear confirmed against a revision a concurrent create advances (issue #22122)", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact("create-note", { content: "A", color: "yellow" }, service);
     // The user confirmed against this snapshot; a note created before the clear
     // actually commits must not be wiped without a fresh confirmation.
     const confirmedRevision = service.snapshot().revision;
+
     // Dispatch both in the same tick. create-note acquires the store write
     // barrier first and commits at confirmedRevision + 1 before the clear's
     // transaction body runs, so the dispatch-time check alone would be defeated.
@@ -683,6 +734,7 @@ describe("Notes capabilities", () => {
       service,
     );
     const [, clearResult] = await Promise.all([createB, clear]);
+
     expect(clearResult).toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
@@ -692,6 +744,7 @@ describe("Notes capabilities", () => {
     expect(titles).toContain("A");
     expect(titles).toContain("B");
     expect(remaining).toHaveLength(2);
+
     // A clear confirmed against the now-current revision still succeeds.
     const cleared = await interact(
       "clear-notes",
@@ -701,10 +754,12 @@ describe("Notes capabilities", () => {
     expect(cleared).toMatchObject({ success: true, data: { cleared: 2 } });
     expect(service.listNotes()).toEqual([]);
   });
+
   it("rejects a clear confirmed against a revision a concurrent update advances (issue #22122)", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const seed = await service.createNote({ title: "Keep", body: "original" });
     const confirmedRevision = service.snapshot().revision;
+
     const updateSeed = service.updateNote(
       seed.id,
       {
@@ -719,6 +774,7 @@ describe("Notes capabilities", () => {
       service,
     );
     const [, clearResult] = await Promise.all([updateSeed, clear]);
+
     expect(clearResult).toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
@@ -730,6 +786,7 @@ describe("Notes capabilities", () => {
       body: "edited in the race window",
     });
   });
+
   it("persists intentional clear-notes across service restart", async () => {
     const filePath = await temporaryStateFile();
     const first = await serviceFor(filePath);
@@ -745,11 +802,13 @@ describe("Notes capabilities", () => {
       first,
     );
     await first.stop();
+
     const restarted = await serviceFor(filePath);
     expect(restarted.snapshot()).toMatchObject({ revision: revision + 1 });
     expect(restarted.listNotes()).toEqual([]);
     await restarted.stop();
   });
+
   it("fails closed when a title lookup is missing or ambiguous", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -762,6 +821,7 @@ describe("Notes capabilities", () => {
       { content: "Daily plan\nEvening", color: "rose" },
       service,
     );
+
     const originalSnapshot = service.snapshot();
     await expect(
       interact(
@@ -796,6 +856,7 @@ describe("Notes capabilities", () => {
       "Morning",
     ]);
   });
+
   it("delete-note with title selector deletes by exact first-line label", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -808,6 +869,7 @@ describe("Notes capabilities", () => {
       { content: "Todo\nFix the bug", color: "rose" },
       service,
     );
+
     // Exact title match deletes the right note.
     const deleted = await interact(
       "delete-note",
@@ -821,6 +883,7 @@ describe("Notes capabilities", () => {
     // Only "Todo" remains.
     expect(service.listNotes().map((n) => n.title)).toEqual(["Todo"]);
   });
+
   it("delete-note with title selector fails on ambiguous or unknown label", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -833,6 +896,7 @@ describe("Notes capabilities", () => {
       { content: "Meeting notes\nAfternoon review", color: "rose" },
       service,
     );
+
     // Two notes share the same first-line label -> ambiguous.
     await expect(
       interact("delete-note", { title: "Meeting notes" }, service),
@@ -840,6 +904,7 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_AMBIGUOUS_NOTE" },
     });
+
     // No note has this label -> not found.
     await expect(
       interact("delete-note", { title: "Nonexistent" }, service),
@@ -847,9 +912,11 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_NOT_FOUND" },
     });
+
     // Nothing was deleted.
     expect(service.listNotes()).toHaveLength(2);
   });
+
   it("returns the destructive name-mismatch fence as a structured failure", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -857,6 +924,7 @@ describe("Notes capabilities", () => {
       { content: "wifi password\nhunter2-not-really", color: "yellow" },
       service,
     );
+
     await expect(
       interact(
         "delete-note",
@@ -875,6 +943,7 @@ describe("Notes capabilities", () => {
       "wifi password",
     ]);
   });
+
   it("delete-note rejects content parameter (fail-closed for payload contract)", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -882,6 +951,7 @@ describe("Notes capabilities", () => {
       { content: "Test note\nBody", color: "yellow" },
       service,
     );
+
     // content is not a declared delete selector — the boundary rejects
     // it with NOTES_VALIDATION_FAILED (fail-closed).
     await expect(
@@ -890,8 +960,10 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
+
     expect(service.listNotes()).toHaveLength(1);
   });
+
   it("get-note with title selector reads by exact first-line label", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -904,6 +976,7 @@ describe("Notes capabilities", () => {
       { content: "Todo\nFix the bug", color: "rose" },
       service,
     );
+
     // Exact title match reads the right note.
     const read = await interact(
       "get-note",
@@ -915,6 +988,7 @@ describe("Notes capabilities", () => {
       data: { note: { title: "Shopping list" } },
     });
   });
+
   it("get-note with title selector fails on ambiguous or unknown label", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -927,6 +1001,7 @@ describe("Notes capabilities", () => {
       { content: "Meeting notes\nAfternoon review", color: "rose" },
       service,
     );
+
     // Two notes share the same first-line label -> ambiguous.
     await expect(
       interact("get-note", { title: "Meeting notes" }, service),
@@ -934,6 +1009,7 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_AMBIGUOUS_NOTE" },
     });
+
     // No note has this label -> not found.
     await expect(
       interact("get-note", { title: "Nonexistent" }, service),
@@ -942,6 +1018,7 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_NOT_FOUND" },
     });
   });
+
   it("get-note enforces exactly-one-of id/title/query", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -949,6 +1026,7 @@ describe("Notes capabilities", () => {
       { content: "Test\nBody", color: "yellow" },
       service,
     );
+
     // Providing both title and query must fail validation.
     await expect(
       interact("get-note", { title: "Test", query: "Body" }, service),
@@ -956,12 +1034,14 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
+
     // Providing zero selectors must fail validation.
     await expect(interact("get-note", {}, service)).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
   });
+
   it("update-note with title selector updates by exact first-line label", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -974,6 +1054,7 @@ describe("Notes capabilities", () => {
       { content: "Todo\nFix the bug", color: "rose" },
       service,
     );
+
     const originalSnapshot = service.snapshot();
     // Exact title match updates the right note.
     const updated = await interact(
@@ -999,6 +1080,7 @@ describe("Notes capabilities", () => {
       ]),
     );
   });
+
   it("update-note with title selector fails on ambiguous or unknown label", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -1011,6 +1093,7 @@ describe("Notes capabilities", () => {
       { content: "Meeting notes\nAfternoon review", color: "rose" },
       service,
     );
+
     const originalSnapshot = service.snapshot();
     // Two notes share the same first-line label -> ambiguous.
     await expect(
@@ -1027,6 +1110,7 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_AMBIGUOUS_NOTE" },
     });
+
     // No note has this label -> not found.
     await expect(
       interact(
@@ -1042,11 +1126,13 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_NOT_FOUND" },
     });
+
     // Nothing was mutated.
     expect(service.listNotes().map((n) => n.body)).toEqual(
       expect.arrayContaining(["Morning sync", "Afternoon review"]),
     );
   });
+
   it("update-note enforces exactly-one-of id/title/query for selector", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
@@ -1054,6 +1140,7 @@ describe("Notes capabilities", () => {
       { content: "Test\nBody", color: "yellow" },
       service,
     );
+
     const originalSnapshot = service.snapshot();
     // Providing both title and query must fail validation.
     await expect(
@@ -1071,6 +1158,7 @@ describe("Notes capabilities", () => {
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
+
     // No selector with content must fail validation.
     await expect(
       interact(
@@ -1083,6 +1171,7 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
   });
+
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await expect(
@@ -1099,6 +1188,7 @@ describe("Notes capabilities", () => {
     });
   });
 });
+
 describe("Notes authenticated routes", () => {
   it("keeps every state route behind the central auth gate", () => {
     expect(notesRoutes.length).toBeGreaterThan(0);
@@ -1113,6 +1203,7 @@ describe("Notes authenticated routes", () => {
       ]);
     }
   });
+
   it("returns the authoritative durable snapshot", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const runtime = await runtimeFor(service);
@@ -1121,6 +1212,7 @@ describe("Notes authenticated routes", () => {
       body: "Read over HTTP",
       color: "green",
     });
+
     const state = await invokeRoute(route("GET", "/api/notes/state"), runtime);
     expect(state).toMatchObject({
       status: 200,
@@ -1133,6 +1225,7 @@ describe("Notes authenticated routes", () => {
       },
     });
   });
+
   it("returns unavailable instead of fabricating an empty snapshot", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const runtime = await runtimeFor(service);

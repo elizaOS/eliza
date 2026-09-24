@@ -28,7 +28,7 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
     await initializeBillingSandboxDatabase(db);
   });
   afterAll(async () => {
-    await (await import("../src/db/client")).closeDatabaseConnectionsForTests();
+    await (await import("../../shared/src/db/client")).closeDatabaseConnectionsForTests();
     if (db) {
       await db.query(`DROP SCHEMA ${schema} CASCADE`);
       await db.end();
@@ -36,15 +36,15 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
   });
   test("commits a seven-day, three-seat trial and durable source through the real runtime", async () => {
     const { appSubscriptionAuthorityRepository: authority } = await import(
-      "../src/db/repositories/app-subscription-authority"
+      "../../shared/src/db/repositories/app-subscription-authority"
     );
     const { appBillingProviderBindings } = await import(
-      "../src/db/repositories/app-billing-provider-bindings"
+      "../../shared/src/db/repositories/app-billing-provider-bindings"
     );
-    const { appBillingQueries } = await import("../src/db/repositories/app-billing-queries");
-    const { GenericBillingRuntime } = await import("../src/lib/services/generic-billing-runtime");
+    const { appBillingQueries } = await import("../../shared/src/db/repositories/app-billing-queries");
+    const { GenericBillingRuntime } = await import("../../shared/src/lib/services/generic-billing-runtime");
     const { createGenericBillingProvider } = await import(
-      "../src/lib/services/generic-billing-provider"
+      "../../shared/src/lib/services/generic-billing-provider"
     );
     const fixture = createRuntimeStripeFixture();
     const org = randomUUID(),
@@ -132,7 +132,7 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
       data: { object: { ...object, object: "subscription" } },
     });
     const { AppBillingReconciliation } = await import(
-      "../src/lib/services/app-billing-reconciliation"
+      "../../shared/src/lib/services/app-billing-reconciliation"
     );
     const reconciler = new AppBillingReconciliation({
       provider: async () =>

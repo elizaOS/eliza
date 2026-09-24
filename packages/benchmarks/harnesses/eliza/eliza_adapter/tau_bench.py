@@ -25,33 +25,23 @@ deadlock the bench server boot on CPU-only hosts.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import uuid
 from typing import Any, Final
 
-from eliza_adapter.client import ElizaClient
-
-from elizaos_tau_bench.eliza_agent import AgentRunResult, BaseTauAgent
-from elizaos_tau_bench.types import Action, RESPOND_ACTION_NAME
+from elizaos_tau_bench.eliza_agent import (
+    AgentRunResult,
+    BaseTauAgent,
+    _message_to_action,
+    _normalize_tool_calls_for_history,
+)
+from elizaos_tau_bench.types import RESPOND_ACTION_NAME, Action
 from elizaos_tau_bench.upstream.envs.base import Env
 
+from eliza_adapter.client import ElizaClient
+
 logger = logging.getLogger(__name__)
-
-_TOOL_DESCRIPTION_LIMIT = 280
-_OBSERVATION_LIMIT = 2400
-
-_TAU_RETAIL_TOOL_NUDGE = (
-    "TauBench execution hint: after get_order_details for an exchange, do not "
-    "ask the customer for replacement item ids. Use get_product_details on "
-    "each relevant product_id from the order, choose matching available "
-    "item_ids yourself, then ask for explicit yes confirmation before calling "
-    "exchange_delivered_order_items. If a price difference needs a payment "
-    "method and the original payment method is available in the order, ask to "
-    "confirm using that original payment method."
-)
-
 
 _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
@@ -67,10 +57,9 @@ def _compute_cost_usd(
     pricing = _CEREBRAS_PRICING.get(bare)
     if pricing is None:
         return 0.0
-    return (
-        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
-        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
-    )
+    return (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"] + (
+        completion_tokens / 1_000_000.0
+    ) * pricing["output_per_million_usd"]
 
 
 def _strip_cerebras_quirks(message: dict[str, Any]) -> dict[str, Any]:
@@ -92,257 +81,14 @@ def _scrub_history_for_cerebras(messages: list[dict[str, Any]]) -> list[dict[str
     return out
 
 
-def _clip_text(value: Any, limit: int) -> str:
-    text = str(value or "")
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit]}\n...[truncated {len(text) - limit} chars]"
-
-
-def _compact_tool_schemas_for_eliza(tools_info: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep tool-call schemas useful while avoiding repeated huge prompts.
-
-    The Eliza benchmark server persists prior turns in the room and also embeds
-    the current context in each inbound prompt. Sending the full tau-bench tool
-    catalog every turn makes live Cerebras runs hit context limits before a
-    task can finish. Parameter schemas are preserved; only verbose descriptions
-    are clipped.
-    """
-
-    compact: list[dict[str, Any]] = []
-    for tool in tools_info:
-        copied = json.loads(json.dumps(tool))
-        fn = copied.get("function")
-        if isinstance(fn, dict) and isinstance(fn.get("description"), str):
-            fn["description"] = _clip_text(fn["description"], _TOOL_DESCRIPTION_LIMIT)
-        compact.append(copied)
-    return compact
-
-
-def _latest_observation_content(messages: list[dict[str, Any]]) -> str:
-    for m in reversed(messages):
-        role = m.get("role")
-        if role == "tool":
-            name = m.get("name") or "tool"
-            return _clip_text(f"Tool result from {name}:\n{m.get('content')}", _OBSERVATION_LIMIT)
-        if role == "user":
-            return _clip_text(m.get("content"), _OBSERVATION_LIMIT)
-    return ""
-
-
-def _initial_system_content(messages: list[dict[str, Any]]) -> str:
-    for m in messages:
-        if m.get("role") == "system":
-            return str(m.get("content") or "")
-    return ""
-
-
-def _initial_user_content(messages: list[dict[str, Any]]) -> str:
-    for m in messages:
-        if m.get("role") == "user":
-            return _clip_text(m.get("content"), 1600)
-    return ""
-
-
-def _recent_tool_observations(messages: list[dict[str, Any]]) -> str:
-    observations: list[str] = []
-    for m in messages:
-        if m.get("role") != "tool":
-            continue
-        name = m.get("name") or "tool"
-        observations.append(f"- {name}: {_clip_text(m.get('content'), 900)}")
-    if not observations:
-        return ""
-    return "\n".join(observations[-6:])
-
-
-def _recent_tool_calls(messages: list[dict[str, Any]]) -> str:
-    calls: list[str] = []
-    for m in messages:
-        if m.get("role") != "assistant":
-            continue
-        for tc in m.get("tool_calls") or []:
-            if not isinstance(tc, dict):
-                continue
-            fn = tc.get("function")
-            if not isinstance(fn, dict):
-                continue
-            name = fn.get("name")
-            if not name:
-                continue
-            args = fn.get("arguments")
-            if isinstance(args, str):
-                args_text = args
-            else:
-                args_text = json.dumps(args or {}, sort_keys=True)
-            calls.append(f"- {name}: {_clip_text(args_text, 260)}")
-    if not calls:
-        return ""
-    return "\n".join(calls[-8:])
-
-
-def _exchange_already_requested(messages: list[dict[str, Any]]) -> bool:
-    for m in reversed(messages):
-        if m.get("role") != "tool":
-            continue
-        if m.get("name") != "exchange_delivered_order_items":
-            continue
-        content = str(m.get("content") or "")
-        return '"status": "exchange requested"' in content
-    return False
-
-
-def _asks_for_confirmation_before_tool(message: dict[str, Any]) -> bool:
-    if not message.get("tool_calls"):
-        return False
-    content = str(message.get("content") or "").lower()
-    if not content:
-        return False
-    confirmation_markers = (
-        "please confirm",
-        "reply \"yes\"",
-        "reply “yes”",
-        "reply yes",
-        "confirm that",
-        "confirmation",
-        "go ahead",
-    )
-    consequential_markers = (
-        "exchange",
-        "refund",
-        "proceed",
-        "submit",
-    )
-    return any(marker in content for marker in confirmation_markers) and any(
-        marker in content for marker in consequential_markers
-    )
-
-
-def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
-    """Build the prompt text for Eliza's stateful benchmark endpoint.
-
-    Hermes/OpenClaw are stateless chat-completion adapters, so they need the
-    full transcript. Eliza's server is stateful and stores every benchmark
-    prompt in the room; repeating the full transcript in ``context.messages``
-    causes geometric prompt growth. This text gives the current turn enough
-    information while letting the server's persisted room history carry prior
-    turns.
-    """
-
-    latest = _latest_observation_content(messages)
-    if _exchange_already_requested(messages):
-        return (
-            "The tau-bench exchange mutation has already succeeded.\n\n"
-            "Original customer request:\n"
-            f"{_initial_user_content(messages)}\n\n"
-            "Final tool observation:\n"
-            f"{latest}\n\n"
-            "Reply only with a final customer-facing confirmation that the exchange "
-            "request is complete, including the selected replacement items and refund. "
-            "Do not call any tools. Do not ask for confirmation again."
-        ).strip()
-    if len(messages) <= 2:
-        system = _initial_system_content(messages)
-        return (
-            "Domain rules:\n"
-            f"{system}\n\n"
-            f"{_TAU_RETAIL_TOOL_NUDGE}\n\n"
-            "Customer message:\n"
-            f"{latest}"
-        ).strip()
-    return (
-        "Continue the same tau-bench customer-service task. Use the domain "
-        "rules, available tools, and prior tool results already present in "
-        "this benchmark session.\n\n"
-        "Original customer request:\n"
-        f"{_initial_user_content(messages)}\n\n"
-        "Known tool observations:\n"
-        f"{_recent_tool_observations(messages)}\n\n"
-        "Recent tool calls already made:\n"
-        f"{_recent_tool_calls(messages)}\n\n"
-        "Task progress rule:\n"
-        "Do not repeat an identical tool call when its result is already in "
-        "Known tool observations. Use the accumulated order, user, and product "
-        "facts to fetch the next missing fact, ask the customer for required "
-        "confirmation with REPLY when policy requires it, then call the final "
-        "mutation tool after confirmation.\n\n"
-        f"{_TAU_RETAIL_TOOL_NUDGE}\n\n"
-        "Latest customer/tool observation:\n"
-        f"{latest}"
-    ).strip()
-
-
-def _message_to_action(message: dict[str, Any]) -> Action:
-    tool_calls = message.get("tool_calls")
-    if tool_calls and len(tool_calls) > 0:
-        tc = tool_calls[0]
-        if isinstance(tc, dict):
-            fn = tc.get("function") or {}
-            name = fn.get("name") or ""
-            args_raw = fn.get("arguments")
-        else:
-            fn = getattr(tc, "function", None)
-            name = getattr(fn, "name", "") if fn is not None else ""
-            args_raw = getattr(fn, "arguments", "") if fn is not None else ""
-        if isinstance(args_raw, str):
-            try:
-                kwargs = json.loads(args_raw or "{}")
-            except json.JSONDecodeError:
-                kwargs = {}
-        elif isinstance(args_raw, dict):
-            kwargs = dict(args_raw)
-        else:
-            kwargs = {}
-        if name:
-            return Action(name=str(name), kwargs=kwargs)
-    return Action(
-        name=RESPOND_ACTION_NAME,
-        kwargs={"content": message.get("content") or ""},
-    )
-
-
-def _normalize_tool_calls_for_history(
-    raw_tool_calls: list[Any] | None,
-) -> list[dict[str, Any]]:
-    if not raw_tool_calls:
-        return []
-    out: list[dict[str, Any]] = []
-    for tc in raw_tool_calls:
-        if not isinstance(tc, dict):
-            continue
-        if "function" in tc and isinstance(tc["function"], dict):
-            fn = tc["function"]
-            fn_name = fn.get("name") or ""
-            fn_args = fn.get("arguments")
-        else:
-            fn_name = tc.get("name") or ""
-            fn_args = tc.get("arguments")
-        tc_id = tc.get("id") or f"call_{len(out)}"
-        if not fn_name:
-            continue
-        if isinstance(fn_args, dict):
-            args_str = json.dumps(fn_args)
-        elif isinstance(fn_args, str):
-            args_str = fn_args or "{}"
-        else:
-            args_str = "{}"
-        out.append(
-            {
-                "id": str(tc_id),
-                "type": "function",
-                "function": {"name": fn_name, "arguments": args_str},
-            }
-        )
-    return out
-
-
 class ElizaTauAgent(BaseTauAgent):
     """Tau-bench agent that drives an upstream ``Env`` via the eliza bench server.
 
     Identical control flow to :class:`LiteLLMToolCallingAgent`; per-turn
-    completions are forwarded to the elizaOS bench server which runs the
-    runtime planner and returns ``{text, tool_calls, usage}`` for us to map
-    back into upstream ``Action``\\s.
+    completions are forwarded to the elizaOS bench server through
+    ``runtime.useModel`` and return ``{text, tool_calls, usage}`` for mapping
+    into upstream actions. This tests model/tool transport, not the runtime
+    planner or child-agent orchestration.
     """
 
     def __init__(
@@ -365,7 +111,9 @@ class ElizaTauAgent(BaseTauAgent):
         self._reset_done = False
         self.client.wait_until_ready(timeout=120)
 
-    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
+    def solve(
+        self, env: Env, task_index: int, max_num_steps: int = 30
+    ) -> AgentRunResult:
         reset = env.reset(task_index=task_index)
         obs = reset.observation
         info: dict[str, Any] = reset.info.model_dump()
@@ -391,10 +139,12 @@ class ElizaTauAgent(BaseTauAgent):
                 response = self._one_turn(messages, tools_info)
                 next_message = self._response_to_assistant_message(response)
                 _strip_cerebras_quirks(next_message)
-                if _asks_for_confirmation_before_tool(next_message):
-                    next_message.pop("tool_calls", None)
 
-                usage = response.params.get("usage") if isinstance(response.params, dict) else None
+                usage = (
+                    response.params.get("usage")
+                    if isinstance(response.params, dict)
+                    else None
+                )
                 if isinstance(usage, dict):
                     prompt_tokens = int(
                         usage.get("prompt_tokens")
@@ -408,7 +158,9 @@ class ElizaTauAgent(BaseTauAgent):
                         or usage.get("output_tokens")
                         or 0
                     )
-                    total_cost += _compute_cost_usd(self.model, prompt_tokens, completion_tokens)
+                    total_cost += _compute_cost_usd(
+                        self.model, prompt_tokens, completion_tokens
+                    )
 
                 action = _message_to_action(next_message)
                 actions_taken.append(action)
@@ -450,7 +202,7 @@ class ElizaTauAgent(BaseTauAgent):
                 if env_response.done:
                     break
         except Exception as e:
-            logger.exception("[eliza-tau] solve loop failed: %s", e)
+            logger.exception("[eliza-tau] solve loop failed")
             return AgentRunResult(
                 reward=reward,
                 messages=messages,
@@ -472,19 +224,28 @@ class ElizaTauAgent(BaseTauAgent):
             agent_cost=total_cost,
         )
 
-    def _one_turn(self, messages: list[dict[str, Any]], tools_info: list[dict[str, Any]]):
+    def _one_turn(
+        self, messages: list[dict[str, Any]], tools_info: list[dict[str, Any]]
+    ):
         context: dict[str, object] = {
             "benchmark": "tau_bench",
             "task_id": self._session_id,
-            "tau_mode": "stateful_eliza_compact",
+            "messages": _scrub_history_for_cerebras(messages),
         }
-        if tools_info and not _exchange_already_requested(messages):
-            context["tools"] = _compact_tool_schemas_for_eliza(tools_info)
+        if tools_info:
+            context["tools"] = tools_info
             context["tool_choice"] = "auto"
         if self.temperature is not None:
             context["temperature"] = float(self.temperature)
         return self.client.send_message(
-            _build_eliza_turn_text(_scrub_history_for_cerebras(messages)),
+            next(
+                (
+                    str(m.get("content") or "")
+                    for m in reversed(messages)
+                    if m.get("role") == "user"
+                ),
+                "",
+            ),
             context=context,
         )
 
@@ -513,28 +274,25 @@ def _build_default_client() -> tuple[ElizaClient, Any | None]:
     bridge = ElizaClient()
     server_manager: Any | None = None
     harness = (
-        os.environ.get("ELIZA_BENCH_HARNESS")
-        or os.environ.get("BENCHMARK_HARNESS")
-        or "eliza"
-    ).strip().lower()
+        (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or "eliza"
+        )
+        .strip()
+        .lower()
+    )
     delegate = getattr(bridge, "_delegate", None)
     if (
         delegate is None
         and not os.environ.get("ELIZA_BENCH_URL")
         and harness in {"", "eliza"}
     ):
-        try:
-            from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+        from eliza_adapter.server_manager import ElizaServerManager
 
-            server_manager = ElizaServerManager()
-            server_manager.start()
-            bridge = server_manager.client
-        except Exception as exc:
-            logger.warning(
-                "[eliza-tau] failed to spawn ElizaServerManager (continuing with raw client): %s",
-                exc,
-            )
-            server_manager = None
+        server_manager = ElizaServerManager()
+        server_manager.start()
+        bridge = server_manager.client
     return bridge, server_manager
 
 

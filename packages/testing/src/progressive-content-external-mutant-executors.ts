@@ -10,22 +10,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import {
-  createHash,
-  createPreparedModelRequestGuard,
-  ElizaError,
-  stringToUuid,
-} from "@elizaos/core";
-import {
-  loadSessionSummaryContentLedger,
-  publishSessionSummaryContentManifests,
-} from "../../../plugins/plugin-assistant/src/features/advanced-memory/session-summary-content-manifest.ts";
-import { renderActionResultsForModel } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
-/**
- * Executes cross-seam progressive-content mutants through production render,
- * dispatch-admission, and continuity-ledger oracles. Each executor throws its
- * registry vector only after the owning oracle has observed the injected defect.
- */
+import { createHash, ElizaError, stringToUuid } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import type {
   ProgressiveContentExternalMutantExecutor,
@@ -85,7 +70,10 @@ async function rejectAfterObservedAsyncFailure(
 
 function duplicateBodyExecutor(): ProgressiveContentExternalMutantExecutor {
   return {
-    execute() {
+    async execute() {
+      const { renderActionResultsForModel } = await import(
+        "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts"
+      );
       const marker = "MUTANT_DUPLICATED_BODY_7d396c";
       const mutated = renderActionResultsForModel([
         {
@@ -109,7 +97,10 @@ function duplicateBodyExecutor(): ProgressiveContentExternalMutantExecutor {
 
 function firstItemStarvationExecutor(): ProgressiveContentExternalMutantExecutor {
   return {
-    execute() {
+    async execute() {
+      const { renderActionResultsForModel } = await import(
+        "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts"
+      );
       const source = ["FAIR_ITEM_ALPHA", "FAIR_ITEM_BETA", "FAIR_ITEM_GAMMA"];
       const mutated = renderActionResultsForModel(
         source.slice(1).map((identity) => ({
@@ -135,7 +126,8 @@ function firstItemStarvationExecutor(): ProgressiveContentExternalMutantExecutor
 
 function finalWireExecutor(): ProgressiveContentExternalMutantExecutor {
   return {
-    execute() {
+    async execute() {
+      const { createPreparedModelRequestGuard } = await import("@elizaos/core");
       const prematureProjection = JSON.stringify({ messages: [] });
       const completeRequest = JSON.stringify({
         messages: [{ role: "user", content: "x".repeat(256) }],
@@ -235,6 +227,12 @@ type ContinuityMutantId = Extract<
 async function executeContinuityMutant(
   mutantId: ContinuityMutantId,
 ): Promise<never> {
+  const {
+    loadSessionSummaryContentLedger,
+    publishSessionSummaryContentManifests,
+  } = await import(
+    "../../../plugins/plugin-assistant/src/features/advanced-memory/session-summary-content-manifest.ts"
+  );
   const adapter = SQLiteDatabaseAdapter.create(":memory:", continuityAgentId);
   const baseRuntime = {
     agentId: continuityAgentId,

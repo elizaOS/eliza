@@ -9,7 +9,8 @@
  */
 import os from "node:os";
 import path from "node:path";
-import { isValidProfileName } from "./profile-utils";
+
+const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
 export type CliProfileParseResult =
   | { ok: true; profile: string | null; argv: string[] }
@@ -23,8 +24,7 @@ function takeValue(
   consumedNext: boolean;
 } {
   if (raw.includes("=")) {
-    const [, value] = raw.split("=", 2);
-    const trimmed = value.trim();
+    const trimmed = raw.slice(raw.indexOf("=") + 1).trim();
     return { value: trimmed || null, consumedNext: false };
   }
   const trimmed = (next ?? "").trim();
@@ -54,7 +54,7 @@ export function parseCliProfileArgs(argv: string[]): CliProfileParseResult {
     }
 
     if (arg === "--dev") {
-      if (profile && profile !== "dev") {
+      if (profile !== null && !sawDev) {
         return { ok: false, error: "Cannot combine --dev with --profile" };
       }
       sawDev = true;
@@ -74,7 +74,7 @@ export function parseCliProfileArgs(argv: string[]): CliProfileParseResult {
       if (!value) {
         return { ok: false, error: "--profile requires a value" };
       }
-      if (!isValidProfileName(value)) {
+      if (!PROFILE_NAME_RE.test(value)) {
         return {
           ok: false,
           error: 'Invalid --profile (use letters, numbers, "_", "-" only)',

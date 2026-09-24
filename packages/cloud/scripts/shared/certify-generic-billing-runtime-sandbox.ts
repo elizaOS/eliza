@@ -84,17 +84,17 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
     // Retain this schema and receipt on failure: provider outcomes must be reconciled before disposal.
     await initializeBillingSandboxDatabase(db);
     const { appSubscriptionAuthorityRepository: authority } = await import(
-      "../src/db/repositories/app-subscription-authority"
+      "../../shared/src/db/repositories/app-subscription-authority"
     );
     const { appBillingProviderBindings } = await import(
-      "../src/db/repositories/app-billing-provider-bindings"
+      "../../shared/src/db/repositories/app-billing-provider-bindings"
     );
     const { appBillingQueries: queries } = await import(
-      "../src/db/repositories/app-billing-queries"
+      "../../shared/src/db/repositories/app-billing-queries"
     );
-    const { GenericBillingRuntime } = await import("../src/lib/services/generic-billing-runtime");
+    const { GenericBillingRuntime } = await import("../../shared/src/lib/services/generic-billing-runtime");
     const { AppBillingReconciliation } = await import(
-      "../src/lib/services/app-billing-reconciliation"
+      "../../shared/src/lib/services/app-billing-reconciliation"
     );
     const org = randomUUID(),
       merchant = randomUUID(),
@@ -261,7 +261,7 @@ export async function certifyRuntimeSandbox(env: NodeJS.ProcessEnv) {
     );
   } finally {
     if (server) await server.stop(true);
-    await (await import("../src/db/client")).closeDatabaseConnectionsForTests();
+    await (await import("../../shared/src/db/client")).closeDatabaseConnectionsForTests();
     await db.end();
   }
 }

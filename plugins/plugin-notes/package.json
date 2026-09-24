@@ -57,14 +57,14 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "react-dom": "^19.0.0",

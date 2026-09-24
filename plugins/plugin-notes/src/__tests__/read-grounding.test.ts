@@ -1,3 +1,4 @@
+// @vitest-environment node
 /** Exercises owner-authorized Notes reads against real filesystem state, trusted dispatch, the planner loop and reply-egress guard with bounded scripted models. */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
