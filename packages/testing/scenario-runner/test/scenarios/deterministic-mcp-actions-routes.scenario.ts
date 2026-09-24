@@ -8,10 +8,10 @@ import http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import {
-  type HttpPlugin as Plugin,
-  type RouteRequest,
-  type RouteResponse,
+import type {
+  HttpPlugin as Plugin,
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core/api/http-plugin";
 import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
 import {
@@ -161,7 +161,8 @@ function matchesUnsupportedMcpEvaluation(
       (message) =>
         message.role === "user" &&
         typeof message.content === "string" &&
-        message.content.includes("message:user:\n"),
+        (message.content.includes("message:user:\n") ||
+          message.content.includes("# Current message\n")),
     );
     if (
       inputs.length !== 1 ||
