@@ -3,7 +3,6 @@
 import { ContextRegistry, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { formatAvailableContextsForPrompt } from "../../plugin-assistant/src/services/message.ts";
-import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 
 describe("notesPlugin", () => {
@@ -28,10 +27,10 @@ describe("notesPlugin", () => {
     const nonOwnerCatalog = formatAvailableContextsForPrompt(
       contexts.listAvailable(["USER"]),
     );
+    expect(ownerCatalog).toContain("notes: Saved notes.");
+    expect(nonOwnerCatalog).not.toContain("notes");
     for (const action of notesPlugin.actions ?? []) {
-      if (action === notesAction) continue;
-      expect(ownerCatalog).toContain(action.name);
-      expect(nonOwnerCatalog).not.toContain(action.name);
+      expect(ownerCatalog).not.toContain(action.name);
     }
   });
 });

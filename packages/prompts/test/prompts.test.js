@@ -24,35 +24,19 @@ describe("prompt template exports", () => {
     }
   });
 
-  it("renders shared policies intact across every consuming lane", () => {
-    const state = { agentName: "Aster <&> {{providers}}" };
-    const contracts = [
-      {
-        policy: prompts.navigationReplyPolicy,
-        templates: [prompts.messageHandlerTemplate],
-      },
-      {
-        policy: prompts.groupResponsePrecedencePolicy,
-        templates: [
-          prompts.messageHandlerTemplate,
-          prompts.shouldRespondTemplate,
-        ],
-      },
-      {
-        policy: prompts.registerResponsePolicy,
-        templates: [prompts.messageHandlerTemplate, prompts.replyTemplate],
-      },
-    ];
-
-    for (const contract of contracts) {
-      const renderedPolicy = composePrompt({
-        state,
-        template: contract.policy,
+  it("preserves complete routing descriptions without recursive expansion", () => {
+    const availableContexts = `simple: supplied evidence\nnotes: {{handleResponseToolName}} <&> ${"long description ".repeat(4096)}`;
+    for (const directMessage of ["true", ""]) {
+      const rendered = composePrompt({
+        state: {
+          directMessage,
+          availableContexts,
+          handleResponseToolName: "HANDLE_RESPONSE",
+        },
+        template: prompts.messageHandlerTemplate,
       });
-      for (const template of contract.templates) {
-        const renderedPrompt = composePrompt({ state, template });
-        assert.ok(renderedPrompt.includes(renderedPolicy));
-      }
+      assert.strictEqual(occurrences(rendered, availableContexts), 1);
+      assert.ok(rendered.includes("{{handleResponseToolName}}"));
     }
   });
 

@@ -168,7 +168,7 @@ export function getStage1UnusableDecisionRepair(
   ].join("\n");
 }
 
-/** A direct-text silence decision may be confirmed once without forcing a reply. */
+/** A directly addressed silence decision may be confirmed once without forcing a reply. */
 export function getStage1DirectIgnoreReview(
   parsed: Record<string, unknown> | null,
 ): string | undefined {

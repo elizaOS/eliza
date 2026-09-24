@@ -1,6 +1,5 @@
-/** Pins channel-scoped schema compaction against the real registry and pipeline. */
+/** Exercises native response schemas and transport parity through the real Stage-1 pipeline with deterministic model responses. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../../../../../packages/core/src/actions/to-tool.ts";
 import type { ResponseHandlerFieldEvaluator } from "../../../../../packages/core/src/runtime/response-handler-field-evaluator.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
@@ -13,7 +12,7 @@ import type { IAgentRuntime } from "../../../../../packages/core/src/types/runti
 import type { State } from "../../../../../packages/core/src/types/state.ts";
 import * as builtins from "../../runtime/builtin-field-evaluators";
 import { runV5MessageRuntimeStage1 } from "../message";
-import { withInactiveArrayFields } from "./inactive-field-schema.ts";
+import { withoutInactiveFields } from "./inactive-field-schema.ts";
 
 const removed = [
   "shouldRespond",
@@ -176,7 +175,7 @@ describe("direct-text builtin schema descriptions", () => {
     expect(original).toEqual(snapshot);
     expect(fields.composeSchema()).toBe(original);
     expect(properties(original).shouldRespond.description).toBe(
-      SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+      builtins.shouldRespondFieldEvaluator.schema.description,
     );
     for (const name of [...removed, ...Object.keys(shortened)])
       expect(properties(original)[name].description).toBeTruthy();
@@ -187,8 +186,8 @@ describe("direct-text builtin schema descriptions", () => {
     expect(properties(projected).completionContext).toBe(
       properties(original).completionContext,
     );
-    const inactive = withInactiveArrayFields(projected, ["relationships"]);
-    expect(properties(inactive).relationships.maxItems).toBe(0);
+    const inactive = withoutInactiveFields(projected, ["relationships"]);
+    expect(properties(inactive).relationships).toBeUndefined();
     expect(properties(inactive).shouldRespond.description).toBeUndefined();
     expect(properties(projected).relationships.items).toBe(
       properties(original).relationships.items,
@@ -235,36 +234,79 @@ describe("direct-text builtin schema descriptions", () => {
       await runV5MessageRuntimeStage1(args);
       const [schema] = requestSchemas(args.runtime);
       expect(schema).toBeDefined();
-      const expected =
-        channelType === ChannelType.DM ? expectedCompact(canonical) : canonical;
-      for (const name of [...removed, ...Object.keys(shortened)])
-        expect(properties(schema)[name]).toEqual(properties(expected)[name]);
+      const expected = canonical;
+      for (const name of [...removed, ...Object.keys(shortened)]) {
+        if (name === "topics" && channelType !== ChannelType.GROUP) {
+          expect(properties(schema).topics).toBeUndefined();
+          expect(schema.required).not.toContain("topics");
+        } else
+          expect(properties(schema)[name]).toEqual(properties(expected)[name]);
+      }
       expect(canonical).toEqual(before);
     },
   );
 
-  it("keeps compact builtin descriptions on context-read continuation while retaining custom fields", async () => {
-    const custom = {
-      ...builtins.factsFieldEvaluator,
-      description: "Custom facts guidance.",
-      schema: {
-        ...builtins.factsFieldEvaluator.schema,
-        description: "Custom facts contract.",
-      },
-    };
-    const args = fixture(ChannelType.DM, true, custom);
-    const result = await runV5MessageRuntimeStage1(args);
-    const schemas = requestSchemas(args.runtime);
-    expect(schemas).toHaveLength(2);
-    for (const schema of schemas) {
-      expect(properties(schema).shouldRespond.description).toBeUndefined();
-      expect(properties(schema).replyText.description).toBe(
-        shortened.replyText,
-      );
-      expect(properties(schema).facts).toEqual(custom.schema);
-    }
-    expect(result.kind).toBe("decision");
+  it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+    "retains native contracts and custom fields across %s context reads",
+    async (channelType) => {
+      const custom = {
+        ...builtins.factsFieldEvaluator,
+        description: "Custom facts guidance.",
+        schema: {
+          ...builtins.factsFieldEvaluator.schema,
+          description: "Custom facts contract.",
+        },
+      };
+      const args = fixture(channelType, true, custom);
+      const result = await runV5MessageRuntimeStage1(args);
+      const schemas = requestSchemas(args.runtime);
+      expect(schemas).toHaveLength(2);
+      for (const schema of schemas) {
+        expect(properties(schema).shouldRespond.description).toBe(
+          properties(args.runtime.responseHandlerFieldRegistry.composeSchema())
+            .shouldRespond.description,
+        );
+        expect(properties(schema).replyText.description).toBe(
+          properties(args.runtime.responseHandlerFieldRegistry.composeSchema())
+            .replyText.description,
+        );
+        expect(properties(schema).facts).toEqual(custom.schema);
+      }
+      expect(result.kind).toBe("decision");
+    },
+  );
+
+  it("uses identical native tools and source-read decisions for text and voice", async () => {
+    const text = fixture(ChannelType.DM, true);
+    const voice = fixture(ChannelType.VOICE_DM, true);
+    const textResult = await runV5MessageRuntimeStage1(text);
+    const voiceResult = await runV5MessageRuntimeStage1(voice);
+    expect(voiceResult.kind).toBe(textResult.kind);
+    const tools = (runtime: IAgentRuntime) =>
+      vi
+        .mocked(runtime.useModel)
+        .mock.calls.map(([, params]) => (params as { tools: unknown }).tools);
+    expect(tools(voice.runtime)).toEqual(tools(text.runtime));
+    const messages = (runtime: IAgentRuntime) =>
+      vi
+        .mocked(runtime.useModel)
+        .mock.calls.map(([, params]) => params.messages);
+    expect(messages(voice.runtime)).toEqual(messages(text.runtime));
+    expect(requestSchemas(voice.runtime)).toHaveLength(2);
   });
+
+  it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+    "repairs an empty answer once for %s",
+    async (channelType) => {
+      const args = fixture(channelType);
+      const empty = response();
+      empty.toolCalls[0].arguments.replyText = "";
+      vi.mocked(args.runtime.useModel).mockResolvedValueOnce(empty);
+      const result = await runV5MessageRuntimeStage1(args);
+      expect(result.kind).toBe("decision");
+      expect(args.runtime.useModel).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("does not project or call a model on the trusted coding path", async () => {
     const projection = vi.spyOn(
@@ -278,6 +320,6 @@ describe("direct-text builtin schema descriptions", () => {
     expect(
       properties(args.runtime.responseHandlerFieldRegistry.composeSchema())
         .shouldRespond.description,
-    ).toBe(SHOULD_RESPOND_SCHEMA_DESCRIPTION);
+    ).toBe(builtins.shouldRespondFieldEvaluator.schema.description);
   });
 });

@@ -48,7 +48,7 @@ rendering, response schemas, semantic recovery and streaming interpretation.
 
 Before planned actions, pass complete original prior-dialogue events from the core source-selection result in action-local selectedActionConversation. Match the planner room/message binding to the executing request, overwrite stale projections, and preserve cached state. Selected, complete, fallback and restored contexts use the same identity-bound original source contract; applied reports omission and is not an authority gate. No raw provider prose, summary, context cap or extra model call supplies authorization.
 
-Direct-text planning and READ_CONTEXT may publish a single model-authored acknowledgement through the optional onPlanningAcknowledgment callback. Reuse existing inference, recheck egress and cancellation, and publish native-read progress only after the requested sources are freshly authorized. Progress never persists an assistant message, marks an answer delivered, refreshes dialogue, or substitutes for final reply recovery. Voice/ambient/decision-only reads retain their existing gates; canonical native tool arguments remain required.
+Direct-conversation planning and READ_CONTEXT may publish a single model-authored acknowledgement through the optional onPlanningAcknowledgment callback. Reuse existing inference, recheck egress and cancellation, and publish native-read progress only after the requested sources are freshly authorized. Progress never persists an assistant message, marks an answer delivered, refreshes dialogue, or substitutes for final reply recovery. Ambient/decision-only reads retain their existing gates; canonical native tool arguments remain required.
 
 Personal add_directive/remove_directive operations target only the requester; omission of scope cannot turn them into global changes. Removal requires the complete exact stored directive, preserving unrelated rules, traits and other slots. Exact removal resolves and mutates under the slot lock; absent rules produce no write or removal audit. Unknown legacy directive provenance remains unknown. Planner-owned directive changes return durable receipts and deferred reply grounding instead of a premature action callback.
 
@@ -60,12 +60,12 @@ For an internal nonterminal text result that requires a model reply, the evaluat
 
 Planner action callbacks retain genuine tool-owned interaction controls together with their explanatory text and media. Ordinary action prose waits for final publication even when a planner predicts its last batch. Verified action text remains exact at the final boundary without an unnecessary paraphrase call. Interactive controls are not restyled by the action-voice rewrite.
 
-Native text-history decisions may use current_request as the source-set identity. Bind only that explicit reference from canonical HANDLE_RESPONSE arguments to the immutable sources captured for that model request. Core source validation still rejects stale/cross-room/unknown/incomplete selections. Legacy JSON and real mismatched hashes are not repaired implicitly; custom field schemas and voice retain their established paths. Provider-owned raw model output is never mutated.
+Native conversation-history decisions may use current_request as the source-set identity. Bind only that explicit reference from canonical HANDLE_RESPONSE arguments to the immutable sources captured for that model request. Core source validation still rejects stale/cross-room/unknown/incomplete selections. Legacy JSON and real mismatched hashes are not repaired implicitly; custom field schemas retain their declared contracts. Provider-owned raw model output is never mutated.
 
-The existing direct-text, noncoding planner model facade may prefer provider-validated tool reasoning. It preserves the planner thinking policy and cache options; the provider must explicitly support the preference. Handler/evaluator calls, voice, group/unknown channels and coding turns receive no preference. This adds no model call or prompt text.
+The shared direct-conversation, noncoding planner model facade may prefer provider-validated tool reasoning. It preserves the planner thinking policy and cache options; the provider must explicitly support the preference. Handler/evaluator calls, group/unknown channels and coding turns receive no preference. This adds no model call or prompt text.
 
 
-Direct-text native Stage 1 may compose replies from text and authorized complete
+Direct-conversation native Stage 1 may compose replies from text and authorized complete
 same-room original-message parts. Bind source IDs and exact bytes to the current
 turn's supplied context; reject unresolved or duplicate source decisions before
 field effects. Keep raw model output in recordings. Render literals only after
@@ -118,3 +118,5 @@ navigation declarations (VIEWS_SHOW with no navigation, or navigation-only with
 multiple/unknown views). It never converts forbidden navigation into permission,
 infers an action from wording, or adds an unbounded retry. Normal plugin admission
 and navigation receipts remain authoritative after the review.
+
+Text and completed voice transcripts share response admission, native schemas, history/source reads, provider selection, action discovery, planning and completion. Only audio ingress/playback and interruption transport differ. Stage 1 receives exact room dialogue and essential interpretation state; action catalogs and domain evidence belong to planning or explicit authorized reads. Display routing contexts only when backed by available actions/providers, using authored short descriptions without internal registry metadata.

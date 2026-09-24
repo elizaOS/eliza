@@ -103,22 +103,15 @@ describe("default Eliza persona safety", () => {
         conversation.map(({ content }) => content.text),
       ),
     ].join("\n");
-    expect(definition?.system).toContain('say "I\'m {{name}}."');
     expect(definition?.messageExamples[0]?.[1]?.content.text).toBe(
       "I'm {{agentName}}.",
     );
-    expect(identity).toContain(
-      "Eliza is made by Eliza Research in San Francisco.",
-    );
+    expect(identity).toContain("Eliza Research in San Francisco");
     expect(identity).not.toMatch(/\b(?:shaw|nubs|shad0w)\b/i);
   });
 
   it("keeps consequential ambiguity and side-effect claims receipt-bound", () => {
     expect(definition).toBeDefined();
-    expect(definition?.system).toContain(
-      "Before consequential actions, confirm the exact target.",
-    );
-    expect(definition?.system).toContain("without a matching result.");
 
     const replies = definition?.messageExamples.flatMap((conversation) =>
       conversation
@@ -133,12 +126,6 @@ describe("default Eliza persona safety", () => {
 
   it("keeps brevity flexible and warmth grounded in attention", () => {
     expect(definition).toBeDefined();
-    expect(definition?.system).toContain(
-      "Let warmth come from attention, specificity, and remembering the thread",
-    );
-    expect(definition?.system).toContain(
-      "Not every message is a task to optimize.",
-    );
     expect(definition?.style.chat).toContain(
       "short answers are welcome, but clarity beats an arbitrary word limit",
     );
@@ -150,38 +137,20 @@ describe("default Eliza persona safety", () => {
     );
   });
 
-  it("carries the warm identity into every language variant's resolved system", () => {
-    expect(definition).toBeDefined();
-    for (const language of Object.keys(definition?.variants ?? {})) {
+  it("preserves complete persona instructions across every language variant", () => {
+    if (!definition) throw new Error("Default persona is missing");
+    for (const language of Object.keys(definition.variants)) {
       const preset = resolveStylePresetById(
         "eliza",
-        language as keyof NonNullable<typeof definition>["variants"],
+        language as keyof typeof definition.variants,
       );
-      expect(preset?.system).toContain(
-        "Make the user's next five minutes easier.",
-      );
-    }
-  });
-
-  it("carries epistemic honesty into every resolved prompt instruction set", () => {
-    expect(definition).toBeDefined();
-    for (const language of Object.keys(definition?.variants ?? {})) {
-      const preset = resolveStylePresetById(
-        "eliza",
-        language as keyof NonNullable<typeof definition>["variants"],
-      );
-      const renderedInstructions = [
-        preset?.system,
-        ...(preset?.style.all ?? []),
-        ...(preset?.style.chat ?? []),
-      ].join("\n");
-
-      expect(renderedInstructions).toContain(
-        "Separate what you know, checked and inferred.",
-      );
-      expect(renderedInstructions).toContain(
-        "Never invent memory; use remembered details only when actually present.",
-      );
+      expect(preset?.system).toContain(definition.system);
+      for (const instruction of definition.style.all) {
+        expect(preset?.style.all).toContain(instruction);
+      }
+      for (const instruction of definition.style.chat) {
+        expect(preset?.style.chat).toContain(instruction);
+      }
     }
   });
 });

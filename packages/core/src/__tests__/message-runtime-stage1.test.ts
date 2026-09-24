@@ -25,6 +25,7 @@ import {
 	historyRetentionEvaluator,
 } from "../../../../plugins/plugin-assistant/src/services/history-retention.ts";
 import { resolveStage1SenderRole } from "../../../../plugins/plugin-assistant/src/services/message/addressing.ts";
+import { createV5MessageContextObject } from "../../../../plugins/plugin-assistant/src/services/message/context-assembly.ts";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageContinuesAfterRecentAgentCorrection,
@@ -673,13 +674,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		runtime.providers = [
 			{
-				name: "relevant-conversations",
+				name: "userPersonalityPreferences",
 				alwaysInResponseState: true,
 				get: async () => provider,
 			},
 		];
 		const state = makeState();
-		state.data.providers = { "relevant-conversations": provider };
+		state.data.providers = { userPersonalityPreferences: provider };
 		const result = await runStage1({
 			runtime,
 			state,
@@ -1027,11 +1028,10 @@ describe("runV5MessageRuntimeStage1", () => {
 					};
 					const field = params.tools[0].parameters.properties?.inactiveOps;
 					const currentActive = calls === 1 ? initiallyActive : activeAfterRead;
-					const prompt = params.messages.map((m) => m.content).join("\n");
-					expect(prompt.includes("Operations for active work only.")).toBe(
-						currentActive,
-					);
-					if (!currentActive) expect(field?.maxItems).toBe(0);
+					expect(
+						field?.description === "Operations for active work only.",
+					).toBe(currentActive);
+					if (!currentActive) expect(field).toBeUndefined();
 					else {
 						expect(field?.maxItems).toBeUndefined();
 						expect(field?.items).toMatchObject({ type: "object" });
@@ -1088,8 +1088,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime.useModel = vi.fn(
 				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 					calls++;
-					const input = args[1] as { messages: Array<{ content: string }> };
-					const text = input.messages.map((m) => m.content).join("\n");
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools?: unknown;
+					};
+					const text = JSON.stringify(input);
 					if (calls === 1)
 						expect(text).toContain("Private admin-only fixture instructions.");
 					else {
@@ -1180,7 +1183,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			if (mode === "disabled") Object.assign(runtime, { evaluators: [] });
 			runtime.useModel = vi.fn(
 				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
-					const input = args[1] as { messages: Array<{ content: string }> };
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools?: unknown;
+					};
 					const text = input.messages.map((m) => m.content).join("\n");
 					expect(text).toContain(literal?.trim());
 					expect(text).not.toContain("Complete original history index:");
@@ -1268,7 +1274,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime.useModel = vi.fn(
 				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 					if (++calls > 2) throw new Error("Unexpected extra history decision");
-					const input = args[1] as { messages: Array<{ content: string }> };
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools?: unknown;
+					};
 					const text = input.messages.map((m) => m.content).join("\n");
 					const sourceSetId =
 						text.match(/completion_source_set: ([a-f0-9]{64})/)?.[1] ?? "";
@@ -1450,7 +1459,10 @@ describe("runV5MessageRuntimeStage1", () => {
 					const requestSchema = (
 						tools.find((tool) => tool.name === "READ_CONTEXT") ?? tools[0]
 					).parameters.properties?.contextRequests;
-					const input = args[1] as { messages: Array<{ content: string }> };
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools?: unknown;
+					};
 					const text = input.messages.map((m) => m.content).join("\n");
 					const reading =
 						calls === 1 ||
@@ -1761,174 +1773,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			).rejects.toThrow("Request only context providers");
 			expect(count).toBe(mode === "unknown" ? 1 : 3);
 			expect(dispatch).not.toHaveBeenCalled();
-		},
-	);
-	it.each([false, true])(
-		"carries the current catalog into planning and completion with provider restore=%s",
-		async (restore) => {
-			const previous = "Previously authorized context reference. ".repeat(40);
-			const current =
-				"Current complete context reference with exact punctuation. ".repeat(
-					40,
-				);
-			const runtime = makeRuntime([
-				stage1Response({
-					contexts: ["simple"],
-					contextRequests: ["CONTEXT_CATALOG"],
-				}),
-				stage1Response({
-					contexts: ["general"],
-					intents: ["open Home"],
-					candidateActionNames: ["UI_ROUTE"],
-					replyText: "I will open Home.",
-					extra: { replyEffectStatus: "pending" },
-				}),
-				...(restore
-					? [
-							{
-								text: "",
-								toolCalls: [
-									{
-										id: "restore-providers",
-										name: "RESTORE_CONTEXT",
-										arguments: {
-											scope: "providers",
-											reason: "Read current references",
-											eliza_turn_scope: "more_work_pending",
-										},
-									},
-								],
-							},
-						]
-					: []),
-				{
-					text: "",
-					toolCalls: [
-						{
-							id: "fixture-ui_route",
-							name: "UI_ROUTE",
-							arguments: { destination: "home", eliza_turn_scope: "final" },
-						},
-					],
-				},
-				JSON.stringify({
-					success: true,
-					decision: "FINISH",
-					thought: "The reference and navigation receipt are available.",
-					messageToUser: "Home is open.",
-				}),
-			]);
-			const registry = (description: string) =>
-				new ContextRegistry([
-					{ id: "general", description: "General tasks." },
-					{ id: "notes", description },
-				]);
-			runtime.contexts = registry(previous);
-			const state = makeState();
-			if (restore) {
-				const text = "Another complete authorized provider reference. ".repeat(
-					40,
-				);
-				runtime.providers = [{ name: "GUIDE", get: vi.fn() }];
-				state.data.providers = {
-					GUIDE: { text, discoveryText: "context_discovery: GUIDE" },
-				};
-				runtime.composeState = vi.fn(async () => structuredClone(state));
-			}
-			const model = runtime.useModel.bind(runtime);
-			let modelCalls = 0;
-			runtime.useModel = vi.fn(
-				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
-					const result = await model(...args);
-					if (++modelCalls === (restore ? 3 : 2))
-						runtime.contexts = registry(current);
-					return result;
-				},
-			) as IAgentRuntime["useModel"];
-			const navigate = vi.fn<Action["handler"]>(async () => ({
-				success: true,
-				text: "Navigation completed: home.",
-				data: { destination: "home" },
-			}));
-			runtime.actions = [
-				{
-					name: "UI_ROUTE",
-					description: "Navigate to a requested destination.",
-					parameters: [
-						{
-							name: "destination",
-							description: "Destination",
-							required: true,
-							schema: { type: "string" },
-						},
-					],
-					validate: async () => true,
-					handler: navigate,
-				},
-			];
-			const result = await runStage1({
-				runtime,
-				message: makeMessage({
-					text: "Read the context catalog, then open Home.",
-					channelType: ChannelType.DM,
-				}),
-				state,
-			});
-			expect(result.kind).toBe("planned_reply");
-			expect(navigate).toHaveBeenCalledTimes(1);
-			const calls = useModelCalls(runtime);
-			expect(calls).toHaveLength(restore ? 5 : 4);
-			for (const [, params] of calls.slice(restore ? 3 : 2)) {
-				const wire = JSON.stringify((params as { messages: unknown }).messages);
-				expect(wire).toContain("context_loaded: CONTEXT_CATALOG");
-				expect(wire).toContain(current.trim());
-				expect(wire).not.toContain(previous.trim());
-			}
-		},
-	);
-
-	it.each(["before", "after"])(
-		"keeps a catalog read complete when routing repair happens %s it",
-		async (order) => {
-			const description = "Complete custom routing reference. ".repeat(40);
-			const answer = "The custom reference is available; nothing changed.";
-			const read = stage1Response({
-				contexts: ["simple"],
-				contextRequests: ["CONTEXT_CATALOG"],
-				facts: ["Do not process this intermediate read"],
-			});
-			const conflicting = stage1Response({
-				contexts: ["simple"],
-				intents: ["describe the reference"],
-				replyText: answer,
-				extra: { replyEffectStatus: "none" },
-			});
-			const runtime = makeRuntime([
-				...(order === "before" ? [conflicting, read] : [read, conflicting]),
-				stage1Response({ contexts: ["simple"], replyText: answer }),
-			]);
-			runtime.contexts = new ContextRegistry([
-				{ id: "custom_catalog", description },
-			]);
-			const dispatch = vi.spyOn(
-				runtime.responseHandlerFieldRegistry,
-				"dispatch",
-			);
-			const result = await runStage1({
-				runtime,
-				message: makeMessage({ channelType: ChannelType.DM }),
-			});
-			const calls = useModelCalls(runtime);
-			expect(calls.map(([type]) => type)).toEqual([
-				ModelType.RESPONSE_HANDLER,
-				ModelType.RESPONSE_HANDLER,
-				ModelType.RESPONSE_HANDLER,
-			]);
-			expect(JSON.stringify(calls.at(-1)?.[1])).toContain(description.trim());
-			expect(dispatch).toHaveBeenCalledTimes(1);
-			expect(result.kind).toBe("direct_reply");
-			if (result.kind === "direct_reply")
-				expect(result.result.responseContent?.text).toBe(answer);
 		},
 	);
 
@@ -2673,7 +2517,7 @@ describe("runV5MessageRuntimeStage1", () => {
 	});
 
 	it.each([1, 360])(
-		"exposes %i authorized names without descriptions and rechecks permissions",
+		"keeps %i action definitions off Stage 1 across registration changes",
 		async (count) => {
 			const description =
 				count === 1
@@ -2723,18 +2567,17 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(calls).toHaveLength(1);
 			const request = calls[0][1] as { messages: Array<{ content: string }> };
 			const wire = request.messages.map(({ content }) => content).join("\n");
-			for (const action of actions)
-				expect(wire).toContain(JSON.stringify(action.name));
+			for (const action of actions) expect(wire).not.toContain(action.name);
 			expect(wire).not.toContain("PRIVATE_OPERATION");
 			expect(wire).not.toContain("OWNER_OPERATION");
 			expect(wire).not.toContain(description);
-			expect(wire).toContain("DISCOVER_TOOLS");
-			expect(wire).toContain("names=[]");
+			expect(wire).not.toContain("available_actions:");
+
 			expect(runtime.actions).toEqual(before);
 			expect(result.kind).toBe("direct_reply");
 			expect(
 				request.messages[1].content.startsWith("available_actions:\n"),
-			).toBe(true);
+			).toBe(false);
 			// Each turn rechecks the index instead of caching authorization.
 			actions[0].validate = async () => false;
 			await runStage1({
@@ -2748,14 +2591,14 @@ describe("runV5MessageRuntimeStage1", () => {
 			};
 			expect(next.messages[0].content).toBe(request.messages[0].content);
 			expect(next.messages[1].content.startsWith("available_actions:\n")).toBe(
-				true,
+				false,
 			);
 			expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
 			expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
 			expect(next.messages[1].content).not.toContain("OWNER_OPERATION");
 			expect(next.messages[1].content).not.toContain(description);
 			for (const action of actions.slice(1))
-				expect(next.messages[1].content).toContain(JSON.stringify(action.name));
+				expect(next.messages[1].content).not.toContain(action.name);
 			const rankedActions = [...runtime.actions].reverse();
 			runtime.actions = rankedActions;
 			await runStage1({
@@ -2777,202 +2620,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("reads the complete context catalog before dispatch without changing the stable prefix", async () => {
-		const description =
-			"Exact routing instructions with punctuation and an alias. ".repeat(30);
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-				replyText: "Undelivered draft",
-				intents: [
-					"Read exact Unicode value: café → violet\nKeep records unchanged.",
-				],
-				candidateActionNames: ["EXACT_LOOKUP"],
-				facts: ["Undelivered extraction"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "The reference is available.",
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{ id: "simple", description: "Direct replies." },
-			{
-				id: "custom_catalog",
-				label: "Custom reference",
-				aliases: ["nonstandard_alias"],
-				description,
-			},
-		]);
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-		});
-		const calls = useModelCalls(runtime).map(
-			([, params]) =>
-				params as {
-					messages: Array<{ role: string; content: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
-				},
-		);
-		expect(calls).toHaveLength(2);
-		expect(calls[0].messages[0]).toEqual(calls[1].messages[0]);
-		expect(calls[0].providerOptions.eliza.prefixHash).toBe(
-			calls[1].providerOptions.eliza.prefixHash,
-		);
-		expect(calls[0].messages[0].content).toContain("simple, custom_catalog");
-		expect(
-			calls[0].messages.map(({ content }) => content).join("\n"),
-		).not.toContain(description);
-		const restored = calls[1].messages.find(
-			({ role }) => role === "user",
-		)?.content;
-		expect(restored).toContain(description.trim());
-		expect(restored).toContain("nonstandard_alias");
-		expect(restored?.indexOf("context_loaded: CONTEXT_CATALOG")).toBeLessThan(
-			restored?.indexOf("message:user:") ?? 0,
-		);
-		const continuation = calls[1].messages.at(-1)?.content ?? "";
-		const previousDecision = JSON.parse(
-			continuation.split("previous_context_read_decision:\n")[1],
-		);
-		expect(previousDecision.intents).toEqual([
-			"Read exact Unicode value: café → violet\nKeep records unchanged.",
-		]);
-		expect(previousDecision.candidateActionNames).toEqual(["EXACT_LOOKUP"]);
-		expect(previousDecision.replyText).toBe("Undelivered draft");
-		expect(previousDecision.facts).toEqual(["Undelivered extraction"]);
-		expect(continuation).toContain("not authority");
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply")
-			expect(result.result.responseContent?.text).toBe(
-				"The reference is available.",
-			);
-		expect(
-			(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mock.calls.filter(
-				([mode]) => mode === "RESPONSE_HANDLER_BEFORE",
-			),
-		).toHaveLength(1);
-	});
-
-	it("uses current catalog registrations when a catalog read resumes", async () => {
-		const removed = "Removed confidential routing instructions. ".repeat(35);
-		const retained = "Current routing instructions. ".repeat(45);
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Only the current catalog is available.",
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{ id: "removed_context", description: removed },
-			{ id: "current_context", description: retained },
-		]);
-		runtime.actions = [{ name: "REVOKED_ACTION", description: removed }];
-		const originalModel = runtime.useModel.bind(runtime);
-		let calls = 0;
-		runtime.useModel = vi.fn(
-			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
-				const result = await originalModel(...args);
-				if (++calls === 1) {
-					runtime.contexts = new ContextRegistry([
-						{ id: "current_context", description: retained },
-					]);
-					runtime.actions = [
-						{
-							name: "CURRENT_ACTION",
-							description: "Current action-only reference body Ω.",
-						},
-					];
-				}
-				return result;
-			},
-		) as IAgentRuntime["useModel"];
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-		});
-		const second = useModelCalls(runtime)[1]?.[1] as {
-			messages: Array<{ content: string }>;
-		};
-		const wire = second.messages.map(({ content }) => content).join("\n");
-		expect(wire).toContain(retained.trim());
-		expect(wire).not.toContain(removed.trim());
-		expect(wire).not.toContain("removed_context");
-		expect(wire).toContain("CURRENT_ACTION");
-		expect(wire).not.toContain("Current action-only reference body Ω.");
-		expect(wire).toContain("DISCOVER_TOOLS");
-		expect(wire).not.toContain("REVOKED_ACTION");
-	});
-
-	it("keeps denied contexts out of both catalog names and full description reads", async () => {
-		const hidden =
-			"Owner-only catalog description, never visible to this requester.";
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Only authorized references are available.",
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{
-				id: "public_context",
-				description: "Complete public routing instructions. ".repeat(40),
-			},
-			{
-				id: "owner_only_context",
-				description: hidden,
-				roleGate: { minRole: "OWNER" },
-			},
-		]);
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM, source: "test" }),
-		});
-		const wire = JSON.stringify(useModelCalls(runtime));
-		expect(wire).not.toContain(hidden);
-		expect(wire).not.toContain("owner_only_context");
-		expect(wire).toContain("public_context");
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
-	it("rejects a repeated context catalog read before a third model request", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-			}),
-			stage1Response({
-				contextRequests: ["CONTEXT_CATALOG"],
-				contexts: ["simple"],
-			}),
-		]);
-		runtime.contexts = new ContextRegistry([
-			{
-				id: "custom_catalog",
-				description: "Complete context routing reference. ".repeat(40),
-			},
-		]);
-		await expect(
-			runStage1({
-				runtime,
-				message: makeMessage({ channelType: ChannelType.DM }),
-			}),
-		).rejects.toThrow("Request only context providers");
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
 	it.each([ChannelType.GROUP])(
-		"keeps full catalog descriptions for %s",
+		"omits unsupported contexts and action metadata for %s",
 		async (channelType) => {
 			const description =
 				"Complete context routing reference for the full input path. ".repeat(
@@ -2996,8 +2645,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				messages: Array<{ content: string }>;
 			};
 			const wire = params.messages.map(({ content }) => content).join("\n");
-			expect(wire).toContain(description.trim());
-			expect(wire).toContain("CUSTOM_ALIAS");
+			expect(wire).not.toContain(description.trim());
+			expect(wire).not.toContain("CUSTOM_ALIAS");
 			expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
 			expect(useModelCalls(runtime)).toHaveLength(1);
 		},
@@ -3054,7 +2703,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			calls[1]?.messages.find((message) => message.role === "user")?.content,
 		).toContain(full);
 	});
-	it("does not add a discovery pass to voice replies", async () => {
+	it("advertises optional provider discovery equally for voice", async () => {
 		const runtime = makeRuntime([
 			stage1Response({ contexts: ["simple"], replyText: "Hello." }),
 		]);
@@ -3073,9 +2722,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			state,
 		});
 		expect(useModelCalls(runtime)).toHaveLength(1);
-		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(full);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(full);
 		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(
-			"A complete saved character preference",
+			"context_discovery: userPersonalityPreferences",
 		);
 	});
 
@@ -4482,8 +4131,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
-		"does not opt voice or unaddressed group traffic into terminal review: %s",
+	it.each([ChannelType.GROUP])(
+		"does not opt unaddressed group traffic into terminal review: %s",
 		async (channelType) => {
 			const runtime = makeRuntime(
 				[stage1Response({ shouldRespond: "STOP", contexts: [] })],
@@ -4718,7 +4367,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("uses the full response-handler schema for direct channels", async () => {
+	it("uses active response-handler fields for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -4756,7 +4405,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			"candidateActionNames",
 			"facts",
 			"relationships",
-			"topics",
 			"addressedTo",
 			"emotion",
 		]);
@@ -4772,12 +4420,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("keeps every registered field in the live-voice Stage-1 call", async () => {
+	it("uses active native fields without a separate voice instruction manual", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
-				shouldRespond: "IGNORE",
+				shouldRespond: "RESPOND",
 				contexts: ["simple"],
-				replyText: "",
+				replyText: "Hello.",
 			}),
 		]);
 
@@ -4789,7 +4437,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		});
 
-		expect(result.kind).toBe("terminal");
+		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
 		}
@@ -4813,21 +4461,19 @@ describe("runV5MessageRuntimeStage1", () => {
 			),
 		).toBe(true);
 		const systemContent = String(params.messages?.[0]?.content ?? "");
-		expect(systemContent).toContain("voice engagement rules:");
-		expect(systemContent).toContain("Plan this direct message");
+		expect(systemContent).not.toContain("voice engagement rules:");
+		expect(systemContent).toContain("Plan a response to this direct message.");
 		expect(systemContent).not.toContain("response_precedence:");
-		expect(systemContent).toContain(
-			"shouldRespond=IGNORE only for non-speech/noise",
-		);
-		expect(systemContent).toContain("### facts");
+
+		expect(systemContent).not.toContain("### facts");
 	});
 
 	it("preserves complete eligible voice dialogue in the actual Stage-1 request", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
-				shouldRespond: "IGNORE",
+				shouldRespond: "RESPOND",
 				contexts: ["simple"],
-				replyText: "",
+				replyText: "Hello.",
 			}),
 		]);
 		const recentMessages = Array.from(
@@ -4891,7 +4537,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			firstCall[1] as { messages?: Array<{ content?: unknown }> }
 		).messages;
 		const wireText = JSON.stringify(messages ?? []);
-		expect(wireText).toContain("EAGER_CROSS_ROOM_HISTORY");
+		expect(wireText).not.toContain("EAGER_CROSS_ROOM_HISTORY");
 		expect(wireText).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		let previousPosition = -1;
 		for (const memory of recentMessages) {
@@ -4991,13 +4637,27 @@ describe("runV5MessageRuntimeStage1", () => {
 					messages: Array<{ content: string }>;
 				}
 			).messages;
-			expect(messages.some((entry) => entry.content.includes(body))).toBe(true);
+			expect(messages.some((entry) => entry.content.includes(body))).toBe(
+				false,
+			);
+			const planning = await createV5MessageContextObject({
+				runtime,
+				message: makeMessage({ text: "what did we discuss yesterday?" }),
+				state,
+				providerPhase: "planning",
+				selectedContexts: ["memory"],
+			});
+			expect(
+				planning.events.some(
+					(event) => event.type === "provider" && event.text === body,
+				),
+			).toBe(true);
 			expect(wireOfFirstCall(runtime)).not.toContain(
 				"LOSSLESS_HISTORY_MANIFEST",
 			);
 		});
 
-		it("retains authorized cross-room evidence for document-augmented requests", async () => {
+		it("defers cross-room evidence for document-augmented requests", async () => {
 			// Live 2026-09-06: the augmentation preamble's own words matched a
 			// relevance keyword on every API turn and the eager corpus went out.
 			const runtime = runtimeWithHistoryProvider();
@@ -5020,11 +4680,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
 			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		});
 
-		it("keeps current-room and authorized cross-room history", async () => {
+		it("keeps current-room history while deferring cross-room evidence", async () => {
 			// Live 2026-09-05: the eager cross-room history was 22.7K of a
 			// 44K-token Stage-1 prompt on "whats on my calendar tuesday?".
 			const runtime = runtimeWithHistoryProvider();
@@ -5034,7 +4694,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				state: historyState(),
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
 			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 			// The current room's own history is a different provider and stays.
 			expect(wire).toContain("CURRENT_ROOM_TURN");
@@ -5044,12 +4704,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			[ChannelType.DM, false, true],
 			[ChannelType.API, false, true],
 			[ChannelType.SELF, false, true],
-			[ChannelType.VOICE_DM, false, false],
+			[ChannelType.VOICE_DM, false, true],
 			[ChannelType.GROUP, false, false],
 			[undefined, false, false],
 			[ChannelType.DM, true, false],
 		] as const)(
-			"scopes tool reasoning preference to direct text planning (%s, coding=%s)",
+			"scopes tool reasoning preference to direct planning (%s, coding=%s)",
 			async (channelType, codingMode, preferred) => {
 				const reply = {
 					text: "",
@@ -5190,7 +4850,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				const wire = JSON.stringify(
 					(call[1] as { messages: unknown }).messages,
 				);
-				if (index === 0) expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+				if (index === 0) expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
 				else
 					expect(wire).toContain(
 						manifest ? "LOSSLESS_HISTORY_MANIFEST" : "EAGER_CROSS_ROOM_HISTORY",
@@ -5204,7 +4864,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(state).toEqual(historyState());
 		});
 
-		it("retains authorized cross-room evidence even when recall keywords match", async () => {
+		it("defers cross-room evidence even when recall keywords match", async () => {
 			const runtime = runtimeWithHistoryProvider();
 			await runStage1({
 				runtime,
@@ -5214,11 +4874,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				state: historyState(),
 			});
 			const wire = wireOfFirstCall(runtime);
-			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wire).not.toContain("EAGER_CROSS_ROOM_HISTORY");
 			expect(wire).not.toContain("LOSSLESS_HISTORY_MANIFEST");
 		});
 
-		it("retains authorized cross-room evidence when no keywords are declared", async () => {
+		it("does not expose undeclared cross-room provider content", async () => {
 			const runtime = runtimeWithHistoryProvider();
 			runtime.providers = [] as never;
 			await runStage1({
@@ -5226,7 +4886,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				message: makeMessage({ text: "whats on my calendar tuesday?" }),
 				state: historyState(),
 			});
-			expect(wireOfFirstCall(runtime)).toContain("EAGER_CROSS_ROOM_HISTORY");
+			expect(wireOfFirstCall(runtime)).not.toContain(
+				"EAGER_CROSS_ROOM_HISTORY",
+			);
 		});
 	});
 
@@ -5342,75 +5004,18 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("restores the full long direct-channel catalog on request", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				contextRequests: ["CONTEXT_CATALOG"],
-			}),
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Hi.",
-			}),
-		]);
-		const longDescription =
-			"Very long context description. ".repeat(80) +
-			"This should not be in direct-channel Stage 1 prompts.";
-		runtime.contexts = {
-			listAvailable: vi.fn(() => [
-				{
-					id: "simple",
-					label: "Simple",
-					description: longDescription,
-					sensitivity: "public",
-				},
-				{
-					id: "calendar",
-					label: "Calendar",
-					description: longDescription,
-					roleGate: { minRole: "ADMIN" },
-					sensitivity: "private",
-				},
-				{
-					id: "terminal",
-					label: "Terminal",
-					aliases: ["shell"],
-					description: longDescription,
-					roleGate: { minRole: "OWNER" },
-					sensitivity: "private",
-				},
-			]),
-		} as IAgentRuntime["contexts"];
-
-		await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.DM }),
-		});
-
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const systemContent = params.messages?.[0]?.content ?? "";
-		expect(systemContent).toContain("task: Plan this direct message.");
-		expect(systemContent).toContain("simple, calendar, terminal");
-		expect(systemContent).not.toContain("role>=ADMIN");
-		expect(systemContent).not.toContain(longDescription);
-		const second = useModelCalls(runtime)[1]?.[1] as {
-			messages: Array<{ content: string }>;
-		};
-		const restored = second.messages.map(({ content }) => content).join("\n");
-		expect(restored).toContain("- calendar [label=Calendar");
-		expect(restored).toContain("aliases=shell");
-		expect(restored).toContain(longDescription);
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
 	it("keeps optimized message-handler catalog instructions complete", async () => {
 		const description = "Operator-owned context description. ".repeat(40);
 		const runtime = makeRuntime([
 			stage1Response({ contexts: ["simple"], replyText: "Hi." }),
 		]);
+		runtime.actions = [
+			{
+				name: "CUSTOM_CATALOG_READ",
+				description: "Read custom data",
+				contexts: ["custom_catalog"],
+			},
+		];
 		runtime.contexts = new ContextRegistry([
 			{ id: "custom_catalog", description },
 		]);
@@ -5888,7 +5493,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(
 			plannerCall.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
 				?.description,
-		).toContain('"FILE":[');
+		).toContain("Find authorized operations");
 	});
 
 	it("keeps the complete umbrella dispatcher and its children when duplicate child schemas exceed the estimated budget", async () => {
@@ -6343,7 +5948,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			messages?: Array<{ content?: string }>;
 		};
 		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-			expect.arrayContaining(["SHELL", "REPLY"]),
+			expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
 		);
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"The Stage 1 router marked this current turn as requiring a tool.",
@@ -6449,8 +6054,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		const discovery = plannerParams.tools?.find(
 			(tool) => tool.name === "DISCOVER_TOOLS",
 		);
-		expect(discovery?.description).toContain("SHELL");
-		expect(discovery?.description).toContain("BROWSER");
+		expect(discovery?.description).toContain("Find authorized operations");
+		expect(discovery?.description).not.toContain("BROWSER");
 		expect(JSON.stringify(plannerParams.messages)).toContain(
 			"GET_CRYPTO_PRICE",
 		);
@@ -6540,7 +6145,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			messages?: Array<{ content?: string }>;
 		};
 		expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-			expect.arrayContaining(["SHELL", "REPLY"]),
+			expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
 		);
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"The Stage 1 router marked this current turn as requiring a tool.",
@@ -6733,7 +6338,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				tools?: Array<{ name: string }>;
 			};
 			expect(plannerParams.tools?.map(({ name }) => name)).toEqual(
-				expect.arrayContaining(["SHELL", "REPLY"]),
+				expect.arrayContaining(["DISCOVER_TOOLS", "REPLY"]),
 			);
 			if (result.kind === "planned_reply") {
 				expect(result.result.responseContent?.text).toBe(answer);
@@ -7334,6 +6939,21 @@ describe("runV5MessageRuntimeStage1", () => {
 					text: "",
 					toolCalls: [
 						{
+							id: "find-lookup",
+							name: "DISCOVER_TOOLS",
+							arguments: {
+								query:
+									name === "MARKET_QUOTE"
+										? "cryptocurrency exchange quote"
+										: "public web page",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
 							id: "equivalent-lookup",
 							name,
 							arguments: { [parameter]: value },
@@ -7401,15 +7021,16 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(calls.map(([model]) => model)).toEqual([
 				ModelType.RESPONSE_HANDLER,
 				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
-			const plannerParams = calls[1]?.[1] as {
+			const plannerParams = calls[2]?.[1] as {
 				tools?: Array<{ name: string }>;
 			};
 			expect(plannerParams.tools?.map((tool) => tool.name)).toEqual(
-				expect.arrayContaining([name, "SHELL", "REPLY"]),
+				expect.arrayContaining([name, "DISCOVER_TOOLS", "REPLY"]),
 			);
-			expect(JSON.stringify(calls[2]?.[1])).toContain("61234");
+			expect(JSON.stringify(calls[3]?.[1])).toContain("61234");
 			if (result.kind === "planned_reply") {
 				expect(result.result.responseContent?.text).toBe(answer);
 			}
@@ -8162,30 +7783,30 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent.indexOf("user_role: USER")).toBeGreaterThan(
 			systemContent.indexOf("# About Test Agent"),
 		);
-		expect(systemContent).toContain("message_handler_stage:");
-		expect(systemContent).toContain("available_contexts");
+		expect(systemContent).toContain("# Task");
+		expect(systemContent).not.toContain("available_actions");
 		// Stage 1 uses structured prior messages when RECENT_MESSAGES exposes
 		// data.recentMessages. Rendering the provider text too would duplicate the
 		// dialogue and can leak stored assistant thought/action metadata.
 		expect(userContent).not.toContain("provider:RECENT_MESSAGES:");
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("full recent provider text");
-		expect(userContent).toContain("prior_message:user:");
+		expect(userContent).toContain("user:");
 		expect(userContent).toContain("verified_cross_room_message:user:");
 		expect(userContent).toContain("ORCHID-742 is in locker 19");
 		expect(userContent).toContain("Dinner at 6:30 PM");
 		expect(userContent).not.toContain("https://private.example/receipt.png");
-		expect(userContent).toContain("current_turn_boundary:");
-		expect(userContent).toContain("message:user:");
+		expect(userContent).toContain("Answer the current request;");
+		expect(userContent).toContain("# Current message");
 		expect(userContent).toContain(longUserText);
 		expect(userContent).not.toContain("[sub-agent: old build");
 		expect(userContent).not.toContain("stale raw transcript");
 		expect(userContent).toContain("Can you check my calendar?");
-		expect(userContent.indexOf("prior_message:user:")).toBeLessThan(
-			userContent.indexOf("current_turn_boundary:"),
+		expect(userContent.indexOf(longUserText)).toBeLessThan(
+			userContent.indexOf("Answer the current request;"),
 		);
-		expect(userContent.indexOf("current_turn_boundary:")).toBeLessThan(
-			userContent.lastIndexOf("message:user:"),
+		expect(userContent.indexOf("Answer the current request;")).toBeLessThan(
+			userContent.lastIndexOf("Can you check my calendar?"),
 		);
 		expect(userContent).not.toContain("# Runtime Model Context");
 		expect(userContent).not.toContain("user_role:");
@@ -8254,7 +7875,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			const userContent = messages?.[1]?.content ?? "";
 			const priorIndex = userContent.indexOf(priorAttack);
 			const boundaryIndex = userContent.lastIndexOf(
-				"current_turn_boundary: The prior_message blocks above",
+				"Answer the current request; prior dialogue",
 			);
 			const providerIndex = userContent.indexOf(providerMarker);
 			const currentIndex = userContent.lastIndexOf(currentMessage);
@@ -8289,14 +7910,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		).messages?.[1]?.content;
 		expect(userContent).toContain(priorAttack);
 		expect(userContent).toContain(providerMarker);
-		expect(
-			userContent?.endsWith(
-				JSON.stringify({
-					text: currentMessage,
-					source: "test",
-				}),
-			),
-		).toBe(true);
+		expect(userContent?.endsWith(currentMessage)).toBe(true);
 	});
 
 	it("defers CURRENT_TIME to planning regardless of message phrasing", async () => {
@@ -8395,7 +8009,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		// system message included. The denial sentence and its "no chat-history
 		// search" qualifier must both be absent when the search surface exists.
 		expect(fullPrompt).not.toContain(
-			"No separate chat-history search is available this turn",
+			"If supplied evidence is insufficient, state the gap",
 		);
 		expect(fullPrompt).not.toContain("no chat-history search");
 		expect(result.messageHandler.plan.requiresTool).toBe(true);
@@ -8430,7 +8044,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			.map((message) => message.content ?? "")
 			.join("\n");
 		expect(fullPrompt).toContain(
-			"No separate chat-history search is available this turn",
+			"If supplied evidence is insufficient, state the gap",
 		);
 		expect(fullPrompt).not.toContain(
 			"supplied authorized dialogue; do not assume they represent every stored record",
@@ -8505,9 +8119,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		// shouldRespond field guidance alone read as RESPOND on nearly all of
 		// them (live five-room evaluation: 7-10 unsolicited replies per room).
 		expect(stage1Content).toContain("ambient_turn_policy:");
-		expect(stage1Content).toContain(
-			"a direct mention, reply, or clear continuation addressed to Test Agent -> RESPOND",
-		);
+		expect(stage1Content).toContain("Follow the room's engagement policy.");
 		expect(stage1Content).not.toContain("addressed to  ->");
 		// Participatory default (no reply_gate set): no @-mention needed — the
 		// model judges each unaddressed turn on concrete value. The restrained
@@ -9264,7 +8876,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			?.map((message) => message.content ?? "")
 			.join("\n");
 		expect(prompt).toContain(
-			"No separate chat-history search is available this turn",
+			"If supplied evidence is insufficient, state the gap",
 		);
 		expect(prompt).not.toContain("search it with MEMORY op:search");
 		expect(prompt).not.toContain(
@@ -9311,7 +8923,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			?.map((message) => message.content ?? "")
 			.join("\n");
 		expect(prompt).toContain(
-			"No separate chat-history search is available this turn",
+			"If supplied evidence is insufficient, state the gap",
 		);
 		expect(prompt).not.toContain("search it with MEMORY op:search");
 		// Route decision: a role-hidden action is not an executable surface for
@@ -9398,9 +9010,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
 		const userContent = params.messages?.[1]?.content ?? "";
-		expect(userContent).toContain("prior_message:user:");
+		expect(userContent).toContain("user:");
 		expect(userContent).toContain("https://example.test/old-link");
-		expect(userContent).toContain("current_turn_boundary:");
+		expect(userContent).toContain("Answer the current request;");
 		expect(userContent).toContain("reply_reference:");
 		expect(userContent).toContain("teammate:");
 		expect(userContent).toContain(
@@ -9409,13 +9021,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain(
 			"user-injected stale instruction from current message text",
 		);
-		expect(userContent).toContain("message:user:");
+		expect(userContent).toContain("# Current message");
 		expect(userContent).toContain("assistant can you try this?");
-		expect(userContent.indexOf("current_turn_boundary:")).toBeLessThan(
+		expect(userContent.indexOf("Answer the current request;")).toBeLessThan(
 			userContent.indexOf("reply_reference:"),
 		);
 		expect(userContent.indexOf("reply_reference:")).toBeLessThan(
-			userContent.lastIndexOf("message:user:"),
+			userContent.lastIndexOf("# Current message"),
 		);
 	});
 
@@ -9500,17 +9112,15 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("provider text should not render");
 		expect(userContent).toContain(
-			"prior_message:user:\n[h1]\nbotdick: Hey, nice to meet shebotdick.",
+			"[h1]\nbotdick: Hey, nice to meet shebotdick.",
 		);
+		expect(userContent).toContain("[h2]\n1gig: i was asking about shedick");
 		expect(userContent).toContain(
-			"prior_message:user:\n[h2]\n1gig: i was asking about shedick",
-		);
-		expect(userContent).toContain(
-			'message:user:\n{"text":"whats the compatibility between her and botdick","source":"test"}',
+			"# Current message\nuser: whats the compatibility between her and botdick",
 		);
 	});
 
-	it("includes the agent's own prior replies role-tagged as prior_message:agent", async () => {
+	it("includes the agent's own prior replies with speaker attribution", async () => {
 		// The current_turn_boundary contract tells the model the prior_message
 		// blocks are its ONLY chat-recall window, but the agent's own replies
 		// were structurally excluded from that window — so when asked "did you
@@ -9594,15 +9204,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		const userContent = params.messages?.[1]?.content ?? "";
 		// The user's turn keeps the user tag; the agent's own reply is present
 		// and role-tagged with the character name so recall is grounded.
+		expect(userContent).toContain("[h1]\n1gig: whats the btc price");
 		expect(userContent).toContain(
-			"prior_message:user:\n[h1]\n1gig: whats the btc price",
-		);
-		expect(userContent).toContain(
-			"prior_message:agent:\n[h2]\nTest Agent: BTC is around $63,000 right now.",
+			"[h2]\nTest Agent: BTC is around $63,000 right now.",
 		);
 		// Chronological interleave: the agent reply follows the user turn.
-		expect(userContent.indexOf("prior_message:user:")).toBeLessThan(
-			userContent.indexOf("prior_message:agent:"),
+		expect(userContent.indexOf("[h1]")).toBeLessThan(
+			userContent.indexOf("[h2]"),
 		);
 		// Non-dialogue agent artifacts stay out of the window.
 		expect(userContent).not.toContain("[sub-agent: price check");
@@ -10726,7 +10334,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(validateAllowed).toHaveBeenCalled();
 		expect(validateDenied).toHaveBeenCalled();
 		const discoveryPrompt = JSON.stringify(useModelCalls(runtime)[0]?.[1]);
-		expect(discoveryPrompt).toContain("CHECK_RUNTIME");
+		expect(discoveryPrompt).not.toContain("CHECK_RUNTIME");
 		expect(discoveryPrompt).not.toContain("SKIP_RUNTIME");
 		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
 			tools?: Array<{ name?: string }>;
@@ -11141,7 +10749,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(
 			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
 				?.description,
-		).toContain('"SHELL":[');
+		).toContain("Find authorized operations");
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))
@@ -12292,8 +11900,8 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const discovery = plannerParams.tools?.find(
 			(tool) => tool.name === "DISCOVER_TOOLS",
 		)?.description;
-		expect(discovery).toContain('"SCHEDULED_HOUSEHOLD_DISTRACTOR":[');
-		expect(discovery).toContain('"WEEKLY_BRIEF_DISTRACTOR":[');
+		expect(discovery).toContain("Find authorized operations");
+		expect(discovery).not.toContain("WEEKLY_BRIEF_DISTRACTOR");
 		expect(result.kind).toBe("planned_reply");
 		expect(result.messageHandler.plan.deterministicToolCall).toBeUndefined();
 		if (result.kind === "planned_reply") {
@@ -13545,7 +13153,7 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		// The ordinary own reply — the question a continuation refers to — is
 		// visible and role-tagged.
 		expect(plannerUserContent).toContain(
-			"prior_message:agent:\nTest Agent: Do you want that in USD or EUR?",
+			"Test Agent: Do you want that in USD or EUR?",
 		);
 		// Tool-derived answers can contain recalled story details. Preserve their
 		// visible text without leaking internal action/callback metadata.
@@ -14203,7 +13811,7 @@ describe("direct-text silence review", () => {
 			text: "uh huh",
 			channel: ChannelType.VOICE_DM,
 			bot: false,
-			calls: 1,
+			calls: 2,
 		},
 		{
 			decision: "IGNORE" as const,
@@ -14590,9 +14198,9 @@ describe("explicit discovery survives planner surface construction", () => {
 			expect(firstPlanner.tools.map(({ name }) => name)).toContain(
 				"DISCOVER_TOOLS",
 			);
-			expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
-				"MEMORY_SEARCH",
-			);
+			expect(
+				firstPlanner.tools.some(({ name }) => name === "MEMORY_SEARCH"),
+			).toBe(hints.length === 0);
 			expect(result.kind).toBe("planned_reply");
 			if (result.kind === "planned_reply")
 				expect(result.result.responseContent?.text).toBe(answer);

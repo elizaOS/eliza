@@ -96,22 +96,23 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 		name: "visualContinuation",
 		priority: 60,
 		description:
-			"Classify visual continuation for the FINAL CURRENT REQUEST, preserving earlier applicable constraints. disposition: requested for requested navigation; optional only if a surface helps the requested work; forbidden when navigation or leaving the current screen is prohibited; none for conversation, hypotheticals, questions answerable without changing views, or ambiguity; unresolved if permission or navigation intent is uncertain. For explicitly requested navigation combined with domain work, an unknown destination ID stays requested with viewId empty and navigationOnly=false; the existing planner resolves the authorized catalog. Domain nouns alone never request navigation. For requested/optional, viewId is a known shell view (Home=chat); otherwise empty. singleViewOnly=true means all needed UI operations open one known view; domain work may still be required. False for multiple destinations, layouts, catalog discovery, inspection, controls, date/record selection, no navigation or uncertainty. navigationOnly=true ONLY if the ENTIRE request is satisfied by opening that one view: no separate question/recall, domain read/write, other destination, layout or pending work. Otherwise false. Keep each restriction scoped: no data edits still permits requested navigation; prohibiting other views still permits named ones. Select VIEWS_SHOW for one known view; VIEWS for layouts/discovery. Add domain candidates only for requested record operations; navigation never proves those complete. Preserve all destinations and domain work for the planner. No operation has executed yet. For navigationOnly=true, draft replyText as the concise destination confirmation to deliver IF navigation succeeds, without progress or waiting language. The runtime holds it until the confirming navigation receipt. Do not claim any record was read or changed. " +
-			CONDITIONAL_NAVIGATION_RULE,
+			"Classify requested navigation, preserving every destination, prerequisite and scoped restriction. Conversation or domain names alone do not request navigation. A conditional request stays requested, with navigationOnly=false; the planner checks its condition before moving. Nothing has executed.",
 		schema: {
 			type: "object",
 			description:
-				"Navigation decision for the current request. Reply text never changes the view. Requested navigation requires an intent, a navigation action candidate and replyEffectStatus=pending until execution; a held confirmation is not execution proof. Preserve applicable earlier restrictions.",
+				"Navigation decision, not execution. Preserve scoped restrictions and each navigation/domain intent; pending work stays pending until receipts. Conditional navigation is requested with navigationOnly=false: read first, navigate only if its condition holds.",
 			additionalProperties: false,
 			properties: {
 				disposition: {
 					type: "string",
 					enum: ["requested", "optional", "none", "forbidden", "unresolved"],
+					description:
+						"requested=user asks to navigate; optional=helps requested work; forbidden=prohibited; none=no navigation needed; unresolved=uncertain intent or permission. Domain names alone grant no navigation.",
 				},
 				viewId: {
 					type: "string",
 					description:
-						"Use the known shell ID or requested destination name for runtime catalog validation; Home=chat. If navigation is explicitly requested alongside domain work but its ID is unknown, use requested with viewId empty and navigationOnly=false so the planner resolves it. Otherwise requested/optional requires a destination. Empty also for none/forbidden/unresolved.",
+						"Known shell ID or requested name (Home=chat), validated at runtime. Empty for none/forbidden/unresolved or an unknown requested destination with navigationOnly=false, which the planner resolves.",
 				},
 				singleViewOnly: {
 					type: "boolean",
@@ -121,7 +122,7 @@ export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavi
 				navigationOnly: {
 					type: "boolean",
 					description:
-						"True only when opening that view completes the whole request. False if a read, condition, edit, recall/question or other operation remains. True still requires one navigation intent and VIEWS_SHOW; it never means navigation already happened.",
+						"True only if one view switch completes the entire request; false for any read, condition, edit, question or other work. Draft its destination confirmation for delivery only after navigation succeeds, without record-read/change claims.",
 				},
 				reason: { type: "string" },
 			},

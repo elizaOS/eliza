@@ -27,9 +27,8 @@ import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
-const FULL_TEMPLATE_MARKER =
-	"Domain routing (examples apply only when available, not a list to copy):";
-const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";
+const FULL_TEMPLATE_MARKER = "# Task";
+const FULL_SHOULD_RESPOND_DOCS = "stop only on explicit disengagement";
 
 const LONG_CONTEXT_DESCRIPTION =
 	"Helpdesk operations of any kind: any imperative ('open a ticket', " +
@@ -130,7 +129,11 @@ function makeRuntime(
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: [],
-		providers: [],
+		providers: FIXTURE_CONTEXTS.map(({ id }) => ({
+			name: `${id}-support`,
+			contexts: [id],
+			get: async () => ({ text: "" }),
+		})),
 		getRoom: vi.fn(async () => null),
 		reportError: vi.fn(),
 		contexts: new ContextRegistry(FIXTURE_CONTEXTS),
@@ -249,8 +252,11 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain(FULL_SHOULD_RESPOND_DOCS);
+		expect(systemContent).toContain(
+			"Support tickets: open, escalate, check status",
+		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).not.toContain("## Response Handler Fields");
 		// The envelope still parses and routes: IGNORE ends the turn.
 		expect(outcome.kind).toBe("terminal");
 	});
@@ -262,7 +268,10 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).toContain(
+			"Support tickets: open, escalate, check status",
+		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		expect(outcome.kind).not.toBe("terminal");
 	});
@@ -277,8 +286,11 @@ describe("Stage-1 complete prompt rendering", () => {
 
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		// Full context catalog with complete descriptions.
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain(FULL_SHOULD_RESPOND_DOCS);
+		expect(systemContent).toContain(
+			"Support tickets: open, escalate, check status",
+		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).not.toContain("## Response Handler Fields");
 	});
 
 	it("renders the full rule block on a platform reply to the agent", async () => {
@@ -300,9 +312,9 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		expect(systemContent).toContain(
-			"Read, create, update, delete, search, and list sticky notes.",
+			"Sticky notes: create, read, update, delete, search",
 		);
-		expect(systemContent).toContain(
+		expect(systemContent).not.toContain(
 			candidateActionNamesFieldEvaluator.description,
 		);
 	});
@@ -362,18 +374,20 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("keeps the full canonical template on DM channels", async () => {
-		const { systemContent } = await renderedSystemPrompt(
+		const { systemContent, runtime } = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.DM) }),
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain("One known view -> VIEWS_SHOW.");
 		expect(systemContent).toContain(
-			"Long-horizon goals use OWNER_GOALS, not work threads.",
+			"Support tickets: open, escalate, check status",
 		);
-		expect(systemContent).toContain(
-			candidateActionNamesFieldEvaluator.description,
-		);
+		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).not.toContain("## Response Handler Fields");
+		expect(
+			JSON.stringify(
+				(runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls[0][1],
+			),
+		).toContain(candidateActionNamesFieldEvaluator.schema.description);
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {

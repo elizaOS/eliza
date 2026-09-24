@@ -8,7 +8,6 @@ import type {
   State,
 } from "@elizaos/core";
 import {
-  ChannelType,
   extractUserText,
   getUserMessageText,
   MESSAGE_SOURCE_SUB_AGENT,
@@ -244,7 +243,8 @@ export function appendPriorDialogueEvents(
           },
         });
     }
-    const text = getUserMessageText(memory);
+    const text =
+      priorDialogueOriginalText(memory) ?? getUserMessageText(memory);
     if (!text || looksLikePriorDialogueArtifact(text)) continue;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
@@ -271,14 +271,17 @@ export function appendPriorDialogueEvents(
       segment: {
         id: `history:${memory.id}`,
         label: isOwnReply ? "prior_message:agent" : "prior_message:user",
-        content: priorDialogueContent(text, speakerName),
+        content: priorDialogueContent(
+          text,
+          speakerName ?? (isOwnReply ? "assistant" : "user"),
+        ),
         stable: false,
         metadata: {
           roomId: memory.roomId,
           entityId: memory.entityId,
-          ...(speakerName ? { speakerName } : {}),
+          speakerName: speakerName ?? (isOwnReply ? "assistant" : "user"),
           ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
-          ...(originalText !== undefined && originalText !== text
+          ...(originalText !== undefined
             ? { originalTextSha256: sourceReplyTextHash(originalText) }
             : {}),
         },
@@ -320,13 +323,16 @@ export function appendPriorDialogueEvents(
         label: isOwnReply
           ? "verified_cross_room_message:agent"
           : "verified_cross_room_message:user",
-        content: priorDialogueContent(content, speakerName),
+        content: priorDialogueContent(
+          content,
+          speakerName ?? (isOwnReply ? "assistant" : "user"),
+        ),
         stable: false,
         metadata: {
           roomId: memory.roomId,
           entityId: memory.entityId,
           disclosureBasis: OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-          ...(speakerName ? { speakerName } : {}),
+          speakerName: speakerName ?? (isOwnReply ? "assistant" : "user"),
         },
       },
     });
@@ -336,40 +342,8 @@ export function appendPriorDialogueEvents(
 export function currentMessageContentForContext(
   message: Memory,
 ): Memory["content"] {
-  const currentText = getUserMessageText(message);
-  const content = message.content;
-  if (!content || typeof content !== "object") {
-    return content;
-  }
-  const projected =
-    currentText &&
-    typeof content.text === "string" &&
-    content.text !== currentText
-      ? { ...content, text: currentText }
-      : content;
-  if (
-    content.source !== "client_chat" ||
-    content.channelType !== ChannelType.DM
-  ) {
-    return projected;
-  }
-  // These client-chat carriers belong to replay protection and UI dispatch,
-  // not the model's request. Never mutate the Memory used by persistence,
-  // recovery or action execution, and retain every other content/metadata key.
-  const modelContent: Memory["content"] = { ...projected };
-  delete modelContent.chatIdempotency;
-  const metadata = modelContent.metadata;
-  if (
-    metadata &&
-    typeof metadata === "object" &&
-    !Array.isArray(metadata) &&
-    "viewClientId" in metadata
-  ) {
-    const modelMetadata = { ...metadata };
-    delete modelMetadata.viewClientId;
-    modelContent.metadata = modelMetadata;
-  }
-  return modelContent;
+  const original = priorDialogueOriginalText(message);
+  return { ...message.content, text: original ?? getUserMessageText(message) };
 }
 
 export function readMessageContentString(

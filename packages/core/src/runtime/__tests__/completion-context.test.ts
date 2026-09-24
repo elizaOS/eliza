@@ -534,22 +534,29 @@ describe("source-bound completion relevance", () => {
 		},
 	);
 
-	it("keeps voice rules and complete history without source selection", () => {
+	it("shares source selection and complete history across text and voice", () => {
 		const input = renderMessageHandlerModelInput(
 			{ character: { name: "Eliza" } },
 			historyContext(),
 			[],
 			{ directMessage: true, voiceDirectMessage: true },
 		);
-		expect(JSON.stringify(input.messages)).not.toContain(
-			"completion_source_set:",
+		const textInput = renderMessageHandlerModelInput(
+			{ character: { name: "Eliza" } },
+			historyContext(),
+			[],
+			{ directMessage: true },
 		);
+		expect(input.messages).toEqual(textInput.messages);
+		expect(JSON.stringify(input.messages)).toContain("completion_source_set:");
 		expect(
 			input.promptSegments.some((segment) =>
 				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
 			),
-		).toBe(false);
-		expect(JSON.stringify(input.messages)).toContain("voice engagement rules:");
+		).toBe(true);
+		expect(JSON.stringify(input.messages)).not.toContain(
+			"voice engagement rules:",
+		);
 		expect(JSON.stringify(input.messages)).toContain(
 			"Old completed unrelated weather request.",
 		);

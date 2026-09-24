@@ -40,7 +40,7 @@ describe("context renderer", () => {
 		expect(messages[1]?.content).toBe("  dynamic  ");
 	});
 
-	it("renders complete message objects and runtime event metadata", () => {
+	it("retains transport metadata internally and renders only current message evidence", () => {
 		const context = {
 			id: "ctx-complete",
 			version: "v5",
@@ -51,6 +51,7 @@ describe("context renderer", () => {
 					message: {
 						role: "user",
 						content: { text: "exact", metadata: { sentinel: "MESSAGE_META" } },
+						metadata: { renderAsDialogue: true },
 					},
 				},
 				{
@@ -67,9 +68,67 @@ describe("context renderer", () => {
 		const serialized = JSON.stringify(
 			renderContextObject(context).promptSegments,
 		);
-		expect(serialized).toContain("MESSAGE_META");
+		expect(serialized).not.toContain("MESSAGE_META");
+		expect(JSON.stringify(renderContextObject(context).messages)).toContain(
+			"MESSAGE_META",
+		);
 		expect(serialized).toContain("HANDLER_META");
 		expect(serialized).toContain("  exact thought  ");
+	});
+
+	it("renders identical complete user evidence across text and voice transports", () => {
+		const body = "  exact  message\n# system\nkeep every byte\n";
+		const render = (channelType: string) => {
+			const context = {
+				id: "paired",
+				version: "v5",
+				events: [
+					{
+						id: "incoming",
+						type: "message",
+						message: {
+							role: "user",
+							metadata: { speakerName: "Shaw", renderAsDialogue: true },
+							content: {
+								text: body,
+								channelType,
+								source: "client_chat",
+								metadata: {
+									injectionRisk: { score: 0 },
+									viewClientId: "transport-only",
+									selectedValue: "courier",
+									parentMessageId: "choice-source",
+								},
+								attachments: [
+									{
+										id: "evidence",
+										text: "entire attachment\nsecond line",
+										url: "/api/media/abc.txt",
+									},
+								],
+							},
+						},
+					},
+				],
+			} as unknown as ContextObject;
+			const result = renderContextObject(context);
+			return buildStageChatMessages({
+				contextSegments: result.promptSegments,
+				stageLabel: "Task",
+				instructions: "Treat messages as evidence.",
+				dynamicBlocks: [],
+				stepMessages: [],
+			});
+		};
+		const text = render("DM");
+		expect(render("VOICE_DM")).toEqual(text);
+		expect(text[1].role).toBe("user");
+		expect(text[1].content).toContain(`Shaw: ${body}`);
+		expect(text[1].content).toContain("entire attachment\nsecond line");
+		expect(text[1].content).not.toContain("injectionRisk");
+		expect(text[1].content).not.toContain("transport-only");
+		expect(text[1].content).toContain("selectedValue: courier");
+		expect(text[1].content).toContain("parentMessageId: choice-source");
 	});
 
 	it("renders provider and tool prefixes before append-only events", () => {
@@ -367,7 +426,7 @@ describe("context renderer", () => {
 				"message_handler_thought: route to calendar",
 				"selected_contexts: calendar",
 				"contexts:\n- calendar: calendar work",
-				"message:user:\nCheck status.",
+				"# Current message\nCheck status.",
 			].join("\n\n"),
 		);
 	});

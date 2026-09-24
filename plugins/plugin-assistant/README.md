@@ -66,8 +66,8 @@ contracts from this package without loading agent process code.
 
 Hosts may enable `ELIZA_STAGE1_TERMINAL_REASK` with `true`, `1`, `yes`, or `on`
 to review a directly addressed STOP or IGNORE decision once before terminal
-routing. It is off by default and excludes coding and voice turns. The review
-shares its budget with the existing direct-text IGNORE review, so a repeated
+routing. It is off by default and excludes coding turns. The review
+shares its budget with the shared direct-conversation IGNORE review, so a repeated
 terminal decision does not start another silence review. Requested context is
 loaded before review; malformed output and conflicting routing retain their
 existing validation paths.

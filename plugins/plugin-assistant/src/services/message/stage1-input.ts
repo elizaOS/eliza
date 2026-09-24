@@ -25,10 +25,7 @@ import { messageHandlerTemplate } from "@elizaos/prompts";
 import { composePrompt } from "@elizaos/prompts/rendering";
 import { v4 } from "uuid";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
-import {
-  listAvailableContextsForRole,
-  resolveStage1SenderRole,
-} from "./addressing.js";
+import { resolveStage1SenderRole } from "./addressing.js";
 import {
   buildCurrentTurnBoundary,
   createV5MessageContextObject,
@@ -36,6 +33,7 @@ import {
 import {
   CONTEXT_CATALOG_REFERENCE,
   formatAvailableContextsForPrompt,
+  listAvailableContextsForTurn,
 } from "./context-catalog.js";
 import {
   type HistoryDiscovery,
@@ -51,9 +49,6 @@ import {
   ambientTurnProviderExclusions,
   composeResponseState,
 } from "./provider-state.js";
-
-export const CODE_SNIPPET_VALIDITY_INSTRUCTION =
-  "For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
 
 export {
   CONTEXT_CATALOG_REFERENCE,
@@ -72,32 +67,12 @@ export function createContextCatalogReference(
   runtime: OptimizedPromptRuntimeLike,
   contexts: readonly ContextDefinition[],
 ): ContextCatalogReference | undefined {
-  if (
-    resolveOptimizedPromptForRuntime(
-      runtime,
-      selectMessageHandlerTask(contexts),
-      messageHandlerTemplate,
-    ) !== messageHandlerTemplate
-  )
-    return undefined;
-  const text = formatAvailableContextsForPrompt(contexts);
-  const notice = [
-    contexts.map(({ id }) => id).join(", "),
-    `context_discovery: ${CONTEXT_CATALOG_REFERENCE}`,
-    'All authorized routing-context names are listed above. Full labels, aliases, hierarchy, sensitivity and complete descriptions are available by contextRequests=["CONTEXT_CATALOG"], with contexts=["simple"], empty replyText and no action candidates. Request the catalog when those descriptions are needed to choose or explain a context; use the known names directly when the supplied instructions and live context already determine the route. This reads reference text, never app data or actions. Context names do not confer permission.',
-  ].join("\n");
-  return notice.length < text.length
-    ? { text, notice, loaded: false }
-    : undefined;
+  // Brief authored domain descriptions are cheap enough to supply directly.
+  // Keep the compatibility entrypoint, without adding a routing-reference turn.
+  void runtime;
+  void contexts;
+  return undefined;
 }
-
-export const VOICE_ENGAGEMENT_RULES = [
-  "- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
-  "- This is a one-to-one conversation: respond naturally to acknowledgements, reactions, and brief follow-ups, including disagreement or requests to clarify your previous reply.",
-  "- shouldRespond=IGNORE only for non-speech/noise or ambient speech clearly not addressed to the agent.",
-  "- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
-  "- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
-].join("\n");
 
 export function formatRoleGateForPrompt(
   roleGate: ContextDefinition["roleGate"],
@@ -144,6 +119,7 @@ export function renderMessageHandlerInstructions(
   options?: {
     directMessage?: boolean;
     voiceDirectMessage?: boolean;
+    nativeTools?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
   },
@@ -164,27 +140,11 @@ export function renderMessageHandlerInstructions(
     },
     template: baseline,
   }).trim();
-  const renderedWithVoiceRules = options?.voiceDirectMessage
-    ? [rendered, "", "voice engagement rules:", VOICE_ENGAGEMENT_RULES].join(
-        "\n",
-      )
-    : rendered;
-  const renderedWithSharedRules = [
-    renderedWithVoiceRules,
-    "",
-    "## Shared Response Quality Rules",
-    `- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-  ].join("\n");
-  if (!options?.responseHandlerFields?.trim()) {
-    return renderedWithSharedRules;
-  }
-  return [
-    renderedWithSharedRules,
-    "",
-    "## Response Handler Fields",
-    "Populate every registered field. Use empty value when not applicable.",
-    options.responseHandlerFields.trim(),
-  ].join("\n");
+  if (options?.nativeTools || !options?.responseHandlerFields?.trim())
+    return rendered;
+  return [rendered, "# Response fields", options.responseHandlerFields].join(
+    "\n\n",
+  );
 }
 
 export function renderMessageHandlerModelInput(
@@ -194,6 +154,7 @@ export function renderMessageHandlerModelInput(
   options?: {
     directMessage?: boolean;
     voiceDirectMessage?: boolean;
+    nativeTools?: boolean;
     groupTriage?: boolean;
     responseHandlerFields?: string;
     contextCatalog?: ContextCatalogReference;
@@ -205,18 +166,13 @@ export function renderMessageHandlerModelInput(
   promptSegments: PromptSegment[];
 } {
   const rendered = renderContextObject(context);
-  const completionSources = options?.voiceDirectMessage
-    ? undefined
-    : completionContextSources(context);
+  const completionSources = completionContextSources(context);
   const completionSourceIds = new Map(
     completionSources?.sources.map(({ id, event }) => [event.id, id]),
   );
-  const directText =
-    options?.directMessage &&
-    !options.voiceDirectMessage &&
-    !options.groupTriage;
+  const directAudience = options?.directMessage && !options.groupTriage;
   const history =
-    directText &&
+    directAudience &&
     options.history?.sourceSetId === completionSources?.sourceSetId
       ? options.history
       : undefined;
@@ -245,7 +201,9 @@ export function renderMessageHandlerModelInput(
         : segment,
     );
   const remainingDynamicSegments = dynamicSegments.filter(
-    (segment) => segment.id !== "current-turn-boundary",
+    (segment) =>
+      segment.id !== "current-turn-boundary" &&
+      segment.id !== "available-actions",
   );
   const priorDialogueSegments = labelHistorySources(
     remainingDynamicSegments.filter(
@@ -261,30 +219,18 @@ export function renderMessageHandlerModelInput(
   const dynamicProviderSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("provider:") === true,
   );
-  // Availability validation can change this complete, freshly authorized catalog
-  // on every request. Keep it after the history prefix so an action appearing or
-  // disappearing does not invalidate cached history. Never cache authorization.
-  const actionCatalogSegments = directText
-    ? remainingDynamicSegments.filter(
-        (segment) =>
-          segment.id === "available-actions" &&
-          segment.label === "available_actions",
-      )
-    : [];
   const turnTailSegments = remainingDynamicSegments.filter(
     (segment) =>
       segment.label?.startsWith("prior_message:") !== true &&
-      segment.label?.startsWith("provider:") !== true &&
-      !actionCatalogSegments.includes(segment),
+      segment.label?.startsWith("provider:") !== true,
   );
   // The boundary follows untrusted dialogue so stored messages cannot supersede
   // it with structural-looking text. Providers remain adjacent after that
   // boundary, preserving their reusable prefix before the current message.
   const orderedDynamicSegments = [
-    ...(directText
+    ...(directAudience
       ? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
       : priorDialogueSegments),
-    ...actionCatalogSegments,
     ...currentTurnBoundary,
     ...(completionSources?.sources.length
       ? [
@@ -306,7 +252,7 @@ export function renderMessageHandlerModelInput(
       : []),
     ...loadedHistorySegments(
       context,
-      history ?? (directText ? options?.historyReadEvidence : undefined),
+      history ?? (directAudience ? options?.historyReadEvidence : undefined),
       history?.loadedSourceIds.size
         ? new Set(
             priorDialogueSegments.flatMap((segment) =>
@@ -320,7 +266,7 @@ export function renderMessageHandlerModelInput(
   ];
   const stableWireSegments = [
     ...stableSegments,
-    { content: `message_handler_stage:\n${instructions}`, stable: true },
+    { content: instructions, stable: true },
     ...(completionSources?.sources.length
       ? [
           {
@@ -389,11 +335,13 @@ export async function renderMessageHandlerStablePrefix(
     },
   };
   const senderRole = await resolveStage1SenderRole(runtime, syntheticMessage);
-  const availableContexts = listAvailableContextsForRole(
-    runtime.contexts,
+  const state = await composeResponseState(runtime, syntheticMessage, true);
+  const availableContexts = await listAvailableContextsForTurn(
+    runtime,
+    syntheticMessage,
+    state,
     senderRole,
   );
-  const state = await composeResponseState(runtime, syntheticMessage, true);
   const context = await createV5MessageContextObject({
     runtime,
     message: syntheticMessage,
@@ -417,10 +365,7 @@ export async function renderMessageHandlerStablePrefix(
     availableContexts,
     { directMessage: true },
   );
-  return [
-    ...stableSegments,
-    { content: `message_handler_stage:\n${instructions}`, stable: true },
-  ]
+  return [...stableSegments, { content: instructions, stable: true }]
     .map(segmentBlock)
     .join("\n\n");
 }
