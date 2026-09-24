@@ -39,6 +39,7 @@ import {
   parallelWithShouldRespondPipelineHookContext,
   parseBooleanFromText,
   parseContextRoutingMetadata,
+  persistIncomingMessageMemory,
   persistMessageMemory,
   preShouldRespondPipelineHookContext,
   replaceStoredMessageContent,
@@ -235,14 +236,14 @@ export class MessageProcessor {
       const persistableMessage = stripAugmentationForPersistence(message);
 
       if (message.id) {
-        const createdMemoryId = await persistMessageMemory(
+        const createdMemoryId = await persistIncomingMessageMemory(
           runtime,
           persistableMessage,
         );
         memoryToQueue = { ...persistableMessage, id: createdMemoryId };
         await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
-        const memoryId = await persistMessageMemory(
+        const memoryId = await persistIncomingMessageMemory(
           runtime,
           persistableMessage,
         );
