@@ -140,7 +140,8 @@ class WorkspaceFileWatcher {
 			(eventName, filename) => {
 				if (!filename) return;
 				const fullPath = path.resolve(watchPath, filename);
-				if (shouldIgnorePath(fullPath)) return;
+				// Ancestors outside the watched workspace do not own its ignore policy.
+				if (shouldIgnorePath(path.relative(watchPath, fullPath))) return;
 
 				let type: FileChangeEventType;
 				try {
