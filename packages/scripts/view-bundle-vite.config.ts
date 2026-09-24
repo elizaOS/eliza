@@ -1,6 +1,6 @@
 /** Builds the shared single-module Vite configuration for plugin views. */
 import path from "node:path";
-import type { Plugin, UserConfig } from "vite";
+import { defaultClientConditions, type Plugin, type UserConfig } from "vite";
 
 type ViewBundleOptions = {
   packageName: string;
@@ -70,7 +70,10 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
 
   return {
     plugins: [viewAssetManifest()],
-    resolve: options.aliases ? { alias: options.aliases } : undefined,
+    resolve: {
+      conditions: ["eliza-source", ...defaultClientConditions],
+      alias: options.aliases,
+    },
     build: {
       emptyOutDir: false,
       outDir,
