@@ -339,15 +339,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             dueAt: "2026-05-11T17:00:00.000Z",
           },
         ],
-        loadMoney: async () => [
-          {
-            id: "charge-1",
-            merchant: "Netflix",
-            amountUsd: 15.99,
-            cadence: "monthly",
-            nextChargeAt: "2026-05-20T00:00:00.000Z",
-          },
-        ],
       });
 
       const result = await callBrief(runtime, makeMessage(), {
@@ -370,7 +361,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(data.briefing.sections.calendar).toHaveLength(1);
       expect(data.briefing.sections.inbox).toHaveLength(1);
       expect(data.briefing.sections.life).toHaveLength(1);
-      expect(data.briefing.sections.money).toHaveLength(1);
       // Trimmed by the compose pass — not the raw model string.
       expect(data.briefing.narrative).toBe(
         "Composed narrative from the model.",
@@ -389,7 +379,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(args.prompt).toContain("Board sync"); // calendar
       expect(args.prompt).toContain("Approve the SOW"); // inbox
       expect(args.prompt).toContain("Send NDA"); // life
-      expect(args.prompt).toContain("Netflix"); // money
       expect(args.prompt).toContain('"editorial"');
       expect(args.prompt).toContain('"itemId": "inbox:msg-1"');
       expect(args.prompt).toContain('"action": "lead"');

@@ -213,7 +213,6 @@ describe("computeTestRoots", () => {
     expect(roots).toEqual({
       cloudSharedSrc: join("/repo", "packages", "cloud", "shared", "src"),
       cloudApiRoot: join("/repo", "packages", "cloud", "api"),
-      cloudScriptsTests: join("/repo", "packages", "cloud", "scripts"),
       cloudServicesRoot: join("/repo", "packages", "cloud", "services"),
     });
   });

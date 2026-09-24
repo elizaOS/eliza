@@ -366,7 +366,8 @@ function buildDocx(): Uint8Array {
       ),
       "word/document.xml": strToU8(document),
     },
-    { level: 6, mtime: new Date("2026-01-01T00:00:00.000Z") },
+    // ZIP encodes local calendar fields, so a UTC instant changes bytes across timezones.
+    { level: 6, mtime: new Date(2026, 0, 1, 0, 0, 0) },
   );
 }
 

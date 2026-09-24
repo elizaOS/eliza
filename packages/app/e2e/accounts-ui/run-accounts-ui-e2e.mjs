@@ -98,7 +98,7 @@ const stubNodeBuiltins = {
 const coreContractsPath = join(
   repoRoot,
   "packages",
-  "core",
+  "shared",
   "src",
   "contracts",
   "service-routing-types.ts",

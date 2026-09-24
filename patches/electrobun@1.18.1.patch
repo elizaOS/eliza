@@ -16,3 +16,33 @@ index c1a5327280b3c88ab6b14e7629838116b93066a0..68486adbaceb35b75f60ddc7da8a966d
  	},
  	"dependencies": {},
  	"trustedDependencies": []
+diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
+--- a/dist/api/bun/proc/native.ts
++++ b/dist/api/bun/proc/native.ts
+@@ -74,0 +75,8 @@
++
++// Bun 1.4 may return bigint pointers; Electrobun's window records use numbers.
++function legacyPointer(value: Pointer | bigint): Pointer {
++	if (typeof value !== "bigint") return value;
++	const pointer = Number(value);
++	if (!Number.isSafeInteger(pointer)) throw new RangeError("Native pointer exceeds the safe integer range");
++	return pointer as Pointer;
++}
+@@ -933 +941 @@
+-			return windowPtr;
++			return legacyPointer(windowPtr);
+@@ -1340 +1348 @@
+-			return webviewPtr;
++			return legacyPointer(webviewPtr);
+@@ -1386 +1394 @@
+-			return viewPtr;
++			return legacyPointer(viewPtr);
+@@ -1473 +1481 @@
+-			return handle || null;
++			return handle ? legacyPointer(handle) : null;
+@@ -1517 +1525 @@
+-			return trayPtr;
++			return legacyPointer(trayPtr);
+@@ -1649 +1657 @@
+-			return filePath.toString();
++			return filePath?.toString() ?? "";

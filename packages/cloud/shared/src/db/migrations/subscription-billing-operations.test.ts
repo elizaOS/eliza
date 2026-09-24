@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
+import { installOrganizationBillingScopeTestColumns } from "../repositories/organization-billing-scope-test-fixture";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 
 const ORG = "10000000-0000-4000-8000-000000000001",
@@ -47,6 +48,7 @@ describe("subscription operation migrations", () => {
       for (const statement of upgrade.split("--> statement-breakpoint"))
         if (statement.trim()) await db.exec(statement);
     }
+    await installOrganizationBillingScopeTestColumns((statement) => db.exec(statement));
     const orm = drizzle(db);
     const [existing] = await orm.select().from(billingSubscriptionCommands);
     if (!existing) throw new Error("Migration lost the existing cancellation command");

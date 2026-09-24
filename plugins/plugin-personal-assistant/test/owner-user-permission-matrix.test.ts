@@ -21,10 +21,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { connectorAction } from "../src/actions/connector.js";
 import { credentialsAction } from "../src/actions/credentials.js";
-import {
-  ownerFinancesAction,
-  personalAssistantAction,
-} from "../src/actions/owner-surfaces.js";
+import { personalAssistantAction } from "../src/actions/owner-surfaces.js";
 import { voiceCallAction } from "../src/actions/voice-call.js";
 import {
   createLifeOpsConnectorGrant,
@@ -40,7 +37,6 @@ import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 const OWNER_GATED_ACTIONS = [
   connectorAction,
   credentialsAction,
-  ownerFinancesAction,
   personalAssistantAction,
   voiceCallAction,
 ] as const;
@@ -56,7 +52,6 @@ const OWNER_GATED_ACTION_CASES = [
     credentialsAction,
     { action: "fill", url: "https://example.com" },
   ],
-  [ownerFinancesAction.name, ownerFinancesAction, { action: "dashboard" }],
   [
     personalAssistantAction.name,
     personalAssistantAction,

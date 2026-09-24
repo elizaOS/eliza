@@ -62,17 +62,6 @@
       "dependsOn": ["canonical"]
     },
     {
-      "id": "cloud-gateway-discord",
-      "workflow": ".github/workflows/cloud-gateway-discord.yml",
-      "workspacePatterns": [
-        "packages/cloud/shared",
-        "packages/cloud/services/gateway-discord",
-        "plugins/plugin-discord"
-      ],
-      "inputs": ["packages/cloud/scripts/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core", "packages/shared"],
@@ -97,13 +86,6 @@
         "packages/ui/src/testing/**"
       ],
       "dependsOn": ["canonical"]
-    },
-    {
-      "id": "ui-stories",
-      "workflow": ".github/workflows/ui-story-gate.yml",
-      "workspacePatterns": ["packages/app", "packages/shared", "packages/ui"],
-      "inputs": ["packages/ui/src/**/*.stories.*", ".storybook/**"],
-      "dependsOn": ["ui-core"]
     }
   ]
 }

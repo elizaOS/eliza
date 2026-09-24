@@ -193,8 +193,6 @@ jobs:
           install-protoc: "true"
       - name: Build view bundles
         run: bun run build:views
-      - name: Initialize pinned native sources for provenance tests
-        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
       - name: Run plugin tests
         timeout-minutes: 85
         run: bun run test:plugins
@@ -253,7 +251,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: false
       - name: Reject unresolved merge-conflict markers
         run: |
@@ -628,7 +626,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
-          fetch-depth: 0
+          fetch-depth: 1
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:

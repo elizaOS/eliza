@@ -473,12 +473,22 @@ for (const corruption of ["missing", "stale", "corrupt"] as const)
       await database.query("DELETE FROM organization_entitlements WHERE organization_id=$1", [
         f.input.organizationId,
       ]);
-    else if (corruption === "stale")
-      await database.query(
-        "UPDATE organization_entitlements SET source_subscription_revision=1 WHERE organization_id=$1",
-        [f.input.organizationId],
+    else if (corruption === "stale") {
+      // Simulate historical corruption that current write guards now prevent.
+      await database.exec(
+        "ALTER TABLE organization_entitlements DISABLE TRIGGER organization_entitlements_app_source",
       );
-    else
+      try {
+        await database.query(
+          "UPDATE organization_entitlements SET source_subscription_revision=1 WHERE organization_id=$1",
+          [f.input.organizationId],
+        );
+      } finally {
+        await database.exec(
+          "ALTER TABLE organization_entitlements ENABLE TRIGGER organization_entitlements_app_source",
+        );
+      }
+    } else
       await database.query(
         "UPDATE organization_entitlements SET completions_rpm=completions_rpm+1 WHERE organization_id=$1",
         [f.input.organizationId],

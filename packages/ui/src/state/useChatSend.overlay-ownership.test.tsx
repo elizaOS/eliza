@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
     getBaseUrl: vi.fn(() => ""),
     getConfig: vi.fn(async () => ({ ui: {} })),
     getConversationMessages: vi.fn(),
-    listCustomActions: vi.fn(),
+    rememberMemory: vi.fn(),
     listConversations: vi.fn(async () => ({
       conversations: [] as Conversation[],
     })),
@@ -220,7 +220,7 @@ beforeEach(() => {
   window.localStorage.clear();
   mocks.client.getBaseUrl.mockReturnValue("");
   mocks.client.listConversations.mockResolvedValue({ conversations: [] });
-  mocks.client.listCustomActions.mockResolvedValue([]);
+  mocks.client.rememberMemory.mockResolvedValue(undefined);
 });
 
 describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
@@ -638,11 +638,11 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
   });
 
   it("drops a delayed local-command result after a newer null draft transition", async () => {
-    let resolveCommands: ((value: never[]) => void) | undefined;
-    mocks.client.listCustomActions.mockImplementation(
+    let resolveCommands: (() => void) | undefined;
+    mocks.client.rememberMemory.mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveCommands = resolve;
+          resolveCommands = () => resolve(undefined);
         }),
     );
     const harness = makeHarness();
@@ -650,7 +650,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
 
     let commandSend: Promise<void>;
     act(() => {
-      commandSend = result.current.send.sendChatText("/commands", {
+      commandSend = result.current.send.sendChatText("#remember a note", {
         clientMessageId: "command-reset",
       });
     });
@@ -660,7 +660,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       harness.setConversationMessages([]);
     });
     await act(async () => {
-      resolveCommands?.([]);
+      resolveCommands?.();
       await commandSend;
     });
 
@@ -1398,12 +1398,12 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
   });
 
   it("keeps an async local command valid across a same-id reload", async () => {
-    let resolveCommands: ((value: never[]) => void) | undefined;
+    let resolveCommands: (() => void) | undefined;
     mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
-    mocks.client.listCustomActions.mockImplementation(
+    mocks.client.rememberMemory.mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveCommands = resolve;
+          resolveCommands = () => resolve(undefined);
         }),
     );
     const harness = makeHarness();
@@ -1420,14 +1420,14 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
 
     let commandSend: Promise<void>;
     act(() => {
-      commandSend = result.current.send.sendChatText("/commands", {
+      commandSend = result.current.send.sendChatText("#remember a note", {
         conversationId: "conv-a",
         clientMessageId: "same-id-command",
       });
     });
     await flushPendingWork();
     await vi.waitFor(() => {
-      expect(mocks.client.listCustomActions).toHaveBeenCalledTimes(1);
+      expect(mocks.client.rememberMemory).toHaveBeenCalledTimes(1);
     });
     expect(harness.conversationMessagesRef.current).toEqual([]);
     await act(async () => {
@@ -1440,7 +1440,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       ),
     ).toBe(true);
     act(() => {
-      resolveCommands?.([]);
+      resolveCommands?.();
     });
     await act(async () => {
       await commandSend;
@@ -1450,9 +1450,11 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
     expect(
       harness.conversationMessagesRef.current.map((message) => message.role),
     ).toEqual(["user", "assistant"]);
-    expect(harness.conversationMessagesRef.current[0]?.text).toBe("/commands");
+    expect(harness.conversationMessagesRef.current[0]?.text).toBe(
+      "#remember a note",
+    );
     expect(harness.conversationMessagesRef.current[1]?.text).toContain(
-      "Use #remember",
+      "Saved memory note",
     );
   });
 });

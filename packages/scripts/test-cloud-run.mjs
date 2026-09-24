@@ -878,12 +878,11 @@ export function buildTestEnv(baseEnv) {
   };
 }
 
-// Discover retained Cloud integration suites from their owning source roots.
+// Cloud runtime suites only; bun run test:scripts owns packages/cloud/scripts.
 export function computeTestRoots(root) {
   return {
     cloudSharedSrc: path.join(root, "packages", "cloud", "shared", "src"),
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
-    cloudScriptsTests: path.join(root, "packages", "cloud", "scripts"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),
   };
 }
@@ -1120,8 +1119,7 @@ async function main() {
 
   const env = buildTestEnv(process.env);
   const testRoots = computeTestRoots(repoRoot);
-  const { cloudSharedSrc, cloudApiRoot, cloudScriptsTests, cloudServicesRoot } =
-    testRoots;
+  const { cloudSharedSrc, cloudApiRoot, cloudServicesRoot } = testRoots;
 
   const missing = findMissingRoots(testRoots, existsSync);
   if (missing.length > 0) {
@@ -1154,9 +1152,7 @@ async function main() {
 
   // Same fail-loud guard as cloud/api: if a reorg moves the services suites,
   // this gate must break instead of silently running zero services tests. The
-  // gateway suites also run in their dedicated workflows
-  // (cloud-gateway-discord/-webhook); they are self-contained bun:test files,
-  // so the duplicate coverage here is cheap and keeps this gate layout-proof.
+  // gateway suites are included here; standalone gateway reruns are manual.
   if (cloudServicesTests.length === 0) {
     console.error(
       `[test:cloud] no cloud/services tests found under ${cloudServicesRoot} — ` +
@@ -1169,7 +1165,6 @@ async function main() {
   const allTestFiles = [
     ...walkTests(cloudSharedSrc, EXCLUDED_DIRS),
     ...cloudApiUnitTests,
-    ...walkTests(cloudScriptsTests, EXCLUDED_DIRS),
     ...cloudServicesTests,
   ];
   if (allTestFiles.length === 0) {

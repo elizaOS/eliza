@@ -2765,6 +2765,14 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
+      // Host bridge imports must also work from a fresh checkout without plugin dist.
+      ...["contacts", "messages", "phone"].map((name) => ({
+        find: `@elizaos/plugin-native-${name}/bridge`,
+        replacement: path.join(
+          elizaRoot,
+          `plugins/plugin-native-${name}/src/bridge.ts`,
+        ),
+      })),
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[

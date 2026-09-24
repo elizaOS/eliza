@@ -238,11 +238,32 @@ export class MessageProcessor {
       const persistableMessage = stripAugmentationForPersistence(message);
 
       if (message.id) {
-        const createdMemoryId = await persistMessageMemory(
-          runtime,
-          persistableMessage,
-        );
-        memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+        // Hosts may durably accept the user message before invoking generation.
+        // Keep that canonical text (the prompt clone may contain augmentation)
+        // instead of attempting a second atomic create with the same identity.
+        const existing = await runtime.getMemoryById(message.id);
+        if (existing) {
+          if (
+            existing.agentId !== runtime.agentId ||
+            existing.roomId !== message.roomId ||
+            existing.entityId !== message.entityId
+          ) {
+            throw new ElizaError(
+              "Incoming message identity conflicts with stored memory",
+              {
+                code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+                context: { messageId: message.id },
+              },
+            );
+          }
+          memoryToQueue = existing;
+        } else {
+          const createdMemoryId = await persistMessageMemory(
+            runtime,
+            persistableMessage,
+          );
+          memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+        }
         await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
         const memoryId = await persistMessageMemory(

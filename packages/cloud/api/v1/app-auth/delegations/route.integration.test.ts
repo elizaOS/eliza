@@ -17,6 +17,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.CACHE_BACKEND = "memory";
+process.env.CACHE_ENABLED = "true";
 process.env.NODE_ENV = "test";
 
 const ORG = "71000000-0000-4000-8000-000000000001";

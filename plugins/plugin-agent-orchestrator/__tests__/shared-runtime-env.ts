@@ -1,8 +1,10 @@
 /** Exposes the shared runtime helpers used by orchestrator tests without loading the generated-data barrel. */
 export * from "../../../packages/shared/src/contracts/coding-agent-capabilities.js";
 export * from "../../../packages/shared/src/elizacloud/dev-cloud-env-authority.js";
+export * from "../../../packages/shared/src/i18n/keyword-matching.js";
 export {
   isAndroidMobile,
   resolvePlatform,
 } from "../../../packages/shared/src/runtime-env.js";
+export * from "../../../packages/shared/src/text/template-rendering.js";
 export { readAliasedEnv } from "../../../packages/shared/src/utils/env.js";

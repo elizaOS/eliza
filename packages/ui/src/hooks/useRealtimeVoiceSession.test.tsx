@@ -306,7 +306,7 @@ describe("useRealtimeVoiceSession", () => {
       await flushAsync();
     });
     expect(result.current.status).toBe("thinking");
-    expect(result.current.progressText).toBeUndefined();
+    expect(result.current.progressText).toBe("Checking your note.");
 
     await act(async () => {
       sock.emitControl({ t: "speaking_start", traceId: "T1" });

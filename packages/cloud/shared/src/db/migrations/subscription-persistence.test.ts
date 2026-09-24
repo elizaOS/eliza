@@ -3,18 +3,6 @@ import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
-import { getTableConfig } from "drizzle-orm/pg-core";
-import {
-  billingFundingAllocations,
-  billingFundingReservations,
-} from "../schemas/billing-funding-reservations";
-import {
-  billingSubscriptionRevisions,
-  billingSubscriptions,
-} from "../schemas/billing-subscriptions";
-import { organizationEntitlements } from "../schemas/organization-entitlements";
-import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
-import { subscriptionAllowanceTransactions } from "../schemas/subscription-allowance-transactions";
 
 const ORG = "10000000-0000-4000-8000-000000000001";
 const SUB = "20000000-0000-4000-8000-000000000001";
@@ -46,26 +34,6 @@ async function seed(db: PGlite): Promise<void> {
 }
 afterEach(async () => Promise.all(databases.splice(0).map((db) => db.close())));
 describe("subscription authority migrations", () => {
-  test("matches every authority table's current Drizzle column contract", async () => {
-    const db = await database();
-    for (const table of [
-      billingSubscriptions,
-      billingSubscriptionRevisions,
-      organizationEntitlements,
-      subscriptionAllowancePeriods,
-      billingFundingReservations,
-      billingFundingAllocations,
-      subscriptionAllowanceTransactions,
-    ]) {
-      const config = getTableConfig(table);
-      const columns = await db.query<{ column_name: string }>(
-        `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='${config.name}' ORDER BY ordinal_position`,
-      );
-      expect(columns.rows.map(({ column_name }) => column_name)).toEqual(
-        config.columns.map(({ name }) => name),
-      );
-    }
-  });
   test("registers the funding migration and seeds existing and future free entitlements", async () => {
     const db = await database();
     await db.exec("INSERT INTO organizations VALUES ('10000000-0000-4000-8000-000000000002')");

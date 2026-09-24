@@ -1,6 +1,7 @@
 /** Typed source facade; the shared build bundles the pure implementations for browser consumers. */
 export {
   BGE_SMALL_VECTOR_SPACE,
+  buildDeterministicSeed,
   type ConnectorIdentityMetadataMapping,
   type ConnectorSourceDefinition,
   type ConnectorSourceKind,
@@ -14,6 +15,7 @@ export {
   getConnectorSourceAliases,
   getConnectorSourceMetadata,
   getConnectorWorldIdMetadataKeys,
+  getDeterministicNames,
   getRecentMessagesData,
   identifyEmbeddingVector,
   isConnectorConfigured,

@@ -100,10 +100,9 @@ describe("progressive content corpus", () => {
     expect(first.objects).toHaveLength(20);
     expect(first.logicalBytes).toBeLessThan(2 * 1024 * 1024);
     expect(second).toEqual(first);
-    // Frozen before the native-fill optimization: generator bytes and identities
-    // must remain compatible with existing published corpus manifests.
+    // Pins native filler bytes and the timezone-independent ZIP calendar timestamp.
     expect(first.manifestSha256).toBe(
-      "ec930e0273c3d048e76c90316cf8ecb43636bfdf85a73724cf6c91b7467b5563",
+      "a850a08942b3fc011f2845386b22292c8178a1713c675c2cbdf2fbf691567d1e",
     );
     expect(new Set(first.objects.map((object) => object.family))).toEqual(
       new Set([
