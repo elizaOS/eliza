@@ -1,5 +1,5 @@
 /** Holds one realtime microphone session per origin, with synchronous same-realm exclusion when Web Locks are unavailable. */
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { ElizaError } from "@elizaos/core/errors";
 
 /** Admission failure that callers can distinguish from microphone or transport errors. */
 export class VoiceSessionOwnershipError extends ElizaError {
