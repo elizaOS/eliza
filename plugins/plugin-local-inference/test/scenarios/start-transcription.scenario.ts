@@ -18,7 +18,7 @@ import {
   ModelType,
   ServiceType,
 } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const START_TRANSCRIPTION = "START_TRANSCRIPTION";
 const VOICE_CONTROL_STREAM = "voice-control";

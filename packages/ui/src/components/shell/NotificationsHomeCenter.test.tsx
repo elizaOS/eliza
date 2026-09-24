@@ -67,8 +67,7 @@ vi.mock("../../events", () => ({
   dispatchChatPrefill,
 }));
 
-import type { AgentNotification } from "@elizaos/common";
-import type { PendingUserAction } from "@elizaos/core";
+import type { AgentNotification, PendingUserAction } from "@elizaos/core";
 import { client } from "../../api/client";
 import {
   __resetAuthStatusForTests,

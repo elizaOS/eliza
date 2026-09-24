@@ -703,7 +703,7 @@ describe("useAvailableViews", () => {
       view("documents", {
         label: "Registered Documents",
         path: "/apps/registered-documents",
-        pluginName: "@elizaos/plugin-documents",
+        pluginName: "@elizaos/plugin-knowledge",
       }),
     ]);
 
@@ -711,7 +711,7 @@ describe("useAvailableViews", () => {
       id: "documents",
       label: "Registered Documents",
       path: "/apps/registered-documents",
-      pluginName: "@elizaos/plugin-documents",
+      pluginName: "@elizaos/plugin-knowledge",
     });
   });
 

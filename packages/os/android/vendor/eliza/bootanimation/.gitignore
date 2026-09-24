@@ -1,0 +1,7 @@
+# Rendered boot-splash artifacts. Regenerated from the brand SVG by
+# android/scripts/generate-eliza-bootanimation.mjs and packed by
+# android/scripts/build-eliza-bootanimation.mjs (`make
+# bootanimation`); the source of truth is the SVG, not these PNGs.
+part0/
+part1/
+bootanimation.zip

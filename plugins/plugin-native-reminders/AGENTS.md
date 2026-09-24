@@ -61,11 +61,11 @@ pure and testable.
 - The current macOS dylib is shared with the desktop permissions/EventKit
   bridge. If the dylib is renamed or split, update the basename here and keep
   host packages importing it.
-- See the root `CLAUDE.md` for repo-wide architecture rules.
+- See the root `AGENTS.md` for repo-wide architecture rules.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

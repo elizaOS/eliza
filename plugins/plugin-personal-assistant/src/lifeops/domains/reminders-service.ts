@@ -50,7 +50,7 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
   sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone/twilio";
+} from "@elizaos/plugin-native-phone/twilio";
 import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
 import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";

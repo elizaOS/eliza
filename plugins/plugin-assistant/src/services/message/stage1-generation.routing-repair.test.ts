@@ -42,6 +42,25 @@ describe("getStage1RoutingRepair", () => {
       ).toContain("structured navigation declarations conflict");
     },
   );
+  it("reviews requested navigation without any declared pending intent", () => {
+    expect(
+      getStage1RoutingRepair(
+        decision({
+          contexts: ["simple"],
+          intents: [],
+          replyText: "Hey. What's up?",
+          replyEffectStatus: "applied",
+          candidateActionNames: ["VIEWS_SHOW"],
+          visualContinuation: {
+            disposition: "requested",
+            singleViewOnly: true,
+            navigationOnly: true,
+          },
+        }),
+      ),
+    ).toBeDefined();
+  });
+
   it.each(["forbidden", "unresolved", "requested"])(
     "does not override %s navigation with candidate hints",
     (disposition) => {

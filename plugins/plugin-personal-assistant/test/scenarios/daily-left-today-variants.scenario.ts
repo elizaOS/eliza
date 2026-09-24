@@ -7,7 +7,7 @@
  * still-open item and drops the completed one. Seeds re-verified via
  * definitionCountDelta.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * `assertResponse` helper mirroring the legacy JSON fields
@@ -56,7 +56,7 @@ export default scenario({
   tags: ["lifeops"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

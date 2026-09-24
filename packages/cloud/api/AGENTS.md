@@ -2,7 +2,7 @@
 
 The Eliza Cloud HTTP API: a Cloudflare Workers app (Hono router) that backs auth, app/agent registration, inference routing, billing, MCP, A2A, domains, and container deploys. Not an elizaOS plugin and not imported by other packages — it is deployed as a standalone Worker (`wrangler deploy`). Most shared logic (DB client, auth, providers, billing, cron) lives in `@elizaos/cloud-shared`; this package owns the Worker entrypoint, the route tree, and the route-mount codegen.
 
-See the root `CLAUDE.md` for repo-wide rules (logger-only, ESM, naming, architecture). Conventions below are specific to this package.
+See the root `AGENTS.md` for repo-wide rules (logger-only, ESM, naming, architecture). Conventions below are specific to this package.
 
 ## Layout
 
@@ -123,7 +123,7 @@ Add an endpoint:
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

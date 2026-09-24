@@ -5,7 +5,7 @@
  * convert the runbook into a captured scheduled action whose arguments carry the
  * seeded household specifics (selectedActionArguments), not just reply wording.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -16,7 +16,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "household", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

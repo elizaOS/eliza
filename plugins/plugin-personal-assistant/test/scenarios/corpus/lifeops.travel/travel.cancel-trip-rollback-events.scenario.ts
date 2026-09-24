@@ -5,8 +5,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -21,7 +21,7 @@ export default scenario({
     "When a trip is cancelled the agent must propose removing the calendar events it created for that trip (flight blocks, travel-blackout focus, hotel check-in/out) — not leave them as zombies. Both BOOK_TRAVEL.cancel and CALENDAR delete proposals are approval-gated.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -16,7 +16,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import { ANDROID_FULL_TURN_FAILURE_RE } from "../../app-core/src/platform/chat-failure-strings.ts";
+import { ANDROID_FULL_TURN_FAILURE_RE } from "../src/platform/chat-failure-strings.ts";
 import { readInstalledRendererStamp } from "./lib/android-device.mjs";
 import {
   assertMarkerSurvivedRelaunch,
@@ -53,11 +53,11 @@ const repoRoot = path.resolve(
 const appConfigPath = path.join(repoRoot, "packages/app/app.config.ts");
 const iosLocalChatResultDir = path.join(
   repoRoot,
-  "packages/app/test-results/ios-local-chat",
+  "test-results/app/ios-local-chat",
 );
 const relaunchPersistenceResultDir = path.join(
   repoRoot,
-  "packages/app/test-results/relaunch-persistence",
+  "test-results/app/relaunch-persistence",
 );
 
 function argValue(name) {
@@ -383,11 +383,11 @@ function printHelp() {
 Options:
   --platform ios|android|both       Simulator platform to launch (default: ios)
   --require-installed              Fail when the selected app/simulator is unavailable
-  --live                           Exercise the app-core local-agent HTTP API on Android
-  --api-base URL                   Exercise an already-reachable app-core HTTP API
-  --start-host-agent               Start the deterministic host app-core API when --api-base is omitted
+  --live                           Exercise the app local-agent HTTP API on Android
+  --api-base URL                   Exercise an already-reachable app HTTP API
+  --start-host-agent               Start the deterministic host app API when --api-base is omitted
   --host-agent-port PORT           Explicit port for --start-host-agent (default: kernel-assigned)
-  --auth-token TOKEN               Bearer token for protected app-core API routes
+  --auth-token TOKEN               Bearer token for protected app API routes
   --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
   --android-select-local           Tap through Android first-run Local runtime selection
@@ -403,7 +403,7 @@ Options:
   --help                           Print this help
 
 Notes:
-  --live validates the running app-core/local-agent API. It is not a remote
+  --live validates the running app/local-agent API. It is not a remote
   service test. The chat step requires local-inference readiness and a completed
   streamed model reply from the local Android agent.
   ANDROID_SERIAL selects a specific Android device or emulator when set.`);
@@ -552,7 +552,7 @@ function launchIosSimulatorApp() {
  * one — the on-device proof that the simulator is running the latest UI, not
  * stale code (issue #9309). Reads the build stamp Capacitor copied into the
  * .app (`<App.app>/public/eliza-renderer-build.json`) and compares its buildId
- * to the freshly built `packages/app/dist` manifest. Skips gracefully when
+ * to the freshly built `packages/app/web-dist` manifest. Skips gracefully when
  * either manifest is absent (e.g. a build without the manifest plugin); throws
  * only on a genuine stale-UI mismatch.
  */
@@ -1845,7 +1845,7 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
     );
     if (runDue.response.status === 404) {
       throw new Error(
-        "Android background run-due-tasks route is not present in the installed app-core build. " +
+        "Android background run-due-tasks route is not present in the installed app build. " +
           "Rebuild and reinstall the Android app before running --android-background.",
       );
     }
@@ -2527,7 +2527,7 @@ async function runLocalInferenceApiSmoke(
   authToken = authTokenArg,
 ) {
   console.log(
-    `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference full turn).`,
+    `[local-chat-smoke] Exercising app API at ${baseUrl} (conversation + local-inference full turn).`,
   );
   // Process-stability gate: wait for a settled agent process (monotonic uptime,
   // state==running, canRespond==true, startup.attempt not climbing) before exercising, so a

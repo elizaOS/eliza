@@ -178,11 +178,11 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 - **Schema is in `browser` pg schema.** Do not use the `public` schema — the runtime migrator issues `CREATE SCHEMA IF NOT EXISTS browser` automatically.
 - **Bundle-safety guard in `src/index.ts`.** The double-import pattern (re-export + local binding in `__bundle_safety_*`) prevents Bun's tree-shaker from collapsing barrel `init` functions into empty functions on mobile. Do not remove it.
 - **`auto-enable.ts` must stay import-free.** The elizaOS auto-enable engine loads this module for every plugin at boot; it must not transitively import the plugin runtime.
-- See the repo root CLAUDE.md for global architecture rules (logger-only, ESM, dependency direction, etc.).
+- See the repo root AGENTS.md for global architecture rules (logger-only, ESM, dependency direction, etc.).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

@@ -5,11 +5,11 @@
  * to an afternoon slot the same day, (c) not invent a different event.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkLaunchSyncMovedToAfternoon(
@@ -37,7 +37,7 @@ export default scenario({
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "reschedule"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

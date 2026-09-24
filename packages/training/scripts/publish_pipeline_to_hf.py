@@ -44,7 +44,6 @@ from scripts.publish.hub_inventory import remote_lfs_shas
 TOP_LEVEL_FILES: tuple[str, ...] = (
     "pyproject.toml",
     "uv.lock",
-    "CLAUDE.md",
     "AGENTS.md",
     "RL_STRATEGY.md",
     "Dockerfile",
@@ -205,7 +204,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Apache-2.0 for source. Note that abliterated weight artifacts produced\n"
         "by `scripts/training/abliterate.py` are *AGPL-3.0* downstream because\n"
-        "Heretic itself is AGPL — see `CLAUDE.md` for the full caveat.\n"
+        "Heretic itself is AGPL — see `AGENTS.md` for the full caveat.\n"
     )
 
 

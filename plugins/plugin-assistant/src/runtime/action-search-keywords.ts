@@ -1,7 +1,7 @@
 /**
  * Action search keywords for tool retrieval.
  *
- * The backing data is authored in @elizaos/prompts/keywords.
+ * The backing data is authored in @elizaos/shared/i18n/keywords.
  * These helpers deliberately support retrieval/ranking only. They must not be
  * used as hard action availability checks.
  */
@@ -9,8 +9,8 @@
 import {
   collectKeywordTermMatches,
   splitKeywordDoc,
-} from "@elizaos/prompts/keyword-matching";
-import { VALIDATION_KEYWORD_DOCS } from "@elizaos/prompts/keywords";
+} from "@elizaos/shared/i18n/keyword-matching-core";
+import { VALIDATION_KEYWORD_DOCS } from "@elizaos/shared/i18n/keywords";
 
 type KeywordDoc = {
   base?: string;

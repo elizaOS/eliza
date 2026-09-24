@@ -20,7 +20,6 @@ const read = (rel: string) => readFileSync(`${pkgRoot}/${rel}`, "utf8");
 
 const workspaceGithubSrc = read("src/services/workspace-github.ts");
 const readme = read("README.md");
-const claudeMd = read("CLAUDE.md");
 const agentsMd = read("AGENTS.md");
 
 // The credential setting names the code actually consults, extracted from source
@@ -71,11 +70,10 @@ describe("GitHub credential documentation (#15796)", () => {
     expect(readme).toContain("TASKS_SUBMIT_WORKSPACE");
   });
 
-  it("CLAUDE.md and AGENTS.md mirror the key credential point and stay identical", () => {
-    expect(claudeMd).toBe(agentsMd);
+  it("AGENTS.md documents the key credential points", () => {
     for (const name of settings) {
-      expect(claudeMd, `CLAUDE.md must document ${name}`).toContain(name);
+      expect(agentsMd, `AGENTS.md must document ${name}`).toContain(name);
     }
-    expect(claudeMd).toMatch(/vault|getSetting/);
+    expect(agentsMd).toMatch(/vault|getSetting/);
   });
 });

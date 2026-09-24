@@ -20,7 +20,7 @@ import org.junit.runner.RunWith
  * native side-effects (state reads), not a mocked `Capacitor.Plugins` bridge.
  *
  * Run: `./gradlew :elizaos-capacitor-system:connectedDebugAndroidTest`
- * (from packages/app-core/platforms/android, with a device/emulator attached).
+ * (from packages/app/platforms/android, with a device/emulator attached).
  */
 @RunWith(AndroidJUnit4::class)
 class SystemDeviceReaderInstrumentedTest {

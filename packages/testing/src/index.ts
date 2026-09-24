@@ -44,6 +44,7 @@ export {
   applyDeterministicModelFixtureBehavior,
   createDeterministicModelFixtureRegistry,
   createDeterministicModelPlugin,
+  createPerfectResultPlugin,
   type DeterministicModelCall,
   type DeterministicModelCallDiagnostic,
   type DeterministicModelDiagnostics,
@@ -89,9 +90,6 @@ export {
 // Live LLM provider selection
 export {
   availableProviderNames,
-  CLI_SUBSCRIPTION_SENTINEL_API_KEY,
-  cliBackendCredentialsPath,
-  cliBackendCredentialsPaths,
   isLiveTestEnabled,
   type LiveProviderConfig,
   type LiveProviderName,

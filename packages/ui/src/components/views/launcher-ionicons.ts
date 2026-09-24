@@ -290,7 +290,6 @@ const FIRST_PARTY_ICONS: Readonly<Record<string, LauncherIconAsset>> = {
   documents: IONICONS.library,
   memories: IONICONS.hardwareChip,
   stream: IONICONS.radio,
-  "pendant-transcript": IONICONS.micCircle,
   trajectories: IONICONS.gitBranch,
   database: IONICONS.server,
   runtime: IONICONS.terminal,

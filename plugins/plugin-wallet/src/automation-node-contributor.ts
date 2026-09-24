@@ -1,7 +1,7 @@
 /**
  * Automation catalog nodes owned by the wallet plugin. These cover EVM + Solana
  * swaps and cross-chain bridges backed by the wallet plugin's runtime actions.
- * They live here (not hardcoded in app-core) so a wallet action rename or plugin
+ * They live here (not hardcoded in app) so a wallet action rename or plugin
  * name change updates the node in one place with the code it gates.
  */
 

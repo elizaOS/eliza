@@ -17,7 +17,7 @@ import {
   type ScheduledTaskDispatchRecord,
 } from "@elizaos/plugin-scheduling";
 import { expect, it } from "vitest";
-import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";
+import { describeLive } from "../../../packages/app/test/helpers/live-agent-test";
 import { dailyRhythmPack } from "../src/default-packs/daily-rhythm.js";
 import {
   buildCheckinSummaryPrompt,

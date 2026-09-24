@@ -51,7 +51,7 @@ import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 // a DIRECT @playwright/test import — without one it would run this file under
 // `bun test`. Type-only and empty, so it costs nothing at runtime.
 import type {} from "@playwright/test";
-import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handoff/start-tier-upgrade";
+import { runSharedToDedicatedUpgradeHandoff } from "@elizaos/ui/cloud/handoff/start-tier-upgrade";
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
 import { seedModelPricing } from "../src/helpers/seed-pricing";

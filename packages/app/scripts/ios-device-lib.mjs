@@ -1307,7 +1307,7 @@ export function isBenignIosAppAbsence(output) {
  * `ios-device-logs.mjs --pull-boot-trace`.
  *
  * COUPLING (leg D1): mirrors the native sink in
- * packages/app-core/platforms/ios/App/App/ElizaStartupTrace.swift
+ * packages/app/platforms/ios/App/App/ElizaStartupTrace.swift
  * (`traceFileName` / `rotatedTraceFileName`) — the native side appends JSONL
  * to Documents/eliza-boot-trace.jsonl and rotates one generation to
  * eliza-boot-trace.prev.jsonl. The renderer appends into the SAME primary

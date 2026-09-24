@@ -60,7 +60,7 @@ export async function runAutonomousCli(
 
   if (command === "ios-bridge") {
     const { runIosBridgeCli } = await import(
-      "@elizaos/plugin-capacitor-bridge/ios/bridge"
+      "@elizaos/plugin-native-inference/ios/bridge"
     );
     await runIosBridgeCli(argv);
     return;
@@ -79,8 +79,8 @@ export async function runAutonomousCli(
     const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
-    // `@elizaos/app-core` runtime wrapper, which the mobile agent
-    // bundle cannot import (would create an `agent → app-core →
+    // `@elizaos/app` runtime wrapper, which the mobile agent
+    // bundle cannot import (would create an `agent → app →
     // agent` workspace cycle). Bootstrapping the AOSP llama loader
     // and ModelType handlers here keeps the registration in the
     // agent package and out of the bundler's cycle path. Skipped when
@@ -95,7 +95,7 @@ export async function runAutonomousCli(
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
     ) {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+        "@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     }
@@ -104,7 +104,7 @@ export async function runAutonomousCli(
 
   if (command === "android-bridge") {
     const { runAndroidBridgeCli } = await import(
-      "@elizaos/plugin-capacitor-bridge/android/bridge"
+      "@elizaos/plugin-native-inference/android/bridge"
     );
     await runAndroidBridgeCli();
     return;

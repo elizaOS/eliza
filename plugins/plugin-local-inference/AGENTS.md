@@ -4,14 +4,14 @@ Eliza-1 local inference provider: text generation, embeddings, TTS, ASR, image g
 
 ## Purpose / role
 
-This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. It also exposes the `GENERATE_MEDIA` agent action and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService`, an AOSP/Capacitor/bionic loader, or the canonical mobile bridge service); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
+This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, and `TRANSCRIPTION`. The assistant owns `GENERATE_MEDIA`; this plugin exposes a compatibility export and HTTP routes for the model catalog, download orchestration, hardware detection, and voice tooling. The plugin is opt-in: it must be added to the elizaOS agent's plugin list. It requires at minimum one active local backend (an Eliza-1 GGUF bundle loaded via `LocalInferenceService`, an AOSP/Capacitor/bionic loader, or the canonical mobile bridge service); without one, every model call throws `LocalInferenceUnavailableError` with code `LOCAL_INFERENCE_UNAVAILABLE`.
 
 ## Plugin surface
 
 ### Actions
 | Name | Description |
 |---|---|
-| `GENERATE_MEDIA` | Classifies user text as image/audio/video intent, then dispatches to `ModelType.IMAGE` or `ModelType.TEXT_TO_SPEECH`. Video is refused cleanly. |
+| `GENERATE_MEDIA` compatibility export | Delegates to the assistant-owned action. This provider does not register another media action. |
 | `IDENTIFY_SPEAKER` | Binds the most-recently-heard *unidentified* speaker voice to a named person ("that was Jill"). Emits `VOICE_TURN_OBSERVED` to drive the merge engine; the `VOICE_ENTITY_BOUND` round-trip persists `entityId` onto the profile. Inert (logs only) if no merge-engine plugin is loaded. |
 
 ### Events (voice ⇄ entity binding seam — issue #8234)
@@ -25,7 +25,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
 ### Registered elizaOS services
-- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the selected AOSP, Capacitor, or bionic-host loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend. Stock device-bridge inference remains owned by `@elizaos/plugin-capacitor-bridge` through core's `MobileDeviceBridgeService` seam and registers handlers only after a device attaches.
+- `LocalInferenceLoaderRuntimeService` (`src/services/runtime-services.ts`) — runtime-owned adapter for the selected AOSP, Capacitor, or bionic-host loader. Registration is safe before `AgentRuntime.initialize()`; the boot hook waits for startup only after initialization, and runtime stop releases the selected backend. Stock device-bridge inference remains owned by `@elizaos/plugin-native-inference/host-bridge` through core's `MobileDeviceBridgeService` seam and registers handlers only after a device attaches.
 - `TimedAsrService` (`src/services/runtime-services.ts`) — additive `timedAsr` seam for fused per-word timings. Meeting transcription discovers it without importing this plugin or widening the string-only `TRANSCRIPTION` model contract.
 - `LocalPiiRecognizerService` (`src/pii/service.ts`) — registers under core's `PII_ENTITY_RECOGNIZER_SERVICE`; supplies the `LlmEntityRecognizer` (`src/pii/llm-recognizer.ts`) that the runtime's PII pseudonymization layer composes with its regex recognizer when `ELIZA_PII_SWAP_ENABLED` is on. Detection runs as a JSON-extraction prompt on the resident local backend through the inference priority gate; only values found verbatim in the source text are emitted, and `getRecognizer()` returns `null` (regex-only degrade) while no generation-capable local backend is active.
 
@@ -34,7 +34,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 - `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the single fused `libelizainference` FFI implementation via the `BackendDispatcher`; one model is loaded at a time, with unload-before-load swaps.
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
 
-### HTTP routes (mounted by app-core)
+### HTTP routes (mounted by app)
 Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferenceRoutes`, which is exported from the root `@elizaos/plugin-local-inference`):
 - Catalog, download, status, and chat-command routes via `handleLocalInferenceRoutes` (`src/local-inference-routes.ts`, root subpath)
 - TTS: `handleLocalInferenceTtsRoute` (`src/routes/local-inference-tts-route.ts`)
@@ -43,10 +43,10 @@ Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferen
 - Voice models: `handleVoiceModelsRoutes` (`src/routes/voice-models-routes.ts`)
 - Voice profiles (TTS preset catalog): `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
 - Family-member voice encoder: `handleFamilyMemberRoute` (`src/routes/family-member-route.ts`)
-- Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app-core mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
+- Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
 
 ### HTTP routes (served from `plugin.routes` — `runtime.routes` rawPath)
-No server forwards these namespaces to the route dispatchers above, so they are registered as `rawPath` routes on the plugin object (`src/routes/voice-profile-plugin-routes.ts`) and served by both the upstream agent server and app-core via the runtime plugin route system. All are private (the host dispatcher answers 401 for unauthenticated callers):
+No server forwards these namespaces to the route dispatchers above, so they are registered as `rawPath` routes on the plugin object (`src/routes/voice-profile-plugin-routes.ts`) and served by both the upstream agent server and app via the runtime plugin route system. All are private (the host dispatcher answers 401 for unauthenticated callers):
 - Speaker-profile entity binding (`/v1/voice/speaker-profiles`, `…/:id/bind`, `…/:id/unbind`): `handleVoiceSpeakerProfileRoutes` (`src/routes/voice-speaker-profile-routes.ts`) — list speaker centroids and bind/unbind a recognized voice to an elizaOS entity (the HTTP runtime path for `VoiceProfileStore.bindEntity`, issue #8234)
 - Voice-profile management UI (`/api/voice/profiles*` — list / rename / delete / merge / split / export / sample / bind / unbind): `handleVoiceProfilesManagementRoutes` (`src/routes/voice-profiles-management-routes.ts`) — the server half of the `VoiceProfileSection` settings UI
 
@@ -71,7 +71,7 @@ src/
     service.ts                    LocalPiiRecognizerService — injects the recognizer behind core's PII_ENTITY_RECOGNIZER_SERVICE seam
 
   actions/
-    generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
+    generate-media.ts             Compatibility exports and legacy text-to-structured intent adapter
     identify-speaker.ts           IDENTIFY_SPEAKER action: name a recent unidentified voice → merge engine
 
   adapters/
@@ -147,9 +147,9 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `MODELS_DIR` | No | Override default GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | No | Filename of the small text model GGUF (Capacitor/mobile adapter) |
 | `LOCAL_LARGE_MODEL` | No | Filename of the large text model GGUF (Capacitor/mobile adapter) |
-| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Defer is the DEFAULT: startup GGUF embedding prefetch runs after the runtime is ready. Set to `0`/`false`/`no`/`off` for the eager process-entry prefetch (consumed by app-core) |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | No | Defer is the DEFAULT: startup GGUF embedding prefetch runs after the runtime is ready. Set to `0`/`false`/`no`/`off` for the eager process-entry prefetch (consumed by app) |
 | `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | No | Set truthy to skip GGUF embedding prefetch entirely while leaving local embedding settings intact |
-| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set (consumed by app-core/electrobun) |
+| `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | No | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set (consumed by app/electrobun) |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | No | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |
 | `ELIZA_LOCAL_LLAMA` | No | Set `1` to force AOSP local inference path |
 | `ELIZA_LOCAL_ONLY` | No | Set `1` or `true` to force all model slots to local inference (overrides routing policy) |
@@ -160,7 +160,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_IMAGEGEN_ACCELERATOR` | No | Accelerator for image-gen backend (`coreml`, `tensorrt`, `mflux`, `sd-cpp`) |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | No | Enable iOS/AOSP device-bridge mode |
 | `ELIZA_DEVICE_PAIRING_TOKEN` | No | Pairing token for device bridge |
-| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for `DeviceBridge.generate()`/`.embed()` calls (default 60000). Must be a canonical decimal integer from 1 through 2147483647 — malformed or out-of-range throws `ElizaError` (`code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`) before any device lookup. Also read independently by `@elizaos/plugin-capacitor-bridge`'s device bridge (separate class, same accepted grammar). |
+| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for `DeviceBridge.generate()`/`.embed()` calls (default 60000). Must be a canonical decimal integer from 1 through 2147483647 — malformed or out-of-range throws `ElizaError` (`code: "INVALID_DEVICE_BRIDGE_TIMEOUT"`) before any device lookup. Also read independently by `@elizaos/plugin-native-inference/host-bridge`'s device bridge (separate class, same accepted grammar). |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | No | Default Kokoro TTS voice id |
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
@@ -193,7 +193,7 @@ Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (default
 ### Add a new route handler
 1. Create `src/routes/my-route.ts` exporting a handler function.
 2. Export it from `src/routes/index.ts`.
-3. Mount it in the consuming runtime (currently `packages/app-core/src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
+3. Mount it in the consuming runtime (currently `packages/app/src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
 
 ### Add a new backend capability (e.g. a new image-gen backend)
 1. Implement the capability in `src/services/imagegen/` following the `ImageGenBackend` interface.
@@ -216,13 +216,13 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 - **Catalog source of truth** lives in `@elizaos/shared` (`MODEL_CATALOG`, tier ids, HuggingFace URL builders). `src/services/catalog.ts` is a thin re-export shim.
 - **Type source of truth** for `CatalogModel`, `InstalledModel`, `AgentModelSlot`, etc. also lives in `@elizaos/shared`. `src/services/types.ts` re-exports them.
 - **Plugin priority is `−100`.** This is below cloud providers so the routing-policy layer (not raw priority) decides which provider fires per request.
-- The `GENERATE_MEDIA` action uses keyword matching first, then falls back to a `TEXT_SMALL` JSON classifier call. It does not perform intent detection on every message — the `validate` function only checks for non-empty text.
+- The assistant registers the sole `GENERATE_MEDIA` action; it dispatches image, video and speech through model/service contracts. The legacy `buildGenerateMediaHandler` export adapts text-only callers to that same action.
 - Voice pipeline (`services/voice/`) is large and self-contained. Entry points: `src/services/voice/index.ts`, `src/routes/voice-first-run-routes.ts`, `src/routes/voice-models-routes.ts`.
 - See `AGENTS.md` at the repo root for architecture rules, git workflow, and global coding standards.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

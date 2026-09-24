@@ -2,7 +2,7 @@
  * Offline composed end-to-end check for multi-account coding-agent selection.
  *
  * Proves the WHOLE pipeline through real code, no server / no live OAuth:
- *   real app-core AccountPool (reading real-format credential files in a temp
+ *   real app AccountPool (reading real-format credential files in a temp
  *   state dir) → installed globalThis selector bridge → orchestrator
  *   AcpService.spawnSession → a REAL spawned subprocess that receives the
  *   injected per-account credential and records it.
@@ -31,12 +31,12 @@ import path from "node:path";
 import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/credentials/auth/account-storage";
-// Import the pool from app-core SRC, not the package barrel: app-core has no
+} from "@elizaos/auth/auth/account-storage";
+// Import the pool from app SRC, not the package barrel: app has no
 // `eliza-source` export condition, so the barrel resolves to (possibly stale)
 // dist — which may predate the coding-agent selector bridge. The src path
 // guarantees we install the bridge under test.
-import { getDefaultAccountPool } from "../../../packages/app-core/src/services/account-pool.ts";
+import { getDefaultAccountPool } from "../../../packages/app/src/services/account-pool.ts";
 import { AcpService } from "../src/services/acp-service.ts";
 
 const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;

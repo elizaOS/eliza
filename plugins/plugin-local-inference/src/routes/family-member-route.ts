@@ -109,7 +109,7 @@ async function loadFusedSpeakerEncoder(): Promise<SpeakerEncoder> {
 	if (!libPath) {
 		throw new SpeakerEncoderUnavailableError(
 			"library-missing",
-			"[family-member-route] fused libelizainference not found. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
+			"[family-member-route] fused libelizainference not found. Set $ELIZA_INFERENCE_LIBRARY (exact path) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app/scripts/build-llama-cpp-mtp.mjs.",
 		);
 	}
 	const ffi = loadElizaInferenceFfi(libPath);

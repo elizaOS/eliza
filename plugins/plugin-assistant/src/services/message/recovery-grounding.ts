@@ -12,7 +12,7 @@ import {
   ModelType,
   runWithSuppressedModelStream,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 import { z } from "zod";
 import { getV5ModelText } from "./generate-text-result";
 

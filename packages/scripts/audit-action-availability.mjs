@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Static audit for action availability gates.
  *
@@ -7,10 +8,10 @@
  * intent/keyword based instead of hard state based.
  */
 
-import { VALIDATION_KEYWORD_DOCS } from "../prompts/src/keywords.ts";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
+import { VALIDATION_KEYWORD_DOCS } from "../prompts/src/keywords.ts";
 import { encodeMarkdownTableCell } from "./markdown-table-cell.mjs";
 
 const ROOT = process.cwd();

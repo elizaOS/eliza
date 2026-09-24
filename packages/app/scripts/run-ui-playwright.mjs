@@ -132,7 +132,7 @@ delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;
 env.BUN = env.BUN || resolveBunCommand();
-// Validated through app-core's shared resolver: an invalid or pre-24
+// Validated through app's shared resolver: an invalid or pre-24
 // ELIZA_NODE_PATH (or an environment with no usable Node 24+) throws here,
 // before Playwright or its webServer spawns, instead of dying late in boot.
 env.ELIZA_NODE_PATH = resolvePlaywrightNodeRuntime({ env });
@@ -344,8 +344,7 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 
 // Every Playwright lane collects its spec files up front, and those specs pull
 // workspace helpers whose static import graph reaches source-only packages —
-// e.g. app-core `server.ts` → `@elizaos/agent` → `settings-actions.ts` →
-// `@elizaos/plugin-app-control`, and `@elizaos/core` → `@elizaos/cloud-routing`.
+// The agent host and cloud-routing helpers must resolve from current source.
 // Those packages publish an `eliza-source` export condition pointing at `src`;
 // on a fresh CI install (`bun install --ignore-scripts`) they have no `dist`, so
 // under default node conditions the collector resolves a missing

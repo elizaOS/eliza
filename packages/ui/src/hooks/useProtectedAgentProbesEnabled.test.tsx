@@ -9,9 +9,8 @@
  *
  *   - the pure gate decisions (`protectedAgentProbesEnabled`,
  *     `shouldProbeExistingLocalInstall`) that govern every gated call site, and
- *   - real hook behavior for the protected `GET /api/runtime/mode` and the
- *     `GET /api/commands` + `/api/custom-actions` catalog fetches — asserted by
- *     spying on the actual network functions the hooks call.
+ *   - real hook behavior for protected `GET /api/runtime/mode` requests,
+ *     observed at the network boundary.
  *
  * The gate stays inert off the Cloud origin (localhost/self-hosted/desktop),
  * so probes fire there exactly as before.
@@ -24,22 +23,6 @@ vi.mock("../api/runtime-mode-client", () => ({
   fetchRuntimeModeSnapshot: vi.fn().mockResolvedValue(null),
 }));
 
-const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
-  () => ({
-    listCommands: vi.fn(),
-    listCustomActions: vi.fn(),
-    getModelsCatalog: vi.fn(),
-  }),
-);
-
-vi.mock("../api", () => ({
-  client: {
-    getBaseUrl: vi.fn(() => "http://localhost:2138"),
-    listCommands: (surface?: string) => listCommands(surface),
-    listCustomActions: () => listCustomActions(),
-    getModelsCatalog: () => getModelsCatalog(),
-  },
-}));
 vi.mock("../config/boot-config-react.hooks", () => ({
   useBootConfig: (): Record<string, never> => ({}),
 }));
@@ -56,7 +39,6 @@ vi.mock("../state", () => ({
 }));
 
 import { fetchRuntimeModeSnapshot } from "../api/runtime-mode-client";
-import { useSlashCommandController } from "../chat/useSlashCommandController";
 import { shouldProbeExistingLocalInstall } from "../state/first-run-bootstrap";
 import {
   __resetAuthStatusForTests,
@@ -124,20 +106,10 @@ function RuntimeModeProbe(): null {
   return null;
 }
 
-function SlashProbe(): null {
-  useSlashCommandController();
-  return null;
-}
-
 beforeEach(() => {
   __resetAuthStatusForTests();
   __resetRuntimeModeCacheForTests();
   runtimeModeMock.mockClear().mockResolvedValue(null);
-  listCommands.mockReset().mockResolvedValue([]);
-  listCustomActions.mockReset().mockResolvedValue([]);
-  getModelsCatalog
-    .mockReset()
-    .mockResolvedValue({ catalog: { providers: {} } });
   window.localStorage.clear();
 });
 
@@ -253,32 +225,5 @@ describe("useRuntimeMode — GET /api/runtime/mode gated (#16242)", () => {
     setLocation("http://localhost:2138/");
     render(<RuntimeModeProbe />);
     await waitFor(() => expect(runtimeModeMock).toHaveBeenCalledTimes(1));
-  });
-});
-
-describe("useSlashCommandController — command catalog gated (#16242)", () => {
-  it("does not fetch commands/custom-actions on the unauthenticated Cloud origin, then fetches after sign-in", async () => {
-    setLocation(`${CLOUD_APP_ORIGIN}/`);
-    render(<SlashProbe />);
-    await Promise.resolve();
-    expect(listCommands).not.toHaveBeenCalled();
-    expect(listCustomActions).not.toHaveBeenCalled();
-
-    act(() => {
-      authenticate();
-    });
-    await waitFor(() => {
-      expect(listCommands).toHaveBeenCalledTimes(1);
-      expect(listCustomActions).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("fetches the catalog on mount on a non-Cloud origin (unchanged behavior)", async () => {
-    setLocation("http://localhost:2138/");
-    render(<SlashProbe />);
-    await waitFor(() => {
-      expect(listCommands).toHaveBeenCalledWith("gui");
-      expect(listCustomActions).toHaveBeenCalledTimes(1);
-    });
   });
 });

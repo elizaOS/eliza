@@ -4,7 +4,7 @@
  * data and CHECKIN should report streak.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -15,7 +15,7 @@ export default scenario({
   tags: ["lifeops", "health", "streak", "workout"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

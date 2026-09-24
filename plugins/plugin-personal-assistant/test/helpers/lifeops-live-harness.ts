@@ -13,8 +13,8 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../packages/app-core/test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../packages/app-core/test/helpers/live-child-env.ts";
+} from "../../../../packages/app/test/helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../../../../packages/app/test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =
@@ -53,11 +53,6 @@ const LIVE_PROVIDER_CANDIDATES = [
     name: "openrouter",
     plugin: "@elizaos/plugin-openrouter",
     keys: ["OPENROUTER_API_KEY"],
-  },
-  {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
   },
   {
     name: "anthropic",

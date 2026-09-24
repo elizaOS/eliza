@@ -105,7 +105,7 @@ function escapeRegExp(s) {
  * Does `needle` (a package name) appear as a whole package reference in the
  * package's source? A package name in an import/config is always followed by a
  * quote, slash, or backtick — never another name char — so the lookahead
- * `(?![\w-])` stops `@elizaos/app` from matching `@elizaos/app-core`.
+ * `(?![\w-])` stops `@elizaos/app` from matching `@elizaos/app-tools`.
  */
 function referencedInSource(dir, needle) {
   const re = new RegExp(`${escapeRegExp(needle)}(?![\\w-])`);

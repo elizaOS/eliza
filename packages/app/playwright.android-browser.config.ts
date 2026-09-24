@@ -2,10 +2,12 @@
  * Playwright configuration for the Playwright Android Browser app test lane,
  * including browser projects and app-server wiring.
  */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.mjs";
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
 import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
@@ -15,7 +17,7 @@ const repoRoot = path.resolve(appDir, "../..");
 const uiSmokeLiveStack = path.join(
   repoRoot,
   "packages",
-  "app-core",
+  "app",
   "scripts",
   "playwright-ui-live-stack.ts",
 );
@@ -30,17 +32,12 @@ const uiSmokePort = resolvePlaywrightPortEnv(
   "ELIZA_UI_SMOKE_PORT",
   2138,
 );
-// Fail-fast Node runtime resolution: the shared app-core validator throws at
+// Fail-fast Node runtime resolution: the shared app validator throws at
 // config load — before the webServer command spawns — when ELIZA_NODE_PATH is
 // invalid or no real Node.js 24+ executable can be found.
 const nodeExecutable = resolvePlaywrightNodeRuntime();
 
-const fakeAudioWav = path.join(
-  appDir,
-  "test-results",
-  ".voice",
-  "known-phrase.wav",
-);
+const fakeAudioWav = testOutputPath("app", ".voice", "known-phrase.wav");
 mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
 writeFileSync(
   fakeAudioWav,
@@ -60,13 +57,13 @@ export default defineConfig({
   timeout: 180_000,
   expect: { timeout: 20_000 },
   reporter: "list",
-  outputDir: "./test-results/android-browser",
+  outputDir: testOutputPath("app", "android-browser"),
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
     url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer: process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1",

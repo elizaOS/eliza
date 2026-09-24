@@ -1,20 +1,9 @@
-/**
- * Mobile (iOS/Android) device bridge + agent tunnel + background runner
- * orchestration as a standalone factory (`createMobileBridges`). The device
- * bridge tunnels llama.cpp + native plugin calls from the WebView to the
- * on-device agent; the agent tunnel exposes the local agent over a relay for
- * tunnel-to-mobile pairings; the background runner keeps the native host
- * informed of apiBase + auth token so it can serve requests while the WebView
- * is backgrounded. Runtime-mode changes re-wire the active transport; AOSP
- * Eliza-derived Android builds skip the redundant device bridge. No-op off
- * native platforms.
- */
+/** Coordinates native device connections and background runtime configuration. */
 
 import { BackgroundRunner } from "@capacitor/background-runner";
-import type { PluginListenerHandle } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { getBootConfig } from "@elizaos/ui/config";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -22,7 +11,11 @@ import {
   MOBILE_LOCAL_AGENT_API_BASE,
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
 import { userAgentHasElizaOSMarker } from "@elizaos/ui/platform";
-import { apiBaseToDeviceBridgeUrl, type IosRuntimeConfig } from "./ios-runtime";
+import {
+  apiBaseToDeviceBridgeUrl,
+  assertSupportedIosRuntimeConfig,
+  type IosRuntimeConfig,
+} from "./ios-runtime";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
@@ -57,8 +50,6 @@ export interface MobileBridgeContext {
 export function createMobileBridges(ctx: MobileBridgeContext) {
   let deviceBridgeClient: DeviceBridgeClient | null = null;
   let deviceBridgeStartPromise: Promise<void> | null = null;
-  let agentTunnelListener: PluginListenerHandle | null = null;
-  let agentTunnelStartPromise: Promise<void> | null = null;
   let runtimeModeListenerInstalled = false;
 
   async function getOrCreateDeviceBridgeId(): Promise<string> {
@@ -131,6 +122,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     if (!ctx.isNative || (!ctx.isIOS && !ctx.isAndroid)) return;
 
     const runtimeConfig = ctx.getIosRuntimeConfig();
+    assertSupportedIosRuntimeConfig(runtimeConfig);
     const bootConfig = getBootConfig();
     const bootApiBase = bootConfig.apiBase?.trim();
     let authToken =
@@ -190,6 +182,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
 
   async function initializeDeviceBridge(retry = 0): Promise<void> {
     const runtimeConfig = ctx.getIosRuntimeConfig();
+    assertSupportedIosRuntimeConfig(runtimeConfig);
     if (
       !ctx.isNative ||
       (runtimeConfig.mode !== "cloud-hybrid" && runtimeConfig.mode !== "local")
@@ -205,7 +198,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     deviceBridgeStartPromise = (async () => {
       try {
         const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
-          import("@elizaos/capacitor-llama"),
+          import("@elizaos/plugin-native-inference/llama"),
           getOrCreateDeviceBridgeId(),
         ]);
         const pairingToken =
@@ -260,112 +253,20 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     deviceBridgeClient = null;
   }
 
-  async function initializeAgentTunnel(): Promise<void> {
-    const runtimeConfig = ctx.getIosRuntimeConfig();
-    if (!ctx.isNative || (!ctx.isIOS && !ctx.isAndroid)) return;
-    if (runtimeConfig.mode !== "tunnel-to-mobile") return;
-    if (agentTunnelStartPromise) return;
-    const relayUrl = runtimeConfig.tunnelRelayUrl;
-    if (!relayUrl) {
-      console.warn(
-        `${ctx.logPrefix} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
-      );
-      return;
-    }
-    if (!ctx.trustPolicy.isTrustedNativeWebSocketUrl(relayUrl)) {
-      console.warn(`${ctx.logPrefix} Rejected unsafe mobile tunnel relay URL`);
-      return;
-    }
-
-    agentTunnelStartPromise = (async () => {
-      try {
-        const [{ MobileAgentBridge }, deviceId] = await Promise.all([
-          import("@elizaos/capacitor-mobile-agent-bridge"),
-          getOrCreateDeviceBridgeId(),
-        ]);
-
-        if (!agentTunnelListener) {
-          agentTunnelListener = await MobileAgentBridge.addListener(
-            "stateChange",
-            (event) => {
-              console.info(
-                `${ctx.logPrefix} Mobile agent tunnel ${event.state}`,
-                event.reason ?? "",
-              );
-            },
-          );
-        }
-
-        const status = await MobileAgentBridge.startInboundTunnel({
-          relayUrl,
-          deviceId,
-          ...(runtimeConfig.tunnelPairingToken
-            ? { pairingToken: runtimeConfig.tunnelPairingToken }
-            : {}),
-          ...(ctx.isAndroid
-            ? { localAgentApiBase: ANDROID_LOCAL_AGENT_IPC_BASE }
-            : {}),
-        });
-        console.info(
-          `${ctx.logPrefix} Mobile agent tunnel ${status.state}`,
-          status.lastError ?? "",
-        );
-      } catch (error) {
-        // error-policy:J4 optional native module — absence logged, app degrades
-        console.warn(
-          `${ctx.logPrefix} Mobile agent tunnel unavailable:`,
-          error instanceof Error ? error.message : error,
-        );
-      } finally {
-        agentTunnelStartPromise = null;
-      }
-    })();
-
-    await agentTunnelStartPromise;
-  }
-
-  async function stopAgentTunnel(): Promise<void> {
-    agentTunnelStartPromise = null;
-    try {
-      const { MobileAgentBridge } = await import(
-        "@elizaos/capacitor-mobile-agent-bridge"
-      );
-      await MobileAgentBridge.stopInboundTunnel();
-    } catch (error) {
-      // error-policy:J6 teardown — stop failure is logged
-      console.warn(
-        `${ctx.logPrefix} Mobile agent tunnel stop failed:`,
-        error instanceof Error ? error.message : error,
-      );
-    }
-    try {
-      await agentTunnelListener?.remove();
-    } catch {
-      // error-policy:J6 teardown — native tunnel stop above is authoritative
-    }
-    agentTunnelListener = null;
-  }
-
   function initializeRuntimeModeListener(eventName: string): void {
     if (!ctx.isNative || runtimeModeListenerInstalled) return;
     runtimeModeListenerInstalled = true;
     document.addEventListener(eventName, () => {
-      const mode = ctx.getIosRuntimeConfig().mode;
+      const runtimeConfig = ctx.getIosRuntimeConfig();
+      assertSupportedIosRuntimeConfig(runtimeConfig);
+      const mode = runtimeConfig.mode;
       if (mode === "cloud-hybrid" || mode === "local") {
         stopDeviceBridge();
-        void stopAgentTunnel();
         void initializeDeviceBridge();
         void configureBackgroundRunner();
         return;
       }
-      if (mode === "tunnel-to-mobile") {
-        stopDeviceBridge();
-        void initializeAgentTunnel();
-        void configureBackgroundRunner();
-        return;
-      }
       stopDeviceBridge();
-      void stopAgentTunnel();
       void configureBackgroundRunner();
     });
   }
@@ -373,7 +274,6 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
   return {
     configureBackgroundRunner,
     initializeDeviceBridge,
-    initializeAgentTunnel,
     initializeRuntimeModeListener,
   };
 }

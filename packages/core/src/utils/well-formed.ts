@@ -25,13 +25,13 @@ export const MAX_WELL_FORMED_DEPTH = 64;
  */
 export const MAX_WELL_FORMED_VISITS = 65_536;
 
-import { toWellFormedUnicode } from "@elizaos/common";
+import { toWellFormedUnicode } from "./unicode.js";
 
 export {
 	tailWellFormed,
 	toWellFormedUnicode,
 	truncateWellFormed,
-} from "@elizaos/common";
+} from "./unicode.js";
 
 type WalkCtx = {
 	visits: number;

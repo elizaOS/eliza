@@ -9,7 +9,7 @@
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import {
   assertMeetingMockLedger,
   finalizeMeetingMockLedger,

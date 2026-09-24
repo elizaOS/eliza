@@ -1,5 +1,5 @@
 /**
- * @elizaos/shared — Shared code between agent, app-core, and UI packages.
+ * @elizaos/shared — Shared code between agent, app, and UI packages.
  *
  * Public surface: barrel exports for the shared workspace contract.
  */
@@ -47,7 +47,7 @@ export * from "./character-presets.js";
 // mirrored by the UI composer. Both sides import these so they cannot drift.
 export * from "./chat-upload-limits.js";
 export * from "./cli/parse-duration.js";
-// Re-export moved app-core modules so consumers can import the package barrel.
+// Re-export moved app modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";
 export * from "./config/api-key-prefix-hints.js";
 export * from "./config/app-config.js";
@@ -98,7 +98,6 @@ export type {
   CloudContainerDefaults,
   CloudInferenceMode,
   CloudServiceToggles,
-  CommandsConfig,
   ConfigFileSnapshot,
   ConfigValidationIssue,
   ConnectorConfig,
@@ -218,7 +217,6 @@ export type {
   X402Config,
 } from "./config/types.js";
 export * from "./config/ui-spec.js";
-export * from "./config/wechat-config.js";
 export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-account-catalog.js";
@@ -251,7 +249,7 @@ export * from "./dev-settings-banner-style.js";
 export * from "./dev-settings-figlet-heading.js";
 export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
-// app-core and the agent so they don't reverse-import from plugin-elizacloud.
+// app and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
 export * from "./env-utils.js";
 export * from "./error-classification.js";
@@ -280,7 +278,7 @@ export * from "./lifeops-constants/index.js";
 // @elizaos/plugin-personal-assistant via thin re-export shims.
 export * from "./lifeops-normalize/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
-// Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
+// Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app.
 export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
 export * from "./meeting-artifacts.js";

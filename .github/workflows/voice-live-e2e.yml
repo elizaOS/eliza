@@ -150,7 +150,7 @@ jobs:
       - name: Emit matrix probe report
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/voice/voice-matrix.mjs --out "$RUNNER_TEMP/voice-platform-matrix"
+          node packages/app/scripts/voice/voice-matrix.mjs --out "$RUNNER_TEMP/voice-platform-matrix"
 
       - name: Upload matrix probe report
         if: always()
@@ -286,7 +286,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/voice/voice-matrix.mjs \
+          node packages/app/scripts/voice/voice-matrix.mjs \
             --platform web.live.railway-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
@@ -295,7 +295,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/voice/voice-matrix.mjs \
+          node packages/app/scripts/voice/voice-matrix.mjs \
             --run \
             --require-green \
             --platform web.failure-paths \
@@ -324,7 +324,7 @@ jobs:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/voice/voice-matrix.mjs \
+          node packages/app/scripts/voice/voice-matrix.mjs \
             --run \
             --require-green \
             --platform web.live.railway-roundtrip \
@@ -405,7 +405,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: fused-lib
-          key: voice-fused-cpu-v2-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app-core/scripts/stage-desktop-fused-lib.mjs') }}
+          key: voice-fused-cpu-v2-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app/scripts/stage-desktop-fused-lib.mjs') }}
 
       - name: Setup Node.js
         if: steps.fused-cache.outputs.cache-hit != 'true'
@@ -433,7 +433,7 @@ jobs:
         if: steps.fused-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/stage-desktop-fused-lib.mjs \
+          node packages/app/scripts/stage-desktop-fused-lib.mjs \
             --variant cpu --portable-cpu --out "$GITHUB_WORKSPACE/fused-lib"
 
       - name: Verify the fused ABI surface
@@ -649,7 +649,7 @@ jobs:
           set -euo pipefail
           PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-attribution.XXXXXX")
           trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun packages/app-core/scripts/voice-attribution-smoke.ts \
+          if bun packages/app/scripts/voice-attribution-smoke.ts \
             --models "$ELIZA_VOICE_REAL_MODEL_DIR" --require-real > "$PRIVATE_LOG" 2>&1; then
             jq -n '{phase:"attribution",status:"passed",code:"ATTRIBUTION_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/attribution.json"
             echo "phase=attribution status=passed code=ATTRIBUTION_SMOKE_PASSED"
@@ -786,7 +786,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform darwin \
             --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
-            -- node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
+            -- node packages/app/scripts/voice/voice-matrix.mjs --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=macos-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -869,7 +869,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform win32 \
             --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
-            -- node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
+            -- node packages/app/scripts/voice/voice-matrix.mjs --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=windows-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -940,7 +940,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          node packages/app/scripts/voice/voice-matrix.mjs --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -992,7 +992,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          node packages/app/scripts/voice/voice-matrix.mjs --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

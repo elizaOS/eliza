@@ -19,7 +19,7 @@
  * it identity-memoizes and otherwise full-parses.
  */
 
-import { stripAssistantStageDirections } from "@elizaos/shared";
+import { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
 
 import {
   collectSegmentRegions,

@@ -4,21 +4,25 @@
  * chooses whether it exercises deterministic validation or opted-in hardware.
  */
 
-import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import {
+  type AgentRuntime,
+  createCharacter,
+  stringToUuid,
+} from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { ComputerUseService } from "../../src/services/computer-use-service.js";
 
 /** Starts the service through the same AgentRuntime registration path used in production. */
 export async function startComputerUseRuntime(
   settings: Record<string, string> = {},
 ): Promise<{ runtime: AgentRuntime; service: ComputerUseService }> {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: createCharacter({
       id: stringToUuid(`computeruse-service-${crypto.randomUUID()}`),
       name: "ComputerUseServiceTestAgent",
       settings,
     }),
-    adapter: new InMemoryDatabaseAdapter(),
+
     enableAutonomy: false,
     enableDocuments: false,
     enableRelationships: false,

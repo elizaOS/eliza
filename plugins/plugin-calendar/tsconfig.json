@@ -15,8 +15,8 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "paths": {
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
@@ -24,30 +24,21 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/credentials/auth": [
-        "../../packages/credentials/src/auth/index.ts"
-      ],
-      "@elizaos/credentials/auth/*": ["../../packages/credentials/src/auth/*"],
+      "@elizaos/auth/auth": ["../../packages/auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
       "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
       "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/plugin-app-control": ["../plugin-app-control/src/index.ts"],
-      "@elizaos/plugin-app-control/*": ["../plugin-app-control/src/*"],
       "@elizaos/plugin-agent-orchestrator": [
         "../plugin-agent-orchestrator/src/index.ts"
       ],
-      "@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
-      "@elizaos/plugin-agent-skills/*": ["../plugin-agent-skills/src/*"],
       "@elizaos/plugin-anthropic": ["../plugin-anthropic/index.ts"],
       "@elizaos/plugin-anthropic/*": ["../plugin-anthropic/*"],
-      "@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
-      "@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
       "@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
       "@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
-      "@elizaos/plugin-commands": ["../plugin-commands/src/index.ts"],
       "@elizaos/plugin-computeruse": ["../plugin-computeruse/src/index.ts"],
       "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/src/*"],
       "@elizaos/plugin-discord": ["../plugin-discord/index.ts"],
@@ -65,17 +56,15 @@
       "@elizaos/plugin-meetings": ["../plugin-meetings/src/index.ts"],
       "@elizaos/plugin-meetings/*": ["../plugin-meetings/src/*"],
       "@elizaos/plugin-pty": ["../plugin-pty/index.ts"],
-      "@elizaos/plugin-registry": ["../plugin-registry/src/index.ts"],
-      "@elizaos/plugin-registry/*": ["../plugin-registry/src/*"],
       "@elizaos/plugin-scheduling": ["../plugin-scheduling/src/index.ts"],
       "@elizaos/plugin-scheduling/*": ["../plugin-scheduling/src/*"],
       "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../plugin-sql/src/*"],
-      "@elizaos/plugin-task-coordinator": [
-        "../plugin-task-coordinator/src/index.ts"
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../plugin-agent-orchestrator/src/ui/index.ts"
       ],
-      "@elizaos/plugin-task-coordinator/*": [
-        "../plugin-task-coordinator/src/*"
+      "@elizaos/plugin-agent-orchestrator/ui/*": [
+        "../plugin-agent-orchestrator/src/ui/*"
       ],
       "@elizaos/plugin-vision": ["../plugin-vision/src/index.ts"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
@@ -89,14 +78,8 @@
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/skills": ["../../packages/skills/src/index.ts"],
-      "@elizaos/skills/*": ["../../packages/skills/src/*"],
-      "@elizaos/credentials/vault": [
-        "../../packages/credentials/src/vault/index.ts"
-      ],
-      "@elizaos/credentials/vault/*": [
-        "../../packages/credentials/src/vault/*"
-      ],
+      "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
+      "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
@@ -112,11 +95,11 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "../plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "../plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-native-filesystem": [
         "../plugin-native-filesystem/src/index.ts"

@@ -126,7 +126,7 @@ const RULES = [
       reason:
         "Voice rows need audible proof plus measured ASR/TTS behavior so success is not judged by a text-only path.",
       collectionHints: [
-        "bun run --cwd packages/app-core voice:latency-report",
+        "bun run --cwd packages/app voice:latency-report",
         "Attach the captured audio sample, transcript, and measured TTS/STT latency.",
       ],
     },
@@ -142,7 +142,7 @@ const RULES = [
       reason:
         "Agent, scenario, planner, memory, and persona behavior must be proven with model inputs and outputs, not mocks.",
       collectionHints: [
-        "packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>",
+        "packages/testing/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>",
         "Open the JSON report and run viewer, then attach the reviewed trajectory summary.",
       ],
     },

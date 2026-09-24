@@ -1348,7 +1348,7 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "reason": "bun not on PATH; cannot run native VAD smoke",
             "vadModel": str(ctx.vad_model),
         }
-    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app-core" / "scripts" / "voice-vad-smoke.ts"
+    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app" / "scripts" / "voice-vad-smoke.ts"
     if not smoke.is_file():
         return {
             **base,
@@ -1364,7 +1364,7 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
         os.environ.get("ELIZA_EVAL_VAD_LIB"),
         os.environ.get("ELIZA_SILERO_VAD_LIB"),
         str(_TRAINING_ROOT.parent.parent / "packages" / "native" / "plugins" / "silero-vad-cpp" / "build-darwin" / "libsilero_vad.dylib"),
-        str(_TRAINING_ROOT.parent.parent / "packages" / "native-plugins" / "silero-vad-cpp" / "build" / "libsilero_vad.dylib"),
+        str(_TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "silero-vad-cpp" / "build" / "libsilero_vad.dylib"),
     ]
     lib_path = next((Path(p).expanduser().resolve() for p in lib_candidates if p and Path(p).expanduser().is_file()), None)
     if lib_path is None:
@@ -1376,7 +1376,7 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "recall": None,
             "passed": None,
             "reason": (
-                "native libsilero_vad not found; build packages/native/plugins/"
+                "native libsilero_vad not found; build plugins/plugin-local-inference/native/"
                 "silero-vad-cpp for this host or set ELIZA_EVAL_VAD_LIB"
             ),
             "vadModel": str(ctx.vad_model),

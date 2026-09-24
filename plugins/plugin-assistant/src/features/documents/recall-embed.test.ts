@@ -9,9 +9,9 @@
  * embedding API handlers registered through the production model router.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, test, vi } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
   EventType,
   ModelType,
@@ -45,13 +45,13 @@ function makeRuntime(opts: RuntimeMockOpts): {
   calls: { count: number };
 } {
   const calls = { count: 0 };
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: {
       name: "RecallEmbedIntegrationAgent",
       bio: "Exercises recall embedding through the real model router.",
       settings: {},
     },
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   runtime.registerModel(
@@ -68,13 +68,13 @@ function makeRuntime(opts: RuntimeMockOpts): {
 
 describe("embedRecallQuery — resolve / fail-open", () => {
   test("canonical keyword-only runtime does not request or report a missing embedding handler", async () => {
-    const runtime = new AgentRuntime({
+    const runtime = createSQLiteTestRuntime({
       character: {
         name: "KeywordOnlyRecallAgent",
         bio: "Exercises recall without a registered embedding capability.",
         settings: { ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false },
       },
-      adapter: new InMemoryDatabaseAdapter(),
+
       logLevel: "fatal",
     });
     const useModel = vi.spyOn(runtime, "useModel");

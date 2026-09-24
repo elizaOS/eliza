@@ -13,7 +13,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
-} from "../../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../../packages/app/test/helpers/real-runtime.ts";
 
 export type { RealTestRuntimeOptions, RealTestRuntimeResult };
 

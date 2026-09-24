@@ -19,8 +19,8 @@
  * credentials are available, per AGENTS.md).
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const HANDOFF_TITLE = /handoff/i;
 // Protected daytime sleep 06:00–14:00; his clock-out (07:30) and the requested

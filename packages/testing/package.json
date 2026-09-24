@@ -5,23 +5,90 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts"
+    "./*": "./src/*.ts",
+    "./evidence": "./evidence/index.ts",
+    "./evidence/visual-primitives": "./evidence/visual-primitives.mjs",
+    "./scenario-runner": "./scenario-runner/src/index.ts",
+    "./scenario-runner/*": "./scenario-runner/src/*.ts",
+    "./synthetic-world": "./synthetic-world/src/index.ts",
+    "./scenario-runner/schema": {
+      "types": "./scenario-runner/schema/index.d.ts",
+      "default": "./scenario-runner/schema/index.js"
+    }
   },
   "scripts": {
-    "test": "node ../scripts/run-vitest.mjs run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",
+    "typecheck": "bun run typecheck:fixtures && bun run typecheck:scenarios && bun run typecheck:evidence && bun run typecheck:runner && bun run typecheck:synthetic-world",
+    "test:fixtures": "node ../scripts/run-vitest.mjs run",
+    "test:scenarios": "bun test --conditions eliza-source scenarios && bun run scenarios:validate",
+    "scenarios:validate": "bun --conditions eliza-source scenario-runner/src/cli.ts list scenarios --validate-scenarios",
+    "typecheck:fixtures": "tsc --noEmit -p tsconfig.json",
+    "typecheck:scenarios": "tsc --noEmit -p scenarios/tsconfig.json",
+    "format": "bunx @biomejs/biome format --write package.json scenarios evidence scenario-runner synthetic-world",
+    "format:check": "bunx @biomejs/biome format package.json scenarios evidence scenario-runner synthetic-world",
+    "bundle:create": "bun evidence/cli.ts create",
+    "bundle:snapshot": "bun evidence/cli.ts snapshot",
+    "bundle:verify": "bun evidence/cli.ts verify",
+    "certify": "bun evidence/cli.ts certify",
+    "certify:keygen": "bun evidence/certify/cli.ts keygen",
+    "certify:rollup": "bun evidence/certify/cli.ts rollup",
+    "certify:sign": "bun evidence/certify/cli.ts sign",
+    "certify:verify": "bun evidence/certify/cli.ts verify",
+    "vision-qa": "bun evidence/vision-qa/cli.ts",
+    "evidence:gpu-queue": "bun evidence/queue/cli.ts",
+    "video:walkthrough": "bun evidence/video/cli.ts walkthrough",
+    "video:ingest": "bun evidence/video/cli.ts ingest",
+    "test:evidence": "node ../scripts/run-vitest.mjs run --config vitest.evidence.config.ts",
+    "typecheck:evidence": "tsc --noEmit -p tsconfig.evidence.json",
+    "lint": "bunx @biomejs/biome check evidence scenario-runner synthetic-world",
+    "lint:check": "bunx @biomejs/biome check evidence scenario-runner synthetic-world",
+    "lint:fix": "bunx @biomejs/biome check --write evidence scenario-runner synthetic-world",
+    "test:unit": "node ../scripts/run-vitest.mjs run --config scenario-runner/vitest.config.ts --maxWorkers=2",
+    "test:mocks": "node ../scripts/run-vitest.mjs run --config scenario-runner/test/mocks/vitest.config.ts --maxWorkers=2",
+    "test:deterministic:e2e": "cd scenario-runner && SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic --run-dir ../../../reports/scenarios/pr-deterministic",
+    "test:corpus:pr:e2e": "cd scenario-runner && TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-corpus --run-dir ../../../reports/scenarios/pr-deterministic-corpus",
+    "test:orchestrator:pr:e2e": "cd scenario-runner && EVAL_MODEL_PROVIDER=deterministic CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY= SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../../../plugins/plugin-agent-orchestrator/test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-orchestrator --run-dir ../../../reports/scenarios/pr-deterministic-orchestrator --export-native ../../../reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
+    "test:lifeops:pr:e2e": "cd scenario-runner && TZ=UTC EVAL_MODEL_PROVIDER=deterministic CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY= SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../../../plugins/plugin-personal-assistant/test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-lifeops --run-dir ../../../reports/scenarios/pr-deterministic-lifeops --export-native ../../../reports/scenarios/pr-deterministic-lifeops/native.jsonl",
+    "test:live:e2e": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run test/scenarios --lane live-only --report-dir ../../../reports/scenarios/live --run-dir ../../../reports/scenarios/live",
+    "test:pr:e2e": "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e && bun run test:lifeops:pr:e2e",
+    "test:real-llm:attachment": "cd scenario-runner && node scripts/real-llm-attachment-smoke.mjs",
+    "test:real-service:audio": "cd scenario-runner && node scripts/real-service-audio-roundtrip.mjs",
+    "test:real-service:voice": "cd scenario-runner && node scripts/real-service-voice-e2e.mjs",
+    "eval:when2speak": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/when2speak-eval-cli.ts",
+    "eval:timing:matrix": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/timing-matrix-runner-cli.ts",
+    "eval:timing:merge": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/timing-report-merge-cli.ts",
+    "eval:memory-horizon": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/memory-horizon-matrix-cli.ts",
+    "eval:multi-agent-arena": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/multi-agent-arena-cli.ts",
+    "eval:sales-lighthouse": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse",
+    "eval:sales-lighthouse-autonomous": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse-autonomous",
+    "test:runner": "bun run test:unit && bun run test:mocks",
+    "typecheck:runner": "tsc --noEmit -p scenario-runner/tsconfig.json",
+    "test:synthetic-world": "bun --conditions=eliza-source test synthetic-world/test",
+    "typecheck:synthetic-world": "tsc --noEmit -p synthetic-world/tsconfig.json && tsc --noEmit -p synthetic-world/tsconfig.cloud-integration.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "zod": "^4.4.3",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*"
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "pixelmatch": "^7.2.0",
+    "sharp": "^0.35.3",
+    "tesseract.js": "^7.0.0",
+    "ws": "^8.21.3",
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
     "vitest": "^4.1.10",
     "@types/node": "^25.0.3",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@types/bun": "1.3.14",
+    "@playwright/test": "^1.62.1",
+    "bun-types": "*",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "0.45.2"
   },
   "elizaos": {
     "scripts": {
@@ -29,5 +96,101 @@
         "server"
       ]
     }
+  },
+  "description": "Runtime fixtures, scenario execution, synthetic-world control, and evidence tooling.",
+  "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/plugin-blocker": "workspace:*",
+    "@elizaos/plugin-native-inference": "workspace:*",
+    "@elizaos/plugin-coding-tools": "workspace:*",
+    "@elizaos/plugin-native-filesystem": "workspace:*",
+    "@elizaos/plugin-github": "workspace:*",
+    "@elizaos/plugin-health": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
+    "@elizaos/plugin-todos": "workspace:*",
+    "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/auth": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
+    "@elizaos/capacitor-system": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/cloud-test-mocks": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/agent": {
+      "optional": true
+    },
+    "@elizaos/plugin-blocker": {
+      "optional": true
+    },
+    "@elizaos/plugin-native-inference": {
+      "optional": true
+    },
+    "@elizaos/plugin-coding-tools": {
+      "optional": true
+    },
+    "@elizaos/plugin-native-filesystem": {
+      "optional": true
+    },
+    "@elizaos/plugin-github": {
+      "optional": true
+    },
+    "@elizaos/plugin-health": {
+      "optional": true
+    },
+    "@elizaos/plugin-personal-assistant": {
+      "optional": true
+    },
+    "@elizaos/plugin-local-inference": {
+      "optional": true
+    },
+    "@elizaos/plugin-mcp": {
+      "optional": true
+    },
+    "@elizaos/plugin-scheduling": {
+      "optional": true
+    },
+    "@elizaos/plugin-workflow": {
+      "optional": true
+    },
+    "@elizaos/plugin-todos": {
+      "optional": true
+    },
+    "@elizaos/plugin-video": {
+      "optional": true
+    },
+    "@elizaos/plugin-wallet": {
+      "optional": true
+    },
+    "@elizaos/auth": {
+      "optional": true
+    },
+    "@elizaos/plugin-assistant": {
+      "optional": true
+    },
+    "@elizaos/plugin-relationships": {
+      "optional": true
+    },
+    "@elizaos/capacitor-system": {
+      "optional": true
+    },
+    "@elizaos/cloud-shared": {
+      "optional": true
+    },
+    "@elizaos/cloud-test-mocks": {
+      "optional": true
+    },
+    "@elizaos/plugin-browser": {
+      "optional": true
+    }
+  },
+  "bin": {
+    "eliza-scenarios": "./scenario-runner/bin/eliza-scenarios"
   }
 }

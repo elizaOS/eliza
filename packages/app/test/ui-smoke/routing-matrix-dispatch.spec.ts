@@ -18,7 +18,7 @@
 // toggling a control: the renderer routes the new modality binding to the routing
 // endpoint, AND the next routing read (the value the dispatcher would resolve)
 // reflects it. This spec proves both by backing the routing endpoints with a
-// STATEFUL mock that mirrors the real app-core behaviour: it persists the policy /
+// STATEFUL mock that mirrors the real app behaviour: it persists the policy /
 // preferred-provider write and serves it back as the canonical routing config.
 // Setting TEXT_LARGE to manual + a specific provider therefore changes the
 // resolved provider for that modality, which we assert at the routing-readout
@@ -75,7 +75,7 @@ interface RoutingMock {
 }
 
 /**
- * Stateful routing backend matching real app-core semantics: GET serves the
+ * Stateful routing backend matching real app semantics: GET serves the
  * canonical config (registrations + current preferences); the policy/preferred
  * POSTs mutate that config and echo it back. This is what makes a UI routing
  * flip a real routing OUTCOME — the next read resolves to the new binding.

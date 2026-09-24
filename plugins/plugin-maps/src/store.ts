@@ -14,7 +14,6 @@ import {
   MemoryType,
   type UUID,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import * as z from "zod";
 import { MapsError } from "./errors.js";
 import {
@@ -69,19 +68,6 @@ function validatedUuid(value: string, field: string): string {
 }
 
 const namespacePromises = new WeakMap<IAgentRuntime, Promise<void>>();
-const PROCESS_LOCKS_KEY = Symbol.for(
-  "@elizaos/plugin-maps:saved-place-cas-locks",
-);
-type LockRegistry = Map<string, Promise<void>>;
-
-function processLocks(): LockRegistry {
-  const root = globalThis as typeof globalThis & {
-    [PROCESS_LOCKS_KEY]?: LockRegistry;
-  };
-  root[PROCESS_LOCKS_KEY] ??= new Map<string, Promise<void>>();
-  return root[PROCESS_LOCKS_KEY];
-}
-
 function stateWorldId(runtime: IAgentRuntime): UUID {
   return createUniqueUuid(runtime, "maps:saved-places:world") as UUID;
 }
@@ -315,24 +301,7 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
     validatedUuid(request.roomId, "roomId");
     await ensureNamespace(this.runtime);
     const normalized = mutation(request);
-    if (!(this.runtime.adapter instanceof InMemoryDatabaseAdapter)) {
-      return this.saveWithCas(request, normalized);
-    }
-    const lockKey = `${this.runtime.agentId}:${request.ownerEntityId}`;
-    const locks = processLocks();
-    const prior = locks.get(lockKey) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    locks.set(lockKey, current);
-    await prior;
-    try {
-      return await this.saveWithCas(request, normalized);
-    } finally {
-      release();
-      if (locks.get(lockKey) === current) locks.delete(lockKey);
-    }
+    return this.saveWithCas(request, normalized);
   }
 
   async list(ownerEntityId: string): Promise<SavedPlace[]> {

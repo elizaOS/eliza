@@ -226,8 +226,8 @@ function toFileUrl(absolutePath: string): string {
  * agent layer never has to import the connector layer directly (the
  * dependency direction is connector → agent, not the other way around).
  *
- * `packages/app-core/src/connectors/capacitor-jsc.ts` and
- * `packages/app-core/src/connectors/capacitor-quickjs.ts` call
+ * `packages/app/src/connectors/capacitor-jsc.ts` and
+ * `packages/app/src/connectors/capacitor-quickjs.ts` call
  * {@link registerJsRuntimeFactory} at import time so they participate in the
  * fallback chain below.
  */

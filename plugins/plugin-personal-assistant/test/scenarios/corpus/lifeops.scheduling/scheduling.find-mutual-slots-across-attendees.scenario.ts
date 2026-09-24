@@ -7,11 +7,11 @@
  * from the OWNER's calendar and frame them as "propose to attendees".
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import {
   seedCalendarCache,
   seedMeetingPreferences,
@@ -44,7 +44,7 @@ export default scenario({
   domain: "lifeops.scheduling",
   tags: ["lifeops", "scheduling", "multi-attendee"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

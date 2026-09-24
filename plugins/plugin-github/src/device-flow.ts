@@ -3,7 +3,7 @@
  * (Settings → Coding Agents → GitHub).
  *
  * Port of the #15749 lifeops-dashboard primitive
- * (`scripts/lifeops/github-device-login.mjs`) into the plugin route surface,
+ * (`packages/scripts/lifeops/github-device-login.mjs`) into the plugin route surface,
  * with one addition: every flow is bound to the agent that started it
  * (`agentKey`), so on a multi-agent host one agent's runtime can never poll —
  * and therefore never receive the token of — a flow another agent started.

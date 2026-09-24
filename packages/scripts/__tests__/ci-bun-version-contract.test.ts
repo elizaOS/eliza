@@ -1081,7 +1081,7 @@ jobs:
   });
 
   test("accepts the global-ARG + bare stage re-declaration Dockerfile shape", () => {
-    // The shape packages/app-core/deploy/Dockerfile.ci actually uses.
+    // The shape packages/app/deploy/Dockerfile.ci actually uses.
     const inventory = inventoryOf(
       buildRepo({
         files: {
@@ -1385,6 +1385,48 @@ parts:
     expect(site?.classification).toBe("canonical");
   });
 
+  test("does not inspect a runtime surface deleted from the working tree", () => {
+    const root = buildRepo({});
+    const git = (...args: string[]) =>
+      spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    const removed = join(root, "packages", "retired", "Dockerfile");
+    mkdirSync(dirname(removed), { recursive: true });
+    writeFileSync(removed, `FROM oven/bun:${CANONICAL}\n`);
+    git("add", "-A");
+    git("commit", "-qm", "fixture");
+    rmSync(removed);
+    try {
+      expect(() => runContract(root)).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("inspects an unstaged destination when a runtime surface moves", () => {
+    const root = buildRepo({});
+    const git = (...args: string[]) =>
+      spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q");
+    const previous = join(root, "packages", "retired", "Dockerfile");
+    const moved = join(root, "packages", "testing", "Dockerfile");
+    mkdirSync(dirname(previous), { recursive: true });
+    writeFileSync(previous, `FROM oven/bun:${CANONICAL}\n`);
+    git("add", "-A");
+    rmSync(previous);
+    mkdirSync(dirname(moved), { recursive: true });
+    writeFileSync(moved, "FROM oven/bun:latest\n");
+    try {
+      expect(() => runContract(root)).toThrow(/packages\/testing\/Dockerfile/);
+      writeFileSync(moved, `FROM oven/bun:${CANONICAL}\n`);
+      expect(() => runContract(root)).not.toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("names the file when a tracked path cannot be read", () => {
     // git ls-files can list a path the working tree lacks (sparse checkout,
     // uninitialised submodule). That surfaced as a raw ENOENT naming neither
@@ -1402,6 +1444,7 @@ parts:
     writeFileSync(missing, `FROM oven/bun:${CANONICAL}\n`);
     git("add", "-A");
     git("commit", "-qm", "fixture");
+    git("update-index", "--skip-worktree", "packages/gone/Dockerfile");
     rmSync(missing);
     try {
       expect(() => runContract(root)).toThrow(/tracked by git but unreadable/);

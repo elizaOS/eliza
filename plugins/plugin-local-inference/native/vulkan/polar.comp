@@ -60,7 +60,7 @@ const float POLAR_QJL_INV_SQRT_QK = 0.08838834764831845;
 const float POLAR_INV_QK = 1.0 / 128.0;
 
 // Bit-identical to POLAR_Q4_CENTROIDS in
-// packages/native-plugins/polarquant-cpu/include/polarquant/polar_centroids.h.
+// plugins/plugin-local-inference/native/polarquant-cpu/include/polarquant/polar_centroids.h.
 const float POLAR_Q4_CENTROIDS[16] = float[16](
     -2.754354807, -2.093562707, -1.643041510, -1.279739752,
     -0.962640978, -0.672392117, -0.397897103, -0.131757782,

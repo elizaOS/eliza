@@ -30,7 +30,6 @@ import type { HooksConfig } from "./types.hooks.js";
 import type {
   AudioConfig,
   BroadcastConfig,
-  CommandsConfig,
   MessagesConfig,
 } from "./types.messages.js";
 import type { ToolsConfig } from "./types.tools.js";
@@ -773,7 +772,6 @@ export type ElizaConfig = {
   broadcast?: BroadcastConfig;
   audio?: AudioConfig;
   messages?: MessagesConfig;
-  commands?: CommandsConfig;
   approvals?: ApprovalsConfig;
   session?: SessionConfig;
   web?: WebConfig;

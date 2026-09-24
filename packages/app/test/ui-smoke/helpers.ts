@@ -14,7 +14,7 @@ const ONE_PX_PNG = Buffer.from(
   "base64",
 );
 
-// One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
+// One real bundled VRM (gzipped glTF) shipped under packages/app/web-dist/vrms/.
 // The preview server serves the SPA + the real `vrms/eliza-N.vrm.gz` files, but
 // the runtime boot-config it serves has no `vrmAssets`, so `getVrmUrl()` falls
 // back to `bundled-1.vrm.gz` which 404s — the gz-decode of a tiny 404 page then
@@ -28,7 +28,7 @@ function bundledVrmGz(): Buffer | null {
   if (cachedVrmGz !== undefined) return cachedVrmGz;
   const candidates = [
     resolve(process.cwd(), "dist/vrms/eliza-1.vrm.gz"),
-    resolve(process.cwd(), "packages/app/dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "packages/app/web-dist/vrms/eliza-1.vrm.gz"),
     resolve(process.cwd(), "../app/dist/vrms/eliza-1.vrm.gz"),
   ];
   for (const c of candidates) {
@@ -1301,7 +1301,7 @@ function populatedTodos() {
 // KnowledgeDocumentsView fetches, so `documents:gui` renders its `documents-populated`
 // branch (a document row + stats line) instead of the empty/upload-prompt
 // state. Shapes mirror the PresentedDocument + stats responses from
-// plugin-documents/src/routes.ts.
+// plugin-knowledge/src/routes.ts.
 function populatedDocumentsList() {
   return {
     ok: true,

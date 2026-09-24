@@ -1,0 +1,143 @@
+{
+  "name": "@elizaos/auth",
+  "version": "2.0.3-beta.7",
+  "description": "Browser login, identity sessions, Node account authentication and encrypted credential storage for elizaOS.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/auth"
+  },
+  "main": "./dist/sdk/index.js",
+  "types": "./dist/sdk/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/sdk/index.ts",
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js",
+      "default": "./dist/sdk/index.js"
+    },
+    "./package.json": "./package.json",
+    "./server": {
+      "eliza-source": "./src/server/app.ts",
+      "types": "./dist/server/app.d.ts",
+      "import": "./dist/server/app.js"
+    },
+    "./embedded": {
+      "eliza-source": "./src/server/embedded.ts",
+      "types": "./dist/server/embedded.d.ts",
+      "import": "./dist/server/embedded.js"
+    },
+    "./start": {
+      "eliza-source": "./src/server/start.ts",
+      "types": "./dist/server/start.d.ts",
+      "import": "./dist/server/start.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "eliza-source": "./src/auth/index.ts",
+      "import": "./dist/auth/index.js",
+      "default": "./dist/auth/index.js"
+    },
+    "./vault": {
+      "types": "./dist/vault/index.d.ts",
+      "eliza-source": "./src/vault/index.ts",
+      "import": "./dist/vault/index.js",
+      "default": "./dist/vault/index.js"
+    },
+    "./auth/*": {
+      "types": "./dist/auth/*.d.ts",
+      "eliza-source": "./src/auth/*.ts",
+      "import": "./dist/auth/*.js",
+      "default": "./dist/auth/*.js"
+    },
+    "./vault/*": {
+      "types": "./dist/vault/*.d.ts",
+      "eliza-source": "./src/vault/*.ts",
+      "import": "./dist/vault/*.js",
+      "default": "./dist/vault/*.js"
+    },
+    "./kms": {
+      "types": "./dist/kms/index.d.ts",
+      "eliza-source": "./src/kms/index.ts",
+      "import": "./dist/kms/index.js",
+      "default": "./dist/kms/index.js"
+    },
+    "./credentials": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.mjs packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/auth",
+    "test": "bun run build && bun run test:credentials && bun run test:login",
+    "test:watch": "node ../scripts/run-vitest.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.vault.json && tsc --noEmit -p tsconfig.login.json",
+    "lint": "biome check src test scripts",
+    "lint:check": "biome check src test scripts",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "start:embedded": "bun src/server/embedded.ts",
+    "start": "bun src/server/start.ts",
+    "test:railpack": "bun test test/login/railpack-runtime.test.ts",
+    "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
+    "test:credentials": "node ../scripts/run-vitest.mjs run",
+    "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@electric-sql/pglite": "^0.4.2",
+    "@napi-rs/keyring": "^1.1.6",
+    "bs58": "^6.0.0",
+    "@simplewebauthn/browser": "^13.0.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "0.45.2",
+    "postgres": "^3.4.7",
+    "@upstash/redis": "^1.34.3",
+    "ioredis": "^5.6.1",
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.7.0",
+    "@scure/bip32": "^1.6.0",
+    "@scure/bip39": "^1.6.0",
+    "@scure/btc-signer": "^2.2.0",
+    "@solana/web3.js": "^1",
+    "viem": "^2.30.0",
+    "re2-wasm": "^1.0.2",
+    "@aws-sdk/client-kms": "^3.700.0",
+    "graphene-pk11": "^2.2.0",
+    "hono": "^4.13.8",
+    "jose": "^6.2.1",
+    "siwe": "^3.0.0",
+    "zod": "^4.3.6",
+    "@node-saml/node-saml": "5.1.0",
+    "@simplewebauthn/server": "^13",
+    "resend": "^6.9.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "@types/bun": "1.3.14",
+    "@playwright/test": "^1.62.1"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ],
+      "coreBuild": true
+    }
+  }
+}

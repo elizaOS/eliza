@@ -1,7 +1,7 @@
 /**
  * start-mocks-bg.mjs
  *
- * Boots the external-service fixtures owned by packages/scenario-runner.
+ * Boots the external-service fixtures owned by packages/testing/scenario-runner.
  * keeps the process alive until it receives SIGINT/SIGTERM. Writes:
  *
  *   .tmp/mocks-urls.json   { env: { name: baseUrl }, vars: { ENV_VAR: value } }
@@ -135,6 +135,7 @@ if (reuse) {
 const startMocksJsPath = path.join(
   repoRoot,
   "packages",
+  "testing",
   "scenario-runner",
   "test",
   "mocks",
@@ -144,6 +145,7 @@ const startMocksJsPath = path.join(
 const startMocksTsPath = path.join(
   repoRoot,
   "packages",
+  "testing",
   "scenario-runner",
   "test",
   "mocks",

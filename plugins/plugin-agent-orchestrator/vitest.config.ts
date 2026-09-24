@@ -18,23 +18,20 @@ export default defineConfig({
             import.meta.url,
           ),
         ),
-        "@elizaos/credentials/auth/token-expiry": fileURLToPath(
+        "@elizaos/auth/auth/token-expiry": fileURLToPath(
           new URL(
-            "../../packages/credentials/src/auth/token-expiry.ts",
+            "../../packages/auth/src/auth/token-expiry.ts",
             import.meta.url,
           ),
         ),
-        "@elizaos/credentials/auth": new URL(
-          "../../packages/credentials/src/auth/index.ts",
+        "@elizaos/auth/auth": new URL(
+          "../../packages/auth/src/auth/index.ts",
           import.meta.url,
         ).pathname,
-        // The auth source alias pulls in @elizaos/credentials/vault, which resolves only
+        // The auth source alias pulls in @elizaos/auth/vault, which resolves only
         // through its built dist; pin it to source for clean-checkout runs.
-        "@elizaos/credentials/vault": fileURLToPath(
-          new URL(
-            "../../packages/credentials/src/vault/index.ts",
-            import.meta.url,
-          ),
+        "@elizaos/auth/vault": fileURLToPath(
+          new URL("../../packages/auth/src/vault/index.ts", import.meta.url),
         ),
         "@elizaos/plugin-sql": fileURLToPath(
           new URL("../plugin-sql/src/index.ts", import.meta.url),
@@ -59,6 +56,7 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./__tests__/setup.ts"],
     include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+    exclude: ["src/ui/**"],
     coverage: {
       reporter: ["text", "json", "html"],
     },

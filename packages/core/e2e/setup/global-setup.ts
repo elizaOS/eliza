@@ -9,9 +9,9 @@
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
 import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { AgentRuntime } from "../../src/runtime";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
@@ -101,14 +101,6 @@ async function resolveProviderPlugin(
 			);
 			if (!mod) return null;
 			return ((mod.groqPlugin ?? mod.default) as Plugin | undefined) ?? null;
-		}
-		case "google": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-google-genai/index.ts",
-				"@elizaos/plugin-google-genai",
-			);
-			if (!mod) return null;
-			return (mod.default as Plugin | undefined) ?? null;
 		}
 		default:
 			return null;
@@ -201,16 +193,6 @@ function applyProviderSettings(
 				true,
 			);
 			break;
-		case "google":
-			runtime.setSetting(
-				"GOOGLE_GENERATIVE_AI_API_KEY",
-				process.env.GOOGLE_API_KEY ??
-					process.env.GOOGLE_AI_API_KEY ??
-					process.env.GOOGLE_GENERATIVE_AI_API_KEY ??
-					"",
-				true,
-			);
-			break;
 		case "groq":
 			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
 			runtime.setSetting(
@@ -256,7 +238,7 @@ export default async function globalSetup(): Promise<void> {
 		plugins.push(providerPlugin);
 	}
 
-	const adapter = new InMemoryDatabaseAdapter(agentId);
+	const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
 	await adapter.init();
 
 	const runtime = new AgentRuntime({

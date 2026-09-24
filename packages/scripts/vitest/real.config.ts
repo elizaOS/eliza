@@ -83,12 +83,6 @@ const ciExcludedRealPaths = [
     "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "packages/agent/src/providers/media-provider.real.test.ts",
-  ),
-  elizaWorkspacePattern(
-    "packages/agent/src/actions/life-param-extractor-real.test.ts",
-  ),
-  elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/rpc-providers.live.test.ts",
   ),
   elizaWorkspacePattern(
@@ -99,17 +93,11 @@ const ciExcludedRealPaths = [
   ),
 ];
 const liveSetupFile = [
-  path.join(
-    elizaWorkspaceRoot,
-    "packages",
-    "app-core",
-    "test",
-    "live.setup.ts",
-  ),
+  path.join(elizaWorkspaceRoot, "packages", "app", "test", "live.setup.ts"),
   path.join(
     disabledElizaWorkspaceRoot,
     "packages",
-    "app-core",
+    "app",
     "test",
     "live.setup.ts",
   ),
@@ -181,13 +169,6 @@ const realResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
-          find: /^@elizaos\/common$/,
-          replacement: path.join(
-            elizaWorkspaceRoot,
-            "packages/common/src/index.ts",
-          ),
-        },
-        {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },
@@ -199,7 +180,7 @@ const realResolveAlias: ModuleAlias[] = [
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
   {
-    find: "@elizaos/credentials/vault",
+    find: "@elizaos/auth/vault",
     replacement: path.join(vaultSourceRoot, "index.ts"),
   },
   {
@@ -229,7 +210,7 @@ const realResolveAlias: ModuleAlias[] = [
   {
     // Same prefix-alias hazard as plugin-discord above: the installed-package
     // string alias rewrites subpath imports (e.g. ./cloud/duffel-client) into
-    // dist paths that do not exist. Route them to source like app-core does.
+    // dist paths that do not exist. Route them to source like app does.
     find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
     replacement: `${pluginElizaCloudRoot.split(path.sep).join("/")}/$1`,
   },
@@ -252,7 +233,7 @@ const realResolveAlias: ModuleAlias[] = [
   {
     // Subpath imports (e.g. @elizaos/plugin-wallet/diagnostic) must resolve to
     // source before the bare string alias below rewrites the package root to
-    // src/index.ts; mirrors packages/app-core/vitest.config.ts.
+    // src/index.ts; mirrors packages/app/vitest.config.ts.
     find: /^@elizaos\/plugin-wallet\/(.+)$/,
     replacement: `${path
       .join(elizaWorkspaceRoot, "plugins", "plugin-wallet", "src")
@@ -261,7 +242,7 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getWorkspaceAppAliases(repoRoot, ["plugin-wallet"]),
   ...getWorkspacePluginAliases(repoRoot, [
-    "plugin-documents",
+    "plugin-knowledge",
     "plugin-personal-assistant",
     "plugin-scheduling",
     "plugin-local-inference",
@@ -299,34 +280,6 @@ const realResolveAlias: ModuleAlias[] = [
           elizaWorkspaceRoot,
           "plugins",
           "plugin-agent-orchestrator",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-agent-skills",
-      packageName: "@elizaos/plugin-agent-skills",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-agent-skills",
-          "typescript",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-commands",
-      packageName: "@elizaos/plugin-commands",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-commands",
-          "typescript",
           "src",
           "index",
         ),
@@ -414,20 +367,6 @@ const realResolveAlias: ModuleAlias[] = [
       },
     },
     {
-      find: "@elizaos/plugin-google-genai",
-      packageName: "@elizaos/plugin-google-genai",
-      options: {
-        entryKind: "node",
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-google-genai",
-          "typescript",
-          "index.node",
-        ),
-      },
-    },
-    {
       find: "@elizaos/plugin-elizacloud",
       packageName: "@elizaos/plugin-elizacloud",
       options: {
@@ -483,7 +422,7 @@ export default defineConfig({
       "**/node_modules/**",
       ".claude/**",
       ...(hiddenElizaWorkspaceGlob ? [hiddenElizaWorkspaceGlob] : []),
-      elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
+      elizaWorkspacePattern("packages/app/platforms/electrobun/**"),
       "apps/chrome-extension/**",
       elizaWorkspacePattern("cloud/**"),
       ...(isCiReal ? ciExcludedRealPaths : []),
@@ -493,7 +432,7 @@ export default defineConfig({
         inline: [
           "@elizaos/core",
           "@elizaos/agent",
-          "@elizaos/app-core",
+          "@elizaos/app",
           /^@elizaai\/shared/,
           /^@elizaos\/plugin-/,
           "zod",

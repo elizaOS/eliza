@@ -178,13 +178,13 @@ jobs:
             (( 10#$candidate <= 4503599627370495 ))
           }
 
-          canonical_source="packages/homepage/src/lib/contact.ts"
+          canonical_source="packages/cloud/shared/src/lib/public-telegram-identity.ts"
           canonical_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
           canonical_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
-          valid_bot_id "$canonical_id" || fail "The homepage canonical Telegram bot ID is missing or invalid"
-          [[ "$canonical_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || fail "The homepage canonical Telegram username is missing or invalid"
+          valid_bot_id "$canonical_id" || fail "The cloud canonical Telegram bot ID is missing or invalid"
+          [[ "$canonical_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || fail "The cloud canonical Telegram username is missing or invalid"
           canonical_username_key="$(printf '%s' "$canonical_username" | tr '[:upper:]' '[:lower:]')"
-          [[ "$canonical_username_key" == *bot ]] || fail "The homepage canonical Telegram username must use the managed bot suffix"
+          [[ "$canonical_username_key" == *bot ]] || fail "The cloud canonical Telegram username must use the managed bot suffix"
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             expected_id="$canonical_id"

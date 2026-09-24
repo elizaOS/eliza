@@ -37,7 +37,7 @@
  *     responses) and a preserved `cause`.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "./agent-backup-limits.js";
 
 /** Classification for a canonical walk that refused to keep going. */

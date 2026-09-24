@@ -1,0 +1,20 @@
+id: query_balance_001
+level: 0
+name: SOL Balance Query
+description: 'Level 0 foundational test: SOL Balance Query'
+category: query
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_query_balance_001
+  type: query
+  parameters:
+    action: get_balance
+    account_type: wallet
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

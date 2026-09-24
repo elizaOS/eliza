@@ -115,7 +115,8 @@ export function execFileSync(command, argsOrOptions, maybeOptions) {
   const hasArgs = Array.isArray(argsOrOptions);
   const result = spawnSync(command, argsOrOptions, maybeOptions);
   if (result.error || result.status !== 0) {
-    const error = result.error ?? new Error(`${command} exited ${result.status}`);
+    const error =
+      result.error ?? new Error(`${command} exited ${result.status}`);
     Object.assign(error, {
       status: result.status,
       stderr: result.stderr,

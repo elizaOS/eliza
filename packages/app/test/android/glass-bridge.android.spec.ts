@@ -5,10 +5,12 @@
  * rejection at the untrusted boundary, and pixel captures proving the tinted
  * native material renders through a real transparency hole.
  */
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import { expect, test, waitForShellReady } from "./android-harness";
 
 type RegionState = {
@@ -28,11 +30,7 @@ type GlassPlugin = {
   getRegionState(o: unknown): Promise<RegionState>;
 };
 
-const ARTIFACT_DIR = path.join(
-  process.cwd(),
-  "test-results",
-  "android-glass-bridge",
-);
+const ARTIFACT_DIR = testOutputPath("app", "android-glass-bridge");
 
 function adb(args: string[], serial: string): Buffer {
   const adbBin = process.env.ANDROID_HOME

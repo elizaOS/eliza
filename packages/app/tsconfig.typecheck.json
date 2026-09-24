@@ -3,16 +3,14 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@homepage/*": ["../homepage/src/*"],
-      "@/*": ["../homepage/src/*"],
-      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
-      "@elizaos/app-core/*": ["../app-core/dist/*"],
-      "@elizaos/app-core/first-run/first-run-config": [
-        "../app-core/dist/first-run/first-run-config.d.ts"
+      "@elizaos/app": ["../app/dist/index.d.ts"],
+      "@elizaos/app/*": ["../app/dist/*"],
+      "@elizaos/app/first-run/first-run-config": [
+        "../app/dist/first-run/first-run-config.d.ts"
       ],
       "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-task-coordinator": [
+      "@elizaos/plugin-agent-orchestrator/ui": [
         "./src/types/app-plugin-modules.d.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
@@ -22,7 +20,7 @@
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-phone": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-native-phone": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/dist/ui/index.d.ts"
       ],
@@ -30,18 +28,6 @@
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-app-manager": [
-        "../../plugins/plugin-app-manager/src/index.ts"
-      ],
-      "@elizaos/plugin-app-manager/*": [
-        "../../plugins/plugin-app-manager/src/*"
-      ],
-      "@elizaos/plugin-agent-skills": [
-        "../../plugins/plugin-agent-skills/src/index.ts"
-      ],
-      "@elizaos/plugin-agent-skills/*": [
-        "../../plugins/plugin-agent-skills/src/*"
-      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
@@ -54,16 +40,6 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
-      "@elizaos/plugin-commands": [
-        "../../plugins/plugin-commands/src/index.ts"
-      ],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
-      ],
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/dist/index.d.ts"
       ],
@@ -71,8 +47,8 @@
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/ui": ["../src/ui/index.ts"],
+      "@elizaos/ui/*": ["../src/ui/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "csstype": [
@@ -84,11 +60,11 @@
       "@elizaos/plugin-native-settings/register": [
         "../../plugins/plugin-native-settings/src/register.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "../../plugins/plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
@@ -108,8 +84,8 @@
       "@elizaos/capacitor-desktop": [
         "../../plugins/plugin-native-desktop/src/index.ts"
       ],
-      "@elizaos/capacitor-llama": [
-        "../../plugins/plugin-native-llama/src/index.ts"
+      "@elizaos/plugin-native-inference/llama": [
+        "../../plugins/plugin-native-inference/src/llama/index.ts"
       ],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
@@ -129,14 +105,14 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
-      "@elizaos/capacitor-contacts/*": [
+      "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
-      "@elizaos/capacitor-mobile-agent-bridge": [
-        "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
+      "@elizaos/plugin-native-inference/bridge": [
+        "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
@@ -144,9 +120,59 @@
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
       ],
-      "@elizaos/capacitor-messages": [
-        "../../plugins/plugin-native-messages/src/index.ts"
+      "@elizaos/plugin-native-messages/bridge": [
+        "../../plugins/plugin-native-messages/src/bridge.ts"
       ]
     }
-  }
+  },
+  "include": [
+    "src/first-run-boot-patches.ts",
+    "src/native-transcript-bridge.ts",
+    "src/env-prefix.js",
+    "src/web-ws-base-fix.ts",
+    "src/camera-bridge-responder.ts",
+    "src/remote-controller-deep-link.ts",
+    "src/brand-env.ts",
+    "src/main.tsx",
+    "src/embed-bootstrap.ts",
+    "src/mobile-bridges.ts",
+    "src/types",
+    "src/app-config.ts",
+    "src/native",
+    "src/ios-voice-selftest-smoke.ts",
+    "src/public-web-entry.test.tsx",
+    "src/character-catalog.ts",
+    "src/ios-full-bun-entrypoint.ts",
+    "src/desktop-fn-hold-policy.ts",
+    "src/public-web-boot-config.ts",
+    "src/renderer-entry.ts",
+    "src/deep-link-handler.ts",
+    "src/ios-cloud-onboarding-smoke.ts",
+    "src/sw-registration.ts",
+    "src/packaged-shell-storage-test-bridge.ts",
+    "src/cloud-apps-view.ts",
+    "src/boot-failure.ts",
+    "src/mobile-remote-fallback.ts",
+    "src/keyboard-dictation.ts",
+    "src/ios-runtime.ts",
+    "src/__tests__",
+    "src/shims",
+    "src/public-web-entry.tsx",
+    "src/boot-voice-load.ts",
+    "src/app-module-cache.ts",
+    "src/renderer-build-stamp.ts",
+    "src/web-entry-policy.ts",
+    "src/mobile-lifecycle.ts",
+    "src/desktop-hotkey.ts",
+    "src/deep-link-routing.ts",
+    "src/env-prefix.d.ts",
+    "src/url-trust-policy.ts",
+    "src/host-externals.ts",
+    "src/renderer-build-manifest-plugin.test.ts",
+    "src/renderer-shell-scope.ts",
+    "src/runtime-chooser-override.ts",
+    "src/plugin-registrations.ts",
+    "src/ios-attachment-smoke.ts",
+    "src/cloud-only-branding.ts"
+  ]
 }

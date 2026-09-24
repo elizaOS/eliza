@@ -1,7 +1,6 @@
 // Wires hosted Eliza agent state behavior for cloud runtime services.
 
-import type { Memory } from "@elizaos/common";
-import type { ActionResult, IAgentRuntime, State } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../types";
 

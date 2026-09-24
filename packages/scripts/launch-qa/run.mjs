@@ -11,7 +11,7 @@ const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 const QUICK_TASK_IDS = new Set([
   "mobile-artifacts",
-  "app-core-focused",
+  "app-focused",
   "agent-focused",
   "lifeops-focused",
   "cloud-api-key-client",
@@ -57,12 +57,10 @@ const TASKS = [
       "run",
       "--config",
       "packages/agent/vitest.config.ts",
-      "packages/agent/test/runtime/operations/vault-integration.test.ts",
+      "packages/agent/test/connector-credential-durable.test.ts",
     ],
-    requiredFiles: [
-      "packages/agent/test/runtime/operations/vault-integration.test.ts",
-    ],
-    description: "Focused agent vault runtime tests",
+    requiredFiles: ["packages/agent/test/connector-credential-durable.test.ts"],
+    description: "Agent credential durability across full process restarts",
   },
   {
     id: "lifeops-focused",
@@ -90,10 +88,10 @@ const TASKS = [
     description: "Host app typecheck",
   },
   {
-    id: "app-core-typecheck",
+    id: "app-typecheck",
     tier: 1,
     command: "bun",
-    args: ["run", "--cwd", "packages/app-core", "typecheck"],
+    args: ["run", "--cwd", "packages/app", "typecheck"],
     description: "App-core typecheck",
   },
   {
@@ -130,17 +128,6 @@ const TASKS = [
       "120000",
     ],
     description: "Cloud API-key create/list redaction e2e",
-  },
-  {
-    id: "cloud-api-key-client",
-    tier: 0,
-    command: "bun",
-    args: ["test", "packages/cloud/shared/src/lib/client/api-keys.test.ts"],
-    env: {
-      SKIP_DB_DEPENDENT: "1",
-      SKIP_SERVER_CHECK: "true",
-    },
-    description: "Cloud API-key client helper redaction contract",
   },
 ];
 

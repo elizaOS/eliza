@@ -8,9 +8,11 @@
 // is covered by sleep-wake.android.spec.ts; reboot + ElizaBootReceiver
 // autostart by lifecycle-reboot.android.spec.ts. The full event × platform
 // matrix lives in docs/DEVICE_LIFECYCLE_MATRIX.md.
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
@@ -32,15 +34,7 @@ import {
 
 const ARTIFACT_DIR = path.resolve(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(
-      process.cwd(),
-      "..",
-      "..",
-      "test-results",
-      "android-artifacts",
-      "12185-device-lifecycle",
-      "android",
-    ),
+    testOutputPath("android-artifacts", "12185-device-lifecycle", "android"),
   "lifecycle",
 );
 

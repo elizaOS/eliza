@@ -14,7 +14,7 @@
  * it always emits a reply, so a tone/consent judgment needs a real model.
  * Live-verify deferred to the key boundary (#12781).
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

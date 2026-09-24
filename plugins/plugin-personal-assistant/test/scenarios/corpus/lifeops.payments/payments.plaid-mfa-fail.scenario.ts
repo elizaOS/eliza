@@ -16,7 +16,7 @@
  * Cited: 03-coverage-gap-matrix.md row "bank link MFA fail" / NONE in matrix.
  *
  * BLOCKED-ON-MOCKOON: there is no `plaid.json` mockoon environment yet
- * (`packages/scenario-runner/test/mocks/environments/` has no plaid file as of 2026-05-09). The
+ * (`packages/testing/scenario-runner/test/mocks/environments/` has no plaid file as of 2026-05-09). The
  * scenario seeds the failure state directly into the lifeops payment_sources
  * table to exercise the agent's read+report path. When the Plaid mockoon
  * lands, the seed should be replaced with an actual mock-server roundtrip.
@@ -26,11 +26,11 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { judgeRubric } from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 
@@ -126,7 +126,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

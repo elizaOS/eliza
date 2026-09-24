@@ -193,7 +193,7 @@ mounts `SensitiveRequestBlock` itself for the secret/OAuth card.
   it works there too. Requires threaded progress mode
   (`ACPX_PROGRESS_MODE=threaded`) + a forum-enabled Telegram supergroup.
 - ✅ **Task detail view with sub-agent message room** already exists:
-  `plugin-task-coordinator/src/OrchestratorWorkbench.tsx` renders the per-task
+  `plugin-agent-orchestrator/src/ui/OrchestratorWorkbench.tsx` renders the per-task
   timeline (sub-agent / orchestrator / user / system senders), the sessions
   (sub-agents) list, plan, artifacts, usage, and recovery — with near-live room
   polling. The task widget links here via `/orchestrator?taskId=<threadId>`.

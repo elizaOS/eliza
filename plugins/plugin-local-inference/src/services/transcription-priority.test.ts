@@ -15,9 +15,9 @@
  * any real ASR backend.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime";
 import { ModelType } from "../../../../packages/core/src/types";
 
 interface TranscriptionParams {
@@ -30,13 +30,13 @@ interface TestRuntimeCtx {
 }
 
 function makeRuntime(): TestRuntimeCtx {
-	const runtime = new AgentRuntime({
+	const runtime = createSQLiteTestRuntime({
 		character: {
 			name: "TranscriptionPriorityTest",
 			bio: "asr-priority test",
 			settings: {},
 		} as never,
-		adapter: new InMemoryDatabaseAdapter(),
+
 		logLevel: "fatal",
 	});
 	const calls: string[] = [];

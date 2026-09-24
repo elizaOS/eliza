@@ -5,7 +5,7 @@
  * fail-closed behavior, and retry cleanup can be proven without credentials.
  */
 import { getConnectorAccountManager, type IAgentRuntime, type UUID } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGoogleConnectorAccountProvider,
@@ -20,7 +20,7 @@ const SIBLING_ACCOUNT_ID = "10000000-0000-4000-8000-000000000002" as UUID;
 const SIBLING_VAULT_REF = `connector.${AGENT_ID}.google.${SIBLING_ACCOUNT_ID}.oauth_tokens`;
 
 function runtimeHarness() {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   const vault = new Map([
     [
       VAULT_REF,

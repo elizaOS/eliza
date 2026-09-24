@@ -10,11 +10,11 @@ import {
   callPayloadBlob,
   describeCalls,
   successfulActionData,
-} from "@elizaos/scenario-runner/scenario-assertions";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import {
   assertMeetingMockLedger,
   finalizeMeetingMockLedger,

@@ -1,6 +1,6 @@
 /** Retrieves platform Stripe authority for known organization subscriptions before atomically publishing terminal lifecycle and its durable receipt. Unsupported policy and ambiguous observations remain retryable. */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { z } from "zod";

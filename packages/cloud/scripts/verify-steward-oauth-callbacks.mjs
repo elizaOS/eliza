@@ -8,6 +8,7 @@
 
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
+
 const PROVIDER_DESTINATIONS = Object.freeze({
   discord: {
     origin: "https://discord.com",
@@ -163,7 +164,8 @@ export async function verifyStewardOAuthCallbacks(
       }
       launchStates.add(providerState);
 
-      const callbackBaseUrl = CANONICAL_STEWARD_CALLBACK_BASE_URLS[deployEnvironment];
+      const callbackBaseUrl =
+        CANONICAL_STEWARD_CALLBACK_BASE_URLS[deployEnvironment];
       const expectedProviderCallback = `${callbackBaseUrl}/auth/oauth/${encodeURIComponent(provider)}/callback`;
       const providerCallbacks = destination.searchParams.getAll("redirect_uri");
       const actualProviderCallback = providerCallbacks[0];

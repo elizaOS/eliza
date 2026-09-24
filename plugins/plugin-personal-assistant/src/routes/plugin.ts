@@ -20,9 +20,9 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "@elizaos/app-core/api/auth";
-import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
-import { authStoreForRuntime } from "@elizaos/app-core/services/auth-store";
+} from "@elizaos/app/api/auth";
+import { isTrustedLocalRequest } from "@elizaos/app/api/compat-route-shared";
+import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import {

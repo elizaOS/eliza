@@ -151,7 +151,7 @@
     "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
     "build:ts": "bun run build.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:e2e": "node ../../packages/app/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },
   "publishConfig": {

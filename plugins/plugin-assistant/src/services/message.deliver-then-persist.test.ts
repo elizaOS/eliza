@@ -5,15 +5,15 @@
  * the memory, a persist failure reaches the boundary, and a same-room follow-up
  * fired off delivery is barred from composing until the reply row is stored
  * while other rooms stay unblocked.
- * Real AgentRuntime + InMemoryDatabaseAdapter end to end; only the Stage-1
+ * Real AgentRuntime + SQLiteDatabaseAdapter end to end; only the Stage-1
  * model surface is a deterministic registered handler (no live model, no
- * network). The adapter wrapper below observes/faults/holds the storage
- * boundary but always delegates real writes to the real adapter.
+ * network). The runtime wrapper observes/faults/holds persistence before the
+ * adapter transaction begins, and delegates real writes to the real adapter.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { v4 } from "uuid";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
 import { inferenceTimingRegistry } from "../../../../packages/core/src/inference-timing.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -65,8 +65,11 @@ function stage1DirectReply(replyText: string) {
 }
 
 const activeRuntimes: AgentRuntime[] = [];
+const releasePersistenceGates: Array<() => void> = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
+  for (const release of releasePersistenceGates.splice(0)) release();
   await Promise.all(
     activeRuntimes.splice(0).map(async (runtime) => {
       await runtime.stop();
@@ -93,16 +96,17 @@ interface HarnessOptions {
 async function createHarness(opts: HarnessOptions = {}) {
   const replyText = `the build finished clean, all green. probe-${v4()}`;
   const followUpReplyText = `and the tests passed too. probe-${v4()}`;
-  const adapter = new InMemoryDatabaseAdapter();
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
       name: `DeliverThenPersist${v4().slice(0, 8)}`,
     }),
-    adapter,
+
     logLevel: "fatal",
     enableAutonomy: false,
   });
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+  runtime.registerDatabaseAdapter(adapter);
   activeRuntimes.push(runtime);
   await runtime.initialize();
   // Interleaving trace shared by the model handler and the storage seam.
@@ -146,16 +150,14 @@ async function createHarness(opts: HarnessOptions = {}) {
   const replyPersistGate = new Promise<void>((resolve) => {
     releaseReplyPersist = resolve;
   });
-  const realCreateMemories = adapter.createMemories.bind(adapter);
-  adapter.createMemories = (async (
-    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
-  ): Promise<UUID[]> => {
-    const isReplyWrite = memories.some(
-      ({ memory, tableName }) =>
-        tableName === "messages" &&
-        memory.entityId === runtime.agentId &&
-        memory.content?.text === replyText,
-    );
+  releasePersistenceGates.push(releaseReplyPersist);
+  // Hold before SQLite's transaction queue so unrelated rooms can still write.
+  const realCreateMemory = runtime.createMemory.bind(runtime);
+  runtime.createMemory = async (memory, tableName, unique) => {
+    const isReplyWrite =
+      tableName === "messages" &&
+      memory.entityId === runtime.agentId &&
+      memory.content?.text === replyText;
     if (isReplyWrite && opts.persistDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, opts.persistDelayMs));
     }
@@ -165,12 +167,12 @@ async function createHarness(opts: HarnessOptions = {}) {
     if (isReplyWrite && opts.failReplyPersist) {
       throw new Error("injected reply-persist failure");
     }
-    const ids = await realCreateMemories(memories);
+    const id = await realCreateMemory(memory, tableName, unique);
     if (isReplyWrite) {
       order.push("persist:reply");
     }
-    return ids;
-  }) as InMemoryDatabaseAdapter["createMemories"];
+    return id;
+  };
 
   const makeMessage = (): Memory => ({
     id: asUUID(v4()),
@@ -255,6 +257,39 @@ async function createHarness(opts: HarnessOptions = {}) {
 }
 
 describe("simple-path deliver-then-persist ordering", () => {
+  it.each([
+    ["1", "analysis"],
+    ["0", "analysis"],
+    ["1", "as you were"],
+    ["0", "as you were"],
+  ])(
+    "handles ordinary text with retired analysis gate %s: %s",
+    async (gate, text) => {
+      vi.stubEnv("ELIZA_ENABLE_ANALYSIS_MODE", gate);
+      const h = await createHarness();
+      const message = h.makeMessage();
+      message.content.text = text;
+      const delivered: string[] = [];
+      const result = await h.service.handleMessage(
+        h.runtime,
+        message,
+        async (content) => {
+          if (content.text) delivered.push(content.text);
+          return [];
+        },
+      );
+      expect(h.stage1Invocations).toHaveLength(1);
+      expect(h.stage1Invocations[0]).toContain(text);
+      expect(result.didRespond).toBe(true);
+      expect(delivered).toContain(h.replyText);
+      expect(await h.storedReplies()).toHaveLength(1);
+      if (!message.id) throw new Error("Fixture message requires an ID");
+      expect((await h.runtime.getMemoryById(message.id))?.content.text).toBe(
+        text,
+      );
+    },
+  );
+
   it("fires the delivery callback before the reply persist completes, then still persists it", async () => {
     const h = await createHarness({ holdReplyPersist: true });
     let orderAtDelivery: string[] | undefined;
@@ -585,11 +620,19 @@ describe("simple-path deliver-then-persist ordering", () => {
 });
 
 describe("planning progress delivery boundaries", () => {
-  it.each(["clean", "private", "revoked", "envelope"] as const)(
-    "protects %s progress without consuming final delivery",
-    async (kind) => {
+  it.each(
+    [ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
+      (["clean", "private", "revoked", "envelope"] as const).map((kind) => ({
+        channelType,
+        kind,
+      })),
+    ),
+  )(
+    "protects $kind progress on $channelType without consuming final delivery",
+    async ({ kind, channelType }) => {
       const h = await createHarness();
       const turn = h.makeMessage();
+      turn.content.channelType = channelType;
       h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
       if (kind === "private" || kind === "revoked") {
         h.runtime.registerProvider({

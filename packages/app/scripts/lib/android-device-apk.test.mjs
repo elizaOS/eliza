@@ -1,5 +1,5 @@
 /**
- * Verifies Android APK discovery across the app-core build output and explicit
+ * Verifies Android APK discovery across the app build output and explicit
  * caller overrides without touching an attached device.
  */
 import path from "node:path";
@@ -9,7 +9,7 @@ import { resolveApk } from "./android-device.mjs";
 describe("resolveApk", () => {
   it("selects the first existing canonical build artifact", () => {
     const appCoreApk =
-      "/repo/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk";
+      "/repo/packages/app/platforms/android/app/build/outputs/apk/debug/app-debug.apk";
     const staleAppApk =
       "/repo/packages/app/android/app/build/outputs/apk/debug/app-debug.apk";
 

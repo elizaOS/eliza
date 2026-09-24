@@ -214,8 +214,6 @@ describe("computeTestRoots", () => {
       cloudSharedSrc: join("/repo", "packages", "cloud", "shared", "src"),
       cloudApiRoot: join("/repo", "packages", "cloud", "api"),
       cloudScriptsTests: join("/repo", "packages", "cloud", "scripts"),
-      cloudRoutingTests: join("/repo", "packages", "cloud", "routing", "src"),
-      cloudInfraTests: join("/repo", "packages", "cloud", "infra", "tests"),
       cloudServicesRoot: join("/repo", "packages", "cloud", "services"),
     });
   });
@@ -266,9 +264,7 @@ describe("ensureCloudTestRuntime", () => {
       },
       log: (text) => logs.push(text),
     });
-    expect(ran).toEqual([
-      PREFLIGHT_STEPS.coreBuild.label,
-    ]);
+    expect(ran).toEqual([PREFLIGHT_STEPS.coreBuild.label]);
     expect(logs.join("")).toContain("missing runtime artifact");
   });
 

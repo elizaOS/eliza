@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): NDA redline approval resolves on the live queue with the walk-away floor redacted.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   expectApprovalResolvedApproved,
   expectNoExternalSendDispatch,
@@ -24,7 +24,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

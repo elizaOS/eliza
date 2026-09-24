@@ -16,7 +16,7 @@ import {
  *
  * App-route plugins register a loader here (so they survive bundler
  * tree-shaking) instead of exposing routes through `Plugin.routes` directly.
- * Both the headless `@elizaos/agent` server boot and the `@elizaos/app-core`
+ * Both the headless `@elizaos/agent` server boot and the `@elizaos/app`
  * boot drain this registry; in a combined deployment (desktop/dashboard) both
  * run against the same HTTP host route table. This helper is therefore **idempotent**:
  * routes already present (keyed by `${type}:${path}`) are skipped, so a second

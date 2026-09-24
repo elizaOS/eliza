@@ -292,14 +292,13 @@ describe("the real repository", () => {
         report.documentedExclusions.length,
     ).toBe(report.relevantPackages);
     expect(report.documentedExclusions.map((entry) => entry.dir)).toEqual([
-      "packages/app-core/platforms/electrobun",
+      "packages/app/platforms/electrobun",
       "packages/cloud/e2e",
-      "packages/homepage",
     ]);
   }, 15_000);
 
   test("every documented exclusion in the shipped map is currently valid", () => {
-    expect(TEST_LANE_MEMBERSHIP_EXCLUSIONS.size).toBe(3);
+    expect(TEST_LANE_MEMBERSHIP_EXCLUSIONS.size).toBe(2);
     expect(() => computeTestLaneMembershipReport()).not.toThrow();
   }, 15_000);
 });

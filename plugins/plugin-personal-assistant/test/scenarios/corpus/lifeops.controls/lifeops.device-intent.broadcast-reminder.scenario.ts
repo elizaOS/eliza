@@ -3,8 +3,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/
@@ -25,7 +25,7 @@ export default scenario({
     "When the owner asks the agent to send a phone reminder, the planner should call DEVICE_INTENT with target=mobile. The action result must include the persisted intent's kind and target.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

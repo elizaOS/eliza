@@ -3,11 +3,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@homepage/*": ["../homepage/src/*"],
-      "@/*": ["../homepage/src/*"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/plugin-task-coordinator": [
-        "../../plugins/plugin-task-coordinator/src/index.ts"
+      "@elizaos/app": ["../app/src/index.ts"],
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
@@ -16,8 +14,12 @@
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
-      "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
+      "@elizaos/plugin-native-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/plugin-native-phone/*": [
+        "../../plugins/plugin-native-phone/src/*"
+      ],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
@@ -37,16 +39,6 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-registry": [
-        "../../plugins/plugin-registry/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
-      "@elizaos/plugin-commands": [
-        "../../plugins/plugin-commands/src/index.ts"
-      ],
-      "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/src/index.ts"
-      ],
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/src/index.ts"
       ],
@@ -55,13 +47,13 @@
       ],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      "@elizaos/ui": ["../src/ui/index.ts"],
+      "@elizaos/ui/*": ["../src/ui/*"],
+      "@elizaos/plugin-native-inference/host-bridge": [
+        "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
+      "@elizaos/plugin-native-inference/*": [
+        "../../plugins/plugin-native-inference/src/*"
       ],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
@@ -81,8 +73,8 @@
       "@elizaos/capacitor-desktop": [
         "../../plugins/plugin-native-desktop/src/index.ts"
       ],
-      "@elizaos/capacitor-llama": [
-        "../../plugins/plugin-native-llama/src/index.ts"
+      "@elizaos/plugin-native-inference/llama": [
+        "../../plugins/plugin-native-inference/src/llama/index.ts"
       ],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
@@ -102,13 +94,13 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
+      "@elizaos/plugin-native-contacts/bridge": [
+        "../../plugins/plugin-native-contacts/src/bridge.ts"
       ],
-      "@elizaos/capacitor-contacts/*": [
+      "@elizaos/plugin-native-contacts/bridge/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
-      "@elizaos/capacitor-mobile-agent-bridge": [
+      "@elizaos/plugin-native-inference/bridge": [
         "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [

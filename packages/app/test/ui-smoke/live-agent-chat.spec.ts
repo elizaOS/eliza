@@ -6,11 +6,11 @@
 // a live runtime.
 
 import { expect, type Page, test } from "@playwright/test";
-import { selectLiveProviderAsync } from "../../../app-core/test/helpers/live-provider";
 import {
   ExpectedDevSmokeFailureMatcher,
   isExpectedDevSmokeResponseCandidate,
 } from "../dev-smoke/browser-failure-policy";
+import { selectLiveProviderAsync } from "../helpers/live-provider";
 import {
   installDefaultAppRoutes,
   openAppPath,

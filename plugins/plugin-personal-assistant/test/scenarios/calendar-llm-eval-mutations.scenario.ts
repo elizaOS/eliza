@@ -1,7 +1,7 @@
 /**
  * Live-model planner-level evals asserting CALENDAR routing covers the full mutation set — check, add, move, delete, and search — without leaking into gmail or send-message actions.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

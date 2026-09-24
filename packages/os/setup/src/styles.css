@@ -1,0 +1,1237 @@
+:root {
+  /* Kept as a compatibility alias for older flasher selectors. Eliza's
+     current product palette is neutral black, white, and orange only. */
+  --brand-blue: #ff6a1f;
+  --brand-orange: #ff6a1f;
+  --brand-white: #fdfaf7;
+  --brand-black: #050506;
+  --brand-gray: #313136;
+  --brand-red: #f6465d;
+  --brand-green: #4ade80;
+  --brand-locked: #ff8a24;
+
+  color: var(--brand-white);
+  background: var(--brand-black);
+  font-family: "Poppins", Arial, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Shell
+   -------------------------------------------------------------------------- */
+
+.flasher-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--brand-blue);
+}
+
+/* Header */
+.header-band {
+  align-items: center;
+  background: var(--brand-black);
+  color: var(--brand-white);
+  display: flex;
+  justify-content: space-between;
+  min-height: 140px;
+  padding: 32px clamp(20px, 5vw, 64px);
+  gap: 24px;
+}
+
+.eyebrow {
+  color: var(--brand-white);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 6vw, 4rem);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  margin-bottom: 0;
+  color: var(--brand-white);
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.status-pill {
+  background: var(--brand-orange);
+  border: 0;
+  border-radius: 0;
+  color: var(--brand-black);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 8px 14px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Body */
+.workspace-body {
+  flex: 1;
+  background: var(--brand-white);
+  color: var(--brand-black);
+  padding: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Screen container
+   -------------------------------------------------------------------------- */
+
+.screen {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px clamp(20px, 5vw, 48px);
+}
+
+.screen-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--brand-black);
+  padding-bottom: 12px;
+}
+
+.screen-header h2 {
+  margin-bottom: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Device detection
+   -------------------------------------------------------------------------- */
+
+.device-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.device-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border: 2px solid var(--brand-black);
+  padding: 20px;
+}
+
+.device-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.device-name {
+  font-size: 1.1rem;
+}
+
+.notice {
+  background: #f5f5f5;
+  border: 1px solid var(--brand-gray);
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Spec list
+   -------------------------------------------------------------------------- */
+
+.spec-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: grid;
+  gap: 0;
+}
+
+.spec-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--brand-gray);
+}
+
+.spec-icon {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.spec-ok {
+  background: transparent;
+}
+
+.spec-warn {
+  background: rgba(255, 88, 0, 0.05);
+}
+
+.spec-locked {
+  background: rgba(176, 64, 0, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+   Build selection
+   -------------------------------------------------------------------------- */
+
+.build-list {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+
+.build-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+  border: 2px solid var(--brand-gray);
+  padding: 16px;
+  cursor: pointer;
+}
+
+.build-card.selected {
+  border-color: var(--brand-black);
+  background: #f9f9f9;
+}
+
+.build-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.build-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.channel-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.channel-stable {
+  background: var(--brand-green);
+  color: var(--brand-black);
+}
+
+.channel-beta {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.channel-nightly {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+/* --------------------------------------------------------------------------
+   Pre-flash confirmation
+   -------------------------------------------------------------------------- */
+
+.confirm-box {
+  border: 2px solid var(--brand-black);
+  padding: 24px;
+}
+
+.confirm-details {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 16px;
+  background: #f5f5f5;
+}
+
+.confirm-details div {
+  display: flex;
+  gap: 12px;
+}
+
+.confirm-details dt {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: 80px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.confirm-details dd {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.confirm-warning {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.confirm-list {
+  margin: 0 0 20px;
+  padding-left: 20px;
+}
+
+.confirm-list li {
+  margin-bottom: 4px;
+}
+
+.confirm-checks {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 24px;
+  padding: 16px;
+  background: rgba(224, 32, 32, 0.06);
+  border: 1px solid rgba(224, 32, 32, 0.2);
+}
+
+/* --------------------------------------------------------------------------
+   Bootloader unlock guide
+   -------------------------------------------------------------------------- */
+
+.unlock-warning {
+  background: rgba(176, 64, 0, 0.08);
+  border: 1px solid var(--brand-locked);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.unlock-warning ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.unlock-warning li {
+  margin-bottom: 4px;
+}
+
+.unlock-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.step-counter {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.step-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand-gray);
+}
+
+.step-dot.done {
+  background: var(--brand-green);
+}
+
+.step-dot.active {
+  background: var(--brand-black);
+}
+
+.unlock-step-card {
+  border: 2px solid var(--brand-black);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.unlock-instructions {
+  margin: 12px 0 20px;
+  padding-left: 20px;
+}
+
+.unlock-instructions li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.waiting-confirm {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 88, 0, 0.08);
+  border: 1px solid var(--brand-orange);
+  margin-bottom: 16px;
+}
+
+.unlocked-banner {
+  background: var(--brand-green);
+  color: var(--brand-black);
+  padding: 32px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+/* --------------------------------------------------------------------------
+   Flashing progress
+   -------------------------------------------------------------------------- */
+
+.flash-progress-bar {
+  height: 6px;
+  background: var(--brand-gray);
+  margin-bottom: 20px;
+}
+
+.flash-progress-fill {
+  height: 100%;
+  background: var(--brand-blue);
+}
+
+.step-list {
+  display: grid;
+  gap: 0;
+  margin: 20px 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.step {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 10px 14px;
+  border-left: 3px solid transparent;
+}
+
+.step-pending {
+  opacity: 0.5;
+}
+
+.step-running {
+  border-left-color: var(--brand-blue);
+  background: rgba(11, 53, 241, 0.06);
+}
+
+.step-complete {
+  border-left-color: var(--brand-green);
+}
+
+.step-failed {
+  border-left-color: var(--brand-red);
+  background: rgba(224, 32, 32, 0.06);
+}
+
+.step-waiting-user {
+  border-left-color: var(--brand-orange);
+  background: rgba(255, 88, 0, 0.08);
+}
+
+.step-icon {
+  font-size: 1rem;
+  margin-top: 2px;
+}
+
+.step-body {
+  display: grid;
+  gap: 4px;
+}
+
+.step-label {
+  font-size: 0.95rem;
+}
+
+.step-detail {
+  color: #555;
+  font-size: 0.82rem;
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.user-action {
+  color: #b04000;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin: 0;
+  padding: 6px 10px;
+  background: rgba(255, 88, 0, 0.1);
+  border: 1px solid var(--brand-orange);
+}
+
+.terminal-output {
+  background: #111;
+  color: #eee;
+  font-family: monospace;
+  font-size: 0.82rem;
+  padding: 12px 16px;
+  border-radius: 0;
+  margin-top: 16px;
+  display: grid;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.terminal-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   Complete screen
+   -------------------------------------------------------------------------- */
+
+.screen-complete {
+  text-align: center;
+}
+
+.complete-banner {
+  padding: 32px;
+  background: rgba(0, 200, 83, 0.08);
+  border: 2px solid var(--brand-green);
+  margin-bottom: 28px;
+}
+
+.complete-icon {
+  font-size: 3rem;
+  margin: 0 0 12px;
+}
+
+.complete-next {
+  text-align: left;
+  margin-bottom: 32px;
+}
+
+.complete-next ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.complete-next li {
+  margin-bottom: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Common elements
+   -------------------------------------------------------------------------- */
+
+.muted {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-top: 6px;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.tag-ok {
+  background: var(--brand-green);
+  color: var(--brand-black);
+}
+
+.tag-warn {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.tag-error {
+  background: var(--brand-red);
+  color: var(--brand-white);
+}
+
+.error {
+  color: #8b0000;
+  font-weight: 600;
+  background: rgba(255, 0, 0, 0.08);
+  padding: 10px 14px;
+  border: 1px solid var(--brand-red);
+  margin: 12px 0;
+}
+
+.action-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.action-row-split {
+  justify-content: space-between;
+}
+
+/* Buttons */
+button,
+a.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-height: 48px;
+  padding: 0 20px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn-primary {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.btn-danger {
+  background: var(--brand-red);
+  color: var(--brand-white);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--brand-black);
+  border: 2px solid var(--brand-black);
+}
+
+.btn-small {
+  font-size: 0.78rem;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+/* Checkboxes */
+.ack-row {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  cursor: pointer;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 7px;
+  border: 2px solid rgba(11, 53, 241, 0.18);
+  border-top-color: var(--brand-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: -3px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+
+.footer-band {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px clamp(20px, 5vw, 64px);
+}
+
+.footer-brand {
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cta-link {
+  display: inline-block;
+  background: var(--brand-blue);
+  color: var(--brand-white);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 12px 20px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .header-band {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    min-height: auto;
+    padding: 24px 20px;
+  }
+
+  .screen {
+    padding: 24px 16px;
+  }
+
+  .device-card {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .action-row-split {
+    flex-direction: column;
+  }
+
+  .footer-band {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Guided installer shell
+   -------------------------------------------------------------------------- */
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: #050506;
+}
+
+.installer-shell {
+  min-height: 100vh;
+  background: #050506;
+  color: var(--brand-white);
+  overflow-x: hidden;
+}
+
+.installer-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 0 clamp(20px, 4vw, 48px);
+  border-bottom: 1px solid #232329;
+}
+
+.installer-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.installer-logo {
+  display: block;
+  width: 118px;
+  height: auto;
+}
+
+.brand-divider {
+  width: 1px;
+  height: 20px;
+  background: #313136;
+}
+
+.setup-label {
+  color: #b9b9c2;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+button.header-help {
+  min-height: auto;
+  padding: 8px 0;
+  border-radius: 0;
+  background: transparent;
+  color: #b9b9c2;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+button.header-help:hover {
+  color: var(--brand-white);
+}
+
+.installer-main {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: clamp(40px, 6vw, 64px) clamp(20px, 4vw, 40px) 28px;
+}
+
+.installer-intro {
+  max-width: 620px;
+  margin-bottom: 38px;
+}
+
+.installer-intro h1 {
+  margin: 0;
+  color: var(--brand-white);
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+.installer-intro p {
+  margin: 10px 0 0;
+  color: #8a8a94;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.install-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
+  border-bottom: 1px solid #232329;
+}
+
+button.install-tab {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  min-height: auto;
+  margin-bottom: -1px;
+  padding: 0 0 15px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #8a8a94;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: color 150ms ease;
+}
+
+button.install-tab:hover {
+  color: var(--brand-white);
+}
+
+button.install-tab.active {
+  border-bottom-color: var(--brand-orange);
+  color: var(--brand-white);
+}
+
+.install-tab strong {
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.install-tab span {
+  color: #8a8a94;
+  font-size: 0.76rem;
+  font-weight: 400;
+}
+
+.installer-workspace {
+  min-height: 360px;
+  margin-top: 28px;
+  overflow: hidden;
+  border: 1px solid #232329;
+  border-radius: 8px;
+  background: #0a0a0c;
+}
+
+.workspace-ios {
+  background: #0a0a0c;
+}
+
+.install-panel-content {
+  padding: clamp(30px, 5vw, 48px);
+}
+
+.usb-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.8fr);
+  gap: clamp(40px, 7vw, 72px);
+  align-items: start;
+}
+
+.install-panel-copy h2,
+.ios-section-header h2 {
+  margin: 0;
+  color: var(--brand-white);
+  font-size: clamp(1.45rem, 3vw, 1.8rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  text-transform: none;
+}
+
+.panel-lede,
+.ios-section-header p {
+  max-width: 58ch;
+  margin: 12px 0 0;
+  color: #8a8a94;
+  font-size: 0.91rem;
+  line-height: 1.65;
+}
+
+.safety-note {
+  display: grid;
+  gap: 5px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #232329;
+  color: #b9b9c2;
+  font-size: 0.79rem;
+  line-height: 1.55;
+}
+
+.safety-note strong {
+  color: var(--brand-white);
+  font-weight: 500;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+button.brand-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 8px;
+  background: var(--brand-orange);
+  color: var(--brand-black);
+  font-size: 0.81rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+button.brand-button:hover {
+  background: #ff8a24;
+}
+
+button.text-button,
+button.footer-link {
+  min-height: auto;
+  padding: 4px 0;
+  border-radius: 0;
+  background: transparent;
+  color: #b9b9c2;
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+button.text-button:hover,
+button.footer-link:hover {
+  color: var(--brand-white);
+}
+
+.requirements {
+  padding-left: clamp(28px, 5vw, 48px);
+  border-left: 1px solid #232329;
+}
+
+.requirements h3 {
+  margin: 0 0 10px;
+  color: #b9b9c2;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.how-it-works {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.how-it-works li {
+  padding: 17px 0;
+  border-top: 1px solid #232329;
+}
+
+.how-it-works strong {
+  color: var(--brand-white);
+  font-size: 0.83rem;
+  font-weight: 500;
+}
+
+.how-it-works p {
+  margin: 4px 0 0;
+  color: #8a8a94;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.installer-footer {
+  padding: 18px 2px 0;
+  color: #8a8a94;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.flasher-embedded {
+  min-height: auto;
+  background: transparent;
+  color: var(--brand-white);
+}
+
+.flasher-embedded .workspace-body {
+  background: transparent;
+  color: var(--brand-white);
+}
+
+.flasher-embedded .screen {
+  max-width: 720px;
+  padding: clamp(30px, 5vw, 48px);
+}
+
+.flasher-embedded .screen-header {
+  align-items: center;
+  margin-bottom: 22px;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.flasher-embedded .screen-header h2 {
+  color: var(--brand-white);
+  font-size: clamp(1.4rem, 3vw, 1.75rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-transform: none;
+}
+
+.flasher-embedded .notice,
+.flasher-embedded .device-card,
+.flasher-embedded .confirm-box,
+.flasher-embedded .unlock-step-card {
+  border-color: #313136;
+  border-radius: 8px;
+  background: #0e0e11;
+  color: var(--brand-white);
+}
+
+.flasher-embedded .notice {
+  border-left: 1px solid #313136;
+}
+
+.flasher-embedded .muted {
+  color: #8a8a94;
+}
+
+.flasher-embedded .error {
+  border: 1px solid rgba(246, 70, 93, 0.28);
+  border-left-width: 1px;
+  border-radius: 8px;
+  background: rgba(246, 70, 93, 0.1);
+  color: #ff8998;
+}
+
+.flasher-embedded .btn-primary,
+.flasher-embedded .btn-small {
+  border-radius: 8px;
+  background: var(--brand-orange);
+  color: var(--brand-black);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.flasher-embedded .spinner {
+  border-color: rgba(255, 106, 31, 0.22);
+  border-top-color: var(--brand-orange);
+}
+
+/* --------------------------------------------------------------------------
+   iPhone and iPad guided flow
+   -------------------------------------------------------------------------- */
+
+.ios-section-header {
+  width: min(720px, 100%);
+  margin: 0 auto 24px;
+  text-align: left;
+}
+
+.ios-section-header p {
+  max-width: 580px;
+}
+
+.ios-connect-card {
+  display: block;
+}
+
+.connection-checklist {
+  display: grid;
+  margin: 4px 0 0;
+  padding: 0 0 0 22px;
+}
+
+.connection-checklist li {
+  padding: 14px 0 14px 6px;
+  border-bottom: 1px solid #232329;
+  color: #b9b9c2;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.connection-checklist strong,
+.connection-checklist span {
+  display: block;
+}
+
+.connection-checklist strong {
+  color: var(--brand-white);
+  font-weight: 500;
+}
+
+.connection-checklist span {
+  margin-top: 2px;
+  color: #8a8a94;
+}
+
+.quiet-help {
+  margin: 10px 0 0;
+  color: #8a8a94;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  .spinner,
+  .flasher-embedded .spinner {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+
+  button.install-tab {
+    transition-duration: 0.01ms;
+  }
+}
+
+@media (max-width: 800px) {
+  .usb-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .usb-panel {
+    gap: 34px;
+  }
+
+  .requirements {
+    padding: 28px 0 0;
+    border-top: 1px solid #232329;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .installer-logo {
+    width: 104px;
+  }
+
+  .installer-main {
+    padding-top: 36px;
+  }
+
+  .install-tabs {
+    gap: 16px;
+  }
+
+  .install-tab strong {
+    font-size: 0.82rem;
+  }
+
+  .install-tab span {
+    display: none;
+  }
+
+  .panel-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  button.text-button {
+    align-self: flex-start;
+  }
+
+  .installer-workspace {
+    margin-top: 22px;
+  }
+}

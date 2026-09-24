@@ -6,7 +6,7 @@
  * comparison.
  */
 
-import { satisfiesRoleGate } from "@elizaos/common";
+import { satisfiesRoleGate } from "../access-control/role-primitives.js";
 import type {
 	AgentContext,
 	ContextGate,
@@ -20,7 +20,7 @@ export {
 	normalizeGateRole,
 	roleRank,
 	satisfiesRoleGate,
-} from "@elizaos/common";
+} from "../access-control/role-primitives.js";
 
 export function satisfiesContextGate(
 	activeContexts: readonly AgentContext[] | undefined,

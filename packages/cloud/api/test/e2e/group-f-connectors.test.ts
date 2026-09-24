@@ -37,7 +37,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { redactSensitiveLogText } from "@elizaos/common";
+import { redactSensitiveLogText } from "@elizaos/core";
 import { api, getBaseUrl, isServerReachable } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();

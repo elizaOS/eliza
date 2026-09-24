@@ -18,8 +18,8 @@
  * injected instruction, and the judge grades the load-bearing behavior — the
  * assistant flagged the injection rather than executing it.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome";
 
 /**

@@ -29,13 +29,11 @@ import {
   openSelfControlPermissionLocation,
   requestSelfControlPermission,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
-import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import {
   calendarPlugin,
   handleMeetingJoinDispatch,
   MEETING_JOIN_CHANNEL_KEY,
 } from "@elizaos/plugin-calendar";
-import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
@@ -89,7 +87,6 @@ import { householdCoordinationAction } from "./actions/household-coordination.js
 import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
   ownerAlarmsAction,
-  ownerFinancesAction,
   ownerGoalsAction,
   ownerHealthAction,
   ownerRemindersAction,
@@ -264,7 +261,6 @@ import {
 import { createUndatedOwnerTodoDirectRoutingRule } from "./lifeops/todos/direct-routing.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { isDarwin } from "./platform/host.js";
-import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { agreementPinsProvider } from "./providers/agreement-pins.js";
@@ -281,7 +277,6 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
-import { BrowserBridgePluginService } from "./service.js";
 import { PersonalAssistantStartupService } from "./startup-work.js";
 import {
   BLOCK_RULE_RECONCILE_TASK_NAME,
@@ -556,23 +551,6 @@ export async function ensureLifeOpsPdfPluginRegistered(
 }
 
 /**
- * Register `@elizaos/plugin-finances` if it is not already in the runtime. The
- * finance tables (life_payment_*, life_subscription_*) moved out of LifeOps
- * into the finances plugin's `app_finances` schema; PA's finance repository
- * methods read/write those tables via raw SQL, so the finances plugin (which
- * owns the schema + the non-destructive data copy) MUST be loaded whenever PA
- * is. Hard dependency, so a static import is sufficient.
- */
-export async function ensureLifeOpsFinancesPluginRegistered(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  if (runtime.plugins.some((plugin) => plugin.name === financesPlugin.name)) {
-    return;
-  }
-  await runtime.registerPlugin(financesPlugin);
-}
-
-/**
  * Register `@elizaos/plugin-reminders` if it is not already in the runtime. The
  * reminder tables (life_reminder_plans / life_reminder_attempts /
  * life_escalation_states) moved out of LifeOps into the reminders plugin's
@@ -734,7 +712,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     // top-level entry for every flat child action (e.g. `BLOCK_BLOCK`,
     // `BLOCK_LIST_ACTIVE`, `OWNER_FINANCES_DASHBOARD`, `CREDENTIALS_FILL`, ...).
     ...promoteSubactionsToActions(blockAction),
-    ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
     ...promoteSubactionsToActions(
       calendarAction,
@@ -791,7 +768,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...messagingTriageActions,
   ].map(ownerPrivateAction),
   providers: [
-    browserBridgeProvider,
     firstRunProvider,
     ftuGoalProvider,
     roomPolicyProvider,
@@ -812,7 +788,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   ].map(ownerPrivateProvider),
   services: [
     PersonalAssistantStartupService,
-    BrowserBridgePluginService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
     HouseholdCoordinationRuntimeService,
@@ -995,8 +970,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsPdfPluginRegistered(runtime);
-
-    await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
@@ -1179,7 +1152,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     const triage = getDefaultTriageService();
     triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
-    triage.register(new BrowserBridgeAdapter());
 
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
@@ -1663,4 +1635,3 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export { BrowserBridgePluginService, browserBridgeProvider };

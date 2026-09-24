@@ -3,7 +3,7 @@
  *
  * This is a SECURITY BOUNDARY: it decides whether an unauthenticated HTTP
  * request is allowed to act as the local dashboard owner. Previously the exact
- * same logic was triplicated across `@elizaos/app-core` (`compat-route-shared`)
+ * same logic was triplicated across `@elizaos/app` (`compat-route-shared`)
  * and `@elizaos/agent` (`server-helpers-auth`), with subtly divergent env-policy
  * gates and a non-equivalent `isLoopbackBindHost`. The divergence was a parity
  * hazard, so the logic is unified here and parameterised so each consumer keeps
@@ -11,13 +11,13 @@
  *
  * The two consumers differ ONLY in their policy gates, expressed via
  * {@link LoopbackTrustOptions}:
- *  - app-core: requireLocalAuthEnv + devAuthBypassEnv, cloudCheck "env"
+ *  - app: requireLocalAuthEnv + devAuthBypassEnv, cloudCheck "env"
  *    (`ELIZA_CLOUD_PROVISIONED === "1"` through the boot alias table).
  *  - agent:    requireLocalAuthEnv (no dev bypass), cloudCheck "container"
  *    (`isCloudProvisionedContainer()` — flag AND a provisioning token).
  *
  * The host/origin classification (`isLoopbackBindHost`) is the canonical strict
- * implementation from `runtime-env.ts` for BOTH consumers. For app-core this is
+ * implementation from `runtime-env.ts` for BOTH consumers. For app this is
  * byte-identical (it already imported the shared helper). For the agent this is
  * a strict tightening in the safe direction: the agent's hand-rolled copy
  * accepted any `127.*`-prefixed host string (e.g. the DNS-rebinding host
@@ -48,7 +48,7 @@ export interface LoopbackTrustOptions {
   /**
    * When true, `ELIZA_DEV_AUTH_BYPASS === "1"` in a development `NODE_ENV`
    * overrides {@link requireLocalAuthEnv}, restoring local trust for the dev
-   * dashboard. Only app-core honours this; the agent never does.
+   * dashboard. Only app honours this; the agent never does.
    */
   devAuthBypassEnv: boolean;
   /**

@@ -106,7 +106,7 @@
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["redis", "wadis"]
     },
-    "packages/scenario-runner": {
+    "packages/testing/scenario-runner": {
       "entry": [
         "src/index.ts",
         "src/cli.ts",
@@ -122,62 +122,20 @@
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
     },
-    "packages/skills": {
-      "entry": ["src/index.ts", "test/**/*.test.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "packages/test": {
+    "packages/testing": {
       "entry": [
-        "harness/index.ts",
-        "harness/**/*.test.ts",
-        "mocks/**/*.test.ts",
-        "mocks/mockoon/*.mjs",
-        "scripts/**/*.mjs",
+        "src/index.ts",
+        "src/**/*.test.ts",
         "scenarios/**/*.ts",
-        "soc2/**/*.test.ts",
-        "vitest/**/*.ts"
+        "vitest.config.ts"
       ],
-      "project": [
-        "eliza-package-paths.ts",
-        "harness/**/*.ts",
-        "helpers/**/*.ts",
-        "mocks/**/*.ts",
-        "mocks/**/*.mjs",
-        "scenarios/**/*.ts",
-        "scripts/**/*.mjs",
-        "soc2/**/*.ts",
-        "vitest/**/*.ts"
-      ],
+      "project": ["src/**/*.ts", "scenarios/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/credentials": {
+    "packages/auth": {
       "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
-    },
-    "plugins/plugin-agent-skills": {
-      "entry": [
-        "src/index.ts",
-        "auto-enable.ts",
-        "src/**/*.test.ts",
-        "tsup.config.ts",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "auto-enable.ts",
-        "tsup.config.ts",
-        "vitest.config.ts"
-      ],
-      "ignore": [
-        "dist/**",
-        ".turbo/**",
-        "src/**/*.js",
-        "src/**/*.js.map",
-        "src/**/*.d.ts",
-        "src/**/*.d.ts.map"
-      ]
     },
     "plugins/plugin-anthropic": {
       "entry": [
@@ -197,19 +155,6 @@
         "vitest.config.ts",
         "vitest.live.config.ts"
       ],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "plugins/plugin-anthropic-proxy": {
-      "entry": [
-        "index.ts",
-        "index.node.ts",
-        "index.browser.ts",
-        "auto-enable.ts",
-        "build.ts",
-        "__tests__/**/*.test.ts",
-        "vitest.config.ts"
-      ],
-      "project": ["**/*.ts", "__tests__/**/*.test.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
     "plugins/plugin-native-inference": {
@@ -257,13 +202,17 @@
         "vitest.e2e.config.ts",
         "playwright.*.config.ts",
         "scripts/**/*.{mjs,ts}",
-        "vite/**/*.ts"
+        "vite/**/*.ts",
+        "test/**/*.{ts,tsx}",
+        "vitest.app-real-e2e.config.ts",
+        "vitest.harvest-live-agent.config.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
         "vite/**/*.ts",
-        "*.ts"
+        "*.ts",
+        "test/**/*.{ts,tsx}"
       ],
       "ignore": ["dist/**", "ios/**", "android/**"],
       "ignoreDependencies": [
@@ -283,40 +232,18 @@
         "pathe",
         "tailwindcss",
         "three",
-        "ws"
-      ],
-      "ignoreUnresolved": ["tsx"]
-    },
-    "packages/app-core": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
-        "test/**/*.{ts,tsx}",
-        "vitest.config.ts",
-        "vitest.app-real-e2e.config.ts",
-        "vitest.harvest-live-agent.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,ts}",
-        "test/**/*.{ts,tsx}",
-        "*.ts"
-      ],
-      "ignoreDependencies": [
-        "@capacitor/barcode-scanner",
+        "ws",
         "@capacitor/background-runner",
-        "@capacitor/haptics",
         "@capacitor/keyboard",
         "@capacitor/local-notifications",
-        "@capacitor/push-notifications",
         "@elizaos/plugin-anthropic",
         "@elizaos/plugin-personal-assistant",
         "@elizaos/plugin-openai",
         "@elizaos/plugin-wallet",
         "@elizaos/plugin-wechat",
-        "electrobun",
-        "tailwindcss"
+        "electrobun"
       ],
+      "ignoreUnresolved": ["tsx", "scripts/build.mjs"],
       "ignoreBinaries": [
         "adb",
         "afconvert",
@@ -341,10 +268,9 @@
         "tsc6",
         "where",
         "winget"
-      ],
-      "ignoreUnresolved": ["scripts/build.mjs"]
+      ]
     },
-    "packages/app-core/deploy/cloud-agent-template": {
+    "packages/app/deploy/cloud-agent-template": {
       "entry": ["entrypoint.ts"],
       "project": ["*.ts"],
       "ignoreDependencies": [
@@ -354,7 +280,7 @@
         "@elizaos/plugin-workflow"
       ]
     },
-    "packages/app-core/platforms/electrobun": {
+    "packages/app/platforms/electrobun": {
       "entry": [
         "src/**/*.{ts,tsx,js}",
         "electrobun.config.ts",
@@ -375,44 +301,6 @@
     },
     "plugins/plugin-native-activity-tracker": {
       "ignoreBinaries": ["swiftc"]
-    },
-    "packages/elizaos": {
-      "entry": [
-        "src/**/*.ts",
-        "build.ts",
-        "scripts/**/*.mjs",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "build.ts",
-        "scripts/**/*.mjs",
-        "vitest.config.ts"
-      ],
-      "ignore": ["dist/**", "templates/**"]
-    },
-    "packages/homepage": {
-      "entry": [
-        "src/main.tsx",
-        "src/vite-env.d.ts",
-        "src/types/**/*.d.ts",
-        "tests/**/*.spec.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx,d.ts}",
-        "tests/**/*.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": [
-        "@fontsource-variable/geist",
-        "@fontsource-variable/geist-mono",
-        "tailwindcss",
-        "tw-animate-css"
-      ]
     },
     "packages/agent": {
       "entry": [
@@ -449,7 +337,6 @@
         "@ai-sdk/anthropic",
         "@ai-sdk/google",
         "@ai-sdk/openai",
-        "@elizaos/prompts",
         "@openrouter/ai-sdk-provider"
       ],
       "ignoreUnresolved": [

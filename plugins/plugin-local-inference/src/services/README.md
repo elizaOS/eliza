@@ -1,7 +1,7 @@
-# `services/local-inference/` (app-core, server-side)
+# `services/local-inference/` (app, server-side)
 
 This is the **server-side** local-inference service used by the agent
-runtime (`@elizaos/app-core`). It owns:
+runtime (`@elizaos/app`). It owns:
 
 - KV-cache slot management (`cache-bridge.ts`, `mtp-cache-flow.test.ts`).
 - llama-server lifecycle (`ffi-streaming-backend.ts`, `mtp-doctor.ts`,
@@ -44,7 +44,7 @@ and the local files in this directory are thin re-exports:
 
 ## What stays a twin (and why)
 
-These files exist in both `packages/app-core` and `packages/ui` and are
+These files exist in both `packages/app` and `packages/ui` and are
 intentionally **not bundled**:
 
 - `catalog.ts` — server adds `contextLength`, `optimizations.requiresKernel`,

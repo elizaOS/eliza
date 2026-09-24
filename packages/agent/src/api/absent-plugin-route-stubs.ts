@@ -74,12 +74,6 @@ export const ABSENT_PLUGIN_ROUTE_STUBS: readonly AbsentPluginRouteStub[] = [
     buildBody: () => ({ profiles: [] }),
   },
   {
-    capabilityId: "browser-bridge-companions",
-    method: "GET",
-    path: "/api/browser-bridge/companions",
-    buildBody: () => ({ companions: [] }),
-  },
-  {
     capabilityId: "discord-local",
     method: "GET",
     path: "/api/discord-local/status",

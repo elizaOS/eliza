@@ -4,7 +4,7 @@
  * This is the durable meeting-record shape that can be produced by platform
  * bots, bot-free capture, local/system/mobile/room microphones, cloud-agent
  * capture, and imported benchmark corpora. The contract stays pure and
- * browser-safe so adapters, app-core, UI, and benchmarks can all validate the
+ * browser-safe so adapters, app, UI, and benchmarks can all validate the
  * same artifact without importing runtime/native code.
  */
 

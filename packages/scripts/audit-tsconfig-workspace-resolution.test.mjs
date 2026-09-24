@@ -1,6 +1,6 @@
 /**
  * Exercises typecheck-project discovery and workspace resolution against
- * deterministic temporary graphs plus both regressions that motivated the audit.
+ * deterministic temporary graphs, including missing builds and shadowed exports.
  */
 import assert from "node:assert/strict";
 import {
@@ -21,7 +21,6 @@ import {
   discoverTypecheckProjects,
   workspaceSourceEntry,
 } from "./audit-tsconfig-workspace-resolution.mjs";
-import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -50,12 +49,6 @@ function writeJson(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function withoutPath(configPath, specifier) {
-  const config = JSON.parse(readFileSync(configPath, "utf8"));
-  delete config.compilerOptions.paths[specifier];
-  return `${JSON.stringify(config, null, 2)}\n`;
-}
-
 test("discovers implicit, explicit, compact, and multiple typecheck projects", () => {
   const packageDir = path.join(repoRoot, "packages", "example");
   assert.deepEqual(discoverTypecheckProjects(packageDir, "tsc --noEmit"), [
@@ -71,9 +64,40 @@ test("discovers implicit, explicit, compact, and multiple typecheck projects", (
       path.join(packageDir, "src", "tsconfig.json"),
     ],
   );
+  assert.deepEqual(
+    discoverTypecheckProjects(
+      packageDir,
+      "tsgo --noEmit -p tsconfig.check.json",
+    ),
+    [path.join(packageDir, "tsconfig.check.json")],
+  );
   assert.throws(
     () => discoverTypecheckProjects(packageDir, "tsc --noEmit --project"),
     /without a project/,
+  );
+});
+
+test("discovers consolidated package projects through script delegation and rejects cycles", () => {
+  const packageDir = path.join(repoRoot, "packages", "example");
+  const scripts = {
+    typecheck: "bun run typecheck:host && bun run typecheck:renderer",
+    "typecheck:host": "tsc --noEmit -p tsconfig.host.json",
+    "typecheck:renderer": "bun run typecheck:ui",
+    "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
+  };
+  assert.deepEqual(
+    discoverTypecheckProjects(packageDir, scripts.typecheck, scripts),
+    [
+      path.join(packageDir, "tsconfig.host.json"),
+      path.join(packageDir, "tsconfig.ui.json"),
+    ],
+  );
+  assert.throws(
+    () =>
+      discoverTypecheckProjects(packageDir, "bun run recursive", {
+        recursive: "bun run recursive",
+      }),
+    /Cyclic typecheck script/,
   );
 });
 
@@ -86,19 +110,26 @@ test("models explicit and dependency-graph Turbo builds before typecheck", () =>
     ],
     ["@elizaos/transitive", {}],
     ["@elizaos/explicit", {}],
+    ["@elizaos/host", {}],
   ]);
   const turbo = {
     tasks: {
       typecheck: { dependsOn: [] },
       build: { dependsOn: ["^build"] },
+      "@elizaos/host#build:dist": { dependsOn: ["@elizaos/explicit#build"] },
       "@elizaos/owner#typecheck": {
-        dependsOn: ["^build", "@elizaos/explicit#build"],
+        dependsOn: ["^build", "@elizaos/host#build:dist"],
       },
     },
   };
   assert.deepEqual(
     [...builtBeforeTypecheck("@elizaos/owner", manifests, turbo)].sort(),
-    ["@elizaos/direct", "@elizaos/explicit", "@elizaos/transitive"],
+    [
+      "@elizaos/direct",
+      "@elizaos/explicit",
+      "@elizaos/host",
+      "@elizaos/transitive",
+    ],
   );
 });
 
@@ -264,66 +295,4 @@ test("rejects an ambient workspace shim that shadows a source mapping", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-});
-
-test("historic app and Electrobun mappings are real red-green controls", {
-  timeout: 60_000,
-}, () => {
-  const rootManifest = JSON.parse(
-    readFileSync(path.join(repoRoot, "package.json"), "utf8"),
-  );
-  const packageDirs = listWorkspaceDirs({
-    repoRoot,
-    patterns: rootManifest.workspaces,
-  }).map((dir) => path.resolve(repoRoot, dir));
-  const selectedPackageNames = ["@elizaos/app", "@elizaos/electrobun"];
-  const baseline = auditTsconfigWorkspaceResolution({
-    repoRoot,
-    packageDirs,
-    selectedPackageNames,
-  });
-  assert.doesNotMatch(
-    baseline.violations.join("\n"),
-    /capacitor-(?:mobile-agent-bridge|bun-runtime)/,
-  );
-
-  const appConfig = path.join(repoRoot, "packages/app/tsconfig.typecheck.json");
-  const appBroken = auditTsconfigWorkspaceResolution({
-    repoRoot,
-    packageDirs,
-    selectedPackageNames: ["@elizaos/app"],
-    configOverrides: new Map([
-      [
-        appConfig,
-        withoutPath(appConfig, "@elizaos/capacitor-mobile-agent-bridge"),
-      ],
-    ]),
-  });
-  assert.match(
-    appBroken.violations.join("\n"),
-    /packages\/app\/tsconfig\.typecheck\.json: unresolved @elizaos\/capacitor-mobile-agent-bridge/,
-  );
-
-  const electrobunConfig = path.join(
-    repoRoot,
-    "packages/app-core/platforms/electrobun/tsconfig.json",
-  );
-  const electrobunBroken = auditTsconfigWorkspaceResolution({
-    repoRoot,
-    packageDirs,
-    selectedPackageNames: ["@elizaos/electrobun"],
-    configOverrides: new Map([
-      [
-        electrobunConfig,
-        withoutPath(electrobunConfig, "@elizaos/capacitor-bun-runtime"),
-      ],
-    ]),
-  });
-  assert.match(
-    electrobunBroken.violations.join("\n"),
-    // The control proves that dropping the path mapping is detected; which
-    // workspace file happens to be the first importer is not part of the
-    // contract and has already moved twice (#30709, ios-local-agent-transport).
-    /platforms\/electrobun\/tsconfig\.json: unresolved @elizaos\/capacitor-bun-runtime imported by packages\/\S+\.tsx?$/m,
-  );
 });

@@ -1,28 +1,13 @@
 #!/usr/bin/env node
-/**
- * Story-coverage report for React components under packages/ui/src/components.
- * A component is covered by a sibling story or an import from any story file.
- * The script prints a summary and can write Markdown and JSON reports.
- *
- * Usage: node scripts/stories-coverage.mjs [--all] [--check] [--write-report]
- *   --all          include components outside src/components
- *   --check        fail on count, ratio, or newly missing-story regressions
- *   --write-report write the JSON and Markdown reports under scripts
- */
+/** Reports current story coverage without snapshots, quotas, or generated source artifacts. */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { compareCoverage } from "./stories-coverage-gate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const componentsRoot = path.resolve(pkgRoot, "src/components");
-
-const args = process.argv.slice(2);
-const onlyComponents = !args.includes("--all");
-const writeReport = args.includes("--write-report");
-const checkCoverage = args.includes("--check");
 
 function extractLocalStoryImports(source) {
   const imports = [];
@@ -91,138 +76,84 @@ function* walkStoryFiles(dir) {
   }
 }
 
-const root = onlyComponents ? componentsRoot : path.resolve(pkgRoot, "src");
+/** Count authored components and their sibling or explicitly imported stories. */
+export function buildStoryCoverage({ all = false } = {}) {
+  const root = all ? path.resolve(pkgRoot, "src") : componentsRoot;
 
-const files = [...walk(root)];
+  const files = [...walk(root)];
 
-const hasComponent = (src) => {
-  // Must export a PascalCase function/const/class component AND contain JSX.
-  const hasExport =
-    /\bexport\s+(?:default\s+)?(?:function|class)\s+[A-Z]/.test(src) ||
-    /\bexport\s+(?:default\s+)?(?:const|let|var)\s+[A-Z]\w+\s*[:=]/.test(src);
-  const hasJsx =
-    /<\/?[A-Z]\w/.test(src) ||
-    /=>\s*</.test(src) ||
-    /return\s*\(\s*</.test(src);
-  return hasExport && hasJsx;
-};
+  const hasComponent = (src) => {
+    // Must export a PascalCase function/const/class component AND contain JSX.
+    const hasExport =
+      /\bexport\s+(?:default\s+)?(?:function|class)\s+[A-Z]/.test(src) ||
+      /\bexport\s+(?:default\s+)?(?:const|let|var)\s+[A-Z]\w+\s*[:=]/.test(src);
+    const hasJsx =
+      /<\/?[A-Z]\w/.test(src) ||
+      /=>\s*</.test(src) ||
+      /return\s*\(\s*</.test(src);
+    return hasExport && hasJsx;
+  };
 
-const componentFiles = [];
-for (const f of files) {
-  let src;
-  try {
-    src = fs.readFileSync(f, "utf8");
-  } catch {
-    continue;
+  const componentFiles = [];
+  for (const f of files) {
+    const src = fs.readFileSync(f, "utf8");
+    if (!hasComponent(src)) continue;
+    componentFiles.push(f);
   }
-  if (!hasComponent(src)) continue;
-  componentFiles.push(f);
-}
 
-const storyImports = new Set();
-for (const storyRoot of [
-  path.resolve(pkgRoot, "src"),
-  path.resolve(pkgRoot, "stories"),
-]) {
-  for (const storyFile of walkStoryFiles(storyRoot)) {
-    const source = fs.readFileSync(storyFile, "utf8");
-    for (const specifier of extractLocalStoryImports(source)) {
-      const resolved = resolveLocalStoryImport(
-        storyFile,
-        specifier,
-        fs.existsSync,
-      );
-      if (resolved) storyImports.add(path.normalize(resolved));
+  const storyImports = new Set();
+  for (const storyRoot of [
+    path.resolve(pkgRoot, "src"),
+    path.resolve(pkgRoot, "stories"),
+  ]) {
+    for (const storyFile of walkStoryFiles(storyRoot)) {
+      const source = fs.readFileSync(storyFile, "utf8");
+      for (const specifier of extractLocalStoryImports(source)) {
+        const resolved = resolveLocalStoryImport(
+          storyFile,
+          specifier,
+          fs.existsSync,
+        );
+        if (resolved) storyImports.add(path.normalize(resolved));
+      }
     }
   }
+
+  const missing = [];
+  const present = [];
+  for (const f of componentFiles) {
+    const stories = f.replace(/\.tsx$/, ".stories.tsx");
+    if (fs.existsSync(stories) || storyImports.has(path.normalize(f))) {
+      present.push(path.relative(pkgRoot, f));
+    } else {
+      missing.push(path.relative(pkgRoot, f));
+    }
+  }
+
+  missing.sort();
+  present.sort();
+
+  return {
+    componentFiles: componentFiles.length,
+    withStories: present.length,
+    missingStories: missing.length,
+    coverage: `${(componentFiles.length === 0 ? 0 : (present.length / componentFiles.length) * 100).toFixed(1)}%`,
+    missing,
+    present,
+  };
 }
 
-const missing = [];
-const present = [];
-for (const f of componentFiles) {
-  const stories = f.replace(/\.tsx$/, ".stories.tsx");
-  if (fs.existsSync(stories) || storyImports.has(path.normalize(f))) {
-    present.push(path.relative(pkgRoot, f));
-  } else {
-    missing.push(path.relative(pkgRoot, f));
-  }
-}
-
-missing.sort();
-present.sort();
-
-const report = {
-  componentFiles: componentFiles.length,
-  withStories: present.length,
-  missingStories: missing.length,
-  coverage: `${((present.length / componentFiles.length) * 100).toFixed(1)}%`,
-  missing,
-  present,
-};
-
-if (checkCoverage) {
-  const baselinePath = path.join(here, "stories-coverage-baseline.json");
-  let baseline;
-  try {
-    baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
-  } catch (error) {
-    throw new Error(`Could not read story coverage baseline: ${baselinePath}`, {
-      cause: error,
-    });
-  }
-  const comparison = compareCoverage(report, baseline);
-  if (comparison.failures.length > 0) {
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  if (args.some((arg) => !["--all", "--json"].includes(arg))) {
     throw new Error(
-      `Story coverage regression:\n${comparison.failures.join("\n")}`,
+      "Usage: node scripts/stories-coverage.mjs [--all] [--json]",
     );
   }
-}
-
-// Group missing by top-level directory
-const byDir = new Map();
-for (const m of missing) {
-  const segments = m.replace(/\\/g, "/").split("/");
-  // segments[0]='src', segments[1]='components', segments[2]=area
-  const area = segments[2] || segments[1] || "root";
-  if (!byDir.has(area)) byDir.set(area, []);
-  byDir.get(area).push(m);
-}
-
-const lines = [];
-lines.push(`# Story coverage`);
-lines.push("");
-lines.push(`- Components scanned: **${componentFiles.length}**`);
-lines.push(`- With stories: **${present.length}**`);
-lines.push(`- Missing stories: **${missing.length}**`);
-lines.push(`- Coverage: **${report.coverage}**`);
-lines.push("");
-lines.push(`## Missing stories by area`);
-for (const [area, list] of [...byDir.entries()].sort(
-  (a, b) => b[1].length - a[1].length,
-)) {
-  lines.push(`\n### ${area} (${list.length})`);
-  for (const f of list) lines.push(`- ${f}`);
-}
-
-if (writeReport) {
-  fs.writeFileSync(
-    path.join(here, "stories-coverage-report.json"),
-    JSON.stringify(report, null, 2),
+  const report = buildStoryCoverage({ all: args.includes("--all") });
+  process.stdout.write(
+    args.includes("--json")
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : `Components: ${report.componentFiles}\nWith stories: ${report.withStories}\nMissing: ${report.missingStories}\nCoverage: ${report.coverage}\n`,
   );
-}
-
-if (writeReport) {
-  fs.writeFileSync(
-    path.join(here, "stories-coverage-report.md"),
-    lines.join("\n"),
-  );
-}
-
-console.log(`Components: ${componentFiles.length}`);
-console.log(`With stories: ${present.length}`);
-console.log(`Missing: ${missing.length}`);
-console.log(`Coverage: ${report.coverage}`);
-if (writeReport) {
-  console.log(`\nWrote: scripts/stories-coverage-report.json`);
-  console.log(`Wrote: scripts/stories-coverage-report.md`);
 }

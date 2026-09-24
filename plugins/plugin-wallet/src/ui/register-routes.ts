@@ -1,6 +1,6 @@
 /**
  * Side-effect module: registers the wallet UI plugin (route loader + bundled
- * shell page + bundled chat sidebar widget) with @elizaos/app-core.
+ * shell page + bundled chat sidebar widget) with @elizaos/app.
  *
  * Hosts that bundle @elizaos/plugin-wallet should load this module exactly once
  * at boot so the registry entries are seeded before the shell mounts.

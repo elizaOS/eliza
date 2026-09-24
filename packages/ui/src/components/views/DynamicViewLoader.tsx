@@ -19,12 +19,8 @@
  * module has no interact export.
  */
 
-import {
-  ElizaError,
-  type ResolvedSurfaceManifest,
-  resolveSurfaceManifest,
-  type SurfaceManifest,
-} from "@elizaos/common";
+import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
@@ -32,6 +28,7 @@ import {
   type HostExternalBundleFactory,
   type HostModuleImporter,
 } from "@elizaos/shared/views/host-external-contract";
+import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import {
   type ComponentType,
   memo,
@@ -375,14 +372,6 @@ function isReactComponentExport(
   );
 }
 
-function importHostExternal(
-  specifier: string,
-): Promise<Record<string, unknown>> {
-  return import(/* @vite-ignore */ specifier) as Promise<
-    Record<string, unknown>
-  >;
-}
-
 // View bundles execute inside the host realm, so core exports must cross an
 // explicit browser-safe boundary instead of retaining the runtime namespace in
 // the initial app bundle. Additions belong here only when a real view consumes
@@ -530,8 +519,8 @@ async function importUiBridgeCompat(
 }
 
 // Framework + host modules the shell always provides to every view bundle:
-// react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app-core` view
-// compat surface, `@elizaos/shared`, and the native capacitor bridges. This map is
+// react, three, `@elizaos/core`, `@elizaos/ui/*`, the `@elizaos/app` view
+// compat surface and browser-safe shared subpaths. This map is
 // FRAMEWORK-ONLY — it must never list a plugin-specific specifier. A plugin (or
 // a build-variant entrypoint) contributes its own specifiers through
 // `registerHostExternalImporter` so adding a host-external plugin never edits
@@ -540,21 +529,14 @@ type ScopedHostExternalImporter = (
   scope?: SurfaceRealmScope | null,
 ) => Promise<Record<string, unknown>>;
 const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
-  "@elizaos/app-core": importAppCoreViewCompat,
-  "@elizaos/app-core/browser": importAppCoreViewCompat,
-  "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
+  "@elizaos/app": importAppCoreViewCompat,
+  "@elizaos/app/browser": importAppCoreViewCompat,
+  "@elizaos/app/ui-compat": importAppCoreViewCompat,
   "@elizaos/core": importCoreViewCompat,
-  "@elizaos/capacitor-contacts": () =>
-    importHostExternal("@elizaos/capacitor-contacts"),
-  "@elizaos/capacitor-messages": () =>
-    importHostExternal("@elizaos/capacitor-messages"),
-  "@elizaos/capacitor-mobile-signals": () =>
-    importHostExternal("@elizaos/capacitor-mobile-signals"),
-  "@elizaos/capacitor-phone": () =>
-    importHostExternal("@elizaos/capacitor-phone"),
-  "@elizaos/capacitor-system": () =>
-    importHostExternal("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => import("@elizaos/shared"),
+  "@elizaos/shared/browser-contracts": () =>
+    import("@elizaos/shared/browser-contracts"),
+  "@elizaos/shared/lifeops-normalize/time-zone": () =>
+    import("@elizaos/shared/lifeops-normalize/time-zone"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": importUiAppNavigateViewCompat,

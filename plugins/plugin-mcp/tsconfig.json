@@ -35,8 +35,6 @@
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/plugin-computeruse": ["../../plugins/plugin-computeruse/src/index.ts"],
       "@elizaos/plugin-computeruse/*": ["../../plugins/plugin-computeruse/src/*"],
-      "@elizaos/plugin-whatsapp": ["../../plugins/plugin-whatsapp/src/index.ts"],
-      "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
       "@elizaos/plugin-workflow": ["../../plugins/plugin-workflow/src/index.ts"],
       "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
@@ -47,8 +45,12 @@
       "@elizaos/plugin-google-workspace/*": ["../../plugins/plugin-google-workspace/src/*"],
       "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/src/index.ts"],
       "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
-      "@elizaos/plugin-task-coordinator": ["../../plugins/plugin-task-coordinator/src/index.ts"],
-      "@elizaos/plugin-task-coordinator/*": ["../../plugins/plugin-task-coordinator/src/*"],
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
+      ],
+      "@elizaos/plugin-agent-orchestrator/ui/*": [
+        "../../plugins/plugin-agent-orchestrator/src/ui/*"
+      ],
       "@elizaos/plugin-local-inference": ["../../plugins/plugin-local-inference/src/index.ts"],
       "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"]
     },

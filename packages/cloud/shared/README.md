@@ -106,7 +106,7 @@ that require its `embedding_space` response metadata.
 
 ## More
 
-See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
+See [AGENTS.md](./AGENTS.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
 
 ## Terminal Stripe lifecycle reconciliation
 

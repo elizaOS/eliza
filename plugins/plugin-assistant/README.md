@@ -11,8 +11,7 @@ capabilities can be supplied by additional plugins.
 
 Tests use strict deterministic model fixtures or loopback protocol providers;
 real provider tests are opt-in. Package scripts provide `build`, `typecheck`,
-`test` and `lint:check`. See [runtime flows](../../docs/design/runtime-consolidation/FLOWS.md)
-and [migration status](../../docs/design/runtime-consolidation/STATUS.md).
+`test` and `lint:check`. See the [host and assistant ownership review](../../packages/agent/ASSISTANT-BOUNDARY-REVIEW.md).
 
 Optional JSON-file trajectory recording and cost annotation are owned here.
 Core retains the recorder interface and shared value/redaction operations; it
@@ -28,17 +27,16 @@ without restarting the provider chain. The planner follows the same boundary,
 including required-tool generation errors. Cancellation remains terminal.
 
 Action catalogs and search-keyword selection are owned here. Matching uses the
-canonical prompts keyword module; core supplies only localization contracts.
+shared keyword module; core supplies only localization contracts.
 Retrieval uses one default ranking policy; process-wide MODEL_TIER presets no
 longer change its weights. Callers can supply explicit retrieval weights.
 
 Conversational entity resolution and entity prompt formatting are owned here.
 Core enforces component visibility using resolved roles and preserves stable
-agent-scoped IDs. Template rendering is imported from prompts.
+agent-scoped IDs. Template rendering is imported from shared.
 
-See the [recovery disposition](../../docs/design/runtime-consolidation/RECOVERY.md)
-for deleted retry/compatibility paths, consolidated miss handling, retained
-boundaries and the remaining workflow review.
+The [ownership review](../../packages/agent/ASSISTANT-BOUNDARY-REVIEW.md) records
+consolidation decisions, retained boundaries and remaining verification.
 
 Signed prompt artifacts, activation/rollback and the fixed optimization task catalog
 are owned by `src/services/optimized-prompt.ts`. Import artifact types and
@@ -64,13 +62,7 @@ Hosts register ApprovalService explicitly. SQL owns the existing approval tables
 HTTP routes and caller authentication remain in the agent host. Import approval
 contracts from this package without loading agent process code.
 
-Hosts may enable `ELIZA_STAGE1_TERMINAL_REASK` with `true`, `1`, `yes`, or `on`
-to review a directly addressed STOP or IGNORE decision once before terminal
-routing. It is off by default and excludes coding and voice turns. The review
-shares its budget with the existing direct-text IGNORE review, so a repeated
-terminal decision does not start another silence review. Requested context is
-loaded before review; malformed output and conflicting routing retain their
-existing validation paths.
+Direct noncoding conversations review a model STOP or IGNORE once by default before silently ending an addressed request. `ELIZA_STAGE1_TERMINAL_REASK=false` (or `0`) opts out of STOP review (the existing direct IGNORE review remains); `true`, `1`, `yes`, or `on` also enables the existing directly-addressed review on other channels. Unaddressed groups, cancellation and coding bypass retain their gates. The review shares one budget with direct IGNORE review and does not add another review after an empty-answer or routing correction, so a repeated terminal decision does not loop. Ordinary RESPOND turns add no call. Requested context is loaded before review; malformed output and conflicting routing retain their validation paths.
 
 ## File trajectory retention
 
@@ -86,3 +78,8 @@ Cleanup retains running records, temporary writes, unrelated files and records
 belonging to another agent. It does not prune SQL trajectories or Markdown
 review artifacts. Filesystem failures remain visible through normal task error
 handling. Shutdown unregisters the worker and waits for accepted cleanup.
+
+
+The public OAuth provider catalog supports connector/cloud alignment. OAuth
+connection flows live in the host, connectors and cloud services. Assistant does
+not ship a second OAuth callback bus or plugin-configuration action plugin.

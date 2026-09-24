@@ -90,4 +90,4 @@ bun run --cwd plugins/plugin-github test
 bun run --cwd plugins/plugin-github typecheck
 ```
 
-See [CLAUDE.md](CLAUDE.md) for agent-facing layout and extension guide.
+See [AGENTS.md](AGENTS.md) for agent-facing layout and extension guide.

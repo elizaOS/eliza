@@ -14,7 +14,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -122,8 +122,8 @@ describe("document list query (real SQL parity)", () => {
     await adapter.createMemories(documents.map((memory) => ({ memory, tableName: "documents" })));
   }
 
-  async function seedInMemory(documents: Memory[]): Promise<InMemoryDatabaseAdapter> {
-    const inMemory = new InMemoryDatabaseAdapter();
+  async function seedInMemory(documents: Memory[]): Promise<SQLiteDatabaseAdapter> {
+    const inMemory = SQLiteDatabaseAdapter.create(":memory:", agentId);
     await inMemory.initialize();
     // Mirror SQL setup so isolation reads compare the same room membership.
     await inMemory.createRoomParticipants([REQUESTER_ID, OTHER_ENTITY_ID], roomId);

@@ -115,11 +115,11 @@ All public TS types live in `src/definitions.ts`. Keep them co-located; do not s
 - **Hostname normalization** strips protocols, paths, trailing dots, and invalid characters. Hostnames without a dot are rejected. Canonical logic: `WebsiteBlockerShared.normalizeHostname` (Swift) / `WebsiteBlockerStateStore.normalizeHostname` (Kotlin).
 - **x.com / twitter.com expansion.** Blocking `x.com` or `twitter.com` automatically expands to the full set of subdomains (`mobile.x.com`, `t.co`, CDN domains, etc.) and allowlists `api.x.com`. See `xTwitterBlockedWebsites` / `xTwitterAllowedWebsites` in `WebsiteBlockerShared.swift` and equivalent logic in `WebsiteBlockerStateStore.kt`.
 - **Build output.** `dist/esm/index.js` + `dist/plugin.cjs.js`. The explicit `eliza-source` export condition map directly to `src/index.ts` for fast local iteration.
-- See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and git workflow.
+- See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and git workflow.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

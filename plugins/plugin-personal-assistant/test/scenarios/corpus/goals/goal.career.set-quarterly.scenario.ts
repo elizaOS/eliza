@@ -3,7 +3,7 @@
  * goal-creating action and a +1 goal count delta.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "goals", "career", "smoke"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

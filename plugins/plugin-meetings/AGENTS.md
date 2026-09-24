@@ -38,7 +38,7 @@ Cross-package shapes (session DTO, WS events, `parseMeetingUrl`) live in
 | Route | `DELETE /api/meetings/:id` | Request a graceful leave |
 
 All routes are `rawPath` plugin routes (registered on `runtime.routes`,
-dispatched by both the upstream agent server and app-core) and private — the
+dispatched by both the upstream agent server and app) and private — the
 host dispatcher answers 401 for unauthenticated callers.
 
 ## Platform matrix
@@ -131,10 +131,7 @@ sandbox, so mobile users get meeting transcripts via a cloud-hosted agent instea
 **Meet needs a real X server** for humanized XTEST admission clicks, so the
 recommended server topology is **headed Chromium under Xvfb**
 (`ELIZA_MEETINGS_HEADLESS=false` + `DISPLAY=:99`), not pure headless (which is
-best-effort for Meet, reliable for Teams/Zoom). Full deployment matrix — local
-desktop, Linux server / Eliza Cloud container (Xvfb + PulseAudio + apt packages +
-Dockerfile), and why mobile is unsupported — is in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+best-effort for Meet, reliable for Teams/Zoom).
 
 ## Commands
 
@@ -159,11 +156,11 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsc --noEmit
 - Sessions hang off one reused "Meetings" world; each meeting gets its own
   room with `source` = platform. Roster participants are wired to entities via
   `createUniqueUuid(runtime, "meeting-participant:<platform>:<name>")`.
-- See the root `CLAUDE.md` for repo-wide rules (ESM, logger-only, evidence).
+- See the root `AGENTS.md` for repo-wide rules (ESM, logger-only, evidence).
 
 ## Verification
 
-Follow the root [CLAUDE.md](../../CLAUDE.md). Capture and manually review:
+Follow the root [AGENTS.md](../../AGENTS.md). Capture and manually review:
 
 - A real bot join against a live Google Meet / Teams / Zoom meeting: browser video/screenshots
   of the bot in the roster, the waiting-room admission, and the graceful leave.

@@ -3,7 +3,7 @@
  * relationship edges with provenance so the graph stores a typed edge rather
  * than a vague contact note.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

@@ -4,7 +4,7 @@
  * Why banners: quick visual separation when four processes print similar tables
  * in sequence — humans/agents spot which child is speaking without reading prefixes.
  * This isomorphic copy always renders the plain boxed marker; the Node-only
- * app-core copy loads figlet for the fancier block.
+ * app copy loads figlet for the fancier block.
  */
 
 function renderFallbackHeading(text: string): string {

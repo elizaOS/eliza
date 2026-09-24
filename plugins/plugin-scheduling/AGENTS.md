@@ -54,7 +54,7 @@ runtime surface that makes them work standalone:
 
 **Boundary:** `@elizaos/plugin-scheduling` MUST NOT import
 `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-reminders`,
-`@elizaos/app-core`, or `@elizaos/agent` (those would break the mobile bundle).
+`@elizaos/app`, or `@elizaos/agent` (those would break the mobile bundle).
 A host (`@elizaos/plugin-personal-assistant`) injects the production deps via
 `registerScheduledTaskRunnerDeps` (first-wins) and registers its domain packs +
 the `SCHEDULED_TASKS` action; PA's dev `/api/lifeops/dev/registries` composite
@@ -62,7 +62,7 @@ stays PA-side. ScheduledTask rows and state-log rows are scheduling-owned in
 `app_scheduling`; the migration service non-destructively copies legacy
 `app_lifeops` rows into that schema.
 
-Gate: `rg "@elizaos/(app-core|agent|plugin-personal-assistant|plugin-google-workspace)"
+Gate: `rg "@elizaos/(app|agent|plugin-personal-assistant|plugin-google-workspace)"
 plugins/plugin-scheduling/src` must return comments/strings only.
 
 The package boundary above and the scheduling architecture in the root guide
@@ -76,11 +76,11 @@ bun run --cwd plugins/plugin-scheduling test
 bun run --cwd plugins/plugin-scheduling build
 ```
 
-See the root `CLAUDE.md` for repo-wide architecture rules.
+See the root `AGENTS.md` for repo-wide architecture rules.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

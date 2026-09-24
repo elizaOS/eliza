@@ -22,10 +22,6 @@ import {
   type Plugin,
   transformWithOxc,
 } from "vite";
-import {
-  ANDROID_CLOUD_ROUTING_MARKERS,
-  findAndroidCloudRoutingMarkers,
-} from "../app-core/scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -51,6 +47,10 @@ import {
 } from "./scripts/build-stamp.mjs";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "./scripts/lib/android-cloud-routing-markers.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -224,7 +224,7 @@ function buildLucideUsedBarrelSource(): string {
 }
 
 const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
-const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
+const appCoreSrcRoot = path.join(elizaRoot, "packages/app/src");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
   "plugins/plugin-browser/src",
@@ -356,7 +356,7 @@ export default bufferModule;
   };
 }
 
-// Other Capacitor packages imported by eliza/packages/app-core sources.
+// Other Capacitor packages imported by eliza/packages/app sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
 function _tryResolve(id: string): string | undefined {
@@ -426,7 +426,7 @@ const json5EsmEntry = path.join(
 );
 const markedEntry = path.join(
   elizaRoot,
-  "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
+  "plugins/plugin-agent-orchestrator/node_modules/marked/lib/marked.esm.js",
 );
 const rechartsEntry = path.join(
   uiPkgRoot,
@@ -455,7 +455,7 @@ const reactRouterDomExportEntry = reactRouterEntry
 const reactRouterCookieEntry = reactRouterEntry
   ? tryResolvePackageModuleEntryFrom("cookie", reactRouterEntry)
   : undefined;
-// yaml / uuid / adze are transitive deps (logger, core, plugin-documents) that
+// yaml / uuid / adze are transitive deps (logger, core, plugin-knowledge) that
 // are listed in optimizeDeps.include but are not direct deps of packages/app.
 // Resolve each browser entry from the app scope and alias the bare specifier so
 // Vite can pre-bundle them instead of serving unresolved bare imports. `default`
@@ -724,7 +724,7 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     );
   }
   return (
-    text.includes("../app-core/src/browser.ts") ||
+    text.includes("../app/src/browser.ts") ||
     text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
     text.includes(
@@ -1216,7 +1216,7 @@ export function stripAndroidCloudPublicAssetReferences(
     );
 }
 
-const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";
+const DEFAULT_RENDERER_ENTRY = "/src/renderer-entry.ts";
 
 /**
  * Keeps the canonical application renderer for Android Cloud builds. Play
@@ -1477,6 +1477,9 @@ function resolveSharedSourceExportTarget(
   if (key === ".") {
     return path.join(sharedPkgDir, "src/index.ts");
   }
+  if (key === "./browser-contracts") {
+    return path.join(sharedPkgDir, "scripts/browser-contracts-entry.ts");
+  }
 
   const exportTarget = resolvePackageExportTarget(value);
   if (!exportTarget) return null;
@@ -1496,7 +1499,11 @@ function rejectRuntimeInRendererPlugin(): Plugin {
     name: "reject-runtime-in-renderer",
     enforce: "pre",
     resolveId(id, importer) {
-      if (id === "@elizaos/core" || id.startsWith("@elizaos/core/")) {
+      if (
+        id === "@elizaos/core" ||
+        id.startsWith("@elizaos/core/") ||
+        id === "@elizaos/shared"
+      ) {
         throw new Error(
           `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
         );
@@ -1518,7 +1525,7 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
   APP_ENV_PREFIX,
 );
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
-/** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
+/** Set by eliza/packages/app/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
 function resolveOptionalLocalVoiceGatewayPort(
@@ -2079,7 +2086,7 @@ function workspaceJsxInJsPlugin(): Plugin {
 
       return transformWithOxc(code, cleanId, {
         lang: "jsx",
-        jsx: "automatic",
+        jsx: { runtime: "automatic" },
         sourcemap: true,
       });
     },
@@ -2572,7 +2579,7 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router-dom",
       "three",
       "@capacitor/core",
-      "@elizaos/app-core",
+      "@elizaos/app",
       "zod",
       "@opentelemetry/api",
       // One physical Buffer identity across bn.js / elliptic / asn1.js /
@@ -2584,16 +2591,8 @@ export const INVALID_TRACER_PROVIDER = {};
     ],
     alias: [
       {
-        find: /^@elizaos\/login$/,
-        replacement: path.resolve(elizaRoot, "packages/login/src/sdk/index.ts"),
-      },
-      {
-        find: /^@homepage\//,
-        replacement: `${path.resolve(here, "../homepage/src")}/`,
-      },
-      {
-        find: /^@\//,
-        replacement: `${path.resolve(here, "../homepage/src")}/`,
+        find: /^@elizaos\/auth$/,
+        replacement: path.resolve(elizaRoot, "packages/auth/src/sdk/index.ts"),
       },
       { find: /^react$/, replacement: reactEntry },
       { find: /^react\/index\.js$/, replacement: reactEntry },
@@ -2794,24 +2793,28 @@ export const INVALID_TRACER_PROVIDER = {};
         ],
         ["@elizaos/plugin-wallet/ui", "plugins/plugin-wallet/src/ui/index.ts"],
         [
+          "@elizaos/plugin-agent-orchestrator/ui",
+          "plugins/plugin-agent-orchestrator/src/ui/index.ts",
+        ],
+        [
           "@elizaos/plugin-wallet/register",
           "plugins/plugin-wallet/src/register.ts",
         ],
         [
-          "@elizaos/plugin-contacts/register",
-          "plugins/plugin-contacts/src/register.ts",
+          "@elizaos/plugin-native-contacts/register",
+          "plugins/plugin-native-contacts/src/register.ts",
         ],
         [
-          "@elizaos/plugin-phone/register",
-          "plugins/plugin-phone/src/register.ts",
+          "@elizaos/plugin-native-phone/register",
+          "plugins/plugin-native-phone/src/register.ts",
         ],
         [
-          "@elizaos/plugin-task-coordinator/register",
-          "plugins/plugin-task-coordinator/src/register.ts",
+          "@elizaos/plugin-agent-orchestrator/ui/register",
+          "plugins/plugin-agent-orchestrator/src/ui/register.ts",
         ],
         [
-          "@elizaos/plugin-wifi/register",
-          "plugins/plugin-wifi/src/register.ts",
+          "@elizaos/plugin-native-wifi/register",
+          "plugins/plugin-native-wifi/src/register.ts",
         ],
         // The browser-safe native-backend registration seam. The bare
         // `@elizaos/plugin-blocker` specifier is aliased (via the dynamic
@@ -2863,7 +2866,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // into the eager entry graph.
       {
         find: /^@elizaos\/shared\/logger$/,
-        replacement: path.resolve(elizaRoot, "packages/shared/src/logger.ts"),
+        replacement: path.resolve(
+          elizaRoot,
+          "packages/shared/scripts/browser-logger.ts",
+        ),
       },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
@@ -2893,7 +2899,7 @@ export const INVALID_TRACER_PROVIDER = {};
           ]
         : []),
       // Force local @elizaos/ui source paths when the app bundles linked
-      // @elizaos/app-core sources directly.
+      // @elizaos/app sources directly.
       {
         find: /^@elizaos\/ui$/,
         replacement: path.join(uiPkgRoot, "src/browser.ts"),
@@ -3029,12 +3035,12 @@ export const INVALID_TRACER_PROVIDER = {};
           },
         ];
       })(),
-      // Force local @elizaos/app-core when workspace-linked (prevents stale
+      // Force local @elizaos/app when workspace-linked (prevents stale
       // bun cache copies from overriding the symlinked local source).
       ...(() => {
         const appCorePkgPath = path.resolve(
           elizaRoot,
-          "packages/app-core/package.json",
+          "packages/app/package.json",
         );
         const appCorePkgDir = path.dirname(appCorePkgPath);
         const appCoreBrowserEntry = path.resolve(
@@ -3053,7 +3059,7 @@ export const INVALID_TRACER_PROVIDER = {};
             // barrel re-exports server modules that pull Node-only code like
             // sharp into the Vite client graph.
             generatedAliases.push({
-              find: new RegExp(`^${escapeRegExp("@elizaos/app-core")}$`),
+              find: new RegExp(`^${escapeRegExp("@elizaos/app")}$`),
               replacement: appCoreBrowserEntry,
             });
             continue;
@@ -3067,7 +3073,7 @@ export const INVALID_TRACER_PROVIDER = {};
           if (!sourceTarget) continue;
           generatedAliases.push({
             find: new RegExp(
-              `^${escapeRegExp(`@elizaos/app-core/${key.slice(2)}`)}$`,
+              `^${escapeRegExp(`@elizaos/app/${key.slice(2)}`)}$`,
             ),
             replacement: sourceTarget,
           });
@@ -3085,23 +3091,23 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(uiSource, "$1"),
           },
           {
-            find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
+            find: /^@elizaos\/app\/first-run\/first-run-config$/,
             replacement: path.join(
               appCoreSrcRoot,
               "first-run/first-run-config.ts",
             ),
           },
           {
-            find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+            find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
             replacement: path.join(
               appCoreSrcRoot,
               "api/ios-local-agent-transport.ts",
             ),
           },
-          // #18056: thin desktop shell — avoids app-core/browser.ts star-export
+          // #18056: thin desktop shell — avoids app/browser.ts star-export
           // of @elizaos/ui/browser on the packages/app main entry.
           {
-            find: /^@elizaos\/app-core\/desktop-shell$/,
+            find: /^@elizaos\/app\/desktop-shell$/,
             replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
           },
 
@@ -3115,7 +3121,7 @@ export const INVALID_TRACER_PROVIDER = {};
           // @elizaos/plugin-elizacloud — the plugin ships a deliberately
           // minimal browser facade (`dist/browser/index.browser.js`) that
           // only exports the plugin descriptor + a couple of error classes.
-          // `app-core/dist/api/server.js` re-exports several server-only
+          // `app/dist/api/server.js` re-exports several server-only
           // helpers (`__resetCloudBaseUrlCache`, `ensureCloudTtsApiKeyAlias`,
           // `clearCloudSecrets`, `resolveCloudTtsBaseUrl`, etc.) from the
           // plugin; without an alias Rolldown errors with MISSING_EXPORT
@@ -3219,7 +3225,7 @@ export const INVALID_TRACER_PROVIDER = {};
 
             return transformWithOxc(code, id, {
               lang: "jsx",
-              jsx: "automatic",
+              jsx: { runtime: "automatic" },
               sourcemap: true,
             });
           },
@@ -3273,17 +3279,14 @@ export const INVALID_TRACER_PROVIDER = {};
       "@puppeteer/browsers",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-inference",
-      // Node-only connector; LifeOps server services may dynamically import it,
-      // but the renderer must not parse its Baileys/qrcode-terminal graph.
-      "@elizaos/plugin-whatsapp",
       // Native keychain bindings (.node). Dep optimization treats .node as text → UTF-8 error.
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
-      "@elizaos/credentials/vault",
+      "@elizaos/auth/vault",
     ],
   },
   build: {
-    outDir: path.resolve(here, "dist"),
+    outDir: path.resolve(here, "web-dist"),
     // Watch + incremental: avoid wiping dist each cycle; keeps Electrobun reloads fast.
     emptyOutDir: !desktopFastDist,
     sourcemap: desktopFastDist ? false : enableAppSourceMaps,

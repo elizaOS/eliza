@@ -1,6 +1,6 @@
 /** Validates immutable checkout dispatch authority without retaining credentials or payment details. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { isProductionDeployment } from "../config/deployment-environment";
 

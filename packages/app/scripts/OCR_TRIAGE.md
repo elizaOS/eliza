@@ -60,9 +60,9 @@ launcher; the evidence-driven split keeps that failure armed.
 ## Run
 
 ```bash
-# After an audit run has populated aesthetic-audit-output/ (screenshots + report.json):
+# After an audit run has populated root test-results/aesthetic-audit/ (screenshots + report.json):
 bun scripts/ocr-triage.ts \
-  --audit-dir aesthetic-audit-output
+  --audit-dir ../../test-results/aesthetic-audit
 
 # Reuse a precomputed OCR pass instead of re-running OCR:
 bun scripts/ocr-triage.ts --audit-dir <dir> --ocr <ocr.ndjson>

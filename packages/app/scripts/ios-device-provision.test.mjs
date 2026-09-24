@@ -273,11 +273,11 @@ describe("ASC capability and app-group reconciliation", () => {
   it("classifies every entitlement in the maintained app and appex targets", () => {
     const repoRelative = path.join(
       process.cwd(),
-      "packages/app-core/platforms/ios/App/App",
+      "packages/app/platforms/ios/App/App",
     );
     const packageRelative = path.join(
       process.cwd(),
-      "../app-core/platforms/ios/App/App",
+      "../app/platforms/ios/App/App",
     );
     const root = fs.existsSync(repoRelative) ? repoRelative : packageRelative;
     const files = [

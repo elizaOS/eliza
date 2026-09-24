@@ -6,13 +6,14 @@
  * order and internal-tool ordering — never by ad-hoc package-name sets here.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/common";
+import type { EnabledViewKinds } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared/contracts/apps";
+import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import type { RegistryAppInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config-store";
 import {
@@ -51,12 +52,11 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
 
 export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app",
-  "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/plugin-form",
-  "@elizaos/plugin-documents",
+  "@elizaos/plugin-knowledge",
   "@elizaos/plugin-screenshare",
-  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-agent-orchestrator",
   // Shared wallet/inventory system package — provides components used by the
   // app shell, not a standalone installable app.
   "@elizaos/plugin-wallet",

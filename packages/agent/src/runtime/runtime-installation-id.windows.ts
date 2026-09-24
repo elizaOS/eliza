@@ -7,8 +7,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
+import { osKeychainMasterKey } from "@elizaos/auth/vault/master-key";
 import { ElizaError, type UUID } from "@elizaos/core";
-import { osKeychainMasterKey } from "@elizaos/credentials/vault/master-key";
 
 const SERVICE = "eliza.runtime-installation-identity.v1";
 // Windows PowerShell 5.1 supplies the .NET Framework mutex ACL APIs. The child

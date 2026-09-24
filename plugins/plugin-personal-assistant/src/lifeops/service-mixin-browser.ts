@@ -37,27 +37,6 @@ export interface BrowserBridgeService {
   listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
   listBrowserTabs(): Promise<BrowserBridgeTabSummary[]>;
   getCurrentBrowserPage(): Promise<BrowserBridgePageContext | null>;
-  syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
-    companion: BrowserBridgeCompanionStatus;
-    tabs: BrowserBridgeTabSummary[];
-    currentPage: BrowserBridgePageContext | null;
-  }>;
-  createBrowserCompanionPairing(
-    request: CreateBrowserBridgeCompanionPairingRequest,
-  ): Promise<BrowserBridgeCompanionPairingResponse>;
-  resetBrowserCompanionRevocation(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevocationResetResponse>;
-  syncBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionSyncRequest,
-  ): Promise<BrowserBridgeCompanionSyncResponse>;
-  preflightBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionPreflightRequest,
-  ): Promise<BrowserBridgeCompanionPreflightResponse>;
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
   getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
   createBrowserSession(
@@ -71,31 +50,6 @@ export interface BrowserBridgeService {
     sessionId: string,
     request: CompleteLifeOpsBrowserSessionRequest,
   ): Promise<LifeOpsBrowserSession>;
-  updateBrowserSessionProgressFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionProgressRequest,
-  ): Promise<LifeOpsBrowserSession>;
-  beginBrowserSessionActionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionBeginRequest,
-  ): Promise<LifeOpsBrowserSession>;
-  completeBrowserSessionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: CompleteLifeOpsBrowserSessionRequest,
-  ): Promise<LifeOpsBrowserSession>;
-  revokeBrowserCompanion(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse>;
-  revokeBrowserCompanionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse>;
   updateBrowserSessionProgress(
     sessionId: string,
     request: UpdateLifeOpsBrowserSessionProgressRequest,

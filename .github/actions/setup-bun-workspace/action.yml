@@ -533,15 +533,9 @@ runs:
         ELIZA_NO_VISION_DEPS: ${{ inputs.no-vision-deps == 'true' && '1' || '' }}
         ELIZA_SKIP_FUSED_INFERENCE_SETUP: ${{ inputs.setup-fused-inference != 'true' && '1' || '' }}
 
-    - name: Ensure workspace + native-plugin symlinks (postinstall safety net)
-      # `bun run postinstall` chains `bun scripts/patch-*` steps before
-      # `ensure-workspace-symlinks.mjs` / `ensure-native-plugins-linked.mjs`;
-      # if a `bun` invocation fails partway (e.g. the placeholder binary),
-      # those symlinks never get created and downstream vitest jobs hit
-      # "Failed to resolve entry for @elizaos/<workspace-pkg>". Run them
-      # explicitly with `node` (always available) so the symlinks exist
-      # regardless of how postinstall fared. Both scripts are idempotent.
+    - name: Ensure workspace symlinks (postinstall safety net)
+      # The workspace linker covers every plugin in both package-resolution roots.
+      # Run it explicitly when an earlier postinstall step could have failed.
       shell: bash
       run: |
         node packages/scripts/ensure-workspace-symlinks.mjs || echo "::warning::ensure-workspace-symlinks failed"
-        node packages/scripts/ensure-native-plugins-linked.mjs || echo "::warning::ensure-native-plugins-linked failed"

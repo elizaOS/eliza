@@ -1,7 +1,7 @@
 import { ModelType } from "@elizaos/core";
 import { expect, it } from "vitest";
 
-import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";
+import { describeLive } from "../../../packages/app/test/helpers/live-agent-test";
 import { openaiPlugin } from "../index";
 
 /**

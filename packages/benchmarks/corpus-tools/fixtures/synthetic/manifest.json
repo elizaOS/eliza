@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-06T00:00:00.000Z",
+  "cutoffIso": "2024-07-05",
+  "shards": [
+    {
+      "path": "gmail/work/2026-06.jsonl",
+      "platform": "gmail",
+      "accountId": "work",
+      "month": "2026-06",
+      "count": 20,
+      "firstTs": 1780444800000,
+      "lastTs": 1781827200000,
+      "sha256": "4e3892973c73e4965ce5346ea9e8c49528b4999deab06162d98beb696b6e4199"
+    }
+  ],
+  "totals": {
+    "messages": 20,
+    "contacts": 0,
+    "threads": 0
+  }
+}

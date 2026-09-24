@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           snapshot="$(
-            node scripts/audit-ai-workflow-output.mjs snapshot \
+            node packages/scripts/audit-ai-workflow-output.mjs snapshot \
               --repository "$GITHUB_REPOSITORY" \
               --scope repository
           )"
@@ -125,7 +125,7 @@ jobs:
           ATTRIBUTION_AUDIT_SNAPSHOT: ${{ needs.maintenance.outputs.attribution_snapshot }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          node scripts/audit-ai-workflow-output.mjs verify \
+          node packages/scripts/audit-ai-workflow-output.mjs verify \
             --author "github-actions[bot]" \
             --expected-provider "Anthropic" \
             --expected-model "claude-opus-4-7" \

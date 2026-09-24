@@ -5,7 +5,7 @@
  * raw `fetch` from UI code.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 import type { ProviderStatus } from "@elizaos/shared/local-inference/providers-types";
 import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
 import type { PublicRegistration } from "../services/local-inference/handler-registry";

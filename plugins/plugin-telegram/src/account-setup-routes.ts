@@ -2,7 +2,7 @@
  * Telegram account (user-account) auth HTTP routes.
  *
  * Implements the shared connector setup contract
- * (`eliza/packages/app-core/src/api/setup-contract.ts`) with one extra
+ * (`eliza/packages/app/src/api/setup-contract.ts`) with one extra
  * connector-specific route for the two-step login flow used by the
  * `telegram` library (GramJS):
  *

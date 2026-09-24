@@ -136,11 +136,11 @@ mDNS service type: `_eliza-gw._tcp` (local.) on iOS/Android; `_eliza-gw._tcp.` o
 - **Build output:** `dist/esm/index.js` (ESM), `dist/plugin.cjs.js` (CJS), `dist/plugin.js` (IIFE for unpkg).
 - **SwiftLint is macOS-only.** The `node-swiftlint` package performs the platform guard and exits successfully without running SwiftLint on Linux or Windows, so package scripts can invoke the wrapper directly without Bash.
 - **`docgen` rewrites README.md.** Running `bun run build:docs` or `bun run docgen` regenerates README from JSDoc in `definitions.ts`. Manual edits to README may be overwritten.
-- See root `CLAUDE.md` for repo-wide conventions (logger-only, ESM, architecture rules, naming).
+- See root `AGENTS.md` for repo-wide conventions (logger-only, ESM, architecture rules, naming).
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

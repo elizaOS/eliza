@@ -131,12 +131,16 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"typecheck": "tsc --noEmit -p tsconfig.json"
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"native:verify:contract": "make -C native/verify kernel-contract",
+		"native:verify:reference": "make -C native/verify reference-test",
+		"native:verify:vulkan": "make -C native/verify vulkan && cd native/verify && ./vulkan_verify",
+		"native:verify:metal": "make -C native/verify metal && cd native/verify && ./metal_verify",
+		"native:clean": "make -C native/verify clean"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-native-inference": "workspace:*",
-		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"phonemizer": "^1.2.1",
@@ -154,7 +158,8 @@
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^4.1.10"
+		"vitest": "^4.1.10",
+		"yaml": "^2.8.2"
 	},
 	"publishConfig": {
 		"access": "public"

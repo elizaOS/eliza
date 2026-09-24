@@ -15,7 +15,7 @@
  * without a half-applied config. Coding targets return without restart:
  * sub-agent spawns re-read the config env on every spawn. A coding write may
  * also be a defaultBackend-only body (no `model`), persisting just
- * ELIZA_DEFAULT_AGENT_TYPE — the seam the `/backend` slash command drives.
+ * ELIZA_DEFAULT_AGENT_TYPE — the application backend selection seam.
  * When a touched key
  * already carried a different process-env value that the config did not put
  * there (systemd service.env, shell export), the response lists it in
@@ -199,7 +199,7 @@ function findEntry(
   return catalog.providers[provider]?.find((entry) => entry.id === model);
 }
 
-// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app-core's
+// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app's
 // coding-account-bridge.ts. The model catalog may advertise newer effort
 // variants before the managed Codex ACP spawn path supports them end to end;
 // accepting one here would persist a selection the coding backend cannot honor.

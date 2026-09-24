@@ -14,7 +14,7 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/common";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/shared/browser-contracts";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import {
@@ -30,7 +30,6 @@ import {
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import type { UiSpec } from "../../config/ui-spec";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
@@ -147,12 +146,12 @@ function renderInlineText(text: string): ReactNode {
  */
 function MessageTextBody({
   text,
-  boldSlashCommand,
+  userMessage,
 }: {
   text: string;
-  boldSlashCommand: boolean;
+  userMessage: boolean;
 }) {
-  const formSubmit = boldSlashCommand ? parseFormSubmitDisplay(text) : null;
+  const formSubmit = userMessage ? parseFormSubmitDisplay(text) : null;
   if (formSubmit) {
     return (
       <div className="whitespace-normal">
@@ -160,24 +159,7 @@ function MessageTextBody({
       </div>
     );
   }
-  const slash = boldSlashCommand ? splitLeadingSlashCommand(text) : null;
-  return (
-    <div className="whitespace-pre-wrap">
-      {slash ? (
-        <>
-          <span
-            className="font-bold text-txt"
-            data-testid="slash-command-token"
-          >
-            {slash.command}
-          </span>
-          {renderInlineText(slash.rest)}
-        </>
-      ) : (
-        renderInlineText(text)
-      )}
-    </div>
-  );
+  return <div className="whitespace-pre-wrap">{renderInlineText(text)}</div>;
 }
 
 export function FormSubmitReceipt({ label }: { label: string }) {
@@ -1459,7 +1441,7 @@ export function MessageContent({
     return (
       <div className="space-y-2">
         {message.text.trim() ? (
-          <MessageTextBody text={message.text} boldSlashCommand={false} />
+          <MessageTextBody text={message.text} userMessage={false} />
         ) : null}
         <CapabilityHandoffBlock request={message.capabilityHandoff} />
       </div>
@@ -1619,7 +1601,7 @@ export function MessageContent({
     return (
       <MessageTextBody
         text={segments[0].text}
-        boldSlashCommand={message.role === "user"}
+        userMessage={message.role === "user"}
       />
     );
   }
@@ -1668,7 +1650,7 @@ export function MessageContent({
                 <MessageTextBody
                   key={segmentKey}
                   text={seg.text}
-                  boldSlashCommand={message.role === "user"}
+                  userMessage={message.role === "user"}
                 />
               );
             case "code":

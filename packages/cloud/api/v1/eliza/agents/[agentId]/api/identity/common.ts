@@ -238,7 +238,7 @@ export async function stewardSendContractTx(params: {
         success: false,
         error: "Steward signing not yet wired for ERC-8004 register-identity",
         detail:
-          "Expected @elizaos/login LoginClient.signTransaction(agentId, tx) to sign and broadcast eth_sendTransaction.",
+          "Expected @elizaos/auth LoginClient.signTransaction(agentId, tx) to sign and broadcast eth_sendTransaction.",
       },
       { status: 501 },
     );

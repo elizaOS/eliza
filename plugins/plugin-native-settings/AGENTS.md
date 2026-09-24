@@ -80,11 +80,11 @@ Create a new plugin following the same shape: define an `OverlayApp` object, cal
 - **Write-settings permission.** `System.setScreenBrightness` requires the Android `WRITE_SETTINGS` permission. The UI conditionally renders a permission button (`openSetting("write", ...)`) when `canWriteSettings` is false.
 - **`isElizaOS()` guard.** `src/register.ts` uses `isElizaOS()` from `@elizaos/ui` to skip registration in non-elizaOS contexts (e.g., plain web dev builds).
 - **Lazy loading.** The `DeviceSettingsAppView` component is loaded via dynamic import inside `deviceSettingsApp.loader` — keep the component self-contained (no side-effect imports at the module level).
-- For repo-wide conventions (logger, ESM, naming, architecture layers), see the root `CLAUDE.md`.
+- For repo-wide conventions (logger, ESM, naming, architecture layers), see the root `AGENTS.md`.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

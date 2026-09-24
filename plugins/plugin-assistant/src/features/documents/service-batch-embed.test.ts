@@ -3,7 +3,7 @@
  * registry and in-memory persistence, including both serial fallback paths.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, test } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
@@ -84,8 +84,9 @@ async function makeHarness(options: HarnessOptions): Promise<{
   runtime: AgentRuntime;
   service: DocumentService;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
+  await adapter.ensureEmbeddingDimension(vecOf("").length);
   const runtime = new AgentRuntime({
     agentId: AGENT_ID,
     character: {

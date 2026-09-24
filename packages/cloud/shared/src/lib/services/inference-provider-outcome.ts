@@ -4,7 +4,7 @@
  * conservative because absence of output is not evidence of zero provider cost.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import { APICallError, RetryError } from "ai";
 
 const KNOWN_UNACCEPTED_STATUSES = new Set([

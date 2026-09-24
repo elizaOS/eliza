@@ -1,1 +1,2 @@
-export { isTruthyEnvValue } from "@elizaos/common";
+/** Shared environment parsing without loading the Node runtime. */
+export { isTruthyEnvValue } from "@elizaos/shared/browser-contracts";

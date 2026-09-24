@@ -116,11 +116,11 @@ The `speak()` call also accepts a `TTSDirective` for per-utterance overrides (vo
 - **`speak()` on web always forces `lang` to `en-US` unless `directive.language` is set** — this prevents browser-locale drift (e.g. numbers read in Chinese on Chinese-locale systems).
 - **Silence detection is stateful.** On iOS, `silenceWindow` (default 0.7 s) drives a `Task` timer that finalises in-flight transcripts. Adjust via `silenceWindowMs` in config.
 - **Peer dep:** `@capacitor/core ^8.3.1` is required at the app level.
-- See the root [CLAUDE.md](../../CLAUDE.md) for repo-wide architecture rules, logger conventions, and git workflow.
+- See the root [AGENTS.md](../../AGENTS.md) for repo-wide architecture rules, logger conventions, and git workflow.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

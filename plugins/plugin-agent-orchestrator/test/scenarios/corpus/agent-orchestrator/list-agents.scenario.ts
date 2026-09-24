@@ -16,10 +16,10 @@ import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
-import { transientTurnEvaluationSeed } from "../../../../../../packages/test/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
 
 const TASKS = "TASKS";
 type R = AgentRuntime & {

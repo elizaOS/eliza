@@ -156,15 +156,15 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "intents",
   description:
-    'One short verb phrase per explicit runtime/external-state outcome this turn. Keep navigation separate from data changes: "open notes and update a note" needs both. A drafted navigation confirmation executes nothing; retain its intent. [] only for text-only conversation or answers complete from supplied context. Runtime chooses direct execution or planning.',
+    'One short verb phrase per explicit runtime/external-state outcome this turn. Keep navigation separate from data changes: "open notes and update a note" needs both. A drafted navigation confirmation executes nothing; retain its intent. Exclude work awaiting a clarification answer; asking for missing details completes this turn, not an intent to invent them. [] when no lookup or independent work can proceed. Runtime chooses direct execution or planning.',
   descriptionCompressed:
-    "One verb phrase per requested runtime action, navigation separately from edits. A held confirmation does not complete navigation: retain its intent. Empty only for text-only answers. Runtime chooses execution or planning.",
+    "One verb phrase per requested runtime action, navigation separately from edits. A held confirmation does not complete navigation: retain its intent. Omit work awaiting a clarification answer; keep independent executable work. Runtime chooses execution or planning.",
   priority: 15,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "Pending runtime outcomes, including navigation even when replyText drafts its confirmation. One intent per requested operation; keep navigation separate from data changes. [] only for answers complete without execution.",
+      "Pending runtime outcomes, including navigation even when replyText drafts its confirmation. One intent per requested operation; keep navigation separate from data changes. [] for answers or clarifications complete without execution; omit dependent work awaiting a user answer.",
   },
   parse: readCompleteStringHints,
 };
@@ -209,8 +209,8 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
   name: "candidateActionNames",
   description:
     "UPPER_SNAKE_CASE retrieval hints for every intent executable before this reply; [] if none. Exclude prohibited/cancelled/hypothetical work and actions awaiting clarification; keep useful lookups and independent work. Cancelling an unexecuted intention needs no mutation; cancelling a stored record/job does. " +
-    "Prefer exact available children. Sticky notes: NOTES_CREATE; NOTES_GET reads by known ID; NOTES_LIST searches/lists; NOTES_PATCH edits title/body or exact text while preserving other fields; NOTES_UPDATE replaces a complete note; NOTES_DELETE. Stored messages/saved facts: MEMORY_SEARCH for source contents; MEMORY_COUNT for fresh inventory totals, categories and newest timestamps (do not reuse old dialogue counts); writes: MEMORY_CREATE/MEMORY_UPDATE/MEMORY_DELETE. Calendar: CALENDAR_NEXT_EVENT=next event; CALENDAR_FEED=all events/counts in a date range without content filters; CALENDAR_SEARCH_EVENTS=title/attendee/location/keyword filter, optional date bounds; writes: CALENDAR_CREATE_EVENT/CALENDAR_UPDATE_EVENT/CALENDAR_DELETE_EVENT. One known app view: VIEWS_SHOW; other view/layout/native-device work: VIEWS. Navigation needs data actions only for requested data work. Life management: matching available OWNER_* or TRIGGER. Umbrellas only for unresolved operations or unknown suitable children; further tools remain discoverable. " +
-    "DISCOVER_TOOLS alone only for schema-inspection requests; preparatory discovery also needs domain candidates. Clarification without useful lookup/independent work uses [] and simple context. Examples and unlisted hints never prove availability, execution or permission.",
+    "Prefer exact available children. Sticky notes: NOTES_CREATE; NOTES_GET reads by known ID; NOTES_LIST searches/lists; NOTES_PATCH edits title/body or exact text while preserving other fields; NOTES_UPDATE replaces a complete note; NOTES_DELETE. Stored messages/saved facts: MEMORY_SEARCH for source contents; MEMORY_COUNT for fresh inventory totals, categories and newest timestamps (do not reuse old dialogue counts); writes: MEMORY_CREATE/MEMORY_UPDATE/MEMORY_DELETE. Calendar: CALENDAR_NEXT_EVENT=next event; CALENDAR_FEED=check/list/count the calendar for a day or range; CALENDAR_SEARCH_EVENTS=only a user-supplied title/attendee/location/topic filter, with optional date bounds. A date or generic event/calendar wording is not a content filter; do not invent a search query; writes: CALENDAR_CREATE_EVENT/CALENDAR_UPDATE_EVENT/CALENDAR_DELETE_EVENT. One known app view: VIEWS_SHOW; other view/layout/native-device work: VIEWS. Navigation needs data actions only for requested data work. Clarification answers and accepted alternative Calendar slots resume the original Calendar create/update; do not switch to OWNER_REMINDERS unless the user changes the requested resource. Life management: matching available OWNER_* or TRIGGER. Umbrellas only for unresolved operations or unknown suitable children; further tools remain discoverable. " +
+    "Name known domain actions directly. For unfamiliar capabilities or schema inspection, use DISCOVER_TOOLS with a non-simple context; do not invent domain candidates just to permit discovery. Clarification without useful lookup/independent work uses [] and simple context. Examples and unlisted hints never prove availability, execution or permission.",
   descriptionCompressed:
     "Likely UPPER_SNAKE_CASE actions needed before this reply. Notes fields/text edits -> NOTES_PATCH; other Notes data -> matching NOTES_* child; single view -> VIEWS_SHOW when registered; other navigation/native device -> VIEWS; calendar agenda/date-only counts -> CALENDAR_FEED; keyword-filtered events -> CALENDAR_SEARCH_EVENTS; next event -> CALENDAR_NEXT_EVENT. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
   priority: 50,
@@ -243,7 +243,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // ---------------------------------------------------------------------------
 
 const NAVIGATION_REPLY_RULE =
-  "Name navigation destinations. With visualContinuation.navigationOnly=true, draft a concise confirmation held for the successful receipt; no progress/waiting language or record-read/change claims. ";
+  "Current uiView/uiViewPath identify the open view, not its records. Requested navigationOnly uses singleViewOnly=true, nonempty intents, replyEffectStatus=pending and a non-simple routing context. Keep replyText nonempty: a short destination-is-open confirmation held until successful delivery, not a progress promise. This takes precedence over acknowledgment wording. Do not claim record reads or changes. ";
 
 const EXACT_REPLY_TEXT_RULE =
   " When quoting or previewing text requested verbatim or exactly, copy every character, including punctuation, repeated spaces and line breaks. Put explanations outside that text.";
@@ -255,12 +255,12 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
     'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment before its grounded result. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
     EXACT_REPLY_TEXT_RULE,
   descriptionCompressed:
-    "User-facing reply. simple=whole answer; navigationOnly=destination confirmation held for successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
+    "User-facing reply. simple=whole answer; navigationOnly=completed-state destination confirmation spoken after successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
   priority: 20,
   schema: {
     type: "string",
     description:
-      "User-facing reply. Simple=whole answer. navigationOnly=concise destination confirmation held until navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
+      "User-facing reply. Simple=whole answer. navigationOnly=completed-state destination confirmation spoken only after navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
       EXACT_REPLY_TEXT_RULE,
   },
   parse(value) {
@@ -289,7 +289,7 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
   {
     name: "replyEffectStatus",
     description:
-      "Classify replyText's current-request work using the schema, including indirect claims in any language (e.g. 'on the books', 'quedó listo'). An applied-change claim is never execution proof. A newly saved reminder is applied; recall plus promised navigation is pending. Historical advice/actions or existing facts alone are none.",
+      "Classify replyText's current-request work using the schema, including indirect claims in any language (e.g. 'on the books', 'quedó listo'). An applied-change claim is never execution proof. A newly saved reminder is applied; recall plus promised navigation is pending. A missing-detail question for a future action is non_applied; pending applies to independent work executable now. Historical advice/actions or existing facts alone are none.",
     descriptionCompressed:
       "Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
     priority: 25,

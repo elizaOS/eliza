@@ -6,7 +6,7 @@
  */
 
 import type http from "node:http";
-import { _resetAuthRateLimiter } from "@elizaos/app-core/api/auth";
+import { _resetAuthRateLimiter } from "@elizaos/app/api/auth";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   captureDevCloudEnvAuthoritySnapshot,

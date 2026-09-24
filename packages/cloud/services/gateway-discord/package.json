@@ -39,8 +39,7 @@
     "hono": "4.13.8",
     "ioredis": "^5.10.1",
     "libsodium-wrappers": "^0.8.0",
-    "prism-media": "1.3.5",
-    "@elizaos/common": "workspace:*"
+    "prism-media": "1.3.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

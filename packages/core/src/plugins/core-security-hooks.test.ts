@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
+import { initializeTestRuntime } from "@elizaos/testing/sqlite-adapter";
 /**
  * Covers `createCoreSecurityHooksPlugin`: that its `init` registers both core
  * message-path security pipeline hooks (incoming-message-security and

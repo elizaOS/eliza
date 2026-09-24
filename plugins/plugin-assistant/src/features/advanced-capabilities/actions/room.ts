@@ -24,21 +24,21 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, parseBooleanFromText } from "@elizaos/core";
 import {
-  shouldFollowRoomTemplate,
-  shouldMuteRoomTemplate,
-  shouldUnfollowRoomTemplate,
-  shouldUnmuteRoomTemplate,
-} from "@elizaos/prompts";
-import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/prompts/keyword-matching";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+} from "@elizaos/shared/i18n/keyword-matching-core";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import {
   setRoomMuteUntil,
   setWorldMuteState,
   worldMuteActive,
 } from "../../../services/message/mute-state.ts";
+import {
+  shouldFollowRoomTemplate,
+  shouldMuteRoomTemplate,
+  shouldUnfollowRoomTemplate,
+  shouldUnmuteRoomTemplate,
+} from "../prompts.js";
 
 const ROOM_OPS = ["follow", "unfollow", "mute", "unmute"] as const;
 type RoomOp = (typeof ROOM_OPS)[number];

@@ -96,7 +96,7 @@ describe("native Apple Reminders bridge dylib candidates", () => {
       "../../../../../../../libMacWindowEffects.dylib",
     );
     expect(candidatePaths).toContain(
-      "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+      "../../../../packages/app/platforms/electrobun/src/libMacWindowEffects.dylib",
     );
   });
 });

@@ -171,11 +171,11 @@ Google Chat (service-account auth; see `src/chat/accounts.ts` for full resolutio
 - **Chat target inventories are complete.** Target resolution, recent targets, roomless reads, and searches consider every listed Chat space. Do not silently slice the space list; introduce an explicit lossless page contract first if a boundary needs one.
 - **Chat webhooks:** the plugin does not register an HTTP route; the host runtime delivers events to `GoogleChatService.processWebhookEvent()` on the configured `webhookPath`. Long messages chunk at 4,000 chars on newline/word boundaries (`splitMessageForGoogleChat`).
 
-See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
+See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

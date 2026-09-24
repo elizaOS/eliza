@@ -19,7 +19,7 @@
  * revision or a reworded single definition is confirmed at live capture; the
  * load-bearing negative (no new fixed-11:30 definition) does not depend on that.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

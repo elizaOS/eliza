@@ -1,7 +1,7 @@
 /**
  * Live-model scenario (live-only lane): Medical POA packet is held: rejected approval produces no distribution.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,
   expectNoExternalSendDispatch,
@@ -24,7 +24,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

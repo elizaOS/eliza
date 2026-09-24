@@ -15,7 +15,7 @@
  * offers a bill reminder in plain, jargon-free, non-infantilizing words.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

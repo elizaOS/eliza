@@ -1,8 +1,8 @@
-import { createAssistantPlugin } from "../index.ts";
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 
 import { PGlite } from "@electric-sql/pglite";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
@@ -27,12 +27,13 @@ import {
   successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
+import { createAssistantPlugin } from "../index.ts";
 import {
   HISTORY_CONTINUITY_SOURCE_COUNT,
   validateHistoryRetention,
   visibleHistoryEventIds,
 } from "../runtime/history-retention.ts";
-import { EvaluatorService } from "./evaluator.ts";
+import { EvaluatorService, runPostTurnEvaluators } from "./evaluator.ts";
 import {
   getEvaluatorProgressState,
   prepareEvaluatorProgress,
@@ -61,7 +62,12 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-async function setup(adapter = new InMemoryDatabaseAdapter()) {
+async function setup(
+  adapter = SQLiteDatabaseAdapter.create(
+    ":memory:",
+    sqliteTestAgentId("BackgroundMemoryTest"),
+  ),
+) {
   const runtime = new AgentRuntime({
     plugins: [createAssistantPlugin()],
     character: {
@@ -72,6 +78,8 @@ async function setup(adapter = new InMemoryDatabaseAdapter()) {
     adapter,
     logLevel: "fatal",
   });
+  await adapter.initialize();
+  await adapter.ensureEmbeddingDimension(3);
   runtime.evaluators.length = 0;
   runtime.composeState = vi.fn(async () => state);
   runtime.emitEvent = vi.fn(async () => {});
@@ -279,7 +287,13 @@ describe("durable background memory", () => {
           `CREATE TABLE entity_identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),entity_id uuid NOT NULL,agent_id uuid NOT NULL,platform text NOT NULL,handle text NOT NULL,verified boolean NOT NULL,confidence real NOT NULL,source text,first_seen timestamptz NOT NULL,last_seen timestamptz NOT NULL,evidence_message_ids jsonb,extraction_evidence jsonb,CONSTRAINT unique_entity_identity UNIQUE(entity_id,platform,handle,agent_id))`,
         );
         const { runtime, service, message } = await setup(
-          Object.assign(new InMemoryDatabaseAdapter(), { db: drizzle(client) }),
+          Object.assign(
+            SQLiteDatabaseAdapter.create(
+              ":memory:",
+              sqliteTestAgentId("BackgroundMemoryTest"),
+            ),
+            { db: drizzle(client) },
+          ),
         );
         const identities = new RelationshipsService(runtime);
         const getService = runtime.getService.bind(runtime);
@@ -596,11 +610,11 @@ describe("durable background memory", () => {
     [ChannelType.DM, true],
     [ChannelType.API, true],
     [ChannelType.SELF, true],
-    [ChannelType.GROUP, false],
-    [ChannelType.VOICE_DM, false],
+    [ChannelType.GROUP, true],
+    [ChannelType.VOICE_DM, true],
     [ChannelType.VOICE_GROUP, false],
   ] as const)(
-    "indexes supported direct-conversation sources: %s",
+    "indexes supported progressive-context sources: %s",
     async (channelType, enabled) => {
       const { runtime, service, message } = await setup();
       await runtime.registerPlugin(createAdvancedMemoryPlugin());
@@ -612,7 +626,15 @@ describe("durable background memory", () => {
       runtime.useModel = vi.fn(async (_type, params) =>
         retentionAnswer(retentionPrompt(params), ["h1"]),
       ) as AgentRuntime["useModel"];
-      await service.enqueue(source, state, { phase: "post_turn" });
+      if (
+        channelType === ChannelType.DM ||
+        channelType === ChannelType.VOICE_DM
+      ) {
+        vi.spyOn(runtime, "getServiceLoadPromise").mockResolvedValue(service);
+        await runPostTurnEvaluators(runtime, source, state);
+      } else {
+        await service.enqueue(source, state, { phase: "post_turn" });
+      }
       await execute(runtime, await job(runtime));
       expect(runtime.useModel).toHaveBeenCalledTimes(enabled ? 1 : 0);
       if (enabled) {
@@ -1011,7 +1033,7 @@ describe("durable background memory", () => {
     expect(runtime.useModel).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["incomplete", "unknown-reference", "missing-source"])(
+  it.each(["incomplete", "unknown-reference"])(
     "keeps invalid retention %s pending without hiding originals",
     async (invalid) => {
       const { runtime, service, message } = await setup();
@@ -1023,8 +1045,6 @@ describe("durable background memory", () => {
         if (invalid === "incomplete") output.historyRetention.complete = false;
         if (invalid === "unknown-reference")
           output.historyRetention.referenceMessageIds = [String(message.id)];
-        if (invalid === "missing-source")
-          output.historyRetention.retainSourceIds = [];
         return JSON.stringify(output);
       }) as AgentRuntime["useModel"];
       await service.enqueue(message, state, { phase: "post_turn" });
@@ -1046,6 +1066,35 @@ describe("durable background memory", () => {
     },
   );
 
+  it("commits a review that omits a source and keeps that source visible", async () => {
+    const { runtime, service, message } = await setup();
+    runtime.registerEvaluator(historyRetentionEvaluator);
+    runtime.useModel = vi.fn(async (_type, params) => {
+      // The reviewer answers with h1 in no classification at all.
+      const output = JSON.parse(
+        retentionAnswer(retentionPrompt(params), ["h1"]),
+      );
+      output.historyRetention.retainSourceIds = [];
+      return JSON.stringify(output);
+    }) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+    if (!message.id) throw new Error("Fixture source has no ID");
+    expect(
+      await getEvaluatorProgressState(
+        runtime,
+        message,
+        historyRetentionEvaluator.name,
+      ),
+    ).toMatchObject({
+      reviewedCount: 1,
+      retainedEventIds: [`history:${message.id}`],
+    });
+    expect(await runtime.getMemoryById(message.id)).toMatchObject({
+      content: message.content,
+    });
+    expect(runtime.useModel).toHaveBeenCalledOnce();
+  });
   it("rejects a retention decision if original source bytes change during background inference", async () => {
     const { runtime, service, message } = await setup();
     runtime.registerEvaluator(historyRetentionEvaluator);
@@ -2121,6 +2170,12 @@ describe("durable background memory", () => {
       },
     ]);
     await runtime.createRoomParticipants([other], message.roomId);
+    const readEntities = runtime.getEntitiesForRoom.bind(runtime);
+    let reorder = false;
+    runtime.getEntitiesForRoom = async (roomId) => {
+      const entities = await readEntities(roomId);
+      return reorder ? [...entities].reverse() : entities;
+    };
     const before = await runtime.getEntitiesForRoom(message.roomId);
     runtime.registerEvaluator(relationshipEvaluator);
     const started = deferred<void>();
@@ -2133,8 +2188,9 @@ describe("durable background memory", () => {
     const running = execute(runtime, await job(runtime));
     await started.promise;
     await runtime.roomHandlerQueue.withLease(message.roomId, async () => {
-      await runtime.removeParticipant(message.entityId, message.roomId);
-      await runtime.createRoomParticipants([message.entityId], message.roomId);
+      // SQL does not promise insertion order. Reverse the real query result
+      // explicitly to exercise order-insensitive inference settlement.
+      reorder = true;
     });
     const after = await runtime.getEntitiesForRoom(message.roomId);
     expect(after).toEqual([...before].reverse());

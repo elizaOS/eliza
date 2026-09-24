@@ -3,7 +3,7 @@
  * stretch, and a wind-down step. Mirror of the morning routine scenario.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -13,7 +13,7 @@ export default scenario({
   tags: ["lifeops", "habits", "multi-action"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -9,7 +9,11 @@ import type {
 	ActionFailureProvenance,
 } from "../types/action-failure";
 import type { ActionReplyFailure } from "../types/action-reply";
-import type { ActionResult, EvaluationResult } from "../types/components";
+import type {
+	ActionResult,
+	EvaluationResult,
+	ReplyEffectStatus,
+} from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
@@ -92,6 +96,8 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Semantic classification from the same evaluation, independent of reply language. */
+	replyEffectStatus?: Exclude<ReplyEffectStatus, "pending">;
 	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
 	effectReceiptIds?: readonly string[];
 	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */

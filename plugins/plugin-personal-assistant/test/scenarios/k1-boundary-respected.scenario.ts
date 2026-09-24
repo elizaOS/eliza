@@ -3,7 +3,7 @@
  * others, the assistant helps the owner respond directly and does not draft
  * around that boundary.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

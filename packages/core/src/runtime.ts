@@ -70,7 +70,6 @@ import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evalua
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
-import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
 import {
 	buildCanonicalSystemPrompt,
@@ -218,7 +217,6 @@ import {
 	type SearchCategoryRegistration,
 	SearchCategoryRegistryError,
 } from "./types/search";
-import type { ShortcutDefinition } from "./types/shortcut";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
@@ -429,8 +427,6 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly responseHandlerEvaluators: ResponseHandlerEvaluator[] = [];
 	readonly responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[] = [];
-	/** Pre-LLM action shortcuts (#8791), registered from `Plugin.shortcuts`. */
-	readonly shortcutRegistry = new ShortcutRegistry();
 	/** Chat pre-handlers, registered from `Plugin.chatPreHandlers`. */
 	readonly chatPreHandlerRegistry = new ChatPreHandlerRegistry();
 	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
@@ -1005,9 +1001,6 @@ export class AgentRuntime implements IAgentRuntime {
 			for (const evaluator of pluginToRegister.evaluators) {
 				this.registerEvaluator(evaluator);
 			}
-		}
-		if (pluginToRegister.shortcuts) {
-			this.registerShortcuts(pluginToRegister.shortcuts);
 		}
 		if (pluginToRegister.chatPreHandlers) {
 			this.registerChatPreHandlers(pluginToRegister.chatPreHandlers);
@@ -2374,27 +2367,6 @@ export class AgentRuntime implements IAgentRuntime {
 				"Action registered",
 			);
 		}
-	}
-
-	/** Register a pre-LLM action shortcut (#8791) into this runtime's registry. */
-	registerShortcut(shortcut: ShortcutDefinition) {
-		this.shortcutRegistry.register(shortcut);
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, shortcut: shortcut.id },
-			"Shortcut registered",
-		);
-	}
-
-	registerShortcuts(shortcuts: readonly ShortcutDefinition[]) {
-		for (const shortcut of shortcuts) this.registerShortcut(shortcut);
-	}
-
-	unregisterShortcut(id: string) {
-		this.shortcutRegistry.unregister(id);
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, shortcut: id },
-			"Shortcut unregistered",
-		);
 	}
 
 	/** Register a chat pre-handler into this runtime's registry. */

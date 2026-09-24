@@ -14,8 +14,8 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   MOBILE_APP_AUTH_CONFIG_MAX_BYTES,
   type MobileAppAuthRegistrationRow,
-  mobileAppAuthDatabaseConnection,
   mobileAppAuthConfigUrl,
+  mobileAppAuthDatabaseConnection,
   queryMobileAppAuthRegistration,
   requireMobileAppAuthAppId,
   requireMobileAppAuthEnabled,
@@ -49,9 +49,7 @@ describe("mobile App Auth database connection boundary", () => {
     const connection = mobileAppAuthDatabaseConnection(
       "postgresql://user:pass@db.example/eliza",
     );
-    expect(new URL(connection.url).searchParams.get("sslmode")).toBe(
-      "require",
-    );
+    expect(new URL(connection.url).searchParams.get("sslmode")).toBe("require");
     expect(connection.ssl).toEqual({ rejectUnauthorized: true });
   });
 

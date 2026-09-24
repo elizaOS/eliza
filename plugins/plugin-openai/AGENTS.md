@@ -148,11 +148,11 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 - **Tokenizer.** Uses `js-tiktoken` (WASM, browser-safe). `TEXT_TOKENIZER_ENCODE/DECODE` do not hit the network.
 - **All API calls go through `recordLlmCall()`** from `@elizaos/core` for trajectory logging. Audio/embedding handlers carry a `// @trajectory-allow` comment where appropriate.
 - **No barrel re-export of internal utils.** Import from `"../utils/config"`, `"../utils/events"`, etc. directly within the plugin.
-- See root `CLAUDE.md` for repo-wide architecture rules, logger conventions, ESM requirements, and naming standards.
+- See root `AGENTS.md` for repo-wide architecture rules, logger conventions, ESM requirements, and naming standards.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run
 the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system

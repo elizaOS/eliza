@@ -40,10 +40,6 @@ import {
   useRealtimeVoiceSession,
 } from "../../hooks/useRealtimeVoiceSession";
 import { useViewEvent } from "../../hooks/useViewEvent";
-import {
-  PENDANT_VOICE_TRANSCRIPT_EVENT,
-  type PendantVoiceTranscriptDetail,
-} from "../../pendant/pendant-connection";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import {
   useChatComposer,
@@ -234,6 +230,7 @@ export interface ShellController {
     /** True when realtime mic frames are replaced with silence. */
     microphoneMuted: boolean;
     status: VoiceContinuousStatus;
+    progressText?: string;
     error: string | null;
     /** Mute/unmute the realtime microphone without ending the conversation. */
     toggleMicrophoneMute: () => void;
@@ -615,12 +612,13 @@ export function useShellController(): ShellController {
       // The voice gateway submits through the canonical conversation stream,
       // outside this renderer's useChatSend instance. Reconcile at the
       // authoritative STT final so the committed user turn leaves the composer
-      // for its canonical bubble before model generation, then at terminal
-      // usage so the persisted assistant reply replaces the in-flight state.
+      // for its canonical bubble before model generation, then when the
+      // canonical reply completes rather than waiting for audio to finish.
       // Never synthesize local bubbles: the normal conversation loader remains
       // the sole reader and deduper for saved history. Reconcile again when
-      // playback actually starts so the saved assistant bubble appears with
-      // its first audible frame instead of waiting for the terminal usage event.
+      // playback starts for older gateways. That start can belong to an ACK;
+      // reply_complete is the authoritative final-history refresh. Usage stays
+      // a recovery refresh for gateways without that event.
       // Expiry/recovery may replace the socket before those terminal frames.
       // A newly authenticated ready boundary reloads saved history too; it must
       // never replay the prior utterance or its potentially committed actions.
@@ -628,6 +626,7 @@ export function useShellController(): ShellController {
         event.t !== "ready" &&
         event.t !== "stt_final" &&
         event.t !== "speaking_start" &&
+        event.t !== "reply_complete" &&
         event.t !== "usage"
       )
         return;
@@ -1939,6 +1938,12 @@ export function useShellController(): ShellController {
   // → streaming (first token seen). The server's `waking` status (cloud 202) is
   // surfaced even before chatSending settles, so it shows while the agent boots.
   const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
+    if (realtimeVoiceOwnsMedia && realtimeVoice.progressText) {
+      return {
+        kind: realtimeVoice.agentSpeaking ? "speaking" : "thinking",
+        label: realtimeVoice.progressText,
+      };
+    }
     if (voiceOutput.speaking || realtimeVoice.agentSpeaking) {
       return { kind: "speaking" };
     }
@@ -1959,6 +1964,7 @@ export function useShellController(): ShellController {
     voiceOutput.speaking,
     realtimeVoice.agentSpeaking,
     realtimeVoice.status,
+    realtimeVoice.progressText,
     realtimeVoiceOwnsMedia,
     serverTurnStatus,
     chatSending,
@@ -2527,51 +2533,6 @@ export function useShellController(): ShellController {
       window.removeEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
   }, []);
 
-  // omi pendant → chat. The pendant module (packages/ui/src/pendant) runs its
-  // own Web Bluetooth capture + VAD + ASR loop and dispatches each finalized
-  // transcript as PENDANT_VOICE_TRANSCRIPT_EVENT. Route it through the same
-  // VOICE_DM send the mic surfaces use so the reply is spoken back — the pendant
-  // gets the full voice loop for free without touching the capture state machine.
-  React.useEffect(() => {
-    const onPendantTranscript = (e: Event) => {
-      const detail = (e as CustomEvent<PendantVoiceTranscriptDetail>).detail;
-      const text = detail?.text?.trim();
-      if (!text) return;
-      send(text, {
-        channelType: "VOICE_DM",
-        ...(detail.segmentId
-          ? { clientMessageId: `pendant:${detail.segmentId}` }
-          : {}),
-        metadata: {
-          voiceSource: "pendant",
-          ...(detail.ownerId ? { pendantOwnerId: detail.ownerId } : {}),
-          ...(detail.agentId ? { pendantAgentId: detail.agentId } : {}),
-          ...(detail.sessionId ? { pendantSessionId: detail.sessionId } : {}),
-          ...(detail.segmentId ? { pendantSegmentId: detail.segmentId } : {}),
-          ...(detail.segmentRevision !== undefined
-            ? { pendantSegmentRevision: detail.segmentRevision }
-            : {}),
-          voiceTurnSignal: buildVoiceTurnSignal(text, {
-            recentAgentReply: latestAgentReplyRef.current.text,
-            replyAgeMs: latestAgentReplyRef.current.at
-              ? Math.max(0, Date.now() - latestAgentReplyRef.current.at)
-              : Number.POSITIVE_INFINITY,
-            agentSpeaking: speakingRef.current,
-          }),
-        },
-      });
-    };
-    window.addEventListener(
-      PENDANT_VOICE_TRANSCRIPT_EVENT,
-      onPendantTranscript,
-    );
-    return () =>
-      window.removeEventListener(
-        PENDANT_VOICE_TRANSCRIPT_EVENT,
-        onPendantTranscript,
-      );
-  }, [send]);
-
   // Transcription re-listen loop: a one-shot capture backend (local-inference
   // auto-stop on silence) ends after each utterance — re-open it so long-form
   // recording continues. Mirrors the hands-free loop but re-opens in
@@ -2835,6 +2796,7 @@ export function useShellController(): ShellController {
       paused: realtimeVoice.paused,
       microphoneMuted: realtimeVoice.microphoneMuted,
       status: realtimeVoice.status,
+      progressText: realtimeVoice.progressText,
       error: realtimeVoiceErrorMessage,
       toggleMicrophoneMute: realtimeVoice.toggleMicrophoneMute,
     },

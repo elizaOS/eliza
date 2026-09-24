@@ -15,7 +15,7 @@
  * plus production dispatcher, real owner-facts / channel-keys /
  * host-capability probes. When PA is loaded its deps win; when absent, the
  * default deps run. This keeps `@elizaos/plugin-scheduling` free of any
- * `@elizaos/app-core` / `@elizaos/agent` / `@elizaos/plugin-personal-assistant`
+ * `@elizaos/app` / `@elizaos/agent` / `@elizaos/plugin-personal-assistant`
  * import.
  *
  * One runner/store invariant: there is exactly one service
@@ -249,7 +249,7 @@ const MOBILE_PROFILES: ReadonlySet<TaskExecutionProfile> =
 
 /**
  * Lightweight host-capability predicate that reads `ELIZA_PLATFORM` instead of
- * importing `@elizaos/app-core` (which would pull app-core into the mobile
+ * importing `@elizaos/app` (which would pull app into the mobile
  * bundle). Mobile hosts (android/ios) advertise the restricted profile set;
  * everything else (Node desktop, tests) advertises all profiles. A consumer
  * that needs the precise BackgroundRunner / FGS probe injects its own

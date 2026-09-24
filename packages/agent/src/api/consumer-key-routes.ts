@@ -7,7 +7,7 @@
  * secret, which must never reach the renderer. This boundary authorizes the
  * caller with the canonical `resolveBoundaryRole` OWNER check and reaches the
  * host's consumer-key store through the agent host bridge, so the agent never
- * imports `@elizaos/app-core`.
+ * imports `@elizaos/app`.
  *
  * Plaintext keys exist only in the create/rotate response bodies (one-time
  * display); they are never logged, persisted, or echoed anywhere else. On a

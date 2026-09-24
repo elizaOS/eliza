@@ -43,7 +43,8 @@
     "rollup": "^4.62.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@types/ws": "^8.18.1"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"
@@ -61,5 +62,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "ws": "^8.21.3"
   }
 }

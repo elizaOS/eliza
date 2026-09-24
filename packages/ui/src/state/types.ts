@@ -31,7 +31,6 @@ import type {
   ConversationMessage,
   CreateTriggerRequest,
   DropStatus,
-  ExtensionStatus,
   FirstRunOptions,
   ImageAttachment,
   LogEntry,
@@ -209,11 +208,6 @@ export function shouldAwaitAgentReadiness(
     state !== "not_started"
   );
 }
-
-export type SlashCommandInput = {
-  name: string;
-  argsRaw: string;
-};
 
 export type StartupPhase = "starting-backend" | "initializing-agent" | "ready";
 
@@ -547,8 +541,6 @@ export interface AppState {
   updateChannelSaving: boolean;
 
   // Extension
-  extensionStatus: ExtensionStatus | null;
-  extensionChecking: boolean;
 
   // Store
   storePlugins: RegistryPlugin[];
@@ -954,7 +946,6 @@ export interface AppActions {
   handleChannelChange: (channel: ReleaseChannel) => Promise<void>;
 
   // Extension
-  checkExtensionStatus: () => Promise<void>;
 
   // Emote picker
   openEmotePicker: () => void;

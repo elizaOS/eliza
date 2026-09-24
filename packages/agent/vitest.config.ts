@@ -4,7 +4,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/scripts/vitest/default.config";
+import baseConfig from "../scripts/vitest/default.config";
+import {
+  agentTestExclude,
+  agentTestInclude,
+} from "./scripts/run-vitest-batches.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -14,7 +18,6 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(packageRoot, "../..");
-const srcRoot = path.join(packageRoot, "src");
 const requireFromOrchestrator = createRequire(
   path.join(monorepoRoot, "plugins/plugin-agent-orchestrator/package.json"),
 );
@@ -49,38 +52,6 @@ export default defineConfig({
             },
           ]
         : []),
-      {
-        find: /^@elizaos\/agent$/,
-        replacement: path.join(srcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/agent\/(.+)$/,
-        replacement: path.join(srcRoot, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-coding-tools\/(.+)$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-coding-tools/src/$1",
-        ),
-      },
-      {
-        // Inbox route tests load Discord from source, whose deferred voice
-        // wiring must also resolve before workspace dist packages are built.
-        find: /^@elizaos\/plugin-meetings$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-meetings/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/ui$/,
-        replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: path.join(monorepoRoot, "packages/ui/src/$1"),
-      },
       // Explicitly pin react/react-dom to the workspace copies in the bun-managed
       // flat hoisted structure. Without this, bun's module resolver can walk up
       // to parent directories and pick up a different react version (e.g., a
@@ -117,151 +88,13 @@ export default defineConfig({
           "node_modules/.bun/node_modules/react-dom/client.js",
         ),
       },
-      // These packages are exercised through source-level route tests. Put
-      // their exact aliases before the base package aliases so subpaths cannot
-      // be rewritten as an invalid suffix on an index.ts replacement.
-      {
-        find: /^@elizaos\/plugin-app-control$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-app-control/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-app-control\/(.+)$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-app-control/src/$1",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-app-manager$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-app-manager/src/index.ts",
-        ),
-      },
-      {
-        // Dedicated conversation imports depend on the plugin-owned Todo
-        // schema and UI-free runtime subpaths. Unit tests run before workspace
-        // dist builds, so these exact source exports must resolve together.
-        find: /^@elizaos\/plugin-todos\/plugin$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-todos/src/plugin.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-todos\/service$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-todos/src/service.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-todos\/db\/schema$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-todos/src/db/schema.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-wallet\/(.+)$/,
-        replacement: path.join(monorepoRoot, "plugins/plugin-wallet/src/$1.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/atomic-json$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/core/src/utils/atomic-json.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/core\/node$/,
-        replacement: path.join(monorepoRoot, "packages/core/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/edge$/,
-        replacement: path.join(monorepoRoot, "packages/core/src/index.edge.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/security\/(.+)$/,
-        replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
-      },
-      {
-        // Vitest deliberately omits Vite's `module` condition. Resolve this
-        // workspace package explicitly so parallel builds cannot remove its
-        // dist entry while an agent test imports core's prompt re-export.
-        find: /^@elizaos\/prompts$/,
-        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-anthropic/utils/config.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-elizacloud/src/utils/config.ts",
-        ),
-      },
-      {
-        // Keep this ahead of the prefix-matching `@elizaos/plugin-elizacloud`
-        // alias (index.ts). Without it, `import(".../host-routes")` resolves
-        // to `src/index.ts/host-routes` (ENOTDIR).
-        find: /^@elizaos\/plugin-elizacloud\/host-routes$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-elizacloud/src/host-routes.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-openai\/endpoint-config$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-openai/utils/config.ts",
-        ),
-      },
-      {
-        // Core's src re-exports `@elizaos/prompts`, which ships no dist in
-        // this lane — anchor it to source so suites importing @elizaos/core
-        // load (same fix plugin-app-control's config carries).
-        find: /^@elizaos\/prompts$/,
-        replacement: path.join(monorepoRoot, "packages/prompts/src/index.ts"),
-      },
       ...baseAliases,
-      {
-        find: /^@elizaos\/credentials\/vault$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/credentials/src/vault/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/credentials\/vault\/(.+)$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/credentials/src/vault/$1",
-        ),
-      },
     ],
   },
   test: {
     ...baseConfig.test,
     environment: "node",
-    // "forks" (not "vmForks"): the vmForks pool shares one worker process whose
-    // VM-context module interception races across test files — vi.mock factories
-    // nondeterministically leak into (or vanish from) a NEIGHBORING file's module
-    // graph when several conversation-route suites run in one invocation. Seen as
-    // conversation-failurekind-roundtrip losing its chat-routes mock (real
-    // readChatRequestPayload → "text is required") and
-    // conversation-greeting-idempotency inheriting a foreign no-op persist mock
-    // (zero greeting rows). The forks pool keeps mock registries strictly
-    // per-file, matching the root suite's pool.
+    // Separate processes isolate host state and database lifecycles.
     pool: "forks",
     setupFiles: ["test/setup.ts"],
     testTimeout: 120_000,
@@ -272,20 +105,7 @@ export default defineConfig({
         inline: [/@elizaos\//, /\/plugins\/plugin-/],
       },
     },
-    include: [
-      "src/**/*.test.{ts,tsx}",
-      "test/**/*.test.{ts,tsx}",
-      "scripts/**/*.test.{ts,tsx}",
-    ],
-    exclude: [
-      "dist/**",
-      "**/node_modules/**",
-      "**/*.e2e.test.{ts,tsx}",
-      "**/*.integration.test.{ts,tsx}",
-      "**/*.live.test.{ts,tsx}",
-      "**/*.live.e2e.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
-      "**/*-real.test.{ts,tsx}",
-    ],
+    include: agentTestInclude,
+    exclude: agentTestExclude,
   },
 });

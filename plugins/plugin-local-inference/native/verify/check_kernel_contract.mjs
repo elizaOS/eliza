@@ -16,7 +16,7 @@ const repoRoot = path.resolve(inferenceRoot, "../../..");
 const contractPath = path.join(here, "kernel-contract.json");
 const buildScriptPath = path.join(
   repoRoot,
-  "packages/app-core/scripts/build-llama-cpp-mtp.mjs",
+  "packages/app/scripts/build-llama-cpp-mtp.mjs",
 );
 const manifestSchemaPath = path.join(
   repoRoot,
@@ -231,7 +231,7 @@ if (cpuDispatchEvidence && cpuDispatchEvidence.backend !== "cpu") {
   fail(`cpu dispatch evidence backend must be "cpu"`);
 }
 
-// 1. Manifest kernel names are the app-core schema names, not shader names.
+// 1. Manifest kernel names are the app schema names, not shader names.
 const schemaKernelEnum = findKernelEnum(manifestSchema);
 if (!schemaKernelEnum) {
   fail(`could not find manifest kernel enum in ${manifestSchemaPath}`);
@@ -653,7 +653,7 @@ if (isStaticIosSliceBuilder) {
   }
 }
 
-// 3. Every app-core build target must have an explicit platform verification gate.
+// 3. Every app build target must have an explicit platform verification gate.
 const supportedTargets = extractStringArrayAfter(
   buildScript,
   "const SUPPORTED_TARGETS",

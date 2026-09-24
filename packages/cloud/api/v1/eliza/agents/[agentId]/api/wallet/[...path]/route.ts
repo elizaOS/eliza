@@ -1,5 +1,5 @@
 /** Proxies an authenticated Cloud agent's supported wallet operations to its mapped Steward wallet. */
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 import type {
   WalletBalancesResponse,
   WalletConfigStatus,

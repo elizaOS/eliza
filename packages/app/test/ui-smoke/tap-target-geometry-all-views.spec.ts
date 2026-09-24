@@ -2,9 +2,11 @@
  * Measures real mobile hit targets and accessible control semantics across the
  * built-in views, using populated fixtures where controls depend on stored data.
  */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { devices, expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   hideChatOverlay,
   installDefaultAppRoutes,
@@ -25,7 +27,7 @@ const MIN_TAP_PX = 44 - 0.5;
 
 // Machine-readable run report (per-view control records + violation counts),
 // written under the package cwd alongside the other Playwright artifacts.
-const REPORT_DIR = path.resolve("test-results", "tap-target-geometry");
+const REPORT_DIR = testOutputPath("app", "tap-target-geometry");
 
 type ControlKind = "geometry" | "coherence";
 
@@ -51,10 +53,7 @@ const DOCUMENTED_EXCEPTIONS: Record<
   ReadonlyArray<{ match: RegExp; reason: string }>
 > = {};
 
-const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {
-  "pendant-transcript":
-    "Designed disconnected pendant transcript state has no standalone controls when no pendant session is paired.",
-};
+const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {};
 
 /**
  * Collect, classify, and (in-page) exception-filter every interactive control

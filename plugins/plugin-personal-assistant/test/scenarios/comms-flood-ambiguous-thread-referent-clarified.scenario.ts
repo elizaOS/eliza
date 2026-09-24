@@ -4,7 +4,7 @@
  * so the assistant must resolve the referent before silencing anything. Muting
  * the wrong thread in a flooded inbox is how a VIP message goes missing.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

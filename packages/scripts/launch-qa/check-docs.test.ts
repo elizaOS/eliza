@@ -200,7 +200,10 @@ describe("docs gate", () => {
     await fs.mkdir(path.join(repoRoot, ".github", "ISSUE_TEMPLATE"), {
       recursive: true,
     });
-    await fs.writeFile(path.join(repoRoot, "SECURITY.md"), "# Security Policy\n");
+    await fs.writeFile(
+      path.join(repoRoot, "SECURITY.md"),
+      "# Security Policy\n",
+    );
     await fs.writeFile(
       path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "config.yml"),
       `contact_links:

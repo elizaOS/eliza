@@ -5,8 +5,8 @@
  * reusing the canonical Node-backed Vite resolver and signal forwarding.
  */
 import { fileURLToPath } from "node:url";
+import { resolveViteCommand } from "../../../app/scripts/lib/dev-ui-vite.mjs";
 import { spawnMirroredChild } from "../../../app/scripts/lib/spawn-mirrored-child.mjs";
-import { resolveViteCommand } from "../../../app-core/scripts/lib/dev-ui-vite.mjs";
 
 const appDir = fileURLToPath(new URL("../../../app/", import.meta.url));
 const vite = resolveViteCommand({

@@ -272,7 +272,7 @@ export function evaluateStagedRendererFreshness(staged, fresh) {
       stagedBuildId,
       freshBuildId,
       reason:
-        "freshly built dist has no renderer buildId (packages/app/dist/" +
+        "freshly built dist has no renderer buildId (packages/app/web-dist/" +
         "eliza-renderer-build.json missing) — run the ios-local build before deploying",
     };
   }

@@ -1,9 +1,9 @@
 /**
  * Exercises document-list filtering and pagination through a real AgentRuntime,
- * DocumentService, and InMemoryDatabaseAdapter with persisted memory records.
+ * DocumentService, and SQLiteDatabaseAdapter with persisted memory records.
  */
 
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
@@ -27,11 +27,11 @@ const ROOM_B = "00000000-0000-0000-0000-00000000d00e" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-00000000abcd" as UUID;
 
 async function makeHarness(): Promise<{
-  adapter: InMemoryDatabaseAdapter;
+  adapter: SQLiteDatabaseAdapter;
   runtime: AgentRuntime;
   service: DocumentService;
 }> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
   await adapter.initialize();
   const runtime = new AgentRuntime({
     agentId: AGENT_ID,
@@ -186,12 +186,14 @@ describe("DocumentService list semantics", () => {
       ),
     );
     await seedDocuments(runtime, documents);
-    await seedDocuments(runtime, [
-      documentMemory(999, {
-        agentId: OTHER_AGENT_ID,
-        content: { text: "Other agent needle" },
-      }),
-    ]);
+    await expect(
+      seedDocuments(runtime, [
+        documentMemory(999, {
+          agentId: OTHER_AGENT_ID,
+          content: { text: "Other agent needle" },
+        }),
+      ]),
+    ).rejects.toMatchObject({ code: "SQLITE_AGENT_MISMATCH" });
 
     const queryResult = await service.listDocumentsDetailed(undefined, {
       query: "needle",
@@ -526,11 +528,12 @@ describe("DocumentService list semantics", () => {
         position: 0,
       },
     });
-    await seedDocuments(runtime, [
-      hiddenDocument,
-      foreignDocument,
-      nonDocument,
-    ]);
+    await expect(
+      seedDocuments(runtime, [foreignDocument]),
+    ).rejects.toMatchObject({
+      code: "SQLITE_AGENT_MISMATCH",
+    });
+    await seedDocuments(runtime, [hiddenDocument, nonDocument]);
     vi.spyOn(runtime, "getRoom").mockResolvedValue({
       id: ROOM_A,
       agentId: AGENT_ID,

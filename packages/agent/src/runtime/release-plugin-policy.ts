@@ -11,7 +11,7 @@ import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 
 const BASELINE_RUNTIME_SUPPORT_PACKAGES = [
   "@elizaos/core",
-  "@elizaos/prompts",
+  "@elizaos/shared",
 ] as const;
 
 const BASELINE_PROVIDER_PLUGINS = [
@@ -30,12 +30,10 @@ const BASELINE_DESKTOP_RUNTIME_PLUGINS = [
 // to ship in the runtime bundle, but are not auto-loaded by collectPluginNames.
 const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-health",
-  "@elizaos/plugin-app-manager",
-  "@elizaos/plugin-registry",
   "@elizaos/plugin-wallet",
   "@elizaos/plugin-imessage",
   "@elizaos/ui",
-  "@elizaos/plugin-documents",
+  "@elizaos/plugin-knowledge",
   // `viewEveryPlatform` plugins (MOBILE_VIEW_PLUGINS in ./core-plugins.ts).
   // The runtime always loads these so their home tiles resolve, so a packaged
   // build that omits them boots degraded, not lean: the plugins fail to
@@ -44,7 +42,7 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   // pins `/api/health` `startup.phase` at "degraded" forever, and the desktop
   // shell's boot-progress gate (which requires phase "running") then never
   // reports the runtime ready — the app renders no UI at all.
-  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-notes",
   "@elizaos/plugin-calendar",

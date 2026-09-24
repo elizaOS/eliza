@@ -25,7 +25,6 @@
       "!packages/cloud/sdk/src/**/*.d.ts",
       "!packages/logger/src/**/*.d.ts",
       "!**/vendor",
-      "!**/vendor",
       "!**/public",
       "!packages/inference/llama.cpp",
       "!packages/inference/reports",
@@ -43,8 +42,11 @@
       "!docs/**/*.json",
       "!plugins/plugin-personal-assistant/docs/audit",
       "!packages/elizaos/templates",
-      "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
-      "!packages/app-core/src/styles"
+      "!packages/app/test/contracts/lib/openzeppelin-contracts",
+      "!packages/app/src/styles",
+      "!packages/benchmarks/suites/webshop/upstream",
+      "!packages/benchmarks/suites/OSWorld/monitor/templates",
+      "!packages/benchmarks/suites/bfcl/executable_runtime/memory_prereq_conversation"
     ]
   },
   "linter": {
@@ -75,7 +77,9 @@
         "packages/shared/src/local-inference/bge/tokenizer.json",
         "packages/shared/src/local-inference/bge/tokenizer_config.json"
       ],
-      "formatter": { "enabled": false }
+      "formatter": {
+        "enabled": false
+      }
     },
     {
       "includes": ["**/*.ts"],
@@ -109,7 +113,7 @@
         "packages/training/src/benchmark/MetricsVisualizer.ts",
         "packages/training/src/benchmark/ModelBenchmarkService.ts",
         "packages/training/src/training/ModelUsageVerifier.ts",
-        "packages/app-core/test/stubs/plugin-telegram-module.ts",
+        "packages/app/test/stubs/plugin-telegram-module.ts",
         "packages/agent/scripts/mobile-stubs/onnxruntime-node.cjs"
       ],
       "linter": {
@@ -132,7 +136,7 @@
     },
     {
       "includes": [
-        "plugins/plugin-task-coordinator/src/**/*.ts",
+        "plugins/plugin-agent-orchestrator/ui/src/**/*.ts",
         "plugins/plugin-calendar/src/**/*.ts",
         "plugins/plugin-scheduling/src/**/*.ts",
         "plugins/plugin-blocker/src/**/*.ts",
@@ -178,7 +182,6 @@
         "!plugins/plugin-form/**",
         "!plugins/plugin-inbox/**",
         "!plugins/plugin-lmstudio/**",
-        "!plugins/plugin-native-llama/**",
         "!plugins/plugin-native-macosalarm/**",
         "!plugins/plugin-personal-assistant/**",
         "!plugins/plugin-sql/**",
@@ -198,12 +201,12 @@
       "includes": [
         "packages/**/src/**/*.ts",
         "!packages/agent/**",
-        "!packages/app-core/**",
+        "!packages/app/**",
         "!packages/cloud/api/**",
         "!packages/cloud/shared/**",
-        "!packages/scenario-runner/**",
+        "!packages/testing/scenario-runner/**",
         "!packages/scripts/**",
-        "!packages/test/**",
+        "!packages/testing/scenarios/**",
         "!packages/ui/**"
       ],
       "linter": {

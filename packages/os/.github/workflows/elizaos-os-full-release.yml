@@ -1,0 +1,491 @@
+name: elizaOS Full OS Release
+
+# This is the only public OS release writer. Component workflows build and
+# attest artifacts but never mutate a GitHub Release on their own.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to create or update (for example v0.1.0-beta.1)
+        type: string
+        required: true
+      manifest_path:
+        description: Tracked candidate manifest under release/<release>/manifest.json
+        type: string
+        required: true
+      channel:
+        description: Release channel
+        type: choice
+        options: [beta, stable]
+        default: beta
+      publish:
+        description: Publish after every build and verification gate passes
+        type: boolean
+        default: false
+      sign:
+        description: Sign and notarize desktop distribution bundles
+        type: boolean
+        default: false
+      image_sequence:
+        description: Monotonic signed image-manifest sequence
+        type: string
+        required: true
+      image_manifest_expires:
+        description: Canonical UTC expiry for signed image discovery metadata
+        type: string
+        required: true
+      debian_snapshot_url:
+        description: Dated snapshot.debian.org archive URL for mkosi
+        type: string
+        required: true
+      desktop_run_id:
+        description: Successful signed GTK/WebKitGTK producer run in elizaOS/eliza
+        type: string
+        required: true
+
+concurrency:
+  group: os-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+# Called workflows cannot elevate the caller token. Grant the maximum required
+# release permissions here; each called workflow narrows them per job.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  prepare:
+    name: Bind release identity and candidate manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      tag: ${{ steps.identity.outputs.tag }}
+      manifest-path: ${{ steps.identity.outputs.manifest-path }}
+      source-sha: ${{ steps.identity.outputs.source-sha }}
+      source-date-epoch: ${{ steps.identity.outputs.source-date-epoch }}
+      release-date: ${{ steps.identity.outputs.release-date }}
+      eliza-source-sha: ${{ steps.identity.outputs.eliza-source-sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Validate release identity
+        id: identity
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          PUBLISH: ${{ inputs.publish }}
+          SIGN: ${{ inputs.sign }}
+          IMAGE_SEQUENCE: ${{ inputs.image_sequence }}
+          IMAGE_MANIFEST_EXPIRES: ${{ inputs.image_manifest_expires }}
+          DEBIAN_SNAPSHOT_URL: ${{ inputs.debian_snapshot_url }}
+          DESKTOP_RUN_ID: ${{ inputs.desktop_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tag must be a versioned elizaOS release tag"
+            exit 1
+          fi
+          if [[ "$MANIFEST_PATH" == /* || "$MANIFEST_PATH" == *..* || ! "$MANIFEST_PATH" =~ ^release/[^/]+/manifest\.json$ ]]; then
+            echo "::error::manifest_path must name release/<release>/manifest.json"
+            exit 1
+          fi
+          if [ ! -f "$MANIFEST_PATH" ] || [ -L "$MANIFEST_PATH" ]; then
+            echo "::error::candidate release manifest is missing or is not a regular file: $MANIFEST_PATH"
+            exit 1
+          fi
+          git ls-files --error-unmatch "$MANIFEST_PATH" >/dev/null
+          node scripts/validate-release-manifest.mjs --manifest "$MANIFEST_PATH"
+          node scripts/assert-canonical-linux-release.mjs --manifest "$MANIFEST_PATH"
+          if [ "$PUBLISH" = "true" ] && [ "$SIGN" != "true" ]; then
+            echo "::error::publish=true requires sign=true"
+            exit 1
+          fi
+          if [ "$SIGN" != "true" ]; then
+            echo "::error::canonical mkosi release rehearsal requires sign=true"
+            exit 1
+          fi
+          [[ "$IMAGE_SEQUENCE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$DESKTOP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$IMAGE_MANIFEST_EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?Z$ ]]
+          [[ "$DEBIAN_SNAPSHOT_URL" =~ ^https://snapshot\.debian\.org/archive/debian/[0-9]{8}T[0-9]{6}Z/?$ ]]
+          node -e '
+            const manifest = JSON.parse(require("node:fs").readFileSync(process.env.MANIFEST_PATH, "utf8"));
+            if (`v${manifest.release.version}` !== process.env.RELEASE_TAG) {
+              throw new Error(`manifest version ${manifest.release.version} does not match ${process.env.RELEASE_TAG}`);
+            }
+            if (manifest.release.channel !== process.env.RELEASE_CHANNEL) {
+              throw new Error(`manifest channel ${manifest.release.channel} does not match ${process.env.RELEASE_CHANNEL}`);
+            }
+          '
+
+          source_sha="$(git rev-parse HEAD)"
+          git fetch --no-tags --force origin \
+            refs/heads/develop:refs/remotes/origin/develop
+          develop_sha="$(git rev-parse refs/remotes/origin/develop)"
+          if ! git merge-base --is-ancestor "$source_sha" "$develop_sha"; then
+            echo "::error::release coordinator source ${source_sha} is not contained in origin/develop (${develop_sha})"
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::release coordinator checkout is not clean"
+            exit 1
+          fi
+          if git ls-remote --exit-code origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+            tag_commit="$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")"
+            if [ "$tag_commit" != "$source_sha" ]; then
+              echo "::error::existing tag ${RELEASE_TAG} resolves to ${tag_commit}, not this run's ${source_sha}"
+              exit 1
+            fi
+          fi
+          if [ "$PUBLISH" = "true" ] && gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" >/tmp/existing-release.json 2>/dev/null; then
+            if ! jq -e '.draft == true and (.immutable // false) == false' /tmp/existing-release.json >/dev/null; then
+              echo "::error::refusing to replace an existing published or immutable release"
+              exit 1
+            fi
+          fi
+
+          {
+            echo "tag=$RELEASE_TAG"
+            echo "version=${RELEASE_TAG#v}"
+            echo "manifest-path=$MANIFEST_PATH"
+            echo "source-sha=$source_sha"
+            echo "source-date-epoch=$(git show -s --format=%ct "$source_sha")"
+            echo "release-date=$(date -u +%F)"
+            echo "eliza-source-sha=$(node -e 'const lock=require("./release/eliza-source.lock.json"); process.stdout.write(lock.commit)')"
+          } >> "$GITHUB_OUTPUT"
+
+  build-linux-mkosi:
+    needs: prepare
+    uses: ./.github/workflows/build-linux-mkosi.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      channel: ${{ inputs.channel }}
+      sequence: ${{ inputs.image_sequence }}
+      expires: ${{ inputs.image_manifest_expires }}
+      base_url: https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare.outputs.tag }}/
+      source_date_epoch: ${{ needs.prepare.outputs.source-date-epoch }}
+      debian_snapshot_url: ${{ inputs.debian_snapshot_url }}
+      desktop_run_id: ${{ inputs.desktop_run_id }}
+      desktop_source_sha: ${{ needs.prepare.outputs.eliza-source-sha }}
+    secrets: inherit
+
+  build-debian-package:
+    needs: prepare
+    uses: ./.github/workflows/build-debian-package.yml
+    with:
+      desktop_run_id: ${{ inputs.desktop_run_id }}
+      desktop_source_sha: ${{ needs.prepare.outputs.eliza-source-sha }}
+      source_date_epoch: ${{ needs.prepare.outputs.source-date-epoch }}
+    secrets: inherit
+
+  build-setup:
+    needs: prepare
+    uses: ./.github/workflows/release-elizaos-setup.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      require_signing: ${{ inputs.sign }}
+    secrets: inherit
+
+  build-usb-installer:
+    needs: prepare
+    uses: ./.github/workflows/release-usb-installer.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      require_signing: ${{ inputs.sign }}
+      linux_release_only: true
+    secrets: inherit
+
+  verify-artifacts:
+    name: Verify every required build artifact
+    needs:
+      - build-linux-mkosi
+      - build-debian-package
+      - build-setup
+      - build-usb-installer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: _verify
+
+      - name: Require nonempty platform outputs
+        run: |
+          set -euo pipefail
+          require_file() {
+            local directory="$1"
+            local pattern="$2"
+            local label="$3"
+            if ! find "$directory" -type f -name "$pattern" -size +0c -print -quit | grep -q .; then
+              echo "::error::missing or empty ${label} (${pattern} under ${directory})"
+              exit 1
+            fi
+          }
+          for architecture in x86_64 arm64 riscv64; do
+            require_file "_verify/elizaos-linux-mkosi-${architecture}" "*.raw.zst" "${architecture} canonical Linux image"
+            require_file "_verify/elizaos-linux-mkosi-${architecture}" "*.raw.zst.sig" "${architecture} canonical Linux image signature"
+            require_file "_verify/elizaos-linux-mkosi-${architecture}" "*.spdx.json" "${architecture} canonical Linux SBOM"
+          done
+          for architecture in amd64 arm64 riscv64; do
+            require_file "_verify/elizaos-debian-package-${architecture}" "*_${architecture}.deb" "${architecture} Debian package"
+          done
+          require_file _verify/elizaos-linux-image-metadata "*.json" "signed image discovery manifest"
+          require_file _verify/elizaos-linux-image-metadata "*.json.sig" "signed image discovery manifest signature"
+          for platform in macos linux windows; do
+            require_file "_verify/elizaos-setup-${platform}" "*" "${platform} setup bundle"
+          done
+          require_file _verify/elizaos-usb-installer-linux "*.tar.gz" "Linux USB installer bundle"
+
+  populate-manifest:
+    name: Populate and strictly validate the release manifest
+    needs: [prepare, verify-artifacts]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      asset-count: ${{ steps.assemble.outputs.asset-count }}
+    env:
+      MANIFEST_PATH: ${{ needs.prepare.outputs.manifest-path }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.source-sha }}
+
+      - name: Download all build outputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: _downloads
+
+      - name: Assemble the manifest-bound release bundle
+        id: assemble
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          SIGN: ${{ inputs.sign }}
+        run: |
+          set -euo pipefail
+          mkdir _release
+          assembled_manifest="_release/elizaos-os-${RELEASE_TAG}-manifest.json"
+          signature_args=()
+          if [ "$SIGN" = true ]; then
+            signature_args+=(--require-distribution-signatures)
+          fi
+          node scripts/assemble-release-bundle.mjs \
+            --manifest "$MANIFEST_PATH" \
+            --artifact-root _downloads \
+            --output _release \
+            --manifest-output "$assembled_manifest" \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --available-date "${{ needs.prepare.outputs.release-date }}" \
+            --source-sha "${{ needs.prepare.outputs.source-sha }}" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+          node scripts/validate-release-manifest.mjs \
+            --manifest "$assembled_manifest" \
+            --require-publishable-checksums \
+            "${signature_args[@]}"
+          node scripts/generate-release-checksums.mjs \
+            --manifest "$assembled_manifest" \
+            --artifact-root _release \
+            --output _release/SHA256SUMS
+          node scripts/verify-release-checksums.mjs \
+            --manifest "$assembled_manifest" \
+            --artifact-root _release \
+            --checksums _release/SHA256SUMS
+          asset_count="$(find _release -maxdepth 1 -type f -size +0c -print | wc -l | tr -d '[:space:]')"
+          if ! [[ "$asset_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::canonical release bundle contains no publishable assets"
+            exit 1
+          fi
+          echo "asset-count=$asset_count" >> "$GITHUB_OUTPUT"
+
+      - name: Attest the complete canonical release bundle
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: _release/*
+
+      - name: Upload the canonical release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-release-bundle
+          path: _release/*
+          if-no-files-found: error
+          retention-days: 90
+
+  rehearse-apt:
+    name: Rehearse signed APT publication
+    needs: [prepare, build-debian-package]
+    uses: ./.github/workflows/publish-apt-repo.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      channel: ${{ inputs.channel }}
+      dry_run: true
+      artifact_pattern: elizaos-debian-package-*
+      source_ref: ${{ needs.prepare.outputs.source-sha }}
+    secrets: inherit
+
+  rehearse-homepage:
+    name: Rehearse release-bound homepage publication
+    needs: [prepare, populate-manifest]
+    uses: ./.github/workflows/publish-os-homepage.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source-sha }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      dry_run: true
+    secrets: inherit
+
+  stage-release:
+    name: Stage the verified GitHub Release draft
+    needs: [prepare, populate-manifest, rehearse-apt, rehearse-homepage]
+    if: inputs.publish == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.source-sha }}
+
+      - name: Download the verified canonical bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: elizaos-release-bundle
+          path: _release-files
+
+      - name: Reverify the exact publication payload
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          metadata_manifest="_release-files/elizaos-os-${RELEASE_TAG}-manifest.json"
+          test -s "$metadata_manifest"
+          test -s _release-files/SHA256SUMS
+          node scripts/verify-release-checksums.mjs \
+            --manifest "$metadata_manifest" \
+            --artifact-root _release-files \
+            --checksums _release-files/SHA256SUMS
+          node scripts/validate-release-manifest.mjs \
+            --manifest "$metadata_manifest" \
+            --require-publishable-checksums \
+            --require-distribution-signatures
+
+      - name: Create or update the verified draft release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ needs.prepare.outputs.source-sha }}
+          draft: true
+          prerelease: ${{ inputs.channel != 'stable' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: _release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-apt:
+    needs: [prepare, stage-release]
+    if: inputs.publish == true && needs.stage-release.result == 'success'
+    uses: ./.github/workflows/publish-apt-repo.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      channel: ${{ inputs.channel }}
+    secrets: inherit
+
+  publish-homepage:
+    needs: [prepare, stage-release, publish-apt]
+    if: inputs.publish == true && needs.publish-apt.result == 'success'
+    uses: ./.github/workflows/publish-os-homepage.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source-sha }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      dry_run: false
+    secrets: inherit
+
+  publish-release:
+    name: Promote the verified GitHub Release
+    needs: [prepare, populate-manifest, stage-release, publish-apt, publish-homepage]
+    if: inputs.publish == true && needs.publish-homepage.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Require the exact staged draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source-sha }}
+          EXPECTED_ASSET_COUNT: ${{ needs.populate-manifest.outputs.asset-count }}
+        run: |
+          set -euo pipefail
+          release="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          jq -e \
+            --arg tag "$RELEASE_TAG" \
+            '.tag_name == $tag and .draft == true and (.immutable // false) == false' \
+            <<<"$release" >/dev/null
+          tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          if [ "$tag_sha" != "$SOURCE_SHA" ]; then
+            echo "::error::staged release tag resolves to ${tag_sha}, expected ${SOURCE_SHA}"
+            exit 1
+          fi
+          asset_count="$(jq '.assets | length' <<<"$release")"
+          if [ "$asset_count" != "$EXPECTED_ASSET_COUNT" ]; then
+            echo "::error::staged release has ${asset_count} assets, expected ${EXPECTED_ASSET_COUNT}"
+            exit 1
+          fi
+
+      - name: Publish only after signed APT deployment succeeds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false
+
+  summary:
+    name: Release gate summary
+    needs:
+      - build-linux-mkosi
+      - build-debian-package
+      - build-setup
+      - build-usb-installer
+      - verify-artifacts
+      - populate-manifest
+      - rehearse-apt
+      - rehearse-homepage
+      - stage-release
+      - publish-release
+      - publish-apt
+      - publish-homepage
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Write summary
+        run: |
+          {
+            echo "## elizaOS OS release gate"
+            echo "| Gate | Result |"
+            echo "| --- | --- |"
+            echo "| Canonical mkosi images | ${{ needs.build-linux-mkosi.result }} |"
+            echo "| Debian package | ${{ needs.build-debian-package.result }} |"
+            echo "| Setup bundles | ${{ needs.build-setup.result }} |"
+            echo "| USB installer bundles | ${{ needs.build-usb-installer.result }} |"
+            echo "| Artifact verification | ${{ needs.verify-artifacts.result }} |"
+            echo "| Manifest/checksum/attestation | ${{ needs.populate-manifest.result }} |"
+            echo "| Signed APT rehearsal | ${{ needs.rehearse-apt.result }} |"
+            echo "| Homepage rehearsal | ${{ needs.rehearse-homepage.result }} |"
+            echo "| GitHub Release draft | ${{ needs.stage-release.result }} |"
+            echo "| GitHub Release | ${{ needs.publish-release.result }} |"
+            echo "| APT repository | ${{ needs.publish-apt.result }} |"
+            echo "| OS homepage | ${{ needs.publish-homepage.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

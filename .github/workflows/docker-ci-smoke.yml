@@ -70,7 +70,7 @@ jobs:
 
           mkdir -p .tmp/qa
           smoke_log=".tmp/qa/docker-ci-smoke-step.log"
-          setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
+          setsid bash packages/app/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
           smoke_pid=$!
           smoke_started_at=$SECONDS
           last_heartbeat=$SECONDS
@@ -134,8 +134,8 @@ jobs:
         run: |
           echo "## Docker CI Smoke" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Production Dockerfile: \`packages/app-core/deploy/Dockerfile.ci\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Script: \`packages/app-core/scripts/docker-ci-smoke.sh\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production Dockerfile: \`packages/app/deploy/Dockerfile.ci\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Script: \`packages/app/scripts/docker-ci-smoke.sh\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Trigger: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Ref: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Smoke endpoints: \`/api/health\` then fallback \`/api/status\`" >> "$GITHUB_STEP_SUMMARY"

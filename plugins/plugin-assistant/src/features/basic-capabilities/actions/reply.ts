@@ -16,10 +16,10 @@ import {
   resolveUserFacingEffectReceipts,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
-import { replyTemplate } from "@elizaos/prompts";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
+import { replyTemplate } from "../prompts.js";
 
 const MIN_QUESTIONS = 1;
 const MAX_QUESTIONS = 4;

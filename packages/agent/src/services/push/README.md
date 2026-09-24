@@ -61,18 +61,13 @@ provider exchanges an RS256 assertion for a bearer token at
 endpoint for the account's project.
 
 The Android build additionally needs `google-services.json` dropped into
-`packages/app-core/platforms/android/app/` at build time; without it the
+`packages/app/platforms/android/app/` at build time; without it the
 `com.google.gms.google-services` gradle plugin is skipped and the device never
 mints an FCM token (see that module's `build.gradle`).
 
 ## Verification
 
-- Unit: provider JWT/payload shaping, service dispatch routing, dead-token
-  pruning, and the route handlers (`*.test.ts` in this dir + `push-token-routes.test.ts`).
-- Integration: `push-registration-flow.test.ts` drives the full loop — a token
-  POSTed through the real HTTP route reaches the provider `send()` on an emitted
-  notification.
-- Live: `bunx vitest run --config packages/agent/vitest.push-real.config.ts`
-  sends against Apple's / Google's real servers when creds are set, asserting a
-  bogus token is rejected end to end. Delivery to a real **enrolled device** is
-  pending-hardware.
+Push acceptance requires an enrolled iOS or Android device: register its token
+through the authenticated HTTP API, emit a notification, and confirm delivery
+on that device. The agent package no longer maintains provider unit tests or
+invalid-token smoke probes. Device delivery is not covered by its local E2E suite.

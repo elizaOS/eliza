@@ -1,5 +1,5 @@
 /**
- * Mounts only the Cloud public/auth/marketing route shell for a cold hosted
+ * Mounts only the Cloud public/auth route shell for a cold hosted
  * public URL. The full application graph stays out of anonymous `/login`, then
  * loads into the same document when client-side navigation leaves that route
  * table so successful authentication does not reboot the browser page.
@@ -12,16 +12,11 @@ import { ErrorBoundary } from "@elizaos/ui";
 import { registerPublicCloudSurfaces } from "@elizaos/ui/cloud/register-public";
 import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
 import * as React from "react";
-import { lazy, Suspense, useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderBootFailure } from "./boot-failure";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
-
-const MarketingHomePage = lazy(() => import("@homepage/embedded-home"));
-const MarketingDownloadsPage = lazy(
-  () => import("@homepage/embedded-downloads"),
-);
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;
@@ -73,11 +68,7 @@ function mountPublicWebEntry(): void {
     <ErrorBoundary>
       <React.StrictMode>
         <Suspense fallback={null}>
-          <CloudRouterShell
-            marketingHomeElement={<MarketingHomePage />}
-            downloadsElement={<MarketingDownloadsPage />}
-            appElement={<FullAppHandoff />}
-          />
+          <CloudRouterShell appElement={<FullAppHandoff />} />
         </Suspense>
       </React.StrictMode>
     </ErrorBoundary>,

@@ -50,7 +50,7 @@ export {
 // The orchestrator/task-coordinator plugin imports this from `@elizaos/ui`
 // (which the app build aliases to this browser entry). It is re-exported from
 // the root index.ts too; keep both in sync. Missing here breaks
-// `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
+// `packages/app build:web` (plugin-agent-orchestrator/src/ui/register-slots.ts).
 export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
 export { DiffReviewPanel } from "./components/composites/code/DiffReviewPanel.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
@@ -136,7 +136,7 @@ export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 export * from "./components/workspace/AppWorkspaceContent.tsx";
-// === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
+// === Phase 5C: ./config/app-config moved to @elizaos/app/config/app-config ===
 export * from "./config/boot-config.ts";
 export * from "./config/boot-config-react.hooks.ts";
 export * from "./config/branding.ts";
@@ -148,7 +148,7 @@ export {
   buildPluginListUiSpec,
 } from "./config/plugin-ui-spec.ts";
 export * from "./config/ui-spec.ts";
-// === Phase 5C: ./desktop-runtime moved to @elizaos/app-core/runtime/desktop ===
+// === Phase 5C: ./desktop-runtime moved to @elizaos/app/runtime/desktop ===
 export * from "./events/index.ts";
 export {
   installFirstRunDeepLinkListener,

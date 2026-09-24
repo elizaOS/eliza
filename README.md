@@ -48,7 +48,7 @@ Common repository commands:
 
 ```bash
 bun run build       # build the workspace with Turbo
-bun run verify      # package parity, dependency, type, lint, and audit gates
+bun run verify      # dependency, type, lint, and audit gates
 bun run test        # repository unit/integration test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
@@ -85,7 +85,7 @@ The framework is model-agnostic and extended through plugins:
   the message loop, memory and state primitives, and plugin contracts.
 - [`@elizaos/agent`](packages/agent) assembles a standalone agent and HTTP
   backend around the core runtime.
-- [`@elizaos/app-core`](packages/app-core) provides shared application hosting,
+- [`@elizaos/app`](packages/app) provides shared application hosting,
   API, and platform orchestration for Eliza app targets.
 - [`@elizaos/ui`](packages/ui) contains the shared React UI used by app
   surfaces.
@@ -146,13 +146,13 @@ against a real runtime and, when configured, live models.
 ```text
 packages/        runtime, hosts, UI, CLI, docs, cloud, native code, and tooling
 plugins/         first-party model, connector, domain, app, and device plugins
-scripts/         repository-wide checks, test orchestration, and release tools
+packages/scripts/ repository-wide checks, test orchestration, and release tools
 patches/         dependency patches applied during installation
 ```
 
 Every maintained package or plugin should explain its public surface, scripts,
 configuration, and local constraints in its own `README.md` and paired
-`CLAUDE.md` / `AGENTS.md`. Read the nearest package guide before making changes.
+`AGENTS.md`. Read the nearest package guide before making changes.
 
 ## Contributing
 

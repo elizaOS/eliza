@@ -1,6 +1,6 @@
 // Coordinates cloud service request context behavior behind route handlers.
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { UUID } from "@elizaos/common";
+import type { UUID } from "@elizaos/core";
 
 export type EntitySettingContextValue = string | boolean | number | null;
 

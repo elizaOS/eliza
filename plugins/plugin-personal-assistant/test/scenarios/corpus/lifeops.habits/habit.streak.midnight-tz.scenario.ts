@@ -24,7 +24,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { updateLifeOpsMeetingPreferences } from "../../../../src/lifeops/owner-profile.ts";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
@@ -86,7 +86,7 @@ export default scenario({
   tags: ["lifeops", "habits", "streak", "timezone", "robustness"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

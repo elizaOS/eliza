@@ -19,8 +19,8 @@ import {
   type MessagePayload,
   ModelType,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
-import { composePromptFromState } from "@elizaos/prompts/rendering";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
 import {
   type ClientBase,
   NO_REQUEST_RETRY,

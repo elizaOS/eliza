@@ -7,13 +7,13 @@ import {
   ModelType,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
-import { imageDescriptionTemplate } from "@elizaos/prompts";
 import {
   describeImageCached,
   fetchRemoteMedia,
   MediaFetchError,
   readResponseWithLimit,
 } from "@elizaos/shared/media";
+import { imageDescriptionTemplate } from "../../features/basic-capabilities/prompts.js";
 import {
   ATTACHMENT_FETCH_MAX_BYTES,
   ATTACHMENT_TURN_MAX_BYTES,

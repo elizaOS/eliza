@@ -1,0 +1,23 @@
+[Unit]
+Description=elizaOS GNOME tray and overlay shell
+Documentation=https://elizaos.ai/
+ConditionPathIsExecutable=/opt/elizaos/bin/eliza-desktop
+After=graphical-session.target elizaos-agent.service
+Wants=elizaos-agent.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/eliza-desktop --tray --overlay
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h /var/tmp
+LockPersonality=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=elizaos-session.target

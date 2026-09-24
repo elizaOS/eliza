@@ -136,7 +136,7 @@ describe("validateIosScreenTimeBuildWiring", () => {
     expect(paths.projectPath).toBe(
       path.join(
         repoRoot,
-        "packages/app-core/platforms/ios/App/App.xcodeproj/project.pbxproj",
+        "packages/app/platforms/ios/App/App.xcodeproj/project.pbxproj",
       ),
     );
     expect(paths.podspecPath).toBe(

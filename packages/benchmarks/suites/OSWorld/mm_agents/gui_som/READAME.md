@@ -1,0 +1,1 @@
+Deprecated since we found we can use `accelaerator` to do the same thing. But can be potentially used in the future when only access to screen is available.

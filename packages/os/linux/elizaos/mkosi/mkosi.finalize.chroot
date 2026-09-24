@@ -1,0 +1,73 @@
+#!/bin/bash
+# Debian's riscv64 GRUB package does not currently populate the removable-media
+# path in mkosi disk images. Build a self-contained EFI executable while the
+# kernel, initramfs, and target-architecture GRUB modules are still available.
+set -euo pipefail
+
+[ "${ARCHITECTURE:-}" = riscv64 ] || exit 0
+
+mapfile -t kernels < <(find /boot -maxdepth 1 -type f \( -name 'vmlinuz-*' -o -name 'vmlinux-*' \) -print | LC_ALL=C sort)
+if [ "${#kernels[@]}" -ne 1 ]; then
+    echo "[mkosi.finalize] expected exactly one riscv64 kernel, found ${#kernels[@]}" >&2
+    exit 1
+fi
+
+kernel="${kernels[0]}"
+kernel_version="${kernel#/boot/vmlinuz-}"
+kernel_version="${kernel_version#/boot/vmlinux-}"
+module_dir="/usr/lib/modules/${kernel_version}"
+grub_modules=/usr/lib/grub/riscv64-efi
+for required in "$module_dir" "$grub_modules"; do
+    if [ ! -e "$required" ] || [ -L "$required" ]; then
+        echo "[mkosi.finalize] required RISC-V boot input is missing or linked: $required" >&2
+        exit 1
+    fi
+done
+for command in cpio find grub-mkstandalone mkinitramfs sort zstd; do
+    command -v "$command" >/dev/null || {
+        echo "[mkosi.finalize] required RISC-V boot tool is missing: $command" >&2
+        exit 1
+    }
+done
+
+workdir="$(mktemp -d)"
+trap 'rm -rf -- "$workdir"' EXIT
+
+mkinitramfs -o "${workdir}/initrd" "$kernel_version"
+
+# mkosi appends this archive to the distribution initramfs for the normal boot
+# path. Embed the same two archives in the fallback EFI executable so GRUB does
+# not depend on firmware-specific RISC-V block-device drivers. Level 3 keeps
+# this target-architecture step practical under qemu-user while remaining
+# deterministic and substantially smaller than an uncompressed archive.
+archive_paths=("usr/lib/modules/${kernel_version}")
+[ ! -d /usr/lib/firmware ] || archive_paths+=(usr/lib/firmware)
+(
+    cd /
+    find "${archive_paths[@]}" -xdev -print0 \
+        | LC_ALL=C sort -z \
+        | cpio --null --create --format=newc --reproducible 2>/dev/null
+) | zstd --quiet --threads=1 -3 -o "${workdir}/kernel-modules.initrd"
+
+cmdline="$(cat /etc/kernel/cmdline 2>/dev/null || true)"
+case " $cmdline " in
+    *' root='*) ;;
+    *) cmdline="root=LABEL=elizaos-system rw ${cmdline}" ;;
+esac
+cat >"${workdir}/grub.cfg" <<EOF
+linux (memdisk)/vmlinuz ${cmdline}
+initrd (memdisk)/initrd (memdisk)/kernel-modules.initrd
+boot
+EOF
+
+install -d -m 0755 /efi/EFI/BOOT
+grub-mkstandalone \
+    -O riscv64-efi \
+    -d "$grub_modules" \
+    -o "${workdir}/BOOTRISCV64.EFI" \
+    "boot/grub/grub.cfg=${workdir}/grub.cfg" \
+    "vmlinuz=${kernel}" \
+    "initrd=${workdir}/initrd" \
+    "kernel-modules.initrd=${workdir}/kernel-modules.initrd"
+install -m 0644 "${workdir}/BOOTRISCV64.EFI" /efi/EFI/BOOT/BOOTRISCV64.EFI
+echo "[mkosi.finalize] installed self-contained RISC-V removable-media EFI boot path"

@@ -25,7 +25,7 @@ not the path the normal APK uses.
    │  batches ~1 s of frames → ElizaVoice.pipelineProcess({ handle, pcm16 })
    ▼
  ElizaVoice JNI host  (ai.elizaos.app process, BIONIC — same process, NO agent)
-   │  packages/app-core/platforms/android/app/src/main/elizavoice-jni/
+   │  packages/app/platforms/android/app/src/main/elizavoice-jni/
    │  libelizavoicejni.so → libelizainference.so (fused, ABI v7, all four runtimes)
    │  1. native VAD hot-loop + turn segmentation (ported VadDetector state machine):
    │       streams the PCM through eliza_inference_vad_process, applies the
@@ -90,7 +90,7 @@ embedding/label decode, and the confident-bystander suppression gate.
 The platform-agnostic agent-side consumer
 (`plugins/plugin-local-inference/src/services/voice/audio-frame-consumer.ts`)
 also has its host unit test + the real-model smoke
-(`packages/app-core/scripts/voice-attribution-smoke.ts`), shared by both
+(`packages/app/scripts/voice-attribution-smoke.ts`), shared by both
 transports.
 
 ## On-device verification surface

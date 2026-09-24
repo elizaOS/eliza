@@ -1,0 +1,13 @@
+#!/bin/sh
+# Remove the staged elizaOS agent artifacts after the agent hook (0010) has
+# installed them into /opt/elizaos. The artifacts are staged into the chroot at
+# /opt/elizaos-artifacts (via config/includes.chroot during the build) only so
+# the in-chroot 0010 hook can read them; nothing uses that path at runtime.
+# Leaving it would double the on-image size of the (multi-GB) Electrobun bundle,
+# so drop it once it has served its build-time purpose.
+set -eu
+
+if [ -d /opt/elizaos-artifacts ]; then
+    echo "[0090-cleanup] removing build-only /opt/elizaos-artifacts"
+    rm -rf /opt/elizaos-artifacts
+fi

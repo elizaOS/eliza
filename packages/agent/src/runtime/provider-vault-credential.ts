@@ -6,8 +6,8 @@
  * child processes never inherit a Vault-only provider secret.
  */
 
+import type { Vault } from "@elizaos/auth/vault";
 import { ElizaError } from "@elizaos/core";
-import type { Vault } from "@elizaos/credentials/vault";
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,

@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/entity-voice-bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "corpus:synth": "bun --conditions=eliza-source synthesize.ts",
+    "corpus:transcribe": "bun --conditions=eliza-source transcribe.ts",
+    "bench": "bun --conditions=eliza-source run.ts --lane kg --input text",
+    "bench:kg:text": "bun --conditions=eliza-source run.ts --lane kg --input text",
+    "bench:kg:audio": "bun --conditions=eliza-source run.ts --lane kg --input audio",
+    "bench:llm:text": "bun --conditions=eliza-source run.ts --lane llm --input text",
+    "bench:llm:audio": "bun --conditions=eliza-source run.ts --lane llm --input audio",
+    "format": "bunx @biomejs/biome format --write package.json",
+    "format:check": "bunx @biomejs/biome format package.json"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/testing": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  }
+}

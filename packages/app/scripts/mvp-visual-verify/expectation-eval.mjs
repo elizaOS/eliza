@@ -10,4 +10,4 @@ export {
   DEFAULT_OVERFLOW_TOLERANCE_PX,
   evaluateExpectations,
   resolveSpec,
-} from "@elizaos/evidence/visual-primitives";
+} from "@elizaos/testing/evidence/visual-primitives";

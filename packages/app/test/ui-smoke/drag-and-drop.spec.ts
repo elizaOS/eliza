@@ -29,6 +29,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -45,17 +46,7 @@ import {
 import { launcherGrid } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-// Capture artifacts land under the repo-level test-results tree; the suite cwd
-// is packages/app, so a bare process.cwd() would nest a stray output tree there.
-const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
-  ? path.resolve(process.cwd(), "..", "..")
-  : process.cwd();
-const OUT_DIR = path.join(
-  REPO_ROOT,
-  "test-results",
-  "ui-smoke-artifacts",
-  "10722-dnd-harness",
-);
+const OUT_DIR = testOutputPath("ui-smoke-artifacts", "10722-dnd-harness");
 
 async function evidenceShot(page: Page, name: string): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true });

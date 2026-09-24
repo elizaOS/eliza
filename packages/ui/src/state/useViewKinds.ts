@@ -2,14 +2,12 @@
  * Resolves which view kinds are enabled for the client: system/release always
  * on, developer/preview following the two Settings toggles.
  */
+import type { EnabledViewKinds, ViewKind, ViewKindBearer } from "@elizaos/core";
 import {
-  type EnabledViewKinds,
   isViewKindEnabled,
   isViewVisible,
   resolveViewKind,
-  type ViewKind,
-  type ViewKindBearer,
-} from "@elizaos/common";
+} from "@elizaos/shared/views/view-kind";
 import { useMemo } from "react";
 import { useIsDeveloperMode } from "./useDeveloperMode";
 import { useIsPreviewMode } from "./usePreviewMode";

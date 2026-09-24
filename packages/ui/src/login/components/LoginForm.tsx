@@ -1,5 +1,5 @@
 /** Presents configured login methods and routes their challenges through the shared authentication context. */
-import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/login";
+import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/auth";
 import type React from "react";
 import {
   useCallback,
@@ -582,7 +582,7 @@ export function LoginForm({
     setErrorMsg(null);
     try {
       if (typeof ctx.signInWithOAuth !== "function") {
-        throw new Error("OAuth unavailable. update @elizaos/login");
+        throw new Error("OAuth unavailable. update @elizaos/auth");
       }
       const result = await ctx.signInWithOAuth(
         provider,

@@ -1,0 +1,40 @@
+{
+  "_note": "Mini ScreenSpot smoke fixtures. Synthesised UI screenshots (1280x800) with synthetic widget bboxes; no upstream pixels checked in. Each sample asks the model to click a labelled UI element; bbox is ground truth in pixel coords [x_min, y_min, x_max, y_max].",
+  "samples": [
+    {
+      "id": "smoke-screenspot-0001",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Click the search button in the top toolbar",
+      "bbox": [1180, 12, 1240, 52],
+      "platform": "desktop"
+    },
+    {
+      "id": "smoke-screenspot-0002",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Click the username field on the login form",
+      "bbox": [400, 320, 880, 360],
+      "platform": "web"
+    },
+    {
+      "id": "smoke-screenspot-0003",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Tap the camera icon in the bottom navigation bar",
+      "bbox": [580, 1820, 700, 1920],
+      "platform": "mobile"
+    },
+    {
+      "id": "smoke-screenspot-0004",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Click the 'Submit' primary action button",
+      "bbox": [560, 360, 720, 440],
+      "platform": "web"
+    },
+    {
+      "id": "smoke-screenspot-0005",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Click the close (x) button on the dialog",
+      "bbox": [920, 220, 952, 252],
+      "platform": "desktop"
+    }
+  ]
+}

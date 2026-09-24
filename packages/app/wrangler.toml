@@ -6,7 +6,7 @@
 # to this project only long enough for edge redirects and protocol proxying.
 
 name = "eliza-app"
-pages_build_output_dir = "./dist"
+pages_build_output_dir = "./web-dist"
 compatibility_date = "2026-04-29"
 
 # Cloudflare Pages uses top-level bindings for preview deployments; production

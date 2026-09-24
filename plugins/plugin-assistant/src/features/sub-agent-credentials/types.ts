@@ -3,9 +3,9 @@
  *
  * These types describe the runtime contract between the four atomic actions
  * in this feature and the parent-side credential tunnel service. Actions
- * never import the app-core service directly — they resolve a client
+ * never import the app service directly — they resolve a client
  * implementation via `runtime.getService(name)`. The Wave F follow-up wires
- * a concrete adapter that calls `CredentialTunnelService` in app-core.
+ * a concrete adapter that calls `CredentialTunnelService` in app.
  */
 
 export const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE = "SubAgentCredentialBridge";
@@ -59,7 +59,7 @@ export interface ChildAgentResultBundle {
  * Cloud / parent-runtime-backed bridge client. Resolved via
  * `runtime.getService(SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE)`.
  *
- * Parent runtimes register an adapter that calls the app-core
+ * Parent runtimes register an adapter that calls the app
  * `CredentialTunnelService` directly; sandboxed sub-agent runtimes get no
  * adapter and the actions cleanly degrade to a "service unavailable"
  * response.

@@ -122,12 +122,12 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          node packages/app-core/scripts/align-electrobun-version.mjs
+          node packages/app/scripts/align-electrobun-version.mjs
           node <<'NODE'
           const fs = require("node:fs");
           const version = process.env.RELEASE_VERSION;
-          const packagePath = "packages/app-core/platforms/electrobun/package.json";
-          const configPath = "packages/app-core/platforms/electrobun/electrobun.config.ts";
+          const packagePath = "packages/app/platforms/electrobun/package.json";
+          const configPath = "packages/app/platforms/electrobun/electrobun.config.ts";
           const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
           pkg.version = version;
           fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
@@ -138,7 +138,7 @@ jobs:
 
       - name: Stage desktop bundle inputs
         run: |
-          node packages/app-core/scripts/desktop-build.mjs stage --variant=base
+          node packages/app/scripts/desktop-build.mjs stage --variant=base
           test -f dist/entry.js
 
       - name: Resolve and build patched Electrobun CLI
@@ -148,7 +148,7 @@ jobs:
           const { createRequire } = require("node:module");
           const fs = require("node:fs");
           const path = require("node:path");
-          const req = createRequire(path.resolve("packages/app-core/platforms/electrobun/package.json"));
+          const req = createRequire(path.resolve("packages/app/platforms/electrobun/package.json"));
           let packageDir = path.dirname(req.resolve("electrobun"));
           while (!fs.existsSync(path.join(packageDir, "package.json"))) {
             const parent = path.dirname(packageDir);
@@ -159,17 +159,17 @@ jobs:
           NODE
           )"
           test -n "$package_dir"
-          node packages/app-core/scripts/build-patched-electrobun-cli.mjs "$package_dir" windows-x64
+          node packages/app/scripts/build-patched-electrobun-cli.mjs "$package_dir" windows-x64
 
       - name: Build Store-flavor Electrobun app
         env:
           ELIZA_RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/
-        run: node packages/app-core/scripts/desktop-build.mjs package --env=stable
+        run: node packages/app/scripts/desktop-build.mjs package --env=stable
 
       - name: Inject exact release identity into packaged resources
         shell: pwsh
         run: |
-          $buildRoot = "packages/app-core/platforms/electrobun/build"
+          $buildRoot = "packages/app/platforms/electrobun/build"
           $found = 0
           Get-ChildItem -Path $buildRoot -Recurse -Directory -Filter "Resources" | ForEach-Object {
             $versionJson = @{
@@ -186,9 +186,9 @@ jobs:
       - name: Build unsigned Store MSIX for Partner Center re-signing
         shell: pwsh
         run: |
-          pwsh -File packages/app-core/packaging/msix/build-msix.ps1 `
-            -BuildDir (Join-Path $PWD "packages/app-core/platforms/electrobun/build") `
-            -OutputDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") `
+          pwsh -File packages/app/packaging/msix/build-msix.ps1 `
+            -BuildDir (Join-Path $PWD "packages/app/platforms/electrobun/build") `
+            -OutputDir (Join-Path $PWD "packages/app/platforms/electrobun/artifacts") `
             -Version "${{ inputs.version }}"
 
       - name: Validate exact Store package and create upload archive
@@ -200,7 +200,7 @@ jobs:
             Sort-Object { [version]$_.Name } -Descending |
             Select-Object -First 1
           $makeappx = Join-Path $sdkBin.FullName "x64\makeappx.exe"
-          $msix = Get-ChildItem "packages/app-core/platforms/electrobun/artifacts" -File -Filter "*-store.msix" |
+          $msix = Get-ChildItem "packages/app/platforms/electrobun/artifacts" -File -Filter "*-store.msix" |
             Select-Object -First 1
           if (-not $msix) { Write-Error "Store MSIX was not produced"; exit 1 }
           $unpack = Join-Path $env:RUNNER_TEMP "store-msix-unpacked"

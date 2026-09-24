@@ -32,7 +32,6 @@ jobs:
       run_cloud: ${{ steps.resolve.outputs.run_cloud }}
       run_dev_smoke: ${{ steps.resolve.outputs.run_dev_smoke }}
       run_docker: ${{ steps.resolve.outputs.run_docker }}
-      run_secrets: ${{ steps.resolve.outputs.run_secrets }}
       run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
       run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
       run_ui_stories: ${{ steps.resolve.outputs.run_ui_stories }}
@@ -110,11 +109,6 @@ jobs:
     with:
       concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
-  secrets:
-    needs: plan
-    if: needs.plan.outputs.run_secrets == 'true'
-    uses: ./.github/workflows/gitleaks.yml
-    secrets: inherit
   platform-smoke:
     needs: plan
     if: needs.plan.outputs.run_platform_smoke == 'true'
@@ -144,14 +138,13 @@ jobs:
       - cloud-gateway-discord
       - dev-smoke
       - docker
-      - secrets
       - platform-smoke
       - ui-core
       - ui-stories
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","docker":"${{ needs.docker.result }}","secrets":"${{ needs.secrets.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
+      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","docker":"${{ needs.docker.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

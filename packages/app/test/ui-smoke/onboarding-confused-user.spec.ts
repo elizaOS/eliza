@@ -2,8 +2,9 @@
  * Playwright UI-smoke spec for the Onboarding Confused User app flow using the
  * real renderer fixture.
  */
-import path from "node:path";
+
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   expectNoPageDiagnostics,
   expectOnlyAllowedPageDiagnostics,
@@ -33,9 +34,8 @@ import {
 // values, seeded 250-step storms) are covered at the conductor seam by
 // packages/ui/src/first-run/use-first-run-conductor{,.fuzz}.test.ts.
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
+const SCREENSHOT_DIR = testOutputPath(
+  "aesthetic-audit",
   "onboarding-confused-user",
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);

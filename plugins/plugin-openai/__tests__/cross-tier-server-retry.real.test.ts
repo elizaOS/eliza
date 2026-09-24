@@ -3,10 +3,11 @@
  * Exhausted server retries must not restart through aliases of the same model;
  * distinct models and later calls retain their independent retry budgets.
  */
+
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { AgentRuntime, ModelType } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { ModelType } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installRouterHandler } from "../../plugin-local-inference/src/services/router-handler";
 import {
@@ -81,7 +82,7 @@ async function fixture(alternative = false, router = false, status = 503) {
     ELIZA_TRAJECTORY_STRICT: "0",
   }))
     vi.stubEnv(key, value);
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     character: {
       name: "RetryFixture",
       settings: {
@@ -94,7 +95,7 @@ async function fixture(alternative = false, router = false, status = 503) {
         OPENAI_LARGE_MODEL: alternative ? "healthy-model" : "failed-model",
       },
     },
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   runtime.registerModel(ModelType.RESPONSE_HANDLER, handleResponseHandler, "openai", 100);

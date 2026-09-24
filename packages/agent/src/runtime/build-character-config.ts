@@ -13,7 +13,6 @@ import {
   type CharacterInput,
   mergeCharacterDefaults,
 } from "@elizaos/core";
-import { defaultCharacterSystemTemplate } from "@elizaos/prompts";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
@@ -26,6 +25,7 @@ import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
+import { defaultCharacterSystemTemplate } from "./default-character-prompt.js";
 import { projectConnectorSettings } from "./project-connector-settings.ts";
 
 /**

@@ -69,11 +69,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     requires: ["CEREBRAS_API_KEY"],
   },
   {
-    file: "packages/core/src/__tests__/planner-continuation.live.test.ts",
-    optIn: "ELIZA_RUN_LIVE_TESTS",
-    requires: ["CEREBRAS_API_KEY"],
-  },
-  {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/issue-read-write-composition.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
@@ -86,7 +81,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-personal-assistant/test/scheduled-task-voicing.live.test.ts",
     requires: ["CEREBRAS_API_KEY"],
-    guardVia: ["packages/app-core/test/helpers/live-agent-test.ts"],
+    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
   },
   {
     file: "plugins/plugin-sql/src/__tests__/migration/membership-authority-ttl-concurrency.postgres.real.test.ts",
@@ -107,34 +102,9 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "exact cloud resolver request/response trajectory proving Opus 4.7 adaptive thinking reaches Anthropic without budget_tokens",
   },
   {
-    file: "packages/agent/src/services/push/push-delivery.real.test.ts",
-    anyOf: [["ELIZA_APNS_KEY_ID"], ["ELIZA_FCM_SERVICE_ACCOUNT"]],
-    guardVia: [
-      "packages/agent/src/services/push/apns-provider.ts",
-      "packages/agent/src/services/push/fcm-provider.ts",
-    ],
-    blocked:
-      "packages/agent/vitest.config.ts excludes *.real.test.ts in every deterministic lane; run explicitly via `bunx vitest run --config packages/agent/vitest.push-real.config.ts` with ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT set. Real-device delivery is pending-hardware (needs an enrolled device).",
-  },
-  {
-    file: "packages/app-core/src/services/coding-account-bridge.live.test.ts",
+    file: "packages/app/src/services/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     notes: "operator-run multi-account integration; not part of routine CI",
-  },
-  {
-    file: "packages/app-core/test/services/smithers-linked-codex-subscription.live.test.ts",
-    optIn: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
-    notes:
-      "app-core Smithers-linked Codex subscription roundtrip; needs an authenticated ~/.codex/auth.json and spends real ChatGPT-subscription traffic",
-  },
-  {
-    file: "packages/core/src/runtime/__tests__/field-registry-cerebras.live.test.ts",
-    optIn: "ELIZA_RUN_LIVE_TESTS",
-    requires: ["CEREBRAS_API_KEY"],
-  },
-  {
-    file: "packages/core/src/runtime/__tests__/pii-swap-live-cerebras.real.test.ts",
-    requires: ["CEREBRAS_API_KEY"],
   },
   {
     file: "plugins/plugin-assistant/src/__tests__/should-respond.live.test.ts",
@@ -149,13 +119,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "real AgentRuntime provider context sent through the configured live text model",
   },
   {
-    file: "packages/evidence/src/vision-qa/vision-qa.live.test.ts",
+    file: "packages/testing/evidence/vision-qa/vision-qa.live.test.ts",
     requires: ["ANTHROPIC_API_KEY"],
     notes:
       "vision-qa VLM screenshot Q&A against the real Anthropic vision model; also armed by ANTHROPIC_LIVE_TEST=1",
   },
   {
-    file: "packages/evidence/src/vision-qa/cli-backend.live.test.ts",
+    file: "packages/testing/evidence/vision-qa/cli-backend.live.test.ts",
     optIn: "ELIZA_VISION_QA_CLI_LIVE",
     notes:
       "vision-qa CLI backend driving a real claude/codex CLI (ELIZA_VISION_QA_CLI selects); spends operator CLI tokens",
@@ -279,7 +249,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       ["ANTHROPIC_API_KEY"],
       ["GOOGLE_GENERATIVE_AI_API_KEY"],
     ],
-    guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
+    guardVia: ["packages/app/test/helpers/live-provider.ts"],
   },
   {
     file: "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
@@ -292,7 +262,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       ["ANTHROPIC_API_KEY"],
       ["GOOGLE_GENERATIVE_AI_API_KEY"],
     ],
-    guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
+    guardVia: ["packages/app/test/helpers/live-provider.ts"],
   },
   {
     file: "plugins/plugin-pty/test/pty.real.test.ts",

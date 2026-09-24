@@ -117,4 +117,4 @@ Host camera capture expects `imagesnap` on macOS, `fswebcam` on Linux, or `ffmpe
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run the relevant build, typecheck, lint, and test lanes, then exercise the real camera, screen, OCR, detector, or mobile bridge changed. Review actual frames, recognized text, detections, logs, and failure states. A mocked detector or placeholder image is not end-to-end evidence.
+Follow the repository-wide verification and evidence standard in the [root AGENTS.md](../../AGENTS.md). Run the relevant build, typecheck, lint, and test lanes, then exercise the real camera, screen, OCR, detector, or mobile bridge changed. Review actual frames, recognized text, detections, logs, and failure states. A mocked detector or placeholder image is not end-to-end evidence.

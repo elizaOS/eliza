@@ -11,9 +11,8 @@
  * TUI previously carried a hand-synced copy that lost `toggle-transcription`,
  * the `source` field, `views`, and the strong `category` union — #12411).
  *
- * Kept in the shared api layer next to `agent-api-types` so agent, UI, TUI, and
- * `@elizaos/plugin-commands` import one contract without a runtime dependency
- * on the plugin.
+ * Kept in the shared API layer so agent, UI, TUI, and command-service
+ * implementations import one contract without depending on each other.
  */
 
 import type {
@@ -52,7 +51,7 @@ export type SerializedCommandSource = "builtin" | "custom-action" | "saved";
 
 /**
  * The wire shape `GET /api/commands` serves and every client renders. Produced
- * by `serializeCommand` (`@elizaos/plugin-commands`) with no field fabricated at
+ * by the command-service serializer with no field fabricated at
  * the HTTP boundary. `target` is the `@elizaos/core` `CommandTarget` discriminant
  * every surface routes on.
  */

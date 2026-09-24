@@ -20,8 +20,7 @@
  * prompt-integrity rule.
  */
 
-import { ElizaError } from "@elizaos/common";
-import { isModelOutputLimitFinishReason } from "@elizaos/core";
+import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core";
 import { generateText } from "ai";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../../models/catalog";

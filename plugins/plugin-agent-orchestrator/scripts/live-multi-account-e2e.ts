@@ -30,19 +30,19 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-// Pure readiness assessor — no app-core graph, safe to import before the gate.
+// Pure readiness assessor — no app graph, safe to import before the gate.
 import { assessCodingAccountReadiness } from "../src/services/coding-account-selection.js";
 
 // The runtime deps (account storage + coding-account bridge) pull in the full
-// app-core/core graph. They are dynamically imported AFTER the gate so the
+// app/core graph. They are dynamically imported AFTER the gate so the
 // clean-skip path never loads them — the scheduled lane invokes this with no
 // secrets and must exit 0 without touching the build graph.
 type SaveAccount =
-  typeof import("@elizaos/credentials/auth/account-storage").saveAccount;
+  typeof import("@elizaos/auth/auth/account-storage").saveAccount;
 type AccountStoragePolicy =
-  import("@elizaos/credentials/auth/account-storage").AccountStoragePolicy;
+  import("@elizaos/auth/auth/account-storage").AccountStoragePolicy;
 type GetBridge =
-  typeof import("../../../packages/app-core/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
+  typeof import("../../../packages/app/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
 let saveAccount: SaveAccount;
 let storagePolicy: AccountStoragePolicy;
 let getCodingAgentSelectorBridge: GetBridge;
@@ -191,13 +191,11 @@ async function main(): Promise<void> {
   process.env.ELIZA_CODING_ACCOUNT_STRATEGY ??= "least-used";
 
   // Gate passed and credentials present — now load the runtime graph.
-  const accountStorage = await import(
-    "@elizaos/credentials/auth/account-storage"
-  );
+  const accountStorage = await import("@elizaos/auth/auth/account-storage");
   saveAccount = accountStorage.saveAccount;
   storagePolicy = accountStorage.createIsolatedAccountStoragePolicy(home);
   ({ getCodingAgentSelectorBridge } = await import(
-    "../../../packages/app-core/src/services/coding-account-bridge.ts"
+    "../../../packages/app/src/services/coding-account-bridge.ts"
   ));
 
   const claudeIds = seedClaude(claudeTokens);

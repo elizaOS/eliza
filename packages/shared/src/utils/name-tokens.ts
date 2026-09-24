@@ -5,12 +5,14 @@
  * `replaceIndexedNameTokens` (`{{name1}}` / `{{user1}}` example slots) are owned
  * by `@elizaos/core` — both whitespace-tolerant and `$`-sequence safe — and
  * re-exported here so existing `@elizaos/shared` / `@elizaos/ui` consumers keep
- * their import path (core exports them from both the node and browser barrels,
- * so this re-export resolves in browser bundles too). `tokenizeNameOccurrences`
+ * their import path through the shared browser contracts. `tokenizeNameOccurrences`
  * below is the inverse: it rewrites literal name occurrences back into
  * `{{name}}` tokens so a later rename keeps propagating.
  */
-export { replaceIndexedNameTokens, replaceNameTokens } from "@elizaos/common";
+export {
+  replaceIndexedNameTokens,
+  replaceNameTokens,
+} from "@elizaos/shared/browser-contracts";
 
 /**
  * Reverse of `replaceNameTokens` — rewrite whole-word occurrences of the

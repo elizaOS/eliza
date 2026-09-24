@@ -22,8 +22,8 @@ import {
   NoModelProviderConfiguredError,
   recentConversationTexts,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { asRecord } from "@elizaos/shared";
+import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 
 type GroundedReplyDomain = "lifeops" | "gmail" | "calendar";

@@ -367,7 +367,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #       DATABASE_URL is the origin string for the sidecar/scripts — public-proxy DSNs need
 #       ?sslmode=no-verify or DATABASE_SSL_NO_VERIFY=true for direct node-pg consumers)
 #   REDIS_URL                          Railway TCP Redis for non-Worker consumers (rediss://...)
-#   LOGIN_API_URL                      Base URL of the owned @elizaos/login service
+#   LOGIN_API_URL                      Base URL of the owned @elizaos/auth service
 #   STEWARD_API_URL                    Legacy base URL alias during deployment cutover
 #   STEWARD_JWT_SECRET                 Canonical HS256 secret for Steward JWT verify (jose); MUST match Steward host
 #   STEWARD_SESSION_SECRET             Deprecated compatibility alias for STEWARD_JWT_SECRET

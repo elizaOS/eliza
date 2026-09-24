@@ -1,6 +1,6 @@
 /**
  * Base Vitest configuration for the plugin: extends the repo default config and
- * wires the LifeOps and app-core test setup, stub roots, and workspace aliases
+ * wires the LifeOps and app test setup, stub roots, and workspace aliases
  * so unit specs resolve source and native-library policy correctly.
  */
 import fs from "node:fs";
@@ -21,7 +21,7 @@ const packageRootFromRepo = path
 const appCoreTestSetup = path.join(
   elizaRoot,
   "packages",
-  "app-core",
+  "app",
   "test",
   "setup.ts",
 );
@@ -30,7 +30,7 @@ const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
 const appCoreTaskHostCapabilities = path.join(
   elizaRoot,
   "packages",
-  "app-core",
+  "app",
   "src",
   "services",
   "task-host-capabilities.ts",
@@ -53,18 +53,14 @@ const escapedAgentSourceRoot = agentSourceRoot.replace(
 const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
 const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-agent-orchestrator",
-  "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
-  "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
   "@elizaos/plugin-vision",
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-native-filesystem",
-  "@elizaos/plugin-app-manager",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-inbox/plugin",
-  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -253,33 +249,33 @@ export default defineConfig({
     preserveSymlinks: false,
     alias: [
       {
-        find: /^@elizaos\/app-core\/api\/compat-route-shared$/,
+        find: /^@elizaos\/app\/api\/compat-route-shared$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "src",
           "api",
           "compat-route-shared.ts",
         ),
       },
       {
-        find: /^@elizaos\/app-core\/api\/auth$/,
+        find: /^@elizaos\/app\/api\/auth$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "src",
           "api",
           "auth.ts",
         ),
       },
       {
-        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        find: /^@elizaos\/app\/services\/auth-store$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "src",
           "services",
           "auth-store.ts",
@@ -332,20 +328,20 @@ export default defineConfig({
         ),
       },
       // Registered HTTP routes must exercise the real owner authentication
-      // boundary even when app-core's distribution has not been built.
+      // boundary even when app's distribution has not been built.
       {
-        find: /^@elizaos\/app-core\/api\/(auth|compat-route-shared)$/,
-        replacement: path.join(elizaRoot, "packages/app-core/src/api/$1.ts"),
+        find: /^@elizaos\/app\/api\/(auth|compat-route-shared)$/,
+        replacement: path.join(elizaRoot, "packages/app/src/api/$1.ts"),
       },
       {
-        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        find: /^@elizaos\/app\/services\/auth-store$/,
         replacement: path.join(
           elizaRoot,
-          "packages/app-core/src/services/auth-store.ts",
+          "packages/app/src/services/auth-store.ts",
         ),
       },
       {
-        find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
+        find: /^@elizaos\/app\/services\/task-host-capabilities$/,
         replacement: appCoreTaskHostCapabilities,
       },
       {
@@ -359,21 +355,11 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/core\/edge$/,
+        find: /^@elizaos\/auth\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",
-          "core",
-          "src",
-          "index.edge.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/credentials\/vault$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "credentials",
+          "auth",
           "src",
           "vault",
           "index.ts",
@@ -555,29 +541,6 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The agent's settings action pulls createSettingsAction +
-      // parseSettingsRequest from the `@elizaos/plugin-app-control` barrel
-      // (#14804), but app-control's build bundles only the barrel — there is
-      // no per-file dist and vitest has no eliza-source condition. Anchor the
-      // bare specifier to the file stub (which re-exports the real settings
-      // module) and subpaths to source. These must be alias entries, not
-      // resolveId stubs: vite:alias runs before user plugins, so baseConfig's
-      // installed-package alias for this plugin would otherwise win and
-      // resolve a stale published dist that lacks the settings exports.
-      {
-        find: /^@elizaos\/plugin-app-control$/,
-        replacement: path.join(lifeopsTestStubsRoot, "plugin-app-control.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-control\/(.+)$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-app-control",
-          "src",
-          "$1.ts",
-        ),
-      },
       {
         find: /^@elizaos\/plugin-calendar$/,
         replacement: path.join(
@@ -744,30 +707,32 @@ export default defineConfig({
       },
       // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
       // imports the real scenario loader from source; loader.ts references its
-      // own package via `@elizaos/scenario-runner/schema`, a self-referencing
+      // own package via `@elizaos/testing/scenario-runner/schema`, a self-referencing
       // package-exports import Vite's resolver does not support. Anchor the
       // subpath to the prebuilt schema entry the exports map points at.
       {
-        find: /^@elizaos\/scenario-runner\/schema$/,
+        find: /^@elizaos\/testing\/scenario-runner\/schema$/,
         replacement: path.join(
           elizaRoot,
           "packages",
+          "testing",
           "scenario-runner",
           "schema",
           "index.js",
         ),
       },
       // The scenario corpus imports shared assertion helpers through
-      // `@elizaos/scenario-runner/scenario-assertions` — the same
+      // `@elizaos/testing/scenario-runner/scenario-assertions` — the same
       // package-exports subpath shape as `/schema` above, which this lane
       // cannot resolve (the `./*` exports wildcard points at a `./dist/*.js`
       // that plugin-tests never builds). Anchor it to source; its only
       // package import is `/schema`, covered by the alias above.
       {
-        find: /^@elizaos\/scenario-runner\/scenario-assertions$/,
+        find: /^@elizaos\/testing\/scenario-runner\/scenario-assertions$/,
         replacement: path.join(
           elizaRoot,
           "packages",
+          "testing",
           "scenario-runner",
           "src",
           "scenario-assertions.ts",
@@ -805,7 +770,7 @@ export default defineConfig({
         replacement: path.join(
           elizaRoot,
           "packages",
-          "app-core",
+          "app",
           "test",
           "stubs",
           "capacitor-core.ts",
@@ -843,11 +808,11 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-phone\/twilio$/,
+        find: /^@elizaos\/plugin-native-phone\/twilio$/,
         replacement: path.join(
           elizaRoot,
           "plugins",
-          "plugin-phone",
+          "plugin-native-phone",
           "src",
           "twilio.ts",
         ),

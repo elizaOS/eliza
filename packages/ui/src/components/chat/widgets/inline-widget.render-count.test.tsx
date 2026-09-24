@@ -24,7 +24,7 @@
 // the stream-reparse condition) then advances the payload (tick 1→2). Both
 // directions are asserted so the lock can never pass vacuously.
 
-import type { SwarmActivityPlanEntry } from "@elizaos/common";
+import type { SwarmActivityPlanEntry } from "@elizaos/core";
 import {
   act,
   cleanup,

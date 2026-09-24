@@ -2,11 +2,11 @@
 
 Shared contracts, configuration, utilities, and assets used by runtime hosts,
 UI, Cloud services, and plugins. Repository rules in the
-[root guide](../../CLAUDE.md) apply.
+[root guide](../../AGENTS.md) apply.
 
 ## Ownership and entry points
 
-This package depends on core and owns the first-party catalog in `src/catalog/`. Keep host assembly in agent/app-core,
+This package depends on core and owns the first-party catalog in `src/catalog/`. Keep host assembly in agent/app,
 view rendering in UI, and provider integration in its plugin. Importing an
 application host here can introduce a boot-time dependency cycle.
 
@@ -46,8 +46,8 @@ into the root solely for import uniformity.
 - Keep browser-compatible metadata separate from Node filesystem operations.
   `src/local-inference/index.ts` exports verification types; actual verification
   and routing persistence have dedicated subpaths.
-- Edit authored keyword data in [prompts](../prompts/src/keywords.ts); shared
-  locale wrappers use `@elizaos/prompts/keyword-matching`. Edit brand assets
+- Edit authored keyword data in [shared keyword data](src/i18n/keywords.ts); shared
+  locale wrappers use `@elizaos/shared/i18n/keyword-matching-core`. Edit brand assets
   and run `sync` to copy them into consumer public directories.
 - Synthetic environment and subprocess namespaces share
   `isSyntheticEnvironmentNamespace`: 1–512 non-control characters, without
@@ -69,9 +69,7 @@ guide parity, and contribution evidence requirements remain applicable.
 
 
 Markdown parsing, bounded frontmatter and platform rendering live in
-`src/markdown/`, exported as `@elizaos/shared/markdown`. This leaf uses common
-errors and parser dependencies, and must bundle for browsers without importing
-the runtime or Cloud helpers. Keep its parser/Unicode/chunk tests with it.
+`src/markdown/`, exported as `@elizaos/shared/markdown`. This leaf uses core errors and parser dependencies on Node/Bun. Keep its parser/Unicode/chunk tests with it.
 
 Node media and connector attachment helpers live in `src/media/`, exported as
 `@elizaos/shared/media`. Keep the leaf independent of the shared root barrel

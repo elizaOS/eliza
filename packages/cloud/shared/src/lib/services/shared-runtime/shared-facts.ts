@@ -15,7 +15,7 @@
  * fabricated empty result on a malformed body.
  */
 
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 
 /** Core memories table-name discriminator Dedicated's facts provider reads. */
 export const SHARED_FACTS_MEMORY_TYPE = "facts";

@@ -1,5 +1,5 @@
 // Defines the reminder quiet hours outcome LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;
@@ -34,7 +34,7 @@ export default scenario({
   tags: ["lifeops", "reminders"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

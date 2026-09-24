@@ -34,7 +34,6 @@
     "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/prompts": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
     "@upstash/redis": "^1.37.0",
@@ -53,7 +52,8 @@
     "zod": "^4.4.3",
     "@elizaos/shared": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/common": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sqlite": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/plugin-web-search": "workspace:*",

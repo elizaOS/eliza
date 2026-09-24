@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+case " $(cat /proc/cmdline) " in
+    *' elizaos.recovery=1 '*) ;;
+    *)
+        echo "elizaos-recovery-verify: recovery kernel argument is absent" >&2
+        exit 1
+        ;;
+esac
+
+for unit in eliza-control-broker.service eliza-control-broker.socket; do
+    state="$(systemctl show --property=ActiveState --value "$unit")"
+    case "$state" in
+        ''|inactive|failed) ;;
+        *)
+            echo "elizaos-recovery-verify: privileged broker boundary is active: $unit ($state)" >&2
+            exit 1
+            ;;
+    esac
+done
+
+active_user_managers="$(
+    systemctl list-units --all --plain --no-legend \
+        --state=active,activating,reloading,deactivating 'user@*.service'
+)"
+[ -z "$active_user_managers" ] || {
+    echo "elizaos-recovery-verify: a user service manager is active" >&2
+    exit 1
+}
+
+for cmdline in /proc/[0-9]*/cmdline; do
+    process="$(tr '\000' ' ' <"$cmdline" 2>/dev/null || true)"
+    case " $process " in
+        *' /usr/bin/eliza-agent '*|*' /opt/elizaos/bin/eliza-agent '*)
+            echo "elizaos-recovery-verify: Eliza agent process is running" >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "elizaOS recovery boundary verified: Eliza agent and privileged broker unavailable"

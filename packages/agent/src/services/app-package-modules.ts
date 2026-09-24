@@ -131,7 +131,7 @@ function sanitiseInstalledPackageDirName(packageName: string): string {
 
 /**
  * Directory where the plugin-installer writes dynamically-installed plugins.
- * Matches `packages/app-core/src/services/plugin-installer.ts::pluginsBaseDir`.
+ * Matches `packages/app/src/services/plugin-installer.ts::pluginsBaseDir`.
  */
 function installedPluginsBaseDir(): string {
   return path.join(resolveStateDir(), "plugins", "installed");
@@ -547,7 +547,7 @@ async function importLocalAppPluginModule(
     // Prefer the plugin's React-free `plugin` entry over the package barrel.
     // The barrel (`index.ts`) re-exports the plugin's React view components, and
     // importing those into the Node agent fails to transpile/resolve (JSX
-    // runtime, `@elizaos/app-core/ui-compat`, …). The agent only needs the
+    // runtime, `@elizaos/app/ui-compat`, …). The agent only needs the
     // Plugin object's view *declarations* to register the views, and those live
     // in `plugin.ts` free of any UI imports. `index.*` stays as a fallback for
     // plugins that define their Plugin object inline in the barrel.

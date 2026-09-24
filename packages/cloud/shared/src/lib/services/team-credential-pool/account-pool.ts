@@ -5,7 +5,7 @@
  * auth files and global provider bridges. Cloud only needs deterministic
  * metadata selection over Drizzle-backed rows, so this implementation keeps the
  * strategy, affinity, and health semantics local to cloud-shared without a
- * runtime dependency on app-core.
+ * runtime dependency on app.
  */
 import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 import type {

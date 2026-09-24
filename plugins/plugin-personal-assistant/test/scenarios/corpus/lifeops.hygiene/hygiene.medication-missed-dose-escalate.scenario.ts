@@ -6,7 +6,7 @@
 import {
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing/scenario-runner/schema";
 import { seedCheckinDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -17,7 +17,7 @@ export default scenario({
   tags: ["lifeops", "hygiene", "habits", "medication", "escalation"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -167,7 +167,7 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          node packages/app-core/scripts/ensure-type-package-aliases.mjs
+          node packages/app/scripts/ensure-type-package-aliases.mjs
 
       - name: Build Docker workspace artifacts
         # Let Turbo derive the build order and reuse task cache instead of
@@ -179,18 +179,16 @@ jobs:
           NODE_ENV: production
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
+          node packages/scripts/run-turbo.mjs run build:dist --filter=@elizaos/app --concurrency=8
           node packages/scripts/run-turbo.mjs run build --concurrency=8 \
-            --filter=@elizaos/app \
             --filter=@elizaos/agent \
             --filter=@elizaos/plugin-sql \
             --filter=@elizaos/plugin-video \
-            --filter=@elizaos/plugin-agent-skills \
             --filter=@elizaos/plugin-pdf \
             --filter=@elizaos/plugin-browser \
-            --filter=@elizaos/plugin-capacitor-bridge \
+            --filter=@elizaos/plugin-native-inference \
             --filter=@elizaos/plugin-coding-tools \
             --filter=@elizaos/plugin-native-filesystem \
-            --filter=@elizaos/plugin-commands \
             --filter=@elizaos/plugin-computeruse \
             --filter=@elizaos/plugin-discord \
             --filter=@elizaos/plugin-elizacloud \
@@ -199,7 +197,6 @@ jobs:
             --filter=@elizaos/plugin-mcp \
             --filter=@elizaos/plugin-telegram \
             --filter=@elizaos/plugin-x \
-            --filter=@elizaos/plugin-whatsapp \
             --filter=@elizaos/plugin-wallet \
             --filter=@elizaos/plugin-workflow
 
@@ -230,10 +227,10 @@ jobs:
         # keep root node_modules (Dockerfile.ci's pruner relink scripts
         # consume them) but strip per-package node_modules and the other
         # bulky CI-only inputs. Use the canonical CI dockerignore from
-        # packages/app-core/deploy/.dockerignore.ci, mirroring what
+        # packages/app/deploy/.dockerignore.ci, mirroring what
         # docker-ci-smoke.sh does before its `docker build`.
         run: |
-          cp packages/app-core/deploy/.dockerignore.ci .dockerignore
+          cp packages/app/deploy/.dockerignore.ci .dockerignore
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
@@ -316,7 +313,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
-          file: packages/app-core/deploy/Dockerfile.ci
+          file: packages/app/deploy/Dockerfile.ci
           push: false
           load: true
           provenance: false
@@ -363,7 +360,7 @@ jobs:
           # runner is heavily contended, so this only fails on a genuine multi-x
           # boot-time regression — not on transient runner load.
           BOOT_KPI_ENFORCE: "1"
-        run: bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
+        run: bash packages/app/scripts/docker-ci-smoke.sh --boot-verify-only
 
       # Push the EXACT verified image. This runs only if the boot verification
       # above succeeded (steps run in order; a failed step fails the job). We

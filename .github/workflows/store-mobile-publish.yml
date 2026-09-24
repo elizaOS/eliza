@@ -150,13 +150,13 @@ jobs:
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
-          working-directory: packages/app-core/platforms/android
+          working-directory: packages/app/platforms/android
 
       - name: Publish exact AAB to Google Play
-        working-directory: packages/app-core/platforms/android
+        working-directory: packages/app/platforms/android
         env:
           PLAY_STORE_TRACK: ${{ steps.plan.outputs.android_track }}
-          PLAY_STORE_AAB_PATH: ${{ github.workspace }}/packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+          PLAY_STORE_AAB_PATH: ${{ github.workspace }}/packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab
           PLAY_STORE_JSON_KEY: ${{ runner.temp }}/play-store-key.json
         run: bundle exec fastlane publish_aab
 
@@ -164,7 +164,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: eliza-google-play-${{ inputs.version }}
-          path: packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+          path: packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 90
 
@@ -250,10 +250,10 @@ jobs:
 
       - name: Prepare and sync native iOS project
         run: |
-          bash packages/app-core/scripts/prepare-ios-cocoapods.sh
+          bash packages/app/scripts/prepare-ios-cocoapods.sh
           bun run --cwd packages/app cap:sync:ios
           bun run --cwd packages/agent build:ios-bun
-          node packages/app-core/scripts/run-mobile-build.mjs ios-overlay
+          node packages/app/scripts/run-mobile-build.mjs ios-overlay
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
           ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.ios_build_number }}

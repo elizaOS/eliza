@@ -5,7 +5,7 @@
  * prompt. The send stays gated on approval (no external dispatch), and the policy
  * turn is judged on proposing a group-chat handoff rather than echoing.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -17,7 +17,7 @@ export default scenario({
   tags: ["lifeops", "messaging", "cross-channel", "llm-eval", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

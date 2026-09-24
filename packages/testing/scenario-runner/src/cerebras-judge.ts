@@ -1,0 +1,416 @@
+/**
+ * Shared Cerebras judge transport.
+ *
+ * Single class consumed by all Cerebras-as-judge call sites in the repo:
+ *
+ *   - packages/testing/scenario-runner/src/judge.ts                 (scenario judge)
+ *   - plugins/plugin-personal-assistant/test/helpers/lifeops-live-judge.ts (lifeops live judge)
+ *
+ * Prompts, rubrics, and pass counts stay with the callers. This class only
+ * owns transport, retry, tolerant JSON parsing, and a canonical verdict
+ * shape. Callers map the canonical shape back to their own return types.
+ */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import type { ObservedJudgeModel } from "./judge-model-observer.ts";
+
+/** Canonical verdict alias re-exported for callers that don't pull types.ts. */
+export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
+
+/** Canonical response shape every Cerebras judge call resolves to. */
+export interface JudgeResponse {
+  identity?: ObservedJudgeModel;
+  /** Raw model text — exactly what the API returned, before parsing. */
+  raw: string;
+  /** Parsed JSON object or null if the model output never parsed. */
+  json: Record<string, unknown> | null;
+  /** 0..1 score when the model emitted a `score` field. */
+  score?: number;
+  /** Canonical verdict when the model emitted `verdict` or it can be derived from `score`. */
+  verdict?: CerebrasJudgeVerdict;
+  /** Free-text justification when the model emitted `reason` (or equivalent). */
+  reason?: string;
+}
+
+export interface CerebrasJudgeOptions {
+  /** Default `gemma-4-31b`. Override per call via judge() options if needed. */
+  model?: string;
+  /** OpenAI-compatible base. Default `https://api.cerebras.ai/v1`. */
+  baseUrl?: string;
+  /** Bearer key. Defaults to `EVAL_CEREBRAS_API_KEY`, then `CEREBRAS_API_KEY`. */
+  apiKey?: string;
+  /** Per-request abort timeout. Default 60000ms. */
+  timeoutMs?: number;
+  /** Retry count on 429/5xx (transport-only retries, not parse retries). Default 2. */
+  maxRetries?: number;
+}
+
+export interface JudgeCallOptions {
+  /** Optional explicit output-token ceiling. Omission delegates to the model. */
+  maxTokens?: number;
+  /** Temperature. Default 0. */
+  temperature?: number;
+  /** Optional system prompt. */
+  systemPrompt?: string;
+  /** When true, sets `response_format: { type: "json_object" }`. Default false. */
+  jsonObjectMode?: boolean;
+  /**
+   * Reasoning effort hint. Sent whenever set; `gpt-oss-*` models default to
+   * "low" for fast judges. gemma-4-31b keeps reasoning off unless requested.
+   */
+  reasoningEffort?: "low" | "medium" | "high";
+}
+
+interface ChatCompletionShape {
+  model?: string;
+  choices?: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
+  }>;
+}
+
+/** Accept complete numeric values in [0, 1] without clipping invalid judgments. */
+export function parseJudgeScore(value: unknown): number | undefined {
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  if (
+    typeof value === "string" &&
+    !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)
+  )
+    return undefined;
+  const score = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(score) && score >= 0 && score <= 1 ? score : undefined;
+}
+
+/**
+ * Walk a string and return the first balanced `{...}` window, respecting
+ * string boundaries and escape sequences. Used as a tolerant fallback when
+ * the model wraps the JSON in prose. Returns null when no balanced object
+ * is found.
+ *
+ * Exported because the scenario-runner judge (and the test suite) use it
+ * directly.
+ */
+export function extractBalancedJsonObject(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return raw.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Tolerant JSON parser. Tries: strict parse → ```json fenced parse →
+ * first-`{` to last-`}` window → balanced-object scan. Returns null when
+ * the model output never resolves to a JSON object.
+ */
+export function tolerantJsonParse(
+  text: string,
+): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+  const candidates: string[] = [trimmed];
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) candidates.push(fenced[1].trim());
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first !== -1 && last > first) {
+    candidates.push(trimmed.slice(first, last + 1));
+  }
+  const balanced = extractBalancedJsonObject(trimmed);
+  if (balanced) candidates.push(balanced);
+  for (const c of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(c);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // error-policy:J3 untrusted-input sanitizing — LLM output is tried against
+      // several JSON-extraction candidates; a parse miss falls through to the
+      // next candidate, and an all-candidates-miss returns an explicit null
+      // (invalid signal) below, never a fabricated verdict.
+    }
+  }
+  return null;
+}
+
+/**
+ * Map a numeric score to a canonical verdict. Threshold: `>= 0.75` is PASS,
+ * `<= 0.25` is FAIL, anything in between is REVIEW. This is an additive
+ * field on JudgeResponse — callers that have their own verdict logic ignore
+ * it.
+ */
+export function verdictFromScore(score: number): CerebrasJudgeVerdict {
+  if (score >= 0.75) return "PASS";
+  if (score <= 0.25) return "FAIL";
+  return "REVIEW";
+}
+
+/**
+ * Map a string verdict produced by the model to the canonical
+ * PASS/FAIL/REVIEW set. Returns undefined when the input isn't a recognized
+ * verdict string. Accepts YES/NO/NEEDS_REVIEW (personality-bench style) and
+ * PASS/FAIL/REVIEW (scenario-runner style).
+ */
+export function normalizeVerdict(
+  raw: unknown,
+): CerebrasJudgeVerdict | undefined {
+  if (typeof raw !== "string") return undefined;
+  const v = raw.trim().toUpperCase();
+  if (v === "PASS" || v === "YES") return "PASS";
+  if (v === "FAIL" || v === "NO") return "FAIL";
+  if (v === "REVIEW" || v === "NEEDS_REVIEW") return "REVIEW";
+  return undefined;
+}
+
+class CerebrasJudgeError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly body?: string,
+  ) {
+    super(message);
+    this.name = "CerebrasJudgeError";
+  }
+}
+
+function shouldRetryStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Cerebras judge transport (default model: gemma-4-31b).
+ *
+ * Single shared client for the four judge call sites in this repo. Owns
+ * transport (HTTP, auth, abort, retry, response_format) and parsing.
+ * Prompt construction and verdict mapping belong to callers — this class
+ * gives them a canonical {raw, json, score?, verdict?, reason?} response
+ * they can map onto their own return types.
+ */
+export class CerebrasJudge {
+  private readonly model: string;
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
+  private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+
+  constructor(options: CerebrasJudgeOptions = {}) {
+    this.model =
+      options.model ??
+      process.env.CEREBRAS_JUDGE_MODEL?.trim() ??
+      "gemma-4-31b";
+    // CEREBRAS_BASE_URL keeps parity with the lifeops eval-model transport:
+    // an OpenAI-compatible proxy (e.g. the Eliza Cloud gateway) can serve the
+    // judge on hosts that carry a proxy credential instead of a direct
+    // Cerebras key. A proxy backend remains unverified without serving identity.
+    this.baseUrl = (
+      options.baseUrl ??
+      process.env.CEREBRAS_BASE_URL?.trim() ??
+      "https://api.cerebras.ai/v1"
+    ).replace(/\/$/, "");
+    // EVAL_CEREBRAS_API_KEY is the judge-only credential slot and WINS over
+    // the generic key, matching the eval-model resolution order everywhere
+    // else (cerebras-eval-model.ts / lifeops-eval-model.ts read the
+    // role-specific EVAL_ variable first). The generic CEREBRAS_API_KEY
+    // doubles as a live-provider selector for the model under test
+    // (live-provider.ts), so a host that carries both must be able to point
+    // the judge at an independent credential/proxy without the generic key
+    // silently taking over judging.
+    const apiKey =
+      options.apiKey ??
+      process.env.EVAL_CEREBRAS_API_KEY ??
+      process.env.CEREBRAS_API_KEY ??
+      "";
+    if (!apiKey) {
+      throw new Error(
+        "[cerebras-judge] CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY is not set and no apiKey was provided to the constructor.",
+      );
+    }
+    this.apiKey = apiKey;
+    this.timeoutMs = options.timeoutMs ?? 60_000;
+    this.maxRetries = options.maxRetries ?? 2;
+  }
+
+  /** Returns true when a judge API key is present in env. */
+  static isAvailable(): boolean {
+    return Boolean(
+      process.env.CEREBRAS_API_KEY?.trim() ||
+        process.env.EVAL_CEREBRAS_API_KEY?.trim(),
+    );
+  }
+
+  /**
+   * Execute a single judge call. Retries on 429/5xx (up to `maxRetries`
+   * times) with exponential backoff. Throws on 4xx (other than 429) and
+   * after retries are exhausted.
+   */
+  async judge(
+    prompt: string,
+    options: JudgeCallOptions = {},
+  ): Promise<JudgeResponse> {
+    const { raw, identity } = await this.callChat(prompt, options);
+    const json = tolerantJsonParse(raw);
+    const response: JudgeResponse = { raw, json, identity };
+    if (json) {
+      const score = parseJudgeScore(json.score);
+      if (Object.hasOwn(json, "score") && score === undefined) return response;
+      if (score !== undefined) response.score = score;
+      const explicitVerdict = normalizeVerdict(json.verdict);
+      if (explicitVerdict) {
+        response.verdict = explicitVerdict;
+      } else if (response.score !== undefined) {
+        response.verdict = verdictFromScore(response.score);
+      }
+      const reasonField =
+        typeof json.reason === "string"
+          ? json.reason
+          : typeof json.reasoning === "string"
+            ? json.reasoning
+            : undefined;
+      if (reasonField !== undefined && reasonField.length > 0) {
+        response.reason = reasonField.trim();
+      }
+    }
+    return response;
+  }
+
+  /**
+   * Internal: dispatch one chat completion with retries on 429/5xx.
+   * Returns the raw assistant content (no parsing). Exposed via judge();
+   * not exported because the parsed surface is the contract.
+   */
+  private async callChat(
+    prompt: string,
+    options: JudgeCallOptions,
+  ): Promise<{ raw: string; identity: ObservedJudgeModel }> {
+    const body: Record<string, unknown> = {
+      model: this.model,
+      messages: this.buildMessages(prompt, options.systemPrompt),
+      temperature: options.temperature ?? 0,
+      ...(options.maxTokens !== undefined
+        ? { max_tokens: options.maxTokens }
+        : {}),
+    };
+    const reasoningEffort =
+      options.reasoningEffort ??
+      (this.model.startsWith("gpt-oss") ? "low" : undefined);
+    if (reasoningEffort) {
+      body.reasoning_effort = reasoningEffort;
+    }
+    if (options.jsonObjectMode) {
+      body.response_format = { type: "json_object" };
+    }
+
+    let lastError: CerebrasJudgeError | null = null;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      try {
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const errBody = await response.text();
+          if (shouldRetryStatus(response.status) && attempt < this.maxRetries) {
+            const backoffMs = 250 * 2 ** attempt;
+            await sleep(backoffMs);
+            continue;
+          }
+          throw new CerebrasJudgeError(
+            `cerebras error ${response.status}: ${truncateWellFormed(toWellFormedUnicode(errBody), 300)}`,
+            response.status,
+            errBody,
+          );
+        }
+        const data = (await response.json()) as ChatCompletionShape;
+        const finishReason = data.choices?.[0]?.finish_reason;
+        if (finishReason === "length") {
+          throw new CerebrasJudgeError(
+            "cerebras judge returned an incomplete output at its token boundary",
+            undefined,
+            JSON.stringify(data),
+          );
+        }
+        return {
+          raw: data.choices?.[0]?.message?.content ?? "",
+          identity: {
+            provider:
+              new URL(this.baseUrl).origin === "https://api.cerebras.ai"
+                ? "cerebras"
+                : null,
+            model:
+              typeof data.model === "string" && data.model.trim()
+                ? data.model
+                : null,
+            source: "provider-response",
+          },
+        };
+      } catch (err) {
+        if (err instanceof CerebrasJudgeError) {
+          if (
+            !shouldRetryStatus(err.status ?? 0) ||
+            attempt >= this.maxRetries
+          ) {
+            throw err;
+          }
+          lastError = err;
+          const backoffMs = 250 * 2 ** attempt;
+          await sleep(backoffMs);
+          continue;
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastError ?? new Error("[cerebras-judge] retries exhausted");
+  }
+
+  private buildMessages(
+    prompt: string,
+    systemPrompt?: string,
+  ): Array<{ role: "system" | "user"; content: string }> {
+    const messages: Array<{ role: "system" | "user"; content: string }> = [];
+    if (systemPrompt && systemPrompt.length > 0) {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    messages.push({ role: "user", content: prompt });
+    return messages;
+  }
+}

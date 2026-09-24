@@ -7,7 +7,7 @@
  * that the extract prompt actually fired under the live model (modelCallOccurred);
  * the non-extract siblings are excluded.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
@@ -17,7 +17,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "calendar_extract", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

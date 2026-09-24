@@ -10,7 +10,7 @@
  * the planner-clarification branch (`PLANNER_SHOULDACT_FALSE`), persists
  * nothing, and the store read-back returns "RelationshipStore returned none".
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { relationshipEdgePersisted } from "./_helpers/kg-live-capture.ts";
 
 export default scenario({

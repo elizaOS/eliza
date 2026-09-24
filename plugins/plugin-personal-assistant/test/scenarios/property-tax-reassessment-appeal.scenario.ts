@@ -1,5 +1,5 @@
 // Defines the property tax reassessment appeal LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 /**
  * Live-model scenario (live-only lane): Reassessment appeal grounds in the seeded parcel and schedules a real filing reminder.
@@ -20,7 +20,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

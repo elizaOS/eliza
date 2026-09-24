@@ -1,5 +1,5 @@
 /**
- * Canonical `DrizzleDatabase` type used by app-core, plugin-sql, and any
+ * Canonical `DrizzleDatabase` type used by app, plugin-sql, and any
  * downstream package that holds a reference to the runtime Drizzle handle.
  *
  * `plugin-sql` constructs both `NodePgDatabase` and `PgliteDatabase`, which

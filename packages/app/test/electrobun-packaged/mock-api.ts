@@ -179,12 +179,12 @@ const firstRunOptions = {
   ],
   providers: [
     {
-      id: "ollama",
-      name: "Ollama",
+      id: "local-inference",
+      name: "Local Inference",
       envKey: null,
-      pluginName: "@elizaos/plugin-zerollama",
+      pluginName: "@elizaos/plugin-local-inference",
       keyPrefix: null,
-      description: "Use local Ollama",
+      description: "Use local inference",
     },
     {
       id: "openai",
@@ -406,8 +406,8 @@ export async function startMockApiServer(
       validationWarnings: [],
     },
     {
-      id: "ollama",
-      name: "Ollama",
+      id: "local-inference",
+      name: "Local Inference",
       description: "Local provider",
       enabled: true,
       configured: true,
@@ -813,13 +813,13 @@ export async function startMockApiServer(
             },
           },
         };
-      } else if (provider === "ollama") {
+      } else if (provider === "local-inference") {
         config = {
           ...config,
           serviceRouting: {
             llmText: {
               transport: "direct",
-              backend: "ollama",
+              backend: "local-inference",
               primaryModel: primaryModel || "eliza-1-9b",
             },
           },

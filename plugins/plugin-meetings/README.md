@@ -39,7 +39,7 @@ Cross-package shapes (session DTO, WS events, `parseMeetingUrl`) live in
 | Route | `DELETE /api/meetings/:id` | Request a graceful leave |
 
 All routes are `rawPath` plugin routes (registered on `runtime.routes`,
-dispatched by both the upstream agent server and app-core) and private — the
+dispatched by both the upstream agent server and app) and private — the
 host dispatcher answers 401 for unauthenticated callers.
 
 ## Platform matrix
@@ -135,10 +135,7 @@ sandbox, so mobile users get meeting transcripts via a cloud-hosted agent instea
 **Meet needs a real X server** for humanized XTEST admission clicks, so the
 recommended server topology is **headed Chromium under Xvfb**
 (`ELIZA_MEETINGS_HEADLESS=false` + `DISPLAY=:99`), not pure headless (which is
-best-effort for Meet, reliable for Teams/Zoom). Full deployment matrix — local
-desktop, Linux server / Eliza Cloud container (Xvfb + PulseAudio + apt packages +
-Dockerfile), and why mobile is unsupported — is in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+best-effort for Meet, reliable for Teams/Zoom).
 
 ## Commands
 
@@ -177,7 +174,7 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
   from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
   providers/context, the raw model output, every tool/action call, and the result. Then **open
   the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+  (`packages/testing/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
 - **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
   drive the *real* path end to end. Not the happy "front door" only: cover error paths,
   edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that

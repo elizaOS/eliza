@@ -1,5 +1,5 @@
 /** Scenario fixture for todo prioritize; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 
 const TOP_TODO_TITLE = "Submit tax forms";
 const TOP_TODO_PRIORITY = 1;
@@ -42,7 +42,7 @@ export default scenario({
   tags: ["lifeops", "todos", "smoke", "ambiguous-parameter"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

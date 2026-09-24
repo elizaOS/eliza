@@ -427,7 +427,7 @@ async function listLinkedAccounts(
 		const dynamicImport = new Function("id", "return import(id)") as (
 			id: string,
 		) => Promise<OptionalAccountPoolModule>;
-		const appCoreAccountPoolSpecifier = "@elizaos/app-core/account-pool";
+		const appCoreAccountPoolSpecifier = "@elizaos/app/account-pool";
 		const mod = await dynamicImport(appCoreAccountPoolSpecifier);
 		const pool = mod.getDefaultAccountPool?.();
 		return pool?.list?.(providerId) ?? [];

@@ -17,7 +17,7 @@ on:
           - voice
           - dedicated
           - pi-linked-account
-          - remote-capabilities
+          - cloud-sdk
       pi_source_sha:
         description: Exact reviewed head for the opt-in Pi linked-account check; must equal the dispatch ref SHA
         required: false
@@ -127,7 +127,7 @@ jobs:
           retention-days: 14
   smoke:
     name: ${{ inputs.suite }}
-    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' && inputs.suite != 'remote-capabilities' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' && inputs.suite != 'cloud-sdk' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -189,7 +189,7 @@ jobs:
         run: bun run build:core
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
-        run: bun run --cwd packages/scenario-runner test:live:e2e
+        run: bun run --cwd packages/testing test:live:e2e
       - name: Group-chat evaluation
         if: inputs.suite == 'group-chat'
         id: group-chat-evaluation
@@ -197,10 +197,10 @@ jobs:
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: bun packages/scripts/run-scenarios-isolated.mjs packages/test/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
+        run: bun packages/scripts/run-scenarios-isolated.mjs packages/testing/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
       - name: Validate complete independently judged group-chat evidence
         if: inputs.suite == 'group-chat'
-        run: bun packages/scripts/validate-group-chat-eval-report.ts --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios --scenario-dir packages/test/scenarios/group-chat --provider ${{ inputs.planner_provider }}
+        run: bun packages/scripts/validate-group-chat-eval-report.ts --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios --scenario-dir packages/testing/scenarios/group-chat --provider ${{ inputs.planner_provider }}
       - name: Upload group-chat evaluation evidence
         if: always() && inputs.suite == 'group-chat'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -214,7 +214,7 @@ jobs:
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: bun --conditions eliza-source --tsconfig-override tsconfig.json packages/scenario-runner/src/cli.ts run packages/test/scenarios --scenario cross.live-information-routing --lane live-only --provider ${{ inputs.planner_provider }} --run-dir reports/scenarios/live-information/run --report-dir reports/scenarios/live-information/report --export-native reports/scenarios/live-information/native.jsonl
+        run: bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run packages/testing/scenarios --scenario cross.live-information-routing --lane live-only --provider ${{ inputs.planner_provider }} --run-dir reports/scenarios/live-information/run --report-dir reports/scenarios/live-information/report --export-native reports/scenarios/live-information/native.jsonl
       - name: Upload live information evidence
         if: always() && inputs.suite == 'live-information'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -228,7 +228,7 @@ jobs:
         run: bun run test:cloud:e2e
       - name: Voice service
         if: inputs.suite == 'all' || inputs.suite == 'voice'
-        run: bun run --cwd packages/scenario-runner test:real-service:voice
+        run: bun run --cwd packages/testing test:real-service:voice
       - name: Railway voice contract
         if: inputs.suite == 'all' || inputs.suite == 'voice'
         env:
@@ -364,12 +364,6 @@ jobs:
           bun-version: 1.3.14
       - name: Install contract dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Validate canary and workflow contracts
-        run: |
-          bun test \
-            packages/cloud/scripts/admin/bridge-reply-verdict.test.ts \
-            packages/cloud/scripts/admin/managed-dedicated-canary.test.ts \
-            packages/cloud/scripts/admin/managed-dedicated-canary-workflow.test.ts
       - name: Run bounded managed dedicated canary
         id: live
         if: ${{ success() && (!inputs.cleanup_only || steps.cleanup_api_preflight.outcome == 'success') }}
@@ -553,8 +547,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.3.14
-      - name: Validate provision diagnostic contract
-        run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts packages/scripts/__tests__/staging-worker-journal-diagnostic.test.ts
       - name: Classify recent provisioning worker failures
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
@@ -2175,7 +2167,7 @@ jobs:
           fi
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
-    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'cloud-sdk' }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
@@ -2224,149 +2216,7 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_API_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_API_BASE_URL }}
-      - name: Prepare remote capability cloud live report directory
-        run: |
-          node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
-          mkdir -p reports/remote-capabilities/cloud
-      - name: Remote capability cloud sandbox live smoke
-        run: bun run --cwd packages/agent test:remote-capabilities:cloud-live
-        env:
-          ELIZA_LIVE_TEST: "1"
-          ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/cloud
-          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
-          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
-          ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
-      - name: Validate remote capability cloud live report
-        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
-      - name: Upload remote capability cloud live report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: remote-capability-cloud-live-report
-          path: reports/remote-capabilities/cloud/*.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Prune remote capability cloud report
-        if: always() && steps.checkout.outcome == 'success'
-        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
-  provider-live-e2e:
-    name: Remote Capability Provider Live E2E
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 45
-    steps:
-      - name: Check provider endpoint secrets
-        id: providers
-        env:
-          HOME_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
-          MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
-          DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
-        run: |
-          set -euo pipefail
-          missing_required=()
-          [ -n "${HOME_URL}" ] || missing_required+=(ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL)
-          [ -n "${MOBILE_URL}" ] || missing_required+=(ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL)
-          if [ "${#missing_required[@]}" -gt 0 ]; then
-            echo "::error::Requested live certification requires endpoint secrets: ${missing_required[*]}"
-            exit 1
-          fi
-      - name: Checkout
-        id: checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          setup-node: "false"
-          setup-python: "true"
-          install-protoc: "true"
-      - name: Prepare remote capability provider live report directory
-        run: |
-          node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
-          mkdir -p reports/remote-capabilities/providers
-      - name: Remote capability URL-backed provider live smoke
-        run: bun run --cwd packages/agent test:remote-capabilities:provider-live
-        env:
-          ELIZA_LIVE_TEST: "1"
-          ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/providers
-          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
-          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_TOKEN }}
-          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_ENDPOINT_ID }}
-          ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_MODULES }}
-          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
-          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_TOKEN }}
-          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_ENDPOINT_ID }}
-          ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_MODULES }}
-          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
-          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_TOKEN }}
-          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID }}
-          ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES }}
-      - name: Validate remote capability provider live reports
-        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind provider --expect-count 2..3 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
-      - name: Upload remote capability provider live report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: remote-capability-provider-live-report
-          path: reports/remote-capabilities/providers/*.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Prune remote capability provider reports
-        if: always() && steps.checkout.outcome == 'success'
-        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
-    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
-  github-live-artifact-validate:
-    name: Remote Capability GitHub Live Artifact Validator
-    needs:
-      - cloud-live-e2e
-      - provider-live-e2e
-    if: ${{ always() && !cancelled() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Require live producers
-        env:
-          CLOUD_RESULT: ${{ needs.cloud-live-e2e.result }}
-          PROVIDER_RESULT: ${{ needs.provider-live-e2e.result }}
-        run: test "$CLOUD_RESULT" = success && test "$PROVIDER_RESULT" = success
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
-      - name: Download cloud + provider live report artifacts
-        run: |
-          mkdir -p reports/remote-capabilities/cloud reports/remote-capabilities/providers
-          gh run download "$GITHUB_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name remote-capability-cloud-live-report \
-            --dir reports/remote-capabilities/cloud || echo "::notice::remote-capability-cloud-live-report artifact not present"
-          gh run download "$GITHUB_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name remote-capability-provider-live-report \
-            --dir reports/remote-capabilities/providers || echo "::notice::remote-capability-provider-live-report artifact not present"
-      - name: Re-validate cloud live report from downloaded artifact
-        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind cloud --expect-count 1 --max-age-minutes 120 --max-future-minutes 5 --require-ci --require-file-identity reports/remote-capabilities/cloud
-      - name: Re-validate provider live reports from downloaded artifacts
-        run: bun packages/agent/scripts/validate-capability-router-live-reports.ts --kind provider --expect-count 2..3 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
+
 env:
   CI: "true"
   BUN_VERSION: 1.3.14

@@ -20,8 +20,9 @@
  * unit-tested in `view-capability-broker.test.ts`.
  */
 
-import type { ResolvedSurfaceManifest } from "@elizaos/common";
-import { surfaceGrants } from "@elizaos/common";
+import type { ResolvedSurfaceManifest } from "@elizaos/core";
+
+import { surfaceGrants } from "@elizaos/shared/views/surface-manifest";
 
 /**
  * Interact capabilities that only READ view state. Always permitted — inspecting

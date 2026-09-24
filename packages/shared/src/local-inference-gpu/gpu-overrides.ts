@@ -3,7 +3,7 @@
  * the FFI runtime should apply when launching `llama-server` on CUDA.
  *
  * The actual integration site lives in
- * `packages/app-core/src/services/local-inference/ffi-streaming-backend.ts` —
+ * `packages/app/src/services/local-inference/ffi-streaming-backend.ts` —
  * that file is owned by another agent. This module just produces the
  * patch object; the runtime is expected to merge it on top of the
  * catalog defaults before spawning the server. See `MTP_SERVER_PATCH`
@@ -24,7 +24,7 @@ import {
 /**
  * Shape of the override patch the runtime applies. Mirrors the subset
  * of `MtpServerOptions` that the YAML profiles touch — keeping it
- * structural avoids an import cycle with app-core (which depends on
+ * structural avoids an import cycle with app (which depends on
  * shared, not the other way around).
  */
 export interface MtpServerOverrides {
@@ -111,7 +111,7 @@ function bundleToOverrides(
 
 /**
  * Documented 5-line integration patch for
- * `packages/app-core/src/services/local-inference/ffi-streaming-backend.ts`.
+ * `packages/app/src/services/local-inference/ffi-streaming-backend.ts`.
  *
  * **NOT applied here.** Another agent owns ffi-streaming-backend.ts. Producing
  * the diff in a string keeps the integration point reviewable without

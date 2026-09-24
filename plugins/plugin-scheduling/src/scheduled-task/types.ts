@@ -48,7 +48,7 @@ export type ScheduledTaskKind =
 
 /**
  * Host execution profiles ({@link TaskExecutionProfile}) are the canonical
- * contract shared with the host-capability probe in `@elizaos/app-core`, so
+ * contract shared with the host-capability probe in `@elizaos/app`, so
  * they live in `@elizaos/shared` and are re-exported here for the
  * runner and existing `@elizaos/plugin-scheduling` consumers.
  */

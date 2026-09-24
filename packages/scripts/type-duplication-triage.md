@@ -48,7 +48,7 @@ strongest signals:
 3. **The dependency direction stays inward.** The shared definition must live
    in a package every consumer already depends on. If consolidating would force
    an outer package to import an inner one's host (e.g. a plugin importing
-   `@elizaos/app-core`), the contract belongs further **in** (in `@elizaos/core`),
+   `@elizaos/app`), the contract belongs further **in** (in `@elizaos/core`),
    not at the host.
 4. **The boundary is provable.** You can write a test that the client, the
    server, and the contract owner all reference the one definition.
@@ -56,7 +56,7 @@ strongest signals:
 ### Worked example — connector-setup `SetupState` (#10201, accepted)
 
 `SetupState = "idle" | "configuring" | "paired" | "error"` was a literal-set
-cluster: declared verbatim in `@elizaos/app-core/api/setup-contract.ts` and
+cluster: declared verbatim in `@elizaos/app/api/setup-contract.ts` and
 re-mirrored in six connector setup-routes files (bluebubbles, discord,
 discord-local, imessage, telegram bot + account). Every connector
 already imports from `@elizaos/core`, and `core` already hosts the
@@ -66,7 +66,7 @@ is `core`, not the host. Consolidation:
 - `packages/core/src/types/connector-setup.ts` is the single source of truth
   (`SetupState`, `SetupStatusResponse<TDetail>`, `SetupErrorResponse`,
   `SETUP_ERROR_CODES`, `buildSetupError`, `setupPath`).
-- `@elizaos/app-core/api/setup-contract` re-exports it (path stability).
+- `@elizaos/app/api/setup-contract` re-exports it (path stability).
 - Every connector imports the contract; the local mirrors are gone, and the
   local per-connector `setupError` helpers collapsed into the shared
   `buildSetupError`.

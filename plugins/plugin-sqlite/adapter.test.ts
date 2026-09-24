@@ -51,6 +51,39 @@ afterEach(async () => {
 });
 
 describe("durable SQLite agent adapter", () => {
+  it("preserves complete sources and the selected embedding space across restarts", async () => {
+    const adapter = await open();
+    const record = memory(
+      "complete source before representation selection ".repeat(1000),
+    );
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createMemories([{ memory: record, tableName: "messages" }]);
+    expect(await adapter.ensureEmbeddingSpace("fixture:space-v1")).toContain(
+      record.id,
+    );
+    expect((await adapter.getMemoriesByIds([record.id]))[0]).toMatchObject({
+      content: record.content,
+    });
+    expect(
+      (await adapter.getMemoriesByIds([record.id]))[0].embedding,
+    ).toBeUndefined();
+    await adapter.updateMemories([{ id: record.id, embedding: [1, 0, 0] }]);
+    await adapter.close();
+    const reopened = await open();
+    expect(
+      await reopened.ensureEmbeddingSpace("fixture:space-v1"),
+    ).not.toContain(record.id);
+    expect((await reopened.getMemoriesByIds([record.id]))[0].embedding).toEqual(
+      [1, 0, 0],
+    );
+    await expect(
+      reopened.ensureEmbeddingSpace("fixture:space-v2"),
+    ).rejects.toMatchObject({ code: "EMBEDDING_SPACE_CHANGED" });
+    await expect(reopened.ensureEmbeddingDimension(4)).rejects.toMatchObject({
+      code: "EMBEDDING_SPACE_CHANGED",
+    });
+  });
+
   it("reopens runtime records, full content and semantic search without an in-memory singleton", async () => {
     const adapter = await open();
     const worldId = id();
@@ -260,9 +293,108 @@ describe("durable SQLite agent adapter", () => {
     ).toBe(20);
   });
 
+  it("settles hidden ingestion records with mutation authority across restart", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const pending = memory("complete pending document");
+    const pendingMetadata = {
+      type: MemoryType.DOCUMENT,
+      scope: "owner-private" as const,
+      ingestionState: "pending",
+      ingestionAttemptId: id(),
+      documentRevision: 0,
+    };
+    pending.metadata = pendingMetadata;
+    await adapter.createMemories([{ memory: pending, tableName: "documents" }]);
+    const expected = readDocumentMutationSnapshot(pending);
+    if (!expected) throw new Error("Missing pending document snapshot");
+    const context = {
+      agentId,
+      requesterEntityId: agentId,
+      requesterRole: "OWNER" as const,
+      requesterRoomIds: [],
+      documentId: pending.id,
+    };
+    expect(await adapter.getDocument(context)).toBeNull();
+    const ready = {
+      ...pending,
+      metadata: { ...pendingMetadata, ingestionState: "ready" },
+    };
+    expect(
+      (
+        await adapter.compareAndSwapDocument({
+          ...context,
+          requesterEntityId: entityId,
+          requesterRole: "USER",
+          expected,
+          replacement: ready,
+        })
+      ).status,
+    ).not.toBe("updated");
+    expect(
+      (
+        await adapter.compareAndSwapDocument({
+          ...context,
+          expected,
+          replacement: ready,
+        })
+      ).status,
+    ).toBe("updated");
+    expect(
+      (
+        await adapter.compareAndSwapDocument({
+          ...context,
+          expected,
+          replacement: ready,
+        })
+      ).status,
+    ).toBe("conflict");
+    await adapter.close();
+    const reopened = await open();
+    expect((await reopened.getDocument(context))?.content.text).toBe(
+      pending.content.text,
+    );
+    const readySnapshot = readDocumentMutationSnapshot(ready);
+    if (!readySnapshot) throw new Error("Missing ready document snapshot");
+    const failed = {
+      ...ready,
+      metadata: { ...ready.metadata, ingestionState: "failed" },
+    };
+    expect(
+      (
+        await reopened.compareAndSwapDocument({
+          ...context,
+          expected: readySnapshot,
+          replacement: failed,
+        })
+      ).status,
+    ).toBe("updated");
+    expect(await reopened.getDocument(context)).toBeNull();
+    const failedSnapshot = readDocumentMutationSnapshot(failed);
+    if (!failedSnapshot) throw new Error("Missing failed document snapshot");
+    expect(
+      (
+        await reopened.deleteDocumentWithSnapshot({
+          ...context,
+          expected: readySnapshot,
+        })
+      ).status,
+    ).toBe("conflict");
+    expect(
+      (
+        await reopened.deleteDocumentWithSnapshot({
+          ...context,
+          expected: failedSnapshot,
+        })
+      ).status,
+    ).toBe("deleted");
+    expect(await reopened.getMemoriesByIds([pending.id])).toEqual([]);
+  });
+
   it("restores document permissions and commits only one concurrent revision", async () => {
     const adapter = await open();
     const document = memory("private original");
+    await adapter.createRoomParticipants([entityId], roomId);
     const documentMetadata = {
       type: MemoryType.DOCUMENT,
       timestamp: 1,

@@ -7,7 +7,8 @@
  * origin, with the REAL localStorage/sessionStorage. No jsdom, no module mocks.
  *
  * The smoke stack serves the BUILT renderer (there is no dev-server module
- * graph to dynamic-import from), so the real modules are bundled from their
+ * graph to dynamic-import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
+import from), so the real modules are bundled from their
  * repo sources with esbuild at spec runtime — the same technique the reviewed
  * accounts-ui e2e uses — and injected into the page as one script. The boot
  * adopter source is extracted from the repo's main.tsx — the exact extraction
@@ -34,7 +35,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE = packages/app/test/ui-smoke → up 2 = packages/app
 const APP_DIR = resolve(HERE, "..", "..");
 const REPO_ROOT = resolve(APP_DIR, "..", "..");
-const OUT_DIR = resolve(APP_DIR, "test-results", "cloud-pair-evidence");
+const OUT_DIR = testOutputPath("app", "cloud-pair-evidence");
 
 /**
  * Bundle the REAL production modules (plus react/react-dom for the render

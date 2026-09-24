@@ -8,10 +8,6 @@ export default defineConfig({
         "../../packages/shared/src/media/index.ts",
         import.meta.url,
       ).pathname,
-      "@elizaos/common": new URL(
-        "../../packages/common/src/index.ts",
-        import.meta.url,
-      ).pathname,
       "@elizaos/core": new URL(
         "../../packages/core/src/index.ts",
         import.meta.url,

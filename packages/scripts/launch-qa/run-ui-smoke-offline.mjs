@@ -179,8 +179,8 @@ async function main() {
   const stack = spawn(
     "node",
     [
-      "packages/app-core/scripts/run-node-tsx.mjs",
-      "packages/app-core/scripts/playwright-ui-live-stack.ts",
+      "packages/app/scripts/run-node-tsx.mjs",
+      "packages/app/scripts/playwright-ui-live-stack.ts",
     ],
     {
       cwd: repoRoot,

@@ -12,8 +12,8 @@
  * for the flush listener.
  */
 import type { Action, IAgentRuntime, Memory, Plugin } from "@elizaos/core";
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing/scenario-runner/schema";
+import { scenario } from "@elizaos/testing/scenario-runner/schema";
 import { createActiveSessionForwardHandler } from "../../src/services/active-session-forward.js";
 import { SubAgentInbox } from "../../src/services/sub-agent-inbox.js";
 

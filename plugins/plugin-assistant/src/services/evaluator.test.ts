@@ -3,13 +3,13 @@
  * structured model call in priority order, invalid sections and processor
  * failures stay isolated, and the schema -> json_object -> plain-JSON fallback
  * ladder (with schema-skip arming) degrades gracefully. Runs against a real
- * AgentRuntime + InMemoryDatabaseAdapter with a stubbed useModel.
+ * AgentRuntime + SQLiteDatabaseAdapter with a stubbed useModel.
  */
 
 import { resolveEffectiveSystemPrompt } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing/sqlite-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
   type ActionResult,
   type Character,
@@ -36,14 +36,14 @@ import { getRoomTranscript } from "./evaluator-transcript";
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
 function makeRuntime(settings: Character["settings"] = {}): AgentRuntime {
-  const runtime = new AgentRuntime({
+  const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: {
       name: "EvaluatorTestAgent",
       bio: "test",
       settings,
     } as Character,
-    adapter: new InMemoryDatabaseAdapter(),
+
     logLevel: "fatal",
   });
   runtime.evaluators.length = 0;
@@ -380,7 +380,7 @@ describe("EvaluatorService", () => {
     expect(runtime.getMemories).toHaveBeenCalledTimes(2);
   });
 
-  it.each([ChannelType.VOICE_DM, ChannelType.VOICE_GROUP])(
+  it.each([ChannelType.VOICE_GROUP])(
     "does not serialize %s turns behind optional post-turn reflection",
     async (channelType) => {
       const runtime = makeRuntime();
@@ -1583,22 +1583,25 @@ describe("lossless evaluator prefix and processing", () => {
     ).toBe(second.content.text);
     expect(new Set(captured.map((call) => call.prefix)).size).toBe(2);
     expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
+    const native = captured.find((call) => call.format === "schema");
+    expect(native).toBeDefined();
     for (const conversation of new Set(
       captured.map((call) => call.conversation),
     )) {
       const calls = captured.filter(
         (call) => call.conversation === conversation,
       );
-      const native = calls.find((call) => call.format === "schema");
-      expect(native).toBeDefined();
-      for (const fallback of calls.filter((call) => call.format !== "schema")) {
-        expect(fallback.schemaText).toBe(native?.schemaText);
-        expect(
-          fallback.prompt.replace(
-            `## Output JSON Schema\n${fallback.schemaText}\n\n`,
-            "",
-          ),
-        ).toBe(native?.prompt);
+      // Provider rejection is cached across rooms. A room may start at JSON,
+      // but every retry must retain its complete prompt and the same schema.
+      const withoutInlineSchema = (call: (typeof captured)[number]) =>
+        call.prompt.replace(
+          `## Output JSON Schema\n${call.schemaText}\n\n`,
+          "",
+        );
+      expect(calls.some((call) => call.format === "plain")).toBe(true);
+      for (const call of calls) {
+        expect(call.schemaText).toBe(native?.schemaText);
+        expect(withoutInlineSchema(call)).toBe(withoutInlineSchema(calls[0]));
       }
     }
     for (const call of captured) {

@@ -227,6 +227,8 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     },
     attendees: {
       type: "array",
+      description:
+        "Only guests the user requested, using their supplied email addresses. Omit when no guests were requested; the owner is not an attendee. Never invent addresses or add empty placeholders.",
       items: {
         anyOf: [
           { type: "string" },
