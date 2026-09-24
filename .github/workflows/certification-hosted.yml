@@ -82,7 +82,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: "1.4.2"
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
 
       # The develop-pr test lane documents why: package-owned test scripts

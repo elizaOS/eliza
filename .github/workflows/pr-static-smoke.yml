@@ -395,9 +395,7 @@ jobs:
             sleep 1
           done
           bun test --config=/dev/null --isolate \
-          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
-          bun test --config=/dev/null \
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
