@@ -7,8 +7,8 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { execFileSync, type SpawnOptions, spawn } from "node:child_process";
+import { type BinaryLike, createHash, randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
 import {
   chmod,
@@ -24,16 +24,56 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+interface CheckoutChange {
+  status: string;
+  path: string;
+  originalPath?: string;
+}
+interface ChildExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}
+interface ResponseOptions {
+  result?: { stopReason?: string; terminalFailure?: unknown };
+  response: string;
+  sentPrompt: unknown;
+  expectedPrompt: string;
+  expectedResponse: string;
+  promptResolved: boolean;
+  modelConfirmed: boolean;
+  toolCall: boolean;
+  nativeCleanupClosed: boolean;
+  error?: unknown;
+  credential: string;
+  privateRoots: (string | undefined)[];
+}
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  assert.ok(value, `${name} is required`);
+  return value;
+}
+
 const script = fileURLToPath(import.meta.url);
 const repo = path.resolve(path.dirname(script), "../../../..");
 const model = "openai/gpt-4.1-mini";
 const marker = "ELIZA_PI_LINKED_ACCOUNT_OK";
 const prompt = `This is a response-only integration check. Do not call any tools, read files, execute commands, change state, or contact any service. Reply with exactly ${marker} and no other text.`;
-const hash = (value) => createHash("sha256").update(value).digest("hex");
+const hash = (value: BinaryLike) =>
+  createHash("sha256").update(value).digest("hex");
 let phase = "admission";
 let childAdmitted = false;
-let checkoutChanges;
-let responseOutcome;
+let checkoutChanges: CheckoutChange[] | undefined;
+let responseOutcome:
+  | (ReturnType<typeof safeResponseOutcome> & {
+      startupOutput?: ReturnType<typeof safeTranscriptText>;
+      fullAssistantTranscript?: ReturnType<typeof safeTranscriptText>;
+    })
+  | undefined;
 const phases = new Set([
   "admission",
   "admission-opt-in",
@@ -80,12 +120,16 @@ async function child() {
   phase = "child-ownership";
   assert.equal(process.env.RUN_LIVE_PI_LINKED_ACCOUNT, "1");
   const credential = process.env.OPENROUTER_API_KEY;
-  assert.ok(credential?.trim(), "Selected live Pi check requires a credential");
+  assert.ok(
+    typeof credential === "string" && credential.trim(),
+    "Selected live Pi check requires a credential",
+  );
   const root = process.env.ELIZA_HOME;
   assert.ok(root && root === process.env.HOME);
   const ownership = await lstat(root);
   assert.ok(ownership.isDirectory() && !ownership.isSymbolicLink());
   assert.equal(ownership.mode & 0o777, 0o700);
+  assert.ok(process.getuid, "POSIX ownership requires getuid");
   assert.equal(ownership.uid, process.getuid());
   assert.match(process.env.LIVE_PI_CHILD_AUTHORIZATION || "", /^[a-f0-9]{64}$/);
   const authorizationPath = path.join(root, ".child-authorization");
@@ -168,10 +212,9 @@ async function child() {
   assert.equal(route.summary.piProviderId, "openrouter");
   assert.equal(route.summary.model, model);
   assert.equal(route.summary.billingMode, "api-credits-or-byok");
-  const config = await readFile(
-    path.join(route.env.PI_CODING_AGENT_DIR, "models.json"),
-    "utf8",
-  );
+  const agentDir = route.env.PI_CODING_AGENT_DIR;
+  assert.ok(agentDir, "Pi provider route requires its isolated directory");
+  const config = await readFile(path.join(agentDir, "models.json"), "utf8");
   assert.ok(
     !config.includes(credential),
     "Pi config must reference the child environment",
@@ -183,11 +226,11 @@ async function child() {
   const env = {
     PATH: process.env.PATH,
     RUNNER_TRACKING_ID: process.env.RUNNER_TRACKING_ID,
-    HOME: route.env.PI_CODING_AGENT_DIR,
+    HOME: agentDir,
     TMPDIR: process.env.TMPDIR,
     LANG: "C.UTF-8",
-    XDG_CONFIG_HOME: path.join(route.env.PI_CODING_AGENT_DIR, "config"),
-    XDG_CACHE_HOME: path.join(route.env.PI_CODING_AGENT_DIR, "cache"),
+    XDG_CONFIG_HOME: path.join(agentDir, "config"),
+    XDG_CACHE_HOME: path.join(agentDir, "cache"),
     PI_ACP_PI_COMMAND: "pi",
     ...route.env,
     PI_OFFLINE: "1",
@@ -208,18 +251,24 @@ async function child() {
     timeoutMs: 90_000,
     env,
     onEvent(event, _sessionId, context) {
-      if (event.result?.models?.currentModelId) {
-        actualModel = event.result.models.currentModelId;
-      }
-      if (event.method === "session/prompt") sentPrompt = event.params.prompt;
-      const update = event.params?.update;
+      const currentModelId = record(record(event.result).models).currentModelId;
+      if (currentModelId) actualModel = currentModelId;
+      const params = record(event.params);
+      if (event.method === "session/prompt") sentPrompt = params.prompt;
+      const update = record(params.update);
+      const content = record(update.content);
       if (
         update?.sessionUpdate === "agent_message_chunk" &&
-        update.content?.type === "text"
+        content.type === "text"
       ) {
-        fullTranscript += update.content.text;
-        if (context?.kind === "startup") startup += update.content.text;
-        else response += update.content.text;
+        const text = content.text;
+        assert.ok(
+          typeof text === "string",
+          "ACP text chunks must contain text",
+        );
+        fullTranscript += text;
+        if (context?.kind === "startup") startup += text;
+        else response += text;
       }
       if (update?.sessionUpdate === "tool_call") toolCall = true;
     },
@@ -258,14 +307,14 @@ async function child() {
   } catch (error) {
     // error-policy:J2 Preserve response failure through mandatory native cleanup.
     if (
-      typeof error?.code === "string" &&
+      typeof record(error).code === "string" &&
       ([
         "ACP_STARTUP_INVALID",
         "ACP_STARTUP_MISMATCH",
         "ACP_STARTUP_TIMEOUT",
         "ACP_STARTUP_CLOSED",
-      ].includes(error.code) ||
-        (error.code === "ACP_INVALID_UTF8" &&
+      ].includes(String(record(error).code)) ||
+        (record(error).code === "ACP_INVALID_UTF8" &&
           phase === "pi-selected-model-admission"))
     )
       phase = "pi-startup-info";
@@ -306,6 +355,7 @@ async function child() {
   );
   if (failures.length > 0)
     throw new AggregateError(failures, "Live Pi response or cleanup failed");
+  assert.ok(result, "A successful Pi receipt requires a prompt result");
   const receipt = {
     schema: "eliza.pi-linked-account-live/v1",
     status: "passed",
@@ -336,7 +386,7 @@ async function child() {
     stopReason: result.stopReason,
     toolCalls: 0,
     nativeClientClosed: true,
-    toolVersions: JSON.parse(process.env.LIVE_PI_TOOL_VERSIONS),
+    toolVersions: JSON.parse(requiredEnv("LIVE_PI_TOOL_VERSIONS")),
   };
   const serialized = JSON.stringify(receipt, null, 2);
   assert.ok(!serialized.includes(credential));
@@ -356,7 +406,7 @@ async function parent() {
   phase = "admission-credential";
   const credential = process.env.OPENROUTER_API_KEY;
   assert.ok(
-    credential?.trim(),
+    typeof credential === "string" && credential.trim(),
     "OPENROUTER_API_KEY is required; selected live checks never skip",
   );
   phase = "admission-source";
@@ -371,7 +421,7 @@ async function parent() {
   );
   phase = "admission-tool-versions";
   assert.deepEqual(
-    JSON.parse(process.env.LIVE_PI_TOOL_VERSIONS),
+    JSON.parse(requiredEnv("LIVE_PI_TOOL_VERSIONS")),
     { pi: "0.84.2", piAcp: "0.0.33", piAi: "0.84.4" },
     "Live tool versions must match reviewed pins",
   );
@@ -382,7 +432,7 @@ async function parent() {
   }).split("\0");
   assert.equal(records.pop(), "");
   const changes = [];
-  const safePath = (value) => {
+  const safePath = (value: string) => {
     assert.ok(value && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\ufffd]/u.test(value));
     assert.ok(
       !path.posix.isAbsolute(value) && !value.split("/").includes(".."),
@@ -394,7 +444,7 @@ async function parent() {
     const status = record.slice(0, 2);
     assert.match(status, /^[ MTADRCU?!]{2}$/);
     assert.equal(record[2], " ");
-    const entry = { status, path: safePath(record.slice(3)) };
+    const entry: CheckoutChange = { status, path: safePath(record.slice(3)) };
     if (/[RC]/.test(status)) entry.originalPath = safePath(records[++index]);
     changes.push(entry);
   }
@@ -494,7 +544,11 @@ async function parent() {
 }
 
 /** Retains complete text or an explicit sensitive-text omission with its integrity receipt. */
-function safeTranscriptText(text, credential, privateRoots) {
+function safeTranscriptText(
+  text: string,
+  credential: string,
+  privateRoots: (string | undefined)[],
+) {
   const excluded =
     Boolean(credential && text.includes(credential)) ||
     privateRoots.some((value) => value && text.includes(value));
@@ -506,7 +560,7 @@ function safeTranscriptText(text, credential, privateRoots) {
 }
 
 /** Projects actual prompt outcomes into credential-free diagnostics without raw provider errors. */
-export function safeResponseOutcome(options) {
+export function safeResponseOutcome(options: ResponseOptions) {
   const {
     result,
     response,
@@ -537,26 +591,38 @@ export function safeResponseOutcome(options) {
     "TypeError",
     "ElizaError",
   ]);
+  const errorInfo = record(error);
   const errorName = error
-    ? names.has(error.name)
-      ? error.name
+    ? typeof errorInfo.name === "string" && names.has(errorInfo.name)
+      ? errorInfo.name
       : "unknown"
     : undefined;
-  const transportError = error ? { name: errorName } : undefined;
+  const transportError:
+    | { name: string | undefined; httpStatus?: number; jsonRpcCode?: number }
+    | undefined = error ? { name: errorName } : undefined;
   if (transportError) {
     for (const candidate of [
-      error.status,
-      error.statusCode,
-      error.data?.status,
-      error.data?.statusCode,
+      errorInfo.status,
+      errorInfo.statusCode,
+      record(errorInfo.data).status,
+      record(errorInfo.data).statusCode,
     ]) {
-      if (Number.isInteger(candidate) && candidate >= 100 && candidate <= 599) {
+      if (
+        typeof candidate === "number" &&
+        Number.isInteger(candidate) &&
+        candidate >= 100 &&
+        candidate <= 599
+      ) {
         transportError.httpStatus = candidate;
         break;
       }
     }
-    if (errorName === "AcpRequestError" && Number.isSafeInteger(error.code))
-      transportError.jsonRpcCode = error.code;
+    if (
+      errorName === "AcpRequestError" &&
+      typeof errorInfo.code === "number" &&
+      Number.isSafeInteger(errorInfo.code)
+    )
+      transportError.jsonRpcCode = errorInfo.code;
   }
   const excluded =
     Boolean(credential && response.includes(credential)) ||
@@ -565,7 +631,8 @@ export function safeResponseOutcome(options) {
     promptResolved,
     modelConfirmed,
     stopReason: result
-      ? knownStopReasons.has(result.stopReason)
+      ? typeof result.stopReason === "string" &&
+        knownStopReasons.has(result.stopReason)
         ? result.stopReason
         : "unknown"
       : null,
@@ -586,27 +653,32 @@ export function safeResponseOutcome(options) {
 }
 
 /** Owns a POSIX process group through natural exit, timeout, and descendant cleanup. */
-export async function runOwnedChild(command, args, options, timeoutMs) {
+export async function runOwnedChild(
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+  timeoutMs: number,
+) {
   let timedOut = false;
   const proc = spawn(command, args, {
     ...options,
     detached: true,
     stdio: options.stdio ?? "ignore",
   });
-  const signalGroup = (signal) => {
+  const signalGroup = (signal: NodeJS.Signals | 0) => {
     if (!proc.pid) return false;
     try {
       process.kill(-proc.pid, signal);
       return true;
     } catch (error) {
       // error-policy:J6 ESRCH confirms that the owned group is already gone.
-      if (error.code === "ESRCH") return false;
+      if (record(error).code === "ESRCH") return false;
       throw error;
     }
   };
-  let parentSignal;
-  const signalHandlers = new Map();
-  for (const signal of ["SIGINT", "SIGTERM"]) {
+  let parentSignal: NodeJS.Signals | undefined;
+  const signalHandlers = new Map<NodeJS.Signals, () => void>();
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
     const handler = () => {
       parentSignal = signal;
       signalGroup("SIGKILL");
@@ -614,10 +686,10 @@ export async function runOwnedChild(command, args, options, timeoutMs) {
     signalHandlers.set(signal, handler);
     process.on(signal, handler);
   }
-  let result;
+  let result: ChildExit;
   let retained = false;
   try {
-    result = await new Promise((resolve, reject) => {
+    result = await new Promise<ChildExit>((resolve, reject) => {
       const deadline = setTimeout(() => {
         timedOut = true;
         try {
@@ -680,7 +752,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(script)) {
     // error-policy:J1 Publish only the fixed phase, never credential-bearing library errors.
     if (process.argv.includes("--child") && childAdmitted) {
       await writeFile(
-        path.join(process.env.ELIZA_HOME, "failure.json"),
+        path.join(requiredEnv("ELIZA_HOME"), "failure.json"),
         JSON.stringify({
           phase,
           ...(responseOutcome ? { responseOutcome } : {}),
