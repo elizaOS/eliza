@@ -9,6 +9,8 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -18,7 +20,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { unzipSync } from "fflate";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   generateProgressiveContentCorpus,
   PROGRESSIVE_CONTENT_BOUNDARY_BYTES,
@@ -159,6 +161,34 @@ describe("progressive content corpus", () => {
       if (object.format === "no-final-newline" && object.byteLength > 0) {
         expect(bytes.at(-1)).not.toBe(0x0a);
       }
+    }
+  });
+
+  it("removes unpublished temporary objects when writing fails", async () => {
+    const root = await makeRoot();
+    const probe = await open(path.join(root, "probe"), "w");
+    const prototype = Object.getPrototypeOf(probe);
+    await probe.close();
+    const failure = new Error("injected corpus write failure");
+    const write = vi
+      .spyOn(prototype, "writeFile")
+      .mockRejectedValueOnce(failure);
+    try {
+      await expect(
+        generateProgressiveContentCorpus({
+          outDir: root,
+          profile: "micro",
+          rootSeed: "write-failure",
+          generatorRevision: "test-revision",
+        }),
+      ).rejects.toBe(failure);
+      expect(
+        (await readdir(root, { recursive: true })).filter((entry) =>
+          entry.endsWith(".tmp"),
+        ),
+      ).toEqual([]);
+    } finally {
+      write.mockRestore();
     }
   });
 
