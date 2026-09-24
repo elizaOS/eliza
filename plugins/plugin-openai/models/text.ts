@@ -18,6 +18,7 @@ import {
   assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  composeToolDiagnosticRedactor,
   createPreparedModelRequestGuard,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
@@ -3571,7 +3572,7 @@ async function generateTextAtEndpoint(
       Promise.all([rawTextPromise, finishReasonPromise]),
       ([text]) => text
     );
-    const finalizeStreamingTelemetry = async () => {
+    const finalizeStreamingTelemetry = async (streamIterationErrorForTelemetry?: unknown) => {
       if (telemetryFinalized) {
         return;
       }
@@ -3617,6 +3618,20 @@ async function generateTextAtEndpoint(
         companionStreamError ??= toolCallsResult.reason;
       }
 
+      const streamError =
+        streamIterationErrorForTelemetry ?? capturedStreamError ?? companionStreamError;
+      if (streamError !== undefined) {
+        details.providerMetadata = {
+          ...(details.providerMetadata && typeof details.providerMetadata === "object"
+            ? details.providerMetadata
+            : {}),
+          providerFinishReason: details.finishReason,
+          error: composeToolDiagnosticRedactor(runtime)(
+            streamError instanceof Error ? streamError.message : String(streamError)
+          ),
+        };
+        details.finishReason = "error";
+      }
       const elapsed =
         (typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
@@ -3681,7 +3696,7 @@ async function generateTextAtEndpoint(
             noteRateLimitCooldown(modelCooldowns, modelName, error);
           }
         } finally {
-          await finalizeStreamingTelemetry();
+          await finalizeStreamingTelemetry(streamIterationError);
         }
         const streamError = enrichProviderCallError(
           streamIterationError ?? capturedStreamError ?? companionStreamError

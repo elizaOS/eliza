@@ -1,3 +1,6 @@
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /** Regression for READ_CONTEXT(files, terminal): reject the read, repair routing once, never process its draft. */
 import {
   ChannelType,
@@ -5,6 +8,7 @@ import {
   type IAgentRuntime,
   type Memory,
   ResponseHandlerFieldRegistry,
+  runWithStreamingContext,
   type State,
   type UUID,
 } from "@elizaos/core";
@@ -233,4 +237,174 @@ describe("invalid context read recovery", () => {
     expect(f.useModel).toHaveBeenCalledTimes(1);
     expect(f.dispatch).not.toHaveBeenCalled();
   });
+  it.each([false, true])(
+    "records each completed call before rejection, including empty retry=%s",
+    async (emptyRetry) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "stage1-invalid-read-recording-"),
+      );
+      vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
+      vi.stubEnv("ELIZA_TRAJECTORY_DIR", directory);
+      vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
+      const rejected = {
+        ...read(["files"]),
+        usage: { promptTokens: 101, completionTokens: 7, totalTokens: 108 },
+      };
+      const f = fixture([
+        ...(emptyRetry
+          ? [
+              {
+                text: "",
+                usage: {
+                  promptTokens: 89,
+                  completionTokens: 2,
+                  totalTokens: 91,
+                },
+              },
+            ]
+          : []),
+        rejected,
+        rejected,
+      ]);
+      try {
+        await expect(
+          runV5MessageRuntimeStage1({
+            runtime: f.runtime,
+            state: f.state,
+            message,
+            responseId: "00000000-0000-4000-8000-000000000005" as UUID,
+            stage1DecisionOnly: true,
+          }),
+        ).rejects.toMatchObject({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" });
+        const files = (await readdir(directory, { recursive: true })).filter(
+          (name) => name.endsWith(".json"),
+        );
+        expect(files).toHaveLength(1);
+        const file = files[0];
+        if (!file) throw new Error("Trajectory file missing");
+        const trajectory = JSON.parse(
+          await readFile(join(directory, file), "utf8"),
+        );
+        expect(trajectory.status).toBe("errored");
+        expect(trajectory.stages).toHaveLength(emptyRetry ? 3 : 2);
+        expect(
+          new Set(
+            trajectory.stages.map(
+              (stage: { stageId: string }) => stage.stageId,
+            ),
+          ).size,
+        ).toBe(trajectory.stages.length);
+        expect(trajectory.metrics.totalPromptTokens).toBe(
+          emptyRetry ? 291 : 202,
+        );
+        for (const [index, stage] of trajectory.stages.entries()) {
+          const call = f.useModel.mock.calls[index] as unknown as [
+            unknown,
+            { messages: unknown; tools: unknown },
+          ];
+          expect(stage.model.messages).toEqual(call[1].messages);
+          expect(stage.model.tools).toEqual(call[1].tools);
+        }
+        expect(
+          trajectory.stages.at(-1).model.toolCalls[0].args.contextRequests,
+        ).toEqual(["files"]);
+        expect(trajectory.stages.at(-1).model.usage.promptTokens).toBe(101);
+        expect(f.dispatch).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+  it.each(["transport", "inflight-abort", "pre-abort", "falsy-throw"])(
+    "records honest semantic failure evidence for %s",
+    async (mode) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "stage1-failed-recording-"),
+      );
+      vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "1");
+      vi.stubEnv("ELIZA_TRAJECTORY_DIR", directory);
+      vi.stubEnv("ELIZA_AWAIT_FACTS_STAGE", "true");
+      const f = fixture([]);
+      const controller = new AbortController();
+      const failure =
+        mode === "falsy-throw"
+          ? 0
+          : mode === "transport"
+            ? new Error("transport failed secret-fixture")
+            : new DOMException("cancelled secret-fixture", "AbortError");
+      f.runtime.redactSecrets = (text) =>
+        text.replaceAll("secret-fixture", "[REDACTED]");
+      f.runtime.getLastResolvedModelProvider = vi.fn(() => "stale-provider");
+      if (mode === "pre-abort") controller.abort(failure);
+      f.useModel.mockImplementation(async () => {
+        if (mode === "inflight-abort") controller.abort(failure);
+        throw failure;
+      });
+      try {
+        await expect(
+          runWithStreamingContext(
+            {
+              messageId: "failed-stage",
+              abortSignal: controller.signal,
+            },
+            () =>
+              runV5MessageRuntimeStage1({
+                runtime: f.runtime,
+                state: f.state,
+                message,
+                responseId: "00000000-0000-4000-8000-000000000005" as UUID,
+                stage1DecisionOnly: true,
+              }),
+          ),
+        ).rejects.toBe(failure);
+        const files = (await readdir(directory, { recursive: true })).filter(
+          (name) => name.endsWith(".json"),
+        );
+        expect(files).toHaveLength(1);
+        const file = files[0];
+        if (!file) throw new Error("Trajectory file missing");
+        const trajectory = JSON.parse(
+          await readFile(join(directory, file), "utf8"),
+        );
+        expect(trajectory.status).toBe("errored");
+        if (mode === "pre-abort") {
+          expect(f.useModel).not.toHaveBeenCalled();
+          expect(trajectory.stages).toHaveLength(0);
+        } else {
+          expect(f.useModel).toHaveBeenCalledTimes(1);
+          expect(trajectory.stages).toHaveLength(1);
+          const stage = trajectory.stages[0];
+          const call = f.useModel.mock.calls[0] as unknown as [
+            unknown,
+            { messages: unknown; tools: unknown },
+          ];
+          expect(stage.kind).toBe("messageHandler");
+          expect(stage.model.messages).toEqual(call[1].messages);
+          expect(stage.model.tools).toEqual(call[1].tools);
+          expect(stage.model.finishReason).toBe("error");
+          expect(stage.model.response).toContain(
+            "[messageHandler stage failed]",
+          );
+          expect(stage.model.response).toContain(
+            mode === "falsy-throw" ? "0" : "[REDACTED]",
+          );
+          expect(stage.model.response).not.toContain("secret-fixture");
+          for (const field of [
+            "modelName",
+            "provider",
+            "usage",
+            "toolCalls",
+            "costUsd",
+          ]) {
+            expect(stage.model[field]).toBeUndefined();
+          }
+        }
+        expect(f.dispatch).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });
