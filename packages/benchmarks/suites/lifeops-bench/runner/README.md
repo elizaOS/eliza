@@ -9,7 +9,7 @@ elizaOS checkout (ELIZA_REPO_DIR); never published.
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd packages/benchmarks/suites/lifeops-bench/runner build  # build
+bun run --cwd packages/benchmarks/suites/lifeops-bench/runner typecheck  # typecheck
 bun run --cwd packages/benchmarks/suites/lifeops-bench/runner test   # tests
 ```
 

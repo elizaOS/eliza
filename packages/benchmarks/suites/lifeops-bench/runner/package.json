@@ -17,8 +17,7 @@
     "trusted-runtime:server": "node --conditions=eliza-source --conditions=development --import tsx src/trusted-runtime-server.ts",
     "normalize-capture": "node --import tsx ../../../scripts/lifeops-bench/runner/normalize-eliza-capture.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "bun run typecheck"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
