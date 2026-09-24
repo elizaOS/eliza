@@ -47,6 +47,7 @@ function write(repoRoot: string, relPath: string, content: string): void {
 function buildFixtureRepo(): string {
   const repo = tmpDir();
   write(repo, "test-results/android-native-agent/runs/run/report.json", "{}");
+  write(repo, "test-results/android-native-sms/run/report.json", "{}");
   write(
     repo,
     "test-results/android-native-plugins/run/emulator/report.json",
@@ -356,6 +357,7 @@ describe("ingestAllSilos", () => {
     ).toEqual([
       ["android-native-agent", "ingested", 1],
       ["android-native-plugins", "ingested", 1],
+      ["android-native-sms", "ingested", 1],
       ["e2e-recordings", "ingested", 3],
       ["aesthetic-audit", "ingested", 5],
       ["aesthetic-audit-cloud", "absent", 0],
@@ -374,6 +376,16 @@ describe("ingestAllSilos", () => {
     const byPath = Object.fromEntries(
       artifacts.map((entry) => [entry.path, entry]),
     );
+
+    // Agent and SMS producers both emit run/report.json in the native lane.
+    expect(byPath["lanes/native/run/report.json"]).toMatchObject({
+      source: "android-native-agent",
+    });
+    expect(byPath["lanes/native/sms/run/report.json"]).toMatchObject({
+      source: "android-native-sms",
+      kind: "report",
+      lane: "native",
+    });
 
     // Manual-review markdown is analysis, not a generated report.
     const review = byPath["misc/aesthetic-audit/manual-review/chat.md"];

@@ -52,7 +52,7 @@ interface RunResult {
 
 function runFreeze(args: string[], opts: { allowFail?: boolean } = {}): RunResult {
 	try {
-		const stdout = execFileSync("bun", [SCRIPT, ...args], {
+		const stdout = execFileSync("bun", ["--conditions=eliza-source", SCRIPT, ...args], {
 			cwd: REPO_ROOT,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],

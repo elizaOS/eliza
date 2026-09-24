@@ -170,11 +170,7 @@ export function capacitorIosProbe(): NetworkProbe {
 						: status?.connectionType === "none"
 							? "none"
 							: "unknown";
-			const hints = await readIosPathHintsShim();
-			const metered =
-				hints === null
-					? null
-					: Boolean(hints.isExpensive) || Boolean(hints.isConstrained);
+			const metered = await readIosMeteredShim();
 			return { connectionType: ctype, metered };
 		},
 	};
@@ -233,9 +229,9 @@ interface AndroidMeteredShim {
 }
 interface IosPathHintsShim {
 	getPathHints?: () => Promise<{
-		isExpensive?: boolean;
-		isConstrained?: boolean;
-	}>;
+		isExpensive?: unknown;
+		isConstrained?: unknown;
+	} | null>;
 }
 
 async function readAndroidMeteredShim(): Promise<boolean | null> {
@@ -252,19 +248,17 @@ async function readAndroidMeteredShim(): Promise<boolean | null> {
 	}
 }
 
-async function readIosPathHintsShim(): Promise<{
-	isExpensive: boolean;
-	isConstrained: boolean;
-} | null> {
+async function readIosMeteredShim(): Promise<boolean | null> {
 	const g = globalThis as { ElizaNetworkPolicy?: IosPathHintsShim };
 	const fn = g.ElizaNetworkPolicy?.getPathHints;
 	if (typeof fn !== "function") return null;
 	try {
 		const res = await fn();
-		return {
-			isExpensive: Boolean(res.isExpensive),
-			isConstrained: Boolean(res.isConstrained),
-		};
+		if (res?.isExpensive === true || res?.isConstrained === true) return true;
+		// Unknown or malformed fields cannot establish an unmetered path.
+		return res?.isExpensive === false && res?.isConstrained === false
+			? false
+			: null;
 	} catch {
 		return null;
 	}

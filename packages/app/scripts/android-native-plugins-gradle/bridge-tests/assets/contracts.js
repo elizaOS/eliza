@@ -133,7 +133,56 @@
     case "plugin-native-messages": {
       const result = await call("listMessages", { limit: 10 });
       assert(Array.isArray(result.messages), "real SMS provider result");
-      await rejects("sendSms", { number: "", body: "" });
+      await rejects("sendSms", { address: "", body: "" });
+      if (descriptor.smsRole) {
+        let receipt;
+        if (descriptor.smsRole === "sender") {
+          receipt = await call("sendSms", {
+            address: `+1555521${descriptor.smsPeerPort}`,
+            body: descriptor.smsBody,
+          });
+          assert(
+            typeof receipt.messageId === "string" &&
+              receipt.messageId.length > 0,
+            "sent SMS must have a real provider receipt",
+          );
+        }
+        let matches = [];
+        const deadline = Date.now() + 15000;
+        do {
+          const inbox = await call("listMessages", { limit: 500 });
+          matches = inbox.messages.filter(
+            (message) =>
+              message.body === descriptor.smsBody &&
+              message.type === (descriptor.smsRole === "sender" ? 2 : 1),
+          );
+          if (matches.length) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } while (Date.now() < deadline);
+        assert(
+          matches.length === 1,
+          "exactly one actual modem message must be persisted",
+        );
+        assert(
+          matches[0].type === (descriptor.smsRole === "sender" ? 2 : 1),
+          "sent/inbox SMS type",
+        );
+        if (receipt)
+          assert(
+            receipt.messageId === matches[0].id,
+            "receipt must identify the persisted sent row",
+          );
+        else if (!descriptor.smsLoopback)
+          assert(
+            matches[0].address.endsWith(descriptor.smsSenderPort),
+            "incoming message must come from the local sender emulator",
+          );
+        window.nativeSmsEvidence = {
+          role: descriptor.smsRole,
+          receipt,
+          messages: matches,
+        };
+      }
       break;
     }
     case "plugin-native-phone": {
@@ -277,7 +326,10 @@
         "metered state contract",
       );
       const hints = await call("getPathHints");
-      assert(typeof hints.isConstrained === "boolean", "path hints contract");
+      assert(
+        hints.isExpensive === null && hints.isConstrained === null,
+        "Android path hints must remain unknown",
+      );
       break;
     }
     case "plugin-native-wifi": {

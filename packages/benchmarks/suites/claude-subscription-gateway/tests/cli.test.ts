@@ -230,10 +230,17 @@ describe("gateway CLI", () => {
     const auditFile = join(directory, "cohort.audit.jsonl");
     const child = spawn(
       "bun",
-      [CLI_PATH, "--ready-file", readyFile, "--audit-file", auditFile],
+      [
+        "--conditions=eliza-source",
+        CLI_PATH,
+        "--ready-file",
+        readyFile,
+        "--audit-file",
+        auditFile,
+      ],
       {
-        cwd: directory,
-        env: withoutApiBillingEnvironment(),
+        cwd: fileURLToPath(new URL("../../../../../", import.meta.url)),
+        env: { ...withoutApiBillingEnvironment(), ELIZA_STATE_DIR: directory },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
