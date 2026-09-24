@@ -2,7 +2,6 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     "package.json",
-    "bun.lock",
     "bunfig.toml",
     "turbo.json",
     "tsconfig.json",
