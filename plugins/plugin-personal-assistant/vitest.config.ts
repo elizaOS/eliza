@@ -42,8 +42,8 @@ const corePackageRequire = createRequire(
 const assistantPackageRequire = createRequire(
   path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
 );
-const sharedPackageRequire = createRequire(
-  path.join(elizaRoot, "packages", "shared", "package.json"),
+const corePackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "core", "package.json"),
 );
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
@@ -179,7 +179,7 @@ const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = corePackageRequire.resolve("handlebars");
 const mammothEntry = assistantPackageRequire.resolve("mammoth");
 const markdownItRoot = path.dirname(
-  sharedPackageRequire.resolve("markdown-it/package.json"),
+  corePackageRequire.resolve("markdown-it/package.json"),
 );
 const telegramSessionsEntry = path.join(
   elizaRoot,
