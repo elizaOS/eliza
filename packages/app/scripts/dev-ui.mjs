@@ -6,8 +6,8 @@
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Refuses occupied ports without terminating another workspace or service.
- * Starts API and Vite concurrently unless credentialed local voice needs its
- * gateway ready before the UI's initial capability probe.
+ * Starts API and Vite concurrently. Voice waits for the normal conversation
+ * created by the UI; the UI retries gateway readiness without force-arming.
  *
  * Usage:
  *   bun eliza/packages/app/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
@@ -1290,6 +1290,9 @@ if (uiOnly) {
     // Normal local development must use the gateway health probe. Force-arming
     // is a diagnostic override and must remain explicit so a missing or
     // unhealthy Cartesia gateway cannot masquerade as available voice.
+    // First-run conversation creation belongs to the UI. Its existing health
+    // probe retries while the gateway waits for that conversation.
+    startVite();
     void waitForPort(API_PORT)
       .then(async () => {
         const deadline = Date.now() + 300_000;
@@ -1323,18 +1326,12 @@ if (uiOnly) {
               `[eliza] Voice gateway exited (${code}); voice is unavailable.`,
             );
         });
-        // The UI probes capability on mount. Do not let that first probe
-        // race gateway startup and leave this session on batch capture.
-        await waitForPort(voicePort, { timeout: 15_000 });
       })
       // error-policy:J4 Voice remains unavailable when local startup fails;
       // text development stays available and gateway health cannot pass.
       .catch(() =>
         console.error("[eliza] Voice gateway waiting for local API failed."),
-      )
-      .finally(() => {
-        if (!shuttingDown) startVite();
-      });
+      );
   } else {
     startVite();
   }

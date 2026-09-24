@@ -55,6 +55,23 @@ export class LocalVoiceRuntimeIdentityError extends Error {
   }
 }
 
+/** A healthy new local runtime has no conversation until the UI creates it. */
+export class LocalVoiceConversationPendingError extends LocalVoiceRuntimeIdentityError {}
+
+/** Wait only for normal first-conversation creation; invalid identities still fail. */
+export async function waitForLocalVoiceRuntimeIdentity(
+  options: ResolveLocalVoiceRuntimeIdentityOptions,
+): Promise<LocalVoiceRuntimeIdentity> {
+  for (;;) {
+    try {
+      return await resolveLocalVoiceRuntimeIdentity(options);
+    } catch (error) {
+      if (!(error instanceof LocalVoiceConversationPendingError)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+}
+
 export function resolveCanonicalLoopbackRuntimeOrigin(raw: string): string {
   let parsed: URL;
   try {
@@ -286,6 +303,11 @@ function readConversations(value: unknown): RuntimeConversation[] {
       ),
     });
   });
+  if (body.conversations.length > 0 && parsed.length === 0) {
+    throw new LocalVoiceRuntimeIdentityError(
+      "local conversations contain no readable records",
+    );
+  }
   return parsed;
 }
 
@@ -330,7 +352,7 @@ function selectConversationId(
     (left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs,
   );
   if (candidates.length === 0) {
-    throw new LocalVoiceRuntimeIdentityError(
+    throw new LocalVoiceConversationPendingError(
       "local runtime has no conversation for the running agent",
     );
   }

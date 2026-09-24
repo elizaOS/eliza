@@ -4,7 +4,7 @@
  * the already-running local elizaOS API rather than a second model runtime.
  */
 
-import { resolveLocalVoiceRuntimeIdentity } from "./local-voice-runtime-identity";
+import { waitForLocalVoiceRuntimeIdentity } from "./local-voice-runtime-identity";
 
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
 const DEFAULT_GATEWAY_PORT = 31_338;
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
       DEFAULT_CARTESIA_VOICE_ID,
   );
   const { runtimeOrigin, agentId, conversationId } =
-    await resolveLocalVoiceRuntimeIdentity({
+    await waitForLocalVoiceRuntimeIdentity({
       runtimeOrigin: configuredRuntimeOrigin,
       configuredAgentId: process.env.ELIZA_LOCAL_VOICE_AGENT_ID,
       configuredConversationId: process.env.ELIZA_LOCAL_VOICE_CONVERSATION_ID,
