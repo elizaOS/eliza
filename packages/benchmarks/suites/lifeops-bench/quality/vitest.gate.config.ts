@@ -18,7 +18,7 @@ import { defineConfig, type ViteUserConfig } from "vitest/config";
 function elizaRepoDir(): string {
   const raw =
     process.env.ELIZA_REPO_DIR?.trim() ||
-    resolve(import.meta.dirname, "../../../..");
+    resolve(import.meta.dirname, "../../../../..");
   const repo = resolve(raw);
   const probe = resolve(
     repo,

@@ -252,12 +252,12 @@ class TestMetricsCalculator:
             relevance_accuracy=0.90,
         )
 
-        comparison = calculator.compare_to_baselines(metrics)
-
-        assert "gpt-4-turbo" in comparison
-        assert "claude-opus-4-7" in comparison
-        # Our score (0.85) vs GPT-4 Turbo (0.887)
-        assert comparison["gpt-4-turbo"] < 0  # We're behind GPT-4 Turbo
+        from suites.bfcl.types import BaselineScore
+        assert calculator.compare_to_baselines(metrics) == {}
+        comparison = calculator.compare_to_baselines(metrics, {
+            "measured-baseline": BaselineScore(model_name="measured-baseline", overall=0.9, ast=0.9, exec=0.9),
+        })
+        assert comparison["measured-baseline"] == pytest.approx(-0.05)
 
     def test_format_metrics_table(self, calculator: MetricsCalculator) -> None:
         """Test metrics table formatting."""

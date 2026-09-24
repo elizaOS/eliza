@@ -123,6 +123,7 @@
     "packages/benchmarks/suites/*",
     "packages/benchmarks/suites/eliza-1/vision-cua-e2e",
     "packages/benchmarks/suites/lifeops-bench/runner",
+    "packages/benchmarks/suites/lifeops-bench/quality",
     "packages/benchmarks/scripts/eliza-benchmark-scripts"
   ],
   "devDependencies": {

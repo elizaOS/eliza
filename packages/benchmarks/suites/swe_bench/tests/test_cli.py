@@ -24,7 +24,6 @@ from benchmarks.swe_bench.cli import (
     _report_to_dict,
     _run_eliza_worktree_instance,
     _run_instance,
-    _run_opencode_patchfile_instance,
     _run_subtask_provider_instance,
     _scenario_counts,
     _subtask_provider_command,
@@ -80,7 +79,7 @@ def test_parse_required_capabilities_accepts_comma_joined_string() -> None:
     assert required == ["code.read", "code.write", "code.shell"]
 
 
-def test_build_report_counts_no_docker_pass_as_applied() -> None:
+def test_build_report_does_not_count_legacy_smoke_pass_as_applied_or_resolved() -> None:
     report = _build_report(
         SWEBenchConfig(),
         [
@@ -98,7 +97,9 @@ def test_build_report_counts_no_docker_pass_as_applied() -> None:
         ],
     )
 
-    assert report.apply_rate == 1.0
+    assert report.apply_rate == 0.0
+    assert report.resolve_rate == 0.0
+    assert report.resolved == 0
 
 
 def test_scenario_expansion_adds_ten_edge_prompts_per_instance() -> None:
@@ -289,11 +290,11 @@ def test_baseline_client_random_is_seeded() -> None:
     ).text
 
 
-def test_build_prompt_includes_test_targets_and_narrow_patch_guidance() -> None:
+def test_build_prompt_excludes_evaluator_targets_and_keeps_patch_guidance() -> None:
     prompt = _build_prompt(_mock_instance())
 
-    assert "Fail-to-pass tests named by SWE-bench:" in prompt
-    assert "- test_hello" in prompt
+    assert "Fail-to-pass tests named by SWE-bench:" not in prompt
+    assert "test_hello" not in prompt
     assert "Prefer the smallest local edit" in prompt
     assert "Do not replace whole classes" in prompt
     assert "@@ -12,7 +12,9 @@" in prompt
@@ -313,7 +314,7 @@ def test_candidate_context_paths_infer_source_from_test_path() -> None:
     assert "astropy/io/ascii/rst.py" in candidates
 
 
-def test_candidate_context_paths_scan_swe_test_targets() -> None:
+def test_candidate_context_paths_exclude_hidden_evaluator_targets() -> None:
     instance = _mock_instance()
     instance.repo = "astropy/astropy"
     instance.problem_statement = "Header rows fail for RST writer."
@@ -323,8 +324,8 @@ def test_candidate_context_paths_scan_swe_test_targets() -> None:
 
     candidates = _candidate_context_paths(instance)
 
-    assert "astropy/io/ascii/tests/test_rst.py" in candidates
-    assert "astropy/io/ascii/rst.py" in candidates
+    assert "astropy/io/ascii/tests/test_rst.py" not in candidates
+    assert "astropy/io/ascii/rst.py" not in candidates
 
 
 def test_extract_patch_rejects_bare_hunk_headers() -> None:
@@ -595,7 +596,7 @@ def test_build_repair_prompt_includes_evaluator_feedback() -> None:
     prompt = _build_repair_prompt(_mock_instance(), result.generated_patch, result)
 
     assert "Failed tests from the previous official evaluation:" in prompt
-    assert "- test_hello" in prompt
+    assert "test_hello" not in prompt
     assert "assertion failed" in prompt
     assert "Previous patch:" in prompt
 
@@ -755,84 +756,6 @@ async def test_subtask_provider_uses_worktree_diff(
     assert "+print('fixed')" in result.generated_patch
 
 
-@pytest.mark.asyncio
-async def test_opencode_patchfile_flow_does_not_score_patchfile_itself(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
-    subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
-
-    fake = tmp_path / "opencode"
-    fake.write_text("#!/usr/bin/env bash\ncat >/dev/null\nexit 1\n", encoding="utf-8")
-    fake.chmod(0o755)
-    monkeypatch.setenv("OPENCODE_BIN", str(fake))
-
-    async def fake_setup(self, instance):
-        self.current_repo = repo
-        self._current_repo_resolved = repo.resolve()
-        self.current_instance = instance
-        return repo
-
-    monkeypatch.setattr(swe_cli.RepositoryManager, "setup_repo", fake_setup)
-
-    class FakeClient:
-        def reset(self, *, task_id, benchmark):
-            pass
-
-        def send_message(self, *, text, context):
-            patch = (
-                "diff --git a/sample.py b/sample.py\n"
-                "--- a/sample.py\n"
-                "+++ b/sample.py\n"
-                "@@\n"
-                "-print('bug')\n"
-                "+print('fixed')\n"
-            )
-            return type("Response", (), {"text": patch, "params": {}})()
-
-    class FakeEvaluator:
-        async def evaluate_patch(self, instance, patch):
-            return SWEBenchResult(
-                instance_id=instance.instance_id,
-                generated_patch=patch,
-                patch_status=PatchStatus.TESTS_PASSED,
-                tests_passed=["test_sample"],
-                tests_failed=[],
-                success=True,
-                duration_seconds=0.0,
-                tokens_used=None,
-            )
-
-    instance = SWEBenchInstance(
-        instance_id="mock__repo-1",
-        repo="mock/repo",
-        base_commit="abc123",
-        problem_statement="Fix sample.py",
-        hints_text="",
-        created_at="",
-        patch="",
-        test_patch="",
-        fail_to_pass=[],
-        pass_to_pass=[],
-    )
-
-    result = await _run_opencode_patchfile_instance(
-        FakeClient(),
-        instance,
-        FakeEvaluator(),
-        SWEBenchConfig(workspace_dir=str(tmp_path / "workspace"), timeout_seconds=30),
-        "gpt-oss-120b",
-    )
-
-    assert ".swe-bench-opencode.patch" not in result.generated_patch
-    assert "+print('fixed')" in result.generated_patch
 
 
 @pytest.mark.asyncio

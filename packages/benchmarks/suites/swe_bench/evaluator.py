@@ -105,7 +105,7 @@ class SWEBenchEvaluator:
             )
 
         # Non-Docker smoke path: structurally validate the patch and mark
-        # PASS only when it parses as a unified diff with at least one hunk
+        # GENERATED only when it resembles a unified diff with at least one hunk
         # AND references at least one plausible file path. This is a
         # smoke-grade evaluator only — it never executes tests and CANNOT
         # tell whether the patch fixes anything. Used so the harness runs
@@ -120,7 +120,7 @@ class SWEBenchEvaluator:
             # Surface ``incompatible`` so the orchestrator publication gate sees
             # ``success=False`` and routes the result accordingly.
             reason = (
-                "Docker unavailable and use_docker=False; SWE-bench cannot "
+                "Docker unavailable; SWE-bench cannot "
                 "execute tests without Docker. Refusing to fall back to "
                 "ground-truth-leakage similarity scoring."
             )
@@ -168,10 +168,9 @@ class SWEBenchEvaluator:
           * references at least one file path that looks like a real source
             file (non-empty, no leading slash, has an extension).
 
-        This does NOT execute tests. ``PatchStatus.PASS`` here means only
-        "the patch is well-formed enough that a real harness COULD try to
-        apply it" — it is not a SWE-bench resolution. Use Docker mode for
-        real scoring.
+        This does NOT execute tests or prove the patch applies. A structurally
+        plausible patch remains GENERATED with success=False; only the official
+        evaluator may mark a task resolved. Use Docker mode for real scoring.
         """
         lines = patch.splitlines()
         has_header = any(line.startswith("diff --git ") for line in lines)
@@ -220,13 +219,13 @@ class SWEBenchEvaluator:
         return SWEBenchResult(
             instance_id=instance.instance_id,
             generated_patch=patch,
-            patch_status=PatchStatus.PASS,
+            patch_status=PatchStatus.GENERATED,
             tests_passed=[],
             tests_failed=[],
-            success=True,
+            success=False,
             duration_seconds=time.time() - start_time,
             tokens_used=None,
-            error=None,
+            error="Structural smoke validation only; repository tests were not executed",
             status="smoke_validated",
         )
 

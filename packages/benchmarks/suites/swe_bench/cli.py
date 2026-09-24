@@ -42,7 +42,7 @@ from .types import (
 
 # Ensure the harness adapter packages are importable when running from a checkout.
 _HARNESSES_ROOT = Path(__file__).resolve().parents[2] / "harnesses"
-for _adapter_dir in ("eliza", "hermes", "openclaw", "smithers"):
+for _adapter_dir in ("eliza", "hermes", "openclaw"):
     _pkg = _HARNESSES_ROOT / _adapter_dir
     if _pkg.exists() and str(_pkg) not in sys.path:
         sys.path.insert(0, str(_pkg))
@@ -446,8 +446,6 @@ def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
         [
             instance.problem_statement,
             instance.hints_text,
-            *instance.fail_to_pass,
-            *instance.pass_to_pass,
         ]
     )
     candidates: list[str] = []
@@ -483,7 +481,7 @@ def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
     for match in dotted_re.finditer(text):
         add(f"{match.group(1).replace('.', '/')}.py")
 
-    return candidates[:5]
+    return candidates
 
 
 def _fetch_github_file(repo: str, commit: str, path: str) -> str | None:
@@ -501,14 +499,12 @@ def _fetch_github_file(repo: str, commit: str, path: str) -> str | None:
     )
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
-            raw = resp.read(160_000)
+            raw = resp.read()
     except (urllib.error.URLError, TimeoutError, OSError):
         _SOURCE_CONTEXT_CACHE[cache_key] = None
         return None
 
     text = raw.decode("utf-8", errors="replace")
-    if len(text) > 80_000:
-        text = text[:80_000] + "\n# ... truncated ...\n"
     _SOURCE_CONTEXT_CACHE[cache_key] = text
     return text
 
@@ -525,30 +521,9 @@ def _build_source_context(instance: SWEBenchInstance) -> str:
     return "Relevant repository file snapshots at the base commit:\n\n" + "\n\n".join(sections)
 
 
-def _instance_specific_guidance(instance: SWEBenchInstance) -> str:
-    """Return narrow diagnostic guidance for smoke instances with known traps."""
-    if instance.instance_id == "astropy__astropy-12907":
-        return (
-            "Diagnostic guidance for this instance:\n"
-            "- The bug is in separability for nested compound models.\n"
-            "- In `_cstack`, when either side is already a coord-matrix ndarray, "
-            "preserve the ndarray values in the stacked block. Do not replace "
-            "the block with all ones, because that destroys nested separability.\n\n"
-        )
-    return ""
-
-
 def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
     """Build a single prompt asking for a unified diff fix."""
     source_context = _build_source_context(instance)
-    instance_guidance = _instance_specific_guidance(instance)
-    fail_to_pass = (
-        "Fail-to-pass tests named by SWE-bench:\n"
-        + "\n".join(f"- {test}" for test in instance.fail_to_pass)
-        + "\n\n"
-        if instance.fail_to_pass
-        else ""
-    )
     retry_prefix = (
         "Your previous response did not contain an applicable unified diff. "
         "This time return only the diff text, starting with `diff --git`. "
@@ -565,11 +540,9 @@ def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
         "Problem statement:\n"
         f"{instance.problem_statement}\n\n"
         + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
-        + fail_to_pass
-        + instance_guidance
         + (f"{source_context}\n\n" if source_context else "")
         + "Respond with a SINGLE unified diff that resolves the issue. "
-        "Prefer the smallest local edit that makes the named tests pass. "
+        "Prefer the smallest local edit that resolves the reported issue. "
         "Do not replace whole classes, whole modules, or public APIs unless the issue requires it. "
         "Preserve surrounding signatures, imports, formatting, and behavior outside the bug. "
         "Start the response with `diff --git`; a fenced ```diff block is also acceptable. "
@@ -698,13 +671,7 @@ def _build_subtask_prompt(instance: SWEBenchInstance) -> str:
         "Problem statement:\n"
         f"{instance.problem_statement}\n\n"
         + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
-        + (
-            "Fail-to-pass tests named by SWE-bench:\n"
-            + "\n".join(f"- {test}" for test in instance.fail_to_pass)
-            + "\n\n"
-            if instance.fail_to_pass
-            else ""
-        )
+
     )
 
 
@@ -844,13 +811,6 @@ def _subtask_provider_env(provider: str, model_name: str | None) -> dict[str, st
     return env
 
 
-def _patchfile_apply_prompt(patch_path: Path) -> str:
-    return (
-        "Apply the SWE-bench patch file to this repository working tree.\n"
-        f"Run exactly: git apply {patch_path.name}\n"
-        "Do not commit. If the patch applies, stop and leave the working tree changed. "
-        "If it fails, report the error without making unrelated edits."
-    )
 
 
 async def _generate_patch_with_client(
@@ -919,117 +879,6 @@ async def _generate_patch_with_client(
         return "", str(exc)
 
 
-async def _run_opencode_patchfile_instance(
-    client: object,
-    instance: SWEBenchInstance,
-    evaluator: SWEBenchEvaluator,
-    config: SWEBenchConfig,
-    model_name: str | None,
-) -> SWEBenchResult:
-    """Generate a patch with Eliza, then subtask opencode to apply that patchfile."""
-    started = time.time()
-    manager = RepositoryManager(config.workspace_dir)
-    provider = "opencode"
-    try:
-        repo_root = await manager.setup_repo(instance)
-        patch, patch_error = await _generate_patch_with_client(
-            client,
-            instance,
-            provider,
-            model_name,
-            repo_root,
-        )
-        if not patch:
-            return SWEBenchResult(
-                instance_id=instance.instance_id,
-                generated_patch="",
-                patch_status=PatchStatus.NOT_GENERATED,
-                tests_passed=[],
-                tests_failed=[],
-                success=False,
-                duration_seconds=time.time() - started,
-                tokens_used=None,
-                error=f"patch generation failed before opencode apply: {patch_error}",
-                status="subtask_provider=opencode patchfile",
-            )
-
-        patch_path = repo_root / ".swe-bench-opencode.patch"
-        patch_path.write_text(patch, encoding="utf-8")
-        cmd = _subtask_provider_command(provider, model_name)
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=str(repo_root),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=_subtask_provider_env(provider, model_name),
-        )
-        prompt = _patchfile_apply_prompt(patch_path)
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            process.communicate(prompt.encode("utf-8")),
-            timeout=config.timeout_seconds,
-        )
-        stdout = stdout_bytes.decode("utf-8", errors="replace")
-        stderr = stderr_bytes.decode("utf-8", errors="replace")
-        try:
-            patch_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        worktree_patch = await manager.get_diff()
-
-        if not worktree_patch:
-            # Keep the benchmark moving if opencode failed after receiving the
-            # patchfile; evaluator will still report apply/test failures.
-            ok, error = await manager.apply_patch(patch)
-            if ok:
-                worktree_patch = await manager.get_diff()
-            else:
-                stderr = (stderr + "\n" + error).strip()
-                worktree_patch = patch
-
-        result = await evaluator.evaluate_patch(instance, worktree_patch)
-        result.duration_seconds = time.time() - started
-        status_bits = [result.status or "", "subtask_provider=opencode", "patchfile"]
-        if process.returncode not in (0, None):
-            status_bits.append(f"provider_exit={process.returncode}")
-            if not result.error:
-                preview = textwrap.shorten(
-                    (stdout + "\n" + stderr).replace("\n", " "),
-                    width=500,
-                    placeholder="...",
-                )
-                result.error = f"opencode patchfile apply exited {process.returncode}; preview={preview}"
-        result.status = " ".join(bit for bit in status_bits if bit).strip()
-        return result
-    except asyncio.TimeoutError:
-        return SWEBenchResult(
-            instance_id=instance.instance_id,
-            generated_patch="",
-            patch_status=PatchStatus.NOT_GENERATED,
-            tests_passed=[],
-            tests_failed=[],
-            success=False,
-            duration_seconds=time.time() - started,
-            tokens_used=None,
-            error=f"opencode patchfile apply timed out after {config.timeout_seconds}s",
-            status="subtask_provider=opencode patchfile",
-        )
-    except Exception as exc:  # noqa: BLE001
-        return SWEBenchResult(
-            instance_id=instance.instance_id,
-            generated_patch="",
-            patch_status=PatchStatus.NOT_GENERATED,
-            tests_passed=[],
-            tests_failed=[],
-            success=False,
-            duration_seconds=time.time() - started,
-            tokens_used=None,
-            error=str(exc),
-            status="subtask_provider=opencode patchfile",
-        )
-    finally:
-        if not _keep_instance_workspaces():
-            manager.cleanup_current_repo()
 
 
 async def _run_eliza_worktree_instance(
@@ -1171,16 +1020,15 @@ async def _run_subtask_provider_instance(
     if (
         provider == "opencode"
         and patch_client is not None
-        and os.environ.get("SWE_BENCH_OPENCODE_PATCHFILE", "1") not in {"0", "false", "False"}
+        and os.environ.get("SWE_BENCH_OPENCODE_PATCHFILE", "0") not in {"0", "false", "False"}
     ):
-        return await _run_opencode_patchfile_instance(
-            patch_client,
-            instance,
-            evaluator,
-            config,
-            model_name,
+        raise ValueError(
+            "SWE_BENCH_OPENCODE_PATCHFILE is not a fair coding-agent comparison: "
+            "it supplies an Eliza-generated answer to OpenCode. Unset it to run "
+            "the selected agent on the original issue."
         )
 
+    process = None
     started = time.time()
     manager = RepositoryManager(config.workspace_dir)
     try:
@@ -1272,6 +1120,9 @@ async def _run_subtask_provider_instance(
             status=f"subtask_provider={provider}",
         )
     finally:
+        if process is not None and process.returncode is None:
+            process.kill()
+            await process.wait()
         if "manager" in locals() and not _keep_instance_workspaces():
             manager.cleanup_current_repo()
 
@@ -1709,11 +1560,11 @@ def _build_report(
     instances_by_id: dict[str, SWEBenchInstance] | None = None,
 ) -> SWEBenchReport:
     total = len(results)
-    resolved = sum(1 for r in results if r.success)
+    resolved = sum(1 for r in results if r.success and "smoke_validated" not in (r.status or ""))
     applied = sum(
         1
         for r in results
-        if r.patch_status
+        if "smoke_validated" not in (r.status or "") and r.patch_status
         in (
             PatchStatus.APPLIED,
             PatchStatus.TESTS_PASSED,
@@ -1736,7 +1587,7 @@ def _build_report(
         repo_key = instance.repo if instance else r.instance_id.split("-", 1)[0]
         grouped.setdefault(repo_key, []).append(r)
     for repo, rs in grouped.items():
-        rresolved = sum(1 for r in rs if r.success)
+        rresolved = sum(1 for r in rs if r.success and "smoke_validated" not in (r.status or ""))
         by_repo[repo] = RepoStats(
             total=len(rs),
             resolved=rresolved,
@@ -1861,20 +1712,6 @@ def _build_client_for_harness(
         client.wait_until_ready(timeout=60)
         return client, None
 
-    if harness == "smithers":
-        from smithers_adapter.client import SmithersClient  # noqa: WPS433
-
-        client_kwargs: dict[str, object] = {}
-        normalized_model = _openai_compat_model_name(model_name)
-        if normalized_model:
-            client_kwargs["model"] = normalized_model
-        client = SmithersClient(**client_kwargs)
-        try:
-            client.wait_until_ready(timeout=60)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[swe_bench] smithers wait_until_ready failed: %s", exc)
-        return client, None
-
     raise ValueError(f"unknown harness: {harness!r}")
 
 
@@ -1925,7 +1762,7 @@ async def _run(args: argparse.Namespace) -> int:
         model_name=args.model
         or (
             "gemma-4-31b"
-            if args.harness in {"hermes", "smithers"}
+            if args.harness == "hermes"
             else f"{args.harness}-swe-bench"
         ),
         harness=args.harness,
@@ -1994,6 +1831,10 @@ async def _run(args: argparse.Namespace) -> int:
                 seed=args.baseline_seed,
             )
             eliza_server = None
+        elif args.execution_mode == "native_direct":
+            if config.harness != "eliza" or not args.model or args.orchestrated:
+                raise ValueError("native_direct requires --harness eliza --model MODEL without --orchestrated")
+            client, eliza_server = None, None
         else:
             client, eliza_server = _build_client_for_harness(
                 config.harness,
@@ -2161,12 +2002,13 @@ async def _run(args: argparse.Namespace) -> int:
             }
             out_path = Path(config.output_dir) / f"orchestrated-{timestamp}.json"
         else:
-            results = await _run_instances(
-                client,
-                instances,
-                evaluator,
-                model_name=config.model_name,
-            )
+            if args.execution_mode == "native_direct" and not args.mock and config.baseline is None:
+                from .native import run_native_instance
+                results = [await run_native_instance(instance, evaluator, config) for instance in instances]
+            else:
+                results = await _run_instances(
+                    client, instances, evaluator, model_name=config.model_name,
+                )
             report = _build_report(config, results, instances_by_id)
             payload = _report_to_dict(report)
             payload["dataset_provenance"] = (
@@ -2186,6 +2028,14 @@ async def _run(args: argparse.Namespace) -> int:
         if eliza_server is not None:
             eliza_server.stop()
 
+    payload["mock"] = bool(args.mock)
+    payload["smoke"] = not config.use_docker_eval
+    payload["execution"] = {
+        "mode": "provider_matrix" if args.orchestrated else ("native_direct" if args.execution_mode == "native_direct" else "prompt_patch"),
+        "orchestration_verified": False,
+        "native_coding_tools_verified": False,
+        "note": "Provider subprocesses and patch generation do not prove Eliza TASKS/ACP orchestration.",
+    }
     out_path.write_text(json.dumps(payload, indent=2))
     print(json.dumps(payload["summary"], indent=2))
     print(f"\nResult file: {out_path}")
@@ -2205,14 +2055,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--harness",
-        choices=["eliza", "hermes", "openclaw", "smithers"],
+        choices=["eliza", "hermes", "openclaw"],
         default="eliza",
         help=(
             "Adapter that drives patch generation. eliza: TS bridge "
             "(default; preserves current behavior). hermes: HermesClient "
             "(native pinned AIAgent subprocess). openclaw: "
-            "OpenClawClient embedded runtime. smithers: "
-            "SmithersClient (Cerebras chat via smithers harness)."
+            "OpenClawClient embedded runtime."
         ),
     )
     p.add_argument(
@@ -2256,7 +2105,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--execution-mode",
-        choices=["orchestrated", "direct_shell"],
+        choices=["orchestrated", "direct_shell", "native_direct"],
         default="orchestrated",
     )
     p.add_argument("--providers", nargs="+", default=None)

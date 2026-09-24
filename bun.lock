@@ -574,6 +574,16 @@
         "vitest": "4.1.10",
       },
     },
+    "packages/benchmarks/suites/lifeops-bench/quality": {
+      "name": "@elizaos/lifeops-quality-bench",
+      "version": "0.0.0",
+      "devDependencies": {
+        "bundle-require": "^5.1.0",
+        "esbuild": "^0.28.1",
+        "typescript": "^5.9.0",
+        "vitest": "^4.0.0",
+      },
+    },
     "packages/benchmarks/suites/lifeops-bench/runner": {
       "name": "@elizaos/lifeops-bench",
       "version": "0.1.0",
@@ -599,16 +609,6 @@
         "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
-      },
-    },
-    "packages/benchmarks/suites/lifeops-quality": {
-      "name": "@elizaos/lifeops-quality-bench",
-      "version": "0.0.0",
-      "devDependencies": {
-        "bundle-require": "^5.1.0",
-        "esbuild": "^0.28.1",
-        "typescript": "^5.9.0",
-        "vitest": "^4.0.0",
       },
     },
     "packages/benchmarks/suites/memperf": {
@@ -3604,7 +3604,7 @@
 
     "@elizaos/lifeops-bench": ["@elizaos/lifeops-bench@workspace:packages/benchmarks/suites/lifeops-bench/runner"],
 
-    "@elizaos/lifeops-quality-bench": ["@elizaos/lifeops-quality-bench@workspace:packages/benchmarks/suites/lifeops-quality"],
+    "@elizaos/lifeops-quality-bench": ["@elizaos/lifeops-quality-bench@workspace:packages/benchmarks/suites/lifeops-bench/quality"],
 
     "@elizaos/macosreminders": ["@elizaos/macosreminders@workspace:plugins/plugin-native-reminders"],
 

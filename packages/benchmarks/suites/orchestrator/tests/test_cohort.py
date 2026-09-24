@@ -39,6 +39,20 @@ from benchmarks.orchestrator.types import (
 )
 
 
+@pytest.fixture(autouse=True)
+def sufficient_campaign_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scheduling tests must not depend on the developer's free disk space.
+
+    Storage rejection and monitoring have their own explicit disk-usage cases.
+    Keep the production reserve intact while exercising these fake campaigns.
+    """
+    monkeypatch.setattr(
+        cohort_module.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(total=100 << 30, used=20 << 30, free=80 << 30),
+    )
+
+
 def _adapter(benchmark_id: str, harnesses: tuple[str, ...]) -> BenchmarkAdapter:
     return BenchmarkAdapter(
         id=benchmark_id,

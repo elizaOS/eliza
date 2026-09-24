@@ -2778,10 +2778,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "Vendored VoiceBench (Chen et al. 2024) — 8-suite quality "
                 "benchmark over 6783 spoken instructions"
             ),
-            cwd_rel="suites/voicebench-quality",
+            cwd_rel="suites/voicebench/quality",
             requirements=BenchmarkRequirements(
                 env_vars=("CEREBRAS_API_KEY",),
-                paths=("suites/voicebench-quality/elizaos_voicebench",),
+                paths=("suites/voicebench/quality/elizaos_voicebench",),
                 notes=(
                     "Cascaded STT (Groq Whisper or local Eliza runtime) → text adapter "
                     "(eliza/hermes/openclaw). "

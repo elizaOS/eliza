@@ -107,6 +107,18 @@ class TestSWEBenchEvaluator:
         assert not result.success
 
     @pytest.mark.asyncio
+    async def test_structural_smoke_never_claims_resolution(
+        self, evaluator: SWEBenchEvaluator, sample_instance: SWEBenchInstance
+    ) -> None:
+        patch = "diff --git a/file.py b/file.py\n--- a/file.py\n+++ b/file.py\n@@ -1 +1 @@\n-broken\n+still_broken\n"
+        result = await evaluator.evaluate_patch(sample_instance, patch)
+        assert result.status == "smoke_validated"
+        assert result.patch_status == PatchStatus.GENERATED
+        assert result.success is False
+        assert result.tests_passed == []
+        assert "not executed" in result.error
+
+    @pytest.mark.asyncio
     async def test_docker_unavailable_returns_incompatible(
         self,
         monkeypatch: pytest.MonkeyPatch,
