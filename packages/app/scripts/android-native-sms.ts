@@ -9,8 +9,8 @@ import {
   inventory,
   parseInstrumentation,
   parseNativeArtifacts,
-} from "./android-native-plugins.mjs";
-import { acquireDeviceLease } from "./lib/device-lease.mjs";
+} from "./android-native-plugins.ts";
+import { acquireDeviceLease } from "./lib/device-lease.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const args = process.argv.slice(2);

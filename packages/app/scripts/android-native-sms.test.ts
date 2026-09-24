@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 
-const runner = path.join(import.meta.dirname, "android-native-sms.mjs");
+const runner = path.join(import.meta.dirname, "android-native-sms.ts");
 for (const [name, args, error] of [
   [
     "rejects remote devices before invoking adb",

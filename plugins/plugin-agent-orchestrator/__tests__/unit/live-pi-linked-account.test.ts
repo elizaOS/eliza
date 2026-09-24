@@ -236,7 +236,7 @@ test.skipIf(process.platform === "win32")(
     const root = await mkdtemp(path.join(tmpdir(), "pi-import-admission-"));
     try {
       await chmod(root, 0o700);
-      const copiedScript = path.join(root, "harness.mjs");
+      const copiedScript = path.join(root, "harness.ts");
       await copyFile(script, copiedScript);
       const authorization = "a".repeat(64);
       await writeFile(path.join(root, ".child-authorization"), authorization, {
