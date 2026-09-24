@@ -1,5 +1,6 @@
 package ai.eliza.testing
 
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.lifecycle.Lifecycle
@@ -20,8 +21,15 @@ class NativeBridgeTestActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val descriptor = JSONObject(assets.open("native-plugin.json").bufferedReader().use { it.readText() })
         registerPlugin(Class.forName(descriptor.getString("class")).asSubclass(Plugin::class.java))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setTurnScreenOn(true)
+            setShowWhenLocked(true)
+        }
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        @Suppress("DEPRECATION")
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
     }
 }
 
@@ -41,6 +49,7 @@ class NativeBridgeInstrumentedTest {
         val descriptor = context.assets.open("native-plugin.json").bufferedReader().use { it.readText() }
         val script = context.assets.open("contracts.js").bufferedReader().use { it.readText() }
         ActivityScenario.launch(NativeBridgeTestActivity::class.java).use { scenario ->
+            scenario.moveToState(Lifecycle.State.RESUMED)
             assertEquals("Bridge host must be foregrounded", Lifecycle.State.RESUMED, scenario.state)
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             while (evaluate(scenario, "Boolean(window.Capacitor && window.Capacitor.nativePromise)") != "true") {
