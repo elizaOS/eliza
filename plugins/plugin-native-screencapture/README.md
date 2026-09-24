@@ -55,7 +55,7 @@ const shot = await ScreenCapture.captureScreenshot({ format: 'png', quality: 100
 await ScreenCapture.startRecording({
   quality: 'high',        // 'low' | 'medium' | 'high' | 'highest'
   fps: 30,
-  captureSystemAudio: true,
+  captureSystemAudio: features.includes('system_audio'),
   captureMicrophone: false,
   maxDuration: 300,       // seconds; undefined = unlimited
 });
@@ -111,6 +111,11 @@ await ScreenCapture.requestPermissions();
 | `captureSystemAudio` | `boolean` | `true` | Include app/system audio (browser + iOS; Android records microphone only) |
 | `captureMicrophone` | `boolean` | `false` | Include microphone audio in recording |
 
+Android does not advertise `system_audio`. Explicit `captureSystemAudio: true`
+rejects before consent with `SYSTEM_AUDIO_UNSUPPORTED`; omit it or pass `false`
+to record video with optional microphone audio. Android does not silently replace
+requested system audio with a silent or microphone-only recording.
+
 ## Building from source
 
 ```bash
@@ -118,3 +123,61 @@ bun run --cwd plugins/plugin-native-screencapture build
 ```
 
 This runs `tsc` then `rollup` and outputs `dist/esm/`, `dist/plugin.js` (IIFE), and `dist/plugin.cjs.js`.
+
+## Android recording verification
+
+Android reports `RECORDING_FINALIZATION_FAILED` when native finalization fails
+or the output is missing/empty. It releases the recorder, reports an inactive
+recording state and an error event, and removes unfinished output rather than
+returning a successful video path.
+
+The native `ScreenRecordingInstrumentedTest` uses an isolated test app, real
+Capacitor/MediaProjection/MediaRecorder, and Android's consent dialog. It verifies
+readable video and exact file metadata, missing-cache-file rejection, and native
+finalization failure. The latter resets the real recorder through a test-only
+reflection hook before Stop; it does not replace the recorder or plugin with a
+mock. Consent automation currently targets the English AOSP dialog. Run on an
+exclusive emulator because simultaneous instrumentation or UI automation can
+interrupt consent and invalidate results.
+
+Build `:elizaos-capacitor-screencapture:assembleDebugAndroidTest` from the Android
+host, install its test APK, and run:
+
+```bash
+adb -s DEVICE shell am instrument -w \
+  ai.eliza.plugins.screencapture.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Inspect the final `OK` result, not just the shell exit code. Optional runner
+argument `-e exportEvidence true` retains the successful test video as
+`files/screen-recording-evidence.mp4` inside the isolated test app for review.
+Uninstalling that test app removes the exported artifact. Start from a fresh test
+installation for the microphone-denial case, which expects Android's permission
+dialog. The suite also exercises file-size-triggered stopping with an animated
+screen, invalid-limit rejection, denial followed by retry without microphone,
+and active-recording teardown verified against Android's projection service.
+
+Android accepts `maxFileSize` as a positive safe integer number of bytes. Invalid
+values reject before consent with `INVALID_RECORDING_OPTIONS`; omission leaves
+recording unlimited. Ordinary JSON integers are accepted regardless of whether
+Android's JSON parser represents them as Integer or Long.
+
+Android retains the last finalized recording result until the next recording
+starts. `stopRecording()` can retrieve a duration/file-size-limited recording
+after automatic stop; overlapping or repeated Stop requests return the same
+result without stopping the recorder twice. A failed finalization remains an
+explicit failure. This does not retain video bytes in memory or prevent callers
+from deleting the returned file.
+
+Android admits one screenshot or recording request at a time, including its
+permission wait. Competing requests reject with `CAPTURE_BUSY`; consent denial
+releases admission, and destruction rejects an outstanding request with
+`CAPTURE_DESTROYED`. Delayed callbacks cannot restart capture after destruction.
+The native suite covers overlapping recording/screenshot requests during consent,
+real consent cancellation followed by retry, and destruction with consent pending.
+
+Repeated Android screenshots retain one projection consent session. Scale changes
+resize the existing virtual display and replace its image surface, rather than
+creating another display from an already-used projection token. Device coverage
+checks decoded full-size, half-size and restored-size images. This does not prove
+rotation or partial-app-sharing behavior.

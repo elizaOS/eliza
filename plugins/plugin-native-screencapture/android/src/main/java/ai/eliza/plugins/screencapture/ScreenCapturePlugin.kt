@@ -1,3 +1,7 @@
+/**
+ * Owns Android screenshot and recording resources for the Capacitor screen-capture bridge.
+ * Recording results are returned only after native finalization succeeds and the output exists.
+ */
 package ai.eliza.plugins.screencapture
 
 import android.Manifest
@@ -64,6 +68,8 @@ class ScreenCapturePlugin : Plugin() {
     private var screenshotVdHeight = 0
 
     // Recording state
+    private var completedRecording: JSObject? = null
+    private var recordingFinalizationFailed = false
     private var isRecording = false
     private var isPaused = false
     private var recordingStartTime = 0L
@@ -77,7 +83,37 @@ class ScreenCapturePlugin : Plugin() {
 
     // Pending permission flow
     private var pendingCall: PluginCall? = null
-    private var pendingAction: String? = null
+    private enum class CaptureAction { SCREENSHOT, RECORDING }
+    private var pendingAction: CaptureAction? = null
+    private val admissionHandler = Handler(Looper.getMainLooper())
+    private var destroyed = false
+
+    private fun admit(call: PluginCall, action: CaptureAction): Boolean {
+        if (destroyed) {
+            call.reject("Screen capture has been destroyed", "CAPTURE_DESTROYED")
+            return false
+        }
+        if (pendingCall != null || isRecording) {
+            call.reject("Another screen capture request is active", "CAPTURE_BUSY")
+            return false
+        }
+        pendingCall = call
+        pendingAction = action
+        return true
+    }
+
+    private fun finishAdmission(call: PluginCall) {
+        if (pendingCall === call) {
+            pendingCall = null
+            pendingAction = null
+            pendingRecordingOptions = null
+        }
+    }
+
+    private fun rejectAdmission(call: PluginCall, message: String, code: String) {
+        finishAdmission(call)
+        call.reject(message, code)
+    }
     private var pendingRecordingOptions: RecordingConfig? = null
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -139,9 +175,6 @@ class ScreenCapturePlugin : Plugin() {
         val features = JSArray()
         features.put("screenshot")
         features.put("recording")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            features.put("system_audio")
-        }
         features.put("microphone")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             features.put("pause_resume")
@@ -155,8 +188,12 @@ class ScreenCapturePlugin : Plugin() {
 
     @PluginMethod
     fun captureScreenshot(call: PluginCall) {
-        pendingCall = call
-        pendingAction = "screenshot"
+        admissionHandler.post {
+            if (admit(call, CaptureAction.SCREENSHOT)) beginScreenshot(call)
+        }
+    }
+
+    private fun beginScreenshot(call: PluginCall) {
 
         // Reuse an already-granted session projection instead of re-prompting
         // the system consent dialog on every capture. Continuous screen
@@ -165,7 +202,7 @@ class ScreenCapturePlugin : Plugin() {
         // projection is kept warm across captures and only released on
         // background/destroy or when the system stops it.
         if (mediaProjection != null) {
-            captureScreenshotInternal(call)
+            executeScreenshot(call)
             return
         }
 
@@ -173,55 +210,60 @@ class ScreenCapturePlugin : Plugin() {
         if (intent != null) {
             startActivityForResult(call, intent, "handleProjectionResult")
         } else {
-            call.reject("Screen capture not available")
+            rejectAdmission(call, "Screen capture not available", "CAPTURE_UNAVAILABLE")
         }
     }
 
     @PluginMethod
     fun startRecording(call: PluginCall) {
-        if (isRecording) {
-            call.reject("Recording already in progress")
+        admissionHandler.post {
+            if (admit(call, CaptureAction.RECORDING)) beginRecording(call)
+        }
+    }
+
+    private fun beginRecording(call: PluginCall) {
+        if (call.getBoolean("captureSystemAudio") == true) {
+            rejectAdmission(call, "Android screen recording supports microphone audio only", "SYSTEM_AUDIO_UNSUPPORTED")
             return
         }
+        val sizeValue = call.data.opt("maxFileSize")
+        val sizeNumber = (sizeValue as? Number)?.toDouble()
+        if (call.data.has("maxFileSize") && (sizeNumber == null || !sizeNumber.isFinite() ||
+                sizeNumber <= 0 || sizeNumber > 9_007_199_254_740_991.0 || sizeNumber % 1.0 != 0.0)) {
+            rejectAdmission(call, "maxFileSize must be a positive safe integer number of bytes", "INVALID_RECORDING_OPTIONS")
+            return
+        }
+        releaseProjection()
 
         // Parse recording options
-        val config = parseRecordingConfig(call)
+        val config = parseRecordingConfig(call, sizeNumber?.toLong())
         pendingRecordingOptions = config
 
         // Check mic permission if microphone capture requested
         if (config.captureMicrophone &&
             getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED
         ) {
-            pendingCall = call
-            pendingAction = "recording"
             requestPermissionForAlias("microphone", call, "handleMicPermissionResult")
             return
         }
 
-        pendingCall = call
-        pendingAction = "recording"
 
         val intent = mediaProjectionManager?.createScreenCaptureIntent()
         if (intent != null) {
             startActivityForResult(call, intent, "handleProjectionResult")
         } else {
-            call.reject("Screen capture not available")
+            rejectAdmission(call, "Screen capture not available", "CAPTURE_UNAVAILABLE")
         }
     }
 
     @PluginMethod
     fun stopRecording(call: PluginCall) {
-        if (!isRecording) {
-            call.reject("Not recording")
-            return
-        }
-
         scope.launch {
-            val result = stopRecordingInternal()
-            if (result != null) {
-                call.resolve(result)
-            } else {
-                call.reject("Failed to stop recording")
+            val result = if (isRecording) stopRecordingInternal() else completedRecording
+            when {
+                result != null -> call.resolve(result)
+                recordingFinalizationFailed -> call.reject("Recording could not be finalized", "RECORDING_FINALIZATION_FAILED")
+                else -> call.reject("Not recording")
             }
         }
     }
@@ -329,11 +371,16 @@ class ScreenCapturePlugin : Plugin() {
 
     @PermissionCallback
     private fun handleMicPermissionResult(call: PluginCall) {
+        if (pendingCall !== call || destroyed) return
+        if (getPermissionState("microphone") != com.getcapacitor.PermissionState.GRANTED) {
+            rejectAdmission(call, "Microphone permission denied", "MICROPHONE_DENIED")
+            return
+        }
         val intent = mediaProjectionManager?.createScreenCaptureIntent()
         if (intent != null) {
             startActivityForResult(call, intent, "handleProjectionResult")
         } else {
-            call.reject("Screen capture not available")
+            rejectAdmission(call, "Screen capture not available", "CAPTURE_UNAVAILABLE")
         }
     }
 
@@ -350,8 +397,9 @@ class ScreenCapturePlugin : Plugin() {
 
     @ActivityCallback
     private fun handleProjectionResult(call: PluginCall, result: ActivityResult) {
+        if (pendingCall !== call || destroyed) return
         if (result.resultCode != Activity.RESULT_OK || result.data == null) {
-            call.reject("Screen capture permission denied")
+            rejectAdmission(call, "Screen capture permission denied", "CAPTURE_DENIED")
             return
         }
 
@@ -364,28 +412,34 @@ class ScreenCapturePlugin : Plugin() {
                 Intent(context, ScreenCaptureFgService::class.java)
             )
         } catch (e: Exception) {
+            // error-policy:J1 foreground-service admission failure rejects the owning capture request.
             Log.w(TAG, "Could not start mediaProjection FGS", e)
+            rejectAdmission(call, "Screen capture service could not start", "CAPTURE_UNAVAILABLE")
+            return
         }
 
-        Handler(Looper.getMainLooper()).postDelayed({
+        admissionHandler.postDelayed({
+            if (pendingCall !== call || destroyed) return@postDelayed
             try {
                 mediaProjection =
                     mediaProjectionManager?.getMediaProjection(result.resultCode, result.data!!)
             } catch (e: Exception) {
                 Log.e(TAG, "getMediaProjection failed", e)
                 stopFgService()
-                call.reject("Media projection failed: ${e.message}")
+                rejectAdmission(call, "Media projection failed", "CAPTURE_UNAVAILABLE")
                 return@postDelayed
             }
             if (mediaProjection == null) {
                 stopFgService()
-                call.reject("Failed to get media projection")
+                rejectAdmission(call, "Failed to get media projection", "CAPTURE_UNAVAILABLE")
                 return@postDelayed
             }
 
             // Register stop callback for cleanup
-            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+            val ownedProjection = requireNotNull(mediaProjection)
+            ownedProjection.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
+                    if (mediaProjection !== ownedProjection) return
                     Log.d(TAG, "MediaProjection stopped by system")
                     if (isRecording) {
                         scope.launch { stopRecordingInternal() }
@@ -405,9 +459,9 @@ class ScreenCapturePlugin : Plugin() {
             }, Handler(Looper.getMainLooper()))
 
             when (pendingAction) {
-                "screenshot" -> captureScreenshotInternal(call)
-                "recording" -> startRecordingInternal(call)
-                else -> call.reject("Unknown action")
+                CaptureAction.SCREENSHOT -> executeScreenshot(call)
+                CaptureAction.RECORDING -> startRecordingInternal(call)
+                null -> rejectAdmission(call, "Capture request lost its owner", "CAPTURE_UNAVAILABLE")
             }
         }, 600)
     }
@@ -423,6 +477,17 @@ class ScreenCapturePlugin : Plugin() {
 
     // ── Screenshot capture ──────────────────────────────────────────────
 
+    private fun executeScreenshot(call: PluginCall) {
+        try {
+            captureScreenshotInternal(call)
+        } catch (error: Exception) {
+            // error-policy:J1 screenshot setup failure releases admission and reports a bridge failure.
+            Log.w(TAG, "ScreenCapture: screenshot setup failed", error)
+            releaseProjection()
+            rejectAdmission(call, "Screenshot setup failed", "CAPTURE_UNAVAILABLE")
+        }
+    }
+
     private fun captureScreenshotInternal(call: PluginCall) {
         val format = call.getString("format") ?: "png"
         val quality = call.getInt("quality") ?: 100
@@ -431,28 +496,37 @@ class ScreenCapturePlugin : Plugin() {
         val width = Math.max(1, (screenWidth * scale).toInt())
         val height = Math.max(1, (screenHeight * scale).toInt())
 
-        // Reuse the warm VirtualDisplay + ImageReader when the requested size
-        // matches; only (re)create them when missing or the scale changed. The
-        // resize itself is native — the VirtualDisplay renders directly at the
-        // target resolution, so the agent never resizes pixels in JS.
+        // Android 14+ permits one virtual display per projection token. Resizing
+        // replaces its surface while preserving that display and consent session.
         val warm = virtualDisplay != null &&
             imageReader != null &&
             screenshotVdWidth == width &&
             screenshotVdHeight == height
         if (!warm) {
-            virtualDisplay?.release()
-            imageReader?.close()
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-            virtualDisplay = mediaProjection?.createVirtualDisplay(
-                "ScreenCapture",
-                width,
-                height,
-                screenDensity,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader?.surface,
-                null,
-                null
-            )
+            val oldReader = imageReader
+            val replacement = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            imageReader = replacement
+            try {
+                val display = virtualDisplay
+                if (display == null) {
+                    virtualDisplay = requireNotNull(mediaProjection).createVirtualDisplay(
+                        "ScreenCapture",
+                        width,
+                        height,
+                        screenDensity,
+                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                        replacement.surface,
+                        null,
+                        null
+                    )
+                } else {
+                    display.surface = null
+                    display.resize(width, height, screenDensity)
+                    display.surface = replacement.surface
+                }
+            } finally {
+                oldReader?.close()
+            }
             screenshotVdWidth = width
             screenshotVdHeight = height
         }
@@ -460,7 +534,8 @@ class ScreenCapturePlugin : Plugin() {
         // A freshly-created mirror needs ~250ms to render its first frame; a warm
         // display is already mirroring continuously, so a short settle suffices.
         val settleMs = if (warm) 60L else 250L
-        Handler(Looper.getMainLooper()).postDelayed({
+        admissionHandler.postDelayed({
+            if (pendingCall !== call || destroyed) return@postDelayed
             try {
                 val image = imageReader?.acquireLatestImage()
 
@@ -509,6 +584,7 @@ class ScreenCapturePlugin : Plugin() {
                 notifyError("screenshot_failed", "Screenshot failed: ${e.message}")
                 call.reject("Screenshot failed: ${e.message}")
             }
+            finally { finishAdmission(call) }
         }, settleMs)
     }
 
@@ -524,8 +600,9 @@ class ScreenCapturePlugin : Plugin() {
         imageReader = null
         screenshotVdWidth = 0
         screenshotVdHeight = 0
-        mediaProjection?.stop()
+        val releasedProjection = mediaProjection
         mediaProjection = null
+        releasedProjection?.stop()
         stopFgService()
     }
 
@@ -555,6 +632,8 @@ class ScreenCapturePlugin : Plugin() {
     // ── Screen recording ────────────────────────────────────────────────
 
     private fun startRecordingInternal(call: PluginCall) {
+        completedRecording = null
+        recordingFinalizationFailed = false
         val config = pendingRecordingOptions ?: RecordingConfig()
         pendingRecordingOptions = null
 
@@ -648,6 +727,7 @@ class ScreenCapturePlugin : Plugin() {
                 put("fileSize", 0L)
             })
 
+            finishAdmission(call)
             call.resolve()
 
         } catch (e: Exception) {
@@ -656,7 +736,7 @@ class ScreenCapturePlugin : Plugin() {
             mediaRecorder = null
             cleanup()
             notifyError("recording_start_failed", "Failed to start recording: ${e.message}")
-            call.reject("Failed to start recording: ${e.message}")
+            rejectAdmission(call, "Failed to start recording: ${e.message}", "RECORDING_START_FAILED")
         }
     }
 
@@ -702,20 +782,30 @@ class ScreenCapturePlugin : Plugin() {
     }
 
     private suspend fun stopRecordingInternal(): JSObject? = withContext(Dispatchers.Main) {
-        recordingTimer?.removeCallbacks(recordingRunnable ?: return@withContext null)
+        if (!isRecording) return@withContext completedRecording
+        recordingRunnable?.let { recordingTimer?.removeCallbacks(it) }
         recordingTimer = null
         recordingRunnable = null
 
         val duration = getRecordingDuration()
 
-        try {
-            mediaRecorder?.stop()
-        } catch (e: Exception) {
-            Log.w(TAG, "MediaRecorder.stop() failed (may be empty recording)", e)
-        }
-
-        mediaRecorder?.release()
+        var finalizationFailed = false
+        val recorder = mediaRecorder
         mediaRecorder = null
+        try {
+            requireNotNull(recorder) { "No recorder owns this recording" }.stop()
+        } catch (e: Exception) {
+            // error-policy:J1 return a failed recording result after releasing native resources.
+            Log.w(TAG, "ScreenCapture: recording finalization failed", e)
+            finalizationFailed = true
+        }
+        try {
+            recorder?.release()
+        } catch (e: Exception) {
+            // error-policy:J6 release failure is logged and prevents reporting a successful recording.
+            Log.w(TAG, "ScreenCapture: recorder release failed", e)
+            finalizationFailed = true
+        }
         isRecording = false
         isPaused = false
         pausedDurationMs = 0
@@ -725,7 +815,23 @@ class ScreenCapturePlugin : Plugin() {
 
         cleanup()
 
-        val file = outputFile ?: return@withContext null
+        val file = outputFile
+        if (finalizationFailed || file == null || !file.isFile || file.length() == 0L) {
+            outputFile = null
+            recordingFinalizationFailed = true
+            completedRecording = null
+            if (file != null && file.exists() && !file.delete()) {
+                Log.w(TAG, "ScreenCapture: could not remove unfinished recording")
+            }
+            notifyListeners("recordingState", JSObject().apply {
+                put("isRecording", false)
+                put("isPaused", false)
+                put("duration", duration)
+                put("fileSize", 0L)
+            })
+            notifyError("recording_stop_failed", "Recording could not be finalized")
+            return@withContext null
+        }
         val fileSize = file.length()
 
         notifyListeners("recordingState", JSObject().apply {
@@ -742,20 +848,19 @@ class ScreenCapturePlugin : Plugin() {
             put("height", screenHeight)
             put("fileSize", fileSize)
             put("mimeType", "video/mp4")
-        }
+        }.also { completedRecording = it }
     }
 
     // ── Recording config parsing ────────────────────────────────────────
 
-    private fun parseRecordingConfig(call: PluginCall): RecordingConfig =
+    private fun parseRecordingConfig(call: PluginCall, maxFileSize: Long?): RecordingConfig =
         RecordingConfigResolver.resolve(
             quality = call.getString("quality"),
             fpsOverride = call.getInt("fps"),
             bitrateOverride = call.getInt("bitrate"),
             maxDuration = call.getDouble("maxDuration"),
-            maxFileSize = call.getLong("maxFileSize"),
+            maxFileSize = maxFileSize,
             captureMicrophone = call.getBoolean("captureMicrophone") ?: false,
-            captureSystemAudio = call.getBoolean("captureSystemAudio") ?: false,
             screenWidth = screenWidth,
             screenHeight = screenHeight,
         )
@@ -798,8 +903,9 @@ class ScreenCapturePlugin : Plugin() {
         imageReader = null
         screenshotVdWidth = 0
         screenshotVdHeight = 0
-        mediaProjection?.stop()
+        val releasedProjection = mediaProjection
         mediaProjection = null
+        releasedProjection?.stop()
         stopFgService()
     }
 
@@ -820,12 +926,27 @@ class ScreenCapturePlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        destroyed = true
+        // Queued admissions must run their destroyed guard and settle their callers.
+        pendingCall?.let { rejectAdmission(it, "Screen capture was destroyed", "CAPTURE_DESTROYED") }
+        pendingRecordingOptions = null
+        recordingRunnable?.let { recordingTimer?.removeCallbacks(it) }
+        recordingTimer = null
+        recordingRunnable = null
         super.handleOnDestroy()
         if (isRecording) {
             try {
                 mediaRecorder?.stop()
-            } catch (_: Exception) {}
-            mediaRecorder?.release()
+            } catch (error: Exception) {
+                // error-policy:J6 destruction releases resources even when the recorder cannot finalize.
+                Log.w(TAG, "ScreenCapture: recorder stop failed during destruction", error)
+            }
+            try {
+                mediaRecorder?.release()
+            } catch (error: Exception) {
+                // error-policy:J6 recorder release failure must not prevent projection teardown.
+                Log.w(TAG, "ScreenCapture: recorder release failed during destruction", error)
+            }
             mediaRecorder = null
             isRecording = false
         }

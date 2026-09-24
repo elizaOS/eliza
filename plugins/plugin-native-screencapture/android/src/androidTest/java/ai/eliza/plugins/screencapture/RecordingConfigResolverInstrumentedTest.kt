@@ -1,3 +1,4 @@
+/** Exercises Android recorder configuration with the real resolver on the device runtime. */
 package ai.eliza.plugins.screencapture
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -28,43 +29,42 @@ class RecordingConfigResolverInstrumentedTest {
 
     @Test
     fun resolve_lowPresetIs15fpsAtHalfTheEstimate() {
-        val c = RecordingConfigResolver.resolve("low", null, null, null, null, false, false, w, h)
+        val c = RecordingConfigResolver.resolve("low", null, null, null, null, false, w, h)
         assertEquals(15, c.fps)
         assertEquals(RecordingConfigResolver.estimateBitrate(w, h, 15) / 2, c.bitrate)
     }
 
     @Test
     fun resolve_highestPresetIs60fpsAtDoubleTheEstimate() {
-        val c = RecordingConfigResolver.resolve("highest", null, null, null, null, false, false, w, h)
+        val c = RecordingConfigResolver.resolve("highest", null, null, null, null, false, w, h)
         assertEquals(60, c.fps)
         assertEquals(RecordingConfigResolver.estimateBitrate(w, h, 60) * 2, c.bitrate)
     }
 
     @Test
     fun resolve_mediumHighUnknownLeaveBitrateForDownstreamEstimate() {
-        val medium = RecordingConfigResolver.resolve("medium", null, null, null, null, false, false, w, h)
+        val medium = RecordingConfigResolver.resolve("medium", null, null, null, null, false, w, h)
         assertEquals(24, medium.fps)
         assertNull(medium.bitrate)
-        assertEquals(30, RecordingConfigResolver.resolve("high", null, null, null, null, false, false, w, h).fps)
-        val unknown = RecordingConfigResolver.resolve("banana", null, null, null, null, false, false, w, h)
+        assertEquals(30, RecordingConfigResolver.resolve("high", null, null, null, null, false, w, h).fps)
+        val unknown = RecordingConfigResolver.resolve("banana", null, null, null, null, false, w, h)
         assertEquals("unknown quality defaults to 30 fps", 30, unknown.fps)
         assertNull(unknown.bitrate)
     }
 
     @Test
     fun resolve_explicitOverridesWinAndFpsClampsTo1To60() {
-        assertEquals("fps above 60 clamps down", 60, RecordingConfigResolver.resolve("low", 120, null, null, null, false, false, w, h).fps)
-        assertEquals("fps below 1 clamps up", 1, RecordingConfigResolver.resolve("low", 0, null, null, null, false, false, w, h).fps)
-        assertEquals("explicit bitrate beats the preset", 5_000_000, RecordingConfigResolver.resolve("low", null, 5_000_000, null, null, false, false, w, h).bitrate)
+        assertEquals("fps above 60 clamps down", 60, RecordingConfigResolver.resolve("low", 120, null, null, null, false, w, h).fps)
+        assertEquals("fps below 1 clamps up", 1, RecordingConfigResolver.resolve("low", 0, null, null, null, false, w, h).fps)
+        assertEquals("explicit bitrate beats the preset", 5_000_000, RecordingConfigResolver.resolve("low", null, 5_000_000, null, null, false, w, h).bitrate)
     }
 
     @Test
-    fun resolve_passesThroughDurationFileSizeAndAudioFlags() {
-        val c = RecordingConfigResolver.resolve("high", null, null, 30.0, 1_000L, true, true, w, h)
+    fun resolve_passesThroughDurationFileSizeAndMicrophone() {
+        val c = RecordingConfigResolver.resolve("high", null, null, 30.0, 1_000L, true, w, h)
         assertEquals(30.0, c.maxDuration!!, 1e-9)
         assertEquals(1_000L, c.maxFileSize)
         assertTrue(c.captureMicrophone)
-        assertTrue(c.captureSystemAudio)
         assertEquals("high", c.quality)
     }
 }

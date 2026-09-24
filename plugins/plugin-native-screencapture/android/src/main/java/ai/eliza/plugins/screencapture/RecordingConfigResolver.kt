@@ -1,3 +1,4 @@
+/** Resolves Android recorder presets and limits independently of the Capacitor bridge. */
 package ai.eliza.plugins.screencapture
 
 /** Resolved screen-recording configuration (shared by the plugin + its test). */
@@ -8,7 +9,6 @@ data class RecordingConfig(
     val fps: Int = 30,
     val bitrate: Int? = null,
     val captureMicrophone: Boolean = false,
-    val captureSystemAudio: Boolean = false,
 )
 
 /**
@@ -40,7 +40,6 @@ object RecordingConfigResolver {
         maxDuration: Double?,
         maxFileSize: Long?,
         captureMicrophone: Boolean,
-        captureSystemAudio: Boolean,
         screenWidth: Int,
         screenHeight: Int,
     ): RecordingConfig {
@@ -79,7 +78,6 @@ object RecordingConfigResolver {
             fps = fps.coerceIn(1, 60),
             bitrate = bitrate,
             captureMicrophone = captureMicrophone,
-            captureSystemAudio = captureSystemAudio,
         )
     }
 }

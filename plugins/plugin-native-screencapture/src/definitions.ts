@@ -27,6 +27,7 @@ export interface ScreenRecordingOptions {
   fps?: number;
   bitrate?: number;
   captureAudio?: boolean;
+  /** Android rejects true with SYSTEM_AUDIO_UNSUPPORTED; check isSupported features. */
   captureSystemAudio?: boolean;
   captureMicrophone?: boolean;
   showTouches?: boolean;
