@@ -40,10 +40,6 @@
       "@elizaos/plugin-web-search": [
         "../../../plugins/plugin-web-search/src/index.ts"
       ],
-      "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": [
-        "../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-      ],
       "@/*": ["../shared/*"],
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
