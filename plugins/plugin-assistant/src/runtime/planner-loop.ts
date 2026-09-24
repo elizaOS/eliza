@@ -2923,7 +2923,7 @@ export function buildInitialPlannerModelInputBudget(params: {
   config?: PlannerLoopParams["config"];
   tools?: ToolDefinition[];
   codingMode?: boolean;
-}) {
+}): ReturnType<typeof buildModelInputBudget> {
   const config = mergeChainingLoopConfig(params.config);
   const context = normalizePlannerContext(params.context);
   const trajectory: PlannerTrajectory = {

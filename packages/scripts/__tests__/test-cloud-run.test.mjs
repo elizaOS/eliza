@@ -215,6 +215,7 @@ describe("computeTestRoots", () => {
       cloudApiRoot: join("/repo", "packages", "cloud", "api"),
       cloudScriptsTests: join("/repo", "packages", "cloud", "scripts"),
       cloudServicesRoot: join("/repo", "packages", "cloud", "services"),
+      cloudMocksTests: join("/repo", "packages", "cloud", "test-mocks", "test"),
     });
   });
 });

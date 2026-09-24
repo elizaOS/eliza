@@ -885,6 +885,7 @@ export function computeTestRoots(root) {
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
     cloudScriptsTests: path.join(root, "packages", "cloud", "scripts"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),
+    cloudMocksTests: path.join(root, "packages", "cloud", "test-mocks", "test"),
   };
 }
 
@@ -1120,8 +1121,13 @@ async function main() {
 
   const env = buildTestEnv(process.env);
   const testRoots = computeTestRoots(repoRoot);
-  const { cloudSharedSrc, cloudApiRoot, cloudScriptsTests, cloudServicesRoot } =
-    testRoots;
+  const {
+    cloudSharedSrc,
+    cloudApiRoot,
+    cloudScriptsTests,
+    cloudServicesRoot,
+    cloudMocksTests,
+  } = testRoots;
 
   const missing = findMissingRoots(testRoots, existsSync);
   if (missing.length > 0) {
@@ -1171,6 +1177,7 @@ async function main() {
     ...cloudApiUnitTests,
     ...walkTests(cloudScriptsTests, EXCLUDED_DIRS),
     ...cloudServicesTests,
+    ...walkTests(cloudMocksTests, EXCLUDED_DIRS),
   ];
   if (allTestFiles.length === 0) {
     console.error(
