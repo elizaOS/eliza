@@ -871,6 +871,26 @@ export class DocumentService extends Service {
     options: DocumentReadOptions,
     message?: Memory,
   ): Promise<DocumentRangeReadResult | null> {
+    return this.readDocumentRangeWithRequester(documentId, options, () =>
+      resolveDocumentRequester(this.runtime, message),
+    );
+  }
+
+  async readDocumentRangeWithAccessContext(
+    documentId: UUID,
+    options: DocumentReadOptions,
+    accessContext: AccessContext,
+  ): Promise<DocumentRangeReadResult | null> {
+    return this.readDocumentRangeWithRequester(documentId, options, () =>
+      resolveDocumentRequesterFromAccessContext(this.runtime, accessContext),
+    );
+  }
+
+  private async readDocumentRangeWithRequester(
+    documentId: UUID,
+    options: DocumentReadOptions,
+    resolveRequester: DocumentRequesterResolver,
+  ): Promise<DocumentRangeReadResult | null> {
     const adapter = this.runtime.adapter;
     if (
       adapter.documentRangeReadCapability !== 2 ||
@@ -886,7 +906,7 @@ export class DocumentService extends Service {
     }
     const readPage = adapter.readDocumentRange.bind(adapter);
     return readCompleteDocumentRange(options, async (range) => {
-      const requester = await resolveDocumentRequester(this.runtime, message);
+      const requester = await resolveRequester();
       return readPage({
         agentId: this.runtime.agentId,
         documentId,
