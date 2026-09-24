@@ -7,6 +7,7 @@
 import type {
   AppShellBackgroundPolicy,
   SurfaceManifest,
+  ViewCapability,
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
@@ -16,7 +17,6 @@ import {
   getUiRegistryStore,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
-import type { ViewCapability } from "@elizaos/core";
 import type { ComponentType } from "react";
 
 export type AppShellPageLoader = () => Promise<{

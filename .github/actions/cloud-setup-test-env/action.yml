@@ -9,7 +9,7 @@ inputs:
     # writes lockfileVersion 2 which breaks --frozen-lockfile (#11184/#9454).
     # Cloud Tests + cloud-e2e call this action without an override, so this
     # default is what actually runs on those (queue-starved) lanes.
-    default: "1.3.14"
+    default: "1.4.2"
   setup-db:
     description: Start PGlite TCP server and run migrations.
     required: false

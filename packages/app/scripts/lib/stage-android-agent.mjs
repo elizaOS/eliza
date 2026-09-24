@@ -64,17 +64,12 @@ const CLEANUP_HELPER_SCRIPT = path.join(
   "rm-path-recursive.mjs",
 );
 
-const BUN_VERSION = "1.3.14";
+const BUN_VERSION = "1.4.2";
 const DOWNLOAD_MAX_ATTEMPTS = 3;
 const DOWNLOAD_RETRY_BASE_DELAY_MS = 1_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
-// Bun 1.3.13 had a segfault during inference on Cuttlefish at peak
-// ~2.3 GB RSS ("panic(main thread): Segmentation fault at address 0x5420").
-// 1.3.14 (released 2026-05-13) is the stable release that supersedes the
-// canary stopgap we used while waiting for it. The canary channel remains
-// the default below for AOSP/CVD builds via run-mobile-build; stock APK
-// builds use this stable pin unless explicitly overridden.
-const DEFAULT_BUN_CHANNEL = "canary";
+// All Android builds use the repository stable pin unless explicitly overridden.
+const DEFAULT_BUN_CHANNEL = "stable";
 const ALPINE_BRANCH = "v3.21";
 const RISCV64_BUN_ARTIFACT_FILENAME = "bun-linux-riscv64-musl.zip";
 export const RUNTIME_PROVENANCE_FILENAME =

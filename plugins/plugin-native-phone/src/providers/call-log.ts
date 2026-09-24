@@ -14,8 +14,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { type CallLogEntry, Phone } from "@elizaos/plugin-native-phone/bridge";
 import { ElizaError } from "@elizaos/core";
+import { type CallLogEntry, Phone } from "@elizaos/plugin-native-phone/bridge";
 
 const COMPLETE_CALL_LOG_READ_LIMIT = 2_147_483_647;
 

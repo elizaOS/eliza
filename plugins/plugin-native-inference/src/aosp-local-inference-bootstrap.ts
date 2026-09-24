@@ -2690,7 +2690,7 @@ function readFfiPointer(
 ): bigint {
   // NOTE: never hand the Buffer to `ffi.read.ptr` — bun's `read.ptr` takes a
   // raw Pointer NUMBER and throws "Expected a pointer" for a Buffer (verified
-  // on-device, bun 1.3.14). That throw masked every native error diagnostic
+  // on-device, bun 1.4.2). That throw masked every native error diagnostic
   // on the fused-lib error paths. The out-param bytes live in JS memory, so a
   // DataView read is always correct.
   const view = new DataView(

@@ -5,15 +5,15 @@ only a readiness hint; subprocess authentication and execution must succeed."""
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import os
 import shutil
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
 
 from .accounts import CodexAccount, account_for_turn, select_codex_accounts
 
@@ -163,12 +163,13 @@ class CodexClient:
         cmd = self.build_command()
         env = self.build_env(account)
         started = time.monotonic()
-        result = subprocess.run(  # noqa: S603 — argv constructed, not shell
+        result = subprocess.run(
             cmd,
             input=prompt,
             env=env,
             cwd=self.cwd,
             capture_output=True,
+            check=False,
             text=True,
             timeout=self.timeout_s,
         )
@@ -187,7 +188,7 @@ class CodexClient:
                 continue
             event = json.loads(line)
             if not isinstance(event, dict):
-                raise RuntimeError("codex exec emitted a non-object JSONL event")
+                raise TypeError("codex exec emitted a non-object JSONL event")
             events.append(event)
             if event.get("type") in {"turn.failed", "error"}:
                 raise RuntimeError(f"codex exec failed: {json.dumps(event)}")
@@ -195,9 +196,13 @@ class CodexClient:
                 raw_usage = event.get("usage")
                 usage = raw_usage if isinstance(raw_usage, dict) else {}
             item = event.get("item")
-            if event.get("type") == "item.completed" and isinstance(item, dict):
-                if item.get("type") == "agent_message" and isinstance(item.get("text"), str):
-                    messages.append(item["text"])
+            if (
+                event.get("type") == "item.completed"
+                and isinstance(item, dict)
+                and item.get("type") == "agent_message"
+                and isinstance(item.get("text"), str)
+            ):
+                messages.append(item["text"])
         if usage is None:
             raise RuntimeError("codex exec did not emit turn.completed")
         text_out = "\n".join(messages).strip()

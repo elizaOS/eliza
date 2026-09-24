@@ -7,16 +7,16 @@ This evaluator wraps that harness for a single instance at a time.
 from __future__ import annotations
 
 import asyncio
-import shutil
-from contextlib import contextmanager
 import json
 import logging
 import os
 import platform as _platform
 import re
+import shutil
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 

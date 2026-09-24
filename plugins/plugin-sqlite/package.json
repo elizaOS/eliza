@@ -39,7 +39,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "@types/bun": "1.3.14"
+    "@types/bun": "1.4.2"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
@@ -60,7 +60,7 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Node 24.15.0 node:sqlite or Bun 1.3.14 bun:sqlite; one database per agent; Android device qualification required"
+      "node": "Node 24.15.0 node:sqlite or Bun 1.4.2 bun:sqlite; one database per agent; Android device qualification required"
     }
   }
 }

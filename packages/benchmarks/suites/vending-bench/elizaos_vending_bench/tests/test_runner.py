@@ -125,12 +125,8 @@ class TestVendingBenchRunner:
 
         report = await runner.run_benchmark()
 
-        comparison = report.leaderboard_comparison
-        assert comparison is not None
-        assert comparison.our_rank >= 1
-        assert comparison.total_entries == len(LEADERBOARD_SCORES) + 1
-        assert 0 <= comparison.percentile <= 100
-        assert len(comparison.comparisons) > 0
+        assert report.leaderboard_comparison is None
+        assert runner._compare_leaderboard(report.metrics) is None
 
     @pytest.mark.asyncio
     async def test_summary_generation(self) -> None:
@@ -173,40 +169,8 @@ class TestVendingBenchRunner:
             assert result.simulation_days < 30
 
 
-class TestLeaderboardComparison:
-    """Test leaderboard comparison functionality."""
-
-    def test_leaderboard_scores_loaded(self) -> None:
-        """Test that leaderboard scores are available."""
-        assert len(LEADERBOARD_SCORES) > 0
-        assert "grok_4" in LEADERBOARD_SCORES
-        assert LEADERBOARD_SCORES["grok_4"].top_score > Decimal("4000")
-
-    @pytest.mark.asyncio
-    async def test_comparison_ranking(self) -> None:
-        """Test ranking against leaderboard."""
-        config = VendingBenchConfig(
-            num_runs=1,
-            max_days_per_run=5,
-            random_seed=42,
-            generate_report=False,
-            compare_leaderboard=True,
-        )
-        runner = VendingBenchRunner(config)
-
-        report = await runner.run_benchmark()
-
-        # Our score should be ranked appropriately
-        comparison = report.leaderboard_comparison
-        assert comparison is not None
-
-        # If our score is lower than all leaderboard entries,
-        # we should be ranked last
-        our_score = comparison.our_score
-        all_scores = [entry.top_score for entry in LEADERBOARD_SCORES.values()]
-
-        if our_score < min(all_scores):
-            assert comparison.our_rank == len(LEADERBOARD_SCORES) + 1
+def test_unverified_external_scores_are_not_loaded() -> None:
+    assert LEADERBOARD_SCORES == {}
 
 
 class TestReportOutput:

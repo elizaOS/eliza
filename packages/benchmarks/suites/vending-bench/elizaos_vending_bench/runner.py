@@ -377,8 +377,10 @@ class VendingBenchRunner:
     def _compare_leaderboard(
         self,
         metrics: VendingBenchMetrics,
-    ) -> LeaderboardComparison:
-        """Compare results with published leaderboard scores."""
+    ) -> LeaderboardComparison | None:
+        """Compare only configured matching-protocol references; never rank an empty table."""
+        if not LEADERBOARD_SCORES:
+            return None
         our_score = metrics.max_net_worth
 
         # Sort leaderboard by score

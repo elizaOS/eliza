@@ -57,7 +57,7 @@ export const MAX_FILES_PER_BATCH = 80;
 export const MAX_FILES_PER_BATCH_WIN32 = 16;
 /** Keeps Linux files in distinct OS processes while Bun's isolate stdio leak is pinned. */
 export function maxFilesPerTestBatch(platform = process.platform) {
-  // Bun 1.3.14 leaks stdio registrations across isolate global swaps on Linux:
+  // Bun 1.4.2 leaks stdio registrations across isolate global swaps on Linux:
   // https://github.com/oven-sh/bun/issues/37968. A fresh process avoids that
   // boundary without swallowing initialization failures or skipping tests.
   if (platform === "linux") return 1;
