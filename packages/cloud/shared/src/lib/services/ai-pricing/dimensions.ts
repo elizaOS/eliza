@@ -1,14 +1,15 @@
-// Coordinates cloud service dimensions behavior behind route handlers.
+/** Normalizes catalog identities and dimensions for exact pricing lookup and billing. */
 import { createHash } from "node:crypto";
 import Decimal from "decimal.js";
 import type { AiPricingEntry, NewAiPricingEntry } from "../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../../pricing-constants";
 import { normalizeProviderKey } from "../../providers/model-id-translation";
-import type {
-  PricingBillingSource,
-  PricingChargeUnit,
-  PricingProductFamily,
+import {
+  getSupportedVideoModelDefinition,
+  type PricingBillingSource,
+  type PricingChargeUnit,
+  type PricingProductFamily,
 } from "../ai-pricing-definitions";
 import { EXTERNAL_CACHE_TTL_MS, type PreparedPricingEntry, type PriceLookupSource } from "./types";
 
@@ -141,6 +142,10 @@ export function inferProviderFromCanonicalModel(model: string): string {
 
 /** Provider column for a catalog `model` row; cross-provider aliases use the target id prefix, not the request gateway. */
 export function providerForPricingCandidate(modelId: string, requestProvider: string): string {
+  // Fal endpoint namespaces identify model authors; the catalog records the
+  // configured serving provider, including minimax and bytedance endpoints.
+  const videoProvider = getSupportedVideoModelDefinition(modelId)?.provider;
+  if (videoProvider) return videoProvider;
   const inferred = inferProviderFromCanonicalModel(modelId);
   return inferred !== "unknown" ? inferred : requestProvider;
 }
