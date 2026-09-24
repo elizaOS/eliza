@@ -15,8 +15,8 @@
  */
 
 import type { UiSpec } from "@elizaos/shared";
-import { isRetryableChatFailureKind } from "@elizaos/shared";
 import { stripUnclaimedInteractionMarkup } from "@elizaos/shared/browser-contracts";
+import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,

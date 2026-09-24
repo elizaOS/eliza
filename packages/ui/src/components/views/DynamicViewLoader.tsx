@@ -21,19 +21,25 @@ import type { ViewCapability } from "@elizaos/core";
  */
 
 import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
+import type {
+  HostExternalBundleFactory,
+  HostModuleImporter,
+} from "@elizaos/shared";
+import {
+  registerDetailExtension,
+  registerOverlayApp,
+} from "@elizaos/shared/apps/index";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { resolveAppBranding } from "@elizaos/shared/config/app-config";
+import {
+  isValidTimeZone,
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "@elizaos/shared/lifeops-normalize/index";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,
-  type HostExternalBundleFactory,
-  type HostModuleImporter,
-  isValidTimeZone,
-  normalizeTimeZone,
-  registerDetailExtension,
-  registerOverlayApp,
-  resolveAppBranding,
-  resolveDefaultTimeZone,
-} from "@elizaos/shared";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+} from "@elizaos/shared/views/host-external-contract";
 import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
 import {
   type ComponentType,

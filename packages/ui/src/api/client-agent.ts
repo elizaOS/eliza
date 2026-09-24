@@ -15,7 +15,7 @@ import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/shared/settings-debug";
 import {
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,

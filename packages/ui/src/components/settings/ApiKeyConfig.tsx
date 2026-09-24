@@ -6,7 +6,8 @@
  * warnings/errors flow in as props and surface inline.
  */
 
-import { API_KEY_PREFIX_HINTS, autoLabel } from "@elizaos/shared";
+import { API_KEY_PREFIX_HINTS } from "@elizaos/shared/config/api-key-prefix-hints";
+import { autoLabel } from "@elizaos/shared/utils/labels";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";

@@ -6,7 +6,7 @@
 import {
   getAvailableOverlayApps,
   overlayAppToRegistryInfo,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/index";
 import { client, type RegistryAppInfo } from "../../api";
 import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { writeAppsCache } from "./apps-cache";

@@ -3,7 +3,7 @@
  * Cloud agent when its Steward account session ends.
  */
 
-import { clearElizaApiBase } from "@elizaos/shared";
+import { clearElizaApiBase } from "@elizaos/shared/utils/eliza-globals";
 import { client } from "../api";
 import {
   removeManagedCloudAgentProfilesDurably,

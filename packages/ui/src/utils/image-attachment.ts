@@ -9,7 +9,7 @@ import {
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
   MAX_CHAT_UPLOAD_ATTACHMENTS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/chat-upload-limits";
 import type {
   ImageAttachment,
   TransientClientMediaInput,

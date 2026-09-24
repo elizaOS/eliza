@@ -3,7 +3,7 @@
  * they can be covered by unit tests without a DOM.
  */
 
-import { MODEL_CATALOG } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference/index";
 import type {
   CatalogModel,
   DownloadJob,

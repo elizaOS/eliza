@@ -11,7 +11,7 @@ import {
   getLastFailedPluginDetails,
 } from "@elizaos/agent";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
-import { isDevApiWatchEnabled } from "@elizaos/shared";
+import { isDevApiWatchEnabled } from "@elizaos/shared/runtime-env";
 
 export const ELIZA_DEV_BOOT_HISTORY_SCHEMA = "elizaos.dev.boot-history/v1";
 

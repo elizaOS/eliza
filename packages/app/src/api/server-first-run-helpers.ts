@@ -14,19 +14,23 @@ import type {
   LinkedAccountFlagsConfig,
   ServiceRoutingConfig,
 } from "@elizaos/shared";
+import { normalizeCharacterLanguage } from "@elizaos/shared/character-language";
 import {
-  deriveFirstRunCredentialPersistencePlan,
   getDefaultStylePreset,
   getStylePresets,
-  isCloudProvisionedContainer,
+} from "@elizaos/shared/character-presets";
+import {
+  deriveFirstRunCredentialPersistencePlan,
   migrateLegacyRuntimeConfig,
-  normalizeCharacterLanguage,
-  normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
+} from "@elizaos/shared/contracts/first-run-options";
+import {
+  normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-  PREMADE_VOICES,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
+import { isCloudProvisionedContainer } from "@elizaos/shared/elizacloud/cloud-provisioning";
+import { PREMADE_VOICES } from "@elizaos/shared/voice";
 import { resolveProviderCredential } from "./credential-resolver";
 import type { FirstRunConfigWriteObserver } from "./first-run-rollback";
 

@@ -9,7 +9,7 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/domain-contract";
 
 function stripTrailingSlash(value: string): string {
   let end = value.length;

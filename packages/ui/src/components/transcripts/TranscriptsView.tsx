@@ -12,6 +12,9 @@
  */
 
 import type {
+  MeetingJoinRequest,
+  MeetingPlatform,
+  MeetingSession,
   Transcript,
   TranscriptCapturePrivacyState,
   TranscriptConsentState,
@@ -20,13 +23,8 @@ import type {
   TranscriptStatus,
   TranscriptSummary,
 } from "@elizaos/shared";
-import {
-  MEETING_PLATFORM_LABELS,
-  type MeetingJoinRequest,
-  type MeetingPlatform,
-  type MeetingSession,
-  transcriptCapturePrivacyState,
-} from "@elizaos/shared";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/shared/meetings";
+import { transcriptCapturePrivacyState } from "@elizaos/shared/transcripts";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";

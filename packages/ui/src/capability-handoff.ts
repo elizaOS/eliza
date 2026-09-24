@@ -4,11 +4,11 @@
  * untrusted action-result data as navigation or execution authority.
  */
 
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import {
-  type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
   parsePersonalWorkspaceCapabilityHandoff,
-} from "@elizaos/shared";
+} from "@elizaos/shared/capability-catalog";
 import type {
   ChatActionResultSummary,
   ConversationMessage,

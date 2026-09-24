@@ -3,7 +3,7 @@
  * shared across the plugin management UI.
  */
 
-import { autoLabel } from "@elizaos/shared";
+import { autoLabel } from "@elizaos/shared/utils/labels";
 import type { LucideIcon } from "lucide-react";
 import {
   Binary,

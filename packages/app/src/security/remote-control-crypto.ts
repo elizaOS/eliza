@@ -19,9 +19,23 @@ import {
   verify,
 } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
+import type {
+  EncryptedRemoteControlEnvelope,
+  RemoteCommandBinding,
+  RemoteCommandBody,
+  RemoteCommandResult,
+  RemoteCommandStartReceipt,
+  RemoteControllerGrant,
+  RemoteControllerPublicIdentity,
+  RemoteControlMessageKind,
+  RemoteJsonValue,
+  RemoteTargetPublicIdentity,
+  SignedRemoteCommand,
+  SignedRemoteCommandResult,
+  SignedRemoteCommandStartReceipt,
+} from "@elizaos/shared";
 import {
   canonicalizeRemoteControlValue,
-  type EncryptedRemoteControlEnvelope,
   isEncryptedRemoteControlEnvelope,
   isSignedRemoteCommand,
   isSignedRemoteCommandResult,
@@ -30,19 +44,7 @@ import {
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_ENVELOPE_ALGORITHM,
   REMOTE_CONTROL_SIGNATURE_ALGORITHM,
-  type RemoteCommandBinding,
-  type RemoteCommandBody,
-  type RemoteCommandResult,
-  type RemoteCommandStartReceipt,
-  type RemoteControllerGrant,
-  type RemoteControllerPublicIdentity,
-  type RemoteControlMessageKind,
-  type RemoteJsonValue,
-  type RemoteTargetPublicIdentity,
-  type SignedRemoteCommand,
-  type SignedRemoteCommandResult,
-  type SignedRemoteCommandStartReceipt,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/remote-control";
 
 export type RemoteCommandRejection =
   | "malformed"

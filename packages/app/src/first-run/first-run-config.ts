@@ -12,18 +12,20 @@
 
 import type {
   DeploymentTargetConfig,
+  FirstRunCredentialInputs,
+  FirstRunLocalProviderId,
   LinkedAccountFlagsConfig,
   ServiceRouteConfig,
   ServiceRoutingConfig,
 } from "@elizaos/shared";
 import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-  type FirstRunCredentialInputs,
-  type FirstRunLocalProviderId,
   normalizeFirstRunProviderId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-options";
+import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+} from "@elizaos/shared/contracts/service-routing";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,

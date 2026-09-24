@@ -5,7 +5,7 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { isOverlayApp } from "@elizaos/shared";
+import { isOverlayApp } from "@elizaos/shared/apps/index";
 import { logger } from "@elizaos/shared/logger";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";

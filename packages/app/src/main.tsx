@@ -60,14 +60,14 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared/character-presets";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
-  getStylePresets,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-  isElizaDedicatedAgentHostname,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts";
+import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
 import { logger } from "@elizaos/shared/logger";
 import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";

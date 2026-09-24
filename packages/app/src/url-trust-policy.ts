@@ -2,7 +2,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud";
 
 export function isTrustedPrivateHttpHost(host: string): boolean {
   return (

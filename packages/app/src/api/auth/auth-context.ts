@@ -15,12 +15,12 @@
  */
 
 import type http from "node:http";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 import {
-  isLoopbackBindHost,
   isLoopbackRemoteAddress,
   proxyClientHeaderBlocksLocalTrust,
-  type RuntimeEnvRecord,
-} from "@elizaos/shared";
+} from "@elizaos/shared/loopback-trust";
+import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
 import type {
   AuthIdentityRow,
   AuthRepository,

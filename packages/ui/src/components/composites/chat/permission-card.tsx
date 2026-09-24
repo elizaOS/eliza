@@ -12,7 +12,7 @@ import type {
   PermissionId,
   PermissionState,
 } from "@elizaos/shared";
-import { openPermissionSettings } from "@elizaos/shared";
+import { openPermissionSettings } from "@elizaos/shared/utils/permission-deep-links";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 

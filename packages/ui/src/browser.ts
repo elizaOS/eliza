@@ -20,6 +20,7 @@ export type {
   NotVisibility,
   OrVisibility,
   OverlayApp,
+  OverlayAppAvailabilityContext,
   OverlayAppContext,
   PatchOp,
   PathVisibility,
@@ -38,27 +39,32 @@ export type {
   VisibilityOperator,
 } from "@elizaos/shared";
 export {
-  buildPluginConfigUiSpec,
-  buildPluginListUiSpec,
   getAllOverlayApps,
   getAppDetailExtension,
   getAvailableOverlayApps,
   getOverlayApp,
   isAospAndroid,
   isOverlayApp,
-  modelLooksLikeElizaCloudHosted,
-  type OverlayAppAvailabilityContext,
   overlayAppToRegistryInfo,
-  parsePositiveFloat,
-  parsePositiveInteger,
-  RESTART_EXIT_CODE,
   registerDetailExtension,
   registerOverlayApp,
+} from "@elizaos/shared/apps/index";
+export { shouldUseCloudOnlyBranding } from "@elizaos/shared/config/cloud-only";
+export {
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
+} from "@elizaos/shared/config/plugin-ui-spec";
+export {
+  RESTART_EXIT_CODE,
   requestRestart,
-  resolveAppAssetUrl,
   setRestartHandler,
-  shouldUseCloudOnlyBranding,
-} from "@elizaos/shared";
+} from "@elizaos/shared/restart";
+export { resolveAppAssetUrl } from "@elizaos/shared/utils/asset-url";
+export { modelLooksLikeElizaCloudHosted } from "@elizaos/shared/utils/eliza-cloud-model-route";
+export {
+  parsePositiveFloat,
+  parsePositiveInteger,
+} from "@elizaos/shared/utils/number-parsing";
 // Keep the full app shell on the explicit `@elizaos/ui/App` entry. Exporting it
 // from this broad browser facade creates a second bundled shell copy for plugin
 // host imports, which can fold lazy route modules back into the entry chunk.

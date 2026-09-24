@@ -3,7 +3,7 @@
  * asset URLs — with a fallback slug when none are declared.
  */
 
-import { resolveAppAssetUrl } from "@elizaos/shared";
+import { resolveAppAssetUrl } from "@elizaos/shared/utils/asset-url";
 import { type BundledVrmAsset, getBootConfig } from "../config/boot-config";
 import type { UiTheme } from "./ui-preferences";
 

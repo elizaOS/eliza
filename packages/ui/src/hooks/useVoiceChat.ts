@@ -13,9 +13,9 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/shared";
 import { ElizaError } from "@elizaos/shared/browser-contracts";
 import { logger } from "@elizaos/shared/logger";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import {
   useCallback,
   useEffect,

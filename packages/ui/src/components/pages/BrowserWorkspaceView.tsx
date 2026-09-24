@@ -1,10 +1,10 @@
 /** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
 import { Capacitor } from "@capacitor/core";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
-  resolveApiUrl,
   setBrowserTabsRendererImpl,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/browser-tabs-renderer-registry";
 import {
   ArrowLeft,
   ArrowRight,

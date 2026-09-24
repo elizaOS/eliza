@@ -7,7 +7,7 @@ import type { CatalogModel, InstalledModel } from "@elizaos/shared";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   eliza1TierPublishStatus,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/index";
 
 export function isEliza1ModelFamilyId(id: string): boolean {
   return id.startsWith("eliza-1-");

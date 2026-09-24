@@ -5,7 +5,7 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/shared";
-import { registerOverlayApp } from "@elizaos/shared";
+import { registerOverlayApp } from "@elizaos/shared/apps/index";
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactElement } from "react";
 import { Button } from "../ui/button";

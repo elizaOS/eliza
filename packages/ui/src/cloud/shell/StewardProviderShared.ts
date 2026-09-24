@@ -3,7 +3,6 @@
  * session/refresh endpoints the Steward auth provider uses.
  */
 
-import { clearElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -11,6 +10,7 @@ import {
   STEWARD_SESSION_ENDPOINT,
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
+import { clearElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { createContext } from "react";
 import { client } from "../../api";
 import {

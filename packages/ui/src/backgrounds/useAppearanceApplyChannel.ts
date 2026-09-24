@@ -6,10 +6,8 @@
  * same persisted preference setters used by the Appearance settings section.
  */
 
-import {
-  APPEARANCE_APPLY_EVENT,
-  type AppearanceApplyPayload,
-} from "@elizaos/shared";
+import type { AppearanceApplyPayload } from "@elizaos/shared";
+import { APPEARANCE_APPLY_EVENT } from "@elizaos/shared/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import { UI_LANGUAGES, type UiLanguage } from "../i18n";
 import { useAppSelector } from "../state/app-store";

@@ -1,8 +1,12 @@
 /** Provider logo mapping — maps AI provider IDs to their logo image paths. */
 
+export type {
+  FirstRunProviderId,
+  ProviderOption as FirstRunProviderOption,
+  SubscriptionProviderSelectionId,
+} from "@elizaos/shared";
 export {
   FIRST_RUN_PROVIDER_CATALOG,
-  type FirstRunProviderId,
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderFamily,
   getFirstRunProviderOption,
@@ -12,14 +16,12 @@ export {
   isSubscriptionProviderSelectionId,
   normalizeFirstRunProviderId,
   normalizeSubscriptionProviderSelectionId,
-  type ProviderOption as FirstRunProviderOption,
   requiresAdditionalRuntimeProvider,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
-  type SubscriptionProviderSelectionId,
   sortFirstRunProviders,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts";
 
-import { resolveAppAssetUrl } from "@elizaos/shared";
+import { resolveAppAssetUrl } from "@elizaos/shared/utils/asset-url";
 
 const PROVIDER_LOGO_MAP_DARK: Record<string, string> = {
   openai: "logos/openai-icon-white.png",

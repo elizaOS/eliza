@@ -5,22 +5,28 @@
  * without circular dependency issues.
  */
 
+import { isInferenceTraceId } from "@elizaos/shared/browser-contracts";
+import { parseChatTerminalFailure } from "@elizaos/shared/contracts";
 import {
-  clearElizaApiBase,
-  DELTA_STREAM_PROTOCOL,
-  extractAssistantReplyText,
-  getElizaApiBase,
-  getElizaApiToken,
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-  mergeStreamingText,
-  parseChatTerminalFailure,
-  SHELL_NAVIGATE_VIEW_WS_EVENT,
-  setElizaApiBase,
-  stripAssistantStageDirections,
-} from "@elizaos/shared";
-import { isInferenceTraceId } from "@elizaos/shared/browser-contracts";
+} from "@elizaos/shared/elizacloud";
+import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared/events/index";
 import { logger } from "@elizaos/shared/logger";
+import {
+  extractAssistantReplyText,
+  stripAssistantStageDirections,
+} from "@elizaos/shared/utils/assistant-text";
+import {
+  clearElizaApiBase,
+  getElizaApiBase,
+  getElizaApiToken,
+  setElizaApiBase,
+} from "@elizaos/shared/utils/eliza-globals";
+import {
+  DELTA_STREAM_PROTOCOL,
+  mergeStreamingText,
+} from "@elizaos/shared/utils/streaming-text";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,

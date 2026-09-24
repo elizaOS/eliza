@@ -7,7 +7,7 @@
 import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/streaming-text";
 import type {
   AgentStartupDiagnostics,
   AgentStatus,

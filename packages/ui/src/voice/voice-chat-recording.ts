@@ -2,7 +2,7 @@
  * Recording / STT logic for voice chat — transcript merging and normalization.
  */
 
-import { mergeStreamingText } from "@elizaos/shared";
+import { mergeStreamingText } from "@elizaos/shared/utils/streaming-text";
 import { collapseWhitespace } from "./voice-chat-playback";
 
 // ── Transcript merging ────────────────────────────────────────────────

@@ -17,11 +17,11 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 import {
   isLoopbackBindHost,
-  type RuntimeEnvRecord,
   resolveApiBindHost,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
 import type {
   AppendAuditEventInput,
   AuthRepository,

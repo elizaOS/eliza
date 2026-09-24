@@ -12,7 +12,7 @@ import {
   getAvailableOverlayApps,
   isAospAndroid,
   overlayAppToRegistryInfo,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/index";
 import { client, type RegistryAppInfo } from "../../api";
 import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { isHiddenFromAppsView } from "./helpers";

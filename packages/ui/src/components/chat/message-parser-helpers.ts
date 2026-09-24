@@ -22,7 +22,7 @@
  */
 
 import type { PatchOp, UiSpec } from "@elizaos/shared";
-import { stripAssistantStageDirections } from "@elizaos/shared";
+import { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import type { JsonSchemaObject } from "../../config/config-catalog";

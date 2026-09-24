@@ -9,7 +9,7 @@
 import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/subscription-auth";
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,

@@ -14,8 +14,8 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/shared";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { useContext, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";

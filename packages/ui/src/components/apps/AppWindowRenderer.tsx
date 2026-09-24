@@ -7,7 +7,7 @@
  */
 
 import type { OverlayApp, OverlayAppContext } from "@elizaos/shared";
-import { getAvailableOverlayApps } from "@elizaos/shared";
+import { getAvailableOverlayApps } from "@elizaos/shared/apps/index";
 import {
   type ComponentType,
   Suspense,

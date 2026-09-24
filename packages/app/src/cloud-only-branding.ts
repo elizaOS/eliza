@@ -3,7 +3,7 @@
  * Packaged desktop builds seed the typed boot config before renderer modules
  * evaluate; legacy branded globals remain a compatibility fallback.
  */
-import { shouldUseCloudOnlyBranding } from "@elizaos/shared";
+import { shouldUseCloudOnlyBranding } from "@elizaos/shared/config/cloud-only";
 
 export interface AppCloudOnlyBrandingInputs {
   isDev: boolean;

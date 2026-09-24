@@ -5,11 +5,9 @@
  */
 
 import {
-  getElizaApiBase,
-  getElizaApiToken,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts";
 import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
@@ -17,6 +15,10 @@ import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import {
+  getElizaApiBase,
+  getElizaApiToken,
+} from "@elizaos/shared/utils/eliza-globals";
 import { client, type FirstRunOptions } from "../api";
 import {
   cloudTokenSecsRemaining,

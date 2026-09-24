@@ -9,7 +9,7 @@
  * path instead of hand-building the URL twice.
  */
 
-import { normalizeCloudSiteUrl } from "@elizaos/shared";
+import { normalizeCloudSiteUrl } from "@elizaos/shared/elizacloud";
 import { getBootConfig } from "../config/boot-config";
 import { openExternalUrl } from "../utils/openExternalUrl";
 

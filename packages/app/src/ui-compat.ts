@@ -21,7 +21,10 @@ export type {
   OverlayApp,
   OverlayAppContext,
 } from "@elizaos/shared";
-export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
+export {
+  registerDetailExtension,
+  registerOverlayApp,
+} from "@elizaos/shared/apps/index";
 export { client } from "@elizaos/ui/api";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {

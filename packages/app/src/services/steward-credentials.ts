@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import {
   deriveAgentVaultId,
   resolveCanonicalStateDir,

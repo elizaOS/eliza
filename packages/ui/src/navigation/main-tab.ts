@@ -12,7 +12,7 @@
  */
 
 import type { RegistryAppInfo } from "@elizaos/shared";
-import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
 import { readAppsCache } from "../components/apps/apps-cache";
 
 /** Result of main-tab discovery. */

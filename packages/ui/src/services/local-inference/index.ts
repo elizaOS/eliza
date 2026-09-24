@@ -9,6 +9,8 @@ export type {
   DownloadEvent,
   DownloadJob,
   DownloadState,
+  GenerationCounters,
+  GenerationThroughput,
   HardwareFitLevel,
   HardwareProbe,
   InstalledModel,
@@ -25,11 +27,9 @@ export {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
-  type GenerationCounters,
-  type GenerationThroughput,
   isGenerationCounters,
   MODEL_CATALOG,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/index";
 export type { LocalInferenceLoader } from "./active-model";
 export {
   filterSettingsDefaultLocalModels,

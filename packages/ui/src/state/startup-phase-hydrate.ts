@@ -4,14 +4,16 @@
  * after the shell can paint, then releases them when the phase is torn down.
  */
 
-import {
-  isRuntimeManagementOperation,
-  normalizeShellNavigateViewPayload,
-  type RuntimeManagementRequest,
-  type RuntimeManagementResult,
-  SHELL_NAVIGATE_VIEW_WS_EVENT,
+import type {
+  RuntimeManagementRequest,
+  RuntimeManagementResult,
 } from "@elizaos/shared";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/shared/browser-contracts";
+import { isRuntimeManagementOperation } from "@elizaos/shared/contracts/runtime-management";
+import {
+  normalizeShellNavigateViewPayload,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/shared/events";
 import { logger } from "@elizaos/shared/logger";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {

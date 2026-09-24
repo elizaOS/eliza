@@ -6,31 +6,34 @@
 export type {
   AppDetailExtensionComponent,
   AppDetailExtensionProps,
+  DocumentImageCompressionPlatform,
+  DocumentImageUploadFile,
   OverlayApp,
+  OverlayAppAvailabilityContext,
   OverlayAppContext,
 } from "@elizaos/shared";
 export {
-  autoLabel,
-  type DocumentImageCompressionPlatform,
-  type DocumentImageUploadFile,
-  ENV_KEY_ACRONYMS,
-  formatTrajectoryDuration,
-  formatTrajectoryTimestamp,
-  formatTrajectoryTokenCount,
   getAllOverlayApps,
   getAppDetailExtension,
   getAvailableOverlayApps,
   getOverlayApp,
   isAospAndroid,
-  isDocumentImageFile,
   isOverlayApp,
-  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
-  maybeCompressDocumentUploadImage,
-  type OverlayAppAvailabilityContext,
   overlayAppToRegistryInfo,
   registerDetailExtension,
   registerOverlayApp,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/index";
+export {
+  isDocumentImageFile,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+} from "@elizaos/shared/utils/documents-upload-image";
+export { autoLabel, ENV_KEY_ACRONYMS } from "@elizaos/shared/utils/labels";
+export {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "@elizaos/shared/utils/trajectory-format";
 export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,

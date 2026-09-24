@@ -8,7 +8,7 @@ import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/domain-contract";
 
 /** Control-plane hosts minus the API origins (api. / api-staging.), which
  * never serve the UI shell, and minus the app hosts (app. / app-staging.),

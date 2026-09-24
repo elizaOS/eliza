@@ -5,7 +5,7 @@
  * editable preference state.
  */
 
-import { resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
 import {
   AlertCircle,
   CheckCircle2,

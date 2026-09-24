@@ -5,10 +5,8 @@
  * panel on empty/default state rather than blocking render.
  */
 
-import {
-  resolveServiceRoutingInConfig,
-  type SubscriptionProviderStatus,
-} from "@elizaos/shared";
+import type { SubscriptionProviderStatus } from "@elizaos/shared";
+import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/first-run-options";
 import {
   type Dispatch,
   type SetStateAction,

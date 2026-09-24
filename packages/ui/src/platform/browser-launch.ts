@@ -3,11 +3,11 @@
  * profile and persists the active-server record so the app opens pointed at it.
  */
 
+import { isCloudPairAgentId } from "@elizaos/shared/contracts";
 import {
-  isCloudPairAgentId,
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud";
 import { client } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";

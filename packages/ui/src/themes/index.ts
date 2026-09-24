@@ -20,6 +20,6 @@ export {
   THEME_FONT_CSS_VARS,
   THEME_FONT_LINK_ID,
   validateThemeDefinition,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/theme";
 export * from "./apply-theme.js";
 export { ELIZA_DEFAULT_THEME } from "./presets.js";

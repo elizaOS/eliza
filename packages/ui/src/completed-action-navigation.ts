@@ -9,7 +9,7 @@ import type { NavigateViewDetail } from "@elizaos/shared";
 import {
   NAVIGATE_VIEW_EVENT,
   normalizeCompletedActionHandoffId,
-} from "@elizaos/shared";
+} from "@elizaos/shared/events";
 import { getWindowNavigationPath } from "./navigation";
 
 const MAX_TRACKED_HANDOFFS = 256;

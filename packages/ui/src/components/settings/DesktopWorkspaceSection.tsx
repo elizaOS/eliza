@@ -7,7 +7,7 @@
  * the browser.
  */
 
-import { resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,

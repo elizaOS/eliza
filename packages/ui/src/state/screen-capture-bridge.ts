@@ -4,10 +4,8 @@
  * agent→renderer push channel. See the block below for the full protocol.
  */
 import { Capacitor } from "@capacitor/core";
-import {
-  normalizeScreenCaptureRequestContract,
-  type ScreenCaptureRequestContract,
-} from "@elizaos/shared";
+import type { ScreenCaptureRequestContract } from "@elizaos/shared";
+import { normalizeScreenCaptureRequestContract } from "@elizaos/shared/contracts/screen-capture";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
 import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 

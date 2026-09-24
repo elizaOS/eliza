@@ -7,13 +7,13 @@
  * derived modelValues used by the cloud-tier ConfigRenderer.
  */
 
+import type { ModelOption } from "@elizaos/shared";
+import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/first-run-options";
 import {
   buildElizaCloudServiceRoute,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  type ModelOption,
   normalizeServiceRoutingConfig,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
 import { useCallback, useMemo, useState } from "react";
 import { client, type FirstRunOptions } from "../../api";
 import { useTimeout } from "../../hooks/useTimeout";

@@ -12,7 +12,7 @@ import type {
 import {
   codingProviderSubscriptionAuthMode,
   isCodingSubscriptionProvider,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/coding-agent-capabilities";
 import {
   type FormEvent,
   useCallback,

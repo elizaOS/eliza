@@ -6,7 +6,8 @@
  */
 
 import type { VoiceModelId } from "@elizaos/shared";
-import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {

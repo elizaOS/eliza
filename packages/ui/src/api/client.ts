@@ -78,7 +78,7 @@ import {
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/wallet";
 import { getBootConfig as getBootConfigForNativeUpdate } from "../config/boot-config-store";
 import type {
   BrowserWorkspaceSnapshot,

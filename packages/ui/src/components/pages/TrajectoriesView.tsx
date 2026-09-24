@@ -9,7 +9,7 @@ import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/trajectory-format";
 import { AlertTriangle, Download, Route, Trash2, XCircle } from "lucide-react";
 import {
   type ComponentProps,

@@ -18,7 +18,7 @@
 import * as React from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared";
+import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { AppBackground } from "../../../backgrounds/AppBackground";
 import {
   applyBackgroundRedo,

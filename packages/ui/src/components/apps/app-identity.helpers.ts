@@ -7,11 +7,11 @@
  * limited cloud-agent hosts don't request routes they can't serve.
  */
 
+import { getAppHeroThemeKey } from "@elizaos/shared/app-hero-art";
 import {
-  getAppHeroThemeKey,
   resolveApiUrl,
   resolveAppAssetUrl,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/asset-url";
 import {
   Bot,
   Briefcase,

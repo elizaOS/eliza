@@ -15,10 +15,8 @@
  * numeric VAD pair, never a malformed value into the capture path.
  */
 
-import {
-  VOICE_SETTINGS_APPLY_EVENT,
-  type VoiceSettingsApplyPayload,
-} from "@elizaos/shared";
+import type { VoiceSettingsApplyPayload } from "@elizaos/shared";
+import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/shared/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   loadOsIntentAutoStartConsent,

@@ -16,7 +16,7 @@ import type {
 } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared";
-import { isLinkedAccountProviderId } from "@elizaos/shared";
+import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
   getDefaultAccountPool,

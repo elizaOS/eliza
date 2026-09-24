@@ -3,7 +3,10 @@
  * /api/media URL.
  */
 
-import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/shared";
+import {
+  resolveApiUrl,
+  resolveAppAssetUrl,
+} from "@elizaos/shared/utils/asset-url";
 import type * as React from "react";
 import { Card } from "../components/ui/card";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";

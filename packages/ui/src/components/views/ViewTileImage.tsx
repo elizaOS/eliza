@@ -11,7 +11,7 @@
  * order.
  */
 
-import { resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
 import { useState } from "react";
 import { client } from "../../api";
 import {

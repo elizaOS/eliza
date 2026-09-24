@@ -9,7 +9,7 @@ import {
   isDevCloudInternalEnvKey,
 } from "@elizaos/agent/config/dev-cloud-env-authority";
 import type { ElizaConfig } from "@elizaos/shared";
-import { resolveDevCloudEnvAuthority } from "@elizaos/shared";
+import { resolveDevCloudEnvAuthority } from "@elizaos/shared/elizacloud";
 
 export type FirstRunConfigWriteObserver = (
   before: ElizaConfig,

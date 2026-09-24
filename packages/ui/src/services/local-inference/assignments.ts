@@ -18,7 +18,10 @@ import type {
   InstalledModel,
   ModelAssignments,
 } from "@elizaos/shared";
-import { findCatalogModel, isDefaultEligibleId } from "@elizaos/shared";
+import {
+  findCatalogModel,
+  isDefaultEligibleId,
+} from "@elizaos/shared/local-inference/index";
 import { isVerifiedCuratedEliza1Download } from "./catalog-policy";
 import { localInferenceRoot } from "./paths";
 import { listInstalledModels } from "./registry";

@@ -20,7 +20,7 @@ import type {
   ModelHubSnapshot,
   TextGenerationSlot,
 } from "@elizaos/shared";
-import { MODEL_CATALOG } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference/index";
 import { logger } from "@elizaos/shared/logger";
 import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";

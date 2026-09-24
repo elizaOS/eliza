@@ -15,7 +15,7 @@
  * startup budget) before the user had chosen anything.
  */
 
-import { isAospElizaUserAgent } from "@elizaos/shared";
+import { isAospElizaUserAgent } from "@elizaos/shared/platform/eliza-os";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -25,7 +25,7 @@ import {
   readPersistedMobileRuntimeMode,
 } from "./mobile-runtime-mode";
 
-export { isAospElizaUserAgent } from "@elizaos/shared";
+export { isAospElizaUserAgent } from "@elizaos/shared/platform/eliza-os";
 
 // Mirror of `ACTIVE_SERVER_STORAGE_KEY` in `state/persistence.ts`. Split
 // here so this file stays a leaf module — `state/persistence.ts` pulls in

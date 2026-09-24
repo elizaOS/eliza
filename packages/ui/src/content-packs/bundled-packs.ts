@@ -13,7 +13,10 @@ import type {
   ResolvedContentPack,
   StylePreset,
 } from "@elizaos/shared";
-import { getDefaultStylePreset, getStylePresets } from "@elizaos/shared";
+import {
+  getDefaultStylePreset,
+  getStylePresets,
+} from "@elizaos/shared/character-presets";
 
 const PACK_VERSION = "1.0.0";
 

@@ -6,7 +6,8 @@
  * not appear in the catalog where it cannot function.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/shared";
+import type { OverlayApp } from "@elizaos/shared";
+import { registerOverlayApp } from "@elizaos/shared/apps/index";
 
 export const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
 

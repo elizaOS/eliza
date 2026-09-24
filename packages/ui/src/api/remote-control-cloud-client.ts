@@ -12,7 +12,7 @@ import {
   isEncryptedRemoteControlEnvelope,
   isRemoteControlIdentifier,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/remote-control";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
 import { fetchAgentTransport } from "./transport";

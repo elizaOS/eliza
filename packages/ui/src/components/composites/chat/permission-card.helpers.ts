@@ -5,12 +5,12 @@
  * and a parser that recovers a structured permission request from agent text.
  * Consumed by permission-card.tsx.
  */
-import {
-  type IPermissionsRegistry,
-  isPermissionId,
-  type PermissionId,
-  type PermissionState,
+import type {
+  IPermissionsRegistry,
+  PermissionId,
+  PermissionState,
 } from "@elizaos/shared";
+import { isPermissionId } from "@elizaos/shared/contracts/permissions";
 
 /**
  * Friendly human-readable labels per permission id. Used as the card title

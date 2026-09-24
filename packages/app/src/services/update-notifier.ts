@@ -9,7 +9,7 @@ import {
   resolveChannel,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 
 let notified = false;
 

@@ -10,7 +10,7 @@ import type { WalletRpcSelections } from "@elizaos/shared";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/wallet";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

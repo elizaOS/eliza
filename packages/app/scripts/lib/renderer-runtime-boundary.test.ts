@@ -2,7 +2,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { build } from "vite";
+import { build, createServer } from "vite";
 import { describe, expect, it } from "vitest";
 import { rejectRuntimeInRendererPlugin } from "./renderer-runtime-boundary.ts";
 
@@ -53,6 +53,28 @@ async function bundle(entry: string) {
 }
 
 describe("renderer runtime boundary", () => {
+  it("rejects a mixed shared root during actual development transformation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "renderer-dev-boundary-"));
+    const server = await createServer({
+      root: directory,
+      configFile: false,
+      logLevel: "silent",
+      server: { middlewareMode: true },
+      plugins: [rejectRuntimeInRendererPlugin()],
+    });
+    try {
+      await writeFile(
+        join(directory, "entry.js"),
+        'import { value } from "@elizaos/shared"; console.log(value);',
+      );
+      await expect(server.transformRequest("/entry.js")).rejects.toThrow(
+        "Shared runtime barrel reached renderer",
+      );
+    } finally {
+      await server.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it("discards unused runtime exports from a shared barrel", async () => {
     const result = await bundle('export { label } from "@fixture/shared";');
     const outputs = Array.isArray(result) ? result : [result];

@@ -10,11 +10,11 @@
  * deterministic and unit-testable without real audio playback.
  */
 
+import type { Transcript } from "@elizaos/shared";
 import {
   activeWordIndex,
   flattenTranscriptWords,
-  type Transcript,
-} from "@elizaos/shared";
+} from "@elizaos/shared/transcripts";
 import * as React from "react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

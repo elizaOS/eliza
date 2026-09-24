@@ -2,17 +2,20 @@
  * Exchanges one-time Cloud pairing links, persists the resulting agent
  * credential, and renders the browser/native recovery surfaces.
  */
+
+import type { CloudPairRelaySession } from "@elizaos/shared";
 import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
-  type CloudPairRelaySession,
-  classifyElizaHostname,
   cloudPairTokenKeyForAgent,
+  parseCloudPairRelaySession,
+} from "@elizaos/shared/contracts";
+import {
+  classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-  parseCloudPairRelaySession,
-  setElizaApiToken,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud";
+import { setElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {

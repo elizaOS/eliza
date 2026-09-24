@@ -30,6 +30,13 @@ export {
 } from "@elizaos/agent";
 export type {
   AllPermissionsState,
+  AndroidUserAgentMarker,
+  AospVariantConfig,
+  AppAndroidConfig,
+  AppConfig,
+  AppDesktopConfig,
+  AppPackagingConfig,
+  AppWebConfig,
   PermissionCheckResult,
   PermissionManagerConfig,
   PermissionState,
@@ -38,22 +45,15 @@ export type {
   SystemPermissionDefinition,
   SystemPermissionId,
 } from "@elizaos/shared";
-export {
-  type AndroidUserAgentMarker,
-  type AospVariantConfig,
-  type AppAndroidConfig,
-  type AppConfig,
-  type AppDesktopConfig,
-  type AppPackagingConfig,
-  type AppWebConfig,
-  DEFAULT_APP_CONFIG,
-  resolveAppBranding,
-} from "@elizaos/shared";
 export * from "@elizaos/shared/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app registry versions explicitly so the Node barrel stays authoritative
 // and avoids ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "@elizaos/shared/catalog";
+export {
+  DEFAULT_APP_CONFIG,
+  resolveAppBranding,
+} from "@elizaos/shared/config/app-config";
 export * from "@elizaos/shared/integration-observability";
 export {
   _resetBuildVariantForTests,

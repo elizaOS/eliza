@@ -11,13 +11,15 @@
  * the connector's presentation strings.
  */
 
+import type {
+  ConnectorAccountCatalogEntry,
+  ConnectorOAuthCapabilityDeclaration,
+} from "@elizaos/shared";
 import {
   CONNECTOR_ACCOUNT_CATALOG,
-  type ConnectorAccountCatalogEntry,
-  type ConnectorOAuthCapabilityDeclaration,
   getConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId as normalizeConnectorCatalogIdShared,
-} from "@elizaos/shared";
+} from "@elizaos/shared/connector-account-catalog";
 
 import type {
   ConnectorAccountCreateInput,

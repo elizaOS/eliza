@@ -7,7 +7,8 @@
  */
 
 import type { LocalInferenceSlotReadiness } from "@elizaos/shared";
-import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";

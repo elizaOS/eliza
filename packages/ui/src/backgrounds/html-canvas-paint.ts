@@ -46,7 +46,10 @@
  * session).
  */
 
-import { resolveApiUrl, resolveAppAssetUrl } from "@elizaos/shared";
+import {
+  resolveApiUrl,
+  resolveAppAssetUrl,
+} from "@elizaos/shared/utils/asset-url";
 import type { BackgroundConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 

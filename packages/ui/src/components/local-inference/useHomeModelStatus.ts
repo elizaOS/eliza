@@ -4,11 +4,9 @@
  * model placement are separate: a local agent may still send text to Cerebras.
  */
 
-import {
-  getElizaApiToken,
-  normalizeServiceRoutingConfig,
-  resolveApiUrl,
-} from "@elizaos/shared";
+import { normalizeServiceRoutingConfig } from "@elizaos/shared/contracts/service-routing";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";

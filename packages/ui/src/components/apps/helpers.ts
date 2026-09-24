@@ -12,7 +12,7 @@ import {
   isElizaCuratedAppName,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/apps";
 import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import type { RegistryAppInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config-store";

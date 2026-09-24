@@ -14,6 +14,15 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
       serving = config.command === "serve";
     },
     resolveId(id, importer) {
+      if (
+        serving &&
+        (id === "@elizaos/shared" ||
+          id.endsWith("/packages/shared/src/index.ts"))
+      ) {
+        this.error(
+          `Shared runtime barrel reached renderer from ${importer ?? "entry"}; use a browser-safe subpath.`,
+        );
+      }
       if (!isCoreRuntime(id)) return null;
       if (serving) {
         this.error(

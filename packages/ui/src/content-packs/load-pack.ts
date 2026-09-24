@@ -6,13 +6,15 @@
  * asset paths to absolute URLs.
  */
 
+import type {
+  ContentPackManifest,
+  ContentPackSource,
+  ResolvedContentPack,
+} from "@elizaos/shared";
 import {
   CONTENT_PACK_MANIFEST_FILENAME,
-  type ContentPackManifest,
-  type ContentPackSource,
-  type ResolvedContentPack,
   validateContentPackManifest,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/content-pack";
 
 /** Manifest reads are short UI requests and must not stall pack loading. */
 export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;

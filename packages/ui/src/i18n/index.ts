@@ -2,7 +2,7 @@
  * Barrel for i18n: message catalogs, translator factory, region helpers, and
  * re-exported language-code primitives owned by @elizaos/shared.
  */
-import { normalizeLanguage } from "@elizaos/shared";
+import { normalizeLanguage } from "@elizaos/shared/i18n/language";
 import {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,

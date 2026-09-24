@@ -15,7 +15,7 @@ import type {
   ModelAssignments,
   TextGenerationSlot,
 } from "@elizaos/shared";
-import { MODEL_CATALOG } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference/index";
 import { catalogDownloadSizeBytes } from "./recommendation";
 
 const TERMINAL_STATES = new Set<DownloadState>([

@@ -10,61 +10,58 @@
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
 
+import type {
+  NavigateViewDetail,
+  NavigateViewEvent,
+  ElizaDocumentEventName as SharedDocumentEventName,
+  ElizaWindowEventName as SharedWindowEventName,
+} from "@elizaos/shared";
 import {
   CONNECT_EVENT,
   createNavigateViewEvent,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-  type NavigateViewEvent,
-  type ElizaDocumentEventName as SharedDocumentEventName,
-  type ElizaWindowEventName as SharedWindowEventName,
-} from "@elizaos/shared";
+} from "@elizaos/shared/events";
 import { logger } from "@elizaos/shared/logger";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
+export type {
+  AppEmoteEventDetail,
+  ChatAvatarVoiceEventDetail,
+  ElizaCloudStatusUpdatedDetail,
+  NavigateViewDetail,
+  NavigateViewEvent,
+  NavigateViewType,
+  NetworkStatusChangeDetail,
+  PushToTalkHoldDetail,
+} from "@elizaos/shared";
 export {
-  // Agent / bridge
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
   APP_PAUSE_EVENT,
-  // App state
   APP_RESUME_EVENT,
-  type AppEmoteEventDetail,
   BRIDGE_READY_EVENT,
   CHAT_AVATAR_VOICE_EVENT,
-  type ChatAvatarVoiceEventDetail,
-  // App lifecycle
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   createNavigateViewEvent,
-  // Shared dispatch helpers
   dispatchAppEmoteEvent,
   dispatchElizaCloudStatusUpdated,
   dispatchNavigateViewEvent,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  type ElizaCloudStatusUpdatedDetail,
   EMOTE_PICKER_EVENT,
   FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-  type NavigateViewEvent,
-  type NavigateViewType,
   NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
-  type PushToTalkHoldDetail,
-  // Sidebar sync
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,
   STOP_EMOTE_EVENT,
   TRAY_ACTION_EVENT,
-  // Voice / config
   VOICE_CONFIG_UPDATED_EVENT,
-  // Avatar / VRM
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/shared";
+} from "@elizaos/shared/events";
 export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
 export * from "../views/view-event-bus";
 export * from "../views/view-event-types";

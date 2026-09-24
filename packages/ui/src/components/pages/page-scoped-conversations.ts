@@ -13,7 +13,8 @@ import type {
   ConversationMetadata,
 } from "../../api/client-types-chat";
 
-export { PAGE_SCOPES, type PageScope } from "@elizaos/shared";
+export type { PageScope } from "@elizaos/shared";
+export { PAGE_SCOPES } from "@elizaos/shared/contracts";
 
 const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   PageScope,

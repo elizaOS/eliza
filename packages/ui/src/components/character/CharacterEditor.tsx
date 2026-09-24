@@ -7,14 +7,14 @@
  * can land here without a chunk fetch.
  */
 
+import { getStylePresets } from "@elizaos/shared/character-presets";
+import { logger } from "@elizaos/shared/logger";
+import { normalizeCharacterMessageExamples } from "@elizaos/shared/utils/character-message-examples";
 import {
-  getStylePresets,
   hasConfiguredApiKey,
-  normalizeCharacterMessageExamples,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/shared/voice";
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";

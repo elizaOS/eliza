@@ -12,11 +12,11 @@
  *   3. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/shared/browser-contracts";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import type {
   CodingAgentCreateTaskInput,
   CodingAgentTaskProviderPolicy,

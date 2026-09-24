@@ -9,11 +9,11 @@
  * current platform at all.
  */
 
+import type { RuntimeClass } from "@elizaos/shared";
 import {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,
-  type RuntimeClass,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference";
 import type {
   CatalogModel,
   InstalledModel,

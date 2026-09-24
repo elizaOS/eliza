@@ -7,12 +7,14 @@
  *   PUT  /api/apps/permissions/:slug   { namespaces: string[] }
  */
 
+import type {
+  AppPermissionsView,
+  RecognisedPermissionNamespace,
+} from "@elizaos/shared";
 import {
-  type AppPermissionsView,
   parseAppPermissions,
   RECOGNISED_PERMISSION_NAMESPACES,
-  type RecognisedPermissionNamespace,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/app-permissions";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";

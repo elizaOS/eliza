@@ -8,7 +8,7 @@ import type {
   CustomActionDef,
   PutAppPermissionsRequest,
 } from "@elizaos/shared";
-import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
 import { ElizaClient } from "./client-base";
 import type {
   AppLaunchResult,

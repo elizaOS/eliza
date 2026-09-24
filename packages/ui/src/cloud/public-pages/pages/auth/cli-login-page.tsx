@@ -6,7 +6,7 @@
  * inherit that trust. On completion the page posts a message to the opener.
  */
 
-import { isElizaCloudControlPlaneHostname } from "@elizaos/shared";
+import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";

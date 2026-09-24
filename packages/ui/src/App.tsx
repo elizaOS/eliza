@@ -23,7 +23,7 @@ import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import { X } from "lucide-react";
 import { registerDeviceControlInteractHandler } from "./components/views/device-control-interact";
 import "./components/chat/chat-source-registration";
-import { getOverlayApp } from "@elizaos/shared";
+import { getOverlayApp } from "@elizaos/shared/apps/index";
 import {
   type ComponentType,
   lazy,

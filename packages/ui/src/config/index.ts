@@ -7,6 +7,7 @@ export type {
   ActionConfirm,
   ActionOnError,
   ActionOnSuccess,
+  AllowedHostPattern,
   AndroidUserAgentMarker,
   AndVisibility,
   AospVariantConfig,
@@ -38,15 +39,16 @@ export type {
   VisibilityOperator,
 } from "@elizaos/shared";
 export {
-  type AllowedHostPattern,
-  buildPluginConfigUiSpec,
-  buildPluginListUiSpec,
   parseAllowedHostEnv,
-  resolveAppBranding,
-  shouldUseCloudOnlyBranding,
   toCapacitorAllowNavigation,
   toViteAllowedHosts,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/allowed-hosts";
+export { resolveAppBranding } from "@elizaos/shared/config/app-config";
+export { shouldUseCloudOnlyBranding } from "@elizaos/shared/config/cloud-only";
+export {
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
+} from "@elizaos/shared/config/plugin-ui-spec";
 export * from "./boot-config";
 // boot-config-react.hooks eagerly imports React; not barrel-exported so node-side
 // consumers (bench server, agent boot) can import @elizaos/shared without

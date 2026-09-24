@@ -3,8 +3,9 @@
  * available across views.
  */
 
-import { MAX_CHAT_MEDIA_RAW_BYTES, transcriptPlainText } from "@elizaos/shared";
+import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared/chat-upload-limits";
 import { logger } from "@elizaos/shared/logger";
+import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   AudioLines,
   FileText,

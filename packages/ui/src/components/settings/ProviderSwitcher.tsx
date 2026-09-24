@@ -5,7 +5,7 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { VOICE_PROVIDERS } from "@elizaos/shared";
+import { VOICE_PROVIDERS } from "@elizaos/shared/voice";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import {

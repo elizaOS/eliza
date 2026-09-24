@@ -10,7 +10,8 @@
  * z-layer.
  */
 import type { TranscriptSegment } from "@elizaos/shared";
-import { resolveApiUrl, transcriptPlainText } from "@elizaos/shared";
+import { transcriptPlainText } from "@elizaos/shared/transcripts";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
 import {
   Check,
   Copy,

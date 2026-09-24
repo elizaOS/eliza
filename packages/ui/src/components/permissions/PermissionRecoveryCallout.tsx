@@ -7,7 +7,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import type { PermissionId } from "@elizaos/shared";
-import { openPermissionSettings } from "@elizaos/shared";
+import { openPermissionSettings } from "@elizaos/shared/utils/permission-deep-links";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { cn } from "../../lib/utils";

@@ -14,30 +14,34 @@ import type {
   ModelAssignments,
   ProviderStatus,
   RoutingPreferences,
+  Transcript,
+  TranscriptScope,
+  TranscriptSegment,
+  TranscriptSource,
 } from "@elizaos/shared";
+import { formatError } from "@elizaos/shared/browser-contracts";
 import {
   AGENT_MODEL_SLOTS,
-  asRecord,
+  findCatalogModel,
+  MODEL_CATALOG,
+} from "@elizaos/shared/local-inference/index";
+import { logger } from "@elizaos/shared/logger";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  summarizeTranscript,
+  transcriptDurationMs,
+  transcriptSpeakerCount,
+} from "@elizaos/shared/transcripts";
+import { asRecord } from "@elizaos/shared/type-guards";
+import { parseCanonicalInteger } from "@elizaos/shared/utils/number-parsing";
+import {
   buildCoinGeckoMarketsUrl,
   buildMarketMovers,
   buildMarketPriceSnapshots,
   COINGECKO_MARKET_PROVIDER,
-  findCatalogModel,
-  MODEL_CATALOG,
   POLYMARKET_MARKET_PROVIDER,
-  parseCanonicalInteger,
   parseCoinGeckoMarkets,
-  summarizeTranscript,
-  type Transcript,
-  type TranscriptScope,
-  type TranscriptSegment,
-  type TranscriptSource,
-  transcriptDurationMs,
-  transcriptSpeakerCount,
-} from "@elizaos/shared";
-import { formatError } from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+} from "@elizaos/shared/wallet/market-overview";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   filterSettingsDefaultLocalModels,

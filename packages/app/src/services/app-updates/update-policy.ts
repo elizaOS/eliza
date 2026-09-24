@@ -16,7 +16,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import type { AgentUpdateAuthority, AgentUpdateStatus } from "@elizaos/shared";
-import { isElizaOS } from "@elizaos/shared";
+import { isElizaOS } from "@elizaos/shared/platform/eliza-os";
 import { type BuildVariant, getBuildVariant } from "@elizaos/ui/build-variant";
 
 export type AppUpdatePlatform = "desktop" | "ios" | "android" | "web";

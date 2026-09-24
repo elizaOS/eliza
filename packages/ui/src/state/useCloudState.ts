@@ -15,7 +15,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { isElizaCloudControlPlaneHostname } from "@elizaos/shared";
+import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,

@@ -22,8 +22,8 @@ import {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
-  resolvePlatform,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/index";
+import { resolvePlatform } from "@elizaos/shared/runtime-env";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { localInferenceEngine } from "./engine";
 import { recommendForFirstRun } from "./recommendation";

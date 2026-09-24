@@ -5,15 +5,13 @@
  */
 
 import type {
+  RemoteAgentRequest,
   RemoteCommandAction,
   RemoteJsonValue,
   RemoteTargetPublicIdentity,
   SignedRemoteCommand,
 } from "@elizaos/shared";
-import {
-  parseRemoteAgentRequest,
-  type RemoteAgentRequest,
-} from "@elizaos/shared";
+import { parseRemoteAgentRequest } from "@elizaos/shared/contracts/remote-agent-request";
 import {
   acknowledgeRemoteCommandEnqueue,
   createRemoteCommand,

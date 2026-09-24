@@ -10,7 +10,7 @@ export {
   PREMADE_VOICES,
   sanitizeApiKey,
   VOICE_PROVIDERS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/voice";
 export {
   type AecLoopControl,
   type AecLoopResult,

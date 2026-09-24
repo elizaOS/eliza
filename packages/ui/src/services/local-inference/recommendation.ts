@@ -3,6 +3,9 @@
 import type {
   CatalogModel,
   HardwareProbe,
+  RecommendationPlatformClass,
+  RecommendedModelSelection,
+  RecommendationOptions as SharedRecommendationOptions,
   TextGenerationSlot,
 } from "@elizaos/shared";
 import {
@@ -11,15 +14,12 @@ import {
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel as chooseSharedSmallerFallbackModel,
   classifyRecommendationPlatform,
-  MODEL_CATALOG,
-  type RecommendationPlatformClass,
-  type RecommendedModelSelection,
   recommendForFirstRun,
-  type RecommendationOptions as SharedRecommendationOptions,
   selectRecommendedModelForSlot as selectSharedRecommendedModelForSlot,
   selectRecommendedModels as selectSharedRecommendedModels,
   UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference/index";
 
 export type RecommendationOptions = Omit<SharedRecommendationOptions, "policy">;
 export type { RecommendationPlatformClass, RecommendedModelSelection };

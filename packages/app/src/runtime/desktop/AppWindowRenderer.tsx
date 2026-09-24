@@ -14,7 +14,7 @@ import {
   getAvailableOverlayApps,
   getOverlayApp,
   isOverlayApp,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/index";
 import { formatError } from "@elizaos/shared/browser-contracts";
 import { Button, Card, Spinner } from "@elizaos/ui";
 import {

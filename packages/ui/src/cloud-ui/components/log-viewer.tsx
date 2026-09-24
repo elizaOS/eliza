@@ -3,7 +3,7 @@
 /**
  * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
  */
-import { formatTime } from "@elizaos/shared";
+import { formatTime } from "@elizaos/shared/utils/format";
 import {
   Copy,
   Download,

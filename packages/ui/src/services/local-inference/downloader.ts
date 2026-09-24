@@ -36,7 +36,7 @@ import {
   isEliza1TierId,
   isEliza1TierPublished,
   tierBundleSlug,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/index";
 import { ensureDefaultAssignment } from "./assignments";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {

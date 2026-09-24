@@ -10,7 +10,7 @@
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
-import { userAgentHasElizaOSMarker } from "@elizaos/shared";
+import { userAgentHasElizaOSMarker } from "@elizaos/shared/platform/eliza-os";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,

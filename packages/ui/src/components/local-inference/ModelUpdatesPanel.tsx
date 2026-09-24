@@ -19,12 +19,11 @@
  * disabled. Wire this from the entity-OWNER signal landed by I2.
  */
 
+import type { VoiceModelId, VoiceModelVersion } from "@elizaos/shared";
 import {
   latestVoiceModelVersion,
   VOICE_MODEL_VERSIONS,
-  type VoiceModelId,
-  type VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/voice-models";
 import { useId, useMemo } from "react";
 import {
   type TranslationContextValue,

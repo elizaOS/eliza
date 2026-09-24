@@ -12,7 +12,7 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { codingProviderDescriptorForProvider } from "@elizaos/shared";
+import { codingProviderDescriptorForProvider } from "@elizaos/shared/contracts/coding-agent-capabilities";
 import { Search } from "lucide-react";
 import {
   type KeyboardEvent,

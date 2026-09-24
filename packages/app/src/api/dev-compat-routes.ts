@@ -13,7 +13,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { parseCanonicalInteger } from "@elizaos/shared/utils/number-parsing";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,

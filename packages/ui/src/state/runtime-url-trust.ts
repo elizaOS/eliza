@@ -8,11 +8,12 @@
  * shapes or strict loopback, so changing only the persisted `kind` cannot turn
  * an arbitrary public host into a Steward-token target.
  */
+
 import {
-  classifyElizaHostname,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts";
+import { classifyElizaHostname } from "@elizaos/shared/elizacloud";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
 import {
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,

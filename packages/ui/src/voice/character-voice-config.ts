@@ -2,12 +2,12 @@
  * Resolves a character's voice config: applies provider defaults, maps style
  * presets to voices, and normalizes the persisted VoiceConfig shape.
  */
+
 import {
-  hasConfiguredApiKey,
-  PREMADE_VOICES,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
+import { hasConfiguredApiKey, PREMADE_VOICES } from "@elizaos/shared/voice";
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";

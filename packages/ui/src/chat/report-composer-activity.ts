@@ -4,8 +4,11 @@
  * client-side.
  */
 
-import { getElizaApiBase, getElizaApiToken } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
+import {
+  getElizaApiBase,
+  getElizaApiToken,
+} from "@elizaos/shared/utils/eliza-globals";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
 

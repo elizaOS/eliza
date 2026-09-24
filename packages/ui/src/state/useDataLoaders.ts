@@ -7,11 +7,11 @@
  */
 
 import {
-  normalizeOwnerName,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
 import { logger } from "@elizaos/shared/logger";
+import { normalizeOwnerName } from "@elizaos/shared/utils/owner-name";
 import {
   type RefObject,
   useCallback,

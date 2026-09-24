@@ -12,11 +12,9 @@ import type {
   ViewKind,
 } from "@elizaos/core";
 import type { OverlayApp } from "@elizaos/shared";
-import {
-  getAllOverlayApps,
-  getUiRegistryStore,
-  packageNameToAppRouteSlug,
-} from "@elizaos/shared";
+import { getAllOverlayApps } from "@elizaos/shared/apps/overlay-app-registry";
+import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
+import { getUiRegistryStore } from "@elizaos/shared/registry-host";
 import type { ComponentType } from "react";
 
 export type AppShellPageLoader = () => Promise<{

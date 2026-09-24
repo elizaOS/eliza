@@ -14,7 +14,7 @@
  * drawer. Barrel-exported and mounted inside the chat panel layout.
  */
 
-import { errorMessage } from "@elizaos/shared";
+import { errorMessage } from "@elizaos/shared/utils/errors";
 import {
   Bell,
   BellOff,

@@ -9,7 +9,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "@elizaos/shared";
-import { findCatalogModel } from "@elizaos/shared";
+import { findCatalogModel } from "@elizaos/shared/local-inference/index";
 
 export interface MobileModelLoadOptions {
   modelPath: string;

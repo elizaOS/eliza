@@ -9,68 +9,87 @@ export type {
   BrowserTabKitDispatchOptions,
   BrowserTabKitMoveOptions,
   BrowserTabKitTypeOptions,
+  BrowserTabsRendererImpl,
+  DeltaStreamProtocol,
+  DocumentImageCompressionPlatform,
+  DocumentImageUploadFile,
+  ElizaWindow,
+  ParseClampedIntegerOptions,
+  ParseClampedNumberOptions,
+  ParsePositiveNumberOptions,
+  RateLimitCheck,
+  RateLimiter,
+  RateLimiterOptions,
+  StreamingUpdateResult,
 } from "@elizaos/shared";
 export {
-  autoLabel,
+  resolveApiUrl,
+  resolveAppAssetUrl,
+} from "@elizaos/shared/utils/asset-url";
+export { stripAssistantStageDirections } from "@elizaos/shared/utils/assistant-text";
+export {
   BROWSER_TAB_PRELOAD_SCRIPT,
-  type BrowserTabsRendererImpl,
-  clearElizaApiBase,
-  clearElizaApiToken,
-  computeStreamingDelta,
-  createRateLimiter,
-  createSerialise,
-  DELTA_STREAM_PROTOCOL,
-  type DeltaStreamProtocol,
-  type DocumentImageCompressionPlatform,
-  type DocumentImageUploadFile,
-  type ElizaWindow,
-  ENV_KEY_ACRONYMS,
-  ensureNamespaceDefaults,
-  ensureRuntimeSqlCompatibility,
-  errorMessage,
-  executeRawSql,
-  formatSubscriptionRequestError,
-  formatTrajectoryDuration,
-  formatTrajectoryTimestamp,
-  formatTrajectoryTokenCount,
-  getElizaApiBase,
-  getElizaApiToken,
-  getLogPrefix,
+  setBrowserTabsRendererImpl,
+} from "@elizaos/shared/utils/browser-tabs-renderer-registry";
+export { normalizeCharacterMessageExamples } from "@elizaos/shared/utils/character-message-examples";
+export {
   isCloudStatusAuthenticated,
   isCloudStatusReasonApiKeyOnly,
+} from "@elizaos/shared/utils/cloud-status";
+export {
   isDocumentImageFile,
-  isRedirectResponse,
-  isSafeExecutableValue,
-  isTimeoutError,
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
-  mergeStreamingText,
-  modelLooksLikeElizaCloudHosted,
-  normalizeCharacterMessageExamples,
-  normalizeOpenAICallbackInput,
-  normalizeOwnerName,
-  type ParseClampedIntegerOptions,
-  type ParseClampedNumberOptions,
-  type ParsePositiveNumberOptions,
+} from "@elizaos/shared/utils/documents-upload-image";
+export { modelLooksLikeElizaCloudHosted } from "@elizaos/shared/utils/eliza-cloud-model-route";
+export {
+  clearElizaApiBase,
+  clearElizaApiToken,
+  getElizaApiBase,
+  getElizaApiToken,
+  setElizaApiBase,
+  setElizaApiToken,
+} from "@elizaos/shared/utils/eliza-globals";
+export {
+  errorMessage,
+  isRedirectResponse,
+  isTimeoutError,
+} from "@elizaos/shared/utils/errors";
+export { isSafeExecutableValue } from "@elizaos/shared/utils/exec-safety";
+export { autoLabel, ENV_KEY_ACRONYMS } from "@elizaos/shared/utils/labels";
+export { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
+export { ensureNamespaceDefaults } from "@elizaos/shared/utils/namespace-defaults";
+export {
   parseClampedFloat,
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
+} from "@elizaos/shared/utils/number-parsing";
+export { normalizeOwnerName } from "@elizaos/shared/utils/owner-name";
+export { createRateLimiter } from "@elizaos/shared/utils/rate-limiter";
+export { createSerialise } from "@elizaos/shared/utils/serialise";
+export {
+  ensureRuntimeSqlCompatibility,
+  executeRawSql,
   quoteIdent,
-  type RateLimitCheck,
-  type RateLimiter,
-  type RateLimiterOptions,
-  resolveApiUrl,
-  resolveAppAssetUrl,
-  resolveStreamingUpdate,
-  type StreamingUpdateResult,
   sanitizeIdentifier,
-  setBrowserTabsRendererImpl,
-  setElizaApiBase,
-  setElizaApiToken,
   sqlLiteral,
-  stripAssistantStageDirections,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/sql-compat";
+export {
+  computeStreamingDelta,
+  DELTA_STREAM_PROTOCOL,
+  mergeStreamingText,
+  resolveStreamingUpdate,
+} from "@elizaos/shared/utils/streaming-text";
+export {
+  formatSubscriptionRequestError,
+  normalizeOpenAICallbackInput,
+} from "@elizaos/shared/utils/subscription-auth";
+export {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "@elizaos/shared/utils/trajectory-format";
 export * from "../lib/floating-layers";
 export { cn } from "../lib/utils";
 export * from "./clipboard";

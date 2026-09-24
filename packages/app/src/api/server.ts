@@ -53,8 +53,8 @@ import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
@@ -148,10 +148,10 @@ async function getLocalInferenceRoutes() {
 }
 
 import {
-  ensureRuntimeSqlCompatibility,
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/shared/settings-debug";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/shared/utils/sql-compat";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -195,7 +195,10 @@ const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-aosp-llama",
 ] as const;
 
-import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
+import {
+  clearCloudSecrets,
+  getCloudSecret,
+} from "@elizaos/shared/elizacloud/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";

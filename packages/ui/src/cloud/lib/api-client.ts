@@ -25,7 +25,6 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/shared";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
@@ -35,6 +34,7 @@ import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
 import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";

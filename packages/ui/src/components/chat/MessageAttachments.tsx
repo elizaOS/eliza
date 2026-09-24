@@ -12,7 +12,7 @@
  * second attachment download path or URL guard; reuse the ones referenced here.
  */
 
-import { resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
 import {
   Box,
   Code2,

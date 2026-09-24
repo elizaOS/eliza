@@ -13,7 +13,8 @@
  * omitted at the client before the Worker enforces the same boundary.
  */
 
-import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
+import { resolveApiUrl } from "@elizaos/shared/utils/asset-url";
+import { getElizaApiToken } from "@elizaos/shared/utils/eliza-globals";
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";

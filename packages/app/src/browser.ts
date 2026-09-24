@@ -17,8 +17,8 @@ export type {
 export {
   registerDetailExtension,
   registerOverlayApp,
-  resolveAppBranding,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/index";
+export { resolveAppBranding } from "@elizaos/shared/config/app-config";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,

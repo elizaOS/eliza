@@ -6,11 +6,11 @@
  * or an appropriate error/auth event.
  */
 
-import { getStylePresets } from "@elizaos/shared";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/shared/browser-contracts";
+import { getStylePresets } from "@elizaos/shared/character-presets";
 import { logger } from "@elizaos/shared/logger";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";

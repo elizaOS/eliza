@@ -51,7 +51,7 @@
  * the `client` singleton's `connectWs()` can run.
  */
 import { Capacitor } from "@capacitor/core";
-import { setElizaApiBase } from "@elizaos/shared";
+import { setElizaApiBase } from "@elizaos/shared/utils/eliza-globals";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 
 declare global {

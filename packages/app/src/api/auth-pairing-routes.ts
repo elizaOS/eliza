@@ -16,8 +16,8 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
 import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { authStoreForRuntime } from "../services/auth-store";
 import {
   createMachineSession,
