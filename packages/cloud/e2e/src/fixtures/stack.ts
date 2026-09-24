@@ -40,6 +40,7 @@ import {
 } from "./backend-fault-proxy";
 import { buildSharedEnv } from "./env";
 import { type RunningMockLlm, startMockLlm } from "./mock-llm";
+import { trackOwnedReadiness, waitForOwnedReadiness } from "./owned-readiness";
 import { reserveStackPort } from "./port-reservation";
 
 /**
@@ -230,6 +231,7 @@ interface SpawnedProc {
   child: ChildProcess;
   log: WriteStream;
   name: string;
+  announced: (url: string) => boolean;
 }
 
 function spawnLogged(
@@ -256,7 +258,7 @@ function spawnLogged(
   child.on("exit", (code, signal) => {
     log.write(`\n[${name}] exited code=${code} signal=${signal}\n`);
   });
-  return { child, log, name };
+  return { child, log, name, announced: trackOwnedReadiness(child) };
 }
 
 async function runLoggedStep(
@@ -603,13 +605,18 @@ async function startCloudStackOwned(
   startup.add(() => killProc(cloudApiProc));
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
-  await withFakeStripeBootstrapRollback(fakeStripe, () =>
-    waitForHttpOk(`${apiUrl}/api/health`, {
+  await withFakeStripeBootstrapRollback(fakeStripe, async () => {
+    await waitForOwnedReadiness(
+      cloudApiProc.child,
+      cloudApiProc.announced,
+      apiUrl,
+    );
+    await waitForHttpOk(`${apiUrl}/api/health`, {
       timeoutMs: 180_000,
       label: "cloud-api",
       process: cloudApiProc.child,
-    }),
-  );
+    });
+  });
 
   const backendFaults = opts.backendFaults
     ? await withFakeStripeBootstrapRollback(fakeStripe, () =>
