@@ -196,6 +196,10 @@ function makeRuntime(options: {
     startRun: vi.fn(() => RUN_ID),
     getCurrentRunId: vi.fn(() => RUN_ID),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     getMemories: vi.fn(async () => []),
     getRelationships: vi.fn(async () => []),
     getParticipantsForRoom: vi.fn(async () => []),
