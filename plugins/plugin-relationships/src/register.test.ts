@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 
 describe("Relationships app registration", () => {
   it("keeps graph imports passive and registers its lazy page once when requested", async () => {
+    expect(typeof globalThis.document).toBe("undefined");
+    expect(typeof globalThis.window).toBe("undefined");
     const initialVersion = getAppShellPageRegistrySnapshot();
     const { registerRelationshipsApp } = await import("./index.ts");
     expect(getAppShellPageRegistrySnapshot()).toBe(initialVersion);

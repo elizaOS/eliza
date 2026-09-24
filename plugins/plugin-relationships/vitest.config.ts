@@ -60,7 +60,6 @@ export default defineConfig({
   },
   test: {
     ...baseConfig.test,
-    setupFiles: [],
     root: here,
     include: [
       "src/**/*.{test,spec}.{ts,tsx}",
