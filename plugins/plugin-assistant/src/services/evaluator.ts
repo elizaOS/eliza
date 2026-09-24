@@ -7,47 +7,44 @@
  * per runtime, when a provider rejects schema-constrained output and falls back to
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
-
-import type {
-  ActionResult,
-  EvaluatorRunContext,
-  EvaluatorRunOptions,
-  EvaluatorRunResult,
-  IAgentRuntime,
-  JSONSchema,
-  JsonValue,
-  Memory,
-  PromptSegment,
-  RegisteredEvaluator,
-  Service,
-  State,
-  Task,
-  UUID,
-} from "@elizaos/core";
 import {
+  type ActionResult,
   Service as BaseService,
   ChannelType,
   CONVERSATION_MESSAGES_HEADER_PREFIX,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
   ElizaError,
+  type EvaluatorRunContext,
+  type EvaluatorRunOptions,
+  type EvaluatorRunResult,
   EventType,
   hashStableJson,
+  type IAgentRuntime,
   isObjectRecord as isRecord,
+  type JSONSchema,
+  type JsonValue,
+  type Memory,
   ModelType,
+  type PromptSegment,
   projectCompleteToolValueForModel,
   providerRateLimitRetryAt,
+  type RegisteredEvaluator,
   renderStoredEnvelopesForPrompt,
   runWithTrajectoryContext,
+  type Service,
+  type State,
   setTrajectoryPurpose,
   stringifyForDiagnostics,
   stringifyForModel,
   stringToUuid,
+  type Task,
   toWellFormedUnicode,
   truncateWellFormed,
+  type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { v4 as uuidv4 } from "uuid";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { buildProviderCachePlan } from "../runtime/provider-cache-plan";
@@ -85,7 +82,6 @@ type PreparedEntry = {
   progress?: EvaluatorProgressSnapshot;
   inputBinding?: string;
 };
-
 function extractionOptions(
   snapshot: EvaluatorProgressSnapshot,
   runtime: IAgentRuntime,
@@ -102,18 +98,15 @@ function extractionOptions(
     evidenceId: snapshot.evidenceId,
   };
 }
-
 const EMPTY_STATE: State = {
   values: {},
   data: {},
   text: "",
 };
-
 function stringifyForPrompt(value: unknown): string {
   if (typeof value === "string") return value;
   return stringifyForModel(value);
 }
-
 function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
   if (
     isRecord(raw) &&
@@ -151,7 +144,6 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
     return null;
   }
 }
-
 /**
  * Whether the composed state carries the RECENT_MESSAGES conversation block:
  * detected on that provider's own text, never on arbitrary state text, so a
@@ -166,7 +158,6 @@ function hasProviderConversationBlock(state: State): boolean {
     recent.text.includes(CONVERSATION_MESSAGES_HEADER_PREFIX)
   );
 }
-
 function mergeStates(base: State | undefined, providerState: State): State {
   if (!base) return providerState;
   const providerData = providerState.data.providers;
@@ -178,7 +169,6 @@ function mergeStates(base: State | undefined, providerState: State): State {
           ...(isRecord(providerData) ? providerData : {}),
         }
       : undefined;
-
   return {
     values: {
       ...base.values,
@@ -192,7 +182,6 @@ function mergeStates(base: State | undefined, providerState: State): State {
     text: [base.text, providerState.text].filter(Boolean).join("\n"),
   };
 }
-
 function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
   return {
     type: "object",
@@ -208,18 +197,15 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
     additionalProperties: false,
   };
 }
-
 type EvaluatorPromptInput = {
   prompt: string;
   promptSegments: PromptSegment[];
   providerOptions: ReturnType<typeof buildProviderCachePlan>["providerOptions"];
 };
-
 type RenderedEvaluatorPrompt = {
   structured: EvaluatorPromptInput;
   text: EvaluatorPromptInput;
 };
-
 function renderSharedContext(params: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -233,7 +219,6 @@ function renderSharedContext(params: {
     const text = toWellFormedUnicode(parts[name] ?? "");
     return text || fallback;
   };
-
   return `Evaluate just-finished turn for ${agentName}.
 
 ## Shared Turn Context
@@ -265,7 +250,6 @@ ${Object.entries(blocks)
   .join("\n")}
 `;
 }
-
 function buildPrompt(params: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -280,7 +264,6 @@ function buildPrompt(params: {
   const { runtime, message, state, active, options } = params;
   const incremental = active.every((entry) => entry.progress !== undefined);
   const agentName = runtime.character.name ?? "Agent";
-
   const selectedSourceIds = new Set(
     params.roomTranscript?.map((record) => record.id),
   );
@@ -380,7 +363,6 @@ function buildPrompt(params: {
     actionResultsText: sharedParts.actionResults,
     blocks: sharedBlocks,
   };
-
   const stable: PromptSegment[] = [
     {
       content:
@@ -401,7 +383,10 @@ function buildPrompt(params: {
   const dynamic: PromptSegment[] = [];
   const evidenceSets = new Map<
     string,
-    { id: string; sourceIds: Array<Memory["id"]> }
+    {
+      id: string;
+      sourceIds: Array<Memory["id"]>;
+    }
   >();
   const sharedIds = params.roomTranscript?.map((record) => record.id);
   for (const entry of active) {
@@ -538,7 +523,6 @@ function buildPrompt(params: {
     ),
   };
 }
-
 function renderEvaluatorInput(
   promptSegments: PromptSegment[],
   schema: JSONSchema,
@@ -570,7 +554,6 @@ function renderEvaluatorInput(
     providerOptions: { eliza: plan.providerOptions.eliza },
   };
 }
-
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
 // STRUCTURALLY rejects schema-constrained output (vs a generic/transient HTTP
 // 400 that merely says "bad request" — rate-limit, malformed prompt, context
@@ -582,13 +565,11 @@ const SCHEMA_SPECIFIC_REJECTION_TOKENS = [
   "json_schema",
   "structured output",
 ] as const;
-
 function errorMessageText(error: unknown): string {
   return (error instanceof Error ? error.message : String(error ?? ""))
     .toLowerCase()
     .trim();
 }
-
 // Only a schema-specific rejection should arm the lifetime memo on its own; a
 // bare "bad request" still falls back for the turn but is re-attempted next turn
 // (gated by a streak below) so a one-off blip cannot permanently downgrade a
@@ -599,7 +580,6 @@ function schemaRejectionLooksPersistent(error: unknown): boolean {
     message.includes(token),
   );
 }
-
 // Generic "bad request" is intentionally broad here (it drives the per-turn
 // json_object fallback). Deriving this from schemaRejectionLooksPersistent
 // guarantees the immediate-arm token set stays a strict subset of the fallback
@@ -611,7 +591,6 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
     message.includes("bad request") || schemaRejectionLooksPersistent(error)
   );
 }
-
 // Once a runtime's SMALL model rejects a structured `responseSchema` request,
 // every subsequent request will be rejected the same way — the provider simply
 // does not support schema-constrained output (e.g. the cerebras gpt-oss path on
@@ -629,7 +608,6 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
 const schemaUnsupportedRuntimes = new WeakSet<object>();
 const schemaRejectionStreak = new WeakMap<object, number>();
 const SCHEMA_UNSUPPORTED_STREAK_THRESHOLD = 2;
-
 async function generateEvaluationOutput(params: {
   runtime: IAgentRuntime;
   rendered: RenderedEvaluatorPrompt;
@@ -670,7 +648,6 @@ async function generateEvaluationOutput(params: {
     );
     return requestPlain();
   };
-
   // This runtime already proved its SMALL model rejects schema-constrained
   // output — don't pay for the doomed schema round-trip again.
   if (schemaUnsupportedRuntimes.has(runtime)) {
@@ -682,7 +659,6 @@ async function generateEvaluationOutput(params: {
       return afterJsonObjectRejected(fallbackError);
     }
   }
-
   try {
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       ...modelInput(rendered.structured),
@@ -729,12 +705,10 @@ async function generateEvaluationOutput(params: {
     }
   }
 }
-
 export class EvaluatorService extends BaseService {
   static serviceType = "evaluator" as const;
   capabilityDescription =
     "Runs registered post-turn evaluators in one structured model call";
-
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new EvaluatorService(runtime);
     runtime.registerTaskWorker({
@@ -747,9 +721,7 @@ export class EvaluatorService extends BaseService {
     });
     return service;
   }
-
   private backgroundRunning = false;
-
   private isBackground(evaluator: RegisteredEvaluator): boolean {
     return (
       evaluator.background === true &&
@@ -758,7 +730,6 @@ export class EvaluatorService extends BaseService {
         : evaluator.incremental === true)
     );
   }
-
   /** Persist before the delivery barrier releases. No model inference runs here. */
   async enqueue(
     message: Memory,
@@ -774,7 +745,6 @@ export class EvaluatorService extends BaseService {
       options,
     );
   }
-
   /** Both built-in reducers must own the replacement. Legacy/custom runtimes and
    * group voice/mobile keep their existing validation path. */
   ownsDeferredFacts(message: Memory): boolean {
@@ -788,7 +758,6 @@ export class EvaluatorService extends BaseService {
       )
     );
   }
-
   /** Persist the post-delivery source job without invoking legacy evaluators or a model. */
   private async enqueueBackground(
     message: Memory,
@@ -849,12 +818,17 @@ export class EvaluatorService extends BaseService {
       }
     }
   }
-
   /** Persist a repair intent before changing canonical evidence. Only real message
    * edits enter this path; embedding/bookkeeping updates do not wake extraction. */
   async mutateSourceEvidence<T>(
     ids: UUID[],
-    updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+    updates:
+      | Array<
+          Partial<Memory> & {
+            id: UUID;
+          }
+        >
+      | undefined,
     write: () => Promise<T>,
   ): Promise<T> {
     // Vector persistence cannot change authored evidence. Do not acquire a
@@ -973,7 +947,6 @@ export class EvaluatorService extends BaseService {
       },
     );
   }
-
   private async reconcileTaskSources(task: Task): Promise<void> {
     const message: Memory = {
       id: task.metadata?.messageId as UUID,
@@ -1012,10 +985,12 @@ export class EvaluatorService extends BaseService {
       );
     }
   }
-
-  private async executeBackgroundTask(
-    task: Task,
-  ): Promise<{ preserveTask: boolean } | undefined> {
+  private async executeBackgroundTask(task: Task): Promise<
+    | {
+        preserveTask: boolean;
+      }
+    | undefined
+  > {
     if (
       this.backgroundRunning ||
       this.runtime.roomHandlerQueue.pendingTotal() > 0
@@ -1140,12 +1115,11 @@ export class EvaluatorService extends BaseService {
       this.backgroundRunning = false;
     }
   }
-
   /** Coalesced jobs may be revised while inference releases the room. Delete only
    * the exact revision consumed; otherwise the existing task remains the wakeup. */
-  private async finishBackgroundTask(
-    task: Task,
-  ): Promise<{ preserveTask: boolean }> {
+  private async finishBackgroundTask(task: Task): Promise<{
+    preserveTask: boolean;
+  }> {
     return this.runtime.roomHandlerQueue.withLease(
       task.roomId as UUID,
       async () => {
@@ -1160,7 +1134,6 @@ export class EvaluatorService extends BaseService {
       },
     );
   }
-
   private evidenceBatchBytes(): number {
     const configured = this.runtime.getSetting("MEMORY_EVIDENCE_BATCH_BYTES");
     const limit =
@@ -1174,7 +1147,6 @@ export class EvaluatorService extends BaseService {
       );
     return limit;
   }
-
   private inRoom<T>(
     message: Memory,
     background: boolean,
@@ -1184,23 +1156,18 @@ export class EvaluatorService extends BaseService {
       ? this.runtime.roomHandlerQueue.withLease(message.roomId, fn)
       : fn();
   }
-
   async stop(): Promise<void> {
     // Stateless service.
   }
-
   list(): RegisteredEvaluator[] {
     return [...this.runtime.evaluators];
   }
-
   register(evaluator: RegisteredEvaluator): void {
     this.runtime.registerEvaluator(evaluator);
   }
-
   unregister(name: string): boolean {
     return this.runtime.unregisterEvaluator(name);
   }
-
   private sortEvaluators(
     evaluators: RegisteredEvaluator[],
   ): RegisteredEvaluator[] {
@@ -1210,7 +1177,6 @@ export class EvaluatorService extends BaseService {
         a.name.localeCompare(b.name),
     );
   }
-
   private async collectActiveEvaluators(
     candidates: RegisteredEvaluator[],
     context: EvaluatorRunContext,
@@ -1259,7 +1225,6 @@ export class EvaluatorService extends BaseService {
     );
     return this.sortEvaluators(active);
   }
-
   private async composeEvaluatorState(
     message: Memory,
     state: State | undefined,
@@ -1274,7 +1239,6 @@ export class EvaluatorService extends BaseService {
         : EMPTY_STATE;
     return mergeStates(state, providerState);
   }
-
   private async collectPreparedEntries(
     active: RegisteredEvaluator[],
     message: Memory,
@@ -1363,7 +1327,6 @@ export class EvaluatorService extends BaseService {
         a.evaluator.name.localeCompare(b.evaluator.name),
     );
   }
-
   private async emitEvaluatorCompleted(
     evaluatorId: string,
     completed: boolean,
@@ -1386,7 +1349,6 @@ export class EvaluatorService extends BaseService {
         }),
       );
   }
-
   private async readEvaluatorOutput(params: {
     evaluatorId: string;
     rendered: RenderedEvaluatorPrompt;
@@ -1431,7 +1393,6 @@ export class EvaluatorService extends BaseService {
       return { output: null, error: messageText, retryAt };
     }
   }
-
   private async processPreparedEntries(params: {
     preparedEntries: PreparedEntry[];
     output: Record<string, unknown>;
@@ -1565,7 +1526,6 @@ export class EvaluatorService extends BaseService {
     }
     return { processedEvaluators, results };
   }
-
   private async runEntryProcessors(params: {
     evaluator: RegisteredEvaluator;
     prepared: unknown;
@@ -1645,7 +1605,6 @@ export class EvaluatorService extends BaseService {
       }
     }
   }
-
   private skippedResult(params?: {
     activeEvaluators?: string[];
     processedEvaluators?: string[];
@@ -1659,7 +1618,6 @@ export class EvaluatorService extends BaseService {
       errors: params?.errors ?? [],
     };
   }
-
   private failedResult(params: {
     preparedEntries: PreparedEntry[];
     errors: EvaluatorRunResult["errors"];
@@ -1683,7 +1641,6 @@ export class EvaluatorService extends BaseService {
       ],
     };
   }
-
   async run(
     message: Memory,
     state?: State,
@@ -1696,7 +1653,6 @@ export class EvaluatorService extends BaseService {
       options,
     );
   }
-
   private async runSelected(
     selected: RegisteredEvaluator[],
     message: Memory,
@@ -1763,7 +1719,6 @@ export class EvaluatorService extends BaseService {
         undefined,
         background,
       );
-
     const { progress, progressErrors } = await this.inRoom(
       message,
       background,
@@ -1878,7 +1833,6 @@ export class EvaluatorService extends BaseService {
       ],
     };
   }
-
   private async runBatch(
     candidates: RegisteredEvaluator[],
     message: Memory,
@@ -1889,7 +1843,6 @@ export class EvaluatorService extends BaseService {
     currentMessageOnly = false,
   ): Promise<EvaluatorRunResult> {
     setTrajectoryPurpose("evaluation");
-
     const preparation = await this.inRoom(message, background, async () => {
       const context: EvaluatorRunContext = {
         runtime: this.runtime,
@@ -1897,11 +1850,9 @@ export class EvaluatorService extends BaseService {
         state,
         options,
       };
-
       if (candidates.length === 0) {
         return this.skippedResult();
       }
-
       const errors: EvaluatorRunResult["errors"] = [];
       const active = await this.collectActiveEvaluators(
         candidates,
@@ -1912,7 +1863,6 @@ export class EvaluatorService extends BaseService {
       if (active.length === 0) {
         return this.skippedResult({ errors });
       }
-
       const [composedState, legacyRoomTranscript] = await Promise.all([
         this.composeEvaluatorState(
           message,
@@ -1971,14 +1921,12 @@ export class EvaluatorService extends BaseService {
         preparedEntries = admission.selected;
         hasDeferredEvidence = admission.deferred.length > 0;
       }
-
       if (preparedEntries.length === 0) {
         return this.skippedResult({
           activeEvaluators: active.map((evaluator) => evaluator.name),
           errors,
         });
       }
-
       for (const entry of preparedEntries) {
         if (!entry.progress) continue;
         const binding = hashStableJson(
@@ -2074,7 +2022,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
             schema,
           })
         : null;
-
     const evaluatorId =
       uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
     await this.runtime
@@ -2092,7 +2039,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
           evaluatorId,
         }),
       );
-
     let { output, error, retryAt } = rendered
       ? await this.readEvaluatorOutput({
           evaluatorId,
@@ -2100,7 +2046,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
           schema,
         })
       : { output: {}, error: undefined, retryAt: undefined };
-
     while (
       background &&
       output &&
@@ -2226,7 +2171,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         error: error ?? "Evaluator model returned no output",
         retryAt,
       });
-
     const { processedEvaluators, results } = await this.inRoom(
       message,
       background,
@@ -2292,7 +2236,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
       },
     );
     await this.emitEvaluatorCompleted(evaluatorId, errors.length === 0);
-
     return {
       skipped: false,
       hasMoreEvidence: hasDeferredEvidence,
@@ -2303,7 +2246,6 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
     };
   }
 }
-
 export async function runPostTurnEvaluators(
   runtime: IAgentRuntime,
   message: Memory,

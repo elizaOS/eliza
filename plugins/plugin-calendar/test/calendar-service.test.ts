@@ -5,10 +5,8 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsReminderPlan,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsReminderPlan } from "@elizaos/core/contracts/personal-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,

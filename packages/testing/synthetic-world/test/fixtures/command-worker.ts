@@ -3,7 +3,7 @@
  * collision and uncatchable crash-checkpoint coverage.
  */
 
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
+import { type SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
 import { SqliteSyntheticEnvironmentLeaseStore } from "../../../../cloud/test-mocks/src/synthetic-environment";
 import {
   SqliteSyntheticCommandJournal,
@@ -17,13 +17,11 @@ const crashAt = process.env.SYNTHETIC_TEST_CRASH_AT ?? "";
 if (!databasePath || !authorityJson || !commandId) {
   throw new Error("Synthetic command worker environment is incomplete");
 }
-
 const authority = JSON.parse(
   authorityJson,
 ) as SyntheticEnvironmentLeaseAuthority;
 const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
 const journal = new SqliteSyntheticCommandJournal(store);
-
 try {
   const execution = await journal.execute(
     authority,

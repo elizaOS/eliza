@@ -26,7 +26,7 @@ function message(overrides: Partial<Memory> = {}): Memory {
 }
 
 describe("TEXT_GROUP_CHANNEL_TYPES", () => {
-  it("includes exactly the text group-ish channel types", () => {
+  it("includes text and voice group audiences", () => {
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.GROUP))).toBe(true);
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.THREAD))).toBe(true);
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.WORLD))).toBe(true);
@@ -34,13 +34,13 @@ describe("TEXT_GROUP_CHANNEL_TYPES", () => {
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.FEED))).toBe(true);
   });
 
-  it("excludes DM and voice channel types", () => {
+  it("excludes private channel types", () => {
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.DM))).toBe(false);
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.VOICE_DM))).toBe(
       false,
     );
     expect(TEXT_GROUP_CHANNEL_TYPES.has(String(ChannelType.VOICE_GROUP))).toBe(
-      false,
+      true,
     );
   });
 });
@@ -60,9 +60,10 @@ describe("isUnaddressedTextGroupTurn", () => {
     expect(isUnaddressedTextGroupTurn(msg, false)).toBe(true);
   });
 
-  it("accepts every text group-ish channel type", () => {
+  it("accepts every group audience", () => {
     for (const channelType of [
       ChannelType.GROUP,
+      ChannelType.VOICE_GROUP,
       ChannelType.THREAD,
       ChannelType.WORLD,
       ChannelType.FORUM,
@@ -75,12 +76,8 @@ describe("isUnaddressedTextGroupTurn", () => {
     }
   });
 
-  it("rejects DM and voice channels", () => {
-    for (const channelType of [
-      ChannelType.DM,
-      ChannelType.VOICE_DM,
-      ChannelType.VOICE_GROUP,
-    ]) {
+  it("rejects private channels", () => {
+    for (const channelType of [ChannelType.DM, ChannelType.VOICE_DM]) {
       const msg = message({
         content: { text: "hi", channelType: String(channelType) },
       });

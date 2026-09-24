@@ -15,7 +15,7 @@ function child(mode: "write" | "read", reference?: string): Record<string, unkno
     "bun",
     [
       "--conditions=eliza-source",
-      path.join(testDir, "gmail-content-cache.pglite-child.ts"),
+      path.join(testDir, "__tests__/gmail-content-cache.pglite-child.ts"),
       mode,
       dataDir,
       ...(reference ? [reference] : []),

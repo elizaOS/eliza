@@ -10,13 +10,11 @@
  *   job.status:     pending → in_progress → completed | failed
  *   job.type:       agent_provision | agent_delete
  */
-
-import type {
-  SharedTodoCutoverRecord,
-  SharedTodoCutoverSnapshot,
-  SharedTodoMutationCutoverRecord,
-} from "@elizaos/shared";
-
+import {
+  type SharedTodoCutoverRecord,
+  type SharedTodoCutoverSnapshot,
+  type SharedTodoMutationCutoverRecord,
+} from "@elizaos/core/todo-cutover";
 export type SandboxStatus =
   | "provisioning"
   | "running"
@@ -25,7 +23,6 @@ export type SandboxStatus =
   | "deletion_pending"
   | "deleted"
   | "deletion_failed";
-
 export interface Sandbox {
   id: string;
   organizationId: string;
@@ -37,10 +34,8 @@ export interface Sandbox {
   createdAt: Date;
   updatedAt: Date;
 }
-
 export type JobStatus = "pending" | "in_progress" | "completed" | "failed";
 export type JobType = "agent_provision" | "agent_delete";
-
 export interface Job {
   id: string;
   type: JobType;
@@ -55,7 +50,6 @@ export interface Job {
   startedAt?: Date;
   finishedAt?: Date;
 }
-
 export type ContainerStatus =
   | "pending"
   | "running"
@@ -63,7 +57,6 @@ export type ContainerStatus =
   | "deleting"
   | "deleted"
   | "error";
-
 export interface Container {
   id: string;
   name: string;
@@ -87,15 +80,12 @@ export interface Container {
   createdAt: Date;
   updatedAt: Date;
 }
-
 export interface WarmSandbox {
   id: string;
   image: string;
   createdAt: Date;
 }
-
 export type WarmPoolRolloutState = "idle" | "in-progress" | "complete";
-
 export interface WarmPoolState {
   enabled: boolean;
   minSize: number;
@@ -106,27 +96,23 @@ export interface WarmPoolState {
   completedSandboxes: number;
   totalSandboxes: number;
 }
-
 /** A single message imported into a dedicated agent's conversation. */
 export interface ImportedMessage {
   role: "user" | "assistant";
   text: string;
   timestamp?: number;
 }
-
 /** A scheduled task transferred with an account's canonical conversation. */
 export interface ImportedScheduledTask {
   taskId: string;
   [key: string]: unknown;
 }
-
 export interface StoredScheduledTask {
   task: ImportedScheduledTask;
   sourceAgentId: string;
   cutoverToken: string;
   active: boolean;
 }
-
 /**
  * Outcome of importing a transcript into a dedicated agent's conversation.
  * Byte-matches the real agent route's `POST /api/conversations/:id/import`:
@@ -155,7 +141,6 @@ export interface ConversationImportResult {
   targetTodoDigest?: string;
   alreadyPopulated?: boolean;
 }
-
 type TodoImportReceipt = Pick<
   ConversationImportResult,
   | "sourceTodoCount"
@@ -169,16 +154,17 @@ type TodoImportReceipt = Pick<
   | "sourceTodoDigest"
   | "targetTodoDigest"
 >;
-
 interface StoredTodoCutoverState {
   todos: SharedTodoCutoverRecord[];
   mutations: SharedTodoMutationCutoverRecord[];
 }
-
 function stageTodoCutoverImport(
   previousState: StoredTodoCutoverState | undefined,
   snapshot: SharedTodoCutoverSnapshot,
-): { receipt: TodoImportReceipt; state: StoredTodoCutoverState } {
+): {
+  receipt: TodoImportReceipt;
+  state: StoredTodoCutoverState;
+} {
   const previousTodos = previousState?.todos ?? [];
   const previousById = new Map(
     previousTodos.map((todo) => [todo.sourceId, todo]),
@@ -199,7 +185,6 @@ function stageTodoCutoverImport(
   const removedStaleTodos = previousTodos.filter(
     (todo) => !nextIds.has(todo.sourceId),
   ).length;
-
   // Dedicated keeps old replay receipts even when a later source snapshot is
   // smaller; deleting one would make an already-committed provider retry run
   // the mutation again after cutover.
@@ -234,7 +219,6 @@ function stageTodoCutoverImport(
     mutationsById.set(stored.mutationId, stored);
     importedTodoMutations += 1;
   }
-
   return {
     receipt: {
       sourceTodoCount: snapshot.todos.length,
@@ -254,7 +238,6 @@ function stageTodoCutoverImport(
     },
   };
 }
-
 export class ControlPlaneStore {
   private readonly jobs = new Map<string, Job>();
   private readonly sandboxes = new Map<string, Sandbox>();
@@ -287,9 +270,7 @@ export class ControlPlaneStore {
     totalSandboxes: 0,
   };
   private idSeq = 0;
-
   constructor(private readonly nowFn: () => Date = () => new Date()) {}
-
   // ── Cron counters ─────────────────────────────────────────────────────
   incrementCron(name: string): number {
     const next = (this.cronCounters.get(name) ?? 0) + 1;
@@ -299,7 +280,6 @@ export class ControlPlaneStore {
   getCronCount(name: string): number {
     return this.cronCounters.get(name) ?? 0;
   }
-
   // ── Hot pool ──────────────────────────────────────────────────────────
   setHotPoolTarget(n: number): void {
     this.hotPoolTarget = Math.max(0, Math.floor(n));
@@ -320,7 +300,6 @@ export class ControlPlaneStore {
     }
     return added;
   }
-
   // ── Warm-pool state ──────────────────────────────────────────────────
   getWarmPoolState(): WarmPoolState {
     return { ...this.warmPoolState };
@@ -329,7 +308,6 @@ export class ControlPlaneStore {
     this.warmPoolState = { ...this.warmPoolState, ...patch };
     return { ...this.warmPoolState };
   }
-
   // ── Containers ────────────────────────────────────────────────────────
   createContainer(input: {
     name: string;
@@ -369,11 +347,9 @@ export class ControlPlaneStore {
     this.containers.set(container.id, container);
     return container;
   }
-
   getContainer(id: string): Container | undefined {
     return this.containers.get(id);
   }
-
   updateContainer(id: string, patch: Partial<Container>): Container {
     const existing = this.containers.get(id);
     if (!existing) throw new Error(`container '${id}' not found`);
@@ -386,17 +362,16 @@ export class ControlPlaneStore {
     this.containers.set(id, next);
     return next;
   }
-
   removeContainer(id: string): void {
     this.containers.delete(id);
   }
-
   allContainers(): Container[] {
     return [...this.containers.values()];
   }
-
   /** Advance any containers whose pending action time has elapsed. */
-  resolveContainerActions(): { resolved: number } {
+  resolveContainerActions(): {
+    resolved: number;
+  } {
     const now = this.now().getTime();
     let resolved = 0;
     for (const container of [...this.containers.values()]) {
@@ -420,16 +395,13 @@ export class ControlPlaneStore {
     }
     return { resolved };
   }
-
   now(): Date {
     return this.nowFn();
   }
-
   private nextId(prefix: string): string {
     this.idSeq += 1;
     return `${prefix}-${this.idSeq.toString().padStart(6, "0")}`;
   }
-
   createSandbox(input: {
     organizationId: string;
     userId: string;
@@ -449,18 +421,15 @@ export class ControlPlaneStore {
     this.sandboxes.set(sandbox.id, sandbox);
     return sandbox;
   }
-
   getSandbox(id: string): Sandbox | undefined {
     return this.sandboxes.get(id);
   }
-
   bindSandboxRuntimeToken(id: string, token: string): void {
     if (!this.sandboxes.has(id)) throw new Error(`sandbox '${id}' not found`);
     const trimmed = token.trim();
     if (!trimmed) throw new Error("runtime token must be non-empty");
     this.sandboxRuntimeTokens.set(id, trimmed);
   }
-
   getSandboxByRuntimeToken(token: string): Sandbox | undefined {
     const trimmed = token.trim();
     if (!trimmed) return undefined;
@@ -471,7 +440,6 @@ export class ControlPlaneStore {
     }
     return undefined;
   }
-
   updateSandbox(id: string, patch: Partial<Sandbox>): Sandbox {
     const existing = this.sandboxes.get(id);
     if (!existing) throw new Error(`sandbox '${id}' not found`);
@@ -479,12 +447,10 @@ export class ControlPlaneStore {
     this.sandboxes.set(id, next);
     return next;
   }
-
   // ── Dedicated-agent conversation store (handoff import target) ─────────
   private convKey(sandboxId: string, conversationId: string): string {
     return `${sandboxId}::${conversationId}`;
   }
-
   /**
    * Silently bulk-insert a transcript into a dedicated agent's conversation —
    * the mock counterpart of the agent's `POST /api/conversations/:id/import`
@@ -517,7 +483,6 @@ export class ControlPlaneStore {
     } else {
       this.conversations.set(key, [...messages]);
     }
-
     const taskStore = this.scheduledTasks.get(key) ?? new Map();
     this.scheduledTasks.set(key, taskStore);
     let importedScheduledTasks = 0;
@@ -553,11 +518,9 @@ export class ControlPlaneStore {
         }
       }
     }
-
     if (stagedTodoImport) {
       this.todoSnapshots.set(key, stagedTodoImport.state);
     }
-
     return {
       conversationId,
       complete: true,
@@ -573,7 +536,6 @@ export class ControlPlaneStore {
       ...(existing && existing.length > 0 ? { alreadyPopulated: true } : {}),
     };
   }
-
   /** Read back a dedicated agent's imported conversation transcript. */
   getConversation(
     sandboxId: string,
@@ -583,7 +545,6 @@ export class ControlPlaneStore {
       this.conversations.get(this.convKey(sandboxId, conversationId)) ?? []
     );
   }
-
   /** Read the Dedicated task receipts that back cutover assertions. */
   getScheduledTasks(
     sandboxId: string,
@@ -595,7 +556,6 @@ export class ControlPlaneStore {
         ?.values() ?? [],
     );
   }
-
   /** Read the exact Todo records materialized by the Dedicated import mock. */
   getTodos(
     sandboxId: string,
@@ -606,7 +566,6 @@ export class ControlPlaneStore {
         [],
     );
   }
-
   /** Read the durable Todo replay authority materialized by Dedicated. */
   getTodoMutations(
     sandboxId: string,
@@ -617,7 +576,6 @@ export class ControlPlaneStore {
         ?.mutations ?? [],
     );
   }
-
   /**
    * Append one deterministic turn to an imported Dedicated conversation.
    * The real route persists `clientMessageId` outcomes; mirroring that here
@@ -628,23 +586,23 @@ export class ControlPlaneStore {
     conversationId: string,
     text: string,
     clientMessageId?: string,
-  ): { reply: string; replayed: boolean } | null {
+  ): {
+    reply: string;
+    replayed: boolean;
+  } | null {
     const key = this.convKey(sandboxId, conversationId);
     const messages = this.conversations.get(key);
     if (!messages) return null;
-
     const outcomeKey = clientMessageId ? `${key}::${clientMessageId}` : null;
     const priorReply = outcomeKey
       ? this.conversationTurnReplies.get(outcomeKey)
       : undefined;
     if (priorReply) return { reply: priorReply, replayed: true };
-
     const reply = `Mock dedicated reply to: ${text}`;
     messages.push({ role: "user", text }, { role: "assistant", text: reply });
     if (outcomeKey) this.conversationTurnReplies.set(outcomeKey, reply);
     return { reply, replayed: false };
   }
-
   /**
    * Read back an imported transcript by the cloud `agentId` rather than the
    * internal sandbox id (the import routes key on the sandbox id from the
@@ -660,7 +618,6 @@ export class ControlPlaneStore {
     if (!sandbox) return [];
     return this.getConversation(sandbox.id, conversationId);
   }
-
   getScheduledTasksByAgent(
     agentId: string,
     conversationId: string,
@@ -671,7 +628,6 @@ export class ControlPlaneStore {
     if (!sandbox) return [];
     return this.getScheduledTasks(sandbox.id, conversationId);
   }
-
   getTodosByAgent(
     agentId: string,
     conversationId: string,
@@ -682,7 +638,6 @@ export class ControlPlaneStore {
     if (!sandbox) return [];
     return this.getTodos(sandbox.id, conversationId);
   }
-
   getTodoMutationsByAgent(
     agentId: string,
     conversationId: string,
@@ -693,7 +648,6 @@ export class ControlPlaneStore {
     if (!sandbox) return [];
     return this.getTodoMutations(sandbox.id, conversationId);
   }
-
   createJob(input: {
     type: JobType;
     sandboxId: string;
@@ -716,11 +670,9 @@ export class ControlPlaneStore {
     this.jobs.set(job.id, job);
     return job;
   }
-
   getJob(id: string): Job | undefined {
     return this.jobs.get(id);
   }
-
   updateJob(id: string, patch: Partial<Job>): Job {
     const existing = this.jobs.get(id);
     if (!existing) throw new Error(`job '${id}' not found`);
@@ -728,21 +680,18 @@ export class ControlPlaneStore {
     this.jobs.set(id, next);
     return next;
   }
-
   /** Pending jobs in FIFO order. */
   pendingJobs(): Job[] {
     return [...this.jobs.values()]
       .filter((j) => j.status === "pending")
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
-
   /** Count of pending jobs (used to compute skipped after limit). */
   pendingJobCount(): number {
     let n = 0;
     for (const j of this.jobs.values()) if (j.status === "pending") n += 1;
     return n;
   }
-
   /** Sandboxes still in `provisioning` whose `createdAt` is older than the cutoff. */
   stuckProvisioningSandboxes(cutoff: Date): Sandbox[] {
     return [...this.sandboxes.values()].filter(
@@ -750,11 +699,9 @@ export class ControlPlaneStore {
         s.status === "provisioning" && s.createdAt.getTime() < cutoff.getTime(),
     );
   }
-
   allSandboxes(): Sandbox[] {
     return [...this.sandboxes.values()];
   }
-
   allJobs(): Job[] {
     return [...this.jobs.values()];
   }

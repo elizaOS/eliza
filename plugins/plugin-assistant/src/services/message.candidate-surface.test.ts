@@ -53,6 +53,8 @@ describe("budgeted model-selected action surface", () => {
     },
   );
   it.each([
+    { candidates: ["DISCOVER_ACTIONS"] },
+    { candidates: ["DISCOVER_ACTIONS", "NOTES"] },
     { candidates: ["DISCOVER_TOOLS"] },
     { candidates: ["DISCOVER_TOOLS", "NOTES"] },
   ])(

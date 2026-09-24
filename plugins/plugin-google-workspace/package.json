@@ -45,15 +45,14 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit --allowImportingTsExtensions"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "google-auth-library": "^11.1.0",
     "googleapis": "^169.0.0",
     "zod": "^4.6.5",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

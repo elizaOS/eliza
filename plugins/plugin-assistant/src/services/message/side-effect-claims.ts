@@ -792,12 +792,16 @@ const NO_RECORD_CHANGE_CLAUSE =
  * Questions and conditionals pass through: asking the user whether their list
  * is empty is not a claim about looked-up state.
  */
-export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
+/** Returns each asserted absence clause under the same quotation, question and conditional policy as the egress detector. */
+export function emptyTrackedStateClaimScopes(
+  reply: string,
+): Array<"notes" | "unsupported"> {
+  const scopes: Array<"notes" | "unsupported"> = [];
   const text = reply
     .trim()
     .replace(NO_RECORD_CHANGE_CLAUSE, (clause) => " ".repeat(clause.length));
   const { projection, spans } = claimQuoteContext(text);
-  if (!text.trim()) return false;
+  if (!text.trim()) return scopes;
   for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {
     let quoteIndex = 0;
     for (const match of text.matchAll(pattern)) {
@@ -818,10 +822,34 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
       if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
       if (UNCERTAIN_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
       if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
-      return true;
+      const sentenceStart =
+        Math.max(
+          text.lastIndexOf(".", match.index),
+          text.lastIndexOf("!", match.index),
+          text.lastIndexOf("?", match.index),
+          text.lastIndexOf("\n", match.index),
+        ) + 1;
+      const suffix = text.slice(match.index);
+      const boundary = suffix.search(/[.!?\n]/u);
+      const sentence = text.slice(
+        sentenceStart,
+        boundary < 0 ? text.length : match.index + boundary,
+      );
+      const noteOnly =
+        /\bnotes?\b/iu.test(match[0]) &&
+        !/\b(?:tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries|schedule|calendar|events?|messages?|emails?|files?|documents?|contacts?|everything|anything|nothing\s+else)\b/iu.test(
+          sentence,
+        ) &&
+        !/\b(?:yesterday|last|previous|earlier|before|ever|never|deleted)\b/iu.test(
+          sentence,
+        );
+      scopes.push(noteOnly ? "notes" : "unsupported");
     }
   }
-  return false;
+  return scopes;
+}
+export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
+  return emptyTrackedStateClaimScopes(reply).length > 0;
 }
 // ── Progress-promise detection ──────────────────────────────────────────────
 // A short reply whose ENTIRE content is a promise to do work ("On it.",

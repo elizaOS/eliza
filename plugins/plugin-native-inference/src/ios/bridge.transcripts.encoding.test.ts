@@ -1,11 +1,11 @@
 /** Exercises malformed iOS transcript identifiers across read, update, and delete routes. */
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type { TranscriptSegment } from "@elizaos/shared";
+
+import { type IAgentRuntime, type Memory, type UUID } from "@elizaos/core";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 import { describe, expect, it } from "vitest";
 import { handleDirectCoreRoute, type IosBridgeBackend } from "./bridge.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
-
 function createFakeRuntime(): IAgentRuntime {
   const tables = new Map<string, Memory[]>();
   return {
@@ -45,7 +45,6 @@ function createFakeRuntime(): IAgentRuntime {
     },
   } as unknown as IAgentRuntime;
 }
-
 function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
   return {
     runtime,
@@ -54,13 +53,15 @@ function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
     close: async () => {},
   };
 }
-
 async function call(
   backend: IosBridgeBackend,
   method: string,
   rawPath: string,
   body?: unknown,
-): Promise<{ status: number; json: Record<string, unknown> }> {
+): Promise<{
+  status: number;
+  json: Record<string, unknown>;
+}> {
   const res = await handleDirectCoreRoute(
     backend,
     method,
@@ -70,7 +71,6 @@ async function call(
   if (!res) throw new Error(`route returned null: ${method} ${rawPath}`);
   return { status: res.status, json: JSON.parse(res.body) };
 }
-
 const seg = (text: string, endMs = 1000): TranscriptSegment => ({
   id: `seg-${Math.random().toString(36).slice(2)}`,
   speakerLabel: "Speaker 1",
@@ -79,7 +79,6 @@ const seg = (text: string, endMs = 1000): TranscriptSegment => ({
   text,
   words: [],
 });
-
 describe("iOS /api/transcripts/:id encoding", () => {
   it("GET /api/transcripts list is untouched", async () => {
     const backend = makeBackend(createFakeRuntime());
@@ -87,7 +86,6 @@ describe("iOS /api/transcripts/:id encoding", () => {
     expect(status).toBe(200);
     expect(json).toEqual({ transcripts: [] });
   });
-
   it("POST /api/transcripts create is untouched", async () => {
     const backend = makeBackend(createFakeRuntime());
     const { status, json } = await call(backend, "POST", "/api/transcripts", {
@@ -101,7 +99,6 @@ describe("iOS /api/transcripts/:id encoding", () => {
       durationMs: 1500,
     });
   });
-
   it("canonical percent-encoded id still reaches transcript lookup", async () => {
     const runtime = createFakeRuntime();
     const seen: string[] = [];
@@ -120,7 +117,6 @@ describe("iOS /api/transcripts/:id encoding", () => {
     expect(status).toBe(404);
     expect(json).toEqual({ error: "not found" });
   });
-
   it.each(["%", "%2", "%ZZ", "%E0%A4"])(
     "rejects malformed %s with 400 before transcript lookup",
     async (token) => {

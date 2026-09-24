@@ -24,7 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/shared/canonical-json";
+import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/core/canonical-json";
 import type {
   AgentBackupDeltaData,
   AgentBackupPlainStateData,

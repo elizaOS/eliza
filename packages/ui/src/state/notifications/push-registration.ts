@@ -26,7 +26,7 @@
  * does not double-register.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { client, ElizaClient } from "../../api/client";
 import {
   getPushNotificationsPlugin,

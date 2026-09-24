@@ -4,7 +4,7 @@
  * validation and aggregation contracts the service and routes depend on.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import {
   buildNextCalendarEventContext,

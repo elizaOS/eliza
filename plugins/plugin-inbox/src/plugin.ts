@@ -7,19 +7,18 @@
  * across from PA's `app_lifeops` on first boot. Depends on `@elizaos/plugin-sql`
  * for the runtime DB handle the schema registers against.
  */
+
 import {
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
 import { InboxMigrationService } from "./inbox/migration.ts";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
 import { inboxTriageProvider } from "./providers/inbox-triage.ts";
 import { inboxRoutes } from "./routes/inbox-routes.ts";
-
 export const inboxPlugin: Plugin = {
   name: "@elizaos/plugin-inbox",
   description:
@@ -84,5 +83,4 @@ export const inboxPlugin: Plugin = {
     },
   ],
 };
-
 export default inboxPlugin;

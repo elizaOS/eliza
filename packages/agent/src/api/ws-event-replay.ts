@@ -10,17 +10,15 @@
  *
  * @module
  */
-
 /**
  * Maximum number of buffered envelopes replayed when the client provides no
  * (or an invalid) cursor. This is the historical, backward-compatible default:
  * a fresh connection with no cursor receives `buffer.slice(-DEFAULT_REPLAY_LIMIT)`.
  */
 export const DEFAULT_REPLAY_LIMIT = 120;
-
 /**
  * Minimal shape the replay logic needs from a buffered event envelope. The real
- * envelope (`StreamEventEnvelope` from `@elizaos/shared`) carries more fields;
+ * envelope (`StreamEventEnvelope` from `@elizaos/core`) carries more fields;
  * the cursor only cares about the monotonic sequence, which is the integer
  * portion of `eventId` (`evt-<n>`) and is mirrored on `bufferSeq` for envelopes
  * pushed through the primary `pushEvent` path.
@@ -29,7 +27,6 @@ export interface ReplayableEvent {
   eventId: string;
   bufferSeq?: number;
 }
-
 /**
  * Resolve the monotonic sequence of a buffered envelope.
  *
@@ -51,7 +48,6 @@ export function eventSequence(event: ReplayableEvent): number | null {
   const parsed = Number.parseInt(match[1], 10);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
-
 /**
  * Parse a client-supplied reconnect cursor (the `lastEventId` WS query param).
  *
@@ -72,7 +68,6 @@ export function parseEventCursor(
   const parsed = Number.parseInt(match[1], 10);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
-
 /**
  * Select the envelopes to replay to a (re)connecting client.
  *

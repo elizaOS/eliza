@@ -6,7 +6,7 @@
  * the connector-degradation types. Consumed across the screen-time, scheduling,
  * and connector layers.
  */
-// The passive-signal source vocabulary is owned by `@elizaos/shared`; health
+// The passive-signal source vocabulary is owned by `@elizaos/core`; health
 // imports and re-exports the canonical const/type/guard so its reliability
 // tables and the PA telemetry mapper agree on one definition instead of
 // drifting copies.
@@ -15,8 +15,8 @@ import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
-} from "@elizaos/shared";
-import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
+} from "@elizaos/core/contracts/personal-assistant";
+import { type LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
 export type {
   LifeOpsConnectorDegradation,
@@ -29,7 +29,6 @@ export {
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
 };
-
 export const LIFEOPS_TIME_WINDOW_NAMES = [
   "morning",
   "afternoon",
@@ -37,12 +36,9 @@ export const LIFEOPS_TIME_WINDOW_NAMES = [
   "night",
   "custom",
 ] as const;
-
 export type LifeOpsTimeWindowName = (typeof LIFEOPS_TIME_WINDOW_NAMES)[number];
-
 export const LIFEOPS_DEFINITION_KINDS = ["task", "habit", "routine"] as const;
 export type LifeOpsDefinitionKind = (typeof LIFEOPS_DEFINITION_KINDS)[number];
-
 export const LIFEOPS_DEFINITION_STATUSES = [
   "active",
   "paused",
@@ -50,7 +46,6 @@ export const LIFEOPS_DEFINITION_STATUSES = [
 ] as const;
 export type LifeOpsDefinitionStatus =
   (typeof LIFEOPS_DEFINITION_STATUSES)[number];
-
 export const LIFEOPS_OCCURRENCE_STATES = [
   "pending",
   "visible",
@@ -61,7 +56,6 @@ export const LIFEOPS_OCCURRENCE_STATES = [
   "muted",
 ] as const;
 export type LifeOpsOccurrenceState = (typeof LIFEOPS_OCCURRENCE_STATES)[number];
-
 export const LIFEOPS_GOAL_STATUSES = [
   "active",
   "paused",
@@ -69,7 +63,6 @@ export const LIFEOPS_GOAL_STATUSES = [
   "satisfied",
 ] as const;
 export type LifeOpsGoalStatus = (typeof LIFEOPS_GOAL_STATUSES)[number];
-
 export const LIFEOPS_REVIEW_STATES = [
   "idle",
   "needs_attention",
@@ -77,14 +70,12 @@ export const LIFEOPS_REVIEW_STATES = [
   "at_risk",
 ] as const;
 export type LifeOpsGoalReviewState = (typeof LIFEOPS_REVIEW_STATES)[number];
-
 export const LIFEOPS_WORKFLOW_STATUSES = [
   "active",
   "paused",
   "archived",
 ] as const;
 export type LifeOpsWorkflowStatus = (typeof LIFEOPS_WORKFLOW_STATUSES)[number];
-
 export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
   "queued",
   "running",
@@ -95,7 +86,6 @@ export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
 ] as const;
 export type LifeOpsWorkflowRunStatus =
   (typeof LIFEOPS_WORKFLOW_RUN_STATUSES)[number];
-
 export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = [
   "manual",
   "schedule",
@@ -103,7 +93,6 @@ export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = [
 ] as const;
 export type LifeOpsWorkflowTriggerType =
   (typeof LIFEOPS_WORKFLOW_TRIGGER_TYPES)[number];
-
 /**
  * Registry of event kinds that can fire a LifeOps workflow.
  *
@@ -126,7 +115,6 @@ export const LIFEOPS_EVENT_KINDS = [
   "lifeops.regularity.changed",
 ] as const;
 export type LifeOpsEventKind = (typeof LIFEOPS_EVENT_KINDS)[number];
-
 export interface LifeOpsCalendarEventEndedFilters {
   /** Only fire for events on these calendar ids (e.g. "primary"). */
   calendarIds?: string[];
@@ -137,7 +125,6 @@ export interface LifeOpsCalendarEventEndedFilters {
   /** Only fire when one attendee email contains one of these substrings. */
   attendeeEmailIncludesAny?: string[];
 }
-
 export interface LifeOpsGmailEventFilters {
   /** Only fire for these Google connector grant ids. */
   grantIds?: string[];
@@ -150,44 +137,35 @@ export interface LifeOpsGmailEventFilters {
   /** Only fire when LifeOps classified the message/thread as needing a reply. */
   requiresReplyNeeded?: boolean;
 }
-
 export interface LifeOpsSleepOnsetCandidateFilters {
   minConfidence?: number;
 }
-
 export interface LifeOpsSleepDetectedFilters {
   minConfidence?: number;
 }
-
 export interface LifeOpsSleepEndedFilters {
   minConfidence?: number;
 }
-
 export interface LifeOpsWakeObservedFilters {
   offsetMinutes?: number;
   minConfidence?: number;
 }
-
 export interface LifeOpsWakeConfirmedFilters {
   offsetMinutes?: number;
   minConfidence?: number;
 }
-
 export interface LifeOpsNapDetectedFilters {
   minConfidence?: number;
   maxDurationMinutes?: number;
 }
-
 export interface LifeOpsBedtimeImminentFilters {
   minutesBefore?: number;
   minConfidence?: number;
 }
-
 export interface LifeOpsRegularityChangedFilters {
   /** Fires when regularity class transitions into this value. */
   becomes?: LifeOpsRegularityClass;
 }
-
 export type LifeOpsEventFilters =
   | {
       kind: "calendar.event.ended";
@@ -233,7 +211,6 @@ export type LifeOpsEventFilters =
       kind: "lifeops.regularity.changed";
       filters?: LifeOpsRegularityChangedFilters;
     };
-
 export const LIFEOPS_NEGOTIATION_STATES = [
   "initiated",
   "proposals_sent",
@@ -243,7 +220,6 @@ export const LIFEOPS_NEGOTIATION_STATES = [
 ] as const;
 export type LifeOpsNegotiationState =
   (typeof LIFEOPS_NEGOTIATION_STATES)[number];
-
 export const LIFEOPS_PROPOSAL_STATUSES = [
   "pending",
   "accepted",
@@ -251,7 +227,6 @@ export const LIFEOPS_PROPOSAL_STATUSES = [
   "expired",
 ] as const;
 export type LifeOpsProposalStatus = (typeof LIFEOPS_PROPOSAL_STATUSES)[number];
-
 export const LIFEOPS_PROPOSAL_PROPOSERS = [
   "agent",
   "owner",
@@ -259,7 +234,6 @@ export const LIFEOPS_PROPOSAL_PROPOSERS = [
 ] as const;
 export type LifeOpsProposalProposer =
   (typeof LIFEOPS_PROPOSAL_PROPOSERS)[number];
-
 export interface LifeOpsSchedulingNegotiation {
   id: string;
   agentId: string;
@@ -275,7 +249,6 @@ export interface LifeOpsSchedulingNegotiation {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsSchedulingProposal {
   id: string;
   agentId: string;
@@ -288,7 +261,6 @@ export interface LifeOpsSchedulingProposal {
   createdAt: string;
   updatedAt: string;
 }
-
 export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "google",
   "microsoft",
@@ -306,21 +278,17 @@ export const LIFEOPS_CONNECTOR_PROVIDERS = [
 ] as const;
 export type LifeOpsConnectorProvider =
   (typeof LIFEOPS_CONNECTOR_PROVIDERS)[number];
-
 export const LIFEOPS_CONNECTOR_MODES = [
   "local",
   "remote",
   "cloud_managed",
 ] as const;
 export type LifeOpsConnectorMode = (typeof LIFEOPS_CONNECTOR_MODES)[number];
-
 export const LIFEOPS_CONNECTOR_SIDES = ["owner", "agent"] as const;
 export type LifeOpsConnectorSide = (typeof LIFEOPS_CONNECTOR_SIDES)[number];
-
 export const LIFEOPS_CONNECTOR_EXECUTION_TARGETS = ["local", "cloud"] as const;
 export type LifeOpsConnectorExecutionTarget =
   (typeof LIFEOPS_CONNECTOR_EXECUTION_TARGETS)[number];
-
 export const LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH = [
   "local_storage",
   "cloud_connection",
@@ -328,7 +296,6 @@ export const LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH = [
 ] as const;
 export type LifeOpsConnectorSourceOfTruth =
   (typeof LIFEOPS_CONNECTOR_SOURCES_OF_TRUTH)[number];
-
 export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.basic_identity",
   "google.calendar.read",
@@ -340,7 +307,6 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
 ] as const;
 export type LifeOpsGoogleCapability =
   (typeof LIFEOPS_GOOGLE_CAPABILITIES)[number];
-
 export const LIFEOPS_X_CAPABILITIES = [
   "x.read",
   "x.write",
@@ -348,7 +314,6 @@ export const LIFEOPS_X_CAPABILITIES = [
   "x.dm.write",
 ] as const;
 export type LifeOpsXCapability = (typeof LIFEOPS_X_CAPABILITIES)[number];
-
 export const LIFEOPS_HEALTH_CONNECTOR_PROVIDERS = [
   "strava",
   "fitbit",
@@ -357,7 +322,6 @@ export const LIFEOPS_HEALTH_CONNECTOR_PROVIDERS = [
 ] as const;
 export type LifeOpsHealthConnectorProvider =
   (typeof LIFEOPS_HEALTH_CONNECTOR_PROVIDERS)[number];
-
 export const LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES = [
   "health.activity.read",
   "health.workouts.read",
@@ -368,7 +332,6 @@ export const LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES = [
 ] as const;
 export type LifeOpsHealthConnectorCapability =
   (typeof LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES)[number];
-
 export const LIFEOPS_HEALTH_METRICS = [
   "steps",
   "active_minutes",
@@ -389,26 +352,22 @@ export const LIFEOPS_HEALTH_METRICS = [
   "body_temperature_celsius",
 ] as const;
 export type LifeOpsHealthMetric = (typeof LIFEOPS_HEALTH_METRICS)[number];
-
 export const LIFEOPS_DISCORD_CAPABILITIES = [
   "discord.read",
   "discord.send",
 ] as const;
 export type LifeOpsDiscordCapability =
   (typeof LIFEOPS_DISCORD_CAPABILITIES)[number];
-
 export const LIFEOPS_TELEGRAM_CAPABILITIES = [
   "telegram.read",
   "telegram.send",
 ] as const;
 export type LifeOpsTelegramCapability =
   (typeof LIFEOPS_TELEGRAM_CAPABILITIES)[number];
-
 // ---------------------------------------------------------------------------
 // Side-aware capability policy
 // Owner side = assistive (read-only). Agent side = autonomous (read + send).
 // ---------------------------------------------------------------------------
-
 export function capabilitiesForSide<T extends string>(
   allCapabilities: readonly T[],
   side: LifeOpsConnectorSide,
@@ -416,7 +375,6 @@ export function capabilitiesForSide<T extends string>(
   if (side === "agent") return [...allCapabilities];
   return allCapabilities.filter((c) => c.endsWith(".read")) as T[];
 }
-
 export const LIFEOPS_REMINDER_CHANNELS = [
   "in_app",
   "sms",
@@ -429,7 +387,6 @@ export const LIFEOPS_REMINDER_CHANNELS = [
   "push",
 ] as const;
 export type LifeOpsReminderChannel = (typeof LIFEOPS_REMINDER_CHANNELS)[number];
-
 export const LIFEOPS_CHANNEL_TYPES = [
   "in_app",
   "sms",
@@ -445,23 +402,18 @@ export const LIFEOPS_CHANNEL_TYPES = [
   // Note: "cloud" in LIFEOPS_REMINDER_CHANNELS is a deployment target, not a user-facing delivery channel
 ] as const;
 export type LifeOpsChannelType = (typeof LIFEOPS_CHANNEL_TYPES)[number];
-
 export const LIFEOPS_PRIVACY_CLASSES = ["private", "shared", "public"] as const;
 export type LifeOpsPrivacyClass = (typeof LIFEOPS_PRIVACY_CLASSES)[number];
-
 export const LIFEOPS_DOMAINS = ["user_lifeops", "agent_ops"] as const;
 export type LifeOpsDomain = (typeof LIFEOPS_DOMAINS)[number];
-
 export const LIFEOPS_SUBJECT_TYPES = ["owner", "agent"] as const;
 export type LifeOpsSubjectType = (typeof LIFEOPS_SUBJECT_TYPES)[number];
-
 export const LIFEOPS_VISIBILITY_SCOPES = [
   "owner_only",
   "agent_and_admin",
   "owner_agent_admin",
 ] as const;
 export type LifeOpsVisibilityScope = (typeof LIFEOPS_VISIBILITY_SCOPES)[number];
-
 export const LIFEOPS_CONTEXT_POLICIES = [
   "never",
   "explicit_only",
@@ -469,7 +421,6 @@ export const LIFEOPS_CONTEXT_POLICIES = [
   "allowed_in_private_chat",
 ] as const;
 export type LifeOpsContextPolicy = (typeof LIFEOPS_CONTEXT_POLICIES)[number];
-
 export const LIFEOPS_REMINDER_URGENCY_LEVELS = [
   "low",
   "medium",
@@ -478,7 +429,6 @@ export const LIFEOPS_REMINDER_URGENCY_LEVELS = [
 ] as const;
 export type LifeOpsReminderUrgency =
   (typeof LIFEOPS_REMINDER_URGENCY_LEVELS)[number];
-
 export const LIFEOPS_REMINDER_INTENSITIES = [
   "minimal",
   "normal",
@@ -487,7 +437,6 @@ export const LIFEOPS_REMINDER_INTENSITIES = [
 ] as const;
 export type LifeOpsReminderIntensity =
   (typeof LIFEOPS_REMINDER_INTENSITIES)[number];
-
 export const LIFEOPS_REMINDER_INTENSITY_COMPATIBILITY_VALUES = [
   "paused",
   "low",
@@ -495,11 +444,9 @@ export const LIFEOPS_REMINDER_INTENSITY_COMPATIBILITY_VALUES = [
 ] as const;
 export type LifeOpsReminderIntensityCompatibility =
   (typeof LIFEOPS_REMINDER_INTENSITY_COMPATIBILITY_VALUES)[number];
-
 export type LifeOpsReminderIntensityInput =
   | LifeOpsReminderIntensity
   | LifeOpsReminderIntensityCompatibility;
-
 export const LIFEOPS_REMINDER_PREFERENCE_SOURCES = [
   "default",
   "global_policy",
@@ -507,7 +454,6 @@ export const LIFEOPS_REMINDER_PREFERENCE_SOURCES = [
 ] as const;
 export type LifeOpsReminderPreferenceSource =
   (typeof LIFEOPS_REMINDER_PREFERENCE_SOURCES)[number];
-
 export const LIFEOPS_OWNER_TYPES = [
   "definition",
   "occurrence",
@@ -521,7 +467,6 @@ export const LIFEOPS_OWNER_TYPES = [
   "circadian_state",
 ] as const;
 export type LifeOpsOwnerType = (typeof LIFEOPS_OWNER_TYPES)[number];
-
 export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "definition_created",
   "definition_updated",
@@ -559,7 +504,6 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "manual_override_accepted",
 ] as const;
 export type LifeOpsAuditEventType = (typeof LIFEOPS_AUDIT_EVENT_TYPES)[number];
-
 export const LIFEOPS_ACTORS = [
   "agent",
   "user",
@@ -567,7 +511,6 @@ export const LIFEOPS_ACTORS = [
   "connector",
 ] as const;
 export type LifeOpsActor = (typeof LIFEOPS_ACTORS)[number];
-
 export interface LifeOpsOwnership {
   domain: LifeOpsDomain;
   subjectType: LifeOpsSubjectType;
@@ -575,7 +518,6 @@ export interface LifeOpsOwnership {
   visibilityScope: LifeOpsVisibilityScope;
   contextPolicy: LifeOpsContextPolicy;
 }
-
 export interface LifeOpsOwnershipInput {
   domain?: LifeOpsDomain;
   subjectType?: LifeOpsSubjectType;
@@ -583,26 +525,22 @@ export interface LifeOpsOwnershipInput {
   visibilityScope?: LifeOpsVisibilityScope;
   contextPolicy?: LifeOpsContextPolicy;
 }
-
 export interface LifeOpsTimeWindowDefinition {
   name: LifeOpsTimeWindowName;
   label: string;
   startMinute: number;
   endMinute: number;
 }
-
 export interface LifeOpsWindowPolicy {
   timezone: string;
   windows: LifeOpsTimeWindowDefinition[];
 }
-
 export interface LifeOpsDailySlot {
   key: string;
   label: string;
   minuteOfDay: number;
   durationMinutes: number;
 }
-
 export interface LifeOpsIntervalCadence {
   kind: "interval";
   everyMinutes: number;
@@ -613,7 +551,6 @@ export interface LifeOpsIntervalCadence {
   visibilityLeadMinutes?: number;
   visibilityLagMinutes?: number;
 }
-
 export const LIFEOPS_WEBSITE_ACCESS_UNLOCK_MODES = [
   "fixed_duration",
   "until_manual_lock",
@@ -621,7 +558,6 @@ export const LIFEOPS_WEBSITE_ACCESS_UNLOCK_MODES = [
 ] as const;
 export type LifeOpsWebsiteAccessUnlockMode =
   (typeof LIFEOPS_WEBSITE_ACCESS_UNLOCK_MODES)[number];
-
 export interface LifeOpsWebsiteAccessPolicy {
   groupKey: string;
   websites: string[];
@@ -630,7 +566,6 @@ export interface LifeOpsWebsiteAccessPolicy {
   callbackKey?: string | null;
   reason: string;
 }
-
 export type LifeOpsCadence =
   | {
       kind: "once";
@@ -658,7 +593,6 @@ export type LifeOpsCadence =
       visibilityLeadMinutes?: number;
       visibilityLagMinutes?: number;
     };
-
 export type LifeOpsProgressionRule =
   | {
       kind: "none";
@@ -670,20 +604,17 @@ export type LifeOpsProgressionRule =
       step: number;
       unit?: string;
     };
-
 export interface LifeOpsReminderStep {
   channel: LifeOpsReminderChannel;
   offsetMinutes: number;
   label: string;
 }
-
 export interface LifeOpsQuietHoursPolicy {
   timezone: string;
   startMinute: number;
   endMinute: number;
   channels?: LifeOpsReminderChannel[];
 }
-
 export interface LifeOpsReminderPlan {
   id: string;
   agentId: string;
@@ -695,7 +626,6 @@ export interface LifeOpsReminderPlan {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsTaskDefinition {
   id: string;
   agentId: string;
@@ -722,7 +652,6 @@ export interface LifeOpsTaskDefinition {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsOccurrence {
   id: string;
   agentId: string;
@@ -746,7 +675,6 @@ export interface LifeOpsOccurrence {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsOccurrenceView extends LifeOpsOccurrence {
   definitionKind: LifeOpsDefinitionKind;
   definitionStatus: LifeOpsDefinitionStatus;
@@ -758,7 +686,6 @@ export interface LifeOpsOccurrenceView extends LifeOpsOccurrence {
   source: string;
   goalId: string | null;
 }
-
 export interface LifeOpsGoalDefinition {
   id: string;
   agentId: string;
@@ -778,7 +705,6 @@ export interface LifeOpsGoalDefinition {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsGoalLink {
   id: string;
   agentId: string;
@@ -787,7 +713,6 @@ export interface LifeOpsGoalLink {
   linkedId: string;
   createdAt: string;
 }
-
 export interface LifeOpsWorkflowDefinition {
   id: string;
   agentId: string;
@@ -807,7 +732,6 @@ export interface LifeOpsWorkflowDefinition {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsWorkflowRun {
   id: string;
   agentId: string;
@@ -819,7 +743,6 @@ export interface LifeOpsWorkflowRun {
   result: Record<string, unknown>;
   auditRef: string | null;
 }
-
 export type LifeOpsWorkflowSchedule =
   | {
       kind: "manual";
@@ -892,7 +815,6 @@ export type LifeOpsWorkflowSchedule =
       eventKind: LifeOpsEventKind;
       filters?: LifeOpsEventFilters;
     };
-
 export interface LifeOpsWorkflowPermissionPolicy {
   allowBrowserActions: boolean;
   trustedBrowserActions: boolean;
@@ -901,7 +823,6 @@ export interface LifeOpsWorkflowPermissionPolicy {
   requireConfirmationForBrowserActions: boolean;
   requireConfirmationForXPosts: boolean;
 }
-
 // Generic browser-companion + packaging contracts live in
 // `@elizaos/plugin-browser/contracts`. `LIFEOPS_BROWSER_KINDS`,
 // `LifeOpsBrowserKind`, `LIFEOPS_BROWSER_ACTION_KINDS`,
@@ -909,7 +830,6 @@ export interface LifeOpsWorkflowPermissionPolicy {
 // because workflow-linked session shapes below still reference them.
 export const LIFEOPS_BROWSER_KINDS = ["chrome", "firefox", "safari"] as const;
 export type LifeOpsBrowserKind = (typeof LIFEOPS_BROWSER_KINDS)[number];
-
 export const LIFEOPS_BROWSER_ACTION_KINDS = [
   "open",
   "navigate",
@@ -926,7 +846,6 @@ export const LIFEOPS_BROWSER_ACTION_KINDS = [
 ] as const;
 export type LifeOpsBrowserActionKind =
   (typeof LIFEOPS_BROWSER_ACTION_KINDS)[number];
-
 export interface LifeOpsBrowserAction {
   id: string;
   kind: LifeOpsBrowserActionKind;
@@ -941,12 +860,10 @@ export interface LifeOpsBrowserAction {
   requiresConfirmation: boolean;
   metadata: Record<string, unknown>;
 }
-
 export interface LifeOpsWorkflowActionBase {
   id?: string;
   resultKey?: string;
 }
-
 export type LifeOpsWorkflowAction =
   | (LifeOpsWorkflowActionBase & {
       kind: "create_task";
@@ -995,11 +912,9 @@ export type LifeOpsWorkflowAction =
       sessionTitle: string;
       actions: Array<Omit<LifeOpsBrowserAction, "id">>;
     });
-
 export interface LifeOpsWorkflowActionPlan {
   steps: LifeOpsWorkflowAction[];
 }
-
 export const LIFEOPS_REMINDER_ATTEMPT_OUTCOMES = [
   "delivered",
   "delivered_read",
@@ -1013,7 +928,6 @@ export const LIFEOPS_REMINDER_ATTEMPT_OUTCOMES = [
 ] as const;
 export type LifeOpsReminderAttemptOutcome =
   (typeof LIFEOPS_REMINDER_ATTEMPT_OUTCOMES)[number];
-
 export type LifeOpsReminderReviewStatus =
   | "unrelated"
   | "needs_clarification"
@@ -1021,7 +935,6 @@ export type LifeOpsReminderReviewStatus =
   | "resolved"
   | "escalated"
   | "clarification_requested";
-
 export interface LifeOpsReminderAttempt {
   id: string;
   agentId: string;
@@ -1039,7 +952,6 @@ export interface LifeOpsReminderAttempt {
   reviewAt?: string | null;
   reviewStatus?: LifeOpsReminderReviewStatus | null;
 }
-
 export interface LifeOpsConnectorGrant {
   id: string;
   agentId: string;
@@ -1062,7 +974,6 @@ export interface LifeOpsConnectorGrant {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsChannelPolicy {
   id: string;
   agentId: string;
@@ -1077,7 +988,6 @@ export interface LifeOpsChannelPolicy {
   createdAt: string;
   updatedAt: string;
 }
-
 export const LIFEOPS_ACTIVITY_SIGNAL_STATES = [
   "active",
   "idle",
@@ -1087,7 +997,6 @@ export const LIFEOPS_ACTIVITY_SIGNAL_STATES = [
 ] as const;
 export type LifeOpsActivitySignalState =
   (typeof LIFEOPS_ACTIVITY_SIGNAL_STATES)[number];
-
 export const LIFEOPS_HEALTH_SIGNAL_SOURCES = [
   "healthkit",
   "health_connect",
@@ -1098,7 +1007,6 @@ export const LIFEOPS_HEALTH_SIGNAL_SOURCES = [
 ] as const;
 export type LifeOpsHealthSignalSource =
   (typeof LIFEOPS_HEALTH_SIGNAL_SOURCES)[number];
-
 export interface LifeOpsHealthSignalSleepSummary {
   available: boolean;
   isSleeping: boolean;
@@ -1107,7 +1015,6 @@ export interface LifeOpsHealthSignalSleepSummary {
   durationMinutes: number | null;
   stage: string | null;
 }
-
 export interface LifeOpsHealthSignalBiometrics {
   sampleAt: string | null;
   heartRateBpm: number | null;
@@ -1116,7 +1023,6 @@ export interface LifeOpsHealthSignalBiometrics {
   respiratoryRate: number | null;
   bloodOxygenPercent: number | null;
 }
-
 export interface LifeOpsHealthSignal {
   source: LifeOpsHealthSignalSource;
   permissions: {
@@ -1127,7 +1033,6 @@ export interface LifeOpsHealthSignal {
   biometrics: LifeOpsHealthSignalBiometrics;
   warnings: string[];
 }
-
 export const LIFEOPS_HEALTH_CONNECTOR_REASONS = [
   "connected",
   "disconnected",
@@ -1137,7 +1042,6 @@ export const LIFEOPS_HEALTH_CONNECTOR_REASONS = [
 ] as const;
 export type LifeOpsHealthConnectorReason =
   (typeof LIFEOPS_HEALTH_CONNECTOR_REASONS)[number];
-
 export interface LifeOpsHealthConnectorStatus {
   provider: LifeOpsHealthConnectorProvider;
   side: LifeOpsConnectorSide;
@@ -1158,7 +1062,6 @@ export interface LifeOpsHealthConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 export interface LifeOpsHealthMetricSample {
   id: string;
   agentId: string;
@@ -1175,7 +1078,6 @@ export interface LifeOpsHealthMetricSample {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsHealthWorkout {
   id: string;
   agentId: string;
@@ -1195,7 +1097,6 @@ export interface LifeOpsHealthWorkout {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsHealthSyncState {
   id: string;
   agentId: string;
@@ -1208,7 +1109,6 @@ export interface LifeOpsHealthSyncState {
   metadata: Record<string, unknown>;
   updatedAt: string;
 }
-
 export const LIFEOPS_HEALTH_SLEEP_STAGES = [
   "awake",
   "light",
@@ -1219,7 +1119,6 @@ export const LIFEOPS_HEALTH_SLEEP_STAGES = [
 ] as const;
 export type LifeOpsHealthSleepStage =
   (typeof LIFEOPS_HEALTH_SLEEP_STAGES)[number];
-
 export interface LifeOpsHealthSleepStageSample {
   stage: LifeOpsHealthSleepStage;
   startAt: string;
@@ -1227,7 +1126,6 @@ export interface LifeOpsHealthSleepStageSample {
   confidence: number | null;
   providerCode: string | null;
 }
-
 export interface LifeOpsHealthSleepEpisode {
   id: string;
   agentId: string;
@@ -1260,7 +1158,6 @@ export interface LifeOpsHealthSleepEpisode {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsHealthDailySummary {
   date: string;
   provider: LifeOpsHealthConnectorProvider | "healthkit" | "google-fit";
@@ -1279,7 +1176,6 @@ export interface LifeOpsHealthDailySummary {
   bloodPressureDiastolic: number | null;
   bloodOxygenPercent: number | null;
 }
-
 export interface GetLifeOpsHealthSummaryRequest {
   provider?: LifeOpsHealthConnectorProvider | null;
   mode?: LifeOpsConnectorMode;
@@ -1290,7 +1186,6 @@ export interface GetLifeOpsHealthSummaryRequest {
   metrics?: LifeOpsHealthMetric[];
   forceSync?: boolean;
 }
-
 export interface LifeOpsHealthSummaryResponse {
   providers: LifeOpsHealthConnectorStatus[];
   summaries: LifeOpsHealthDailySummary[];
@@ -1299,7 +1194,6 @@ export interface LifeOpsHealthSummaryResponse {
   sleepEpisodes: LifeOpsHealthSleepEpisode[];
   syncedAt: string;
 }
-
 export interface StartLifeOpsHealthConnectorRequest {
   provider: LifeOpsHealthConnectorProvider;
   side?: LifeOpsConnectorSide;
@@ -1307,7 +1201,6 @@ export interface StartLifeOpsHealthConnectorRequest {
   redirectUrl?: string;
   capabilities?: LifeOpsHealthConnectorCapability[];
 }
-
 export interface StartLifeOpsHealthConnectorResponse {
   provider: LifeOpsHealthConnectorProvider;
   side: LifeOpsConnectorSide;
@@ -1316,14 +1209,12 @@ export interface StartLifeOpsHealthConnectorResponse {
   redirectUri: string;
   authUrl: string | null;
 }
-
 export interface DisconnectLifeOpsHealthConnectorRequest {
   provider: LifeOpsHealthConnectorProvider;
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
 }
-
 export interface SyncLifeOpsHealthConnectorRequest {
   provider?: LifeOpsHealthConnectorProvider | null;
   side?: LifeOpsConnectorSide;
@@ -1332,7 +1223,6 @@ export interface SyncLifeOpsHealthConnectorRequest {
   endDate?: string | null;
   days?: number;
 }
-
 export interface LifeOpsActivitySignal {
   id: string;
   agentId: string;
@@ -1347,7 +1237,6 @@ export interface LifeOpsActivitySignal {
   metadata: Record<string, unknown>;
   createdAt: string;
 }
-
 // ---------------------------------------------------------------------------
 // Telemetry event families (canonical store).
 //
@@ -1355,14 +1244,12 @@ export interface LifeOpsActivitySignal {
 // spec. Every telemetry payload is a fully-typed discriminated-union variant
 // per the no-`unknown`/no-`any` rule.
 // ---------------------------------------------------------------------------
-
 export type LifeOpsDevicePlatform =
   | "macos_desktop"
   | "macos_electrobun"
   | "ios_capacitor"
   | "ipados_capacitor"
   | "browser_web";
-
 export interface LifeOpsDevicePresencePayload {
   family: "device_presence_event";
   platform: LifeOpsDevicePlatform;
@@ -1371,7 +1258,6 @@ export interface LifeOpsDevicePresencePayload {
   isTransition: boolean;
   sequence: number;
 }
-
 export type LifeOpsDesktopPowerEventKind =
   | "system_wake"
   | "system_sleep"
@@ -1381,14 +1267,12 @@ export type LifeOpsDesktopPowerEventKind =
   | "session_unlock"
   | "ac_plug"
   | "ac_unplug";
-
 export interface LifeOpsDesktopPowerPayload {
   family: "desktop_power_event";
   platform: "macos_desktop" | "macos_electrobun";
   kind: LifeOpsDesktopPowerEventKind;
   batteryPercent: number | null;
 }
-
 export interface LifeOpsDesktopIdleSamplePayload {
   family: "desktop_idle_sample";
   platform: "macos_desktop" | "macos_electrobun";
@@ -1396,7 +1280,6 @@ export interface LifeOpsDesktopIdleSamplePayload {
   source: "iokit_hid" | "cgevent" | "collector_synthesized";
   isThresholdCrossing: boolean;
 }
-
 export interface LifeOpsBrowserFocusPayload {
   family: "browser_focus_window";
   platform: "browser_web" | "macos_electrobun";
@@ -1406,18 +1289,15 @@ export interface LifeOpsBrowserFocusPayload {
   tabId: string;
   focusedSeconds: number;
 }
-
 export interface LifeOpsMobileHealthPayload {
   family: "mobile_health_snapshot";
   platform: "ios_capacitor" | "ipados_capacitor";
   signal: LifeOpsHealthSignal;
   sampleId: string | null;
 }
-
 export type LifeOpsMobileDeviceTelemetrySource =
   | "capacitor_mobile_signals"
   | "macos_continuity_probe";
-
 export interface LifeOpsMobileDevicePayload {
   family: "mobile_device_snapshot";
   platform: "ios_capacitor" | "ipados_capacitor" | "macos_desktop";
@@ -1428,7 +1308,6 @@ export interface LifeOpsMobileDevicePayload {
   batteryPercent: number | null;
   pairedDeviceId: string | null;
 }
-
 export type LifeOpsTelemetryMessageChannel =
   | "gmail"
   | "x_dm"
@@ -1438,9 +1317,7 @@ export type LifeOpsTelemetryMessageChannel =
   | "whatsapp"
   | "sms"
   | "eliza_chat";
-
 export type LifeOpsMessageDirection = "inbound" | "outbound_by_owner";
-
 export interface LifeOpsMessageActivityPayload {
   family: "message_activity_event";
   platform: LifeOpsDevicePlatform;
@@ -1450,9 +1327,7 @@ export interface LifeOpsMessageActivityPayload {
   senderHash: string;
   conversationHash: string;
 }
-
 export type LifeOpsStatusPlatform = "slack" | "discord" | "telegram" | "x";
-
 export type LifeOpsStatusTransition =
   | "online"
   | "offline"
@@ -1460,25 +1335,21 @@ export type LifeOpsStatusTransition =
   | "do_not_disturb"
   | "custom_set"
   | "custom_cleared";
-
 export interface LifeOpsStatusActivityPayload {
   family: "status_activity_event";
   platform: LifeOpsStatusPlatform;
   transition: LifeOpsStatusTransition;
 }
-
 export interface LifeOpsChargingPayload {
   family: "charging_event";
   platform: LifeOpsDevicePlatform;
   connected: boolean;
   batteryPercent: number;
 }
-
 export interface LifeOpsScreenTimePerAppUsage {
   appBundleId: string;
   minutesUsed: number;
 }
-
 export interface LifeOpsScreenTimeSummaryPayload {
   family: "screen_time_summary";
   platform: "ios_capacitor" | "ipados_capacitor" | "macos_desktop";
@@ -1487,18 +1358,15 @@ export interface LifeOpsScreenTimeSummaryPayload {
   totalMinutesUsed: number;
   apps: LifeOpsScreenTimePerAppUsage[];
 }
-
 export type LifeOpsManualOverrideTelemetryKind =
   | "going_to_bed"
   | "just_woke_up";
-
 export interface LifeOpsManualOverridePayload {
   family: "manual_override_event";
   platform: LifeOpsDevicePlatform;
   kind: LifeOpsManualOverrideTelemetryKind;
   note: string | null;
 }
-
 export type LifeOpsTelemetryPayload =
   | LifeOpsDevicePresencePayload
   | LifeOpsDesktopPowerPayload
@@ -1511,9 +1379,7 @@ export type LifeOpsTelemetryPayload =
   | LifeOpsChargingPayload
   | LifeOpsScreenTimeSummaryPayload
   | LifeOpsManualOverridePayload;
-
 export type LifeOpsTelemetryFamily = LifeOpsTelemetryPayload["family"];
-
 export const LIFEOPS_TELEMETRY_FAMILIES: readonly LifeOpsTelemetryFamily[] = [
   "device_presence_event",
   "desktop_power_event",
@@ -1527,7 +1393,6 @@ export const LIFEOPS_TELEMETRY_FAMILIES: readonly LifeOpsTelemetryFamily[] = [
   "screen_time_summary",
   "manual_override_event",
 ];
-
 export interface LifeOpsTelemetryEnvelope {
   id: string;
   agentId: string;
@@ -1537,18 +1402,15 @@ export interface LifeOpsTelemetryEnvelope {
   dedupeKey: string;
   sourceReliability: number;
 }
-
 export type LifeOpsTelemetryEvent = LifeOpsTelemetryEnvelope & {
   payload: LifeOpsTelemetryPayload;
 };
-
 export interface LifeOpsReminderPreferenceSetting {
   intensity: LifeOpsReminderIntensity;
   source: LifeOpsReminderPreferenceSource;
   updatedAt: string | null;
   note: string | null;
 }
-
 export interface LifeOpsReminderPreference {
   definitionId: string | null;
   definitionTitle: string | null;
@@ -1556,7 +1418,6 @@ export interface LifeOpsReminderPreference {
   definition: LifeOpsReminderPreferenceSetting | null;
   effective: LifeOpsReminderPreferenceSetting;
 }
-
 export interface LifeOpsAuditEvent {
   id: string;
   agentId: string;
@@ -1569,7 +1430,6 @@ export interface LifeOpsAuditEvent {
   actor: LifeOpsActor;
   createdAt: string;
 }
-
 export interface LifeOpsActiveReminderView {
   domain: LifeOpsDomain;
   subjectType: LifeOpsSubjectType;
@@ -1590,7 +1450,6 @@ export interface LifeOpsActiveReminderView {
   htmlLink?: string | null;
   eventStartAt?: string | null;
 }
-
 export interface LifeOpsOverviewSummary {
   activeOccurrenceCount: number;
   overdueOccurrenceCount: number;
@@ -1598,7 +1457,6 @@ export interface LifeOpsOverviewSummary {
   activeReminderCount: number;
   activeGoalCount: number;
 }
-
 export const LIFEOPS_CIRCADIAN_STATES = [
   "awake",
   "winding_down",
@@ -1607,9 +1465,7 @@ export const LIFEOPS_CIRCADIAN_STATES = [
   "napping",
   "unclear",
 ] as const;
-
 export type LifeOpsCircadianState = (typeof LIFEOPS_CIRCADIAN_STATES)[number];
-
 export const LIFEOPS_UNCLEAR_REASONS = [
   "no_signals",
   "contradictory_signals",
@@ -1619,25 +1475,20 @@ export const LIFEOPS_UNCLEAR_REASONS = [
   "boot_cold_start",
   "stale_state",
 ] as const;
-
 export type LifeOpsUnclearReason = (typeof LIFEOPS_UNCLEAR_REASONS)[number];
-
 export type LifeOpsScheduleSleepStatus =
   | "sleeping_now"
   | "slept"
   | "likely_missed"
   | "unknown";
-
 export type LifeOpsSleepCycleEvidenceSource = "health" | "activity_gap";
 export type LifeOpsSleepCycleType = "nap" | "overnight" | "unknown";
-
 export type LifeOpsRegularityClass =
   | "very_regular"
   | "regular"
   | "irregular"
   | "very_irregular"
   | "insufficient_data";
-
 export interface LifeOpsScheduleRegularity {
   sri: number;
   bedtimeStddevMin: number;
@@ -1647,7 +1498,6 @@ export interface LifeOpsScheduleRegularity {
   sampleCount: number;
   windowDays: number;
 }
-
 /**
  * Personal baseline derived from persisted sleep episodes over `windowDays`.
  * Medians are computed via circular mean (sin/cos projection) so bedtimes
@@ -1671,18 +1521,15 @@ export interface LifeOpsPersonalBaseline {
   /** Size of the look-back window in days (default 28). */
   windowDays: number;
 }
-
 export type LifeOpsAwakeProbabilitySource =
   | LifeOpsActivitySignalSource
   | "prior"
   | "health"
   | "activity_gap";
-
 export interface LifeOpsAwakeProbabilityContributor {
   source: LifeOpsAwakeProbabilitySource;
   logLikelihoodRatio: number;
 }
-
 export interface LifeOpsAwakeProbability {
   pAwake: number;
   pAsleep: number;
@@ -1690,7 +1537,6 @@ export interface LifeOpsAwakeProbability {
   contributingSources: LifeOpsAwakeProbabilityContributor[];
   computedAt: string;
 }
-
 /** Identifies the health-data provider when a sleep window came from a health
  *  signal. `"apple_health"` covers HealthKit / health_connect sources.
  *  `"oura"` is the Oura Ring provider. `"merged"` means two sources overlapped
@@ -1702,7 +1548,6 @@ export type LifeOpsSleepHealthProvider =
   | "oura"
   | "merged"
   | null;
-
 export interface LifeOpsSleepCycleEvidence {
   startAt: string;
   endAt: string | null;
@@ -1711,7 +1556,6 @@ export interface LifeOpsSleepCycleEvidence {
   healthProvider?: LifeOpsSleepHealthProvider;
   confidence: number;
 }
-
 export interface LifeOpsSleepCycle {
   cycleType: LifeOpsSleepCycleType;
   sleepStatus: LifeOpsScheduleSleepStatus;
@@ -1723,12 +1567,10 @@ export interface LifeOpsSleepCycle {
   lastSleepDurationMinutes: number | null;
   evidence: LifeOpsSleepCycleEvidence[];
 }
-
 export type LifeOpsDayBoundaryAnchor =
   | "start_of_day"
   | "end_of_day"
   | "before_sleep";
-
 export interface LifeOpsDayBoundary {
   effectiveDayKey: string;
   localDate: string;
@@ -1739,13 +1581,11 @@ export interface LifeOpsDayBoundary {
   beforeSleepAt: string | null;
   confidence: number;
 }
-
 export type LifeOpsRelativeTimeAnchorSource =
   | "sleep_cycle"
   | "activity"
   | "typical_sleep"
   | "day_boundary";
-
 export interface LifeOpsRelativeTime {
   computedAt: string;
   localNowAt: string;
@@ -1767,21 +1607,17 @@ export interface LifeOpsRelativeTime {
   minutesUntilDayBoundaryEnd: number;
   confidence: number;
 }
-
 export type LifeOpsScheduleMealLabel = "breakfast" | "lunch" | "dinner";
-
 export type LifeOpsScheduleMealSource =
   | "activity_gap"
   | "expected_window"
   | "health";
-
 export interface LifeOpsScheduleMealInsight {
   label: LifeOpsScheduleMealLabel;
   detectedAt: string;
   confidence: number;
   source: LifeOpsScheduleMealSource;
 }
-
 /**
  * A single rule firing from `scoreCircadianRules`. Persisted on the schedule
  * insight so the inspection UI can explain *why* the state machine landed
@@ -1794,7 +1630,6 @@ export interface LifeOpsCircadianRuleFiring {
   observedAt: string;
   reason: string;
 }
-
 export interface LifeOpsScheduleInsight {
   effectiveDayKey: string;
   localDate: string;
@@ -1828,7 +1663,6 @@ export interface LifeOpsScheduleInsight {
   nextMealWindowEndAt: string | null;
   nextMealConfidence: number;
 }
-
 export type LifeOpsCapabilityDomain =
   | "core"
   | "schedule"
@@ -1836,20 +1670,17 @@ export type LifeOpsCapabilityDomain =
   | "activity"
   | "connectors"
   | "profile";
-
 export type LifeOpsCapabilityState =
   | "working"
   | "degraded"
   | "blocked"
   | "not_configured";
-
 export interface LifeOpsCapabilityEvidence {
   label: string;
   state: LifeOpsCapabilityState;
   detail: string | null;
   observedAt: string | null;
 }
-
 export interface LifeOpsCapabilityStatus {
   id: string;
   domain: LifeOpsCapabilityDomain;
@@ -1860,7 +1691,6 @@ export interface LifeOpsCapabilityStatus {
   lastCheckedAt: string;
   evidence: LifeOpsCapabilityEvidence[];
 }
-
 export interface LifeOpsCapabilitiesSummary {
   totalCount: number;
   workingCount: number;
@@ -1868,7 +1698,6 @@ export interface LifeOpsCapabilitiesSummary {
   blockedCount: number;
   notConfiguredCount: number;
 }
-
 export interface LifeOpsCapabilitiesStatus {
   generatedAt: string;
   appEnabled: boolean;
@@ -1876,14 +1705,12 @@ export interface LifeOpsCapabilitiesStatus {
   capabilities: LifeOpsCapabilityStatus[];
   summary: LifeOpsCapabilitiesSummary;
 }
-
 export interface LifeOpsOverviewSection {
   occurrences: LifeOpsOccurrenceView[];
   goals: LifeOpsGoalDefinition[];
   reminders: LifeOpsActiveReminderView[];
   summary: LifeOpsOverviewSummary;
 }
-
 export interface LifeOpsOverview {
   occurrences: LifeOpsOccurrenceView[];
   goals: LifeOpsGoalDefinition[];
@@ -1893,7 +1720,6 @@ export interface LifeOpsOverview {
   agentOps: LifeOpsOverviewSection;
   schedule: LifeOpsScheduleInsight | null;
 }
-
 export interface LifeOpsCalendarEventAttendee {
   email: string | null;
   displayName: string | null;
@@ -1902,7 +1728,6 @@ export interface LifeOpsCalendarEventAttendee {
   organizer: boolean;
   optional: boolean;
 }
-
 export interface LifeOpsCalendarEvent {
   id: string;
   externalId: string;
@@ -1934,7 +1759,6 @@ export interface LifeOpsCalendarEvent {
   /** Email address for the owning Google account when known. */
   accountEmail?: string;
 }
-
 export interface LifeOpsCalendarFeed {
   calendarId: string;
   events: LifeOpsCalendarEvent[];
@@ -1943,7 +1767,6 @@ export interface LifeOpsCalendarFeed {
   timeMax: string;
   syncedAt: string | null;
 }
-
 /**
  * Summary of one Google Calendar the user has access to (from calendarList.list).
  * `includeInFeed` reflects whether the user has opted this calendar into the
@@ -1967,17 +1790,14 @@ export interface LifeOpsCalendarSummary {
   selected: boolean;
   includeInFeed: boolean;
 }
-
 export interface ListLifeOpsCalendarsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
 }
-
 export interface ListLifeOpsCalendarsResponse {
   calendars: LifeOpsCalendarSummary[];
 }
-
 export interface SetLifeOpsCalendarIncludedRequest {
   calendarId: string;
   includeInFeed: boolean;
@@ -1985,11 +1805,9 @@ export interface SetLifeOpsCalendarIncludedRequest {
   mode?: LifeOpsConnectorMode;
   grantId?: string;
 }
-
 export interface SetLifeOpsCalendarIncludedResponse {
   calendar: LifeOpsCalendarSummary;
 }
-
 export interface GetLifeOpsCalendarFeedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2006,7 +1824,6 @@ export interface GetLifeOpsCalendarFeedRequest {
   timeZone?: string;
   forceSync?: boolean;
 }
-
 export interface LifeOpsGmailMessageSummary {
   id: string;
   externalId: string;
@@ -2039,33 +1856,28 @@ export interface LifeOpsGmailMessageSummary {
   /** Set when aggregating across multiple Google accounts. */
   accountEmail?: string;
 }
-
 export interface LifeOpsGmailTriageSummary {
   unreadCount: number;
   importantNewCount: number;
   likelyReplyNeededCount: number;
 }
-
 export interface LifeOpsGmailTriageFeed {
   messages: LifeOpsGmailMessageSummary[];
   source: "cache" | "synced";
   syncedAt: string | null;
   summary: LifeOpsGmailTriageSummary;
 }
-
 export interface LifeOpsGmailNeedsResponseSummary {
   totalCount: number;
   unreadCount: number;
   importantCount: number;
 }
-
 export interface LifeOpsGmailNeedsResponseFeed {
   messages: LifeOpsGmailMessageSummary[];
   source: "cache" | "synced";
   syncedAt: string | null;
   summary: LifeOpsGmailNeedsResponseSummary;
 }
-
 export interface GetLifeOpsGmailTriageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2074,7 +1886,6 @@ export interface GetLifeOpsGmailTriageRequest {
   forceSync?: boolean;
   maxResults?: number;
 }
-
 export interface GetLifeOpsGmailSearchRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2085,14 +1896,12 @@ export interface GetLifeOpsGmailSearchRequest {
   includeSpamTrash?: boolean;
   grantId?: string;
 }
-
 export interface LifeOpsGmailSearchSummary {
   totalCount: number;
   unreadCount: number;
   importantCount: number;
   replyNeededCount: number;
 }
-
 export interface LifeOpsGmailSearchFeed {
   query: string;
   messages: LifeOpsGmailMessageSummary[];
@@ -2100,7 +1909,6 @@ export interface LifeOpsGmailSearchFeed {
   syncedAt: string | null;
   summary: LifeOpsGmailSearchSummary;
 }
-
 export const LIFEOPS_GMAIL_RECOMMENDATION_KINDS = [
   "reply",
   "archive",
@@ -2109,7 +1917,6 @@ export const LIFEOPS_GMAIL_RECOMMENDATION_KINDS = [
 ] as const;
 export type LifeOpsGmailRecommendationKind =
   (typeof LIFEOPS_GMAIL_RECOMMENDATION_KINDS)[number];
-
 export const LIFEOPS_GMAIL_BULK_OPERATIONS = [
   "archive",
   "trash",
@@ -2122,7 +1929,6 @@ export const LIFEOPS_GMAIL_BULK_OPERATIONS = [
 ] as const;
 export type LifeOpsGmailBulkOperation =
   (typeof LIFEOPS_GMAIL_BULK_OPERATIONS)[number];
-
 export const LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES = [
   "proposal",
   "dry_run",
@@ -2130,7 +1936,6 @@ export const LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES = [
 ] as const;
 export type LifeOpsGmailManageExecutionMode =
   (typeof LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES)[number];
-
 export const LIFEOPS_GMAIL_MANAGE_STATUSES = [
   "proposed",
   "dry_run",
@@ -2142,7 +1947,6 @@ export const LIFEOPS_GMAIL_MANAGE_STATUSES = [
 ] as const;
 export type LifeOpsGmailManageStatus =
   (typeof LIFEOPS_GMAIL_MANAGE_STATUSES)[number];
-
 export const LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES = [
   "not_available",
   "available",
@@ -2152,7 +1956,6 @@ export const LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES = [
 ] as const;
 export type LifeOpsGmailManageUndoStatus =
   (typeof LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES)[number];
-
 export interface LifeOpsGmailManageApprovalIdentity {
   proposalId?: string;
   approvalId?: string;
@@ -2160,13 +1963,11 @@ export interface LifeOpsGmailManageApprovalIdentity {
   approvedBy?: LifeOpsActor;
   approvedAt?: string;
 }
-
 export interface LifeOpsGmailManagePlanIdentity {
   planId?: string;
   planHash?: string;
   idempotencyKey?: string;
 }
-
 export interface LifeOpsGmailManageMessageSnapshot {
   messageId: string;
   externalId: string;
@@ -2182,7 +1983,6 @@ export interface LifeOpsGmailManageMessageSnapshot {
   syncedAt?: string;
   snapshotHash?: string;
 }
-
 export interface LifeOpsGmailManageChunkRequest {
   chunkId: string;
   chunkIndex: number;
@@ -2190,7 +1990,6 @@ export interface LifeOpsGmailManageChunkRequest {
   messageIds?: string[];
   cursor?: string;
 }
-
 export interface LifeOpsGmailManageChunkStatus {
   chunkId: string;
   chunkIndex: number;
@@ -2199,27 +1998,23 @@ export interface LifeOpsGmailManageChunkStatus {
   remainingCount: number;
   nextCursor: string | null;
 }
-
 export interface LifeOpsGmailManageAuditContext {
   auditEventId?: string;
   auditRef?: string;
   parentAuditEventId?: string;
   actor?: LifeOpsActor;
 }
-
 export interface LifeOpsGmailManageAuditState {
   auditEventId: string | null;
   auditRef: string | null;
   actor: LifeOpsActor;
   recordedAt: string | null;
 }
-
 export interface LifeOpsGmailManageUndoRequest {
   undoId: string;
   auditEventId?: string;
   reason?: string;
 }
-
 export interface LifeOpsGmailManageUndoState {
   status: LifeOpsGmailManageUndoStatus;
   undoId: string | null;
@@ -2227,7 +2022,6 @@ export interface LifeOpsGmailManageUndoState {
   auditEventId: string | null;
   messageIds: string[];
 }
-
 export interface ManageLifeOpsGmailMessagesRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2247,7 +2041,6 @@ export interface ManageLifeOpsGmailMessagesRequest {
   audit?: LifeOpsGmailManageAuditContext;
   undo?: LifeOpsGmailManageUndoRequest;
 }
-
 export interface LifeOpsGmailManageResult {
   ok: true;
   operation: LifeOpsGmailBulkOperation;
@@ -2267,7 +2060,6 @@ export interface LifeOpsGmailManageResult {
   audit?: LifeOpsGmailManageAuditState;
   undo?: LifeOpsGmailManageUndoState;
 }
-
 export interface LifeOpsGmailRecommendationMessage {
   messageId: string;
   subject: string;
@@ -2277,7 +2069,6 @@ export interface LifeOpsGmailRecommendationMessage {
   snippet: string;
   labels: string[];
 }
-
 export interface LifeOpsGmailRecommendation {
   id: string;
   kind: LifeOpsGmailRecommendationKind;
@@ -2293,7 +2084,6 @@ export interface LifeOpsGmailRecommendation {
   confidence: number;
   sampleMessages: LifeOpsGmailRecommendationMessage[];
 }
-
 export interface LifeOpsGmailRecommendationsSummary {
   totalCount: number;
   replyCount: number;
@@ -2302,14 +2092,12 @@ export interface LifeOpsGmailRecommendationsSummary {
   spamReviewCount: number;
   destructiveCount: number;
 }
-
 export interface LifeOpsGmailRecommendationsFeed {
   recommendations: LifeOpsGmailRecommendation[];
   source: "cache" | "synced";
   syncedAt: string | null;
   summary: LifeOpsGmailRecommendationsSummary;
 }
-
 export interface GetLifeOpsGmailRecommendationsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2320,7 +2108,6 @@ export interface GetLifeOpsGmailRecommendationsRequest {
   replyNeededOnly?: boolean;
   includeSpamTrash?: boolean;
 }
-
 export const LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES = [
   "pending",
   "confirmed_spam",
@@ -2329,7 +2116,6 @@ export const LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES = [
 ] as const;
 export type LifeOpsGmailSpamReviewStatus =
   (typeof LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES)[number];
-
 export interface LifeOpsGmailSpamReviewItem {
   id: string;
   agentId: string;
@@ -2353,7 +2139,6 @@ export interface LifeOpsGmailSpamReviewItem {
   updatedAt: string;
   reviewedAt: string | null;
 }
-
 export interface LifeOpsGmailSpamReviewSummary {
   totalCount: number;
   pendingCount: number;
@@ -2361,12 +2146,10 @@ export interface LifeOpsGmailSpamReviewSummary {
   notSpamCount: number;
   dismissedCount: number;
 }
-
 export interface LifeOpsGmailSpamReviewFeed {
   items: LifeOpsGmailSpamReviewItem[];
   summary: LifeOpsGmailSpamReviewSummary;
 }
-
 export interface GetLifeOpsGmailSpamReviewRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2374,11 +2157,9 @@ export interface GetLifeOpsGmailSpamReviewRequest {
   status?: LifeOpsGmailSpamReviewStatus;
   maxResults?: number;
 }
-
 export interface UpdateLifeOpsGmailSpamReviewItemRequest {
   status: LifeOpsGmailSpamReviewStatus;
 }
-
 export interface LifeOpsGmailUnrespondedThread {
   threadId: string;
   messageId: string;
@@ -2394,19 +2175,16 @@ export interface LifeOpsGmailUnrespondedThread {
   grantId?: string;
   accountEmail?: string;
 }
-
 export interface LifeOpsGmailUnrespondedSummary {
   totalCount: number;
   oldestDaysWaiting: number | null;
 }
-
 export interface LifeOpsGmailUnrespondedFeed {
   threads: LifeOpsGmailUnrespondedThread[];
   source: "synced";
   syncedAt: string;
   summary: LifeOpsGmailUnrespondedSummary;
 }
-
 export interface GetLifeOpsGmailUnrespondedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2414,7 +2192,6 @@ export interface GetLifeOpsGmailUnrespondedRequest {
   olderThanDays?: number;
   maxResults?: number;
 }
-
 export interface IngestLifeOpsGmailEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2424,7 +2201,6 @@ export interface IngestLifeOpsGmailEventRequest {
   occurredAt?: string;
   maxWorkflowRuns?: number;
 }
-
 export interface LifeOpsGmailEventIngestResult {
   ok: true;
   event: {
@@ -2435,10 +2211,8 @@ export interface LifeOpsGmailEventIngestResult {
   };
   workflowRunIds: string[];
 }
-
 export const LIFEOPS_GMAIL_DRAFT_TONES = ["brief", "neutral", "warm"] as const;
 export type LifeOpsGmailDraftTone = (typeof LIFEOPS_GMAIL_DRAFT_TONES)[number];
-
 export interface CreateLifeOpsGmailReplyDraftRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2451,7 +2225,6 @@ export interface CreateLifeOpsGmailReplyDraftRequest {
   actionHistory?: string[];
   trajectorySummary?: string | null;
 }
-
 export interface LifeOpsGmailReplyDraft {
   messageId: string;
   threadId: string;
@@ -2463,7 +2236,6 @@ export interface LifeOpsGmailReplyDraft {
   sendAllowed: boolean;
   requiresConfirmation: boolean;
 }
-
 export interface CreateLifeOpsGmailBatchReplyDraftsRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2480,13 +2252,11 @@ export interface CreateLifeOpsGmailBatchReplyDraftsRequest {
   actionHistory?: string[];
   trajectorySummary?: string | null;
 }
-
 export interface LifeOpsGmailBatchReplyDraftsSummary {
   totalCount: number;
   sendAllowedCount: number;
   requiresConfirmationCount: number;
 }
-
 export interface LifeOpsGmailBatchReplyDraftsFeed {
   query: string | null;
   messages: LifeOpsGmailMessageSummary[];
@@ -2495,7 +2265,6 @@ export interface LifeOpsGmailBatchReplyDraftsFeed {
   syncedAt: string | null;
   summary: LifeOpsGmailBatchReplyDraftsSummary;
 }
-
 export interface SendLifeOpsGmailReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2507,7 +2276,6 @@ export interface SendLifeOpsGmailReplyRequest {
   cc?: string[];
   confirmSend?: boolean;
 }
-
 export interface SendLifeOpsGmailMessageRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2519,7 +2287,6 @@ export interface SendLifeOpsGmailMessageRequest {
   bodyText: string;
   confirmSend?: boolean;
 }
-
 export interface LifeOpsGmailBatchReplySendItem {
   messageId: string;
   bodyText: string;
@@ -2527,7 +2294,6 @@ export interface LifeOpsGmailBatchReplySendItem {
   to?: string[];
   cc?: string[];
 }
-
 export interface SendLifeOpsGmailBatchReplyRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2535,12 +2301,10 @@ export interface SendLifeOpsGmailBatchReplyRequest {
   confirmSend?: boolean;
   items: LifeOpsGmailBatchReplySendItem[];
 }
-
 export interface LifeOpsGmailBatchReplySendResult {
   ok: true;
   sentCount: number;
 }
-
 export const LIFEOPS_CALENDAR_WINDOW_PRESETS = [
   "tomorrow_morning",
   "tomorrow_afternoon",
@@ -2548,13 +2312,11 @@ export const LIFEOPS_CALENDAR_WINDOW_PRESETS = [
 ] as const;
 export type LifeOpsCalendarWindowPreset =
   (typeof LIFEOPS_CALENDAR_WINDOW_PRESETS)[number];
-
 export interface CreateLifeOpsCalendarEventAttendee {
   email: string;
   displayName?: string;
   optional?: boolean;
 }
-
 export interface CreateLifeOpsCalendarEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2570,7 +2332,6 @@ export interface CreateLifeOpsCalendarEventRequest {
   windowPreset?: LifeOpsCalendarWindowPreset;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
 }
-
 export interface LifeOpsNextCalendarEventContext {
   event: LifeOpsCalendarEvent | null;
   startsAt: string | null;
@@ -2589,7 +2350,6 @@ export interface LifeOpsNextCalendarEventContext {
     >
   >;
 }
-
 export interface LifeOpsCalendarEventUpdate {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -2603,11 +2363,9 @@ export interface LifeOpsCalendarEventUpdate {
   location?: string;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
 }
-
 export interface LifeOpsCalendarEventMutationResult {
   event: LifeOpsCalendarEvent;
 }
-
 export const LIFEOPS_INBOX_CHANNELS = [
   "gmail",
   "x_dm",
@@ -2618,19 +2376,16 @@ export const LIFEOPS_INBOX_CHANNELS = [
   "sms",
 ] as const;
 export type LifeOpsInboxChannel = (typeof LIFEOPS_INBOX_CHANNELS)[number];
-
 export interface LifeOpsInboxMessageSender {
   id: string;
   displayName: string;
   email: string | null;
   avatarUrl: string | null;
 }
-
 export interface LifeOpsInboxMessageSourceRef {
   channel: LifeOpsInboxChannel;
   externalId: string;
 }
-
 export interface LifeOpsInboxMessage {
   /** Channel-prefixed, globally unique identifier. */
   id: string;
@@ -2665,12 +2420,10 @@ export interface LifeOpsInboxMessage {
   /** For groups, number of participants. UI uses this to hide groups with >15 participants. */
   participantCount?: number;
 }
-
 export interface LifeOpsInboxChannelCount {
   total: number;
   unread: number;
 }
-
 export interface LifeOpsInboxThreadGroup {
   /** Stable per-conversation key (matches LifeOpsInboxMessage.threadId on member messages) */
   threadId: string;
@@ -2693,7 +2446,6 @@ export interface LifeOpsInboxThreadGroup {
   /** Messages in this visible thread window, newest first. */
   messages: LifeOpsInboxMessage[];
 }
-
 export interface LifeOpsInbox {
   messages: LifeOpsInboxMessage[];
   channelCounts: Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
@@ -2701,14 +2453,12 @@ export interface LifeOpsInbox {
   /** Populated when the caller requests grouped output via `groupByThread`. */
   threadGroups?: LifeOpsInboxThreadGroup[];
 }
-
 export const LIFEOPS_INBOX_CACHE_MODES = [
   "read-through",
   "refresh",
   "cache-only",
 ] as const;
 export type LifeOpsInboxCacheMode = (typeof LIFEOPS_INBOX_CACHE_MODES)[number];
-
 export interface GetLifeOpsInboxRequest {
   /** Cap on the total number of messages returned. Defaults to 100. */
   limit?: number;
@@ -2742,7 +2492,6 @@ export interface GetLifeOpsInboxRequest {
   /** Cap on messages pulled/read for cache operations. Defaults to a bounded full-cache window. */
   cacheLimit?: number;
 }
-
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
   "connected",
   "disconnected",
@@ -2752,7 +2501,6 @@ export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
 ] as const;
 export type LifeOpsGoogleConnectorReason =
   (typeof LIFEOPS_GOOGLE_CONNECTOR_REASONS)[number];
-
 export interface LifeOpsGoogleConnectorStatus {
   provider: "google";
   side: LifeOpsConnectorSide;
@@ -2774,7 +2522,6 @@ export interface LifeOpsGoogleConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 export interface LifeOpsXConnectorStatus {
   provider: "x";
   side?: LifeOpsConnectorSide;
@@ -2805,11 +2552,9 @@ export interface LifeOpsXConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 // ---------------------------------------------------------------------------
 // Messaging connector types (Discord, Telegram)
 // ---------------------------------------------------------------------------
-
 export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
   "connected",
   "disconnected",
@@ -2821,7 +2566,6 @@ export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
 ] as const;
 export type LifeOpsMessagingConnectorReason =
   (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
-
 export interface LifeOpsDiscordDmPreview {
   channelId: string | null;
   href: string | null;
@@ -2830,14 +2574,12 @@ export interface LifeOpsDiscordDmPreview {
   unread: boolean;
   snippet: string | null;
 }
-
 export interface LifeOpsDiscordDmInboxStatus {
   visible: boolean;
   count: number;
   selectedChannelId: string | null;
   previews: LifeOpsDiscordDmPreview[];
 }
-
 export const LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES = [
   "lifeops_browser",
   "desktop_browser",
@@ -2845,7 +2587,6 @@ export const LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES = [
 ] as const;
 export type LifeOpsOwnerBrowserAccessSource =
   (typeof LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)[number];
-
 export const LIFEOPS_OWNER_BROWSER_TAB_STATES = [
   "missing",
   "background_discord",
@@ -2854,7 +2595,6 @@ export const LIFEOPS_OWNER_BROWSER_TAB_STATES = [
 ] as const;
 export type LifeOpsOwnerBrowserTabState =
   (typeof LIFEOPS_OWNER_BROWSER_TAB_STATES)[number];
-
 export const LIFEOPS_OWNER_BROWSER_AUTH_STATES = [
   "unknown",
   "logged_out",
@@ -2862,7 +2602,6 @@ export const LIFEOPS_OWNER_BROWSER_AUTH_STATES = [
 ] as const;
 export type LifeOpsOwnerBrowserAuthState =
   (typeof LIFEOPS_OWNER_BROWSER_AUTH_STATES)[number];
-
 export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
   "none",
   "connect_browser",
@@ -2879,7 +2618,6 @@ export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
 ] as const;
 export type LifeOpsOwnerBrowserNextAction =
   (typeof LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS)[number];
-
 export interface LifeOpsOwnerBrowserAccessStatus {
   source: LifeOpsOwnerBrowserAccessSource;
   active: boolean;
@@ -2896,7 +2634,6 @@ export interface LifeOpsOwnerBrowserAccessStatus {
   authState: LifeOpsOwnerBrowserAuthState;
   nextAction: LifeOpsOwnerBrowserNextAction;
 }
-
 export interface LifeOpsDiscordConnectorStatus {
   provider: "discord";
   side: LifeOpsConnectorSide;
@@ -2922,7 +2659,6 @@ export interface LifeOpsDiscordConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 export const LIFEOPS_TELEGRAM_AUTH_STATES = [
   "idle",
   "waiting_for_provisioning_code",
@@ -2933,7 +2669,6 @@ export const LIFEOPS_TELEGRAM_AUTH_STATES = [
 ] as const;
 export type LifeOpsTelegramAuthState =
   (typeof LIFEOPS_TELEGRAM_AUTH_STATES)[number];
-
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
   /**
@@ -2958,7 +2693,6 @@ export interface LifeOpsWhatsAppConnectorStatus {
   lastCheckedAt: string;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 export interface LifeOpsTelegramConnectorStatus {
   provider: "telegram";
   side: LifeOpsConnectorSide;
@@ -2979,7 +2713,6 @@ export interface LifeOpsTelegramConnectorStatus {
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 export interface LifeOpsTelegramDialogSummary {
   id: string;
   title: string;
@@ -2988,7 +2721,6 @@ export interface LifeOpsTelegramDialogSummary {
   lastMessageAt: string | null;
   unreadCount: number;
 }
-
 export interface VerifyLifeOpsTelegramConnectorRequest {
   side?: LifeOpsConnectorSide;
   recentLimit?: number;
@@ -2997,7 +2729,6 @@ export interface VerifyLifeOpsTelegramConnectorRequest {
   /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendMessage?: string;
 }
-
 export interface VerifyLifeOpsTelegramConnectorResponse {
   provider: "telegram";
   side: LifeOpsConnectorSide;
@@ -3017,18 +2748,15 @@ export interface VerifyLifeOpsTelegramConnectorResponse {
     messageId: string | null;
   };
 }
-
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
   source?: LifeOpsOwnerBrowserAccessSource;
 }
-
 export interface SendLifeOpsDiscordMessageRequest {
   side?: LifeOpsConnectorSide;
   channelId?: string;
   text: string;
 }
-
 export interface SendLifeOpsDiscordMessageResponse {
   provider: "discord";
   side: LifeOpsConnectorSide;
@@ -3036,7 +2764,6 @@ export interface SendLifeOpsDiscordMessageResponse {
   ok: true;
   deliveryStatus: "sent" | "sending" | "failed" | "unknown";
 }
-
 export interface VerifyLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
   /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
@@ -3044,7 +2771,6 @@ export interface VerifyLifeOpsDiscordConnectorRequest {
   /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendMessage?: string;
 }
-
 export interface VerifyLifeOpsDiscordConnectorResponse {
   provider: "discord";
   side: LifeOpsConnectorSide;
@@ -3059,20 +2785,17 @@ export interface VerifyLifeOpsDiscordConnectorResponse {
     deliveryStatus: "sent" | "sending" | "failed" | "unknown" | null;
   };
 }
-
 export interface SendLifeOpsWhatsAppMessageRequest {
   to: string;
   text: string;
   replyToMessageId?: string;
 }
-
 export interface StartLifeOpsTelegramAuthRequest {
   side?: LifeOpsConnectorSide;
   phone: string;
   apiId?: number;
   apiHash?: string;
 }
-
 export interface StartLifeOpsTelegramAuthResponse {
   provider: "telegram";
   side: LifeOpsConnectorSide;
@@ -3084,18 +2807,15 @@ export interface StartLifeOpsTelegramAuthResponse {
     | "error";
   error?: string;
 }
-
 export interface SubmitLifeOpsTelegramAuthRequest {
   side?: LifeOpsConnectorSide;
   code?: string;
   password?: string;
 }
-
 export interface DisconnectLifeOpsMessagingConnectorRequest {
   side?: LifeOpsConnectorSide;
   provider: "discord" | "telegram";
 }
-
 export interface StartLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -3106,7 +2826,6 @@ export interface StartLifeOpsGoogleConnectorRequest {
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }
-
 export interface StartLifeOpsGoogleConnectorResponse {
   provider: "google";
   side: LifeOpsConnectorSide;
@@ -3115,18 +2834,15 @@ export interface StartLifeOpsGoogleConnectorResponse {
   redirectUri: string;
   authUrl: string;
 }
-
 export interface SelectLifeOpsGoogleConnectorPreferenceRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
 }
-
 export interface DisconnectLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
 }
-
 export interface UpsertLifeOpsXConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -3135,13 +2851,11 @@ export interface UpsertLifeOpsXConnectorRequest {
   identity?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 }
-
 export interface StartLifeOpsXConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   redirectUrl?: string;
 }
-
 export interface StartLifeOpsXConnectorResponse {
   provider: "x";
   side: LifeOpsConnectorSide;
@@ -3150,19 +2864,16 @@ export interface StartLifeOpsXConnectorResponse {
   redirectUri: string;
   authUrl: string;
 }
-
 export interface DisconnectLifeOpsXConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
 }
-
 export interface CreateLifeOpsXPostRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   text: string;
   confirmPost?: boolean;
 }
-
 export interface LifeOpsXPostResponse {
   ok: boolean;
   status: number | null;
@@ -3176,7 +2887,6 @@ export interface LifeOpsXPostResponse {
     | "invalid"
     | "unknown";
 }
-
 export interface CreateLifeOpsDefinitionRequest {
   ownership?: LifeOpsOwnershipInput;
   kind: LifeOpsDefinitionKind;
@@ -3198,7 +2908,6 @@ export interface CreateLifeOpsDefinitionRequest {
   source?: string;
   metadata?: Record<string, unknown>;
 }
-
 export interface UpdateLifeOpsDefinitionRequest {
   ownership?: LifeOpsOwnershipInput;
   title?: string;
@@ -3219,7 +2928,6 @@ export interface UpdateLifeOpsDefinitionRequest {
   goalId?: string | null;
   metadata?: Record<string, unknown>;
 }
-
 export interface CreateLifeOpsGoalRequest {
   ownership?: LifeOpsOwnershipInput;
   title: string;
@@ -3231,7 +2939,6 @@ export interface CreateLifeOpsGoalRequest {
   reviewState?: LifeOpsGoalReviewState;
   metadata?: Record<string, unknown>;
 }
-
 export interface UpdateLifeOpsGoalRequest {
   ownership?: LifeOpsOwnershipInput;
   title?: string;
@@ -3243,18 +2950,15 @@ export interface UpdateLifeOpsGoalRequest {
   reviewState?: LifeOpsGoalReviewState;
   metadata?: Record<string, unknown>;
 }
-
 export interface LifeOpsDefinitionRecord {
   definition: LifeOpsTaskDefinition;
   reminderPlan: LifeOpsReminderPlan | null;
   performance: LifeOpsDefinitionPerformance;
 }
-
 export interface LifeOpsGoalRecord {
   goal: LifeOpsGoalDefinition;
   links: LifeOpsGoalLink[];
 }
-
 export const LIFEOPS_GOAL_SUGGESTION_KINDS = [
   "create_support",
   "focus_now",
@@ -3264,7 +2968,6 @@ export const LIFEOPS_GOAL_SUGGESTION_KINDS = [
 ] as const;
 export type LifeOpsGoalSuggestionKind =
   (typeof LIFEOPS_GOAL_SUGGESTION_KINDS)[number];
-
 export interface LifeOpsGoalSupportSuggestion {
   kind: LifeOpsGoalSuggestionKind;
   title: string;
@@ -3272,7 +2975,6 @@ export interface LifeOpsGoalSupportSuggestion {
   definitionId: string | null;
   occurrenceId: string | null;
 }
-
 export interface LifeOpsGoalReview {
   goal: LifeOpsGoalDefinition;
   links: LifeOpsGoalLink[];
@@ -3299,14 +3001,12 @@ export interface LifeOpsGoalReview {
     semanticReviewedAt?: string | null;
   };
 }
-
 export interface LifeOpsGoalExperienceLoopSuggestion {
   sourceGoalId: string;
   definitionId: string | null;
   title: string;
   detail: string;
 }
-
 export interface LifeOpsGoalExperienceLoopMatch {
   goalId: string;
   title: string;
@@ -3320,7 +3020,6 @@ export interface LifeOpsGoalExperienceLoopMatch {
   explanation: string;
   carryForwardSuggestions: LifeOpsGoalExperienceLoopSuggestion[];
 }
-
 export interface LifeOpsGoalExperienceLoop {
   referenceGoalId: string | null;
   referenceTitle: string;
@@ -3328,7 +3027,6 @@ export interface LifeOpsGoalExperienceLoop {
   suggestedCarryForward: LifeOpsGoalExperienceLoopSuggestion[];
   summary: string | null;
 }
-
 export interface LifeOpsWeeklyGoalReview {
   generatedAt: string;
   reviewWindow: "this_week";
@@ -3344,7 +3042,6 @@ export interface LifeOpsWeeklyGoalReview {
   needsAttention: LifeOpsGoalReview[];
   idle: LifeOpsGoalReview[];
 }
-
 export interface LifeOpsDefinitionPerformanceWindow {
   scheduledCount: number;
   completedCount: number;
@@ -3353,7 +3050,6 @@ export interface LifeOpsDefinitionPerformanceWindow {
   completionRate: number;
   perfectDayCount: number;
 }
-
 export interface LifeOpsDefinitionPerformance {
   lastCompletedAt: string | null;
   lastSkippedAt: string | null;
@@ -3369,17 +3065,14 @@ export interface LifeOpsDefinitionPerformance {
   last7Days: LifeOpsDefinitionPerformanceWindow;
   last30Days: LifeOpsDefinitionPerformanceWindow;
 }
-
 export interface SnoozeLifeOpsOccurrenceRequest {
   minutes?: number;
   preset?: "15m" | "30m" | "1h" | "tonight" | "tomorrow_morning";
 }
-
 export interface CompleteLifeOpsOccurrenceRequest {
   note?: string;
   metadata?: Record<string, unknown>;
 }
-
 export interface LifeOpsOccurrenceExplanation {
   occurrence: LifeOpsOccurrenceView;
   definition: LifeOpsTaskDefinition;
@@ -3398,7 +3091,6 @@ export interface LifeOpsOccurrenceExplanation {
     lastActionSummary: string | null;
   };
 }
-
 export interface UpsertLifeOpsChannelPolicyRequest {
   channelType: LifeOpsChannelType;
   channelRef: string;
@@ -3409,13 +3101,11 @@ export interface UpsertLifeOpsChannelPolicyRequest {
   requireConfirmationForActions?: boolean;
   metadata?: Record<string, unknown>;
 }
-
 export interface SetLifeOpsReminderPreferenceRequest {
   intensity: LifeOpsReminderIntensityInput;
   definitionId?: string | null;
   note?: string;
 }
-
 export interface CaptureLifeOpsPhoneConsentRequest {
   phoneNumber: string;
   consentGiven: boolean;
@@ -3424,7 +3114,6 @@ export interface CaptureLifeOpsPhoneConsentRequest {
   privacyClass?: LifeOpsPrivacyClass;
   metadata?: Record<string, unknown>;
 }
-
 export interface CaptureLifeOpsActivitySignalRequest {
   source: LifeOpsActivitySignalSourceName;
   platform?: string;
@@ -3436,7 +3125,6 @@ export interface CaptureLifeOpsActivitySignalRequest {
   health?: LifeOpsHealthSignal | null;
   metadata?: Record<string, unknown>;
 }
-
 /**
  * User-attested circadian override. Emitted with maximum reliability weight;
  * force-transitions the state machine. See `sleep-wake-spec.md` §2 (manual
@@ -3448,14 +3136,12 @@ export const LIFEOPS_MANUAL_OVERRIDE_KINDS = [
 ] as const;
 export type LifeOpsManualOverrideKind =
   (typeof LIFEOPS_MANUAL_OVERRIDE_KINDS)[number];
-
 export interface CaptureLifeOpsManualOverrideRequest {
   kind: LifeOpsManualOverrideKind;
   occurredAt?: string;
   /** Optional user note capped at 500 chars. */
   note?: string;
 }
-
 export interface LifeOpsManualOverrideResult {
   accepted: true;
   kind: LifeOpsManualOverrideKind;
@@ -3463,17 +3149,14 @@ export interface LifeOpsManualOverrideResult {
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
 }
-
 export interface ProcessLifeOpsRemindersRequest {
   now?: string;
   limit?: number;
 }
-
 export interface LifeOpsReminderProcessingResult {
   now: string;
   attempts: LifeOpsReminderAttempt[];
 }
-
 export interface LifeOpsReminderInspection {
   ownerType: "occurrence" | "calendar_event";
   ownerId: string;
@@ -3481,22 +3164,18 @@ export interface LifeOpsReminderInspection {
   attempts: LifeOpsReminderAttempt[];
   audits: LifeOpsAuditEvent[];
 }
-
 export interface AcknowledgeLifeOpsReminderRequest {
   ownerType: "occurrence" | "calendar_event";
   ownerId: string;
   acknowledgedAt?: string;
   note?: string;
 }
-
 export interface RelockLifeOpsWebsiteAccessRequest {
   groupKey: string;
 }
-
 export interface ResolveLifeOpsWebsiteAccessCallbackRequest {
   callbackKey: string;
 }
-
 export interface CreateLifeOpsWorkflowRequest {
   ownership?: LifeOpsOwnershipInput;
   title: string;
@@ -3508,7 +3187,6 @@ export interface CreateLifeOpsWorkflowRequest {
   createdBy?: LifeOpsActor;
   metadata?: Record<string, unknown>;
 }
-
 export interface UpdateLifeOpsWorkflowRequest {
   ownership?: LifeOpsOwnershipInput;
   title?: string;
@@ -3519,18 +3197,15 @@ export interface UpdateLifeOpsWorkflowRequest {
   status?: LifeOpsWorkflowStatus;
   metadata?: Record<string, unknown>;
 }
-
 export interface RunLifeOpsWorkflowRequest {
   idempotencyKey?: string;
   now?: string;
   confirmBrowserActions?: boolean;
 }
-
 export interface LifeOpsWorkflowRecord {
   definition: LifeOpsWorkflowDefinition;
   runs: LifeOpsWorkflowRun[];
 }
-
 export const LIFEOPS_BROWSER_SESSION_STATUSES = [
   "awaiting_confirmation",
   "queued",
@@ -3541,7 +3216,6 @@ export const LIFEOPS_BROWSER_SESSION_STATUSES = [
 ] as const;
 export type LifeOpsBrowserSessionStatus =
   (typeof LIFEOPS_BROWSER_SESSION_STATUSES)[number];
-
 export interface LifeOpsBrowserSession {
   id: string;
   agentId: string;
@@ -3567,7 +3241,6 @@ export interface LifeOpsBrowserSession {
   updatedAt: string;
   finishedAt: string | null;
 }
-
 export interface CreateLifeOpsBrowserSessionRequest {
   ownership?: LifeOpsOwnershipInput;
   workflowId?: string | null;
@@ -3579,32 +3252,24 @@ export interface CreateLifeOpsBrowserSessionRequest {
   title: string;
   actions: Array<Omit<LifeOpsBrowserAction, "id">>;
 }
-
 export interface ConfirmLifeOpsBrowserSessionRequest {
   confirmed: boolean;
 }
-
 export interface UpdateLifeOpsBrowserSessionProgressRequest {
   currentActionIndex?: number;
   result?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 }
-
 export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
 }
-
 // ── Settings card prop contracts ─────────────────────────────────────────────
-
 export type AppBlockerSettingsMode = "desktop" | "mobile" | "web";
-
 export interface AppBlockerSettingsCardProps {
   mode: AppBlockerSettingsMode;
 }
-
 export type WebsiteBlockerSettingsMode = "desktop" | "mobile" | "web";
-
 export interface WebsiteBlockerSettingsCardProps {
   mode: WebsiteBlockerSettingsMode;
   permission?: import("./permissions.js").PermissionState;
@@ -3612,15 +3277,11 @@ export interface WebsiteBlockerSettingsCardProps {
   onOpenPermissionSettings?: () => void | Promise<void>;
   onRequestPermission?: () => void | Promise<void>;
 }
-
 // ── Occurrence action results ────────────────────────────────────────────────
-
 export interface LifeOpsOccurrenceActionResult {
   occurrence: LifeOpsOccurrenceView;
 }
-
 // ── Sleep history / regularity / baseline responses ──────────────────────────
-
 /**
  * Single sleep episode entry returned by the sleep history endpoint.
  *
@@ -3637,7 +3298,6 @@ export interface LifeOpsSleepHistoryEpisode {
   source: LifeOpsSleepCycleEvidenceSource | "manual";
   confidence: number;
 }
-
 export interface LifeOpsSleepHistorySummary {
   cycleCount: number;
   averageDurationMin: number | null;
@@ -3645,14 +3305,12 @@ export interface LifeOpsSleepHistorySummary {
   napCount: number;
   openCount: number;
 }
-
 export interface LifeOpsSleepHistoryResponse {
   episodes: LifeOpsSleepHistoryEpisode[];
   summary: LifeOpsSleepHistorySummary;
   windowDays: number;
   includeNaps: boolean;
 }
-
 /**
  * Wire-format response for the sleep regularity endpoint. Mirrors
  * `LifeOpsScheduleRegularity` (`sampleCount` is renamed to `sampleSize` here
@@ -3667,7 +3325,6 @@ export interface LifeOpsSleepRegularityResponse {
   sampleSize: number;
   windowDays: number;
 }
-
 /**
  * Wire-format response for the personal baseline endpoint. Mirrors
  * `LifeOpsPersonalBaseline` plus `sampleSize` (alias of `sampleCount`).
@@ -3683,12 +3340,9 @@ export interface LifeOpsPersonalBaselineResponse {
   sampleSize: number;
   windowDays: number;
 }
-
 // ── Additional contracts (relationships, X read, cross-channel, screen time,
 //    scheduling, dossier, iMessage, WhatsApp).
-
 // ── Message channels ─────────────────────────────────────────────────────────
-
 export const LIFEOPS_MESSAGE_CHANNELS = [
   "email",
   "telegram",
@@ -3699,36 +3353,26 @@ export const LIFEOPS_MESSAGE_CHANNELS = [
   "whatsapp",
   "x_dm",
 ] as const;
-
 export type LifeOpsMessageChannel = (typeof LIFEOPS_MESSAGE_CHANNELS)[number];
-
 // ── Follow-up statuses ───────────────────────────────────────────────────────
-
 export const LIFEOPS_FOLLOW_UP_STATUSES = [
   "pending",
   "completed",
   "snoozed",
   "cancelled",
 ] as const;
-
 export type LifeOpsFollowUpStatus = (typeof LIFEOPS_FOLLOW_UP_STATUSES)[number];
-
 // ── X feed types ─────────────────────────────────────────────────────────────
-
 export const LIFEOPS_X_FEED_TYPES = [
   "home_timeline",
   "mentions",
   "search",
 ] as const;
-
 export type LifeOpsXFeedType = (typeof LIFEOPS_X_FEED_TYPES)[number];
-
 // Note: `LIFEOPS_NEGOTIATION_STATES`, `LifeOpsNegotiationState`,
 // `LifeOpsSchedulingNegotiation`, and `LifeOpsSchedulingProposal` are
 // declared in the canonical `./lifeops.ts` contracts file, not here.
-
 // ── Relationship ─────────────────────────────────────────────────────────────
-
 export interface LifeOpsRelationship {
   id: string;
   agentId: string;
@@ -3745,7 +3389,6 @@ export interface LifeOpsRelationship {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsRelationshipInteraction {
   id: string;
   agentId: string;
@@ -3757,7 +3400,6 @@ export interface LifeOpsRelationshipInteraction {
   metadata: Record<string, unknown>;
   createdAt: string;
 }
-
 export interface LifeOpsFollowUp {
   id: string;
   agentId: string;
@@ -3772,9 +3414,7 @@ export interface LifeOpsFollowUp {
   createdAt: string;
   updatedAt: string;
 }
-
 // ── Cross-channel drafting ──────────────────────────────────────────────────
-
 export interface LifeOpsCrossChannelDraft {
   channel: LifeOpsMessageChannel;
   target: string;
@@ -3782,14 +3422,11 @@ export interface LifeOpsCrossChannelDraft {
   body: string;
   metadata: Record<string, unknown>;
 }
-
 export interface LifeOpsCrossChannelSendRequest {
   draft: LifeOpsCrossChannelDraft;
   confirmed: boolean;
 }
-
 // ── X read ───────────────────────────────────────────────────────────────────
-
 export interface LifeOpsXDm {
   id: string;
   agentId: string;
@@ -3806,7 +3443,6 @@ export interface LifeOpsXDm {
   syncedAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsXFeedItem {
   id: string;
   agentId: string;
@@ -3820,7 +3456,6 @@ export interface LifeOpsXFeedItem {
   syncedAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsXSyncState {
   id: string;
   agentId: string;
@@ -3829,9 +3464,7 @@ export interface LifeOpsXSyncState {
   syncedAt: string;
   updatedAt: string;
 }
-
 // ── Screen time ──────────────────────────────────────────────────────────────
-
 export interface LifeOpsScreenTimeSession {
   id: string;
   agentId: string;
@@ -3846,7 +3479,6 @@ export interface LifeOpsScreenTimeSession {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface LifeOpsScreenTimeDaily {
   id: string;
   agentId: string;
@@ -3859,18 +3491,14 @@ export interface LifeOpsScreenTimeDaily {
   createdAt: string;
   updatedAt: string;
 }
-
 export type LifeOpsScreenTimeSource = "app" | "website";
-
 export type LifeOpsScreenTimeRangeKey = "today" | "this-week" | "7d" | "30d";
-
 export const LIFEOPS_SCREEN_TIME_RANGES = [
   "today",
   "this-week",
   "7d",
   "30d",
 ] as const satisfies readonly LifeOpsScreenTimeRangeKey[];
-
 export interface LifeOpsScreenTimeSummaryRequest {
   since: string;
   until: string;
@@ -3878,19 +3506,16 @@ export interface LifeOpsScreenTimeSummaryRequest {
   identifier?: string;
   topN?: number;
 }
-
 export interface LifeOpsScreenTimeSummaryItem {
   source: LifeOpsScreenTimeSource;
   identifier: string;
   displayName: string;
   totalSeconds: number;
 }
-
 export interface LifeOpsScreenTimeSummary {
   items: LifeOpsScreenTimeSummaryItem[];
   totalSeconds: number;
 }
-
 export type LifeOpsHabitCategory =
   | "browser"
   | "communication"
@@ -3899,20 +3524,17 @@ export type LifeOpsHabitCategory =
   | "video"
   | "work"
   | "other";
-
 export type LifeOpsHabitDevice =
   | "browser"
   | "computer"
   | "phone"
   | "tablet"
   | "unknown";
-
 export interface LifeOpsScreenTimeBucket {
   key: string;
   label: string;
   totalSeconds: number;
 }
-
 export interface LifeOpsScreenTimeBreakdownItem
   extends LifeOpsScreenTimeSummaryItem {
   sessionCount: number;
@@ -3922,7 +3544,6 @@ export interface LifeOpsScreenTimeBreakdownItem
   serviceLabel: string | null;
   browser: string | null;
 }
-
 export interface LifeOpsScreenTimeBreakdown {
   items: LifeOpsScreenTimeBreakdownItem[];
   totalSeconds: number;
@@ -3933,7 +3554,6 @@ export interface LifeOpsScreenTimeBreakdown {
   byBrowser: LifeOpsScreenTimeBucket[];
   fetchedAt: string;
 }
-
 export interface LifeOpsSocialMessageChannel {
   channel: "x_dm";
   label: string;
@@ -3942,9 +3562,7 @@ export interface LifeOpsSocialMessageChannel {
   opened: number;
   replied: number;
 }
-
 export type LifeOpsSocialHabitDataSourceState = "live" | "partial" | "unwired";
-
 export interface LifeOpsSocialHabitDataSource {
   id: string;
   label: string;
@@ -3952,7 +3570,6 @@ export interface LifeOpsSocialHabitDataSource {
   statusLabel: string;
   detail: string;
 }
-
 export interface LifeOpsSocialHabitSummary {
   since: string;
   until: string;
@@ -3972,18 +3589,15 @@ export interface LifeOpsSocialHabitSummary {
   dataSources: LifeOpsSocialHabitDataSource[];
   fetchedAt: string;
 }
-
 export interface LifeOpsScreenTimeWindow {
   since: string;
   until: string;
 }
-
 export interface LifeOpsScreenTimeHistoryPoint extends LifeOpsScreenTimeWindow {
   date: string;
   label: string;
   totalSeconds: number;
 }
-
 export interface LifeOpsScreenTimeDeltaMetrics {
   totalPercent: number | null;
   appPercent: number | null;
@@ -3994,7 +3608,6 @@ export interface LifeOpsScreenTimeDeltaMetrics {
   xPercent: number | null;
   messageOpenedPercent: number | null;
 }
-
 export interface LifeOpsScreenTimeMetrics {
   totalSeconds: number;
   appSeconds: number;
@@ -4008,18 +3621,15 @@ export interface LifeOpsScreenTimeMetrics {
   messageInbound: number;
   deltas: LifeOpsScreenTimeDeltaMetrics | null;
 }
-
 export interface LifeOpsScreenTimeTargetBucket extends LifeOpsScreenTimeBucket {
   source: LifeOpsScreenTimeSource;
   identifier: string;
 }
-
 export interface LifeOpsScreenTimeSessionBucket
   extends LifeOpsScreenTimeBucket {
   source: LifeOpsScreenTimeSource;
   identifier: string;
 }
-
 export interface LifeOpsScreenTimeVisibleBuckets {
   categories: LifeOpsScreenTimeBucket[];
   devices: LifeOpsScreenTimeBucket[];
@@ -4033,7 +3643,6 @@ export interface LifeOpsScreenTimeVisibleBuckets {
   hasMessageActivity: boolean;
   hasUsage: boolean;
 }
-
 export interface LifeOpsScreenTimeHistoryResponse {
   range: LifeOpsScreenTimeRangeKey;
   label: string;
@@ -4046,18 +3655,14 @@ export interface LifeOpsScreenTimeHistoryResponse {
   visible: LifeOpsScreenTimeVisibleBuckets;
   fetchedAt: string;
 }
-
 // Scheduling interfaces live in `./lifeops.ts` — see LifeOpsSchedulingNegotiation,
 // LifeOpsSchedulingProposal, LIFEOPS_PROPOSAL_STATUSES, LIFEOPS_PROPOSAL_PROPOSERS.
-
 // ── iMessage connector ───────────────────────────────────────────────────────
-
 export type LifeOpsIMessageHostPlatform =
   | "darwin"
   | "linux"
   | "win32"
   | "unknown";
-
 export interface LifeOpsIMessageConnectorStatus {
   available: boolean;
   connected: boolean;
@@ -4083,14 +3688,12 @@ export interface LifeOpsIMessageConnectorStatus {
   } | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
-
 export interface LifeOpsIMessageChat {
   id: string;
   name: string;
   participants: string[];
   lastMessageAt?: string;
 }
-
 export interface LifeOpsIMessageMessage {
   id: string;
   fromHandle: string;
@@ -4099,15 +3702,17 @@ export interface LifeOpsIMessageMessage {
   isFromMe: boolean;
   sentAt: string;
   chatId?: string;
-  attachments?: Array<{ name: string; mimeType?: string; path?: string }>;
+  attachments?: Array<{
+    name: string;
+    mimeType?: string;
+    path?: string;
+  }>;
 }
-
 export interface GetLifeOpsIMessageMessagesRequest {
   chatId?: string;
   since?: string;
   limit?: number;
 }
-
 export interface SendLifeOpsIMessageRequest {
   to: string;
   text: string;
@@ -4116,19 +3721,20 @@ export interface SendLifeOpsIMessageRequest {
 // ── Knowledge-graph: Entity + Relationship (W1-E) ──────────────────────────
 //
 // Wire-contract aliases over the canonical knowledge-graph primitives in
-// `@elizaos/shared/knowledge-graph`. The `LifeOps*` names are kept as the
+// `@elizaos/core/knowledge-graph`. The `LifeOps*` names are kept as the
 // cross-package contract surface but resolve to the single canonical
 // definitions — no parallel shape is maintained here.
-
-export type {
-  Entity as LifeOpsEntity,
-  EntityAttribute as LifeOpsEntityAttribute,
-  EntityIdentity as LifeOpsEntityIdentity,
-  EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia,
-  EntityState as LifeOpsEntityState,
-  EntityVisibility as LifeOpsEntityVisibility,
-  Relationship as LifeOpsGraphRelationship,
-  RelationshipSource as LifeOpsGraphRelationshipSource,
-  RelationshipState as LifeOpsGraphRelationshipState,
-  RelationshipStatus as LifeOpsGraphRelationshipStatus,
-} from "@elizaos/shared";
+export {
+  type Entity as LifeOpsEntity,
+  type EntityAttribute as LifeOpsEntityAttribute,
+  type EntityIdentity as LifeOpsEntityIdentity,
+  type EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia,
+  type EntityState as LifeOpsEntityState,
+  type EntityVisibility as LifeOpsEntityVisibility,
+} from "@elizaos/core/knowledge-graph/entity-types";
+export {
+  type Relationship as LifeOpsGraphRelationship,
+  type RelationshipSource as LifeOpsGraphRelationshipSource,
+  type RelationshipState as LifeOpsGraphRelationshipState,
+  type RelationshipStatus as LifeOpsGraphRelationshipStatus,
+} from "@elizaos/core/knowledge-graph/relationship-types";

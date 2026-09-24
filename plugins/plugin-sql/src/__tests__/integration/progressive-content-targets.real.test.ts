@@ -10,7 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { runProgressiveContentTargetConformance } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { createProgressiveSqlTargetFactory } from "../../testing/progressive-content-sql-targets";
+import { createProgressiveSqlTargetFactory } from "../support/progressive-content-sql-targets";
 
 const roots: string[] = [];
 

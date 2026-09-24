@@ -29,12 +29,12 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "dotenv": "^17.2.3",
     "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*"
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "25.6.2",

@@ -4,7 +4,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { clearElizaApiToken, getElizaApiToken } from "@elizaos/shared";
+import {
+  clearElizaApiToken,
+  getElizaApiToken,
+} from "@elizaos/core/utils/eliza-globals";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -35,10 +38,8 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
-
 const PAIR_AGENT_ID = "23766030-c096-4a14-932a-a4e43c562432";
 const OTHER_AGENT_ID = "11111111-1111-4111-8111-111111111111";
-
 describe("CloudPairRelay", () => {
   beforeEach(() => {
     setBootConfig(DEFAULT_BOOT_CONFIG);
@@ -47,12 +48,10 @@ describe("CloudPairRelay", () => {
     window.localStorage.clear();
     window.history.replaceState(null, "", "/");
   });
-
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
   });
-
   it("detects only /pair URLs with a non-empty token", () => {
     expect(
       getCloudPairTokenFromLocation({
@@ -79,7 +78,6 @@ describe("CloudPairRelay", () => {
       }),
     ).toBeNull();
   });
-
   it("resolves the Cloud pair exchange endpoint from site and API bases", () => {
     expect(resolveCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
       "https://api.eliza.app/api/auth/pair",
@@ -100,7 +98,6 @@ describe("CloudPairRelay", () => {
       resolveNativeCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
     ).toBe("https://api.eliza.app/api/auth/pair/native");
   });
-
   it("detects Eliza Cloud-hosted surfaces without matching localhost", () => {
     expect(
       isElizaCloudHostedLocation({
@@ -121,19 +118,16 @@ describe("CloudPairRelay", () => {
       }),
     ).toBe(false);
   });
-
   it("exchanges the pairing token with Cloud and returns the agent API key", async () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse({ apiKey: "agent-key", agentId: PAIR_AGENT_ID }),
     );
-
     await expect(
       exchangeCloudPairToken("pair-token", {
         fetchFn: fetchFn as unknown as typeof fetch,
         cloudApiBase: "https://api.elizacloud.ai/api/v1",
       }),
     ).resolves.toEqual({ apiKey: "agent-key", agentId: PAIR_AGENT_ID });
-
     expect(fetchFn).toHaveBeenCalledWith(
       "https://api.eliza.app/api/auth/pair",
       expect.objectContaining({
@@ -143,12 +137,10 @@ describe("CloudPairRelay", () => {
       }),
     );
   });
-
   it("uses the authenticated identity-bound endpoint only for native pairing", async () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse({ apiKey: "native-key", agentId: PAIR_AGENT_ID }),
     );
-
     await expect(
       exchangeAuthenticatedNativeCloudPairToken("pair-token", {
         cloudToken: "steward.jwt.token",
@@ -159,7 +151,6 @@ describe("CloudPairRelay", () => {
         cloudApiBase: "https://api.elizacloud.ai/api/v1",
       }),
     ).resolves.toEqual({ apiKey: "native-key", agentId: PAIR_AGENT_ID });
-
     expect(fetchFn).toHaveBeenCalledWith(
       "https://api.eliza.app/api/auth/pair/native",
       expect.objectContaining({
@@ -177,7 +168,6 @@ describe("CloudPairRelay", () => {
       }),
     );
   });
-
   it("preserves the native recovery code on exchange failures", async () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse(
@@ -189,7 +179,6 @@ describe("CloudPairRelay", () => {
         401,
       ),
     );
-
     const error = await exchangeAuthenticatedNativeCloudPairToken(
       "pair-token",
       {
@@ -200,17 +189,14 @@ describe("CloudPairRelay", () => {
         fetchFn: fetchFn as unknown as typeof fetch,
       },
     ).catch((caught: unknown) => caught);
-
     expect(error).toBeInstanceOf(CloudPairExchangeError);
     expect(error).toMatchObject({
       status: 401,
       code: "cloud_auth_required",
     });
   });
-
   it("persists the paired API key into the per-agent storage keys", () => {
     persistCloudPairApiToken(" agent-key ", "agent-123");
-
     expect(getBootConfig().apiToken).toBe("agent-key");
     expect(getElizaApiToken()).toBe("agent-key");
     expect(
@@ -230,13 +216,11 @@ describe("CloudPairRelay", () => {
       (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__,
     ).toEqual(expect.objectContaining({ apiToken: "agent-key" }));
   });
-
   it("refuses to persist a token without an owning agent id", () => {
     expect(() => persistCloudPairApiToken("agent-key", "  ")).toThrow(
       /owner agent id/,
     );
   });
-
   it("keeps a legacy global token when BOTH scoped writes fail", () => {
     window.localStorage.setItem(CLOUD_PAIR_LOCAL_STORAGE_KEY, "legacy-key");
     window.sessionStorage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, "legacy-key");
@@ -262,7 +246,6 @@ describe("CloudPairRelay", () => {
       configurable: true,
       get: failingStorage,
     });
-
     try {
       // Neither storage channel accepted the write, so persistence fails
       // loudly (pre-existing contract) and the legacy key is never touched.
@@ -284,11 +267,9 @@ describe("CloudPairRelay", () => {
       "legacy-key",
     );
   });
-
   it("persists the authoritative response owner on a non-dedicated origin", async () => {
     const onPaired = vi.fn();
     const persistFn = vi.fn();
-
     render(
       <CloudPairRelay
         token="pair-token"
@@ -300,29 +281,24 @@ describe("CloudPairRelay", () => {
         onPaired={onPaired}
       />,
     );
-
     expect(screen.getByText("Signing in to your agent")).toBeTruthy();
     expect(screen.queryByText("Display name")).toBeNull();
     expect(screen.queryByText("Password")).toBeNull();
-
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
     expect(persistFn).toHaveBeenCalledWith("agent-key", PAIR_AGENT_ID);
   });
-
   it("uses the authoritative response owner instead of an unrelated boot target", async () => {
     const onPaired = vi.fn();
     setBootConfig({
       ...DEFAULT_BOOT_CONFIG,
       apiBase: `https://${OTHER_AGENT_ID}.elizacloud.ai`,
     });
-
     expect(
       window.localStorage.getItem(cloudPairTokenKeyForAgent(PAIR_AGENT_ID)),
     ).toBeNull();
     expect(
       window.sessionStorage.getItem(cloudPairTokenKeyForAgent(PAIR_AGENT_ID)),
     ).toBeNull();
-
     // Render with the DEFAULT persistFn so this exercises the real storage path
     // (localStorage + sessionStorage), not a mock.
     render(
@@ -335,9 +311,7 @@ describe("CloudPairRelay", () => {
         onPaired={onPaired}
       />,
     );
-
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
-
     const scoped = cloudPairTokenKeyForAgent(PAIR_AGENT_ID);
     expect(window.localStorage.getItem(scoped)).toBe("agent-key");
     expect(window.sessionStorage.getItem(scoped)).toBe("agent-key");
@@ -352,7 +326,6 @@ describe("CloudPairRelay", () => {
       window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY),
     ).toBeNull();
   });
-
   it("shows a clean Cloud-pair error instead of the local password form", async () => {
     render(
       <CloudPairRelay
@@ -363,7 +336,6 @@ describe("CloudPairRelay", () => {
         onPaired={vi.fn()}
       />,
     );
-
     await screen.findByText("Sign-in link expired");
     expect(
       screen.getByText("Open this agent from Eliza Cloud again to continue."),
@@ -372,10 +344,8 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Password")).toBeNull();
     expect(screen.queryByText("Remember this device for 30 days")).toBeNull();
   });
-
   it("shows a Cloud-hosted auth notice with a tappable Cloud reopen CTA", () => {
     render(<CloudHostedAgentAuthNotice />);
-
     expect(screen.getByText("Open this agent from Eliza Cloud")).toBeTruthy();
     const link = screen.getByRole("link", {
       name: "Re-open from Eliza Cloud",
@@ -388,7 +358,6 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Password")).toBeNull();
     expect(screen.queryByText("Remember this device for 30 days")).toBeNull();
   });
-
   it("resolves production, staging, and agent-specific Cloud reopen URLs", () => {
     expect(
       resolveCloudHostedAgentUrl({
@@ -413,7 +382,6 @@ describe("CloudPairRelay", () => {
     );
   });
 });
-
 describe("CloudPairRelay short-viewport scroll", () => {
   // The pairing + hosted-agent notice screens are full-viewport centered cards.
   // On short screens (Light Phone III, 1080×1240) a flex `justify-center`
@@ -426,7 +394,6 @@ describe("CloudPairRelay short-viewport scroll", () => {
     join(dirname(fileURLToPath(import.meta.url)), "..", "CloudPairRelay.tsx"),
     "utf8",
   );
-
   it("makes both pair screens scroll instead of clipping when taller than the viewport", () => {
     const scrollers = SRC.match(/min-h-\[100dvh\][^"]*overflow-y-auto/g) ?? [];
     expect(
@@ -434,7 +401,6 @@ describe("CloudPairRelay short-viewport scroll", () => {
       "both the pairing relay and the hosted-agent notice must be overflow-y-auto",
     ).toBe(2);
   });
-
   it("centers the card with my-auto, not a top-clipping justify-center", () => {
     expect(
       /\bmy-auto\b[^"]*\bmax-w-\[2/.test(SRC),

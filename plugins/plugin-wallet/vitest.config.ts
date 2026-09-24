@@ -59,27 +59,6 @@ export default defineConfig({
         find: /^@elizaos\/core$/,
         replacement: path.resolve(rootDir, "../../packages/core/src/index.ts"),
       },
-      {
-        find: /^@elizaos\/shared\/automation-node-contributors$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/shared/src/automation-node-contributors.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/elizacloud$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/shared/src/elizacloud/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/shared/src/index.ts",
-        ),
-      },
     ],
   },
   test: {

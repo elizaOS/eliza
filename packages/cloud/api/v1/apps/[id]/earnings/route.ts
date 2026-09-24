@@ -2,18 +2,18 @@
  * Serves authenticated app-earnings summaries and chart data.
  * It validates the requested chart window before any app or earnings lookup.
  */
-import { parsePositiveInteger } from "@elizaos/shared";
+
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appEarningsService } from "@/lib/services/app-earnings";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const DEFAULT_DAYS = 30;
 const MAX_DAYS = 90;
-
 /**
  * GET /api/v1/apps/[id]/earnings
  * Gets earnings data for a specific app including summary, breakdown, chart data, and transaction history.
@@ -28,12 +28,17 @@ const MAX_DAYS = 90;
  */
 async function __hono_GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  {
+    params,
+  }: {
+    params: Promise<{
+      id: string;
+    }>;
+  },
 ) {
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
-
     const rawDays = new URL(request.url).searchParams.get("days");
     const parsedDays = parsePositiveInteger(rawDays);
     if (
@@ -49,16 +54,13 @@ async function __hono_GET(
       );
     }
     const days = parsedDays ?? DEFAULT_DAYS;
-
     const app = await appsService.getById(id);
-
     if (!app) {
       return Response.json(
         { success: false, error: "App not found" },
         { status: 404 },
       );
     }
-
     if (app.organization_id !== user.organization_id) {
       return Response.json(
         { success: false, error: "Access denied" },
@@ -71,7 +73,6 @@ async function __hono_GET(
         { status: 403 },
       );
     }
-
     const summary = await appEarningsService.getEarningsSummary(id);
     const breakdown = await appEarningsService.getEarningsBreakdown(id);
     const recentTransactions = await appEarningsService.getTransactionHistory(
@@ -79,7 +80,6 @@ async function __hono_GET(
       { limit: 10 },
     );
     const chartData = await appEarningsService.getDailyEarningsChart(id, days);
-
     return Response.json({
       success: true,
       earnings: { summary, breakdown, recentTransactions, chartData },
@@ -105,7 +105,6 @@ async function __hono_GET(
     );
   }
 }
-
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, {

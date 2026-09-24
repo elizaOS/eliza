@@ -7,13 +7,14 @@
  * true once it owns a request, false to let the caller keep dispatching.
  */
 import type http from "node:http";
-import type { InferenceTurnSummary, Log } from "@elizaos/core";
 import {
   INFERENCE_TRACE_ID_PATTERN,
+  type InferenceTurnSummary,
+  type Log,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -36,15 +37,12 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     ? (value as Record<string, unknown>)
     : null;
 }
-
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
 export function formatScreenshotErrorDetail(text: string): string {
   return truncateWellFormed(toWellFormedUnicode(text), 200);
 }
-
 function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
   const body = asRecord(log.body);
   const metadata = asRecord(body?.metadata);
@@ -55,7 +53,6 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
   const label = typeof metadata?.label === "string" ? metadata.label : null;
   if (!body || !metadata || !turnId || t0EpochMs === null || !label)
     return null;
-
   const spans = Array.isArray(metadata.spans)
     ? metadata.spans.flatMap((value) => {
         const span = asRecord(value);
@@ -112,7 +109,6 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
       }
     }
   }
-
   return {
     turnId,
     // Persisted metadata is replayed from storage, so the id is re-validated
@@ -146,7 +142,6 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
       : [],
   };
 }
-
 /**
  * Dev observability routes (loopback where noted).
  *
@@ -166,17 +161,14 @@ export async function handleDevCompatRoutes(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
-
   if (!url.pathname.startsWith("/api/dev/")) {
     return false;
   }
-
   // Dev routes are disabled in production.
   if (process.env.NODE_ENV === "production") {
     sendJsonErrorResponse(res, 404, "Not found");
     return true;
   }
-
   // ── GET /api/dev/stack ──────────────────────────────────────────────
   if (method === "GET" && url.pathname === "/api/dev/stack") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -187,7 +179,11 @@ export async function handleDevCompatRoutes(
       return true;
     }
     const payload = resolveDevStackFromEnv();
-    const localPort = (req.socket as { localPort?: number } | null)?.localPort;
+    const localPort = (
+      req.socket as {
+        localPort?: number;
+      } | null
+    )?.localPort;
     if (typeof localPort === "number" && localPort > 0) {
       payload.api.listenPort = localPort;
       payload.api.baseUrl = `http://127.0.0.1:${localPort}`;
@@ -195,7 +191,6 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, payload);
     return true;
   }
-
   // ── GET /api/dev/route-catalog ──────────────────────────────────────
   if (method === "GET" && url.pathname === "/api/dev/route-catalog") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -208,7 +203,6 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, buildRouteCatalog());
     return true;
   }
-
   // ── GET /api/dev/cursor-screenshot ──────────────────────────────────
   if (method === "GET" && url.pathname === "/api/dev/cursor-screenshot") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -278,7 +272,6 @@ export async function handleDevCompatRoutes(
       return true;
     }
   }
-
   // ── GET /api/dev/console-log ────────────────────────────────────────
   if (method === "GET" && url.pathname === "/api/dev/console-log") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -325,7 +318,6 @@ export async function handleDevCompatRoutes(
     res.end(result.body);
     return true;
   }
-
   // ── GET /api/dev/voice-latency ──────────────────────────────────────
   // Recent end-to-end voice-loop latency traces + per-stage histograms
   // (p50/p90/p99). Loopback only — same convention as the other dev
@@ -357,7 +349,6 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, payload);
     return true;
   }
-
   // ── GET /api/dev/device-resource-metrics ────────────────────────────
   // Recent on-device generation metrics (prefill/decode tok/s, TTFT) the
   // device bridge differenced from `generateResult`, plus the bridge status.
@@ -391,7 +382,6 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, payload);
     return true;
   }
-
   // ── GET /api/dev/inference-timing ───────────────────────────────────
   // Recent per-turn text/cloud inference latency breakdowns, provider outcome
   // and cache-hit totals, plus per-span p50/p90/p95/p99 histograms. Loopback
@@ -421,7 +411,7 @@ export async function handleDevCompatRoutes(
       ? (
           await state.current.getLogs({
             type: "inference_timing",
-            limit: 4_096,
+            limit: 4096,
           })
         )
           .map(parseInferenceTimingLog)
@@ -433,7 +423,6 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, payload);
     return true;
   }
-
   // ── GET /api/dev/boot-history (alias /api/dev/health) ───────────────
   // Boot phase timings, memory growth, restart count + cause, and the exact
   // error for any plugin that failed to load — read back from the telemetry the
@@ -455,7 +444,6 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, await buildBootHistoryPayload());
     return true;
   }
-
   // ── GET /api/dev/route-timings ──────────────────────────────────────
   // Per-route p50/p95 latency, process DB-query count, and cache hit/miss
   // counters accumulated when ELIZA_PERF_INSTRUMENT=1. When the flag is off
@@ -472,6 +460,5 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, getPerfSnapshot());
     return true;
   }
-
   return false;
 }

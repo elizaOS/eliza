@@ -1,20 +1,9 @@
-/**
- * CHANNEL_TOPICS — turn-scoped provider that surfaces the current channel's
- * topic LRU (maintained by `ChannelTopicsService`) back into Stage-1 routing.
- *
- * Labels recorded conversation topics as relevance hints, not requests or
- * pending work, and returns a no-op empty result when none exist. Opting into
- * `alwaysInResponseState` puts it into the Stage-1 response state (alongside
- * FACTS / CURRENT_TIME) so shouldRespond / the planner can weigh topic
- * relevance even on the simple direct-reply path.
- *
- * Read-only: the provider never records topics — that happens post-parse in the
- * message handler. It just reflects what the service already holds (hydrating
- * from room metadata on a cold cache after restart).
- */
+/** Supplies nonempty topic hints for shared channels; private dialogue does not
+ * publish or consume channel topic state. Provider failures remain unavailable
+ * rather than pretending the room has no topics. */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ChannelTopicsService } from "@elizaos/core";
+import { ChannelTopicsService, ChannelType } from "@elizaos/core";
 
 const EMPTY_RESULT = { text: "", values: {}, data: {} } as const;
 const UNAVAILABLE_RESULT = {
@@ -33,12 +22,19 @@ export const channelTopicsProvider: Provider = {
   contextGate: { anyOf: ["general"] },
   cacheStable: false,
   cacheScope: "turn",
-  // Reach Stage-1 response state regardless of selected contexts, like
-  // FACTS / CURRENT_TIME, so shouldRespond can weigh topic relevance.
-  alwaysInResponseState: true,
   roleGate: { minRole: "USER" },
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+    const channelType = message.content.channelType;
+    if (
+      channelType !== ChannelType.GROUP &&
+      channelType !== ChannelType.VOICE_GROUP &&
+      channelType !== ChannelType.THREAD &&
+      channelType !== ChannelType.WORLD &&
+      channelType !== ChannelType.FORUM &&
+      channelType !== ChannelType.FEED
+    )
+      return { ...EMPTY_RESULT };
     const service = runtime.getService<ChannelTopicsService>(
       ChannelTopicsService.serviceType,
     );
@@ -62,7 +58,7 @@ export const channelTopicsProvider: Provider = {
     }
     // Most-recent last in the LRU; show most-recent first for readability.
     const ordered = [...topics].reverse();
-    const text = `# Recent conversation topics in this channel (relevance hints, not requests or pending work): ${ordered.join(", ")}`;
+    const text = `Topics (hints): ${ordered.join(", ")}`;
     return {
       text,
       values: { channelTopics: ordered.join(", ") },

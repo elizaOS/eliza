@@ -3,7 +3,6 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "customConditions": ["eliza-source"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -13,30 +12,9 @@
     "noEmit": true,
     "types": ["node", "bun-types"],
     "ignoreDeprecations": "5.0",
-<<<<<<< HEAD
-    "paths": {
-      "@elizaos/cloud-shared/*": ["../../cloud/shared/src/*"],
-      "@elizaos/cloud-test-mocks": ["../test-mocks/src/index.ts"],
-      "@elizaos/cloud-test-mocks/*": ["../test-mocks/src/*"],
-      "@elizaos/core": ["../../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"],
-      "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
-      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
-      "@elizaos/plugin-web-search/edge": [
-        "../../../plugins/plugin-web-search/src/edge.ts"
-      ],
-      "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/plugin-scheduling": [
-        "../../../plugins/plugin-scheduling/src/index.ts"
-      ],
-      "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"]
-    },
-    "lib": ["ES2024", "DOM", "DOM.Iterable"]
-=======
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "customConditions": ["eliza-source"],
     "jsx": "react-jsx"
->>>>>>> origin/develop
   },
   "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"],
   "extends": "../../testing/tsconfig.workspace.json"

@@ -115,7 +115,7 @@ export async function lockAppBillingScope(
       reviewStatus: apps.review_status,
     })
     .from(apps)
-    .where(eq(apps.id, scope.app_id));
+    .where(and(eq(apps.id, scope.app_id), eq(apps.organization_id, scope.organization_id)));
   const [merchant] = await tx
     .select()
     .from(billingMerchants)
@@ -232,6 +232,7 @@ export async function planForScope(
 }
 
 export class AppSubscriptionAuthorityRepository {
+  /* global-scope: Customers may subscribe across app-owner organizations. This transaction validates the active principal and binds the app-specific account to that principal before returning it. */
   async createAccount(input: {
     appId: string;
     externalAccountKey: string;
@@ -299,6 +300,7 @@ export class AppSubscriptionAuthorityRepository {
     });
   }
 
+  /* global-scope: Resolve the app owner for lock ordering; lockAppBillingScope validates app/merchant ownership and requireAppBillingAdministrator authorizes the actor before this transaction commits. */
   async resolveScope(input: {
     appId: string;
     billingAccountId: string;

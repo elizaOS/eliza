@@ -11,7 +11,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { describe, expect, it, vi } from "vitest";
 import {
   completeLifeOpsEffect,

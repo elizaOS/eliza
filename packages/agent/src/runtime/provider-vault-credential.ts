@@ -11,7 +11,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import { vaultKeyForProviderApiKey } from "./operations/vault-bridge.ts";
 
 type ProviderCredentialVault = Pick<Vault, "has" | "reveal">;

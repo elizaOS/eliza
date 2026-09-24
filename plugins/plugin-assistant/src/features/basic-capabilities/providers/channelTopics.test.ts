@@ -87,7 +87,7 @@ function makeMessage(): Memory {
     id: "00000000-0000-0000-0000-0000000000ff" as UUID,
     entityId: "00000000-0000-0000-0000-0000000000ee" as UUID,
     roomId: ROOM,
-    content: { text: "hi" },
+    content: { text: "hi", channelType: "GROUP" },
   } as Memory;
 }
 
@@ -110,11 +110,22 @@ describe("CHANNEL_TOPICS provider", () => {
     );
   });
 
-  it("declares the Stage-1 routing scope", () => {
-    expect(channelTopicsProvider.name).toBe("CHANNEL_TOPICS");
-    expect(channelTopicsProvider.alwaysInResponseState).toBe(true);
-    expect(channelTopicsProvider.contexts).toContain("general");
-  });
+  it.each(["DM", "VOICE_DM", "API", "SELF"] as const)(
+    "does not disclose stored topics to %s",
+    async (channelType) => {
+      await service.recordTopics(ROOM, ["private topic"]);
+      const message = makeMessage();
+      message.content.channelType = channelType;
+      const result = await channelTopicsProvider.get(
+        runtime,
+        message,
+        EMPTY_STATE,
+      );
+      expect(result.text).toBe("");
+      expect(result.data).toEqual({});
+      expect(service.getTopicsForRoom(ROOM)).toEqual(["private topic"]);
+    },
+  );
 
   it("renders the current LRU, most-recent first", async () => {
     await service.recordTopics(ROOM, ["billing", "auth", "vacation"]);
@@ -123,9 +134,7 @@ describe("CHANNEL_TOPICS provider", () => {
       makeMessage(),
       EMPTY_STATE,
     );
-    expect(result.text).toBe(
-      "# Recent conversation topics in this channel (relevance hints, not requests or pending work): vacation, auth, billing",
-    );
+    expect(result.text).toBe("Topics (hints): vacation, auth, billing");
     expect(result.data?.topics).toEqual(["vacation", "auth", "billing"]);
     expect(result.values?.channelTopics).toBe("vacation, auth, billing");
   });
@@ -166,9 +175,7 @@ describe("CHANNEL_TOPICS provider", () => {
       makeMessage(),
       EMPTY_STATE,
     );
-    expect(result.text).toBe(
-      "# Recent conversation topics in this channel (relevance hints, not requests or pending work): persisted",
-    );
+    expect(result.text).toBe("Topics (hints): persisted");
   });
 
   it("preserves all persisted topic hints without changing the current message or room data", async () => {
@@ -211,7 +218,7 @@ describe("CHANNEL_TOPICS provider", () => {
     const newestFirst = [...persistedTopics].reverse();
 
     expect(result).toEqual({
-      text: `# Recent conversation topics in this channel (relevance hints, not requests or pending work): ${newestFirst.join(", ")}`,
+      text: `Topics (hints): ${newestFirst.join(", ")}`,
       values: { channelTopics: newestFirst.join(", ") },
       data: { topics: newestFirst },
     });

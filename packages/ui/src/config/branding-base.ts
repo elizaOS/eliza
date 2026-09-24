@@ -4,9 +4,8 @@
  * built-in union).
  */
 
-import type { ThemeDefinition } from "@elizaos/shared";
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
-
+import type { ThemeDefinition } from "@elizaos/core/contracts/theme";
+import { EXTERNAL_URLS } from "../brand/index.js";
 /**
  * Custom provider that apps can inject into the first-run setup.
  * Uses `string` for id/family so apps aren't restricted to the built-in union.
@@ -28,7 +27,6 @@ export interface CustomProviderOption {
   /** Light-mode logo path */
   logoLight?: string;
 }
-
 export interface FirstRunThemeConfig {
   background?: string;
   foreground?: string;
@@ -42,7 +40,6 @@ export interface FirstRunThemeConfig {
   inputForeground?: string;
   errorForeground?: string;
 }
-
 export interface BrandingConfig {
   /** Product name shown in UI ("Eliza" | "the app") */
   appName: string;
@@ -71,10 +68,8 @@ export interface BrandingConfig {
   /** When true, the app requires Eliza Cloud — local backend mode is disabled. */
   cloudOnly?: boolean;
 }
-
 /** Default for i18n copy that uses `{{appName}}` (e.g. "Where should {{appName}} run?"). */
 export const DEFAULT_APP_DISPLAY_NAME = "Eliza";
-
 export const DEFAULT_BRANDING: BrandingConfig = {
   appName: DEFAULT_APP_DISPLAY_NAME,
   orgName: "elizaos",
@@ -87,7 +82,6 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   fileExtension: ".eliza-agent",
   packageScope: "elizaos",
 };
-
 /** Pass to `t(key, appNameInterpolationVars(branding))` when the string contains `{{appName}}`. */
 export function appNameInterpolationVars(branding: BrandingConfig): {
   appName: string;

@@ -43,7 +43,7 @@ import {
   readResponseWithLimit,
   resolveAttachmentBytes,
   trustedLocalMediaUrl,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import {
   DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
   normalizeAccountId as normalizeIMessageAccountId,

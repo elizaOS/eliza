@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/shared";
+import type { LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
 import {
   type AccountPool,
   getDefaultAccountPool,
@@ -35,23 +35,19 @@ import {
 
 type PublicAccountState = "serving" | "draining" | "exhausted";
 type CapacityState = "EXHAUSTED" | "BURNING HOT" | "OK" | "FRESH";
-
 interface WeeklyModelBucketCompat {
   pct?: unknown;
   utilization?: unknown;
   resetsAt?: unknown;
 }
-
 type UsageCompat = NonNullable<LinkedAccountConfig["usage"]> & {
   sessionResetsAt?: unknown;
   weeklyResetsAt?: unknown;
   weeklyModelBuckets?: Record<string, WeeklyModelBucketCompat>;
 };
-
 export interface PublicPoolModelBucket {
   usedPct: number;
 }
-
 export type PublicPoolModelBuckets =
   | {
       available: true;
@@ -62,11 +58,9 @@ export type PublicPoolModelBuckets =
       available: false;
       note: string;
     };
-
 interface InternalPoolModelBucket extends PublicPoolModelBucket {
   resetAt: number | null;
 }
-
 type InternalPoolModelBuckets =
   | {
       available: true;
@@ -77,7 +71,6 @@ type InternalPoolModelBuckets =
       available: false;
       note: string;
     };
-
 interface InternalPoolStatusAccount {
   /** Stable local identity for persisted burn snapshots. Never serialized. */
   snapshotKey: string;
@@ -100,7 +93,6 @@ interface InternalPoolStatusAccount {
   state: CapacityState;
   exhaustionMessage: string;
 }
-
 export interface PublicPoolStatusAccount {
   name: string;
   accountState: PublicAccountState;
@@ -119,7 +111,6 @@ export interface PublicPoolStatusAccount {
   state: CapacityState;
   exhaustionMessage: string;
 }
-
 export interface PublicPoolStatus {
   updatedAt: string;
   usageRefreshedAt: string | null;
@@ -158,11 +149,9 @@ export interface PublicPoolStatus {
     stale: boolean;
   };
 }
-
 interface InternalPoolStatus extends Omit<PublicPoolStatus, "perAccount"> {
   perAccount: InternalPoolStatusAccount[];
 }
-
 export interface PublicPoolConsumerTotals {
   requests: number;
   tokens: number;
@@ -173,7 +162,6 @@ export interface PublicPoolConsumerTotals {
   errors: number;
   latencyMs: number;
 }
-
 interface StatusSnapshotAccount {
   snapshotKey: string;
   name: string;
@@ -181,12 +169,10 @@ interface StatusSnapshotAccount {
   fableUsedPct: number | null;
   weeklyResetAt: number | null;
 }
-
 interface StatusSnapshot {
   ts: number;
   accounts: StatusSnapshotAccount[];
 }
-
 interface AccountPoolStatusDeps {
   pool?: AccountPool;
   queryConsumerUsage?: typeof queryAccountPoolConsumerUsage;
@@ -195,100 +181,84 @@ interface AccountPoolStatusDeps {
   cacheTtlMs?: number;
   snapshotMaxLines?: number;
 }
-
 interface BurnEstimate {
   ratePctPerHour: number | null;
   sampleHours: number | null;
 }
-
-const STATUS_TTL_MS = 60_000;
-const SNAPSHOT_MAX_LINES = 2_000;
-const SNAPSHOT_RESET_TOLERANCE_MS = 5 * 60_000;
+const STATUS_TTL_MS = 60000;
+const SNAPSHOT_MAX_LINES = 2000;
+const SNAPSHOT_RESET_TOLERANCE_MS = 5 * 60000;
 const STORE_DIR = "account-pool";
 const SNAPSHOTS_FILE = "public-status-snapshots.jsonl";
 const PROVIDER_ID = "anthropic-subscription";
-
-let cache: { at: number; status: InternalPoolStatus } | null = null;
+let cache: {
+  at: number;
+  status: InternalPoolStatus;
+} | null = null;
 let inflight: Promise<InternalPoolStatus> | null = null;
 let depsOverride: AccountPoolStatusDeps = {};
-
 function nowMs(): number {
   return depsOverride.now?.() ?? Date.now();
 }
-
 function stateDir(): string {
   return depsOverride.stateDir?.() ?? resolveStateDir();
 }
-
 function snapshotFile(): string {
   return path.join(stateDir(), STORE_DIR, SNAPSHOTS_FILE);
 }
-
 function cacheTtlMs(): number {
   return depsOverride.cacheTtlMs ?? STATUS_TTL_MS;
 }
-
 function snapshotMaxLines(): number {
   return depsOverride.snapshotMaxLines ?? SNAPSHOT_MAX_LINES;
 }
-
 function ensureDir(filePath: string): void {
   const dir = path.dirname(filePath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
-
 function atomicWriteText(filePath: string, value: string): void {
   ensureDir(filePath);
   const tmp = path.join(
     path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${randomBytes(8).toString(
-      "hex",
-    )}.tmp`,
+    `.${path.basename(filePath)}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`,
   );
   writeFileSync(tmp, value, { encoding: "utf8", mode: 0o600 });
   renameSync(tmp, filePath);
 }
-
 function clampPct(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.min(100, value))
     : null;
 }
-
 function round2(value: number): number {
   return Number(value.toFixed(2));
 }
-
 function snapshotKey(account: LinkedAccountConfig): string {
   return createHash("sha256")
     .update(`${account.providerId}:${account.id}`, "utf8")
     .digest("hex");
 }
-
 function durationText(ms: number | null): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
   if (ms <= 0) return "now";
-  const minutes = Math.max(1, Math.round(ms / 60_000));
-  const days = Math.floor(minutes / 1_440);
-  const hours = Math.floor((minutes % 1_440) / 60);
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
   const mins = minutes % 60;
   if (days > 0) return `~${days}d ${hours}h`;
   if (hours > 0) return `~${hours}h ${mins}m`;
   return `~${mins}m`;
 }
-
 function resetText(ms: number | null): string | null {
   const duration = durationText(ms);
   if (!duration) return null;
   if (duration === "now") return "reset due";
   return `resets in ${duration.replace(/^~/, "")}`;
 }
-
 function compactAge(ms: number): string {
-  if (ms < 60_000) return "<1m";
+  if (ms < 60000) return "<1m";
   return durationText(ms)?.replace(/^~/, "") ?? "unknown";
 }
-
 function readSnapshots(): StatusSnapshot[] {
   const file = snapshotFile();
   if (!existsSync(file)) return [];
@@ -330,7 +300,6 @@ function readSnapshots(): StatusSnapshot[] {
   }
   return snapshots;
 }
-
 function appendSnapshot(status: InternalPoolStatus): void {
   const snapshot: StatusSnapshot = {
     ts: nowMs(),
@@ -354,7 +323,6 @@ function appendSnapshot(status: InternalPoolStatus): void {
     atomicWriteText(file, `${lines.slice(-max).join("\n")}\n`);
   }
 }
-
 function getModelBuckets(usage: UsageCompat): InternalPoolModelBuckets {
   const source = usage.weeklyModelBuckets ?? {};
   let fable: InternalPoolModelBucket | null = null;
@@ -375,7 +343,6 @@ function getModelBuckets(usage: UsageCompat): InternalPoolModelBuckets {
     note: "per-model buckets pending account usage support",
   };
 }
-
 function calculateBurn(
   row: InternalPoolStatusAccount,
   snapshots: readonly StatusSnapshot[],
@@ -384,7 +351,10 @@ function calculateBurn(
   if (row.fableUsedPct === null || row.weeklyResetAt === null) {
     return { ratePctPerHour: null, sampleHours: null };
   }
-  const candidates: { ts: number; used: number }[] = [];
+  const candidates: {
+    ts: number;
+    used: number;
+  }[] = [];
   for (const snapshot of snapshots) {
     const old = snapshot.accounts.find(
       (account) => account.snapshotKey === row.snapshotKey,
@@ -407,7 +377,7 @@ function calculateBurn(
   }
   candidates.sort((a, b) => a.ts - b.ts);
   const oldest = candidates[0];
-  const hours = (now - oldest.ts) / 3_600_000;
+  const hours = (now - oldest.ts) / 3600000;
   if (!oldest || hours <= 0) {
     return { ratePctPerHour: null, sampleHours: null };
   }
@@ -416,7 +386,6 @@ function calculateBurn(
     sampleHours: hours,
   };
 }
-
 function applyUrgency(
   status: InternalPoolStatus,
   snapshots: readonly StatusSnapshot[],
@@ -436,7 +405,7 @@ function applyUrgency(
       row.sessionResetAt === null ? null : resetText(row.sessionResetAt - now);
     const exhaustMs =
       row.fableUsedPct !== null && rate !== null && rate > 0
-        ? ((100 - row.fableUsedPct) / rate) * 3_600_000
+        ? ((100 - row.fableUsedPct) / rate) * 3600000
         : null;
     row.projectedExhaustionIn = durationText(exhaustMs);
     row.projectedBeforeReset =
@@ -455,9 +424,7 @@ function applyUrgency(
     } else if (rate === 0 || row.projectedBeforeReset === false) {
       row.exhaustionMessage = "at current burn: will not run out before reset";
     } else {
-      row.exhaustionMessage = `at current burn: runs out in ${durationText(
-        exhaustMs,
-      )}`;
+      row.exhaustionMessage = `at current burn: runs out in ${durationText(exhaustMs)}`;
     }
     if (rate !== null) {
       totalRate += rate;
@@ -479,7 +446,7 @@ function applyUrgency(
     .filter((account) => (account.weeklyResetAt ?? 0) > now)
     .sort((a, b) => (a.weeklyResetAt ?? 0) - (b.weeklyResetAt ?? 0))[0];
   const poolMs =
-    totalRate > 0 ? (status.fable.leftPct / totalRate) * 3_600_000 : null;
+    totalRate > 0 ? (status.fable.leftPct / totalRate) * 3600000 : null;
   status.urgency = {
     burnRatePctPerHour: knownRates > 0 ? round2(totalRate) : null,
     projectedDepletionIn: durationText(poolMs),
@@ -501,7 +468,6 @@ function applyUrgency(
         : null,
   };
 }
-
 function consumerTotals(
   totals: AccountPoolConsumerUsageTotals["totals"],
 ): PublicPoolConsumerTotals {
@@ -516,11 +482,9 @@ function consumerTotals(
     latencyMs: totals.latencyMs,
   };
 }
-
 function currentDayStamp(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
-
 function publicEdgeUsage(
   usage: AccountPoolConsumerUsageBreakdown,
   now: number,
@@ -542,7 +506,6 @@ function publicEdgeUsage(
     allTime: consumerTotals(usage.totals),
   };
 }
-
 function buildStatus(
   pool: AccountPool,
   consumerUsage: AccountPoolConsumerUsageBreakdown,
@@ -676,7 +639,6 @@ function buildStatus(
   applyUrgency(status, snapshots);
   return status;
 }
-
 function withHealth(
   status: InternalPoolStatus,
   stale: boolean,
@@ -692,7 +654,6 @@ function withHealth(
     },
   };
 }
-
 function publicModelBuckets(
   buckets: InternalPoolModelBuckets,
 ): PublicPoolModelBuckets {
@@ -705,7 +666,6 @@ function publicModelBuckets(
     sonnet: buckets.sonnet ? { usedPct: buckets.sonnet.usedPct } : null,
   };
 }
-
 export function serializePublicPoolStatus(
   status: InternalPoolStatus,
 ): PublicPoolStatus {
@@ -767,10 +727,9 @@ export function serializePublicPoolStatus(
     },
   };
 }
-
 export async function getPublicAccountPoolStatus(): Promise<PublicPoolStatus> {
   const now = nowMs();
-  if (cache && now - cache.at < cacheTtlMs()) {
+  if (cache && now >= cache.at && now - cache.at < cacheTtlMs()) {
     return serializePublicPoolStatus(withHealth(cache.status, false));
   }
   if (!inflight) {
@@ -781,15 +740,13 @@ export async function getPublicAccountPoolStatus(): Promise<PublicPoolStatus> {
         depsOverride.queryConsumerUsage ?? getAccountPoolConsumerUsageSummary
       )();
       const status = buildStatus(pool, usage, history);
-      cache = { at: nowMs(), status };
       appendSnapshot(status);
+      cache = { at: nowMs(), status };
       return status;
     })()
       .catch((error) => {
         logger.warn(
-          `[AccountPoolStatus] status refresh failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `[AccountPoolStatus] status refresh failed: ${error instanceof Error ? error.message : String(error)}`,
         );
         if (cache) return withHealth(cache.status, true);
         throw error;
@@ -800,7 +757,6 @@ export async function getPublicAccountPoolStatus(): Promise<PublicPoolStatus> {
   }
   return serializePublicPoolStatus(await inflight);
 }
-
 export function __resetAccountPoolStatusForTests(
   deps: AccountPoolStatusDeps = {},
 ): void {

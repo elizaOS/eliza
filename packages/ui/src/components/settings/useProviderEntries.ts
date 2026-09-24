@@ -6,7 +6,7 @@
  * cloud-proxy session marks Local current instead (#20045).
  */
 
-import type { SubscriptionProviderStatus } from "@elizaos/shared";
+import type { SubscriptionProviderStatus } from "@elizaos/core/contracts/first-run-options";
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import { type ComponentType, useCallback, useMemo } from "react";
 import type { PluginParamDef } from "../../api";
@@ -21,7 +21,6 @@ import {
 import type { ConfigUiHint } from "../../types";
 import type { ProviderCategory, ProviderStatus } from "./ProviderCard";
 import type { ProviderPanelId } from "./useProviderSelection";
-
 export interface PluginInfo {
   id: string;
   name: string;
@@ -31,29 +30,28 @@ export interface PluginInfo {
   parameters: PluginParamDef[];
   configUiHints?: Record<string, ConfigUiHint>;
 }
-
 export interface ProviderListEntry {
   id: ProviderPanelId;
-  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: ComponentType<{
+    className?: string;
+    "aria-hidden"?: boolean;
+  }>;
   label: string;
   category: ProviderCategory;
   status: ProviderStatus;
   current: boolean;
 }
-
 export interface ApiProviderChoice {
   id: string;
   label: string;
   provider: PluginInfo;
 }
-
 export function normalizeAiProviderPluginId(value: string): string {
   return value
     .toLowerCase()
     .replace(/^@[^/]+\//, "")
     .replace(/^plugin-/, "");
 }
-
 export function sortAiProviders(plugins: PluginInfo[]): PluginInfo[] {
   return [...plugins.filter((p) => p.category === "ai-provider")].sort(
     (left, right) => {
@@ -72,7 +70,6 @@ export function sortAiProviders(plugins: PluginInfo[]): PluginInfo[] {
     },
   );
 }
-
 export function computeAvailableProviderIds(
   allAiProviders: PluginInfo[],
 ): Set<string> {
@@ -91,7 +88,6 @@ export function computeAvailableProviderIds(
     ].filter((id): id is NonNullable<typeof id> => id != null),
   );
 }
-
 interface UseProviderEntriesArgs {
   allAiProviders: PluginInfo[];
   elizaCloudConnected: boolean;
@@ -105,14 +101,12 @@ interface UseProviderEntriesArgs {
   anthropicCliDetected: boolean;
   t: (key: string, vars?: Record<string, unknown>) => string;
 }
-
 export interface UseProviderEntriesResult {
   apiProviderChoices: ApiProviderChoice[];
   providerEntries: ProviderListEntry[];
   /** Cloud is the configured route but Local is answering because unsigned-in. */
   servingLocalFallback: boolean;
 }
-
 export function useProviderEntries({
   allAiProviders,
   elizaCloudConnected,
@@ -161,7 +155,6 @@ export function useProviderEntries({
       return leftOrder - rightOrder;
     });
   }, [allAiProviders]);
-
   /**
    * Single source of truth for sidebar entry status.
    * Replaces three diverging functions (Cloud/Local hardcoded rows,
@@ -172,7 +165,6 @@ export function useProviderEntries({
   // against sign-in, so it is false in exactly the state being detected here.
   const servingLocalFallback =
     isCloudConfigured && !elizaCloudConnected && !cloudCallsDisabled;
-
   const getProviderStatus = useCallback(
     (entryId: ProviderPanelId): ProviderStatus => {
       if (entryId === "__cloud__") {
@@ -250,7 +242,6 @@ export function useProviderEntries({
       subscriptionStatus,
     ],
   );
-
   const providerEntries = useMemo<ProviderListEntry[]>(() => {
     const entries: ProviderListEntry[] = [];
     const localEntry: ProviderListEntry = {
@@ -314,7 +305,6 @@ export function useProviderEntries({
     servingLocalFallback,
     t,
   ]);
-
   return {
     apiProviderChoices,
     providerEntries,

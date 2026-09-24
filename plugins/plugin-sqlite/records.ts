@@ -2048,61 +2048,48 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
-  async compareAndSwapMemoryPublication(
+  override async compareAndSwapMemoryPublication(
     params: AtomicMemoryPublicationParams,
   ): Promise<AtomicMemoryPublicationResult> {
     return this.withMemoryMutationLock(async () => {
       const headId = params.head.memory.id;
-      if (!headId)
-        throw new TypeError("Atomic memory publication head requires an id");
-      if (!this.storage.applyBatch) {
-        throw new ElizaError(
-          "Atomic memory publication requires transactional storage",
-          {
-            code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
-          },
-        );
+      if (!headId) {
+        throw new ElizaError("Atomic memory publication head requires an id", {
+          code: "CONTENT_CONTINUITY_PUBLICATION_INVALID",
+        });
+      }
+      const rows = [params.head, ...params.dependencies];
+      for (const row of rows) {
+        if (
+          row.memory.agentId !== undefined &&
+          row.memory.agentId !== this.agentId
+        ) {
+          throw new ElizaError("SQLite publication targets another agent", {
+            code: "SQLITE_AGENT_MISMATCH",
+          });
+        }
       }
       const current = await this.storage.get<StoredMemory>(
         COLLECTIONS.MEMORIES,
         headId,
       );
-      const revision = (
-        current?.metadata as Record<string, unknown> | undefined
-      )?.revision;
+      const currentRevision =
+        current?.metadata && "revision" in current.metadata
+          ? current.metadata.revision
+          : undefined;
       if (
-        (params.expectedRevision === null && current) ||
+        (params.expectedRevision === null && current !== null) ||
         (params.expectedRevision !== null &&
-          revision !== params.expectedRevision)
-      ) {
+          currentRevision !== params.expectedRevision)
+      )
         return { status: "conflict" };
-      }
-      const staged = new Map<string, StoredMemory>();
-      const prepare = (memory: Memory, tableName: string): StoredMemory => {
-        if (!memory.id)
-          throw new TypeError("Atomic memory publication requires row ids");
-        if (memory.agentId !== undefined && memory.agentId !== this.agentId) {
-          throw new ElizaError(
-            "Atomic publication cannot target another agent",
-            { code: "SQLITE_AGENT_MISMATCH" },
-          );
-        }
-        return {
-          ...persistableMemory(memory),
-          id: memory.id,
-          tableName,
-          agentId: this.agentId,
-          unique: true,
-          createdAt: memory.createdAt ?? Date.now(),
-        };
-      };
-      const head = prepare(params.head.memory, params.head.tableName);
-      const sameOwner = (left: StoredMemory, right: StoredMemory): boolean =>
-        left.agentId === right.agentId &&
-        left.roomId === right.roomId &&
-        left.entityId === right.entityId &&
-        storedMemoryTableName(left) === storedMemoryTableName(right);
-      if (current && !sameOwner(current, head)) {
+      if (
+        current &&
+        (current.agentId !== this.agentId ||
+          current.roomId !== params.head.memory.roomId ||
+          current.entityId !== params.head.memory.entityId ||
+          storedMemoryTableName(current) !== params.head.tableName)
+      ) {
         throw new ElizaError(
           "Atomic publication cannot replace another owner's head",
           {
@@ -2111,47 +2098,88 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           },
         );
       }
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "SQLite storage cannot atomically publish memory dependencies",
+          {
+            code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+          },
+        );
+      }
+      const additions = new Map<string, StoredMemory>();
       for (const dependency of params.dependencies) {
-        const row = prepare(dependency.memory, dependency.tableName);
-        const id = row.id as string;
-        const existing =
-          staged.get(id) ??
-          (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id));
-        if (
-          id === headId ||
-          (existing &&
-            (!sameOwner(existing, row) ||
-              JSON.stringify(existing.content) !== JSON.stringify(row.content)))
-        ) {
+        const id = dependency.memory.id;
+        if (!id || id === headId) {
           throw new ElizaError(
-            "Immutable memory dependency id has different content or ownership",
+            "Immutable memory dependency requires a distinct id",
             {
-              code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
-              context: { memoryId: id },
+              code: "CONTENT_CONTINUITY_PUBLICATION_INVALID",
             },
           );
         }
-        if (!existing) staged.set(id, row);
+        const stored =
+          additions.get(id) ??
+          (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id));
+        if (stored) {
+          if (
+            storedMemoryTableName(stored) !== dependency.tableName ||
+            stored.agentId !== this.agentId ||
+            stored.roomId !== dependency.memory.roomId ||
+            stored.entityId !== dependency.memory.entityId ||
+            JSON.stringify(stored.content) !==
+              JSON.stringify(dependency.memory.content)
+          ) {
+            throw new ElizaError(
+              "Immutable memory dependency id has different content",
+              {
+                code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+                context: { memoryId: id },
+              },
+            );
+          }
+        } else {
+          additions.set(id, {
+            ...persistableMemory(dependency.memory),
+            id,
+            tableName: dependency.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: dependency.memory.createdAt ?? Date.now(),
+          });
+        }
       }
-      staged.set(headId, {
-        ...current,
-        ...head,
-        createdAt: current?.createdAt ?? head.createdAt,
-      });
-      for (const [id, row] of staged) {
-        if (row.embedding?.length)
-          await this.vectorIndex.add(id, row.embedding);
-        else await this.vectorIndex.remove(id);
-      }
+      const head: StoredMemory = current
+        ? {
+            ...current,
+            ...persistableMemory(params.head.memory),
+            id: headId,
+            tableName: params.head.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: current.createdAt,
+          }
+        : {
+            ...persistableMemory(params.head.memory),
+            id: headId,
+            tableName: params.head.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: params.head.memory.createdAt ?? Date.now(),
+          };
+      additions.set(headId, head);
+      // The public adapter serializes the compare and this batch in one SQLite
+      // transaction. Readers cannot observe dependencies without their head.
       await this.storage.applyBatch({
         collection: COLLECTIONS.MEMORIES,
         deletes: [],
-        sets: [...staged].map(([id, data]) => ({ id, data })),
+        sets: [...additions].map(([id, data]) => ({ id, data })),
       });
-      return {
-        status: "published",
-        head: toMemory(staged.get(headId) as StoredMemory),
-      };
+      for (const [id, memory] of additions) {
+        if (memory.embedding?.length)
+          await this.vectorIndex.add(id, memory.embedding);
+        else await this.vectorIndex.remove(id);
+      }
+      return { status: "published", head: toMemory(head) };
     });
   }
 

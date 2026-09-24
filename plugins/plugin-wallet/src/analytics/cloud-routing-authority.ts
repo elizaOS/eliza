@@ -7,7 +7,7 @@ import {
   type RuntimeSettings,
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
-import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/shared";
+import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 const AUTHORITY_OWNED_ROUTING_KEYS = new Set([
   "ELIZAOS_CLOUD_API_KEY",

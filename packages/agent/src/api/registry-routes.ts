@@ -7,12 +7,15 @@
  * upstream failures surface as 502.
  */
 
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
-import { parseClampedInteger } from "@elizaos/shared";
-import { isValidRegistryPackageName } from "@elizaos/shared/catalog/runtime-kernel";
-import type {
-  RegistryPluginInfo,
-  RegistrySearchResult,
+import {
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core/api/route-helpers";
+import { isValidRegistryPackageName } from "@elizaos/core/catalog/runtime-kernel";
+import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+import {
+  type RegistryPluginInfo,
+  type RegistrySearchResult,
 } from "../services/plugin-manager-types.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 
@@ -23,7 +26,6 @@ interface InstalledRegistryPluginLike {
   latestVersion?: string | null;
   betaVersion?: string | null;
 }
-
 interface RegistryPluginManagerLike {
   refreshRegistry: () => Promise<Map<string, RegistryPluginInfo>>;
   listInstalledPlugins: () => Promise<InstalledRegistryPluginLike[]>;
@@ -33,7 +35,6 @@ interface RegistryPluginManagerLike {
     limit: number,
   ) => Promise<RegistrySearchResult[]>;
 }
-
 export interface RegistryRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
@@ -47,7 +48,6 @@ export interface RegistryRouteContext
     kind?: string;
   }) => unknown;
 }
-
 export async function handleRegistryRoutes(
   ctx: RegistryRouteContext,
 ): Promise<boolean> {
@@ -63,7 +63,6 @@ export async function handleRegistryRoutes(
     getBundledPluginIds,
     classifyRegistryPluginRelease,
   } = ctx;
-
   if (method === "GET" && pathname === "/api/registry/plugins") {
     try {
       const pluginManager = getPluginManager();
@@ -72,7 +71,6 @@ export async function handleRegistryRoutes(
       const installedNames = new Set(installed.map((plugin) => plugin.name));
       const loadedNames = new Set(getLoadedPluginNames());
       const bundledIds = getBundledPluginIds();
-
       const plugins = Array.from(registry.values()).map((plugin) => {
         const shortId = plugin.name
           .replace(/^@[^/]+\/plugin-/, "")
@@ -113,7 +111,6 @@ export async function handleRegistryRoutes(
     }
     return true;
   }
-
   if (
     method === "GET" &&
     pathname.startsWith("/api/registry/plugins/") &&
@@ -142,20 +139,17 @@ export async function handleRegistryRoutes(
     }
     return true;
   }
-
   if (method === "GET" && pathname === "/api/registry/search") {
     const query = url.searchParams.get("q") || "";
     if (!query.trim()) {
       error(res, "Query parameter 'q' is required", 400);
       return true;
     }
-
     try {
       const limitParam = url.searchParams.get("limit");
       const limit = limitParam
         ? parseClampedInteger(limitParam, { min: 1, max: 50, fallback: 15 })
         : 15;
-
       const pluginManager = getPluginManager();
       const results = await pluginManager.searchRegistry(query, limit);
       json(res, { query, count: results.length, results });
@@ -164,7 +158,6 @@ export async function handleRegistryRoutes(
     }
     return true;
   }
-
   if (method === "POST" && pathname === "/api/registry/refresh") {
     try {
       const pluginManager = getPluginManager();
@@ -175,6 +168,5 @@ export async function handleRegistryRoutes(
     }
     return true;
   }
-
   return false;
 }

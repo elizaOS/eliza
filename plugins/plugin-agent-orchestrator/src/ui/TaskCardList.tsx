@@ -3,8 +3,10 @@
  * orchestrator surfaces. Data loading remains with each owning view.
  */
 
-import { Button, Card, Input, Separator, StatusPulseDot } from "@elizaos/ui";
+import { Card, Separator, StatusPulseDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Archive,
   Circle,

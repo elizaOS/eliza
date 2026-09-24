@@ -1,5 +1,12 @@
 /** Verifies sandbox migration setup and real runtime finalization against disposable PostgreSQL with controlled Stripe HTTP. */
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { createRuntimeStripeFixture } from "../../shared/src/lib/services/generic-billing-runtime.stripe-fixture";
@@ -22,13 +29,17 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
   beforeAll(async () => {
     db = new Client({ connectionString: connection });
     await db.connect();
-    await db.query("CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public");
+    await db.query(
+      "CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public",
+    );
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema},public`);
     await initializeBillingSandboxDatabase(db);
   });
   afterAll(async () => {
-    await (await import("../../shared/src/db/client")).closeDatabaseConnectionsForTests();
+    await (
+      await import("../../shared/src/db/client")
+    ).closeDatabaseConnectionsForTests();
     if (db) {
       await db.query(`DROP SCHEMA ${schema} CASCADE`);
       await db.end();
@@ -41,8 +52,12 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
     const { appBillingProviderBindings } = await import(
       "../../shared/src/db/repositories/app-billing-provider-bindings"
     );
-    const { appBillingQueries } = await import("../../shared/src/db/repositories/app-billing-queries");
-    const { GenericBillingRuntime } = await import("../../shared/src/lib/services/generic-billing-runtime");
+    const { appBillingQueries } = await import(
+      "../../shared/src/db/repositories/app-billing-queries"
+    );
+    const { GenericBillingRuntime } = await import(
+      "../../shared/src/lib/services/generic-billing-runtime"
+    );
     const { createGenericBillingProvider } = await import(
       "../../shared/src/lib/services/generic-billing-provider"
     );
@@ -54,7 +69,10 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
       planId = randomUUID();
     await db.query("INSERT INTO organizations(id) VALUES($1)", [org]);
     await db.query("INSERT INTO users(id) VALUES($1)", [actorUserId]);
-    await db.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [appId, org]);
+    await db.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [
+      appId,
+      org,
+    ]);
     await db.query(
       "INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES($1,$2,'acct_runtime','acct_runtime',false,true)",
       [merchant, org],
@@ -111,9 +129,13 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
       "SELECT extract(epoch FROM ends_at-starts_at)::int AS seconds FROM app_subscription_trials",
     );
     expect(claims.rows).toEqual([{ seconds: 604800 }]);
-    const persisted = await db.query("SELECT status FROM billing_subscription_commands");
+    const persisted = await db.query(
+      "SELECT status FROM billing_subscription_commands",
+    );
     expect(persisted.rows).toEqual([{ status: "APPLIED" }]);
-    const providerRecord = fixture.subscriptions.get(snapshot.subscription.stripe_subscription_id);
+    const providerRecord = fixture.subscriptions.get(
+      snapshot.subscription.stripe_subscription_id,
+    );
     if (!providerRecord) throw new Error("Missing provider subscription");
     providerRecord.canceled = true;
     const object = await fixture.stripe.subscriptions.retrieve(
@@ -148,7 +170,9 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
         ),
       reconcileCommand: (input) => runtime.reconcileCommand(input),
     });
-    const { createRuntimeSandboxIngress } = await import("./billing-sandbox-ingress");
+    const { createRuntimeSandboxIngress } = await import(
+      "./billing-sandbox-ingress"
+    );
     const processed: string[] = [];
     const ingress = createRuntimeSandboxIngress({
       stripe: fixture.stripe,
@@ -164,22 +188,34 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
         method: "POST",
         body: payload,
         headers: {
-          "stripe-signature": await fixture.stripe.webhooks.generateTestHeaderStringAsync({
-            payload,
-            secret: "whsec_controlled",
-          }),
+          "stripe-signature":
+            await fixture.stripe.webhooks.generateTestHeaderStringAsync({
+              payload,
+              secret: "whsec_controlled",
+            }),
         },
       });
     expect(
-      (await ingress(new Request("http://127.0.0.1/stripe/webhook", { method: "POST", body })))
-        .status,
+      (
+        await ingress(
+          new Request("http://127.0.0.1/stripe/webhook", {
+            method: "POST",
+            body,
+          }),
+        )
+      ).status,
     ).toBe(400);
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM webhook_events")).rows[0].count,
+      (await db.query("SELECT count(*)::int AS count FROM webhook_events"))
+        .rows[0].count,
     ).toBe(0);
     const subscriptionId = snapshot.subscription.stripe_subscription_id;
     const completed = () =>
-      hasCompletedSandboxEvent(db, subscriptionId, "customer.subscription.deleted");
+      hasCompletedSandboxEvent(
+        db,
+        subscriptionId,
+        "customer.subscription.deleted",
+      );
     expect(await completed()).toBe(false);
     // A provider outage leaves signed intake durable and prevents acceptance until canonical retry.
     fixture.subscriptions.delete(subscriptionId);
@@ -192,14 +228,19 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
       if (!(await completed())) await Bun.sleep(1000);
     }
     expect(await completed()).toBe(true);
-    expect(await hasCompletedSandboxEvent(db, subscriptionId, "customer.subscription.paused")).toBe(
-      false,
-    );
+    expect(
+      await hasCompletedSandboxEvent(
+        db,
+        subscriptionId,
+        "customer.subscription.paused",
+      ),
+    ).toBe(false);
     expect((await ingress(await signedRequest(body))).status).toBe(204);
     expect((await ingress(await signedRequest(body))).status).toBe(204);
     expect((await ingress(await signedRequest(`${body} `))).status).toBe(409);
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM webhook_events")).rows[0].count,
+      (await db.query("SELECT count(*)::int AS count FROM webhook_events"))
+        .rows[0].count,
     ).toBe(1);
     expect(
       (
@@ -210,7 +251,8 @@ describe.skipIf(!connection)("sandbox runtime database harness", () => {
     ).toBe(1);
     expect(processed).toEqual(["evt_sandboxCanceled", "evt_sandboxCanceled"]);
     const canceled = await appBillingQueries.snapshot(identity);
-    if (canceled.kind !== "subscription") throw new Error("Missing canceled subscription");
+    if (canceled.kind !== "subscription")
+      throw new Error("Missing canceled subscription");
     expect(canceled.subscription.status).toBe("canceled");
   });
 });

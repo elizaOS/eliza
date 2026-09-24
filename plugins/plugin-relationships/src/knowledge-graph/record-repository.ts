@@ -8,19 +8,20 @@ import {
   ElizaError,
   type IAgentRuntime,
 } from "@elizaos/core";
-import type {
-  Entity,
-  EntityFilter,
-  Relationship,
-  RelationshipFilter,
-} from "@elizaos/shared";
-import { normalizeEntityConnectorAccountId } from "@elizaos/shared";
+import {
+  type Entity,
+  type EntityFilter,
+  normalizeEntityConnectorAccountId,
+} from "@elizaos/core/knowledge-graph/entity-types";
+import {
+  type Relationship,
+  type RelationshipFilter,
+} from "@elizaos/core/knowledge-graph/relationship-types";
 
 const ENTITIES = "plugin_knowledge_graph_entities_v1";
 const RELATIONSHIPS = "plugin_knowledge_graph_relationships_v1";
 const AUDIT = "plugin_knowledge_graph_audit_v1";
 const SCHEMA = "plugin_knowledge_graph_schema";
-
 export interface GraphAuditRecord {
   id: string;
   relationshipId: string;
@@ -28,13 +29,11 @@ export interface GraphAuditRecord {
   details: Record<string, unknown>;
   createdAt: string;
 }
-
 function failure(message: string): ElizaError {
   return new ElizaError(message, {
     code: "KNOWLEDGE_GRAPH_RECORD_STORE_INVALID",
   });
 }
-
 /** An explicit caller limit is pagination; omitted limits preserve the whole graph. */
 function requestedPage<T>(rows: T[], limit: number | undefined): T[] {
   if (limit === undefined) return rows;
@@ -42,7 +41,6 @@ function requestedPage<T>(rows: T[], limit: number | undefined): T[] {
     throw failure("Graph pagination requires a nonnegative integer limit");
   return rows.slice(0, limit);
 }
-
 export function graphRecordRepository(
   runtime: IAgentRuntime,
   agentId: string,
@@ -59,10 +57,8 @@ export function graphRecordRepository(
     );
   return new GraphRecordRepository(storage);
 }
-
 export class GraphRecordRepository {
   constructor(private readonly storage: DurableRecordStore) {}
-
   transaction<T>(operation: () => Promise<T>): Promise<T> {
     return this.storage.transaction(async () => {
       const version = await this.storage.get<number>(SCHEMA, "version");
@@ -74,11 +70,9 @@ export class GraphRecordRepository {
       return operation();
     });
   }
-
   getEntity(id: string): Promise<Entity | null> {
     return this.storage.get<Entity>(ENTITIES, id);
   }
-
   async putEntity(entity: Entity): Promise<Entity> {
     const identities = new Map<string, Entity["identities"][number]>();
     for (const identity of entity.identities) {
@@ -108,7 +102,6 @@ export class GraphRecordRepository {
     await this.storage.set(ENTITIES, entity.entityId, record);
     return structuredClone(record);
   }
-
   async listEntities(filter?: EntityFilter): Promise<Entity[]> {
     const rows = (await this.storage.getAll<Entity>(ENTITIES)).filter(
       (entity) => {
@@ -146,15 +139,12 @@ export class GraphRecordRepository {
     rows.sort((a, b) => a.preferredName.localeCompare(b.preferredName));
     return requestedPage(rows, filter?.limit);
   }
-
   async deleteEntity(id: string): Promise<void> {
     await this.storage.delete(ENTITIES, id);
   }
-
   getRelationship(id: string): Promise<Relationship | null> {
     return this.storage.get<Relationship>(RELATIONSHIPS, id);
   }
-
   async putRelationship(relationship: Relationship): Promise<Relationship> {
     await this.storage.set(
       RELATIONSHIPS,
@@ -163,7 +153,6 @@ export class GraphRecordRepository {
     );
     return structuredClone(relationship);
   }
-
   async listRelationships(
     filter?: RelationshipFilter,
   ): Promise<Relationship[]> {
@@ -184,7 +173,6 @@ export class GraphRecordRepository {
     rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return requestedPage(rows, filter?.limit);
   }
-
   async retargetRelationships(
     sourceId: string,
     targetId: string,
@@ -202,11 +190,9 @@ export class GraphRecordRepository {
       });
     }
   }
-
   appendAudit(row: GraphAuditRecord): Promise<void> {
     return this.storage.set(AUDIT, row.id, row);
   }
-
   async listAudit(
     id: string,
   ): Promise<Omit<GraphAuditRecord, "relationshipId">[]> {

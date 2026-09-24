@@ -15,18 +15,7 @@ import {
 } from "@elizaos/auth/auth/account-storage";
 import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
 import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceCapability,
-  ServiceRoutingConfig,
-} from "@elizaos/shared";
 import {
-  asNonEmptyString,
-  asRecord,
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   deriveFirstRunCredentialPersistencePlan,
   type FirstRunConnection,
   type FirstRunCredentialInputs,
@@ -38,13 +27,23 @@ import {
   getStoredFirstRunProviderId,
   getStoredSubscriptionProvider,
   migrateLegacyRuntimeConfig,
-  normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
   normalizeFirstRunProviderId,
-  normalizeServiceRoutingConfig,
   normalizeSubscriptionProviderSelectionId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
+import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  type DeploymentTargetConfig,
+  type LinkedAccountFlagsConfig,
+  normalizeDeploymentTargetConfig,
+  normalizeServiceRoutingConfig,
+  type ServiceCapability,
+  type ServiceRoutingConfig,
+} from "@elizaos/core/contracts/service-routing";
+import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {

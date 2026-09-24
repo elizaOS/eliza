@@ -3,15 +3,13 @@
  * path. The retained session WAV is a mixed stream, so the artifact records
  * that source loss explicitly instead of claiming per-participant audio.
  */
-
-import type { TranscriptSegment } from "@elizaos/shared";
 import {
   assertValidMeetingArtifact,
   MEETING_ARTIFACT_SCHEMA_VERSION,
   type MeetingArtifact,
-  type MeetingParticipant,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/meeting-artifacts";
+import { type MeetingParticipant } from "@elizaos/core/meetings";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 export interface ZoomBotMeetingArtifactInput {
   artifactId: string;
   meetingId: string;
@@ -27,7 +25,6 @@ export interface ZoomBotMeetingArtifactInput {
     mimeType: "audio/wav";
   };
 }
-
 export function buildZoomBotMeetingArtifact(
   input: ZoomBotMeetingArtifactInput,
 ): MeetingArtifact {
@@ -40,7 +37,10 @@ export function buildZoomBotMeetingArtifact(
   );
   const speakerRows = new Map<
     string,
-    { label: string; participant?: MeetingParticipant }
+    {
+      label: string;
+      participant?: MeetingParticipant;
+    }
   >();
   const transcriptSpans = input.segments.map((segment) => {
     const label = segment.speakerLabel?.trim();
@@ -162,7 +162,6 @@ export function buildZoomBotMeetingArtifact(
   assertValidMeetingArtifact(artifact);
   return artifact;
 }
-
 function stableLabel(value: string): string {
   return encodeURIComponent(value.trim().toLowerCase()) || "unknown";
 }

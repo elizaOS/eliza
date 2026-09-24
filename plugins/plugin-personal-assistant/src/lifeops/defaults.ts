@@ -7,7 +7,7 @@ import {
   isValidTimeZone,
   normalizeTimeZone,
   resolveDefaultTimeZone,
-} from "@elizaos/shared";
+} from "@elizaos/core/lifeops-normalize/time-zone";
 import type { ActivityProfile } from "../activity-profile/types";
 import type {
   LifeOpsReminderStep,
@@ -19,7 +19,7 @@ export {
   isValidTimeZone,
   normalizeTimeZone,
   resolveDefaultTimeZone,
-} from "@elizaos/shared";
+} from "@elizaos/core/lifeops-normalize/time-zone";
 
 /** Resolve the configured IANA time zone before falling back to the host zone. */
 export function resolveConfiguredTimeZone(runtime: {

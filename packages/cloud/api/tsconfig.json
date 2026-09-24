@@ -30,8 +30,6 @@
       "@elizaos/cloud-routing": ["../routing/src/index.ts"],
       "@elizaos/core": ["../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
-      "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../../packages/shared/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../../plugins/plugin-elizacloud/src/index.ts"
       ],
@@ -50,7 +48,40 @@
       "@elizaos/plugin-scheduling": [
         "../../../plugins/plugin-scheduling/src/index.ts"
       ],
-      "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"]
+      "@elizaos/plugin-native-inference/model-catalog/bge-input": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/bge-input.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/prompts": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/prompts.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/model-provider": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/model-provider.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/resource-selection": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/resource-selection.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/action-naming": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/action-naming.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/json": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/json.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/schema-converter": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/schema-converter.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
+      ],
+      "@elizaos/ui/brand": ["../../ui/src/brand/index.ts"],
+      "@elizaos/plugin-mcp/protocol-utils/provider-projection": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/provider-projection.ts"
+      ],
+      "@elizaos/plugin-mcp/protocol-utils/tool-schema-compatibility": [
+        "../../../plugins/plugin-mcp/src/protocol-utils/tool-schema-compatibility.ts"
+      ],
+      "@elizaos/plugin-wallet/lib/market-overview": [
+        "../../../plugins/plugin-wallet/src/lib/market-overview.ts"
+      ]
     }
   },
   "include": [

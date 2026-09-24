@@ -8,22 +8,19 @@
  * declared separately. Packages are imported here before runtime startup;
  * fixture names are verified by the executor after the scenario seed runs.
  */
-
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import type {
-  ScenarioDefinition,
-  ScenarioExecutionProfile,
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import {
+  type ScenarioDefinition,
+  type ScenarioExecutionProfile,
 } from "@elizaos/testing";
 
 const MEETINGS_PLUGIN_PACKAGE = "@elizaos/plugin-meetings";
 const MEETINGS_TEST_SUPPORT_PACKAGE = "@elizaos/plugin-meetings/test-support";
-
 const NON_PRODUCTION_PACKAGE_PATTERN =
   /(?:^|[/._-])(?:mock|mocks|fixture|fixtures|test|tests|test-harness)(?:$|[/._-])/iu;
 const PACKAGE_NAME_PATTERN =
   /^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)(?:\/(?!\.{1,2}(?:\/|$))[^/\\\s]+)*$/iu;
-
 export function assertScenarioPluginPackageSpecifier(
   packageName: string,
 ): void {
@@ -36,7 +33,6 @@ export function assertScenarioPluginPackageSpecifier(
     },
   );
 }
-
 function isPlugin(value: unknown): value is Plugin {
   if (value === null || typeof value !== "object") return false;
   const obj = value as Record<string, unknown>;
@@ -53,7 +49,6 @@ function isPlugin(value: unknown): value is Plugin {
     (obj.models !== null && typeof obj.models === "object")
   );
 }
-
 export function resolveRequiredPluginPackages(
   scenario: ScenarioDefinition,
 ): string[] {
@@ -65,7 +60,6 @@ export function resolveRequiredPluginPackages(
   }
   return [...new Set(normalized)];
 }
-
 export function resolveRequiredFixturePlugins(
   scenario: ScenarioDefinition,
 ): string[] {
@@ -74,7 +68,6 @@ export function resolveRequiredFixturePlugins(
   const normalized = plugins.map((plugin) => plugin.trim()).filter(Boolean);
   return [...new Set(normalized)];
 }
-
 /**
  * Reject shared-runtime batches where a test companion would alter a production
  * scenario that did not declare it. Process-isolated execution remains valid.
@@ -106,7 +99,6 @@ export function assertSharedRuntimePluginBatchSafe(
     );
   }
 }
-
 export function providerQualifiedPluginPackageProblem(
   packageName: string,
 ): string | null {
@@ -118,7 +110,6 @@ export function providerQualifiedPluginPackageProblem(
   }
   return null;
 }
-
 export function assertProviderQualifiedPluginPackages(
   packageNames: readonly string[],
 ): void {
@@ -136,7 +127,6 @@ export function assertProviderQualifiedPluginPackages(
     );
   }
 }
-
 function pluginNameAliases(packageName: string): Set<string> {
   const withoutScope = packageName.replace(/^@elizaos\//u, "");
   const withoutPluginPrefix = withoutScope.replace(/^plugin-/u, "");
@@ -147,7 +137,6 @@ function pluginNameAliases(packageName: string): Set<string> {
     `plugin-${withoutPluginPrefix}`,
   ]);
 }
-
 /**
  * Whether one registered plugin is the one a scenario declared as
  * `packageName`. A plugin's internal `name` routinely differs from its package
@@ -161,7 +150,6 @@ export function pluginMatchesScenarioPackage(
   if (typeof plugin.name !== "string") return false;
   return pluginNameAliases(packageName).has(plugin.name.trim());
 }
-
 export function pluginPackageIsRegistered(
   runtime: Pick<AgentRuntime, "plugins">,
   packageName: string,
@@ -170,7 +158,6 @@ export function pluginPackageIsRegistered(
     pluginMatchesScenarioPackage(plugin, packageName),
   );
 }
-
 export async function loadScenarioRequiredPlugin(
   packageName: string,
   executionProfile: ScenarioExecutionProfile,
@@ -178,7 +165,6 @@ export async function loadScenarioRequiredPlugin(
   if (executionProfile === "provider-qualified") {
     assertProviderQualifiedPluginPackages([packageName]);
   }
-
   const mod = (await import(packageName)) as Record<string, unknown>;
   const candidate =
     [mod.default, mod.elizaPlugin, mod.plugin, mod.schedulingPlugin].find(
@@ -195,7 +181,6 @@ export async function loadScenarioRequiredPlugin(
   }
   return candidate;
 }
-
 /**
  * Registers every declared package once before scenario runtime startup and
  * returns the names that are registered afterwards. Fixture plugin names are

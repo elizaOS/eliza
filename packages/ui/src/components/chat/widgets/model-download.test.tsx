@@ -1,5 +1,10 @@
 /** Verifies ModelDownloadWidget through the package's configured test harness. */
 // @vitest-environment jsdom
+
+import type {
+  LocalInferenceSlotReadiness,
+  ModelHubSnapshot,
+} from "@elizaos/core/contracts/local-inference";
 import {
   cleanup,
   fireEvent,
@@ -8,6 +13,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ModelDownloadWidget } from "./model-download";
 
 // Auth gate (#11084) — mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
@@ -17,7 +23,6 @@ const { authMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
-
 const { runtimeModeMock } = vi.hoisted(() => ({
   runtimeModeMock: {
     state: { phase: "ready" as const, snapshot: { mode: "local" as const } },
@@ -31,12 +36,6 @@ const { runtimeModeMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock,
 }));
-
-import type {
-  LocalInferenceSlotReadiness,
-  ModelHubSnapshot,
-} from "@elizaos/shared";
-
 // The widget reads routing, hub readiness, and retry through the typed client.
 // Routing + hub responses vary per test; the download spy proves retry owns the
 // assigned model rather than reconstructing one from display text.
@@ -63,7 +62,6 @@ vi.mock("../../../api", () => ({
     startLocalInferenceDownload: startDownloadMock,
   },
 }));
-
 // EventSource cannot open in jsdom; the widget already tolerates a null
 // EventSource (native-IPC fallback). Force the null path so the test drives off
 // the single initial hub fetch.
@@ -73,9 +71,6 @@ const { openEventSourceMock } = vi.hoisted(() => ({
 vi.mock("../../../utils/event-source", () => ({
   openEventSource: openEventSourceMock,
 }));
-
-import { ModelDownloadWidget } from "./model-download";
-
 function slot(
   overrides: Partial<LocalInferenceSlotReadiness>,
 ): LocalInferenceSlotReadiness {
@@ -107,7 +102,6 @@ function slot(
     ...overrides,
   };
 }
-
 function hub(
   slots: Partial<
     Record<"TEXT_SMALL" | "TEXT_LARGE", LocalInferenceSlotReadiness>
@@ -135,7 +129,6 @@ function hub(
     },
   };
 }
-
 describe("ModelDownloadWidget", () => {
   it("removes a stale routing warning after the backend recovers without remounting", async () => {
     getModelsConfigMock
@@ -147,11 +140,10 @@ describe("ModelDownloadWidget", () => {
       () => {
         expect(screen.queryByText("Model route unavailable")).toBeNull();
       },
-      { timeout: 2_500 },
+      { timeout: 2500 },
     );
     expect(getHubMock).not.toHaveBeenCalled();
   });
-
   beforeEach(() => {
     authMock.authenticated = true;
     Object.assign(runtimeModeMock, {
@@ -174,7 +166,6 @@ describe("ModelDownloadWidget", () => {
     startDownloadMock.mockResolvedValue({ job: {} });
   });
   afterEach(cleanup);
-
   it("self-hides (null) when no local text slot is assigned (cloud/remote)", async () => {
     getHubMock.mockResolvedValue(hub({}));
     const { container } = render(<ModelDownloadWidget />);
@@ -186,7 +177,6 @@ describe("ModelDownloadWidget", () => {
       ).toBeNull(),
     );
   });
-
   it("self-hides (null) when every assigned slot is ready", async () => {
     getHubMock.mockResolvedValue(
       hub({
@@ -207,7 +197,6 @@ describe("ModelDownloadWidget", () => {
       ).toBeNull(),
     );
   });
-
   it("never flashes a local-model card when Cerebras serves a local runtime", async () => {
     getModelsConfigMock.mockResolvedValue({
       activeChat: {
@@ -225,27 +214,21 @@ describe("ModelDownloadWidget", () => {
         }),
       }),
     );
-
     const { container } = render(<ModelDownloadWidget />);
-
     await waitFor(() => expect(getModelsConfigMock).toHaveBeenCalledOnce());
     expect(getHubMock).not.toHaveBeenCalled();
     expect(
       container.querySelector('[data-testid="chat-widget-model-download"]'),
     ).toBeNull();
   });
-
   it("renders routing failure instead of inventing local-model readiness", async () => {
     getModelsConfigMock.mockRejectedValue(new Error("routing unavailable"));
-
     render(<ModelDownloadWidget />);
-
     const card = await screen.findByTestId("chat-widget-model-download");
     expect(card.textContent).toContain("Model route unavailable");
     expect(card.textContent).toContain("Could not verify");
     expect(getHubMock).not.toHaveBeenCalled();
   });
-
   it("renders the download percent while downloading", async () => {
     getHubMock.mockResolvedValue(
       hub({
@@ -257,7 +240,7 @@ describe("ModelDownloadWidget", () => {
             totalBytes: 100,
             percent: 42,
             bytesPerSec: 10,
-            etaMs: 120_000,
+            etaMs: 120000,
             updatedAt: null,
             errors: [],
           },
@@ -271,7 +254,6 @@ describe("ModelDownloadWidget", () => {
     // ETA meta rendered from the server etaMs (2 minutes).
     expect(card.textContent).toContain("2m left");
   });
-
   it("renders a queued state for an assigned-but-missing slot", async () => {
     getHubMock.mockResolvedValue(
       hub({ TEXT_LARGE: slot({ state: "missing" }) }),
@@ -280,7 +262,6 @@ describe("ModelDownloadWidget", () => {
     const card = await screen.findByTestId("chat-widget-model-download");
     expect(card.textContent).toContain("Queued");
   });
-
   it("renders a loading state once downloaded and awaiting activation", async () => {
     getHubMock.mockResolvedValue(
       hub({
@@ -295,7 +276,6 @@ describe("ModelDownloadWidget", () => {
     const card = await screen.findByTestId("chat-widget-model-download");
     expect(card.textContent).toContain("Loading");
   });
-
   it("shows the error state and retries the FAILED model id on tap", async () => {
     getHubMock.mockResolvedValue(
       hub({
@@ -312,20 +292,22 @@ describe("ModelDownloadWidget", () => {
     expect(card.getAttribute("aria-label")).toMatch(/download failed/i);
     // Surfaces the readiness error text.
     expect(card.textContent).toContain("HuggingFace bundle");
-
     fireEvent.click(card);
     await waitFor(() =>
       expect(startDownloadMock).toHaveBeenCalledWith("eliza-1-4b"),
     );
   });
-
   it("opens local-inference settings on tap when not in an error state", async () => {
     getHubMock.mockResolvedValue(
       hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
     );
     const navigated: string[] = [];
     const listener = (event: Event) => {
-      const detail = (event as CustomEvent<{ viewPath?: string }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          viewPath?: string;
+        }>
+      ).detail;
       if (detail?.viewPath) navigated.push(detail.viewPath);
     };
     window.addEventListener("eliza:navigate:view", listener);
@@ -340,7 +322,6 @@ describe("ModelDownloadWidget", () => {
       window.removeEventListener("eliza:navigate:view", listener);
     }
   });
-
   it("settles to null (no spinner) when the hub fetch fails", async () => {
     getHubMock.mockRejectedValue(new Error("bridge hung"));
     const { container } = render(<ModelDownloadWidget />);
@@ -353,7 +334,6 @@ describe("ModelDownloadWidget", () => {
       ).toBeNull(),
     );
   });
-
   // #11084 — the home surface mounts the widget before the auth probe
   // resolves; the hub fetch (and download stream) must stay dormant while the
   // session is unauthenticated.
@@ -362,9 +342,7 @@ describe("ModelDownloadWidget", () => {
     getHubMock.mockResolvedValue(
       hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
     );
-
     const { container } = render(<ModelDownloadWidget />);
-
     await Promise.resolve();
     expect(getHubMock).not.toHaveBeenCalled();
     // Dormant → the first-fetch loading hold renders nothing.
@@ -372,7 +350,6 @@ describe("ModelDownloadWidget", () => {
       container.querySelector('[data-testid="chat-widget-model-download"]'),
     ).toBeNull();
   });
-
   it("does not fetch local-inference endpoints in cloud runtime mode", async () => {
     Object.assign(runtimeModeMock, {
       state: { phase: "ready", snapshot: { mode: "cloud" } },
@@ -384,42 +361,33 @@ describe("ModelDownloadWidget", () => {
     getHubMock.mockResolvedValue(
       hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
     );
-
     const { container } = render(<ModelDownloadWidget />);
-
     await Promise.resolve();
     expect(getHubMock).not.toHaveBeenCalled();
     expect(
       container.querySelector('[data-testid="chat-widget-model-download"]'),
     ).toBeNull();
   });
-
   it("does not open an unauthenticated download stream for a paired bearer session", async () => {
     getRestAuthTokenMock.mockReturnValue("paired-machine-session");
     getHubMock.mockResolvedValue(
       hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
     );
-
     render(<ModelDownloadWidget />);
-
     await screen.findByTestId("chat-widget-model-download");
     expect(getHubMock).toHaveBeenCalled();
     expect(openEventSourceMock).not.toHaveBeenCalled();
   });
-
   it("starts the hub fetch once the session flips to authenticated", async () => {
     authMock.authenticated = false;
     getHubMock.mockResolvedValue(
       hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
     );
-
     const { rerender } = render(<ModelDownloadWidget />);
     await Promise.resolve();
     expect(getHubMock).not.toHaveBeenCalled();
-
     authMock.authenticated = true;
     rerender(<ModelDownloadWidget />);
-
     await screen.findByTestId("chat-widget-model-download");
     expect(getHubMock).toHaveBeenCalled();
   });

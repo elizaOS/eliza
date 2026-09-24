@@ -40,7 +40,7 @@ import {
 import {
   type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
 import type {
   Chat,
   Document,

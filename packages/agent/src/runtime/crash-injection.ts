@@ -23,10 +23,9 @@
  * @module crash-injection
  */
 import process from "node:process";
-import { RESTART_EXIT_CODE } from "@elizaos/shared";
+import { RESTART_EXIT_CODE } from "@elizaos/core/restart";
 
 export { RESTART_EXIT_CODE };
-
 /** Lifecycle points an injected fault can target. Keep in sync with the matrix. */
 export const CRASH_INJECTION_POINTS = [
   "boot",
@@ -39,7 +38,6 @@ export const CRASH_INJECTION_POINTS = [
   "voice",
 ] as const;
 export type CrashInjectionPoint = (typeof CRASH_INJECTION_POINTS)[number];
-
 /** How an injected fault manifests. */
 export const CRASH_INJECTION_MODES = [
   /** Hard, uncontrolled exit (simulates a fatal crash). */
@@ -56,28 +54,23 @@ export const CRASH_INJECTION_MODES = [
   "restart",
 ] as const;
 export type CrashInjectionMode = (typeof CRASH_INJECTION_MODES)[number];
-
 export interface CrashInjectionFault {
   mode: CrashInjectionMode;
   /** Numeric argument: exit code (exit), hang ms (hang), chunk MB (oom). */
   arg?: number;
 }
-
 export type CrashInjectionConfig = Map<
   CrashInjectionPoint,
   CrashInjectionFault
 >;
-
 const ENV_SPEC = "ELIZA_CRASH_INJECT";
 const ENV_ALLOW_PROD = "ELIZA_ALLOW_CRASH_INJECT";
-
 function isPoint(value: string): value is CrashInjectionPoint {
   return (CRASH_INJECTION_POINTS as readonly string[]).includes(value);
 }
 function isMode(value: string): value is CrashInjectionMode {
   return (CRASH_INJECTION_MODES as readonly string[]).includes(value);
 }
-
 function warn(message: string): void {
   // stderr, not the logger — see module docstring.
   try {
@@ -86,7 +79,6 @@ function warn(message: string): void {
     // never let logging throw inside a fault hook
   }
 }
-
 /**
  * Parse an `ELIZA_CRASH_INJECT` spec into a validated config. Pure + total:
  * invalid points/modes are skipped with a warning rather than thrown, so a typo
@@ -97,7 +89,6 @@ export function parseCrashInjectionSpec(
 ): CrashInjectionConfig {
   const config: CrashInjectionConfig = new Map();
   if (!raw?.trim()) return config;
-
   for (const entry of raw.split(",")) {
     const trimmed = entry.trim();
     if (!trimmed) continue;
@@ -117,14 +108,12 @@ export function parseCrashInjectionSpec(
   }
   return config;
 }
-
 /** True when the running process is a production runtime (no fault hooks). */
 function isProductionRuntime(env: NodeJS.ProcessEnv): boolean {
   return (
     env.NODE_ENV === "production" || env.ELIZA_BUILD_VARIANT === "production"
   );
 }
-
 /**
  * Resolve the active config from the environment, enforcing the production
  * safety gate. Returns an empty config (disarmed) unless `ELIZA_CRASH_INJECT`
@@ -143,10 +132,8 @@ export function resolveCrashInjectionConfig(
   }
   return parseCrashInjectionSpec(spec);
 }
-
 let armed: CrashInjectionConfig | null = null;
 const tripped = new Set<CrashInjectionPoint>();
-
 /**
  * Arm fault injection from the environment once at process start. Idempotent.
  * Logs the armed plan loudly so an armed test build is never silent. Returns the
@@ -166,12 +153,10 @@ export function armCrashInjection(
   }
   return armed;
 }
-
 /** True when any fault is armed. */
 export function isCrashInjectionArmed(): boolean {
   return (armed ?? new Map()).size > 0;
 }
-
 function executeFault(
   point: CrashInjectionPoint,
   fault: CrashInjectionFault,
@@ -207,7 +192,6 @@ function executeFault(
       break;
   }
 }
-
 /**
  * Fire any fault armed for `point`. No-op when disarmed or already tripped for
  * that point (a point fires at most once so a `hang`/`reject` can't storm). For
@@ -221,7 +205,6 @@ export function maybeInjectFault(
   const fault = armed?.get(point);
   if (!fault || tripped.has(point)) return;
   tripped.add(point);
-
   if (fault.mode === "hang") {
     const ms = Number.isFinite(fault.arg) ? (fault.arg as number) : undefined;
     warn(
@@ -235,7 +218,6 @@ export function maybeInjectFault(
   }
   executeFault(point, fault);
 }
-
 /** Test-only: clear armed state + trip history so suites don't leak into each other. */
 export function resetCrashInjectionForTests(): void {
   armed = null;

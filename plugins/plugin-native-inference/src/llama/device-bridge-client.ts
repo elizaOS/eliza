@@ -29,8 +29,8 @@
  *   probe support, that path wins automatically.
  */
 
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { ElizaError } from "@elizaos/core/errors";
+import { BGE_EMBEDDING_MODEL } from "../model-catalog/bge-embedding-model.js";
 import { loadCapacitorLlama } from "./load-capacitor-llama.js";
 
 interface DeviceCapabilities {
@@ -53,7 +53,6 @@ interface DeviceCapabilities {
   mtpSupported?: boolean;
   mtpReason?: string;
 }
-
 type AgentInbound =
   | {
       type: "load";
@@ -72,7 +71,10 @@ type AgentInbound =
       cacheTypeV?: string;
       disableThinking?: boolean;
     }
-  | { type: "unload"; correlationId: string }
+  | {
+      type: "unload";
+      correlationId: string;
+    }
   | {
       type: "generate";
       correlationId: string;
@@ -91,10 +93,15 @@ type AgentInbound =
   | {
       type: "formatChat";
       correlationId: string;
-      messages: { role: string; content: string }[];
+      messages: {
+        role: string;
+        content: string;
+      }[];
     }
-  | { type: "ping"; at: number };
-
+  | {
+      type: "ping";
+      at: number;
+    };
 type DeviceOutbound =
   | {
       type: "register";
@@ -105,10 +112,29 @@ type DeviceOutbound =
         loadedPath: string | null;
       };
     }
-  | { type: "loadResult"; correlationId: string; ok: true; loadedPath: string }
-  | { type: "loadResult"; correlationId: string; ok: false; error: string }
-  | { type: "unloadResult"; correlationId: string; ok: true }
-  | { type: "unloadResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "loadResult";
+      correlationId: string;
+      ok: true;
+      loadedPath: string;
+    }
+  | {
+      type: "loadResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
+  | {
+      type: "unloadResult";
+      correlationId: string;
+      ok: true;
+    }
+  | {
+      type: "unloadResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
   | {
       type: "generateResult";
       correlationId: string;
@@ -120,7 +146,12 @@ type DeviceOutbound =
       /** Time-to-first-token (ms) when the device measured it; prefill wall-clock. */
       ttftMs?: number;
     }
-  | { type: "generateResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "generateResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
   | {
       type: "embedResult";
       correlationId: string;
@@ -149,8 +180,10 @@ type DeviceOutbound =
       ok: false;
       error: string;
     }
-  | { type: "pong"; at: number };
-
+  | {
+      type: "pong";
+      at: number;
+    };
 export interface DeviceBridgeClientConfig {
   /** Absolute WS URL of the agent: `wss://agent.example.com/api/local-inference/device-bridge`. */
   agentUrl: string;
@@ -164,11 +197,9 @@ export interface DeviceBridgeClientConfig {
     detail?: string,
   ) => void;
 }
-
-const INITIAL_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 30_000;
-const CONNECT_TIMEOUT_MS = 5_000;
-
+const INITIAL_BACKOFF_MS = 1000;
+const MAX_BACKOFF_MS = 30000;
+const CONNECT_TIMEOUT_MS = 5000;
 /** Result returned by the iOS `ElizaIntent.getDeviceCapabilities()` /
  * `ElizaIntent.getDeviceCapabilities()` plugin method. Matches the Swift
  * `call.resolve([...])` shape — every field is optional from the JS side
@@ -183,25 +214,32 @@ interface NativeIosCapabilities {
   totalRamGb?: number;
   availableRamGb?: number | null;
   cpuCores?: number;
-  gpu?: { backend?: string; available?: boolean } | null;
+  gpu?: {
+    backend?: string;
+    available?: boolean;
+  } | null;
   gpuSupported?: boolean;
   lowPowerMode?: boolean;
   thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
 }
-
 interface CapacitorBridge {
   isNativePlatform?: () => boolean;
   getPlatform?: () => string;
   Plugins?: Record<
     string,
-    { getDeviceCapabilities?: () => Promise<NativeIosCapabilities> } | undefined
+    | {
+        getDeviceCapabilities?: () => Promise<NativeIosCapabilities>;
+      }
+    | undefined
   >;
 }
-
 function getCapacitorBridge(): CapacitorBridge | undefined {
-  return (globalThis as { Capacitor?: CapacitorBridge }).Capacitor;
+  return (
+    globalThis as {
+      Capacitor?: CapacitorBridge;
+    }
+  ).Capacitor;
 }
-
 /**
  * Probe the host iOS app for real device capabilities. Returns `null` on
  * non-iOS, non-native, or when the plugin is not registered (e.g. older
@@ -230,22 +268,18 @@ async function probeNativeIosCapabilities(): Promise<NativeIosCapabilities | nul
   }
   return null;
 }
-
 export class DeviceBridgeClient {
   private socket: WebSocket | null = null;
   private reconnectAttempt = 0;
   private stopped = false;
   private readonly config: DeviceBridgeClientConfig;
-
   constructor(config: DeviceBridgeClientConfig) {
     this.config = config;
   }
-
   start(): void {
     this.stopped = false;
     this.connect();
   }
-
   stop(): void {
     this.stopped = true;
     if (this.socket) {
@@ -257,7 +291,6 @@ export class DeviceBridgeClient {
       this.socket = null;
     }
   }
-
   private computeBackoffMs(): number {
     const exp = Math.min(
       MAX_BACKOFF_MS,
@@ -266,11 +299,9 @@ export class DeviceBridgeClient {
     // Full jitter: uniform random in [0, exp).
     return Math.floor(Math.random() * exp);
   }
-
   private connect(): void {
     if (this.stopped) return;
     this.config.onStateChange?.("connecting");
-
     const url = this.buildUrl();
     let ws: WebSocket;
     try {
@@ -306,14 +337,12 @@ export class DeviceBridgeClient {
       }
       this.scheduleReconnect();
     }, CONNECT_TIMEOUT_MS);
-
     ws.onopen = () => {
       clearTimeout(connectTimeout);
       opened = true;
       this.reconnectAttempt = 0;
       void this.sendRegister(ws);
     };
-
     ws.onmessage = (event) => {
       let msg: AgentInbound;
       try {
@@ -324,12 +353,10 @@ export class DeviceBridgeClient {
       }
       void this.handleAgentMessage(ws, msg);
     };
-
     ws.onerror = () => {
       if (!opened) return;
       this.config.onStateChange?.("error", "websocket error");
     };
-
     ws.onclose = () => {
       clearTimeout(connectTimeout);
       if (this.socket === ws) this.socket = null;
@@ -338,28 +365,22 @@ export class DeviceBridgeClient {
       this.scheduleReconnect();
     };
   }
-
   private buildUrl(): string {
     if (!this.config.pairingToken) return this.config.agentUrl;
     const hasQuery = this.config.agentUrl.includes("?");
     const sep = hasQuery ? "&" : "?";
-    return `${this.config.agentUrl}${sep}token=${encodeURIComponent(
-      this.config.pairingToken,
-    )}`;
+    return `${this.config.agentUrl}${sep}token=${encodeURIComponent(this.config.pairingToken)}`;
   }
-
   private scheduleReconnect(): void {
     if (this.stopped) return;
     const delay = this.computeBackoffMs();
     this.reconnectAttempt += 1;
     setTimeout(() => this.connect(), delay);
   }
-
   private async sendRegister(ws: WebSocket): Promise<void> {
     const capacitorLlama = await loadCapacitorLlama();
     const hardware = await capacitorLlama.getHardwareInfo();
     const loaded = await capacitorLlama.isLoaded();
-
     // On iOS, `llama-cpp-capacitor` does not implement `getHardwareInfo`,
     // so the adapter returned a fallback with `deviceModel="ios"` /
     // `totalRamGb=0` / no `isSimulator` flag. Probe our own native
@@ -369,7 +390,6 @@ export class DeviceBridgeClient {
     // values (`source === "native"`), we let it win.
     const native = await probeNativeIosCapabilities();
     const useNativeOverride = native !== null && hardware.source !== "native";
-
     const platform = useNativeOverride
       ? (native?.platform ?? hardware.platform)
       : hardware.platform;
@@ -428,7 +448,6 @@ export class DeviceBridgeClient {
     const thermalState = useNativeOverride
       ? (native?.thermalState ?? hardware.thermalState)
       : hardware.thermalState;
-
     const msg: DeviceOutbound = {
       type: "register",
       payload: {
@@ -459,12 +478,10 @@ export class DeviceBridgeClient {
     this.send(ws, msg);
     this.config.onStateChange?.("connected");
   }
-
   private send(ws: WebSocket, msg: DeviceOutbound): void {
     if (ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify(msg));
   }
-
   private async handleAgentMessage(
     ws: WebSocket,
     msg: AgentInbound,
@@ -473,7 +490,6 @@ export class DeviceBridgeClient {
       this.send(ws, { type: "pong", at: Date.now() });
       return;
     }
-
     if (msg.type === "load") {
       try {
         const capacitorLlama = await loadCapacitorLlama(
@@ -514,7 +530,6 @@ export class DeviceBridgeClient {
       }
       return;
     }
-
     if (msg.type === "unload") {
       try {
         const capacitorLlama = await loadCapacitorLlama();
@@ -537,7 +552,6 @@ export class DeviceBridgeClient {
       }
       return;
     }
-
     if (msg.type === "generate") {
       try {
         const capacitorLlama = await loadCapacitorLlama();
@@ -571,7 +585,6 @@ export class DeviceBridgeClient {
       }
       return;
     }
-
     if (msg.type === "embed") {
       try {
         const capacitorLlama = await loadCapacitorLlama("embedding");
@@ -605,7 +618,6 @@ export class DeviceBridgeClient {
       }
       return;
     }
-
     if (msg.type === "formatChat") {
       try {
         const capacitorLlama = await loadCapacitorLlama();
@@ -633,7 +645,6 @@ export class DeviceBridgeClient {
     }
   }
 }
-
 /**
  * Convenience helper for the mobile bootstrap: starts a bridge client
  * using values from the Eliza config or hardcoded env.

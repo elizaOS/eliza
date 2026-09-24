@@ -18,7 +18,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
-import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { tryHandleRuntimePluginRoute } from "../../../../packages/agent/src/api/runtime-plugin-routes.ts";

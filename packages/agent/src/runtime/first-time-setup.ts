@@ -17,14 +17,16 @@
  * @module first-time-setup
  */
 
-import type { StylePreset } from "@elizaos/shared";
+import { formatError } from "@elizaos/core";
+import { getStylePresets } from "@elizaos/core/character-presets";
+import {
+  migrateLegacyRuntimeConfig,
+  type StylePreset,
+} from "@elizaos/core/contracts/first-run-options";
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-  formatError,
-  getStylePresets,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/service-routing";
 import { persistConfigEnv } from "../api/config-env.ts";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,

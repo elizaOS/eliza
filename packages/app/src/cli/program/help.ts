@@ -5,13 +5,14 @@
  * and the trailing Examples plus docs-link block. Rendering only — it defines
  * no command behavior.
  */
-import { formatDocsLink, isRich, theme } from "@elizaos/shared";
-import type { Command } from "commander";
+
+import { type Command } from "commander";
+import { formatDocsLink } from "../../terminal/links.js";
+import { isRich, theme } from "../../terminal/theme.js";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";
 import { replaceCliName, resolveCliName } from "../cli-name";
 
 const CLI_NAME = resolveCliName();
-
 const EXAMPLES = [
   ["eliza", "Start Eliza in the interactive TUI."],
   ["eliza start", "Start the classic runtime/chat loop."],
@@ -23,7 +24,6 @@ const EXAMPLES = [
   ["eliza update", "Check for and install the latest version."],
   ["eliza update channel beta", "Switch to the beta release channel."],
 ] as const;
-
 export function configureProgramHelp(program: Command, programVersion: string) {
   program
     .name(CLI_NAME)
@@ -39,14 +39,11 @@ export function configureProgramHelp(program: Command, programVersion: string) {
       "--profile <name>",
       "Use a named profile with isolated state and config",
     );
-
   program.option("--no-color", "Disable ANSI colors", false);
-
   program.configureHelp({
     optionTerm: (option) => theme.option(option.flags),
     subcommandTerm: (cmd) => theme.command(cmd.name()),
   });
-
   program.configureOutput({
     writeOut: (str) => {
       const colored = str
@@ -58,7 +55,6 @@ export function configureProgramHelp(program: Command, programVersion: string) {
     writeErr: (str) => process.stderr.write(str),
     outputError: (str, write) => write(theme.error(str)),
   });
-
   program.addHelpText("beforeAll", () => {
     if (hasEmittedCliBanner()) {
       return "";
@@ -67,12 +63,10 @@ export function configureProgramHelp(program: Command, programVersion: string) {
     const line = formatCliBannerLine(programVersion, { richTty: rich });
     return `\n${line}\n`;
   });
-
   const fmtExamples = EXAMPLES.map(
     ([cmd, desc]) =>
       `  ${theme.command(replaceCliName(cmd, CLI_NAME))}\n    ${theme.muted(desc)}`,
   ).join("\n");
-
   program.addHelpText("afterAll", ({ command }) => {
     if (command !== program) {
       return "";

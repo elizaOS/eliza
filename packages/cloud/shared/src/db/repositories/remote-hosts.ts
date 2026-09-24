@@ -3,11 +3,13 @@
  * bounded revocation cleanup. Every mutating path locks the host before its
  * sessions and commands so relay operations cannot outlive revocation.
  */
-
 import { ElizaError } from "@elizaos/core";
-import { canonicalizeRemoteControlValue, type RemoteConnectionMode } from "@elizaos/shared";
+import {
+  canonicalizeRemoteControlValue,
+  type RemoteConnectionMode,
+} from "@elizaos/core/contracts/remote-control";
 import { and, asc, desc, eq, inArray, isNotNull, lte, or, type SQL } from "drizzle-orm";
-import type { Database } from "../client";
+import { type Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
 import { remoteCommandEnvelopes } from "../schemas/remote-command-envelopes";
@@ -18,9 +20,14 @@ import { managedCleanupErrorPreview } from "./remote-host-cleanup-diagnostic";
 
 const HOST_REVOCATION_SESSION_BATCH = 100;
 const HOST_REVOCATION_COMMAND_BATCH = 500;
-
-export type CreateRemoteHostResult = { kind: "created"; host: RemoteHost } | { kind: "conflict" };
-
+export type CreateRemoteHostResult =
+  | {
+      kind: "created";
+      host: RemoteHost;
+    }
+  | {
+      kind: "conflict";
+    };
 export interface RecoverRemoteHostCredentialInput {
   hostId: string;
   organizationId: string;
@@ -34,19 +41,29 @@ export interface RecoverRemoteHostCredentialInput {
   encryptionPublicJwk: JsonWebKey;
   hostTokenHash: string;
 }
-
 export type RecoverRemoteHostCredentialResult =
-  | { kind: "recovered"; host: RemoteHost }
-  | { kind: "not_found" }
-  | { kind: "mismatch" }
-  | { kind: "revoked" };
-
+  | {
+      kind: "recovered";
+      host: RemoteHost;
+    }
+  | {
+      kind: "not_found";
+    }
+  | {
+      kind: "mismatch";
+    }
+  | {
+      kind: "revoked";
+    };
 export interface RevokeRemoteHostResult {
   host: RemoteHost;
   alreadyRevoked: boolean;
-  cleanup: { sessions: number; commands: number; more: boolean };
+  cleanup: {
+    sessions: number;
+    commands: number;
+    more: boolean;
+  };
 }
-
 function storageFailure(message: string, context: Record<string, unknown>): ElizaError {
   return new ElizaError(message, {
     code: "REMOTE_RELAY_STORAGE_FAILURE",
@@ -54,10 +71,8 @@ function storageFailure(message: string, context: Record<string, unknown>): Eliz
     context,
   });
 }
-
 export class RemoteHostsRepository {
   constructor(private readonly database: Database = dbWrite) {}
-
   async createOwned(input: NewRemoteHost): Promise<CreateRemoteHostResult> {
     if (
       !input.id ||
@@ -80,7 +95,6 @@ export class RemoteHostsRepository {
       .returning();
     return host ? { kind: "created", host } : { kind: "conflict" };
   }
-
   async listOwned(organizationId: string, userId: string): Promise<RemoteHost[]> {
     return this.database
       .select()
@@ -88,7 +102,6 @@ export class RemoteHostsRepository {
       .where(and(eq(remoteHosts.organization_id, organizationId), eq(remoteHosts.user_id, userId)))
       .orderBy(desc(remoteHosts.created_at));
   }
-
   async getOwned(
     hostId: string,
     organizationId: string,
@@ -107,7 +120,6 @@ export class RemoteHostsRepository {
       .limit(1);
     return host;
   }
-
   async authenticate(hostId: string, token: string): Promise<RemoteHost | undefined> {
     let tokenHash: string;
     try {
@@ -129,7 +141,6 @@ export class RemoteHostsRepository {
       .limit(1);
     return host;
   }
-
   /**
    * Authenticates the one host bearer allowed to finish managed-network
    * enrollment. Pending rows remain excluded from every relay/session path;
@@ -163,7 +174,6 @@ export class RemoteHostsRepository {
       .limit(1);
     return host;
   }
-
   async recordManagedEnrollment(input: {
     hostId: string;
     organizationId: string;
@@ -196,7 +206,6 @@ export class RemoteHostsRepository {
     }
     return host;
   }
-
   /**
    * Promotes a managed host only after its external enrollment material is
    * durably recorded. Until this compare-and-set succeeds, host bearer
@@ -235,7 +244,6 @@ export class RemoteHostsRepository {
     }
     return host;
   }
-
   /**
    * Returns only cleanup work that is safe for the background reconciler:
    * revoked rows immediately, or pending enrollment rows whose one-use key
@@ -270,7 +278,6 @@ export class RemoteHostsRepository {
       .orderBy(asc(remoteHosts.updated_at), asc(remoteHosts.id))
       .limit(input.limit);
   }
-
   async recordManagedCleanupPending(input: {
     hostId: string;
     organizationId: string;
@@ -303,7 +310,6 @@ export class RemoteHostsRepository {
       });
     }
   }
-
   async recordManagedCleanupFailure(input: {
     hostId: string;
     organizationId: string;
@@ -331,7 +337,6 @@ export class RemoteHostsRepository {
       });
     }
   }
-
   async completeManagedCleanup(input: {
     hostId: string;
     organizationId: string;
@@ -360,7 +365,6 @@ export class RemoteHostsRepository {
       });
     }
   }
-
   /**
    * Rotates a lost one-time host bearer only when the authenticated owner
    * proves the complete immutable public enrollment identity. This closes the
@@ -426,7 +430,6 @@ export class RemoteHostsRepository {
       return { kind: "recovered", host };
     });
   }
-
   /**
    * Revokes one host and terminalizes a bounded page of dependent state. A
    * repeated call continues cleanup even after the host is already revoked.
@@ -441,7 +444,6 @@ export class RemoteHostsRepository {
       and(eq(remoteHosts.organization_id, organizationId), eq(remoteHosts.user_id, userId)),
     );
   }
-
   /**
    * Lets an enrolled native host revoke only itself with its one-time bearer.
    * The token hash remains usable for bounded cleanup continuation after the
@@ -460,7 +462,6 @@ export class RemoteHostsRepository {
     }
     return this.revokeMatching(hostId, eq(remoteHosts.host_token_hash, tokenHash));
   }
-
   private async revokeMatching(
     hostId: string,
     ownership: SQL<unknown> | undefined,
@@ -472,10 +473,8 @@ export class RemoteHostsRepository {
         .where(and(eq(remoteHosts.id, hostId), ownership))
         .for("update");
       if (!current) return undefined;
-
       const organizationId = current.organization_id;
       const userId = current.user_id;
-
       const now = await readPostLockDatabaseNow(tx);
       const alreadyRevoked = current.status === "revoked";
       let host = current;
@@ -492,7 +491,6 @@ export class RemoteHostsRepository {
         }
         host = revoked;
       }
-
       const sessions = await tx
         .select({ id: remoteSessions.id })
         .from(remoteSessions)
@@ -518,7 +516,6 @@ export class RemoteHostsRepository {
             ),
           );
       }
-
       const commands = await tx
         .select({ id: remoteCommandEnvelopes.id, status: remoteCommandEnvelopes.status })
         .from(remoteCommandEnvelopes)
@@ -555,7 +552,6 @@ export class RemoteHostsRepository {
           .set({ status: "execution_ambiguous", terminal_at: now, updated_at: now })
           .where(inArray(remoteCommandEnvelopes.id, startedIds));
       }
-
       const [remainingSession] = await tx
         .select({ id: remoteSessions.id })
         .from(remoteSessions)
@@ -576,7 +572,6 @@ export class RemoteHostsRepository {
           ),
         )
         .limit(1);
-
       return {
         host,
         alreadyRevoked,
@@ -589,5 +584,4 @@ export class RemoteHostsRepository {
     });
   }
 }
-
 export const remoteHostsRepository = new RemoteHostsRepository();

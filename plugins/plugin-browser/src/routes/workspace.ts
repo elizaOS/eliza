@@ -6,8 +6,8 @@
  * lives in `@elizaos/plugin-browser/workspace`; this is the HTTP edge.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
 import {
   type BrowserWorkspaceErrorCode,
@@ -18,7 +18,7 @@ import {
   assertBrowserWorkspaceUserScriptAllowed,
   normalizeBrowserWorkspaceCommand,
 } from "../workspace/browser-workspace-helpers.js";
-import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
+import { type BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
   closeBrowserWorkspaceTab,
@@ -50,38 +50,32 @@ type OpenBrowserWorkspaceBody = {
   width?: number;
   height?: number;
 };
-
 type NavigateBrowserWorkspaceBody = {
   url?: string;
   partition?: string;
   connectorProvider?: string;
   connectorAccountId?: string;
 };
-
 type EvaluateBrowserWorkspaceBody = {
   script?: string;
   partition?: string;
   connectorProvider?: string;
   connectorAccountId?: string;
 };
-
 type BrowserWorkspaceCommandBody = BrowserWorkspaceCommand;
 type BrowserWorkspaceConnectorReference = {
   partition?: string | null;
   connectorProvider?: string | null;
   connectorAccountId?: string | null;
 };
-
 const MAX_BROWSER_WORKSPACE_COMMAND_DEPTH = 32;
 const MAX_BROWSER_WORKSPACE_COMMANDS = 256;
-
 export interface BrowserWorkspaceRouteContext extends RouteRequestContext {
   url?: URL;
   state?: {
     runtime?: IAgentRuntime | null;
   };
 }
-
 function statusFromBrowserWorkspaceErrorCode(
   code: BrowserWorkspaceErrorCode,
   message: string,
@@ -108,7 +102,6 @@ function statusFromBrowserWorkspaceErrorCode(
       return 500;
   }
 }
-
 function statusFromBrowserWorkspaceError(
   error: unknown,
   message: string,
@@ -140,7 +133,6 @@ function statusFromBrowserWorkspaceError(
   }
   return 500;
 }
-
 function connectorReferenceFromSearchParams(
   url: URL | undefined,
 ): BrowserWorkspaceConnectorReference {
@@ -150,7 +142,6 @@ function connectorReferenceFromSearchParams(
     partition: url?.searchParams.get("partition"),
   };
 }
-
 function buildBrowserWorkspaceEventsBridgePath(url: URL | undefined): string {
   const params = new URLSearchParams();
   for (const key of ["after", "limit", "tabId", "type"]) {
@@ -162,13 +153,11 @@ function buildBrowserWorkspaceEventsBridgePath(url: URL | undefined): string {
   const query = params.toString();
   return query ? `/events?${query}` : "/events";
 }
-
 function isBrowserWorkspaceRouteBodyObject(
   value: unknown,
 ): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
-
 function validateBrowserWorkspaceCommandTree(
   value: unknown,
   path = "command",
@@ -185,14 +174,12 @@ function validateBrowserWorkspaceCommandTree(
   if (state.commandCount > MAX_BROWSER_WORKSPACE_COMMANDS) {
     return `command tree exceeds the maximum of ${MAX_BROWSER_WORKSPACE_COMMANDS} commands`;
   }
-
   if (value.steps === undefined) {
     return null;
   }
   if (!Array.isArray(value.steps)) {
     return `${path}.steps must be an array`;
   }
-
   for (let index = 0; index < value.steps.length; index += 1) {
     if (!(index in value.steps)) {
       return `${path}.steps[${index}] must be a JSON object`;
@@ -209,7 +196,6 @@ function validateBrowserWorkspaceCommandTree(
   }
   return null;
 }
-
 function validateBrowserWorkspaceBatchSteps(
   command: BrowserWorkspaceCommand,
   path = "command",
@@ -226,7 +212,6 @@ function validateBrowserWorkspaceBatchSteps(
   ) {
     return `${path}.steps must contain at least one command`;
   }
-
   if (!Array.isArray(command.steps)) {
     return null;
   }
@@ -241,14 +226,12 @@ function validateBrowserWorkspaceBatchSteps(
   }
   return null;
 }
-
 function rejectMalformedBrowserWorkspacePayload(
   ctx: BrowserWorkspaceRouteContext,
 ): true {
   ctx.json(ctx.res, { error: "request body must be a JSON object" }, 400);
   return true;
 }
-
 function decodeBrowserWorkspaceTabId(raw: string | undefined): string | null {
   if (typeof raw !== "string") return null;
   try {
@@ -261,7 +244,6 @@ function decodeBrowserWorkspaceTabId(raw: string | undefined): string | null {
     return null;
   }
 }
-
 async function assertBrowserWorkspaceTabConnectorAccountGate(
   ctx: BrowserWorkspaceRouteContext,
   tabId: string,
@@ -278,12 +260,10 @@ async function assertBrowserWorkspaceTabConnectorAccountGate(
     operation,
   });
 }
-
 export async function handleBrowserWorkspaceRoutes(
   ctx: BrowserWorkspaceRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json } = ctx;
-
   if (
     pathname !== "/api/browser-workspace" &&
     pathname !== "/api/browser-workspace/command" &&
@@ -293,13 +273,11 @@ export async function handleBrowserWorkspaceRoutes(
   ) {
     return false;
   }
-
   try {
     if (pathname === "/api/browser-workspace" && method === "GET") {
       json(res, await getBrowserWorkspaceSnapshot());
       return true;
     }
-
     if (pathname === "/api/browser-workspace/events" && method === "GET") {
       if (!isBrowserWorkspaceBridgeConfigured()) {
         throw createBrowserWorkspaceError(
@@ -316,7 +294,6 @@ export async function handleBrowserWorkspaceRoutes(
       );
       return true;
     }
-
     if (pathname === "/api/browser-workspace/command" && method === "POST") {
       const body =
         (await readJsonBody<BrowserWorkspaceCommandBody>(req, res)) ?? null;
@@ -352,12 +329,10 @@ export async function handleBrowserWorkspaceRoutes(
       json(res, await executeBrowserWorkspaceCommand(command));
       return true;
     }
-
     if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
       json(res, { tabs: await listBrowserWorkspaceTabs() });
       return true;
     }
-
     if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
       const body =
         (await readJsonBody<OpenBrowserWorkspaceBody>(req, res)) ?? null;
@@ -379,21 +354,18 @@ export async function handleBrowserWorkspaceRoutes(
       });
       return true;
     }
-
     const match = pathname.match(
       /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot))?$/,
     );
     if (!match) {
       return false;
     }
-
     const tabId = decodeBrowserWorkspaceTabId(match[1]);
     if (!tabId) {
       json(res, { error: "valid tab id is required" }, 400);
       return true;
     }
     const action = match[2] ?? null;
-
     if (!action && method === "DELETE") {
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
@@ -409,7 +381,6 @@ export async function handleBrowserWorkspaceRoutes(
       );
       return true;
     }
-
     if (action === "show" && method === "POST") {
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
@@ -420,7 +391,6 @@ export async function handleBrowserWorkspaceRoutes(
       json(res, { tab: await showBrowserWorkspaceTab(tabId) });
       return true;
     }
-
     if (action === "hide" && method === "POST") {
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
@@ -431,7 +401,6 @@ export async function handleBrowserWorkspaceRoutes(
       json(res, { tab: await hideBrowserWorkspaceTab(tabId) });
       return true;
     }
-
     if (action === "snapshot" && method === "GET") {
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
@@ -442,7 +411,6 @@ export async function handleBrowserWorkspaceRoutes(
       json(res, await snapshotBrowserWorkspaceTab(tabId));
       return true;
     }
-
     if (action === "navigate" && method === "POST") {
       const body = await readJsonBody<NavigateBrowserWorkspaceBody>(req, res);
       if (!isBrowserWorkspaceRouteBodyObject(body)) {
@@ -466,7 +434,6 @@ export async function handleBrowserWorkspaceRoutes(
       });
       return true;
     }
-
     if (action === "eval" && method === "POST") {
       const body = await readJsonBody<EvaluateBrowserWorkspaceBody>(req, res);
       if (!isBrowserWorkspaceRouteBodyObject(body)) {
@@ -491,12 +458,14 @@ export async function handleBrowserWorkspaceRoutes(
       });
       return true;
     }
-
     return false;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = statusFromBrowserWorkspaceError(error, message);
-    const body: { code?: BrowserWorkspaceErrorCode; error: string } = {
+    const body: {
+      code?: BrowserWorkspaceErrorCode;
+      error: string;
+    } = {
       error: message,
     };
     if (isBrowserWorkspaceError(error)) {
@@ -506,7 +475,6 @@ export async function handleBrowserWorkspaceRoutes(
     return true;
   }
 }
-
 export const BROWSER_WORKSPACE_ROUTE_PATHS: Array<{
   type: string;
   path: string;

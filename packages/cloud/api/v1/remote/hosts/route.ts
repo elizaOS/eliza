@@ -5,7 +5,7 @@ import {
   isRemoteControlIdentifier,
   isRemoteTargetPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import { Hono } from "hono";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
@@ -16,12 +16,11 @@ import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";
 
 const app = new Hono<AppEnv>();
-const REMOTE_HOST_ONLINE_WINDOW_MS = 15_000;
-
+const REMOTE_HOST_ONLINE_WINDOW_MS = 15000;
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -63,7 +62,6 @@ app.get("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 app.post("/", async (c) => {
   try {
     let value: unknown;
@@ -174,7 +172,6 @@ app.post("/", async (c) => {
         400,
       );
     }
-
     const token = generateRemoteHostToken();
     const hostTokenHash = await hashRemoteHostToken(token);
     const result = recoveryHostId
@@ -287,5 +284,4 @@ app.post("/", async (c) => {
     return failureResponse(c, error);
   }
 });
-
 export default app;

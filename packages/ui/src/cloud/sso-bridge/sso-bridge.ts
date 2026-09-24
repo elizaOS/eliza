@@ -45,12 +45,12 @@
  * next sync), and the explicit app-origin logout marker prevents a bounce.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { ElizaError } from "@elizaos/core/errors";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import {
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { appModeNavigation } from "../app-mode/app-mode";
@@ -61,10 +61,8 @@ import {
   configuredSessionEndpoint,
 } from "../shell/StewardProviderShared";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../shell/steward-url";
-
 /** Client route (registered on every host; role-switched by hostname). */
 export const SSO_BRIDGE_PATH = "/auth/bridge";
-
 /**
  * The two deployed origin pairs. Staging must bridge to staging — a staging
  * app host minting against the production auth origin would splice sessions
@@ -77,7 +75,6 @@ interface SsoBridgePair {
   appHost: string;
   appOrigin: string;
 }
-
 const SSO_BRIDGE_PAIRS: readonly SsoBridgePair[] = [
   {
     mintHosts: ["eliza.app", "www.eliza.app"],
@@ -92,9 +89,7 @@ const SSO_BRIDGE_PAIRS: readonly SsoBridgePair[] = [
     appOrigin: ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin,
   },
 ];
-
 export type SsoBridgeRole = "mint" | "exchange" | "none";
-
 function pairForHostname(hostname: string): SsoBridgePair | null {
   const host = hostname.toLowerCase();
   for (const pair of SSO_BRIDGE_PAIRS) {
@@ -102,7 +97,6 @@ function pairForHostname(hostname: string): SsoBridgePair | null {
   }
   return null;
 }
-
 /**
  * Which side of the handshake this hostname plays. Exact-match only:
  * `foo.elizacloud.ai`, `elizacloud.ai.evil.com`, `localhost`, previews, and
@@ -114,25 +108,20 @@ export function ssoBridgeRoleForHostname(hostname: string): SsoBridgeRole {
   if (!pair) return "none";
   return pair.appHost === host ? "exchange" : "mint";
 }
-
 /** Cloud API worker base for a bridge hostname; null off the deployed map. */
 function apiBaseForHostname(hostname: string): string | null {
   return ELIZA_CLOUD_DIRECT_API_BY_HOST[hostname.toLowerCase()] ?? null;
 }
-
 /** The app origin paired with a MINT hostname; null for non-mint hosts. */
 export function pairedAppOrigin(mintHostname: string): string | null {
   const pair = pairForHostname(mintHostname);
   if (!pair || pair.appHost === mintHostname.toLowerCase()) return null;
   return pair.appOrigin;
 }
-
 // ---------------------------------------------------------------------------
 // returnTo sanitation
 // ---------------------------------------------------------------------------
-
 const RETURN_TO_MAX_LENGTH = 2000;
-
 /**
  * returnTo travels through two cross-origin redirects, so it must stay a
  * same-origin path: absolute URLs, protocol-relative "//", "/\" (which
@@ -149,7 +138,6 @@ export function sanitizeBridgeReturnTo(
   if (path === SSO_BRIDGE_PATH) return "/";
   return value;
 }
-
 /**
  * Local recovery URL for an unexpected bridge failure. Keep the original
  * same-origin destination so retrying authentication does not discard a deep
@@ -166,7 +154,6 @@ export function buildSsoBridgeErrorUrl(
   });
   return `/auth/error?${params.toString()}`;
 }
-
 /**
  * Recovery from a mint-host error must restart on the paired app host. A
  * same-origin `/login` on the marketing host cannot restore app-only paths
@@ -182,29 +169,24 @@ export function pairedAppLoginUrlForMintHost(
   if (!appOrigin) return null;
   return `${appOrigin}/login?returnTo=${encodeURIComponent(sanitizeBridgeReturnTo(returnTo))}`;
 }
-
 // ---------------------------------------------------------------------------
 // State nonce + PKCE verifier (defect fix: handshake binding + code theft)
 // ---------------------------------------------------------------------------
-
 const SSO_STATE_KEY = "eliza_sso_bridge_state";
 const SSO_VERIFIER_KEY = "eliza_sso_bridge_verifier";
 const SSO_STATE_RE = /^[0-9a-f]{64}$/;
-
 /** Both legs validate the echoed state's shape before using it in a URL. */
 export function isWellFormedSsoState(
   value: string | null | undefined,
 ): value is string {
   return typeof value === "string" && SSO_STATE_RE.test(value);
 }
-
 /** Challenge/verifier share the state's 64-hex shape (32 random bytes). */
 export function isWellFormedSsoChallenge(
   value: string | null | undefined,
 ): value is string {
   return isWellFormedSsoState(value);
 }
-
 function randomHex32(): string {
   const bytes = new Uint8Array(32);
   globalThis.crypto.getRandomValues(bytes);
@@ -212,7 +194,6 @@ function randomHex32(): string {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
-
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const buf = await globalThis.crypto.subtle.digest("SHA-256", data);
@@ -220,7 +201,6 @@ async function sha256Hex(input: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
-
 /**
  * Create the handshake secrets and persist them in THIS origin's
  * sessionStorage: the `state` nonce (echoed through both redirect URLs) and
@@ -248,7 +228,6 @@ export async function createSsoBridgeHandshake(): Promise<{
     return null;
   }
 }
-
 /** Read AND delete the stored nonce — verification is strictly single-shot. */
 export function consumeSsoBridgeState(): string | null {
   try {
@@ -261,7 +240,6 @@ export function consumeSsoBridgeState(): string | null {
     return null;
   }
 }
-
 /** Read AND delete the stored verifier — the exchange POST is single-shot. */
 export function consumeSsoBridgeVerifier(): string | null {
   try {
@@ -274,14 +252,11 @@ export function consumeSsoBridgeVerifier(): string | null {
     return null;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Redirect-loop guard
 // ---------------------------------------------------------------------------
-
 const SSO_ATTEMPT_KEY = "eliza_sso_bridge_attempted_at";
 const SSO_ATTEMPT_WINDOW_MS = 5 * 60 * 1000;
-
 /**
  * A failed handshake (no auth-origin session, expired code, cache down) must
  * fall back to the app origin's own /login instead of bouncing to the
@@ -303,7 +278,6 @@ export function shouldAttemptSsoBridge(now: number = Date.now()): boolean {
     return false;
   }
 }
-
 export function markSsoBridgeAttempt(now: number = Date.now()): void {
   try {
     sessionStorage.setItem(SSO_ATTEMPT_KEY, String(now));
@@ -312,7 +286,6 @@ export function markSsoBridgeAttempt(now: number = Date.now()): void {
     // fails closed when storage is unavailable.
   }
 }
-
 export function clearSsoBridgeAttempt(): void {
   try {
     sessionStorage.removeItem(SSO_ATTEMPT_KEY);
@@ -320,13 +293,10 @@ export function clearSsoBridgeAttempt(): void {
     // error-policy:J6 best-effort cleanup of an advisory marker.
   }
 }
-
 // ---------------------------------------------------------------------------
 // Logged-out marker (defect fix: logout stays logged out)
 // ---------------------------------------------------------------------------
-
 const SSO_LOGGED_OUT_KEY = "eliza_sso_logged_out";
-
 /**
  * Persistent (localStorage) "the user explicitly signed out here" marker. It
  * suppresses AUTO-bridging only — an explicit login is always available — and
@@ -342,7 +312,6 @@ export function isSsoLoggedOut(): boolean {
     return true;
   }
 }
-
 export function markSsoLoggedOut(): void {
   try {
     // Reserved shell key: raw localStorage writes throw SurfaceRealmDeniedError
@@ -353,7 +322,6 @@ export function markSsoLoggedOut(): void {
     // storage is unavailable.
   }
 }
-
 export function clearSsoLoggedOut(): void {
   try {
     shellLocalStorage.removeItem(SSO_LOGGED_OUT_KEY);
@@ -362,11 +330,9 @@ export function clearSsoLoggedOut(): void {
     // suppresses auto-bridge, never login itself.
   }
 }
-
 // ---------------------------------------------------------------------------
 // Handshake URLs
 // ---------------------------------------------------------------------------
-
 /**
  * Dashboard-origin URL the app origin leaves for when it has no session.
  * Carries the state nonce and the CHALLENGE (sha256 of the verifier) — never
@@ -385,7 +351,6 @@ export function buildBridgeMintUrl(
   const safe = sanitizeBridgeReturnTo(returnTo);
   return `${pair.mintOrigin}${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(safe)}`;
 }
-
 /** Managed-app URL the auth origin redirects back to after minting a code. */
 export function buildBridgeExchangeUrl(
   mintHostname: string,
@@ -399,11 +364,9 @@ export function buildBridgeExchangeUrl(
   const safe = sanitizeBridgeReturnTo(returnTo);
   return `${pair.appOrigin}${SSO_BRIDGE_PATH}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}&returnTo=${encodeURIComponent(safe)}`;
 }
-
 // ---------------------------------------------------------------------------
 // Entry decision + initiation (app host)
 // ---------------------------------------------------------------------------
-
 /**
  * Whether an unauthenticated app-mode visit should leave for the auth origin
  * bridge right now. True only on the real app hosts, when the user has not
@@ -423,7 +386,6 @@ export function shouldAutoBridgeToSso(
   if (isSsoLoggedOut()) return false;
   return shouldAttemptSsoBridge(now);
 }
-
 /**
  * Leave for the auth-origin mint leg: create + store the state nonce and PKCE
  * verifier, mark the attempt, and replace the location (the gate page is
@@ -448,24 +410,25 @@ export async function redirectToSsoBridge(
   appModeNavigation.replace(url);
   return true;
 }
-
 // ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
-
 const SSO_CODE_RE = /^esso_[0-9a-f]{64}$/;
-
 /** Both legs validate the code's shape before trusting it in a URL / POST. */
 export function isWellFormedSsoCode(
   value: string | null | undefined,
 ): value is string {
   return typeof value === "string" && SSO_CODE_RE.test(value);
 }
-
 export type SsoMintResult =
-  | { ok: true; code: string }
-  | { ok: false; error: string };
-
+  | {
+      ok: true;
+      code: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 /**
  * Dashboard side: trade the local session for a one-time code bound to the
  * app origin's PKCE challenge. The Bearer token comes from THIS origin's
@@ -515,9 +478,14 @@ export async function mintSsoCode(
     };
   }
 }
-
-export type SsoExchangeResult = { ok: true } | { ok: false; error: string };
-
+export type SsoExchangeResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 function tokenLooksHydratable(token: string): boolean {
   const claims = decodeJwtPayload(token);
   const id = claims?.userId ?? claims?.sub;
@@ -525,7 +493,6 @@ function tokenLooksHydratable(token: string): boolean {
   if (typeof claims?.exp !== "number") return false;
   return claims.exp * 1000 > Date.now();
 }
-
 /**
  * App side: consume the code (presenting the PKCE verifier that never left
  * this origin's sessionStorage) and hydrate this origin's localStorage
@@ -562,9 +529,7 @@ export async function performSsoExchange(
     if (!token || !tokenLooksHydratable(token)) {
       return { ok: false, error: "Exchange returned no usable session" };
     }
-
     await writeStoredStewardToken(token);
-
     // Same call the login flow makes: sets the HttpOnly steward cookies + the
     // authed marker for this environment. It stays best-effort for an ordinary
     // bridge because AuthTokenSync retries. Account-link authority is never
@@ -581,7 +546,6 @@ export async function performSsoExchange(
       // error-policy:J6 best-effort cookie sync; the localStorage session is
       // established and AuthTokenSync re-syncs on its own cadence.
     }
-
     clearSsoBridgeAttempt();
     clearSsoLoggedOut();
     try {
@@ -600,7 +564,6 @@ export async function performSsoExchange(
     };
   }
 }
-
 /**
  * Destroy a code this document refuses to hand off or exchange. The dedicated
  * endpoint accepts either exact bridge origin but can only consume: it never
@@ -640,11 +603,9 @@ export function burnSsoBridgeCode(
     });
   }
 }
-
 // ---------------------------------------------------------------------------
 // Sign-out (defect fix: logout stays logged out)
 // ---------------------------------------------------------------------------
-
 /**
  * Explicit sign-out on ANY host of a bridge pair. The unified app's account
  * action routes hosted and public-auth sessions here because a local-only
@@ -695,7 +656,6 @@ export async function signOutFromSsoBridgedHost(
   }
   await clearStaleStewardSession();
 }
-
 /**
  * Ends the ambient hosted session before a native account-switch login.
  * Unlike ordinary sign-out, this boundary fails closed: rendering provider

@@ -12,7 +12,7 @@ import {
   STEWARD_ACTIVE_SCOPE_KEY,
   STEWARD_TOKEN_KEY,
   STEWARD_TOKEN_SCOPE_KEY,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { Page, Request, Route } from "@playwright/test";
 import { billingFixture } from "../../../../ui/src/cloud/billing/apps/billing-fixture";
 

@@ -18,7 +18,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
 import {
   isTrajectoryCaptureEnabled,
   RecordingHarness,

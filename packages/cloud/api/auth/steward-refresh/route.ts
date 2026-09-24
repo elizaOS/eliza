@@ -25,7 +25,7 @@
  * to `/api/auth/steward-session` continue to work during the rollout window.
  */
 
-import type { StewardSessionErrorCode } from "@elizaos/shared";
+import { type StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import {
@@ -43,20 +43,33 @@ import {
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 const BEARER_REFRESH_TTL_SECONDS = 60 * 60;
-
 function checkOrigin(
-  c: { req: { header: (name: string) => string | undefined } },
+  c: {
+    req: {
+      header: (name: string) => string | undefined;
+    };
+  },
   isProduction: boolean,
-): { ok: true } | { ok: false; reason: string } {
+):
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      reason: string;
+    } {
   return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
-
 function shouldReturnClientToken(
-  c: { req: { header: (name: string) => string | undefined } },
+  c: {
+    req: {
+      header: (name: string) => string | undefined;
+    };
+  },
   isProduction: boolean,
 ): boolean {
   const origin =
@@ -70,27 +83,28 @@ function shouldReturnClientToken(
   // bounce back to /login on previews/custom same-origin hosts.
   return isPermittedElizaBrowserOrigin(origin, host, isProduction);
 }
-
 function readBearerToken(c: {
-  req: { header: (name: string) => string | undefined };
+  req: {
+    header: (name: string) => string | undefined;
+  };
 }): string | null {
   const auth = c.req.header("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
   const token = auth.slice("Bearer ".length).trim();
   return token || null;
 }
-
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
   return Boolean(env.STEWARD_SESSION_SECRET || env.STEWARD_JWT_SECRET);
 }
-
 function errorBody(
   message: string,
   code: StewardSessionErrorCode,
-): { error: string; code: StewardSessionErrorCode } {
+): {
+  error: string;
+  code: StewardSessionErrorCode;
+} {
   return { error: message, code };
 }
-
 let stewardRefreshMetricCounter = 0;
 function logRefresh(outcome: string): void {
   stewardRefreshMetricCounter += 1;
@@ -100,7 +114,6 @@ function logRefresh(outcome: string): void {
     metric: stewardRefreshMetricCounter,
   });
 }
-
 function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
   const candidates: Array<[string, string | undefined]> = [
     ["STEWARD_API_URL", env.STEWARD_API_URL],
@@ -126,7 +139,6 @@ function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
   }
   return null;
 }
-
 interface StewardRefreshOk {
   ok: true;
   token: string;
@@ -139,16 +151,17 @@ interface StewardRefreshErr {
   error?: string;
   code?: string;
 }
-
 interface StewardRefreshRequestContext {
   clientIp?: string;
   origin?: string;
   userAgent?: string;
 }
-
 function stewardRefreshRequestContext(
   c: {
-    req: { url: string; header: (name: string) => string | undefined };
+    req: {
+      url: string;
+      header: (name: string) => string | undefined;
+    };
   },
   isProduction: boolean,
 ): StewardRefreshRequestContext {
@@ -177,7 +190,6 @@ function stewardRefreshRequestContext(
       : {}),
   };
 }
-
 async function callStewardRefresh(
   baseUrl: string,
   refreshToken: string,
@@ -185,7 +197,10 @@ async function callStewardRefresh(
   signingSecret?: string,
   requestContext: StewardRefreshRequestContext = {},
 ): Promise<
-  | { kind: "ok"; data: StewardRefreshOk }
+  | {
+      kind: "ok";
+      data: StewardRefreshOk;
+    }
   | {
       kind: "error";
       status: number;
@@ -193,7 +208,10 @@ async function callStewardRefresh(
       retryAfter: string | null;
       responseKind: "json" | "non-json";
     }
-  | { kind: "transport"; message: string }
+  | {
+      kind: "transport";
+      message: string;
+    }
 > {
   const headers = new Headers({
     "Content-Type": "application/json",
@@ -248,7 +266,6 @@ async function callStewardRefresh(
       message: err instanceof Error ? err.message : String(err),
     };
   }
-
   const text = await response.text();
   let parsed: StewardRefreshOk | StewardRefreshErr | null = null;
   try {
@@ -258,7 +275,6 @@ async function callStewardRefresh(
   } catch {
     parsed = null;
   }
-
   if (!response.ok || !parsed || parsed.ok !== true) {
     return {
       kind: "error",
@@ -276,9 +292,7 @@ async function callStewardRefresh(
   }
   return { kind: "ok", data: parsed };
 }
-
 const app = new Hono<AppEnv>();
-
 app.post("/", async (c) => {
   const isProduction = c.env.NODE_ENV === "production";
   const bearerToken = readBearerToken(c);
@@ -293,7 +307,6 @@ app.post("/", async (c) => {
         503,
       );
     }
-
     const claims = await verifyStewardTokenCached(c.env, bearerToken);
     if (!claims) {
       logRefresh("bearer-invalid-token");
@@ -306,7 +319,6 @@ app.post("/", async (c) => {
       logRefresh("bearer-staging-session-nonrenewable");
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
-
     const refreshed = await mintStewardTokenFromClaims(
       c.env,
       claims,
@@ -322,7 +334,6 @@ app.post("/", async (c) => {
         503,
       );
     }
-
     logRefresh("ok-bearer");
     return c.json({
       ok: true,
@@ -331,7 +342,6 @@ app.post("/", async (c) => {
       expiresIn: refreshed.expiresIn,
     });
   }
-
   const originCheck = checkOrigin(c, isProduction);
   if (!originCheck.ok) {
     logRefresh("forbidden-origin");
@@ -340,7 +350,6 @@ app.post("/", async (c) => {
     });
     return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
   }
-
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
   // Read only this environment's named refresh cookie. Cookies are host-only;
   // the environment suffix remains a compatibility invariant and prevents a
@@ -350,7 +359,6 @@ app.post("/", async (c) => {
     logRefresh("missing-refresh-cookie");
     return c.json(errorBody("Refresh token required", "missing_token"), 401);
   }
-
   if (!stewardSecretConfigured(c.env)) {
     logRefresh("server-secret-missing");
     return c.json(
@@ -361,7 +369,6 @@ app.post("/", async (c) => {
       503,
     );
   }
-
   const stewardBaseUrl = resolveStewardBaseUrl(c.env);
   if (!stewardBaseUrl) {
     logRefresh("upstream-not-configured");
@@ -373,7 +380,6 @@ app.post("/", async (c) => {
       503,
     );
   }
-
   const refresh = await callStewardRefresh(
     stewardBaseUrl,
     refreshToken,
@@ -381,7 +387,6 @@ app.post("/", async (c) => {
     c.env.STEWARD_REQUEST_SIGNING_SECRET,
     stewardRefreshRequestContext(c, isProduction),
   );
-
   if (refresh.kind === "transport") {
     logRefresh("upstream-transport-error");
     logger.error("[steward-refresh] upstream transport failure", {
@@ -392,7 +397,6 @@ app.post("/", async (c) => {
       502,
     );
   }
-
   if (refresh.kind === "error") {
     logRefresh(`upstream-${refresh.status}`);
     if (refresh.status !== 401) {
@@ -431,21 +435,17 @@ app.post("/", async (c) => {
       502,
     );
   }
-
   const { token, refreshToken: newRefreshToken } = refresh.data;
-
   const claims = await verifyStewardTokenCached(c.env, token);
   if (!claims) {
     logRefresh("invalid-token-after-refresh");
     return c.json(errorBody("Invalid token", "invalid_token"), 401);
   }
-
   const ttl = claims.expiration
     ? Math.max(0, claims.expiration - Math.floor(Date.now() / 1000))
     : null;
   const secure = c.env.NODE_ENV === "production";
   const domain = cookieDomainForHost(c.req.header("host"));
-
   setCookie(c, cookieNames.token, token, {
     httpOnly: true,
     secure,
@@ -454,7 +454,6 @@ app.post("/", async (c) => {
     ...(domain ? { domain } : {}),
     ...(typeof ttl === "number" ? { maxAge: ttl } : {}),
   });
-
   if (typeof newRefreshToken === "string" && newRefreshToken.length > 0) {
     setCookie(c, cookieNames.refreshToken, newRefreshToken, {
       httpOnly: true,
@@ -465,7 +464,6 @@ app.post("/", async (c) => {
       maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
     });
   }
-
   setCookie(c, cookieNames.authed, "1", {
     httpOnly: false,
     secure,
@@ -474,7 +472,6 @@ app.post("/", async (c) => {
     ...(domain ? { domain } : {}),
     maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
   });
-
   logRefresh("ok");
   return c.json({
     ok: true,
@@ -483,5 +480,4 @@ app.post("/", async (c) => {
     ...(shouldReturnClientToken(c, isProduction) ? { token } : {}),
   });
 });
-
 export default app;

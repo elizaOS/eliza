@@ -2,7 +2,7 @@
 """Export a fine-tuned Kokoro checkpoint to ONNX.
 
 The runtime's Kokoro inference backend
-(`packages/shared/src/local-inference/kokoro/`) loads ONNX
+(`plugins/plugin-local-inference/src/services/voice/kokoro/`) loads ONNX
 artifacts in the same layout as `onnx-community/Kokoro-82M-v1.0-ONNX`:
 
     <out-dir>/
@@ -79,13 +79,13 @@ def _manifest_fragment(
         ],
         "integration": {
             "runtimeBackendDir": (
-                "packages/shared/src/local-inference/kokoro/"
+                "plugins/plugin-local-inference/src/services/voice/kokoro/"
             ),
             "voicePresetFormat": (
-                "packages/shared/src/local-inference/kokoro/types.ts"
+                "plugins/plugin-local-inference/src/services/voice/kokoro/types.ts"
             ),
             "catalogTable": (
-                "packages/shared/src/local-inference/kokoro/voice-presets.ts"
+                "plugins/plugin-local-inference/src/services/voice/kokoro/voice-presets.ts"
             ),
             "notes": (
                 "Append the `voice` block to KOKORO_VOICE_PACKS, publish the "

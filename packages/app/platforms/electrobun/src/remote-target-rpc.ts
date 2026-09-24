@@ -3,9 +3,10 @@
  * composition layer. Renderer callers receive public identity and health data;
  * the host bearer and private JWKs never cross this boundary.
  */
+
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import type { RemoteTargetPublicIdentity } from "@elizaos/shared";
+import type { RemoteTargetPublicIdentity } from "@elizaos/core/contracts/remote-control";
 import { logger } from "./logger";
 import {
 	LoopbackRemoteTargetExecutor,
@@ -37,18 +38,15 @@ import {
 	RemoteTargetVault,
 	remoteTargetVaultInternals,
 } from "./remote-target-vault";
-
 export interface DesktopRemoteTargetEnrollmentResult {
 	hostId: string;
 	status: "active";
 	identity: RemoteTargetPublicIdentity;
 }
-
 export interface DesktopRemoteTargetIdentityResult {
 	enrolled: boolean;
 	identity?: RemoteTargetPublicIdentity;
 }
-
 export type DesktopRemoteTargetActivationResult =
 	| {
 			sessionId: string;
@@ -68,7 +66,6 @@ export type DesktopRemoteTargetActivationResult =
 			errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
 			retryRpc: "remoteTargetCommitActivation";
 	  };
-
 export interface DesktopRemoteTargetResumeResult {
 	resumed: boolean;
 	reason:
@@ -77,26 +74,22 @@ export interface DesktopRemoteTargetResumeResult {
 		| "not_enrolled"
 		| "no_active_authority";
 }
-
 interface RemoteTargetLoopbackConfiguration {
 	apiBase: string;
 	apiToken: string;
 	pollIntervalMs?: number;
 }
-
 interface PreparedRemoteTargetLoopbackConfiguration {
 	executor: LoopbackRemoteTargetExecutor;
 	key: string;
 	pollIntervalMs?: number;
 }
-
 function requireObject(value: unknown): Record<string, unknown> {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		throw new Error("Remote target parameters are required.");
 	}
 	return value as Record<string, unknown>;
 }
-
 function requireString(
 	value: unknown,
 	field: string,
@@ -111,12 +104,10 @@ function requireString(
 	}
 	return value.trim();
 }
-
 export class RemoteTargetDesktopService {
 	private runner: RemoteTargetRunner | null = null;
 	private loopbackConfigurationKey: string | null = null;
 	private configurationTail: Promise<void> = Promise.resolve();
-
 	constructor(
 		private readonly vault: RemoteTargetVault = new RemoteTargetVault(),
 		private readonly stateStore: RemoteTargetStateStore = new JsonFileRemoteTargetStateStore(),
@@ -124,7 +115,6 @@ export class RemoteTargetDesktopService {
 		private readonly now: () => number = Date.now,
 		private readonly managedNetworkJoiner: RemoteTargetManagedNetworkJoiner = new TailscaleCliManagedNetworkJoiner(),
 	) {}
-
 	private prepareLoopbackConfiguration(
 		input: RemoteTargetLoopbackConfiguration,
 	): PreparedRemoteTargetLoopbackConfiguration {
@@ -139,14 +129,13 @@ export class RemoteTargetDesktopService {
 				.update("\0")
 				.update(input.apiToken)
 				.update("\0")
-				.update(String(input.pollIntervalMs ?? 1_000))
+				.update(String(input.pollIntervalMs ?? 1000))
 				.digest("base64url"),
 			...(input.pollIntervalMs === undefined
 				? {}
 				: { pollIntervalMs: input.pollIntervalMs }),
 		};
 	}
-
 	private enqueueConfiguration<T>(operation: () => Promise<T>): Promise<T> {
 		const queued = this.configurationTail.then(operation);
 		this.configurationTail = queued.then(
@@ -155,7 +144,6 @@ export class RemoteTargetDesktopService {
 		);
 		return queued;
 	}
-
 	private async installLoopbackConfiguration(
 		prepared: PreparedRemoteTargetLoopbackConfiguration,
 	): Promise<RemoteTargetRunner> {
@@ -174,7 +162,6 @@ export class RemoteTargetDesktopService {
 		this.loopbackConfigurationKey = prepared.key;
 		return replacement;
 	}
-
 	async configureLoopback(
 		input: RemoteTargetLoopbackConfiguration,
 	): Promise<void> {
@@ -183,7 +170,6 @@ export class RemoteTargetDesktopService {
 			await this.installLoopbackConfiguration(prepared);
 		});
 	}
-
 	/**
 	 * Rebuild the ephemeral runner after a desktop-process restart, but only
 	 * when both halves of its durable authority still exist: an enrolled host
@@ -244,17 +230,16 @@ export class RemoteTargetDesktopService {
 			return { resumed: true, reason: "active_authority" as const };
 		});
 	}
-
 	async enroll(params: unknown): Promise<DesktopRemoteTargetEnrollmentResult> {
 		const value = requireObject(params);
 		const apiBaseUrl = normalizeRemoteTargetApiBase(
-			requireString(value.apiBaseUrl, "API URL", 2_048),
+			requireString(value.apiBaseUrl, "API URL", 2048),
 		);
 		const ownerId = requireString(value.ownerId, "owner", 256);
 		const ownerAccessToken = requireString(
 			value.ownerAccessToken,
 			"owner authentication",
-			16_384,
+			16384,
 		);
 		const displayName = requireString(value.displayName, "display name", 128);
 		const platform = value.platform;
@@ -435,14 +420,12 @@ export class RemoteTargetDesktopService {
 			identity: enrolled.identity,
 		};
 	}
-
 	async getIdentity(): Promise<DesktopRemoteTargetIdentityResult> {
 		const record = await this.vault.load();
 		return record?.status === "enrolled"
 			? { enrolled: true, identity: record.identity }
 			: { enrolled: false };
 	}
-
 	async createPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
 		return this.enqueueConfiguration(async () => {
 			const enrollment = await this.vault.load();
@@ -452,7 +435,6 @@ export class RemoteTargetDesktopService {
 			return this.transport.createPairingChallenge({ enrollment });
 		});
 	}
-
 	async readPairingChallenge(
 		params: unknown,
 	): Promise<RemoteTargetPairingChallengeStatus> {
@@ -466,7 +448,6 @@ export class RemoteTargetDesktopService {
 			return this.transport.readPairingChallenge({ enrollment, sessionId });
 		});
 	}
-
 	private async finishActivation(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 		activation: RemoteTargetActivationResponse,
@@ -548,7 +529,6 @@ export class RemoteTargetDesktopService {
 			grantExpiresAt: activation.grantExpiresAt,
 		};
 	}
-
 	async confirmPairing(
 		params: unknown,
 	): Promise<DesktopRemoteTargetActivationResult> {
@@ -566,7 +546,6 @@ export class RemoteTargetDesktopService {
 			return this.finishActivation(enrollment, activation);
 		});
 	}
-
 	async activate(
 		params: unknown,
 	): Promise<DesktopRemoteTargetActivationResult> {
@@ -592,7 +571,6 @@ export class RemoteTargetDesktopService {
 			return this.finishActivation(enrollment, activation);
 		});
 	}
-
 	async compensateActivation(params: unknown): Promise<{
 		sessionId: string;
 		status: "denied" | "revoked";
@@ -611,7 +589,6 @@ export class RemoteTargetDesktopService {
 			return this.transport.compensateActivation({ enrollment, sessionId });
 		});
 	}
-
 	async commitActivation(params: unknown): Promise<{
 		sessionId: string;
 		status: "active";
@@ -636,17 +613,18 @@ export class RemoteTargetDesktopService {
 			return response;
 		});
 	}
-
-	async start(): Promise<{ running: true }> {
+	async start(): Promise<{
+		running: true;
+	}> {
 		await this.requireRunner().start();
 		return { running: true };
 	}
-
-	async stop(): Promise<{ running: false }> {
+	async stop(): Promise<{
+		running: false;
+	}> {
 		await this.runner?.stop();
 		return { running: false };
 	}
-
 	async status(): Promise<RemoteTargetRunnerStatus> {
 		if (this.runner) return this.runner.status();
 		const [identity, state] = await Promise.all([
@@ -669,15 +647,17 @@ export class RemoteTargetDesktopService {
 			lastErrorCode: null,
 		};
 	}
-
-	async revoke(params: unknown): Promise<{ revoked: true }> {
+	async revoke(params: unknown): Promise<{
+		revoked: true;
+	}> {
 		const value = requireObject(params);
 		const sessionId = requireString(value.sessionId, "session id", 256);
 		await this.requireRunner().revokeSession(sessionId);
 		return { revoked: true };
 	}
-
-	async finalizeHostRevoke(params: unknown): Promise<{ cleaned: true }> {
+	async finalizeHostRevoke(params: unknown): Promise<{
+		cleaned: true;
+	}> {
 		const value = requireObject(params);
 		const hostId = requireString(value.hostId, "host id", 256);
 		return await this.enqueueConfiguration(async () => {
@@ -736,7 +716,6 @@ export class RemoteTargetDesktopService {
 			return { cleaned: true };
 		});
 	}
-
 	private requireRunner(): RemoteTargetRunner {
 		if (!this.runner) {
 			throw new Error("Remote target loopback runtime is not configured.");
@@ -744,9 +723,7 @@ export class RemoteTargetDesktopService {
 		return this.runner;
 	}
 }
-
 const desktopRemoteTargetService = new RemoteTargetDesktopService();
-
 export function configureDesktopRemoteTarget(input: {
 	apiBase: string;
 	apiToken: string;
@@ -754,7 +731,6 @@ export function configureDesktopRemoteTarget(input: {
 }): Promise<void> {
 	return desktopRemoteTargetService.configureLoopback(input);
 }
-
 export function resumeDesktopRemoteTarget(input: {
 	apiBase: string;
 	apiToken: string;
@@ -762,39 +738,32 @@ export function resumeDesktopRemoteTarget(input: {
 }): Promise<DesktopRemoteTargetResumeResult> {
 	return desktopRemoteTargetService.resumeEligibleLoopback(input);
 }
-
 export function desktopRemoteTargetEnroll(
 	params: unknown,
 ): Promise<DesktopRemoteTargetEnrollmentResult> {
 	return desktopRemoteTargetService.enroll(params);
 }
-
 export function desktopRemoteTargetGetIdentity(): Promise<DesktopRemoteTargetIdentityResult> {
 	return desktopRemoteTargetService.getIdentity();
 }
-
 export function desktopRemoteTargetCreatePairingChallenge(): Promise<RemoteTargetPairingChallenge> {
 	return desktopRemoteTargetService.createPairingChallenge();
 }
-
 export function desktopRemoteTargetReadPairingChallenge(
 	params: unknown,
 ): Promise<RemoteTargetPairingChallengeStatus> {
 	return desktopRemoteTargetService.readPairingChallenge(params);
 }
-
 export function desktopRemoteTargetConfirmPairing(
 	params: unknown,
 ): Promise<DesktopRemoteTargetActivationResult> {
 	return desktopRemoteTargetService.confirmPairing(params);
 }
-
 export function desktopRemoteTargetActivate(
 	params: unknown,
 ): Promise<DesktopRemoteTargetActivationResult> {
 	return desktopRemoteTargetService.activate(params);
 }
-
 export function desktopRemoteTargetCompensateActivation(
 	params: unknown,
 ): Promise<{
@@ -804,7 +773,6 @@ export function desktopRemoteTargetCompensateActivation(
 }> {
 	return desktopRemoteTargetService.compensateActivation(params);
 }
-
 export function desktopRemoteTargetCommitActivation(params: unknown): Promise<{
 	sessionId: string;
 	status: "active";
@@ -812,27 +780,28 @@ export function desktopRemoteTargetCommitActivation(params: unknown): Promise<{
 }> {
 	return desktopRemoteTargetService.commitActivation(params);
 }
-
-export function desktopRemoteTargetStart(): Promise<{ running: true }> {
+export function desktopRemoteTargetStart(): Promise<{
+	running: true;
+}> {
 	return desktopRemoteTargetService.start();
 }
-
-export function desktopRemoteTargetStop(): Promise<{ running: false }> {
+export function desktopRemoteTargetStop(): Promise<{
+	running: false;
+}> {
 	return desktopRemoteTargetService.stop();
 }
-
 export function desktopRemoteTargetStatus(): Promise<RemoteTargetRunnerStatus> {
 	return desktopRemoteTargetService.status();
 }
-
-export function desktopRemoteTargetRevoke(
-	params: unknown,
-): Promise<{ revoked: true }> {
+export function desktopRemoteTargetRevoke(params: unknown): Promise<{
+	revoked: true;
+}> {
 	return desktopRemoteTargetService.revoke(params);
 }
-
 export function desktopRemoteTargetFinalizeHostRevoke(
 	params: unknown,
-): Promise<{ cleaned: true }> {
+): Promise<{
+	cleaned: true;
+}> {
 	return desktopRemoteTargetService.finalizeHostRevoke(params);
 }

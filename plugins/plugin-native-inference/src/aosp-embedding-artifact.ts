@@ -1,4 +1,5 @@
 /** Stages a verified, isolated BGE encoder bundle for the fused native text-model loader. */
+
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -10,8 +11,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
-
+import { BGE_EMBEDDING_MODEL } from "./model-catalog/bge-embedding-model.js";
 export function verifyAospEmbeddingArtifact(modelPath: string): void {
   const actualHash = createHash("sha256")
     .update(readFileSync(modelPath))
@@ -30,7 +30,6 @@ export function verifyAospEmbeddingArtifact(modelPath: string): void {
     );
   }
 }
-
 export function prepareAospEmbeddingBundle(modelPath: string): string {
   verifyAospEmbeddingArtifact(modelPath);
   const root = `${path.resolve(modelPath)}.embedding.bundle`;

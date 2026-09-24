@@ -8,8 +8,6 @@
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
 			"@elizaos/core": ["../../packages/core/dist/index.d.ts"],
 			"@elizaos/core/*": ["../../packages/core/dist/*"],
-			"@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
-			"@elizaos/shared/*": ["../../packages/shared/dist/*"],
 			"@elizaos/plugin-native-inference/host-bridge": [
 				"../plugin-native-inference/dist/bridge.d.ts"
 			],

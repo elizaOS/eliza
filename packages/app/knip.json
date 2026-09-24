@@ -31,7 +31,6 @@
     "@elizaos/app-.*",
     "@elizaos/capacitor-.*",
     "@elizaos/plugin-.*",
-    "@elizaos/shared",
     "@elizaos/ui",
     "@pixiv/three-vrm",
     "llama-cpp-capacitor",

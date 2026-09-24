@@ -15,7 +15,7 @@
  * startup budget) before the user had chosen anything.
  */
 
-import { isAospElizaUserAgent } from "@elizaos/shared";
+import { isAospElizaUserAgent } from "@elizaos/core/platform/aosp-user-agent";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -25,20 +25,21 @@ import {
   readPersistedMobileRuntimeMode,
 } from "./mobile-runtime-mode";
 
-export { isAospElizaUserAgent } from "@elizaos/shared";
+export { isAospElizaUserAgent } from "@elizaos/core/platform/aosp-user-agent";
 
 // Mirror of `ACTIVE_SERVER_STORAGE_KEY` in `state/persistence.ts`. Split
 // here so this file stays a leaf module — `state/persistence.ts` pulls in
 // the entire UI state graph and would create a cycle through
 // `bridge/storage-bridge`.
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
-
 function hasPersistedActiveServer(): boolean {
   if (typeof window === "undefined") return false;
   try {
     const raw = window.localStorage.getItem(ACTIVE_SERVER_STORAGE_KEY);
     if (!raw) return false;
-    const parsed = JSON.parse(raw) as { id?: unknown } | null;
+    const parsed = JSON.parse(raw) as {
+      id?: unknown;
+    } | null;
     return (
       parsed != null &&
       typeof parsed === "object" &&
@@ -51,7 +52,6 @@ function hasPersistedActiveServer(): boolean {
     return false;
   }
 }
-
 function writeLocalAgentActiveServer(): void {
   if (typeof window === "undefined") return;
   const payload = {
@@ -72,12 +72,10 @@ function writeLocalAgentActiveServer(): void {
     // optimization; first-run still resolves the server interactively
   }
 }
-
 function isBrandedAndroidDevice(): boolean {
   if (typeof navigator === "undefined") return false;
   return isAospElizaUserAgent(navigator.userAgent);
 }
-
 export function preSeedAndroidLocalRuntimeIfFresh(): boolean {
   if (!isBrandedAndroidDevice()) return false;
   // Respect an explicit cloud/remote choice, but treat null or "local" as
@@ -86,7 +84,6 @@ export function preSeedAndroidLocalRuntimeIfFresh(): boolean {
   const persistedMode = readPersistedMobileRuntimeMode();
   if (persistedMode != null && persistedMode !== "local") return false;
   if (hasPersistedActiveServer()) return false;
-
   persistMobileRuntimeModeForServerTarget("local");
   writeLocalAgentActiveServer();
   return true;

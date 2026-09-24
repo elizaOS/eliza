@@ -7,28 +7,25 @@
  * the right context instead of a blank slate.
  */
 
+import { isElizaCloudLinkedInConfig } from "@elizaos/core/contracts/cloud-topology";
 import {
-  isElizaCloudLinkedInConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { asRecord } from "./config-readers";
-
 export function hasPartialSetupConnectionConfig(
   config: Record<string, unknown> | null | undefined,
 ): boolean {
   if (resolveServiceRoutingInConfig(config)) {
     return true;
   }
-
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
   if (deploymentTarget.runtime !== "local") {
     return true;
   }
-
   const root = asRecord(config);
   if (
     root &&
@@ -38,10 +35,8 @@ export function hasPartialSetupConnectionConfig(
   ) {
     return true;
   }
-
   return isElizaCloudLinkedInConfig(config);
 }
-
 export interface FirstRunResumeFields {
   firstRunRuntimeTarget: FirstRunRuntimeTarget;
   firstRunProvider: string;
@@ -49,7 +44,6 @@ export interface FirstRunResumeFields {
   firstRunRemoteApiBase: string;
   firstRunRemoteToken: string;
 }
-
 export function deriveFirstRunResumeFieldsFromConfig(
   config: Record<string, unknown> | null | undefined,
 ): FirstRunResumeFields {
@@ -57,7 +51,6 @@ export function deriveFirstRunResumeFieldsFromConfig(
   const serviceRouting = resolveServiceRoutingInConfig(config);
   const llmText = serviceRouting?.llmText ?? null;
   const llmBackend = normalizeFirstRunProviderId(llmText?.backend);
-
   const pinnedRuntimeMode = readPersistedMobileRuntimeMode();
   const cloudServerTarget =
     pinnedRuntimeMode === "cloud-hybrid" ? "elizacloud-hybrid" : "elizacloud";
@@ -75,7 +68,6 @@ export function deriveFirstRunResumeFieldsFromConfig(
         : deploymentTarget.runtime === "cloud"
           ? cloudServerTarget
           : "local";
-
   // The provider resumes only when the routing unambiguously names one: the
   // Eliza Cloud proxy route, or an explicit non-cloud backend.
   const firstRunProvider =
@@ -86,7 +78,6 @@ export function deriveFirstRunResumeFieldsFromConfig(
       : llmBackend && llmBackend !== "elizacloud"
         ? llmBackend
         : "";
-
   return {
     firstRunRuntimeTarget,
     firstRunProvider,

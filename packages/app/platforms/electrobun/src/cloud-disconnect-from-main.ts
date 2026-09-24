@@ -4,7 +4,7 @@
  * so disconnect appeared to do nothing.
  */
 
-import { resolveApiToken } from "@elizaos/shared";
+import { resolveApiToken } from "@elizaos/core/runtime-env";
 import {
 	normalizeApiBase,
 	resolveDesktopRuntimeMode,
@@ -17,11 +17,14 @@ import {
 	pickReachableMenuResetApiBase,
 } from "./menu-reset-from-main";
 import { configureDesktopLocalApiAuth, getAgentManager } from "./native/agent";
-
 export type CloudDisconnectMainResult =
-	| { ok: true }
-	| { ok: false; error: string };
-
+	| {
+			ok: true;
+	  }
+	| {
+			ok: false;
+			error: string;
+	  };
 export function buildMainApiHeaders(
 	contentType?: string,
 	bearerTokenOverride?: string | null,
@@ -49,7 +52,6 @@ export function buildMainApiHeaders(
 	}
 	return headers;
 }
-
 export async function postCloudDisconnectFromMain(options?: {
 	fetchImpl?: FetchLike;
 	disconnectTimeoutMs?: number;
@@ -59,7 +61,7 @@ export async function postCloudDisconnectFromMain(options?: {
 	bearerTokenOverride?: string | null;
 }): Promise<CloudDisconnectMainResult> {
 	const fetchImpl = options?.fetchImpl ?? fetch;
-	const timeoutMs = options?.disconnectTimeoutMs ?? 30_000;
+	const timeoutMs = options?.disconnectTimeoutMs ?? 30000;
 	const bearer = options?.bearerTokenOverride ?? null;
 	const embeddedPort = getAgentManager().getPort();
 	const fromEnv = buildMainMenuResetApiCandidates({
@@ -89,7 +91,6 @@ export async function postCloudDisconnectFromMain(options?: {
 			error: `Could not reach the ${getBrandConfig().appName} API.`,
 		};
 	}
-
 	let res: Response;
 	try {
 		res = await fetchImpl(`${apiBase}/api/cloud/disconnect`, {
@@ -102,7 +103,6 @@ export async function postCloudDisconnectFromMain(options?: {
 		const msg = err instanceof Error ? err.message : "Network request failed";
 		return { ok: false, error: msg };
 	}
-
 	const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 	if (!res.ok) {
 		const msg =
@@ -111,6 +111,5 @@ export async function postCloudDisconnectFromMain(options?: {
 				: `HTTP ${res.status}`;
 		return { ok: false, error: msg };
 	}
-
 	return { ok: true };
 }

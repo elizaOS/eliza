@@ -11,15 +11,15 @@
  * (`captureWalletEnvBootBaseline`) so persisted config cannot outrank launch
  * env while the deferred hydrate runs.
  */
+
 import { logger } from "@elizaos/core";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudStewardOperationalTuple,
-} from "@elizaos/shared";
-
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
-import type { SecureStoreSecretKind } from "./platform-secure-store";
+import { type SecureStoreSecretKind } from "./platform-secure-store";
 import {
   createNodePlatformSecureStore,
   isWalletOsStoreReadEnabled,
@@ -36,7 +36,6 @@ import {
 function walletVaultKeys(): ReadonlyArray<keyof NodeJS.ProcessEnv> {
   return ["EVM_PRIVATE_KEY", "SOLANA_PRIVATE_KEY"];
 }
-
 /**
  * Steward-only env vars (non-wallet) that still ride the OS keystore. They
  * never moved into the unified vault because the steward backend has its
@@ -53,7 +52,6 @@ function stewardOsPairs(): ReadonlyArray<
     ["STEWARD_AGENT_TOKEN", "steward.agent_token"],
   ];
 }
-
 // The hydrate used to run before config.env merged into process.env, so its
 // "skip keys that already have a value" check naturally meant "skip keys the
 // LAUNCH ENV set" — vault/keystore values beat persisted config, launch env
@@ -64,7 +62,6 @@ function stewardOsPairs(): ReadonlyArray<
 // overwritable. With no baseline captured, any present value is respected —
 // the original pre-merge semantics used by direct callers.
 let walletEnvBootBaseline: ReadonlySet<string> | null = null;
-
 /** Record which wallet/steward env keys currently hold values (pre-merge). */
 export function captureWalletEnvBootBaseline(): void {
   const withValue = new Set<string>();
@@ -76,12 +73,10 @@ export function captureWalletEnvBootBaseline(): void {
   }
   walletEnvBootBaseline = withValue;
 }
-
 /** Test-only: drop the captured baseline (pre-merge semantics resume). */
 export function _resetWalletEnvBootBaselineForTest(): void {
   walletEnvBootBaseline = null;
 }
-
 /**
  * True when `envKey`'s current process.env value must be respected: it either
  * predates the config merge (present in the captured baseline) or no baseline
@@ -94,7 +89,6 @@ function hasLaunchEnvValue(envKey: keyof NodeJS.ProcessEnv): boolean {
     ? true
     : walletEnvBootBaseline.has(String(envKey));
 }
-
 /**
  * One-shot copy of legacy OS-keystore wallet keys into the shared vault.
  * Returns the env keys that were copied across so the caller can log /
@@ -105,10 +99,8 @@ async function migrateOsStoreWalletKeysIntoVault(
 ): Promise<string[]> {
   if (envKeys.length === 0) return [];
   if (!isWalletOsStoreReadEnabled()) return [];
-
   const store = createNodePlatformSecureStore();
   if (!(await store.isAvailable())) return [];
-
   const vault = sharedVault();
   const vaultId = deriveAgentVaultId();
   const keychainKindFor: Record<string, SecureStoreSecretKind> = {
@@ -116,7 +108,6 @@ async function migrateOsStoreWalletKeysIntoVault(
     SOLANA_PRIVATE_KEY: "wallet.solana_private_key",
   };
   const migrated: string[] = [];
-
   for (const envKey of envKeys) {
     const kind = keychainKindFor[envKey as string];
     if (!kind) continue;
@@ -131,10 +122,8 @@ async function migrateOsStoreWalletKeysIntoVault(
       migrated.push(String(envKey));
     }
   }
-
   return migrated;
 }
-
 /**
  * Fills `process.env` wallet keys from the shared vault (now the source
  * of truth). On first boot after the storage unification, copies any
@@ -160,7 +149,6 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     }
     missingWalletKeys.push(envKey);
   }
-
   // ── 2. One-shot migration from OS keystore for any wallet keys
   //      that the vault did not have. ──────────────────────────────
   if (missingWalletKeys.length > 0) {
@@ -178,7 +166,6 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
       );
     }
   }
-
   // ── 3. Steward OS-keystore reads ─────────────────────────────────
   // A development launcher owns this entire operational tuple. Project its
   // frozen values back after persisted-config merging and never consult the OS
@@ -192,7 +179,6 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     }
     return;
   }
-
   if (!isWalletOsStoreReadEnabled()) return;
   try {
     const store = createNodePlatformSecureStore();

@@ -7,22 +7,25 @@
  *
  * Private routes: the host dispatcher answers 401 for unauthenticated callers.
  */
-
-import type {
-	ArtifactShareGrantMode,
-	Memory,
-	PiiEntityRecognizer,
-	PiiEntityRecognizerService,
-	UUID,
+import {
+	type ArtifactShareGrantMode,
+	isAdminRank,
+	type Memory,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	type UUID,
 } from "@elizaos/core";
-import { isAdminRank, PII_ENTITY_RECOGNIZER_SERVICE } from "@elizaos/core";
 import type {
 	Route,
 	RouteHandlerContext,
 	RouteHandlerResult,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-plugin";
 import {
 	type MeetingArtifact,
+	validateMeetingArtifact,
+} from "@elizaos/core/meeting-artifacts";
+import {
 	TRANSCRIPT_SHARING_STATES,
 	type Transcript,
 	type TranscriptCaptureSharingState,
@@ -31,8 +34,7 @@ import {
 	type TranscriptSource,
 	transcriptDurationMs,
 	transcriptSpeakerCount,
-	validateMeetingArtifact,
-} from "@elizaos/shared";
+} from "@elizaos/core/transcripts";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,
@@ -47,11 +49,9 @@ import { persistTranscriptAudioWav } from "./transcript-audio-store.js";
 function service(ctx: RouteHandlerContext): TranscriptService {
 	return new TranscriptService(ctx.runtime as TranscriptServiceRuntime);
 }
-
 function store(ctx: RouteHandlerContext): TranscriptStore {
 	return new TranscriptStore(ctx.runtime as TranscriptServiceRuntime);
 }
-
 function requesterCanManageRow(
 	ctx: RouteHandlerContext,
 	row: Pick<Memory, "entityId">,
@@ -64,7 +64,6 @@ function requesterCanManageRow(
 		access.requesterEntityId === row.entityId
 	);
 }
-
 function runtimePiiRecognizer(
 	ctx: RouteHandlerContext,
 ): PiiEntityRecognizer | undefined {
@@ -73,7 +72,6 @@ function runtimePiiRecognizer(
 	) as Partial<PiiEntityRecognizerService> | null;
 	return service?.getRecognizer?.() ?? undefined;
 }
-
 /** The body a recording session POSTs to create a transcript record. */
 export interface CreateTranscriptRequest {
 	/** Optional — the route derives these from the agent context when absent (the
@@ -100,7 +98,6 @@ export interface CreateTranscriptRequest {
 	meetingArtifact?: MeetingArtifact;
 	createdAt?: number;
 }
-
 /**
  * Build a full {@link Transcript} from a create request — derives duration +
  * speaker count from the segments, defaults title/scope/status. Pure (id + now
@@ -140,11 +137,9 @@ export function buildTranscriptFromRequest(
 		metadata,
 	};
 }
-
 function defaultTitle(createdAt: number): string {
 	return `Recording ${new Date(createdAt).toLocaleString()}`;
 }
-
 const listRoute: Route = {
 	type: "GET",
 	path: "/api/transcripts",
@@ -159,7 +154,6 @@ const listRoute: Route = {
 		return { status: 200, body: { transcripts } };
 	},
 };
-
 const getRoute: Route = {
 	type: "GET",
 	path: "/api/transcripts/:id",
@@ -173,7 +167,6 @@ const getRoute: Route = {
 		return { status: 200, body: { transcript } };
 	},
 };
-
 const deleteRoute: Route = {
 	type: "DELETE",
 	path: "/api/transcripts/:id",
@@ -201,7 +194,6 @@ const deleteRoute: Route = {
 		return { status: 200, body: { ok: true } };
 	},
 };
-
 /** The body a transcript editor PUTs to persist a user edit. */
 export interface UpdateTranscriptRequest {
 	worldId?: UUID;
@@ -210,34 +202,28 @@ export interface UpdateTranscriptRequest {
 	title?: string;
 	segments?: TranscriptSegment[];
 }
-
 export interface ShareTranscriptRequest {
 	entityId?: UUID;
 	roomId?: UUID;
 	mode?: ArtifactShareGrantMode;
 	redactForAll?: boolean;
 }
-
 export interface UpdateTranscriptPrivacyRequest {
 	sharing: Partial<TranscriptCaptureSharingState>;
 }
-
 const ARTIFACT_SHARING_KEYS = [
 	"transcript",
 	"notes",
 	"sourceAudio",
 	"artifacts",
 ] as const;
-
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function requestUuid(value: unknown): UUID | null {
 	return typeof value === "string" && UUID_PATTERN.test(value.trim())
 		? (value.trim() as UUID)
 		: null;
 }
-
 function participantEntityIds(transcript: Transcript): UUID[] {
 	const participants = transcript.metadata?.participants;
 	if (!Array.isArray(participants)) return [];
@@ -245,23 +231,31 @@ function participantEntityIds(transcript: Transcript): UUID[] {
 	for (const participant of participants) {
 		if (!participant || typeof participant !== "object") continue;
 		const entityId = requestUuid(
-			(participant as { entityId?: unknown }).entityId,
+			(
+				participant as {
+					entityId?: unknown;
+				}
+			).entityId,
 		);
 		if (entityId) ids.add(entityId);
 	}
 	return [...ids];
 }
-
 type TranscriptWriteScope = {
 	worldId: UUID;
 	roomId: UUID;
 	entityId: UUID;
 };
-
 type TranscriptWriteScopeResult =
-	| { ok: true; value: TranscriptWriteScope }
-	| { ok: false; status: number; error: string };
-
+	| {
+			ok: true;
+			value: TranscriptWriteScope;
+	  }
+	| {
+			ok: false;
+			status: number;
+			error: string;
+	  };
 async function resolveTranscriptCreateScope(
 	ctx: RouteHandlerContext,
 	body: CreateTranscriptRequest,
@@ -279,7 +273,6 @@ async function resolveTranscriptCreateScope(
 	if (body.entityId !== undefined && !requestedEntityId) {
 		return { ok: false, status: 400, error: "entityId must be a UUID" };
 	}
-
 	const access = ctx.accessContext;
 	const elevated = isAdminRank(access?.role) || access?.isOwner === true;
 	if (
@@ -295,7 +288,6 @@ async function resolveTranscriptCreateScope(
 		};
 	}
 	const entityId = requestedEntityId ?? access?.requesterEntityId ?? agentId;
-
 	if (!requestedRoomId) {
 		if (requestedWorldId) {
 			return {
@@ -309,7 +301,6 @@ async function resolveTranscriptCreateScope(
 			value: { worldId: agentId, roomId: agentId, entityId },
 		};
 	}
-
 	let room: Awaited<ReturnType<typeof ctx.runtime.getRoom>>;
 	try {
 		room = await ctx.runtime.getRoom(requestedRoomId);
@@ -380,13 +371,11 @@ async function resolveTranscriptCreateScope(
 			};
 		}
 	}
-
 	return {
 		ok: true,
 		value: { worldId, roomId: requestedRoomId, entityId },
 	};
 }
-
 const updateRoute: Route = {
 	type: "PUT",
 	path: "/api/transcripts/:id",
@@ -461,7 +450,6 @@ const updateRoute: Route = {
 		return { status: 200, body: { transcript: updated } };
 	},
 };
-
 const createRoute: Route = {
 	type: "POST",
 	path: "/api/transcripts",
@@ -512,7 +500,6 @@ const createRoute: Route = {
 		return { status: 201, body: { transcript: saved } };
 	},
 };
-
 const shareRoute: Route = {
 	type: "POST",
 	path: "/api/transcripts/:id/share",
@@ -567,7 +554,6 @@ const shareRoute: Route = {
 				},
 			};
 		}
-
 		const transcript = await service(ctx).get(
 			ctx.params.id as UUID,
 			ctx.accessContext,
@@ -595,7 +581,6 @@ const shareRoute: Route = {
 				},
 			};
 		}
-
 		let variantId: string | undefined;
 		const transcriptStore = store(ctx);
 		const roomTarget = roomId ?? (redactForAll ? row.roomId : null);
@@ -659,7 +644,6 @@ const shareRoute: Route = {
 		};
 	},
 };
-
 const revokeShareRoute: Route = {
 	type: "DELETE",
 	path: "/api/transcripts/:id/share/:entityId",
@@ -697,7 +681,6 @@ const revokeShareRoute: Route = {
 		};
 	},
 };
-
 const updatePrivacyRoute: Route = {
 	type: "PATCH",
 	path: "/api/transcripts/:id/privacy",
@@ -729,7 +712,6 @@ const updatePrivacyRoute: Route = {
 				};
 			}
 		}
-
 		const transcript = await service(ctx).get(
 			ctx.params.id as UUID,
 			ctx.accessContext,
@@ -748,7 +730,6 @@ const updatePrivacyRoute: Route = {
 		if (!requesterCanManageRow(ctx, row)) {
 			return { status: 403, body: { error: "manage access required" } };
 		}
-
 		try {
 			const updated = await new TranscriptPrivacyService(
 				ctx.runtime as TranscriptServiceRuntime,
@@ -770,7 +751,6 @@ const updatePrivacyRoute: Route = {
 		}
 	},
 };
-
 const deleteSourceAudioRoute: Route = {
 	type: "DELETE",
 	path: "/api/transcripts/:id/source-audio",
@@ -819,7 +799,6 @@ const deleteSourceAudioRoute: Route = {
 		}
 	},
 };
-
 export const transcriptsRoutes: Route[] = [
 	listRoute,
 	createRoute,

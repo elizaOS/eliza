@@ -88,8 +88,6 @@
       "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
       "@elizaos/auth/auth": ["./packages/auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
-      "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/auth/vault": ["./packages/auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
       "@elizaos/cloud-shared": ["./packages/cloud/shared/src/index.ts"],

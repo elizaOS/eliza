@@ -57,7 +57,7 @@ test("parallel package failures retain a complete file inventory after truncatio
         cwd: repoRoot,
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024,
-        env: process.env,
+        env: { ...process.env, TEST_LANE: "pr" },
       },
     );
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;

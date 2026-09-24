@@ -10,7 +10,7 @@ import type {
   AuthState,
   UiSpecValidationCheck,
   UiSpecVisibilityCondition,
-} from "@elizaos/shared";
+} from "@elizaos/core/config/ui-spec";
 import {
   getByPath,
   matchesSafeUntrustedRegexPattern,
@@ -22,16 +22,13 @@ const BLOCKED_LINK_PROTOCOLS = new Set([
   "vbscript",
   "file",
 ]);
-
 // ── Visibility evaluation ────────────────────────────────────────────
-
 export function evaluateUiVisibility(
   condition: UiSpecVisibilityCondition | undefined,
   state: Record<string, unknown>,
   auth?: AuthState,
 ): boolean {
   if (!condition) return true;
-
   // Path-based
   if ("path" in condition && "operator" in condition) {
     const val = getByPath(state, condition.path);
@@ -53,7 +50,6 @@ export function evaluateUiVisibility(
         return true;
     }
   }
-
   // Auth-based
   if ("auth" in condition) {
     if (!auth) return false;
@@ -68,7 +64,6 @@ export function evaluateUiVisibility(
         return auth.roles?.includes(condition.auth) ?? false;
     }
   }
-
   // Logic combinators
   if ("and" in condition)
     return condition.and.every((c: UiSpecVisibilityCondition) =>
@@ -80,10 +75,8 @@ export function evaluateUiVisibility(
     );
   if ("not" in condition)
     return !evaluateUiVisibility(condition.not, state, auth);
-
   return true;
 }
-
 export function sanitizeLinkHref(href: unknown): string {
   // Strip ASCII control chars (tab, LF, CR) that browsers silently remove
   // during URL parsing, preventing bypass attacks like "java\nscript:alert(1)".
@@ -91,7 +84,6 @@ export function sanitizeLinkHref(href: unknown): string {
     .trim()
     .replace(/[\t\n\r]/g, "");
   if (!raw) return "#";
-
   // Keep relative/hash links unchanged.
   if (
     raw.startsWith("#") ||
@@ -102,18 +94,13 @@ export function sanitizeLinkHref(href: unknown): string {
   ) {
     return raw;
   }
-
   const match = /^([a-zA-Z][a-zA-Z\d+.-]*):/.exec(raw);
   if (!match) return raw;
-
   const protocol = match[1].toLowerCase();
   if (BLOCKED_LINK_PROTOCOLS.has(protocol)) return "#";
-
   return raw;
 }
-
 // ── Built-in validators ─────────────────────────────────────────────
-
 const BUILTIN_VALIDATORS: Record<
   string,
   (value: unknown, args?: Record<string, unknown>) => boolean
@@ -134,9 +121,7 @@ const BUILTIN_VALIDATORS: Record<
   min: (v, args) => Number(v) >= Number(args?.value ?? -Infinity),
   max: (v, args) => Number(v) <= Number(args?.value ?? Infinity),
 };
-
 // ── Validation runner ───────────────────────────────────────────────
-
 export function runValidation(
   checks: UiSpecValidationCheck[],
   value: unknown,
@@ -159,13 +144,11 @@ export function runValidation(
   }
   return errors;
 }
-
 // ── Supported component vocabulary ──────────────────────────────────
 //
 // Canonical list of UiRenderer component type names. Single source of truth
 // for the key set of the `COMPONENTS` registry in `ui-renderer.tsx` (which is
 // typed against this list so the two cannot drift).
-
 export const SUPPORTED_UI_COMPONENT_TYPES = [
   // Layout
   "Stack",
@@ -217,10 +200,8 @@ export const SUPPORTED_UI_COMPONENT_TYPES = [
   "Dialog",
   "Drawer",
 ] as const;
-
 export type SupportedUiComponentType =
   (typeof SUPPORTED_UI_COMPONENT_TYPES)[number];
-
 /** Get the full list of supported component types. */
 export function getSupportedComponents(): string[] {
   return [...SUPPORTED_UI_COMPONENT_TYPES];

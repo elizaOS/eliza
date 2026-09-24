@@ -8,7 +8,7 @@ HTTP server.
 
 For each turn the adapter:
   1. Builds a prompt containing the task instruction, current observation,
-     and a short history of recent actions.
+     and the complete history of prior actions.
   2. Sends it through ``ElizaClient.send_message`` with a benchmark-tagged
      context object so the TS bridge can scope its session.
   3. Parses the response into either a WEBSHOP_ACTION (e.g. ``search[...]``,
@@ -98,8 +98,8 @@ def _webshop_action_tool_schema() -> dict[str, object]:
 def _format_observation(obs: "PageObservation") -> str:
     lines: list[str] = [f"## Page: {obs.page_type.value}", obs.message]
     if obs.page_type.value == "results" and obs.results:
-        lines.append("\n### Results (top 10):")
-        for r in obs.results[:10]:
+        lines.append("\n### Results:")
+        for r in obs.results:
             lines.append(
                 f"- [{r.product_id}] {r.name} | ${r.price:.2f} | "
                 f"rating={r.rating:.1f} | {r.category}"
@@ -112,7 +112,7 @@ def _format_observation(obs: "PageObservation") -> str:
         lines.append(f"- price: ${p.price:.2f}")
         lines.append(f"- rating: {p.rating:.1f}")
         if p.features:
-            lines.append(f"- features: {', '.join(p.features[:12])}")
+            lines.append(f"- features: {', '.join(p.features)}")
         if p.options:
             lines.append("- options:")
             for k, vals in p.options.items():
@@ -120,7 +120,7 @@ def _format_observation(obs: "PageObservation") -> str:
                 lines.append(f"  - {k}: {vals} (selected: {selected})")
     if obs.available_actions:
         lines.append("\n### Available actions:")
-        for a in obs.available_actions[:20]:
+        for a in obs.available_actions:
             lines.append(f"- {a}")
     return "\n".join(lines)
 
@@ -380,7 +380,7 @@ class ElizaBridgeWebShopAgent:
         for turn in range(self.max_turns):
             obs_str = _format_observation(observation) if observation else ""
             history_str = "\n".join(
-                f"  {i + 1}. {a}" for i, a in enumerate(action_history[-5:])
+                f"  {i + 1}. {a}" for i, a in enumerate(action_history)
             )
 
             prompt_parts: list[str] = [
@@ -395,7 +395,7 @@ class ElizaBridgeWebShopAgent:
                 )
             prompt_parts.append("\n# Current observation\n" + obs_str)
             if action_history:
-                prompt_parts.append("\n# Recent actions\n" + history_str)
+                prompt_parts.append("\n# Action history\n" + history_str)
             selected_actions = _selected_option_actions(action_history, observation)
             if selected_actions:
                 prompt_parts.append(

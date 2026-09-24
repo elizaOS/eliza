@@ -42,8 +42,7 @@
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
-		"format:check": "bunx @biomejs/biome format .",
-		"test:live": "bun run test:e2e"
+		"format:check": "bunx @biomejs/biome format ."
 	},
 	"dependencies": {
 		"@discordjs/builders": "^1.14.1",
@@ -73,8 +72,7 @@
 		"tslib": "^2.6.3",
 		"undici": "8.10.0",
 		"zod": "^4.6.5",
-		"@elizaos/plugin-assistant": "workspace:*",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/plugin-assistant": "workspace:*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",

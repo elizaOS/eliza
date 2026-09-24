@@ -10,7 +10,7 @@
  * surface server rejections verbatim instead of minting a fake session.
  */
 
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   cleanup,
   fireEvent,
@@ -72,12 +72,15 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@elizaos/shared/steward-session-client")
-  >()),
-  hasStewardAuthedCookie: sessionSpies.hasAuthedCookie,
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >()),
+    hasStewardAuthedCookie: sessionSpies.hasAuthedCookie,
+  }),
+);
 
 vi.mock("../../lib/steward-email-login", () => ({
   StewardEmailLoginError: class StewardEmailLoginError extends Error {

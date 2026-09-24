@@ -5,10 +5,8 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsConnectorGrant,
-} from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {

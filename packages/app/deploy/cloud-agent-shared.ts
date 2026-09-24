@@ -5,17 +5,15 @@
  * bridge server. Both the main entrypoint and the template entrypoint
  * import from here, passing a config that captures the small differences.
  */
-
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
-import { ElizaError } from "../../common/src/errors";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+import { ElizaError } from "../../core/src/errors";
+import restartExitCodeDefinition from "../../core/src/restart-exit-code.json" with {
   type: "json",
 };
 
 const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
-
 // ─── Logger ─────────────────────────────────────────────────────────────
 //
 // This file is bundled with `--external:@elizaos/*` and runs in a minimal
@@ -38,14 +36,12 @@ const logger = {
     else console.error(`[cloud-agent] ${message}`);
   },
 };
-
 /** Warn that the loopback bridge uses an ephemeral credential without exposing it. */
 export function warnGeneratedBridgeSecret(): void {
   logger.warn(
     "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
   );
 }
-
 /**
  * `.catch` handler for an optional plugin dynamic import: keeps the degrade
  * (agent boots without the plugin) but surfaces the import failure so a broken
@@ -61,9 +57,7 @@ function logPluginLoadFailure(id: string): (error: unknown) => null {
     return null;
   };
 }
-
 // ─── Types ──────────────────────────────────────────────────────────────
-
 export interface BridgeRpcParams {
   text?: string;
   roomId?: string;
@@ -78,7 +72,6 @@ export interface BridgeRpcParams {
   };
   metadata?: Record<string, unknown>;
 }
-
 export type NormalizedBridgeMessage = {
   text: string;
   roomKey: string;
@@ -93,36 +86,32 @@ export type NormalizedBridgeMessage = {
   };
   metadata?: Record<string, unknown>;
 };
-
 export type BridgeMessageResult = {
   text: string;
   failureKind?: string;
 };
-
 type BridgeCallbackContent = {
   text?: unknown;
   failureKind?: unknown;
 };
-
 export type DatabaseLivenessPayload = {
   status: "ok" | "unknown" | "transient_error" | "terminal_error";
   ok: boolean;
   terminal: boolean;
   message?: string;
 };
-
 export interface AgentRuntimeAdapterLike {
   isReady?: () => Promise<boolean>;
-  getRawConnection?: () => { query(sql: string): Promise<unknown> };
+  getRawConnection?: () => {
+    query(sql: string): Promise<unknown>;
+  };
   getConnection?: () => Promise<unknown>;
   db?: unknown;
 }
-
 export interface RuntimeWithDatabaseLiveness {
   adapter?: AgentRuntimeAdapterLike;
   checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
 }
-
 /** Projects internal probe diagnostics into the public health-check contract. */
 export function publicDatabaseLiveness(
   payload: DatabaseLivenessPayload,
@@ -133,7 +122,6 @@ export function publicDatabaseLiveness(
     terminal: payload.terminal,
   };
 }
-
 const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
   /pglite is closed/i,
   /database is shutting down/i,
@@ -147,7 +135,6 @@ const DATABASE_LIVENESS_STATUSES = new Set<DatabaseLivenessPayload["status"]>([
   "transient_error",
   "terminal_error",
 ]);
-
 function readProbeDiagnosticProperty(
   value: unknown,
   property: PropertyKey,
@@ -165,7 +152,6 @@ function readProbeDiagnosticProperty(
     return undefined;
   }
 }
-
 function describeDatabaseProbeError(error: unknown): string {
   const message = readProbeDiagnosticProperty(error, "message");
   let text =
@@ -188,7 +174,6 @@ function describeDatabaseProbeError(error: unknown): string {
       : character;
   }).join("");
 }
-
 function isTerminalDatabaseProbeError(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
@@ -212,15 +197,18 @@ function isTerminalDatabaseProbeError(error: unknown): boolean {
   }
   return false;
 }
-
 async function probeDatabaseHandle(handle: unknown): Promise<void> {
   if (handle && typeof handle === "object") {
-    const queryable = handle as { query?: unknown };
+    const queryable = handle as {
+      query?: unknown;
+    };
     if (typeof queryable.query === "function") {
       await (queryable.query as (sql: string) => Promise<unknown>)("SELECT 1");
       return;
     }
-    const executable = handle as { execute?: unknown };
+    const executable = handle as {
+      execute?: unknown;
+    };
     if (typeof executable.execute === "function") {
       await (executable.execute as (query: unknown) => Promise<unknown>)(
         sql`SELECT 1`,
@@ -230,7 +218,6 @@ async function probeDatabaseHandle(handle: unknown): Promise<void> {
   }
   throw new Error("database connection does not expose query or execute");
 }
-
 export async function checkRuntimeDatabaseLiveness(
   runtime: RuntimeWithDatabaseLiveness | null,
 ): Promise<DatabaseLivenessPayload> {
@@ -287,7 +274,6 @@ export async function checkRuntimeDatabaseLiveness(
     };
   }
 }
-
 export function appendBridgeCallbackContent(
   result: BridgeMessageResult,
   content: BridgeCallbackContent,
@@ -302,11 +288,9 @@ export function appendBridgeCallbackContent(
   }
   return result;
 }
-
 export function bridgeResultText(result: BridgeMessageResult): string {
   return result.text || "(no response)";
 }
-
 export function normalizeBridgeMessage(
   params?: BridgeRpcParams,
 ): NormalizedBridgeMessage {
@@ -339,7 +323,6 @@ export function normalizeBridgeMessage(
             : {}),
         }
       : undefined;
-
   return {
     text: typeof params?.text === "string" ? params.text : "",
     roomKey: trimmedRoomId,
@@ -354,7 +337,6 @@ export function normalizeBridgeMessage(
       : {}),
   };
 }
-
 export interface CloudAgentConfig {
   /** Health endpoint port. Default: 2138 */
   port?: number;
@@ -375,7 +357,6 @@ export interface CloudAgentConfig {
    */
   enableChatMode?: boolean;
 }
-
 interface AgentRuntime {
   processMessage: (params: BridgeRpcParams) => Promise<BridgeMessageResult>;
   processMessageStream: (
@@ -386,21 +367,17 @@ interface AgentRuntime {
   getConfig: () => Record<string, unknown>;
   checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
 }
-
 // ─── Main entry ─────────────────────────────────────────────────────────
-
 export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   const PORT = userConfig.port ?? Number(process.env.PORT ?? "2138");
   const BRIDGE_PORT =
     userConfig.bridgePort ?? Number(process.env.BRIDGE_PORT ?? "18790");
   const BRIDGE_SECRET = userConfig.bridgeSecret || crypto.randomUUID();
   const bridgeSecretGenerated = !userConfig.bridgeSecret;
-  const MAX_BODY_BYTES = userConfig.maxBodyBytes ?? 1_048_576;
+  const MAX_BODY_BYTES = userConfig.maxBodyBytes ?? 1048576;
   const MAX_MEMORIES = userConfig.maxMemories ?? 0;
   const enableChatMode = userConfig.enableChatMode ?? false;
-
   let agentRuntime: AgentRuntime | null = null;
-
   /** In-memory state that persists across snapshots. */
   const state = {
     memories: [] as Array<Record<string, unknown>>,
@@ -409,14 +386,12 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     startedAt: new Date().toISOString(),
     lastActivityAt: new Date().toISOString(),
   };
-
   /** Trim memories array to MAX_MEMORIES, removing oldest entries first. */
   function trimMemories(): void {
     if (MAX_MEMORIES > 0 && state.memories.length > MAX_MEMORIES) {
       state.memories.splice(0, state.memories.length - MAX_MEMORIES);
     }
   }
-
   function readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let body = "";
@@ -465,14 +440,11 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       req.on("error", reject);
     });
   }
-
   // ─── elizaOS Runtime ──────────────────────────────────────────────────
-
   async function initRuntime(): Promise<void> {
     const elizaAvailable = await import("@elizaos/core")
       .then(() => true)
       .catch(() => false);
-
     if (elizaAvailable) {
       const {
         AgentRuntime: AgentRuntimeCtor,
@@ -481,7 +453,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         stringToUuid,
         ChannelType,
       } = await import("@elizaos/core");
-
       const character = createCharacter({
         name: process.env.AGENT_NAME ?? "CloudAgent",
         bio: "An elizaOS agent running in the cloud.",
@@ -517,31 +488,25 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             : {}),
         },
       });
-
       const plugins = [];
-
       if (process.env.CEREBRAS_API_KEY || process.env.OPENAI_API_KEY) {
         const openaiPlugin = await import("@elizaos/plugin-openai")
           .then((m) => m.default)
           .catch(logPluginLoadFailure("@elizaos/plugin-openai"));
         if (openaiPlugin) plugins.push(openaiPlugin);
       }
-
       const cloudPlugin = await import("@elizaos/plugin-elizacloud")
         .then((m) => m.default)
         .catch(logPluginLoadFailure("@elizaos/plugin-elizacloud"));
       if (cloudPlugin) plugins.push(cloudPlugin);
-
       const sqlPlugin = await import("@elizaos/plugin-sql")
         .then((m) => m.default)
         .catch(logPluginLoadFailure("@elizaos/plugin-sql"));
       if (sqlPlugin) plugins.push(sqlPlugin);
-
       const workflowPlugin = await import("@elizaos/plugin-workflow")
         .then((m) => m.default)
         .catch(logPluginLoadFailure("@elizaos/plugin-workflow"));
       if (workflowPlugin) plugins.push(workflowPlugin);
-
       const runtime = new AgentRuntimeCtor({ character, plugins });
       await runtime.initialize();
       const runtimeWithBridge = runtime as typeof runtime & {
@@ -557,7 +522,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         createEntity?: (entity: Record<string, unknown>) => Promise<void>;
         updateEntity?: (entity: Record<string, unknown>) => Promise<void>;
       };
-
       const ensureBridgeContext = async (params: BridgeRpcParams) => {
         const normalized = normalizeBridgeMessage(params);
         const worldId = stringToUuid(
@@ -582,7 +546,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           normalized.sender?.displayName ??
           normalized.sender?.username ??
           "BridgeUser";
-
         if (typeof runtimeWithBridge.ensureWorldExists === "function") {
           await runtimeWithBridge.ensureWorldExists({
             id: worldId,
@@ -591,7 +554,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             serverId,
           });
         }
-
         if (typeof runtimeWithBridge.ensureRoomExists === "function") {
           await runtimeWithBridge.ensureRoomExists({
             id: roomId,
@@ -604,7 +566,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             source: normalized.source,
           });
         }
-
         const entityMetadata =
           normalized.sender?.metadata &&
           typeof normalized.sender.metadata === "object" &&
@@ -623,7 +584,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           ),
           ...(entityMetadata ? { metadata: entityMetadata } : {}),
         };
-
         try {
           if (
             typeof runtimeWithBridge.getEntityById === "function" &&
@@ -649,17 +609,14 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         } catch {
           // Best-effort entity sync. The room flow still works if the entity already exists.
         }
-
         if (typeof runtimeWithBridge.ensureParticipantInRoom === "function") {
           await Promise.all([
             runtimeWithBridge.ensureParticipantInRoom(runtime.agentId, roomId),
             runtimeWithBridge.ensureParticipantInRoom(entityId, roomId),
           ]);
         }
-
         return { normalized, entityId, roomId, channelType };
       };
-
       agentRuntime = {
         processMessage: async (
           params: BridgeRpcParams,
@@ -683,7 +640,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
             },
           });
-
           const response: BridgeMessageResult = { text: "" };
           await runtime.messageService?.handleMessage(
             runtime,
@@ -696,7 +652,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               return [];
             },
           );
-
           state.lastActivityAt = new Date().toISOString();
           state.memories.push({
             role: "user",
@@ -714,7 +669,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               : {}),
           });
           trimMemories();
-
           return {
             text: bridgeResultText(response),
             ...(response.failureKind
@@ -745,7 +699,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
             },
           });
-
           const response: BridgeMessageResult = { text: "" };
           await runtime.messageService?.handleMessage(
             runtime,
@@ -762,7 +715,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               return [];
             },
           );
-
           state.lastActivityAt = new Date().toISOString();
           state.memories.push({
             role: "user",
@@ -780,7 +732,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               : {}),
           });
           trimMemories();
-
           return {
             text: bridgeResultText(response),
             ...(response.failureKind
@@ -792,7 +743,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         getConfig: () => state.config,
         checkDatabaseLiveness: () => checkRuntimeDatabaseLiveness(runtime),
       };
-
       logger.info("elizaOS runtime initialized with real agent");
     } else {
       logger.warn("@elizaos/core not available, running in echo mode");
@@ -844,12 +794,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       };
     }
   }
-
   // ─── Health endpoint ──────────────────────────────────────────────────
-
   /** Consider the runtime hung if no activity for 10 minutes after init. */
-  const HUNG_RUNTIME_THRESHOLD_MS = 10 * 60_000;
-
+  const HUNG_RUNTIME_THRESHOLD_MS = 10 * 60000;
   const healthServer = http.createServer(async (req, res) => {
     if (
       req.method === "GET" &&
@@ -863,7 +810,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         runtimeReady &&
         state.memories.length > 0 &&
         lastActivityAge > HUNG_RUNTIME_THRESHOLD_MS;
-
       let status: string;
       if (databaseLiveness.terminal) {
         status = "unhealthy";
@@ -874,7 +820,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       } else {
         status = "healthy";
       }
-
       res.writeHead(databaseLiveness.terminal || !runtimeReady ? 503 : 200, {
         "Content-Type": "application/json",
       });
@@ -905,19 +850,15 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     res.writeHead(404);
     res.end("Not Found");
   });
-
   healthServer.listen(PORT, "0.0.0.0", () => {
     logger.info(`Health endpoint listening on port ${PORT}`);
   });
-
   // ─── Bridge HTTP server ───────────────────────────────────────────────
-
   const handleBridgeRequest = async (
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ) => {
     res.setHeader("Content-Type", "application/json");
-
     // Auth check (only when BRIDGE_SECRET is configured)
     if (BRIDGE_SECRET) {
       const authHeader = req.headers.authorization ?? "";
@@ -927,7 +868,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         return;
       }
     }
-
     // The provisioning worker probes the bridge/tailnet port, not the
     // host-only REST mapping. Keep this response aligned with the REST health
     // contract so lifecycle recovery never marks a healthy runtime dead.
@@ -946,7 +886,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       );
       return;
     }
-
     // Server-owned Shared→Dedicated cutover imports the exact personal
     // conversation before flipping the active runtime. The minimal Cloud image
     // must expose this boundary too; otherwise provisioning reports `running`
@@ -1069,7 +1008,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       );
       return;
     }
-
     if (req.method === "POST" && req.url === "/api/snapshot") {
       res.writeHead(200);
       res.end(
@@ -1082,7 +1020,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       );
       return;
     }
-
     if (req.method === "POST" && req.url === "/api/restore") {
       const body = await readBody(req);
       let incoming: Partial<typeof state>;
@@ -1102,7 +1039,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       res.end(JSON.stringify({ success: true }));
       return;
     }
-
     // ── SSE streaming endpoint ────────────────────────────────────────
     if (req.method === "POST" && req.url === "/bridge/stream") {
       if (!agentRuntime) {
@@ -1110,7 +1046,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         res.end(JSON.stringify({ error: "Agent runtime not ready" }));
         return;
       }
-
       const body = await readBody(req);
       let rpc: {
         jsonrpc: string;
@@ -1125,33 +1060,27 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         res.end(JSON.stringify({ error: "Invalid JSON" }));
         return;
       }
-
       if (rpc.method !== "message.send") {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Only message.send is streamable" }));
         return;
       }
-
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
-
       const sendEvent = (event: string, data: unknown) => {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
-
       sendEvent("connected", { rpcId: rpc.id, timestamp: Date.now() });
-
       const response = await agentRuntime.processMessageStream(
         rpc.params ?? {},
         (chunk: string) => {
           sendEvent("chunk", { text: chunk });
         },
       );
-
       sendEvent("done", {
         rpcId: rpc.id,
         timestamp: Date.now(),
@@ -1160,7 +1089,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       res.end();
       return;
     }
-
     if (req.method === "POST" && req.url === "/bridge") {
       const body = await readBody(req);
       let rpc: {
@@ -1176,7 +1104,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         res.end(JSON.stringify({ error: "Invalid JSON" }));
         return;
       }
-
       if (rpc.method === "message.send") {
         if (!agentRuntime) {
           res.writeHead(503);
@@ -1214,7 +1141,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         );
         return;
       }
-
       if (rpc.method === "status.get") {
         const databaseLiveness =
           await checkRuntimeDatabaseLiveness(agentRuntime);
@@ -1241,7 +1167,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         );
         return;
       }
-
       if (rpc.method === "heartbeat") {
         res.writeHead(200);
         res.end(
@@ -1253,7 +1178,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         );
         return;
       }
-
       res.writeHead(200);
       res.end(
         JSON.stringify({
@@ -1267,7 +1191,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       );
       return;
     }
-
     res.writeHead(404);
     res.end(JSON.stringify({ error: "Not Found" }));
   };
@@ -1312,7 +1235,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       );
     }
   });
-
   const bridgeBindAddress = bridgeSecretGenerated ? "127.0.0.1" : "0.0.0.0";
   bridgeServer.listen(BRIDGE_PORT, bridgeBindAddress, () => {
     logger.info(
@@ -1322,9 +1244,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       warnGeneratedBridgeSecret();
     }
   });
-
   // ─── Startup ──────────────────────────────────────────────────────────
-
   function shutdown() {
     logger.info("Shutting down...");
     healthServer.close();
@@ -1333,14 +1253,13 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   }
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
-
   // Crash guards. This file is bundled by esbuild for the cloud-agent image,
   // which only installs @elizaos/core + @elizaos/plugin-sql, so we cannot import
-  // @elizaos/shared's installProcessCrashGuards here — the guards are inlined.
+  // @elizaos/core's installProcessCrashGuards here — the guards are inlined.
   // A rejected background promise must never take down the container; a truly
   // uncaught exception exits non-zero so the orchestrator (Docker
   // `--restart unless-stopped` / K8s `restartPolicy: Always`) relaunches a clean
-  // container. Exit code matches @elizaos/shared RESTART_EXIT_CODE.
+  // container. Exit code matches @elizaos/core RESTART_EXIT_CODE.
   process.on("unhandledRejection", (reason) => {
     logger.error("Unhandled promise rejection (non-fatal)", {
       err:
@@ -1356,7 +1275,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     });
     process.exit(CLOUD_AGENT_RESTART_EXIT_CODE);
   });
-
   initRuntime()
     .then(() => {
       logger.info("Ready");

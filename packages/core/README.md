@@ -4,9 +4,9 @@ Node runtime kernel for Eliza agents: plugin registration, authorization, state,
 dispatch, memory, and cancellation.
 
 Import from `@elizaos/core`. Hosts explicitly supply database adapters, model providers,
-and `@elizaos/plugin-assistant` for conversational behavior. Core is Node-only, with one
-public package entry; it does not own HTTP routes or install assistant behavior
-implicitly. Runtime settings are per-agent and do not implicitly read process.env.
+and `@elizaos/plugin-assistant` for conversational behavior. The root entrypoint is the Node runtime. Explicit leaf exports provide wire
+contracts and pure utilities without loading that runtime. Core does not own host
+route tables or install assistant behavior implicitly. Runtime settings are per-agent and do not implicitly read process.env.
 
 ## Development
 
@@ -18,4 +18,4 @@ bun run --cwd packages/core test   # tests
 ```
 
 View declaration types remain in core; browser-safe visibility and surface-policy
-helpers live in `@elizaos/shared/views/*`.
+helpers live in `@elizaos/core/views/*`; renderers import those leaves directly.

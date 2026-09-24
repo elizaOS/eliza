@@ -6,7 +6,7 @@
  * concurrently without one response replacing another account's state.
  */
 
-import type { LifeOpsCalendarSummary } from "@elizaos/shared";
+import { type LifeOpsCalendarSummary } from "@elizaos/core/contracts/calendar";
 import { client } from "@elizaos/ui/api";
 import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

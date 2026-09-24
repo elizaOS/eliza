@@ -12,6 +12,8 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
+      "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
+      "@elizaos/plugin-github/*": ["../../plugins/plugin-github/src/*"],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/app": ["./src/index.ts"],
       "@elizaos/app/*": ["./src/*"],
@@ -68,11 +70,6 @@
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/local-inference": [
-        "../shared/src/local-inference/index.ts"
-      ],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
@@ -129,6 +126,9 @@
       ],
       "@elizaos/plugin-native-messages/bridge": [
         "../../plugins/plugin-native-messages/src/bridge.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog": [
+        "../../plugins/plugin-native-inference/src/model-catalog/index.ts"
       ]
     }
   },

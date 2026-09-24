@@ -34,18 +34,16 @@ import {
   getFirstRunProviderOption,
   getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── Credential source registry ───────────────────────────────────────
-
 interface CredentialSource {
   providerId: string;
   envVars: readonly string[];
   /** "subscription" means the value is an OAuth token for the subscription flow. */
   authType: "api-key" | "subscription";
 }
-
 function envVarsForCanonicalKey(canonicalKey: string): string[] {
   return [
     canonicalKey,
@@ -54,7 +52,6 @@ function envVarsForCanonicalKey(canonicalKey: string): string[] {
       .map(([alias]) => alias),
   ];
 }
-
 function readFirstEnvValue(envVars: readonly string[]) {
   for (const envVar of envVars) {
     const value = process.env[envVar]?.trim();
@@ -62,12 +59,10 @@ function readFirstEnvValue(envVars: readonly string[]) {
   }
   return null;
 }
-
 function normalizeCredentialProviderId(providerId: string): string {
   const normalizedFirstRunProvider = normalizeFirstRunProviderId(providerId);
   return normalizedFirstRunProvider ?? providerId.trim().toLowerCase();
 }
-
 function canonicalProviderEnvVar(providerId: string): string | null {
   const firstRunProvider = getFirstRunProviderOption(providerId);
   const firstRunEnvVar = firstRunProvider?.envKey;
@@ -76,7 +71,6 @@ function canonicalProviderEnvVar(providerId: string): string | null {
   }
   return MODEL_PROVIDER_SECRETS[providerId] ?? null;
 }
-
 function sourceForProvider(providerId: string): CredentialSource | null {
   const normalized = normalizeCredentialProviderId(providerId);
   const canonicalEnvVar = canonicalProviderEnvVar(normalized);
@@ -87,7 +81,6 @@ function sourceForProvider(providerId: string): CredentialSource | null {
     authType: "api-key",
   };
 }
-
 function directAccountProviderForRequest(
   providerId: string,
 ): DirectAccountProvider | null {
@@ -99,20 +92,16 @@ function directAccountProviderForRequest(
     getDirectAccountProviderForFirstRunProvider(firstRunProvider);
   return isDirectAccountProvider(directProvider) ? directProvider : null;
 }
-
 function subscriptionProviderForRequest(providerId: string): string | null {
   return getStoredSubscriptionProviderForRequest(providerId);
 }
-
 // ── Public API ───────────────────────────────────────────────────────
-
 export interface ResolvedCredential {
   providerId: string;
   envVar: string;
   apiKey: string;
   authType: "api-key" | "subscription";
 }
-
 /**
  * Resolve the real credential for a specific provider.
  */
@@ -135,7 +124,6 @@ export function resolveProviderCredential(
   }
   return null;
 }
-
 /**
  * Multi-account credential resolution. When the install has any
  * `LinkedAccountConfig` records for the requested provider, the pool
@@ -149,7 +137,10 @@ export function resolveProviderCredential(
  */
 export async function resolveProviderCredentialMulti(
   providerId: string,
-  opts?: { sessionKey?: string; exclude?: string[] },
+  opts?: {
+    sessionKey?: string;
+    exclude?: string[];
+  },
 ): Promise<ResolvedCredential | null> {
   const subscriptionProvider = subscriptionProviderForRequest(providerId);
   if (subscriptionProvider) {
@@ -189,7 +180,6 @@ export async function resolveProviderCredentialMulti(
   }
   return resolveProviderCredential(providerId);
 }
-
 /**
  * Scan all credential sources. Returns every provider that has a
  * resolvable credential on this machine.

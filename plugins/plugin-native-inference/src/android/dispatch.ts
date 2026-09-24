@@ -17,14 +17,16 @@
  * a sealed native pipe from the app's own WebView is always authorized — no
  * external attacker can inject frames into an anonymous stdio pipe.
  */
-
 import { Buffer } from "node:buffer";
-import type { AgentNotification, IAgentRuntime } from "@elizaos/core";
-import { NotificationService, ServiceType } from "@elizaos/core";
-import type { RouteHandlerResult } from "@elizaos/shared";
-import { readAliasedEnv } from "@elizaos/shared";
-import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
-
+import {
+  type AgentNotification,
+  type IAgentRuntime,
+  NotificationService,
+  ServiceType,
+} from "@elizaos/core";
+import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { type StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 /** In-process route dispatcher (from `@elizaos/agent/api`). */
 export type AndroidDispatchRoute = (args: {
   runtime: IAgentRuntime;
@@ -39,7 +41,6 @@ export type AndroidDispatchRoute = (args: {
   onChunk?: (chunk: Buffer) => void;
   onHeaders?: (status: number, headers: Record<string, string>) => void;
 }) => Promise<RouteHandlerResult | null | undefined>;
-
 /** The `http_request` / `http_request_stream` payload the native side sends. */
 export interface AndroidRequestPayload {
   method?: unknown;
@@ -48,7 +49,6 @@ export interface AndroidRequestPayload {
   body?: unknown;
   timeoutMs?: unknown;
 }
-
 /** Buffered response envelope — the exact shape the loopback path returned. */
 export interface AndroidBufferedResponse {
   status: number;
@@ -58,7 +58,6 @@ export interface AndroidBufferedResponse {
   bodyBase64: string;
   bodyEncoding: "base64";
 }
-
 function normalizeHeaderRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out: Record<string, string> = {};
@@ -70,13 +69,11 @@ function normalizeHeaderRecord(value: unknown): Record<string, string> {
   }
   return out;
 }
-
 function isSafeLocalPath(path: string): boolean {
   return (
     path.startsWith("/") && !path.startsWith("//") && !path.includes("://")
   );
 }
-
 function normalizeMethod(value: unknown): string {
   const method = (typeof value === "string" ? value : "GET")
     .trim()
@@ -86,7 +83,6 @@ function normalizeMethod(value: unknown): string {
   }
   return method;
 }
-
 function splitPathAndQuery(rawPath: string): {
   pathname: string;
   query: Record<string, string | string[]>;
@@ -102,14 +98,12 @@ function splitPathAndQuery(rawPath: string): {
   }
   return { pathname, query };
 }
-
 /** Coerce the native string/JSON body into what dispatchRoute expects on `body`. */
 function payloadBody(payload: AndroidRequestPayload): unknown {
   const raw = payload.body;
   if (raw == null) return undefined;
   return raw;
 }
-
 const STATUS_TEXT: Record<number, string> = {
   200: "OK",
   201: "Created",
@@ -131,11 +125,9 @@ const STATUS_TEXT: Record<number, string> = {
   503: "Service Unavailable",
   504: "Gateway Timeout",
 };
-
 function statusText(status: number): string {
   return STATUS_TEXT[status] ?? "";
 }
-
 function jsonResponse(
   status: number,
   body: unknown,
@@ -154,16 +146,13 @@ function jsonResponse(
     bodyEncoding: "base64",
   };
 }
-
 interface AndroidTaskServiceLike {
   runDueTasks(): Promise<unknown>;
 }
-
 // Runtime replacement can overlap an outgoing agent's final wake with the new
 // runtime's first one. Coalesce only within the same runtime so an old service
 // cannot make the replacement report success without running its own due work.
 const androidWakeInFlight = new WeakMap<IAgentRuntime, Promise<unknown>>();
-
 function headerValue(
   headers: Record<string, string>,
   name: string,
@@ -173,7 +162,6 @@ function headerValue(
   );
   return match?.[1] ?? null;
 }
-
 function secretsEqual(presented: string, expected: string): boolean {
   if (presented.length !== expected.length) return false;
   let diff = 0;
@@ -182,10 +170,10 @@ function secretsEqual(presented: string, expected: string): boolean {
   }
   return diff === 0;
 }
-
-function parseAndroidWakeBody(
-  body: unknown,
-): { kind: "refresh" | "processing"; deadlineMs: number } | null {
+function parseAndroidWakeBody(body: unknown): {
+  kind: "refresh" | "processing";
+  deadlineMs: number;
+} | null {
   let candidate = body;
   if (typeof body === "string") {
     try {
@@ -208,7 +196,6 @@ function parseAndroidWakeBody(
   }
   return { kind: record.kind, deadlineMs: record.deadlineMs };
 }
-
 function androidRequestAuthorization(
   headers: Record<string, string>,
 ): AndroidBufferedResponse | null {
@@ -222,7 +209,6 @@ function androidRequestAuthorization(
     ? null
     : jsonResponse(401, { error: "Unauthorized" });
 }
-
 async function directAndroidWakeRoute(
   runtime: IAgentRuntime,
   method: string,
@@ -231,7 +217,6 @@ async function directAndroidWakeRoute(
   body: unknown,
 ): Promise<AndroidBufferedResponse | null> {
   if (method !== "POST" || pathname !== "/api/internal/wake") return null;
-
   const expected = readAliasedEnv("ELIZA_API_TOKEN")?.trim();
   const authorization = headerValue(headers, "authorization");
   const presented = authorization?.toLowerCase().startsWith("bearer ")
@@ -240,7 +225,6 @@ async function directAndroidWakeRoute(
   if (!expected || !presented || !secretsEqual(presented, expected)) {
     return jsonResponse(401, { ok: false, error: "unauthorized" });
   }
-
   const parsed = parseAndroidWakeBody(body);
   if (!parsed) {
     return jsonResponse(400, {
@@ -249,7 +233,6 @@ async function directAndroidWakeRoute(
         'invalid body: expected { kind: "refresh" | "processing", deadlineMs: number }',
     });
   }
-
   const service = runtime.getService(ServiceType.TASK);
   if (!service || typeof Reflect.get(service, "runDueTasks") !== "function") {
     return jsonResponse(503, {
@@ -257,7 +240,6 @@ async function directAndroidWakeRoute(
       error: "task_service_unavailable",
     });
   }
-
   const startedAt = Date.now();
   if (parsed.deadlineMs <= startedAt) {
     return jsonResponse(408, { ok: false, error: "wake_deadline_expired" });
@@ -293,14 +275,18 @@ async function directAndroidWakeRoute(
     return jsonResponse(500, { ok: false, error: message });
   }
 }
-
 function runtimeAgentName(runtime: IAgentRuntime): string {
-  const character = (runtime as { character?: { name?: unknown } }).character;
+  const character = (
+    runtime as {
+      character?: {
+        name?: unknown;
+      };
+    }
+  ).character;
   return typeof character?.name === "string" && character.name.trim()
     ? character.name.trim()
     : "Eliza";
 }
-
 /** The persisted-config seams the first-run routes read/write (from @elizaos/agent). */
 export interface AndroidCoreRouteDeps {
   /** Full server kernel owns health and startup state when available. */
@@ -310,12 +296,10 @@ export interface AndroidCoreRouteDeps {
   saveElizaConfig: (config: AndroidElizaConfigLike) => void;
   hasPersistedFirstRunState: (config: AndroidElizaConfigLike) => boolean;
 }
-
 /** Structural stand-in for ElizaConfig — the bridge only touches `meta`. */
 export type AndroidElizaConfigLike = Record<string, unknown> & {
   meta?: Record<string, unknown>;
 };
-
 /**
  * Structural view of the runtime NotificationService the bridge serves the
  * `/api/notifications` surface against. The service lives on the runtime, so
@@ -335,7 +319,6 @@ interface AndroidNotificationServiceLike {
   remove: (id: string) => Promise<boolean>;
   clear: () => Promise<void>;
 }
-
 function isAndroidNotifier(
   value: unknown,
 ): value is AndroidNotificationServiceLike {
@@ -346,14 +329,12 @@ function isAndroidNotifier(
     typeof (value as AndroidNotificationServiceLike).markRead === "function"
   );
 }
-
 class AndroidUnreadOnlyError extends Error {
   constructor(message = "Invalid unreadOnly") {
     super(message);
     this.name = "AndroidUnreadOnlyError";
   }
 }
-
 function parseUnreadOnlyQuery(raw: string | string[] | undefined): boolean {
   if (Array.isArray(raw)) {
     throw new AndroidUnreadOnlyError();
@@ -369,7 +350,6 @@ function parseUnreadOnlyQuery(raw: string | string[] | undefined): boolean {
   }
   throw new AndroidUnreadOnlyError();
 }
-
 function decodeAndroidNotificationId(raw: string): string | null {
   try {
     return decodeURIComponent(raw);
@@ -379,7 +359,6 @@ function decodeAndroidNotificationId(raw: string): string | null {
     return null;
   }
 }
-
 /**
  * Serve the `/api/notifications` inbox surface over the Android UDS. These are
  * server-level routes (not plugin `runtime.routes`), so `dispatchRoute` never
@@ -404,7 +383,6 @@ async function directAndroidNotificationRoute(
   // Push-token registration is owned by the push delivery service, not the
   // inbox — leave it to the normal dispatcher.
   if (pathname.startsWith("/api/notifications/push-tokens")) return null;
-
   const service = runtime.getService(ServiceType.NOTIFICATION);
   if (!isAndroidNotifier(service)) {
     const availability = NotificationService.getAvailability(runtime);
@@ -443,7 +421,6 @@ async function directAndroidNotificationRoute(
       { "retry-after": "1" },
     );
   }
-
   if (method === "GET" && pathname === "/api/notifications") {
     const limitRaw = queryValue("limit");
     const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
@@ -474,12 +451,10 @@ async function directAndroidNotificationRoute(
       serviceStatus: "ready",
     });
   }
-
   if (method === "POST" && pathname === "/api/notifications/read-all") {
     const changed = await service.markAllRead();
     return jsonResponse(200, { changed });
   }
-
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
   if (method === "POST" && readMatch) {
     const id = decodeAndroidNotificationId(readMatch[1] ?? "");
@@ -491,12 +466,10 @@ async function directAndroidNotificationRoute(
     const ok = await service.markRead(id);
     return jsonResponse(200, { ok });
   }
-
   if (method === "DELETE" && pathname === "/api/notifications") {
     await service.clear();
     return jsonResponse(200, { ok: true });
   }
-
   const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
   if (method === "DELETE" && idMatch) {
     const id = decodeAndroidNotificationId(idMatch[1] ?? "");
@@ -508,12 +481,10 @@ async function directAndroidNotificationRoute(
     const ok = await service.remove(id);
     return jsonResponse(200, { ok });
   }
-
   // A known notifications sub-path with an unsupported verb — 404 here rather
   // than letting the plugin dispatcher's `:id` matchers mis-handle it.
   return jsonResponse(404, { error: "notification route not found" });
 }
-
 function directAndroidCoreRoute(
   runtime: IAgentRuntime,
   method: string,
@@ -527,8 +498,18 @@ function directAndroidCoreRoute(
       runtime: "ok",
       database: "ok",
       plugins: {
-        loaded: Array.isArray((runtime as { plugins?: unknown }).plugins)
-          ? ((runtime as { plugins?: unknown[] }).plugins?.length ?? 0)
+        loaded: Array.isArray(
+          (
+            runtime as {
+              plugins?: unknown;
+            }
+          ).plugins,
+        )
+          ? ((
+              runtime as {
+                plugins?: unknown[];
+              }
+            ).plugins?.length ?? 0)
           : 0,
         failed: 0,
       },
@@ -540,7 +521,6 @@ function directAndroidCoreRoute(
       androidBridge: "uds",
     });
   }
-
   if (method === "GET" && pathname === "/api/status") {
     return jsonResponse(200, {
       state: "running",
@@ -561,11 +541,9 @@ function directAndroidCoreRoute(
       androidBridge: "uds",
     });
   }
-
   if (method === "GET" && pathname === "/api/apps/runs") {
     return jsonResponse(200, []);
   }
-
   if (method === "GET" && pathname === "/api/first-run/status") {
     let complete = false;
     try {
@@ -584,7 +562,6 @@ function directAndroidCoreRoute(
       deploymentTarget: "local",
     });
   }
-
   if (method === "POST" && pathname === "/api/first-run") {
     if (!coreRoutes) {
       return jsonResponse(503, {
@@ -610,7 +587,6 @@ function directAndroidCoreRoute(
       deploymentTarget: "local",
     });
   }
-
   if (method === "GET" && pathname === "/api/auth/me") {
     return jsonResponse(200, {
       identity: {
@@ -627,7 +603,6 @@ function directAndroidCoreRoute(
       },
     });
   }
-
   if (method === "GET" && pathname === "/api/auth/status") {
     return jsonResponse(200, {
       required: false,
@@ -643,17 +618,14 @@ function directAndroidCoreRoute(
       mode: "local",
     });
   }
-
   if (method === "POST" && pathname === "/api/auth/bootstrap/exchange") {
     return jsonResponse(503, {
       error: "db_unavailable",
       reason: "db_unavailable",
     });
   }
-
   return null;
 }
-
 /** Serialize a RouteHandlerResult body to raw bytes, mirroring the HTTP path. */
 function resultBodyBytes(result: RouteHandlerResult): {
   bytes: Buffer;
@@ -678,7 +650,6 @@ function resultBodyBytes(result: RouteHandlerResult): {
   }
   return { bytes, headers };
 }
-
 function notFound(method: string, pathname: string): AndroidBufferedResponse {
   const body = JSON.stringify({
     error: `No local route for ${method} ${pathname}`,
@@ -693,7 +664,6 @@ function notFound(method: string, pathname: string): AndroidBufferedResponse {
     bodyEncoding: "base64",
   };
 }
-
 /**
  * Dispatch one buffered request in-process and return the loopback-shaped
  * envelope. Throws on an invalid path/method (the caller surfaces it as an
@@ -725,10 +695,8 @@ export async function dispatchBufferedRequest(
     payloadBody(payload),
   );
   if (wake) return wake;
-
   const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
   if (direct) return direct;
-
   const notif = await directAndroidNotificationRoute(
     runtime,
     method,
@@ -736,7 +704,6 @@ export async function dispatchBufferedRequest(
     query,
   );
   if (notif) return notif;
-
   const result = await dispatchRoute({
     runtime,
     method,
@@ -747,9 +714,7 @@ export async function dispatchBufferedRequest(
     inProcess: true,
     isAuthorized: () => true,
   });
-
   if (!result) return notFound(method, pathname);
-
   const { bytes, headers: responseHeaders } = resultBodyBytes(result);
   return {
     status: result.status,
@@ -760,7 +725,6 @@ export async function dispatchBufferedRequest(
     bodyEncoding: "base64",
   };
 }
-
 /**
  * Dispatch one streaming request in-process, pushing the response head and each
  * body fragment into `sink` as they arrive. Two sources of incremental output
@@ -795,7 +759,6 @@ export async function dispatchStreamingRequest(
     return;
   }
   const { pathname, query } = splitPathAndQuery(rawPath);
-
   const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
   if (direct) {
     sink.emitResponse({
@@ -806,7 +769,6 @@ export async function dispatchStreamingRequest(
     if (direct.bodyBase64) sink.emitChunk(direct.bodyBase64);
     return;
   }
-
   // A legacy SSE handler flushes body fragments through `res.write(...)` before
   // it resolves. `dispatchRoute` resolves only after `res.end()`, so we cannot
   // wait for the result to send the head — emit it as soon as the handler
@@ -818,7 +780,6 @@ export async function dispatchStreamingRequest(
     headSent = true;
     sink.emitResponse({ status, statusText: statusText(status), headers: h });
   };
-
   const result = await dispatchRoute({
     runtime,
     method,
@@ -836,14 +797,12 @@ export async function dispatchStreamingRequest(
       sink.emitChunk(chunk.toString("base64"));
     },
   });
-
   if (!result) {
     const nf = notFound(method, pathname);
     emitHead(nf.status, nf.headers);
     if (nf.bodyBase64) sink.emitChunk(nf.bodyBase64);
     return;
   }
-
   // Return-shape streaming handler: emit the head from the result, then iterate.
   if (result.stream) {
     emitHead(result.status, result.headers ?? {});
@@ -856,7 +815,6 @@ export async function dispatchStreamingRequest(
     }
     return;
   }
-
   // Buffered result (handler used res.json/res.send, or an SSE handler already
   // flushed via onChunk). If nothing streamed, emit the whole body as one
   // chunk so a non-streaming route still completes over the streaming channel.

@@ -3,7 +3,7 @@
  *
  * The canonical catalog (Eliza-1 tier ids, default-eligibility set,
  * `MODEL_CATALOG`, HuggingFace URL builders) lives in
- * `@elizaos/shared/local-inference`. This shim preserves the historical
+ * `@elizaos/plugin-native-inference/model-catalog`. This shim preserves the historical
  * import path `./catalog` for server-side code.
  */
 
@@ -29,15 +29,17 @@ export {
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 	type HfResolveUrlCandidate,
-	hasHuggingFaceToken,
 	isDefaultEligibleId,
 	isEliza1TierPublished,
-	isHuggingFaceHost,
 	isOnDeviceTier,
 	MODEL_CATALOG,
-	resolveHfDownloadBase,
-	resolveHubAuthHeaders,
-	resolveHuggingFaceToken,
 	tierBundleSlug,
 	tierPublishedSlug,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
+export { resolveHfDownloadBase } from "@elizaos/plugin-native-inference/model-catalog/hf-proxy";
+export {
+	hasHuggingFaceToken,
+	isHuggingFaceHost,
+	resolveHubAuthHeaders,
+	resolveHuggingFaceToken,
+} from "@elizaos/plugin-native-inference/model-catalog/hub-auth";

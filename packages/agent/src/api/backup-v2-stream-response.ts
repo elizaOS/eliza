@@ -7,14 +7,14 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import { readRequestBody } from "@elizaos/core/api/http-helpers";
 import {
   AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Request,
-  readRequestBody,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
+import { type ElizaConfig } from "../config/config.ts";
 import {
   type AgentBackupV2CaptureComponentSource,
   AgentBackupV2CaptureError,

@@ -61,7 +61,7 @@ export const readFirstRunStatusViaHttp: AgentJsonReader<
  * Coerce server option lists into the typed snapshot shape. Each option
  * is forwarded as an unknown record — the typed RPC surface enforces
  * "array of objects" but leaves the inner option shape to the existing
- * `@elizaos/shared/contracts/first-run-options` types that consumers
+ * `@elizaos/core/contracts/first-run-options` types that consumers
  * downcast to. Same boundary the HTTP route used; we are not narrowing further.
  */
 function coerceOptionList(

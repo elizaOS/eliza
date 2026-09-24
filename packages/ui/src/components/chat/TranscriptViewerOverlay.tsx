@@ -9,8 +9,11 @@
  * Mounted from a transcript attachment via `createPortal` at the shell-overlay
  * z-layer.
  */
-import type { TranscriptSegment } from "@elizaos/shared";
-import { resolveApiUrl, transcriptPlainText } from "@elizaos/shared";
+
+import {
+  type TranscriptSegment,
+  transcriptPlainText,
+} from "@elizaos/core/transcripts";
 import {
   Check,
   Copy,
@@ -29,11 +32,11 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
-import type { MessageAttachment } from "../../api";
-import { client } from "../../api";
+import { client, type MessageAttachment } from "../../api";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import { useRole } from "../../hooks/useRole";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { RoleGate } from "../RoleGate";
 import { Badge } from "../ui/badge";
@@ -44,15 +47,13 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 
 const ABSOLUTE_URL = /^(?:https?:|data:|blob:|[a-z][a-z0-9+.-]*:\/\/)/i;
-const TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS = 15_000;
-
+const TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS = 15000;
 /** Resolve an attachment URL for fetch (absolute pass-through; `/api/…` joined). */
 function resolveUrl(url: string): string {
   const trimmed = url.trim();
   if (!trimmed || ABSOLUTE_URL.test(trimmed)) return trimmed;
   return trimmed.startsWith("/") ? resolveApiUrl(trimmed) : trimmed;
 }
-
 /**
  * Maximized, editable transcript viewer. Opened by tapping a transcript chat
  * attachment ({@link MessageAttachments}). Loads the rich stored record when the
@@ -69,10 +70,14 @@ export interface TranscriptViewerOverlayProps {
   attachment: MessageAttachment;
   onClose: () => void;
 }
-
 type LoadState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
+  | {
+      status: "loading";
+    }
+  | {
+      status: "error";
+      message: string;
+    }
   | {
       status: "ready";
       title: string;
@@ -83,7 +88,6 @@ type LoadState =
       audioUrl: string | null;
       redacted: boolean;
     };
-
 /**
  * Copy-button feedback. `copied` only shows after a clipboard write actually
  * resolved; `failed` surfaces when the write rejected or the clipboard was
@@ -92,17 +96,26 @@ type LoadState =
 type CopyStatus = "idle" | "copied" | "failed";
 type ShareMode = "redacted" | "full";
 type ShareStatus =
-  | { kind: "idle" }
-  | { kind: "submitting" }
-  | { kind: "success"; message: string; entityId: string }
-  | { kind: "error"; message: string };
-
+  | {
+      kind: "idle";
+    }
+  | {
+      kind: "submitting";
+    }
+  | {
+      kind: "success";
+      message: string;
+      entityId: string;
+    }
+  | {
+      kind: "error";
+      message: string;
+    };
 function copyButtonLabel(status: CopyStatus): string {
   if (status === "copied") return "Copied";
   if (status === "failed") return "Copy failed";
   return "Copy";
 }
-
 /**
  * Pull the readable transcript text out of a not-yet-loaded attachment. Prefers
  * the server-extracted `text`; falls back to decoding the `data:`/served URL.
@@ -110,7 +123,10 @@ function copyButtonLabel(status: CopyStatus): string {
 async function readInlineText(
   att: MessageAttachment,
   signal: AbortSignal,
-): Promise<{ text: string; loadFailed?: boolean }> {
+): Promise<{
+  text: string;
+  loadFailed?: boolean;
+}> {
   if (att.text?.trim()) return { text: att.text };
   const src = resolveUrl(att.url);
   if (src.startsWith("data:")) {
@@ -147,7 +163,6 @@ async function readInlineText(
   }
   return { text: "", loadFailed: true };
 }
-
 /**
  * Rebuild segments from the edited plain text. When the edited line count
  * matches the original segments, each original segment keeps its timing +
@@ -165,7 +180,6 @@ export function segmentsFromEditedText(
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   if (lines.length === 0) return [];
-
   const parse = (line: string, label?: string) => {
     if (label) {
       const prefix = `${label}:`;
@@ -176,7 +190,6 @@ export function segmentsFromEditedText(
     const colon = line.indexOf(": ");
     return colon > 0 && colon <= 40 ? line.slice(colon + 2).trim() : line;
   };
-
   if (lines.length === original.length) {
     return original.map((seg, i) => ({
       ...seg,
@@ -184,7 +197,6 @@ export function segmentsFromEditedText(
       words: [],
     }));
   }
-
   const totalMs =
     original.length > 0
       ? (original.at(-1)?.endMs ?? lines.length * 1000)
@@ -202,7 +214,6 @@ export function segmentsFromEditedText(
     };
   });
 }
-
 export function TranscriptViewerOverlay({
   attachment,
   onClose,
@@ -222,16 +233,13 @@ export function TranscriptViewerOverlay({
   const [copyStatus, setCopyStatus] = React.useState<CopyStatus>("idle");
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
-
   const audioUrl =
     load.status === "ready" && load.audioUrl ? resolveUrl(load.audioUrl) : null;
-
   const dirty = value !== pristine;
   const title =
     load.status === "ready"
       ? load.title
       : attachment.title?.trim() || "Transcript";
-
   // Load the rich record (or the inline text) once.
   React.useEffect(() => {
     const controller = new AbortController();
@@ -289,7 +297,6 @@ export function TranscriptViewerOverlay({
       );
     };
   }, [attachment]);
-
   // Escape closes (cancel/discard).
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -298,7 +305,6 @@ export function TranscriptViewerOverlay({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
   const handleCopy = React.useCallback(async (): Promise<boolean> => {
     try {
       // Optional chaining alone is a trap: `navigator.clipboard?.writeText(v)`
@@ -320,11 +326,9 @@ export function TranscriptViewerOverlay({
       return false;
     }
   }, [value]);
-
   React.useEffect(() => {
     if (!isAdmin && shareMode === "full") setShareMode("redacted");
   }, [isAdmin, shareMode]);
-
   const handleGrantShare = React.useCallback(async () => {
     if (load.status !== "ready" || !load.transcriptId) return;
     const entityId = shareTarget.trim();
@@ -354,7 +358,6 @@ export function TranscriptViewerOverlay({
       });
     }
   }, [load, shareMode, shareTarget]);
-
   const handleRevokeShare = React.useCallback(async () => {
     if (load.status !== "ready" || !load.transcriptId) return;
     const entityId =
@@ -380,7 +383,6 @@ export function TranscriptViewerOverlay({
       });
     }
   }, [load, shareStatus, shareTarget]);
-
   const handleSaveToFiles = React.useCallback(() => {
     const safe = title.replace(/[^\w.-]+/g, "_").slice(0, 80) || "transcript";
     const blob = new Blob([value], { type: "text/markdown" });
@@ -393,14 +395,11 @@ export function TranscriptViewerOverlay({
     a.remove();
     URL.revokeObjectURL(url);
   }, [title, value]);
-
   const handleOpenInKnowledge = React.useCallback(() => {
     navigateBrowserPath("/character/documents");
     onClose();
   }, [onClose]);
-
   const resolvedId = load.status === "ready" ? load.transcriptId : null;
-
   const handleDelete = React.useCallback(async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
@@ -419,7 +418,6 @@ export function TranscriptViewerOverlay({
     }
     onClose();
   }, [confirmDelete, resolvedId, onClose]);
-
   const handleSaveAndExit = React.useCallback(async () => {
     if (!dirty) {
       onClose();
@@ -444,11 +442,8 @@ export function TranscriptViewerOverlay({
       setSaving(false);
     }
   }, [dirty, resolvedId, load, value, onClose, handleSaveToFiles]);
-
   if (typeof document === "undefined") return null;
-
   const canPersist = !!resolvedId;
-
   return createPortal(
     <div
       role="dialog"

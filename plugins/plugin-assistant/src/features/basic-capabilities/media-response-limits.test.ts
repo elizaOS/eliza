@@ -3,6 +3,8 @@
  * path, including declared oversize rejection before reading and cancellation of
  * a chunked response as soon as its running byte total crosses the cap.
  */
+
+import { MediaFetchError } from "@elizaos/core/media";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ContentType,
@@ -10,7 +12,6 @@ import {
   type Media,
   type UUID,
 } from "../../../../../packages/core/src/types/index.ts";
-import { MediaFetchError } from "../../../../../packages/shared/src/media/index.ts";
 import { processAttachments } from "./index.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000ab" as UUID;

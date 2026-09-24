@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import { test } from "vitest";
 
 // Load `.env` from the repo root when `dotenv` is available.
@@ -21,41 +21,33 @@ try {
 } catch {
   // dotenv optional
 }
-
 function getTrimmedEnv(name: string): string | null {
   const value = process.env[name]?.trim();
   return value ? value : null;
 }
-
 const VAULT_REF_PREFIX = "vault://";
-
 function isVaultRef(value: string): boolean {
   return (
     value.startsWith(VAULT_REF_PREFIX) && value.length > VAULT_REF_PREFIX.length
   );
 }
-
 function resolveLiveProviderStateDir(): string {
   const explicit = process.env.ELIZA_LIVE_PROVIDER_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
-
   const stateDir = process.env.ELIZA_STATE_DIR?.trim();
   if (stateDir) return path.resolve(stateDir);
-
   const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const xdgState = process.env.XDG_STATE_HOME?.trim();
   return xdgState
     ? path.join(xdgState, namespace)
     : path.join(homedir(), ".local", "state", namespace);
 }
-
 function resolveLiveProviderConfigPath(): string {
   const explicit = process.env.ELIZA_LIVE_PROVIDER_CONFIG_PATH?.trim();
   return explicit
     ? path.resolve(explicit)
     : path.join(resolveLiveProviderStateDir(), "eliza.json");
 }
-
 function readLocalConfigEnvValue(envVar: string): {
   value: string;
   stateDir: string;
@@ -78,15 +70,14 @@ function readLocalConfigEnvValue(envVar: string): {
     return null;
   }
 }
-
 async function resolveMaybeVaultRef(
   value: string,
-  opts: { stateDir?: string } = {},
+  opts: {
+    stateDir?: string;
+  } = {},
 ): Promise<string | null> {
   if (!isVaultRef(value)) return value.trim() || null;
-
   const vaultKey = value.slice(VAULT_REF_PREFIX.length);
-
   let vault: {
     get(key: string): Promise<string>;
     close?: () => Promise<void>;
@@ -107,7 +98,6 @@ async function resolveMaybeVaultRef(
     }
   }
 }
-
 function providerKeyMatchesSelection(
   providerName: LiveProviderName,
   apiKey: string,
@@ -116,18 +106,14 @@ function providerKeyMatchesSelection(
   if (!trimmed) {
     return false;
   }
-
   if (providerName === "openai" && /^gsk[-_]/i.test(trimmed)) {
     return false;
   }
-
   if (providerName === "openai" && /^csk[-_]/i.test(trimmed)) {
     return false;
   }
-
   return true;
 }
-
 function getLiveTestModelOverride(kind: "small" | "large"): string | null {
   return getTrimmedEnv(
     kind === "small"
@@ -135,7 +121,6 @@ function getLiveTestModelOverride(kind: "small" | "large"): string | null {
       : "ELIZA_LIVE_TEST_LARGE_MODEL",
   );
 }
-
 function getLiveTestBaseUrlOverride(
   providerName: LiveProviderName,
 ): string | null {
@@ -146,10 +131,8 @@ function getLiveTestBaseUrlOverride(
       return value;
     }
   }
-
   return null;
 }
-
 export type LiveProviderName =
   | "cerebras"
   | "groq"
@@ -157,7 +140,6 @@ export type LiveProviderName =
   | "anthropic"
   | "openrouter"
   | "local-llama-cpp";
-
 export type LiveProviderConfig = {
   name: LiveProviderName;
   apiKey: string;
@@ -169,7 +151,6 @@ export type LiveProviderConfig = {
   /** Env vars to set for the runtime process. */
   env: Record<string, string>;
 };
-
 export function getFirstRunProviderForLiveProvider(
   provider: Pick<LiveProviderConfig, "name">,
 ): string {
@@ -178,7 +159,6 @@ export function getFirstRunProviderForLiveProvider(
   }
   return provider.name;
 }
-
 export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
   "ELIZA_PROVIDER",
   "SMALL_MODEL",
@@ -195,7 +175,6 @@ export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
   "ELIZA_CLOUD_API_KEY",
   "ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
 ]);
-
 const PROVIDERS: Array<{
   name: LiveProviderName;
   plugin: string;
@@ -292,7 +271,6 @@ const PROVIDERS: Array<{
     defaultLargeModel: "eliza-1-2b",
   },
 ];
-
 for (const provider of PROVIDERS) {
   for (const key of provider.keyEnvVars) {
     LIVE_PROVIDER_ENV_KEYS.add(key);
@@ -306,7 +284,6 @@ for (const provider of PROVIDERS) {
   LIVE_PROVIDER_ENV_KEYS.add(provider.smallModelEnvVar);
   LIVE_PROVIDER_ENV_KEYS.add(provider.largeModelEnvVar);
 }
-
 /** All env var names (canonical + aliases) that may hold a key for `provider`. */
 function providerKeyEnvCandidates(provider: {
   keyEnvVars: string[];
@@ -314,7 +291,6 @@ function providerKeyEnvCandidates(provider: {
 }): string[] {
   return [...provider.keyEnvVars, ...(provider.keyEnvVarAliases ?? [])];
 }
-
 async function resolveProviderApiKey(def: {
   name: LiveProviderName;
   keyEnvVars: string[];
@@ -328,7 +304,6 @@ async function resolveProviderApiKey(def: {
       return resolved;
     }
   }
-
   for (const envVar of def.keyEnvVars) {
     const persisted = readLocalConfigEnvValue(envVar);
     if (!persisted) continue;
@@ -339,19 +314,15 @@ async function resolveProviderApiKey(def: {
       return resolved;
     }
   }
-
   return "";
 }
-
 function buildLiveProviderConfig(
   def: (typeof PROVIDERS)[number],
   apiKey: string,
 ): LiveProviderConfig {
   const baseUrl = getLiveTestBaseUrlOverride(def.name) ?? def.defaultBaseUrl;
-
   const smallModel = getLiveTestModelOverride("small") ?? def.defaultSmallModel;
   const largeModel = getLiveTestModelOverride("large") ?? def.defaultLargeModel;
-
   const env: Record<string, string> = {};
   // Propagate the discovered key under every canonical name so plugin code
   // reading e.g. `GROQ_API_KEY` finds it even when the source env only had
@@ -378,7 +349,6 @@ function buildLiveProviderConfig(
   env[def.largeModelEnvVar] = largeModel;
   env.SMALL_MODEL = smallModel;
   env.LARGE_MODEL = largeModel;
-
   return {
     name: def.name,
     apiKey,
@@ -389,7 +359,6 @@ function buildLiveProviderConfig(
     env,
   };
 }
-
 /**
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
@@ -402,7 +371,6 @@ export function selectLiveProvider(
   const candidates = preferredProvider
     ? PROVIDERS.filter((p) => p.name === preferredProvider)
     : PROVIDERS;
-
   for (const def of candidates) {
     let apiKey = "";
     for (const envVar of providerKeyEnvCandidates(def)) {
@@ -413,7 +381,6 @@ export function selectLiveProvider(
       }
     }
     if (!apiKey) continue;
-
     // Cerebras gate: CEREBRAS_API_KEY alone is for *evaluation/training*
     // (lifeops-eval-model.ts). The agent runtime should only opt into
     // Cerebras when the operator explicitly says so via ELIZA_PROVIDER or
@@ -429,13 +396,10 @@ export function selectLiveProvider(
         continue;
       }
     }
-
     return buildLiveProviderConfig(def, apiKey);
   }
-
   return null;
 }
-
 /**
  * Async selector for live harnesses that should also accept `vault://KEY`
  * sentinels and keys persisted in the local Eliza config. The synchronous
@@ -447,11 +411,9 @@ export async function selectLiveProviderAsync(
   const candidates = preferredProvider
     ? PROVIDERS.filter((p) => p.name === preferredProvider)
     : PROVIDERS;
-
   for (const def of candidates) {
     const apiKey = await resolveProviderApiKey(def);
     if (!apiKey) continue;
-
     if (def.name === "cerebras" && !preferredProvider) {
       const explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
       const explicitBaseUrl = process.env.OPENAI_BASE_URL?.trim();
@@ -461,13 +423,10 @@ export async function selectLiveProviderAsync(
         continue;
       }
     }
-
     return buildLiveProviderConfig(def, apiKey);
   }
-
   return null;
 }
-
 /**
  * Select a live provider. If none is available, register a skipped test and
  * return null so callers can branch explicitly.
@@ -482,14 +441,12 @@ export function requireLiveProvider(
   }
   return provider;
 }
-
 /**
  * Check if ELIZA_LIVE_TEST is enabled.
  */
 export function isLiveTestEnabled(): boolean {
   return process.env.ELIZA_LIVE_TEST === "1" || process.env.LIVE === "1";
 }
-
 /**
  * Returns a list of all LLM provider env var names that have keys set.
  */
@@ -504,7 +461,6 @@ export function availableProviderNames(): LiveProviderName[] {
   );
   return [...providers];
 }
-
 export function buildIsolatedLiveProviderEnv(
   baseEnv: NodeJS.ProcessEnv,
   provider: Pick<LiveProviderConfig, "env"> | null | undefined,
@@ -513,14 +469,11 @@ export function buildIsolatedLiveProviderEnv(
   for (const key of LIVE_PROVIDER_ENV_KEYS) {
     nextEnv[key] = "";
   }
-
   if (provider?.env) {
     for (const [key, value] of Object.entries(provider.env)) {
       nextEnv[key] = value;
     }
   }
-
   nextEnv.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS = "1";
-
   return nextEnv;
 }

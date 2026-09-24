@@ -5,7 +5,8 @@
  * settings-only), explicit request/re-check failures, and the initial loading
  * state.
  */
-import type { PermissionId } from "@elizaos/shared";
+
+import type { PermissionId } from "@elizaos/core/contracts/permissions";
 import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
@@ -27,10 +28,8 @@ const meta = {
     ),
   ],
 } satisfies Meta<typeof PermissionPrimingModal>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 function item(
   id: PermissionId,
   status: PrimingItemStatus,
@@ -46,7 +45,6 @@ function item(
     resolved: false,
   };
 }
-
 function controller(
   active: PrimingItem | null,
   overrides: Partial<PermissionPrimingController> = {},
@@ -68,9 +66,7 @@ function controller(
     ...overrides,
   };
 }
-
 const noop = () => {};
-
 export const Microphone: Story = {
   args: {
     ids: ["microphone"],
@@ -82,7 +78,6 @@ export const Microphone: Story = {
     }),
   },
 };
-
 export const Location: Story = {
   args: {
     ids: ["location"],
@@ -94,7 +89,6 @@ export const Location: Story = {
     }),
   },
 };
-
 export const Notifications: Story = {
   args: {
     ids: ["notifications"],
@@ -106,7 +100,6 @@ export const Notifications: Story = {
     ),
   },
 };
-
 export const Requesting: Story = {
   args: {
     ids: ["microphone"],
@@ -123,7 +116,6 @@ export const Requesting: Story = {
     }),
   },
 };
-
 export const DeniedRetryable: Story = {
   args: {
     ids: ["location"],
@@ -132,7 +124,6 @@ export const DeniedRetryable: Story = {
     controllerOverride: controller(item("location", "denied", true)),
   },
 };
-
 export const DeniedSettingsOnly: Story = {
   args: {
     ids: ["microphone"],
@@ -141,7 +132,6 @@ export const DeniedSettingsOnly: Story = {
     controllerOverride: controller(item("microphone", "denied", false)),
   },
 };
-
 export const RequestFailed: Story = {
   args: {
     ids: ["notifications"],
@@ -153,7 +143,6 @@ export const RequestFailed: Story = {
     }),
   },
 };
-
 export const RecheckFailed: Story = {
   args: {
     ids: ["notifications"],
@@ -165,7 +154,6 @@ export const RecheckFailed: Story = {
     }),
   },
 };
-
 export const Loading: Story = {
   args: {
     ids: ["microphone"],

@@ -20,9 +20,9 @@
  */
 
 import type { ResolvedSurfaceManifest, SurfaceManifest } from "@elizaos/core";
-import { dispatchNavigateViewEvent } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
-import { resolveSurfaceManifest } from "@elizaos/shared/views/surface-manifest";
+import { dispatchNavigateViewEvent } from "@elizaos/core/events";
+import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { logger } from "@elizaos/ui/logger";
 import { useEffect, useMemo, useRef } from "react";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { Card } from "../ui/card";
@@ -32,15 +32,12 @@ import {
   parseSandboxedViewRequest,
   type SandboxHostFacilities,
 } from "./sandboxed-view-broker";
-
 /** localStorage prefix that confines a framed view to its own key namespace. */
 export const SANDBOX_STORAGE_PREFIX = "eliza:sbxview:" as const;
-
 /** Build the storage key without letting view IDs and frame keys collapse into the same path. */
 export function sandboxStorageKey(viewId: string, key: string): string {
   return `${SANDBOX_STORAGE_PREFIX}${encodeURIComponent(viewId)}:${encodeURIComponent(key)}`;
 }
-
 /**
  * The concrete host facilities the broker calls for a view. Split out (and
  * exported) so tests exercise the real navigate/storage behaviour directly, and
@@ -74,13 +71,11 @@ export function createSandboxHostFacilities(
     },
   };
 }
-
 interface NavigateTarget {
   viewId: string;
   subview?: string;
   action?: string;
 }
-
 function readNavigatePayload(payload: unknown): NavigateTarget {
   if (typeof payload !== "object" || payload === null) {
     throw new Error("navigate requires a { viewId } payload");
@@ -96,12 +91,20 @@ function readNavigatePayload(payload: unknown): NavigateTarget {
     action: typeof record.action === "string" ? record.action : undefined,
   };
 }
-
 type StorageRequest =
-  | { op: "get"; key: string }
-  | { op: "set"; key: string; value: string }
-  | { op: "remove"; key: string };
-
+  | {
+      op: "get";
+      key: string;
+    }
+  | {
+      op: "set";
+      key: string;
+      value: string;
+    }
+  | {
+      op: "remove";
+      key: string;
+    };
 function readStoragePayload(payload: unknown): StorageRequest {
   if (typeof payload !== "object" || payload === null) {
     throw new Error("storage requires a { op, key } payload");
@@ -122,7 +125,6 @@ function readStoragePayload(payload: unknown): StorageRequest {
   }
   throw new Error(`storage: unknown op "${String(op)}"`);
 }
-
 interface SandboxedViewFrameProps {
   viewId: string;
   /** The view's declared manifest; resolved to gate the postMessage broker. */
@@ -142,7 +144,6 @@ interface SandboxedViewFrameProps {
   sandboxExtra?: readonly string[];
   title: string;
 }
-
 /**
  * Mount a framed view and broker its postMessage requests. The listener binds to
  * the specific frame `contentWindow` so a message from any other window (or the
@@ -172,7 +173,6 @@ export function SandboxedViewFrame({
     () => createSandboxHostFacilities(viewId),
     [viewId],
   );
-
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const frameWindow = frameRef.current?.contentWindow;
@@ -201,7 +201,6 @@ export function SandboxedViewFrame({
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [viewId, resolvedManifest, facilities]);
-
   return (
     <Card asChild variant="sandboxFrame">
       <iframe

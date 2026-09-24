@@ -7,12 +7,15 @@
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "@elizaos/core";
+import { AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION } from "@elizaos/core/contracts/agent-backup-manifest";
 import {
-  AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION,
-  AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,
+  type AgentBackupManifestV3,
+  parseAgentBackupManifestV3,
+} from "@elizaos/core/contracts/agent-backup-manifest-v3";
+import { AGENT_BACKUP_RECORD_STREAM_V1_FORMAT } from "@elizaos/core/contracts/agent-backup-record-stream-v1";
+import {
   AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
   AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT,
-  type AgentBackupManifestV3,
   type AgentBackupRestoreV3AuthorityFence,
   type AgentBackupRestoreV3AuthorityObservation,
   type AgentBackupRestoreV3CandidateReceipt,
@@ -30,13 +33,12 @@ import {
   type AgentBackupRestoreV3StagingSession,
   computeAgentBackupRestoreV3SourceAuthoritySha256,
   createAgentBackupRestoreV3CandidateSealAuthorizationRequest,
-  parseAgentBackupManifestV3,
   parseAgentBackupRestoreV3AuthorityFence,
   parseAgentBackupRestoreV3SourceAuthority,
   parseAgentBackupRestoreV3StagingSession,
   validateAgentBackupRestoreV3CandidateContext,
   validateAgentBackupRestoreV3CandidateSealAuthorization,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
 import {
   type ExactObjectRead,
   type ExactObjectReadLocator,

@@ -15,7 +15,7 @@
  * lifecycle, not by onboarding.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { getAgentPlugin } from "../bridge/native-plugins";
 import { isAndroid, isIOS } from "../platform/init";
 import {

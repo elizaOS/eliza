@@ -22,14 +22,12 @@
 			"@elizaos/core": ["../../packages/core/src/index.ts"],
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
-			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
-			"@elizaos/shared/local-inference": [
-				"../../packages/shared/src/local-inference/index.ts"
+			"@elizaos/plugin-native-inference/model-catalog": [
+				"../../plugins/plugin-native-inference/src/model-catalog/index.ts"
 			],
-			"@elizaos/shared/local-inference/*": [
-				"../../packages/shared/src/local-inference/*.ts"
+			"@elizaos/plugin-native-inference/model-catalog/*": [
+				"../plugin-native-inference/src/model-catalog/*.ts"
 			],
-			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/plugin-native-inference/host-bridge": [
 				"../plugin-native-inference/src/bridge.ts"
 			],
@@ -73,7 +71,10 @@
 			"@elizaos/plugin-native-inference": [
 				"../plugin-native-inference/src/index.ts"
 			],
-			"@elizaos/plugin-native-inference/*": ["../plugin-native-inference/src/*"]
+			"@elizaos/plugin-native-inference/*": [
+				"../plugin-native-inference/src/*"
+			],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
 		}
 	},
 	"include": ["src/**/*"],

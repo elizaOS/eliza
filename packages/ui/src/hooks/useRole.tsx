@@ -12,7 +12,7 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
-import { roleRank } from "@elizaos/shared/browser-contracts";
+import { roleRank } from "@elizaos/core/access-control/role-primitives";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /** Default to the lowest tier so a missing provider never leaks gated UI. */

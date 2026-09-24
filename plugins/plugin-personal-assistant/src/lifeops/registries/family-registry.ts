@@ -4,7 +4,7 @@
  * Lifts the closed `LIFEOPS_TELEMETRY_FAMILIES` discriminated union into an
  * open registry of namespaced bus-family identifiers. The closed union still
  * encodes the canonical telemetry payload schemas in
- * `packages/shared/src/contracts/lifeops.ts` for the built-in 11 families;
+ * `packages/core/src/contracts/lifeops.ts` for the built-in 11 families;
  * the registry tracks every family that flows through the activity-signal
  * bus, including new namespaced contributions like `health.sleep.detected`,
  * `calendar.meeting.ended`, etc.
@@ -24,7 +24,7 @@ import {
   LIFEOPS_TELEMETRY_FAMILIES,
   type LifeOpsBusFamily,
   type LifeOpsTelemetryFamily,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 
 export interface BusFamilyContribution {
   /** Open-string family identifier (built-in or namespaced). */

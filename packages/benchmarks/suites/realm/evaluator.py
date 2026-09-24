@@ -75,7 +75,7 @@ class REALMEvaluator:
         # trajectory.
         metrics.planning_time_ms = float(trajectory.planning_time_ms)
         metrics.execution_time_ms = float(trajectory.execution_time_ms)
-        metrics.tokens = int(trajectory.tokens_used)
+        metrics.tokens = trajectory.tokens_used
 
         # Adaptation metrics for the disruption problems
         if task.has_disruptions or task.problem in PROBLEMS_WITH_DISRUPTIONS:
@@ -97,6 +97,7 @@ class REALMEvaluator:
             and metrics.constraint_satisfaction >= 0.5
         )
 
+        trajectory.overall_success = success
         actions_performed = [s.action.name for s in trajectory.steps]
 
         return REALMResult(
@@ -584,7 +585,7 @@ def _adaptation_success(trajectory: PlanningTrajectory) -> float:
     """Return ratio of successful replanning attempts."""
     attempts = trajectory.replanning_attempts or []
     if not attempts:
-        return 1.0 if trajectory.overall_success else 0.0
+        return 0.0
     successful = sum(1 for a in attempts if a.get("success"))
     return successful / len(attempts)
 
@@ -627,6 +628,9 @@ class MetricsCalculator:
                 problem_rates[p] = sum(1 for r in sub if r.success) / len(sub)
                 problem_counts[p] = len(sub)
 
+        token_counts = [r.token_usage for r in results]
+        known_tokens = [t for t in token_counts if t is not None]
+        total_tokens = sum(known_tokens) if len(known_tokens) == total else None
         avg = lambda f: sum(f(r) for r in results) / total
         return REALMMetrics(
             overall_success_rate=passed / total,
@@ -642,8 +646,8 @@ class MetricsCalculator:
             avg_adaptation_success_rate=avg(lambda r: r.metrics.adaptation_success_rate),
             avg_planning_time_ms=avg(lambda r: r.metrics.planning_time_ms),
             avg_execution_time_ms=avg(lambda r: r.metrics.execution_time_ms),
-            avg_tokens_per_task=avg(lambda r: r.token_usage),
-            total_tokens=sum(r.token_usage for r in results),
+            avg_tokens_per_task=total_tokens / total if total_tokens is not None else None,
+            total_tokens=total_tokens,
             total_duration_ms=sum(r.duration_ms for r in results),
             avg_latency_ms=avg(lambda r: r.duration_ms),
         )

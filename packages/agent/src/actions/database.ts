@@ -24,7 +24,10 @@ import type {
   SearchCategoryRegistration,
 } from "@elizaos/core";
 import { logger, ModelType, toWellFormedUnicode } from "@elizaos/core";
-import type { ColumnInfo, TableInfo } from "@elizaos/shared";
+import {
+  type ColumnInfo,
+  type TableInfo,
+} from "@elizaos/core/api/agent-api-types";
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
 // ---------------------------------------------------------------------------

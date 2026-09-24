@@ -9,7 +9,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { MeetingTranscriptFinalizedPayload } from "@elizaos/shared";
+import { type MeetingTranscriptFinalizedPayload } from "@elizaos/core/meetings";
 import { LifeOpsRepository } from "../repository.js";
 import {
   extractCommitmentLedgerRecords,

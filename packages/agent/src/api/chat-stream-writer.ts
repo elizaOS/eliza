@@ -7,8 +7,8 @@ import type http from "node:http";
 import {
   type ChatToolCallEvent,
   type ChatTurnStatus,
-  DELTA_STREAM_PROTOCOL,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/chat";
+import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
 
 export function initSse(res: http.ServerResponse): void {
   res.writeHead(200, {

@@ -5,16 +5,16 @@
  * their native RPC boundary; otherwise Capacitor uses its native plugin and
  * web-flavored surfaces use the shared platform deep-link.
  */
+
 import { Capacitor } from "@capacitor/core";
-import type { PermissionId } from "@elizaos/shared";
-import { openPermissionSettings } from "@elizaos/shared";
+import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import { openPermissionSettings } from "@elizaos/core/utils/permission-deep-links";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { cn } from "../../lib/utils";
 import { openMobilePermissionSettings } from "../../platform/mobile-permissions-client";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
-
 export interface PermissionRecoveryCalloutProps {
   permission: PermissionId;
   title: string;
@@ -29,7 +29,6 @@ export interface PermissionRecoveryCalloutProps {
   className?: string;
   testId?: string;
 }
-
 function isNativeMobileRuntime(): boolean {
   try {
     return Capacitor.isNativePlatform() && !isElectrobunRuntime();
@@ -39,7 +38,6 @@ function isNativeMobileRuntime(): boolean {
     return false;
   }
 }
-
 export function PermissionRecoveryCallout({
   permission,
   title,
@@ -57,7 +55,6 @@ export function PermissionRecoveryCallout({
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState(false);
   const [retrying, setRetrying] = useState(false);
-
   const handleOpenSettings = async () => {
     setOpening(true);
     setOpenError(false);
@@ -77,7 +74,6 @@ export function PermissionRecoveryCallout({
       setOpening(false);
     }
   };
-
   const handleRetry = async () => {
     if (!onRetry) return;
     setRetrying(true);
@@ -87,7 +83,6 @@ export function PermissionRecoveryCallout({
       setRetrying(false);
     }
   };
-
   return (
     <Alert
       variant="warningStrong"

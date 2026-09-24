@@ -4,39 +4,36 @@
  * episodes (non-nap, sufficient duration, ended before now).
  */
 
-import { parseIsoMs } from "@elizaos/shared";
-import type {
-  LifeOpsPersonalBaseline,
-  LifeOpsScheduleRegularity,
-  LifeOpsSleepCycleType,
+import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import {
+  type LifeOpsPersonalBaseline,
+  type LifeOpsScheduleRegularity,
+  type LifeOpsSleepCycleType,
 } from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
-
 export interface SleepRegularityEpisodeLike {
   startAt: string;
   endAt: string | null;
   cycleType: LifeOpsSleepCycleType;
 }
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
 function round(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
   }
   return Math.round(value * 100) / 100;
 }
-
 function durationMinutes(startMs: number, endMs: number): number {
-  return Math.max(0, Math.round((endMs - startMs) / 60_000));
+  return Math.max(0, Math.round((endMs - startMs) / 60000));
 }
-
 function isRegularityEpisode(
   episode: SleepRegularityEpisodeLike,
   nowMs: number,
-): episode is SleepRegularityEpisodeLike & { endAt: string } {
+): episode is SleepRegularityEpisodeLike & {
+  endAt: string;
+} {
   const startMs = parseIsoMs(episode.startAt);
   const endMs = parseIsoMs(episode.endAt);
   if (startMs === null || endMs === null || endMs <= startMs || endMs > nowMs) {
@@ -47,12 +44,10 @@ function isRegularityEpisode(
   }
   return durationMinutes(startMs, endMs) >= 180;
 }
-
 function localMinuteOfDay(ms: number, timezone: string): number {
   const parts = getZonedDateParts(new Date(ms), timezone);
   return parts.hour * 60 + parts.minute;
 }
-
 function circularStddevMinutes(minuteValues: readonly number[]): number {
   if (minuteValues.length === 0) {
     return 0;
@@ -74,17 +69,22 @@ function circularStddevMinutes(minuteValues: readonly number[]): number {
   const stddevRadians = Math.sqrt(-2 * Math.log(meanResultantLength));
   return round(stddevRadians / angleScale);
 }
-
 function occupancyVector(args: {
-  episodes: Array<SleepRegularityEpisodeLike & { endAt: string }>;
+  episodes: Array<
+    SleepRegularityEpisodeLike & {
+      endAt: string;
+    }
+  >;
   nowMs: number;
   windowDays: number;
-}): { occupied: boolean[]; windowStartMs: number } {
+}): {
+  occupied: boolean[];
+  windowStartMs: number;
+} {
   const totalMinutes = args.windowDays * 24 * 60;
   const windowEndMs = args.nowMs;
-  const windowStartMs = windowEndMs - totalMinutes * 60_000;
+  const windowStartMs = windowEndMs - totalMinutes * 60000;
   const deltas = new Int16Array(totalMinutes + 1);
-
   for (const episode of args.episodes) {
     const startMs = parseIsoMs(episode.startAt);
     const endMs = parseIsoMs(episode.endAt);
@@ -98,16 +98,15 @@ function occupancyVector(args: {
     }
     const startIndex = Math.max(
       0,
-      Math.floor((clampedStartMs - windowStartMs) / 60_000),
+      Math.floor((clampedStartMs - windowStartMs) / 60000),
     );
     const endIndex = Math.min(
       totalMinutes,
-      Math.ceil((clampedEndMs - windowStartMs) / 60_000),
+      Math.ceil((clampedEndMs - windowStartMs) / 60000),
     );
     deltas[startIndex] += 1;
     deltas[endIndex] -= 1;
   }
-
   const occupied = new Array<boolean>(totalMinutes);
   let activeCount = 0;
   for (let index = 0; index < totalMinutes; index += 1) {
@@ -116,9 +115,12 @@ function occupancyVector(args: {
   }
   return { occupied, windowStartMs };
 }
-
 function computeSleepRegularityIndex(args: {
-  episodes: Array<SleepRegularityEpisodeLike & { endAt: string }>;
+  episodes: Array<
+    SleepRegularityEpisodeLike & {
+      endAt: string;
+    }
+  >;
   nowMs: number;
   windowDays: number;
 }): number {
@@ -140,7 +142,6 @@ function computeSleepRegularityIndex(args: {
   const agreement = matches / comparisons;
   return round(clamp(200 * agreement - 100, 0, 100));
 }
-
 function classifyRegularity(args: {
   sampleCount: number;
   sri: number;
@@ -162,7 +163,6 @@ function classifyRegularity(args: {
   }
   return "very_irregular";
 }
-
 export function computeSleepRegularity(args: {
   episodes: readonly SleepRegularityEpisodeLike[];
   timezone: string;
@@ -173,7 +173,6 @@ export function computeSleepRegularity(args: {
   const relevant = args.episodes.filter((episode) =>
     isRegularityEpisode(episode, args.nowMs),
   );
-
   if (relevant.length === 0) {
     return {
       sri: 0,
@@ -185,7 +184,6 @@ export function computeSleepRegularity(args: {
       windowDays,
     };
   }
-
   const bedtimeMinutes = relevant.map((episode) =>
     localMinuteOfDay(Date.parse(episode.startAt), args.timezone),
   );
@@ -221,9 +219,7 @@ export function computeSleepRegularity(args: {
     windowDays,
   };
 }
-
 const BASELINE_MIN_SAMPLE_COUNT = 5;
-
 function circularMeanHour(minuteValues: readonly number[]): number | null {
   if (minuteValues.length === 0) return null;
   const angleScale = (2 * Math.PI) / (24 * 60);
@@ -241,7 +237,6 @@ function circularMeanHour(minuteValues: readonly number[]): number | null {
   if (meanAngle < 0) meanAngle += 2 * Math.PI;
   return round(meanAngle / angleScale / 60);
 }
-
 function medianNumber(values: readonly number[]): number | null {
   const finiteValues = values.filter(
     (v) => typeof v === "number" && Number.isFinite(v),
@@ -260,7 +255,6 @@ function medianNumber(values: readonly number[]): number | null {
   }
   return round((lower + upper) / 2);
 }
-
 export function computePersonalBaseline(args: {
   episodes: readonly SleepRegularityEpisodeLike[];
   timezone: string;

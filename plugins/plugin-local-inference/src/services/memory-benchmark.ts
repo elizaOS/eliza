@@ -4,6 +4,7 @@
  * actual RAM cost per tier. Writes benchmark reports and reacts to arbiter
  * events for the currently loaded model.
  */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -11,7 +12,7 @@ import {
 	ELIZA_1_CONTEXT_TARGET,
 	ELIZA_1_KV_QUANT,
 	selectBestEliza1Fit,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/device-fit";
 import type { ArbiterEvent } from "./memory-arbiter";
 import type {
 	CatalogModel,
@@ -21,7 +22,6 @@ import type {
 } from "./types";
 
 const BYTES_PER_MIB = 1024 * 1024;
-
 export interface MemoryBenchmarkModelPlan {
 	modelId: string;
 	displayName: string;
@@ -38,7 +38,6 @@ export interface MemoryBenchmarkModelPlan {
 	plannedContextLength: number | null;
 	plannedKvQuant: typeof ELIZA_1_KV_QUANT | null;
 }
-
 export interface MemoryBenchmarkLoadResult {
 	modelId: string;
 	ok: boolean;
@@ -55,7 +54,6 @@ export interface MemoryBenchmarkLoadResult {
 	loadedCacheTypeV: string | null;
 	error: string | null;
 }
-
 export interface MemoryBenchmarkReport {
 	generatedAt: string;
 	host: {
@@ -82,25 +80,21 @@ export interface MemoryBenchmarkReport {
 		events: ArbiterEvent[];
 	};
 }
-
 export interface MemoryBenchmarkOptions {
 	loadInstalled?: boolean;
 	prompt?: string;
 	maxTokens?: number;
 	outFile?: string;
 }
-
 function mbFromBytes(bytes: number | undefined): number | null {
 	if (!Number.isFinite(bytes) || !bytes || bytes <= 0) return null;
 	return Math.ceil(bytes / BYTES_PER_MIB);
 }
-
 function catalogMinRamMb(model: CatalogModel): number | null {
 	return typeof model.minRamGb === "number"
 		? Math.ceil(model.minRamGb * 1024)
 		: null;
 }
-
 function estimateResidentMb(
 	model: CatalogModel,
 	installed: InstalledModel | undefined,
@@ -113,7 +107,6 @@ function estimateResidentMb(
 	if (fileMb !== null) return fileMb;
 	return Math.ceil((model.sizeGb ?? 0) * 1024);
 }
-
 function inferFit(
 	hardware: HardwareProbe,
 	model: CatalogModel,
@@ -123,7 +116,6 @@ function inferFit(
 	if (hardware.totalRamGb >= model.minRamGb) return "tight";
 	return "wontfit";
 }
-
 export function buildMemoryBenchmarkPlan(snapshot: {
 	catalog: CatalogModel[];
 	installed: InstalledModel[];
@@ -133,7 +125,6 @@ export function buildMemoryBenchmarkPlan(snapshot: {
 	const installedById = new Map(
 		snapshot.installed.map((model) => [model.id, model]),
 	);
-
 	return snapshot.catalog
 		.filter((model) => !model.hiddenFromCatalog)
 		.map((model) => {
@@ -159,17 +150,14 @@ export function buildMemoryBenchmarkPlan(snapshot: {
 			};
 		});
 }
-
 function rssMb(): number {
 	return Math.round(process.memoryUsage.rss() / BYTES_PER_MIB);
 }
-
 function generatedTokenEstimate(text: string): number {
 	const trimmed = text.trim();
 	if (!trimmed) return 0;
 	return Math.max(1, Math.ceil(trimmed.length / 4));
 }
-
 function eventCounts(
 	events: ArbiterEvent[],
 ): MemoryBenchmarkReport["telemetry"] {
@@ -184,7 +172,6 @@ function eventCounts(
 		events,
 	};
 }
-
 async function loadAndMeasure(
 	model: InstalledModel,
 	options: Required<Pick<MemoryBenchmarkOptions, "prompt" | "maxTokens">>,
@@ -203,7 +190,6 @@ async function loadAndMeasure(
 		let generatedTokens: number | null = null;
 		let generatedTokensPerSec: number | null = null;
 		let afterGenerate: number | null = null;
-
 		if (deps.engine.hasLoadedModel()) {
 			const generateStart = performance.now();
 			const text = await deps.engine.generate({
@@ -217,7 +203,6 @@ async function loadAndMeasure(
 				generateMs > 0 ? generatedTokens / (generateMs / 1000) : null;
 			afterGenerate = rssMb();
 		}
-
 		return {
 			modelId: model.id,
 			ok: state.status === "ready",
@@ -256,7 +241,6 @@ async function loadAndMeasure(
 		};
 	}
 }
-
 function hostFromHardware(
 	hardware: HardwareProbe,
 ): MemoryBenchmarkReport["host"] {
@@ -268,7 +252,6 @@ function hostFromHardware(
 		cpuCores: hardware.cpuCores,
 	};
 }
-
 function deviceFitFromHardware(
 	hardware: HardwareProbe,
 ): MemoryBenchmarkReport["deviceFit"] {
@@ -281,7 +264,6 @@ function deviceFitFromHardware(
 		reason: fit?.reason ?? null,
 	};
 }
-
 export async function buildMemoryBenchmarkReport(
 	snapshot: Pick<ModelHubSnapshot, "catalog" | "installed" | "hardware">,
 	events: ArbiterEvent[] = [],
@@ -296,7 +278,6 @@ export async function buildMemoryBenchmarkReport(
 		telemetry: eventCounts(events),
 	};
 }
-
 export async function runMemoryBenchmark(
 	options: MemoryBenchmarkOptions = {},
 ): Promise<MemoryBenchmarkReport> {
@@ -307,14 +288,12 @@ export async function runMemoryBenchmark(
 	const unsubscribe = arbiter.onEvent((event) => {
 		events.push(event);
 	});
-
 	const snapshot = await localInferenceService.snapshot();
 	const loads: MemoryBenchmarkLoadResult[] = [];
 	const prompt =
 		options.prompt ??
 		"Summarize why a curated Eliza-1 local model should choose its own memory profile.";
 	const maxTokens = options.maxTokens ?? 32;
-
 	try {
 		if (options.loadInstalled) {
 			for (const installed of snapshot.installed.filter(
@@ -333,7 +312,6 @@ export async function runMemoryBenchmark(
 	} finally {
 		unsubscribe();
 	}
-
 	const report = await buildMemoryBenchmarkReport(snapshot, events, loads);
 	if (options.outFile) {
 		await mkdir(dirname(options.outFile), { recursive: true });
@@ -341,7 +319,6 @@ export async function runMemoryBenchmark(
 	}
 	return report;
 }
-
 export function summarizeMemoryBenchmark(
 	report: MemoryBenchmarkReport,
 ): string {

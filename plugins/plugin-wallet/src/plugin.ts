@@ -5,13 +5,14 @@
  * registers the Birdeye/DexScreener/TokenInfo analytics services. `init` and
  * `dispose` fan out to each composed piece in turn.
  */
+
 import { resolveCloudRoute } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
   parseBooleanFromText,
   type ServiceClass,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { tradeRouterAction } from "./actions/trade-action.js";
 import { agentPortfolioProvider } from "./analytics/birdeye/providers/agent-portfolio-provider.js";
 import { marketProvider } from "./analytics/birdeye/providers/market.js";
@@ -42,7 +43,6 @@ const coreWalletPlugin: Plugin = {
   providers: [walletProvider, stewardTradingProvider],
   actions: [tradeRouterAction],
 };
-
 function concatServices(
   ...chunks: (readonly ServiceClass[] | undefined)[]
 ): ServiceClass[] {
@@ -52,7 +52,6 @@ function concatServices(
   }
   return out;
 }
-
 function concatPlugins<T>(...chunks: (readonly T[] | undefined)[]): T[] {
   const out: T[] = [];
   for (const c of chunks) {
@@ -60,7 +59,6 @@ function concatPlugins<T>(...chunks: (readonly T[] | undefined)[]): T[] {
   }
   return out;
 }
-
 async function initBirdeyeAnalytics(runtime: IAgentRuntime): Promise<void> {
   const birdeyeRoute = resolveCloudRoute(
     toWalletCloudRoutingSettings(runtime),
@@ -79,13 +77,11 @@ async function initBirdeyeAnalytics(runtime: IAgentRuntime): Promise<void> {
     );
     return;
   }
-
   const walletAddr = runtime.getSetting("BIRDEYE_WALLET_ADDR");
   if (walletAddr) {
     runtime.registerProvider(agentPortfolioProvider);
   }
   runtime.registerProvider(marketProvider);
-
   const beNoTrending = parseBooleanFromText(
     String(runtime.getSetting("BIRDEYE_NO_TRENDING") ?? ""),
   );
@@ -97,13 +93,11 @@ async function initBirdeyeAnalytics(runtime: IAgentRuntime): Promise<void> {
     );
   }
 }
-
 const analyticsServices: ServiceClass[] = [
   BirdeyeService,
   DexScreenerService,
   TokenInfoService,
 ] as ServiceClass[];
-
 /**
  * Single plugin surface: EVM + Solana wallet backend.
  * Consumers should depend only on `@elizaos/plugin-wallet`.
@@ -153,5 +147,4 @@ export const walletPlugin: Plugin = {
     await stewardTrading?.stop();
   },
 };
-
 export default walletPlugin;

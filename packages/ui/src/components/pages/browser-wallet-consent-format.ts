@@ -11,7 +11,7 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
+} from "@elizaos/core/utils/unicode";
 
 export function formatAddressForDisplay(address: string): string {
   if (!address) return "(unknown)";

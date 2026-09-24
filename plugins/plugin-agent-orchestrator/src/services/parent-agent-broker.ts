@@ -21,7 +21,7 @@ import { requireConfirmation, toWellFormedUnicode } from "@elizaos/core";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {

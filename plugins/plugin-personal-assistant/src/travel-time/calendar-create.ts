@@ -4,7 +4,7 @@
  * with the buffer applied, so the owner's schedule accounts for commute time.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   type CalendarEventLookupLike,
   type TravelBufferResult,

@@ -3,18 +3,17 @@
  * schema. Planner-supplied values remain authoritative; callers handle any
  * required fields that the model cannot resolve.
  */
-
 import {
   type ActionParameterSchema,
+  getRecentMessagesData,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePrompt, getRecentMessagesData } from "@elizaos/shared";
-import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
-
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { composePrompt } from "../text/template-rendering.js";
 /**
  * Schema descriptor for a single action parameter — matches the shape used
  * by Action.parameters, with the fields the extractor needs.
@@ -23,9 +22,10 @@ export interface ParamSchemaDescriptor {
   name: string;
   description: string;
   required?: boolean;
-  schema?: Omit<ActionParameterSchema, "enum"> & { enum?: readonly string[] };
+  schema?: Omit<ActionParameterSchema, "enum"> & {
+    enum?: readonly string[];
+  };
 }
-
 export interface ExtractActionParamsArgs<
   T extends object = Record<string, unknown>,
 > {
@@ -51,7 +51,6 @@ export interface ExtractActionParamsArgs<
   /** Deprecated compatibility option; extraction always sees all composed messages. */
   recentMessagesLimit?: number;
 }
-
 const EXTRACT_ACTION_PARAMS_TEMPLATE = `You are filling in missing parameters for the {{actionName}} action.
 Action description: {{actionDescription}}
 
@@ -71,7 +70,6 @@ If a value is genuinely indeterminable from the conversation, return null for th
 Example: {"subaction": "search", "query": "github"}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`;
-
 /**
  * Run a small LLM extraction call to fill in missing required params from
  * the conversation. Planner-supplied values always win; the helper only
@@ -91,7 +89,6 @@ export async function extractActionParamsViaLlm<
     requiredFields,
     modelType = ModelType.TEXT_SMALL,
   } = args;
-
   const missing = requiredFields.filter((field) => {
     const value = (existingParams as Record<string, unknown>)[field];
     return value === undefined || value === null || value === "";
@@ -99,11 +96,9 @@ export async function extractActionParamsViaLlm<
   if (missing.length === 0) {
     return existingParams;
   }
-
   const currentMessageText =
     typeof message.content.text === "string" ? message.content.text.trim() : "";
   const recentConversation = collectRecentConversation(state);
-
   const prompt = buildExtractionPrompt({
     actionName,
     actionDescription,
@@ -113,7 +108,6 @@ export async function extractActionParamsViaLlm<
     currentMessageText,
     recentConversation,
   });
-
   let response: string;
   try {
     const raw = await runtime.useModel(modelType, {
@@ -123,18 +117,14 @@ export async function extractActionParamsViaLlm<
     response = typeof raw === "string" ? raw : String(raw);
   } catch (err) {
     logger.warn(
-      `[${actionName}] LLM param extraction failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[${actionName}] LLM param extraction failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return existingParams;
   }
-
   const extracted = parseExtraction(response);
   if (!extracted) {
     return existingParams;
   }
-
   // Merge: extracted fills in missing slots only. Planner values always win
   // on collisions because the planner saw the full action surface.
   const merged: Record<string, unknown> = { ...extracted };
@@ -145,7 +135,6 @@ export async function extractActionParamsViaLlm<
   }
   return merged as Partial<T>;
 }
-
 function collectRecentConversation(state: State | undefined): string {
   if (!state) return "";
   const messages = getRecentMessagesData(state);
@@ -163,11 +152,9 @@ function collectRecentConversation(state: State | undefined): string {
     .filter((line): line is string => line !== null)
     .join("\n");
 }
-
 function getMemorySpeakerName(memory: Memory): string {
   const metadata = memory.metadata;
   if (!metadata) return "user";
-
   if (
     "sender" in metadata &&
     metadata.sender &&
@@ -177,21 +164,17 @@ function getMemorySpeakerName(memory: Memory): string {
   ) {
     return metadata.sender.name;
   }
-
   if ("entityName" in metadata && typeof metadata.entityName === "string") {
     return metadata.entityName;
   }
-
   if (
     "entityUserName" in metadata &&
     typeof metadata.entityUserName === "string"
   ) {
     return metadata.entityUserName;
   }
-
   return "user";
 }
-
 function buildExtractionPrompt(args: {
   actionName: string;
   actionDescription: string;
@@ -210,7 +193,6 @@ function buildExtractionPrompt(args: {
     currentMessageText,
     recentConversation,
   } = args;
-
   const schemaLines = paramSchema
     .map((p) => {
       const enumPart = p.schema?.enum
@@ -225,12 +207,10 @@ function buildExtractionPrompt(args: {
       return `  - ${p.name}${typePart}${enumPart}${requiredPart}: ${p.description}${schemaPart}`;
     })
     .join("\n");
-
   const existingJson = JSON.stringify(existingParams, null, 0);
   const recentConversationBlock = recentConversation
     ? `Recent conversation (oldest first):\n${recentConversation}`
     : "(no recent conversation context)";
-
   return composePrompt({
     state: {
       actionName,
@@ -244,7 +224,6 @@ function buildExtractionPrompt(args: {
     template: EXTRACT_ACTION_PARAMS_TEMPLATE,
   });
 }
-
 function parseExtraction(text: string): Record<string, unknown> | null {
   if (!text.trim()) return null;
   try {

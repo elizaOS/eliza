@@ -3,24 +3,25 @@
  * connector and project its status, scopes, and grants from the core connector
  * account manager into assistant DTOs. Shared root for the Gmail/Drive domains.
  */
+
 import {
   type ConnectorAccount,
   getConnectorAccountManager,
 } from "@elizaos/core";
-import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
 import {
   DEFAULT_SERVER_ONLY_PORT,
   isLoopbackBindHost,
   isWildcardBindHost,
-} from "@elizaos/shared";
-import type {
-  DisconnectLifeOpsGoogleConnectorRequest,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGoogleConnectorStatus,
-  StartLifeOpsGoogleConnectorRequest,
-  StartLifeOpsGoogleConnectorResponse,
+} from "@elizaos/core/runtime-env";
+import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
+import {
+  type DisconnectLifeOpsGoogleConnectorRequest,
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsGoogleConnectorStatus,
+  type StartLifeOpsGoogleConnectorRequest,
+  type StartLifeOpsGoogleConnectorResponse,
 } from "../../contracts/index.js";
 import { INTERNAL_URL } from "../access.js";
 import {
@@ -34,7 +35,7 @@ import {
   listGoogleConnectorAccounts,
   resolveGoogleConnectorAccount,
 } from "../google-plugin-delegates.js";
-import type { LifeOpsContext } from "../lifeops-context.js";
+import { type LifeOpsContext } from "../lifeops-context.js";
 import {
   fail,
   normalizeOptionalBoolean,
@@ -57,10 +58,8 @@ function servedOriginFromRequestUrl(
   requestUrl: URL,
 ): string | undefined {
   if (requestUrl.href !== INTERNAL_URL.href) return requestUrl.origin;
-
   const externalBase = nonEmptySetting(runtime, "ELIZA_EXTERNAL_BASE_URL");
   if (externalBase) return externalBase;
-
   const redirect = nonEmptySetting(runtime, "GOOGLE_REDIRECT_URI");
   if (!redirect) return undefined;
   let callback: URL;
@@ -71,7 +70,6 @@ function servedOriginFromRequestUrl(
     return undefined;
   }
   if (!isLoopbackBindHost(callback.hostname)) return undefined;
-
   const configuredBind =
     nonEmptySetting(runtime, "ELIZA_API_BIND") ?? "127.0.0.1";
   const callbackHost = callback.hostname.replace(/^\[|\]$/g, "");
@@ -88,7 +86,6 @@ function servedOriginFromRequestUrl(
     DEFAULT_SERVER_ONLY_PORT;
   return `http://${originHost}:${apiPort}`;
 }
-
 function nonEmptySetting(
   runtime: LifeOpsContext["runtime"],
   key: string,
@@ -98,7 +95,6 @@ function nonEmptySetting(
   const trimmed = value.trim();
   return trimmed || undefined;
 }
-
 function positivePortSetting(
   runtime: LifeOpsContext["runtime"],
   key: string,
@@ -106,19 +102,16 @@ function positivePortSetting(
   const value = nonEmptySetting(runtime, key);
   if (!value || !/^\d+$/.test(value)) return undefined;
   const port = Number(value);
-  return Number.isInteger(port) && port >= 1 && port <= 65_535
+  return Number.isInteger(port) && port >= 1 && port <= 65535
     ? port
     : undefined;
 }
-
 function roleForSide(side: LifeOpsConnectorSide): "OWNER" | "AGENT" {
   return side === "agent" ? "AGENT" : "OWNER";
 }
-
 function sideFromMetadata(value: unknown): LifeOpsConnectorSide {
   return value === "agent" ? "agent" : "owner";
 }
-
 function requestedScopesForCapabilities(
   capabilities: readonly string[] | undefined,
 ): string[] | undefined {
@@ -140,7 +133,6 @@ function requestedScopesForCapabilities(
     capabilities as never,
   );
 }
-
 function assertLocalMode(mode?: LifeOpsConnectorMode): void {
   if (mode && mode !== "local") {
     fail(
@@ -149,7 +141,6 @@ function assertLocalMode(mode?: LifeOpsConnectorMode): void {
     );
   }
 }
-
 function googleOAuthCallbackDegradations(
   assessment: ReturnType<typeof assessGoogleOAuthCallbackConfig>,
 ): NonNullable<LifeOpsGoogleConnectorStatus["degradations"]> {
@@ -160,7 +151,6 @@ function googleOAuthCallbackDegradations(
     retryable: true,
   }));
 }
-
 function googleOAuthCallbackMisconfigStatus(
   side: LifeOpsConnectorSide,
   assessment: ReturnType<typeof assessGoogleOAuthCallbackConfig>,
@@ -187,7 +177,6 @@ function googleOAuthCallbackMisconfigStatus(
     degradations: googleOAuthCallbackDegradations(assessment),
   };
 }
-
 function googlePluginUnavailableStatus(
   side: LifeOpsConnectorSide,
 ): LifeOpsGoogleConnectorStatus {
@@ -206,7 +195,6 @@ function googlePluginUnavailableStatus(
     ],
   };
 }
-
 /**
  * Google connector status, account listing, OAuth start/callback, and
  * disconnect logic. Extracted from the `withGoogle` mixin; the mixin now
@@ -214,7 +202,6 @@ function googlePluginUnavailableStatus(
  */
 export class GoogleDomain {
   constructor(private readonly ctx: LifeOpsContext) {}
-
   private googleConnectorManager() {
     try {
       return getConnectorAccountManager(this.ctx.runtime);
@@ -225,7 +212,6 @@ export class GoogleDomain {
       return null;
     }
   }
-
   private googleAccountStatus(
     account: ConnectorAccount,
   ): LifeOpsGoogleConnectorStatus {
@@ -236,14 +222,12 @@ export class GoogleDomain {
       availableModes: ["local"],
     });
   }
-
   public async withGoogleGrantOperation<T>(
     _grant: LifeOpsConnectorGrant,
     operation: () => Promise<T>,
   ): Promise<T> {
     return operation();
   }
-
   public async runManagedGoogleOperation<T>(
     _grant: LifeOpsConnectorGrant,
     _operation: () => Promise<T>,
@@ -253,7 +237,6 @@ export class GoogleDomain {
       "Cloud-managed Google operations were removed from LifeOps. Use @elizaos/plugin-google-workspace connector accounts.",
     );
   }
-
   public async clearGoogleConnectorData(
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
@@ -296,7 +279,6 @@ export class GoogleDomain {
       side,
     );
   }
-
   public async clearGoogleGrantData(
     grant: LifeOpsConnectorGrant,
   ): Promise<void> {
@@ -345,7 +327,6 @@ export class GoogleDomain {
       grant.side,
     );
   }
-
   public async deleteCalendarReminderPlansForEvents(
     eventIds: string[],
   ): Promise<void> {
@@ -359,7 +340,6 @@ export class GoogleDomain {
       await this.ctx.repository.deleteReminderPlan(this.ctx.agentId(), plan.id);
     }
   }
-
   public async requireGoogleCalendarGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -382,7 +362,6 @@ export class GoogleDomain {
     }
     return grant;
   }
-
   public async requireGoogleCalendarWriteGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -400,7 +379,6 @@ export class GoogleDomain {
     }
     return grant;
   }
-
   private async requireGoogleGmailConnection(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -420,7 +398,6 @@ export class GoogleDomain {
     }
     return grant;
   }
-
   public async requireGoogleGmailGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -438,7 +415,6 @@ export class GoogleDomain {
     }
     return grant;
   }
-
   public async requireGoogleGmailSendGrant(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -456,7 +432,6 @@ export class GoogleDomain {
     }
     return grant;
   }
-
   async getGoogleConnectorStatus(
     requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
@@ -509,7 +484,6 @@ export class GoogleDomain {
     }
     return disconnectedGoogleStatus(side);
   }
-
   async getGoogleConnectorAccounts(
     _requestUrl: URL,
     requestedSide?: LifeOpsConnectorSide,
@@ -533,7 +507,6 @@ export class GoogleDomain {
     }
     return accounts.map((account) => this.googleAccountStatus(account));
   }
-
   async selectGoogleConnectorMode(
     requestUrl: URL,
     preferredModeInput: LifeOpsConnectorMode | undefined,
@@ -546,7 +519,6 @@ export class GoogleDomain {
     assertLocalMode(preferredMode);
     return this.getGoogleConnectorStatus(requestUrl, "local", requestedSide);
   }
-
   async startGoogleConnector(
     request: StartLifeOpsGoogleConnectorRequest,
     requestUrl: URL,
@@ -588,7 +560,6 @@ export class GoogleDomain {
     const providerServedOrigin = servedOrigin
       ? new URL(servedOrigin).origin
       : undefined;
-
     const createNewGrant =
       normalizeOptionalBoolean(request.createNewGrant, "createNewGrant") ??
       false;
@@ -626,7 +597,6 @@ export class GoogleDomain {
       authUrl: flow.authUrl ?? "",
     };
   }
-
   async completeGoogleConnectorCallback(
     callbackUrl: URL,
   ): Promise<LifeOpsGoogleConnectorStatus> {
@@ -656,7 +626,6 @@ export class GoogleDomain {
       accountId ? googleGrantIdForAccount(accountId) : undefined,
     );
   }
-
   async disconnectGoogleConnector(
     request: DisconnectLifeOpsGoogleConnectorRequest,
     requestUrl: URL,

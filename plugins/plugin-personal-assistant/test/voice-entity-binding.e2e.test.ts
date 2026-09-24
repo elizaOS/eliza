@@ -30,11 +30,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type AgentRuntime, EventType, type Memory } from "@elizaos/core";
-// plugin-local-inference modules are imported by relative source path:
-// the package's subpath export aliases resolve to (possibly stale) dist
-// bundles in the test graph, while the root barrel resolves to src — mixing
-// them would split module identity and the injectable store seams
-// (`setVoiceEntityBindingStore` etc.) would target the wrong module copy.
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import {
   identifySpeakerAction,
   localInferencePlugin,
@@ -44,7 +40,6 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -69,15 +64,18 @@ import { voiceSpeakerFromImprintMatch } from "../../plugin-local-inference/src/s
 import { handleVoiceTurnObserved } from "../src/lifeops/entities/voice-observer-bridge.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 
+// plugin-local-inference modules are imported by relative source path:
+// the package's subpath export aliases resolve to (possibly stale) dist
+// bundles in the test graph, while the root barrel resolves to src — mixing
+// them would split module identity and the injectable store seams
+// (`setVoiceEntityBindingStore` etc.) would target the wrong module copy.
 const MODEL = WESPEAKER_RESNET34_LM_INT8_MODEL_ID;
-
 function unit(values: number[]): Float32Array {
   let sumSq = 0;
   for (const v of values) sumSq += v * v;
   const inv = sumSq > 0 ? 1 / Math.sqrt(sumSq) : 1;
   return new Float32Array(values.map((v) => v * inv));
 }
-
 /**
  * The seam under test: the production handlers both plugins register. The
  * local-inference handler array is taken from the plugin object itself; the
@@ -106,20 +104,17 @@ function buildSeamPlugin(): Plugin {
     },
   } as Plugin;
 }
-
 describe("voice → entity binding round-trip (issue #8234)", () => {
   let runtime: AgentRuntime;
   let testResult: RealTestRuntimeResult;
   let tmpRoot: string;
   let store: VoiceProfileStore;
   let entityStore: EntityStore;
-
   beforeAll(async () => {
     tmpRoot = mkdtempSync(path.join(tmpdir(), "voice-binding-e2e-"));
     store = new VoiceProfileStore({ rootDir: tmpRoot });
     await store.init();
     setVoiceEntityBindingStore(store);
-
     testResult = await createRealTestRuntime({
       characterName: "voice-binding-e2e",
       plugins: [buildSeamPlugin()],
@@ -130,14 +125,12 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     await LifeOpsRepository.bootstrapSchema(runtime);
     entityStore = new EntityStore(runtime, runtime.agentId);
     await entityStore.ensureSelf();
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     setVoiceEntityBindingStore(null);
     await testResult?.cleanup();
     rmSync(tmpRoot, { recursive: true, force: true });
   });
-
   it("registers the binding seam on the local-inference plugin object", () => {
     // (The lifeops side — personalAssistantPlugin.events[VOICE_TURN_OBSERVED] —
     // is asserted in src/lifeops/entities/voice-observer-bridge.test.ts.)
@@ -147,7 +140,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect(
       localInferencePlugin.actions?.some((a) => a.name === "IDENTIFY_SPEAKER"),
     ).toBe(true);
-
     // The HTTP bind paths must be on `plugin.routes` (rawPath) — no server
     // forwards these namespaces to the local-inference route dispatcher.
     const routes = (localInferencePlugin.routes ?? []).map(
@@ -161,7 +153,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       (localInferencePlugin.routes ?? []).every((r) => r.rawPath === true),
     ).toBe(true);
   });
-
   it("binds a self-claimed speaker through the live event round-trip", async () => {
     const profile = await store.createProfile({
       centroid: unit([1, 0, 0, 0]),
@@ -171,7 +162,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       durationMs: 4000,
     });
     expect(profile.entityId).toBeNull();
-
     // The producer half of the seam — emitEvent awaits every handler, so the
     // full round trip (merge engine → VOICE_ENTITY_BOUND → bindEntity) has
     // completed when this resolves.
@@ -181,10 +171,8 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       matchConfidence: 0.92,
       matchedEntityId: null,
     });
-
     const bound = await store.get(profile.profileId);
     expect(bound?.entityId).toBeTruthy();
-
     // The entity is real and in the PGLite-backed relationship graph, with
     // the voice identity attached by the merge engine.
     const entity = await entityStore.get(bound?.entityId ?? "");
@@ -194,7 +182,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
         (i) => i.platform === "voice" && i.handle === "cluster_jill",
       ),
     ).toBe(true);
-
     // Disk persistence: a fresh store instance sees the binding.
     const reloaded = new VoiceProfileStore({ rootDir: tmpRoot });
     await reloaded.init();
@@ -202,21 +189,18 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       bound?.entityId,
     );
   });
-
   it("re-observing the same cluster resolves to the same entity (cross-session memory)", async () => {
     const before = await store.get(
       (await store.list()).find((r) => r.imprintClusterId === "cluster_jill")
         ?.profileId ?? "",
     );
     expect(before?.entityId).toBeTruthy();
-
     await emitVoiceTurnObserved(runtime, {
       text: "morning! it's me again",
       imprintClusterId: "cluster_jill",
       matchConfidence: 0.95,
       matchedEntityId: before?.entityId ?? null,
     });
-
     const after = await store.get(before?.profileId ?? "");
     expect(after?.entityId).toBe(before?.entityId);
     const entities = await entityStore.list();
@@ -228,7 +212,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       ),
     ).toHaveLength(1);
   });
-
   it("IDENTIFY_SPEAKER binds the most recent unidentified voice by name", async () => {
     const profile = await store.createProfile({
       centroid: unit([0, 1, 0, 0]),
@@ -238,7 +221,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       durationMs: 2500,
     });
     expect(profile.entityId).toBeNull();
-
     const replies: string[] = [];
     const message = {
       content: { text: "that was Sam" },
@@ -253,7 +235,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
         return [];
       },
     );
-
     expect(result?.success).toBe(true);
     const bound = await store.get(profile.profileId);
     expect(bound?.entityId).toBeTruthy();
@@ -261,7 +242,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect(entity?.preferredName).toBe("Sam");
     expect(replies.join(" ")).toContain("Sam");
   });
-
   it("applies correction provenance and merges duplicate named entities", async () => {
     const firstSarah = await entityStore.upsert({
       entityId: "ent_voice_sarah_a",
@@ -288,12 +268,10 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       confidence: 0.85,
       durationMs: 3200,
     });
-
     const result = await identifySpeakerAction.handler(runtime, {
       id: "turn_owner_correction_sarah",
       content: { text: "that was Sarah" },
     } as unknown as Memory);
-
     expect(result?.success).toBe(true);
     const sarahs = (await entityStore.list()).filter(
       (entity) => entity.preferredName === "Sarah",
@@ -304,7 +282,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       secondSarah.entityId,
     ].sort()[0];
     expect(sarahs[0]?.entityId).toBe(expectedTargetId);
-
     const bound = await store.get(profile.profileId);
     expect(bound?.entityId).toBe(expectedTargetId);
     expect(bound?.metadata).toMatchObject({
@@ -323,7 +300,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
         ],
       },
     });
-
     const reloaded = new VoiceProfileStore({ rootDir: tmpRoot });
     await reloaded.init();
     expect((await reloaded.get(profile.profileId))?.metadata).toMatchObject({
@@ -350,11 +326,9 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
         : undefined,
     ).toBe("Sarah");
   });
-
   it("serves HTTP bind/unbind from the plugin route handlers", async () => {
     setVoiceSpeakerProfileStore(store);
     setVoiceProfilesManagementStore(store);
-
     const server = http.createServer((req, res) => {
       void (async () => {
         if (await handleVoiceSpeakerProfileRoutes(req, res)) return;
@@ -369,7 +343,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
     const base = `http://127.0.0.1:${port}`;
-
     try {
       const profile = await store.createProfile({
         centroid: unit([0, 0, 1, 0]),
@@ -386,7 +359,6 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
         visibility: "owner_agent_admin",
         state: {},
       });
-
       // Bind via the speaker-profile namespace.
       const bindRes = await fetch(
         `${base}/v1/voice/speaker-profiles/${profile.profileId}/bind`,
@@ -397,23 +369,26 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
         },
       );
       expect(bindRes.status).toBe(200);
-      const bindDto = (await bindRes.json()) as { entityId: string | null };
+      const bindDto = (await bindRes.json()) as {
+        entityId: string | null;
+      };
       expect(bindDto.entityId).toBe(contact.entityId);
       expect((await store.get(profile.profileId))?.entityId).toBe(
         contact.entityId,
       );
-
       // List reflects the binding.
       const listRes = await fetch(`${base}/v1/voice/speaker-profiles`);
       expect(listRes.status).toBe(200);
       const listDto = (await listRes.json()) as {
-        profiles: Array<{ profileId: string; entityId: string | null }>;
+        profiles: Array<{
+          profileId: string;
+          entityId: string | null;
+        }>;
       };
       expect(
         listDto.profiles.find((p) => p.profileId === profile.profileId)
           ?.entityId,
       ).toBe(contact.entityId);
-
       // Unbind via the management namespace (the VoiceProfileSection UI path).
       const unbindRes = await fetch(
         `${base}/api/voice/profiles/${profile.profileId}/unbind`,

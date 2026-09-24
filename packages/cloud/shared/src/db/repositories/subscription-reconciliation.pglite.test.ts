@@ -473,12 +473,26 @@ for (const corruption of ["missing", "stale", "corrupt"] as const)
       await database.query("DELETE FROM organization_entitlements WHERE organization_id=$1", [
         f.input.organizationId,
       ]);
-    else if (corruption === "stale")
-      await database.query(
-        "UPDATE organization_entitlements SET source_subscription_revision=1 WHERE organization_id=$1",
-        [f.input.organizationId],
+    else if (corruption === "stale") {
+      const corruptRevision = () =>
+        database.query(
+          "UPDATE organization_entitlements SET source_subscription_revision=1 WHERE organization_id=$1",
+          [f.input.organizationId],
+        );
+      await expect(corruptRevision()).rejects.toThrow("Entitlement source revision is stale");
+      // Inject historical corruption only in this isolated database; the real write
+      // guard is restored before either recovery path is exercised.
+      await database.exec(
+        "ALTER TABLE organization_entitlements DISABLE TRIGGER organization_entitlements_app_source",
       );
-    else
+      try {
+        await corruptRevision();
+      } finally {
+        await database.exec(
+          "ALTER TABLE organization_entitlements ENABLE TRIGGER organization_entitlements_app_source",
+        );
+      }
+    } else
       await database.query(
         "UPDATE organization_entitlements SET completions_rpm=completions_rpm+1 WHERE organization_id=$1",
         [f.input.organizationId],

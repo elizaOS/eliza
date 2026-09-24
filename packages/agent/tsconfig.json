@@ -99,11 +99,6 @@
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/local-inference": [
-        "../shared/src/local-inference/index.ts"
-      ],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
@@ -178,7 +173,13 @@
       ],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/plugin-anthropic": ["../../plugins/plugin-anthropic/index.ts"],
-      "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"]
+      "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"],
+      "@elizaos/plugin-native-inference/model-catalog": [
+        "../../plugins/plugin-native-inference/src/model-catalog/index.ts"
+      ],
+      "@elizaos/plugin-native-messages/bridge": [
+        "../../plugins/plugin-native-messages/src/bridge.ts"
+      ]
     }
   },
   "include": ["src", "test", "scripts/**/*.test.ts"]

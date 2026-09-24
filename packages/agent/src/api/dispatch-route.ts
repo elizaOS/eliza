@@ -38,12 +38,12 @@ import {
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+} from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
-} from "@elizaos/shared/api/runtime-route-context";
+} from "@elizaos/core/api/runtime-route-context";
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";
 

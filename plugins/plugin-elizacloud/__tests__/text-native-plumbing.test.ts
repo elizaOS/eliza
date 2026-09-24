@@ -12,21 +12,18 @@
  *
  * Skips with a yellow warning when `ELIZAOS_CLOUD_API_KEY` is not set.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleActionPlanner, handleResponseHandler } from "../src/models/text";
 
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 const REQUIRED = ["ELIZAOS_CLOUD_API_KEY"] as const;
-
 const missing = REQUIRED.filter((k) => !process.env[k]?.trim());
-
 type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
   Partial<IAgentRuntime>;
-
 function runtime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
   const merged: Record<string, string | undefined> = {
     ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY,
@@ -42,27 +39,21 @@ function runtime(settings: Record<string, string | undefined> = {}): IAgentRunti
   };
   return fixture as IAgentRuntime;
 }
-
 interface CapturedRequest {
   url: string;
   method: string;
   body: Record<string, unknown> | null;
 }
-
 if (missing.length > 0) {
   const reason = `missing required env: ${missing.join(", ")}`;
   process.env.SKIP_REASON ||= reason;
   console.warn(
-    `${YELLOW}[plugin-elizacloud live] skipped — ${reason} (set ${missing.join(
-      ", "
-    )} to enable)${RESET}`
+    `${YELLOW}[plugin-elizacloud live] skipped — ${reason} (set ${missing.join(", ")} to enable)${RESET}`
   );
 }
-
 describe.skipIf(missing.length > 0)("Eliza Cloud native planner plumbing (live)", () => {
   const captured: CapturedRequest[] = [];
   const realFetch = globalThis.fetch;
-
   beforeEach(() => {
     captured.length = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(
@@ -83,20 +74,16 @@ describe.skipIf(missing.length > 0)("Eliza Cloud native planner plumbing (live)"
       }
     );
   });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
   it("sends a real /responses call and returns generated text", async () => {
     const text = await handleResponseHandler(runtime(), {
       prompt: "Reply with exactly the single word: pong. No punctuation, no other words.",
       system: "You are a strict echo bot.",
     } as never);
-
     expect(typeof text).toBe("string");
     expect((text as string).length).toBeGreaterThan(0);
-
     const responsesCall = captured.find((c) => c.url.includes("/responses"));
     expect(responsesCall).toBeDefined();
     expect(responsesCall?.method).toBe("POST");
@@ -104,8 +91,7 @@ describe.skipIf(missing.length > 0)("Eliza Cloud native planner plumbing (live)"
     expect(typeof body.model).toBe("string");
     expect(body.model).toBe(DEFAULT_ELIZA_CLOUD_TEXT_MODEL);
     expect(Array.isArray(body.input)).toBe(true);
-  }, 120_000);
-
+  }, 120000);
   it("sends native tools, schemas, and prompt cache keys to /chat/completions and gets a tool call back", async () => {
     const result = await handleActionPlanner(runtime(), {
       prompt: "fallback prompt",
@@ -137,11 +123,9 @@ describe.skipIf(missing.length > 0)("Eliza Cloud native planner plumbing (live)"
         gateway: { caching: "auto" },
       },
     } as never);
-
     const chatCall = captured.find((c) => c.url.includes("/chat/completions"));
     expect(chatCall).toBeDefined();
     expect(chatCall?.method).toBe("POST");
-
     const body = chatCall?.body ?? {};
     expect(typeof body.model).toBe("string");
     expect(body.prompt_cache_key).toBe("agent:eliza:planner-live");
@@ -167,22 +151,29 @@ describe.skipIf(missing.length > 0)("Eliza Cloud native planner plumbing (live)"
       },
     });
     expect(body.provider_options).toEqual(body.providerOptions);
-
     expect(typeof result).toBe("object");
     expect(result).not.toBeNull();
     if (
       result &&
       typeof result === "object" &&
       "toolCalls" in result &&
-      Array.isArray((result as { toolCalls: unknown }).toolCalls)
+      Array.isArray(
+        (
+          result as {
+            toolCalls: unknown;
+          }
+        ).toolCalls
+      )
     ) {
       const toolCalls = (
         result as {
-          toolCalls: Array<{ name?: string }>;
+          toolCalls: Array<{
+            name?: string;
+          }>;
         }
       ).toolCalls;
       expect(toolCalls.length).toBeGreaterThan(0);
       expect(toolCalls[0]?.name).toBe("PLAN_ACTIONS");
     }
-  }, 120_000);
+  }, 120000);
 });

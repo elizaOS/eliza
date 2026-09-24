@@ -47,6 +47,13 @@ describe("subscription operation migrations", () => {
       for (const statement of upgrade.split("--> statement-breakpoint"))
         if (statement.trim()) await db.exec(statement);
     }
+    await db.exec(
+      await readFile(new URL("0379_subscription_account_authority.sql", import.meta.url), "utf8"),
+    );
+    const { applyAppBillingTestMigrations } = await import(
+      "../repositories/app-billing-test-migrations"
+    );
+    await applyAppBillingTestMigrations((statement) => db.exec(statement), true);
     const orm = drizzle(db);
     const [existing] = await orm.select().from(billingSubscriptionCommands);
     if (!existing) throw new Error("Migration lost the existing cancellation command");

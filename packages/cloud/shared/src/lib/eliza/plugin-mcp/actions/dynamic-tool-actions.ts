@@ -12,17 +12,18 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import {
-  type ActionParameter,
-  convertJsonSchemaToActionParams,
   generateSimiles,
   makeUniqueActionName,
+} from "@elizaos/plugin-mcp/protocol-utils/action-naming";
+import {
+  type ActionParameter,
+  convertJsonSchemaToActionParams,
   validateParamsAgainstSchema,
-} from "@elizaos/shared";
-import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
+} from "@elizaos/plugin-mcp/protocol-utils/schema-converter";
+import { type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_SERVICE_NAME } from "../types";
 import { checkMcpOAuthAccess } from "../utils/mcp";
 import { processToolResult } from "../utils/processing";
-
 export interface McpToolAction extends Omit<Action, "parameters"> {
   parameters?: ActionParameter[];
   _mcpMeta: {
@@ -31,17 +32,19 @@ export interface McpToolAction extends Omit<Action, "parameters"> {
     originalSchema: Tool["inputSchema"];
   };
 }
-
 interface McpToolActionService {
   isLazyConnection(serverName: string): boolean;
-  getServers(): { name: string; status?: string; tools?: Tool[] }[];
+  getServers(): {
+    name: string;
+    status?: string;
+    tools?: Tool[];
+  }[];
   callTool(
     serverName: string,
     toolName: string,
     params: Record<string, unknown>,
   ): Promise<CallToolResult>;
 }
-
 function extractParams(message: Memory, state?: State): Record<string, unknown> {
   const content = message.content as Record<string, unknown>;
   return (
@@ -51,12 +54,10 @@ function extractParams(message: Memory, state?: State): Record<string, unknown> 
     {}
   );
 }
-
 const MCP_ACTION_CONTEXTS = ["connectors", "automation", "documents"];
 export function normalizeMcpToolOutput(output: string): string {
   return toWellFormedUnicode(output);
 }
-
 function hasSelectedContext(state: State | undefined): boolean {
   const selected = [
     state?.data?.selectedContexts,
@@ -68,7 +69,6 @@ function hasSelectedContext(state: State | undefined): boolean {
   ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
   return selected.some((context) => MCP_ACTION_CONTEXTS.includes(String(context).toLowerCase()));
 }
-
 function collectText(message: Memory, state?: State): string {
   return [
     message.content?.text,
@@ -80,7 +80,6 @@ function collectText(message: Memory, state?: State): string {
     .join("\n")
     .toLowerCase();
 }
-
 export function createMcpToolAction(
   serverName: string,
   tool: Tool,
@@ -88,7 +87,6 @@ export function createMcpToolAction(
 ): McpToolAction {
   const actionName = makeUniqueActionName(serverName, tool.name, existingNames);
   const description = `${tool.description || `Execute ${tool.name}`} (MCP: ${serverName}/${tool.name})`;
-
   return {
     name: actionName,
     description,
@@ -97,17 +95,14 @@ export function createMcpToolAction(
     contextGate: { anyOf: MCP_ACTION_CONTEXTS },
     roleGate: { minRole: "ADMIN" },
     parameters: convertJsonSchemaToActionParams(tool.inputSchema),
-
     validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
       const svc = runtime.getService(MCP_SERVICE_NAME) as McpToolActionService | null;
       if (!svc) return false;
-
       // Check if the current user has OAuth access to this server.
       // MCP_ENABLED_SERVERS is set per-request in the request context by
       // RuntimeFactory.applyUserContext() based on the user's OAuth connections.
       // When not set (CLI, non-cloud contexts), filtering is skipped (fail-open by design).
       if (!checkMcpOAuthAccess(runtime, serverName)) return false;
-
       const text = collectText(message, state);
       const actionTerms = [
         actionName,
@@ -124,13 +119,10 @@ export function createMcpToolAction(
         .filter((term) => term.length >= 3);
       const relevant = actionTerms.some((term) => text.includes(term.toLowerCase()));
       if (!hasSelectedContext(state) && !relevant) return false;
-
       if (svc.isLazyConnection(serverName)) return true;
-
       const server = svc.getServers().find((s) => s.name === serverName);
       return server?.status === "connected" && !!server.tools?.some((t) => t.name === tool.name);
     },
-
     handler: async (
       runtime: IAgentRuntime,
       message: Memory,
@@ -146,10 +138,8 @@ export function createMcpToolAction(
           data: { actionName, serverName, toolName: tool.name },
         };
       }
-
       const params = extractParams(message, state);
       logger.info({ serverName, toolName: tool.name, params }, `[MCP] Executing ${actionName}`);
-
       const errors = validateParamsAgainstSchema(params, tool.inputSchema);
       const missing = errors.filter((e) => e.startsWith("Missing required"));
       if (missing.length > 0) {
@@ -160,12 +150,10 @@ export function createMcpToolAction(
           data: { actionName, serverName, toolName: tool.name },
         };
       }
-
       const warnings = errors.filter((e) => !e.startsWith("Missing required"));
       if (warnings.length > 0) {
         logger.warn({ warnings, params }, `[MCP] Type warnings for ${actionName}`);
       }
-
       let result: CallToolResult;
       try {
         result = await svc.callTool(serverName, tool.name, params);
@@ -195,7 +183,6 @@ export function createMcpToolAction(
         String(message.entityId ?? ""),
       );
       const normalizedToolOutput = normalizeMcpToolOutput(toolOutput);
-
       if (result.isError) {
         logger.error(
           { serverName, toolName: tool.name, output: normalizedToolOutput },
@@ -215,14 +202,12 @@ export function createMcpToolAction(
           },
         };
       }
-
       if (callback && hasAttachments && attachments.length > 0) {
         await callback({
           text: `Executed ${serverName}/${tool.name}`,
           attachments,
         });
       }
-
       return {
         success: true,
         text: normalizedToolOutput,
@@ -245,7 +230,6 @@ export function createMcpToolAction(
         },
       };
     },
-
     examples: [
       [
         { name: "{{user}}", content: { text: `Can you use ${tool.name}?` } },
@@ -258,7 +242,6 @@ export function createMcpToolAction(
         },
       ],
     ],
-
     _mcpMeta: {
       serverName,
       toolName: tool.name,
@@ -266,7 +249,6 @@ export function createMcpToolAction(
     },
   };
 }
-
 export function createMcpToolActions(
   serverName: string,
   tools: Tool[],
@@ -281,18 +263,15 @@ export function createMcpToolActions(
     );
     return action;
   });
-
   logger.info(
     { serverName, toolCount: actions.length },
     `[MCP] Created ${actions.length} actions for ${serverName}`,
   );
   return actions;
 }
-
 export function isMcpToolAction(action: Action | McpToolAction): action is McpToolAction {
   return "_mcpMeta" in action && typeof (action as McpToolAction)._mcpMeta === "object";
 }
-
 export function getMcpToolActionsForServer(
   actions: (Action | McpToolAction)[],
   serverName: string,

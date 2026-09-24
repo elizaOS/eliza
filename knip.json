@@ -117,11 +117,6 @@
       "project": ["src/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/shared": {
-      "entry": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
-      "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
-    },
     "packages/testing": {
       "entry": [
         "src/index.ts",
@@ -225,7 +220,6 @@
         "@elizaos/app-.*",
         "@elizaos/capacitor-.*",
         "@elizaos/plugin-.*",
-        "@elizaos/shared",
         "@elizaos/ui",
         "@pixiv/three-vrm",
         "llama-cpp-capacitor",
@@ -377,7 +371,6 @@
       "ignoreDependencies": [
         "@elizaos/core",
         "@elizaos/plugin-browser",
-        "@elizaos/shared",
         "@capacitor/app",
         "jsdom",
         "node-llama-cpp",

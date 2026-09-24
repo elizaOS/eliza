@@ -1,7 +1,7 @@
 /** Barrel for the entity store and identity-merge engine (contact/person/org records and dedup). */
 
+export { AUTO_MERGE_CONFIDENCE_THRESHOLD } from "@elizaos/core/knowledge-graph/merge";
 export { EntityStore } from "@elizaos/plugin-relationships";
-export { AUTO_MERGE_CONFIDENCE_THRESHOLD } from "@elizaos/shared";
 export {
   decideIdentityOutcome,
   findIdentityMatches,

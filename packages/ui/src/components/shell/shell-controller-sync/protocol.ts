@@ -12,26 +12,29 @@
  * stable `commandId` so the authority can retain its terminal outcome.
  */
 
-import type { TranscriptSegment } from "@elizaos/shared";
+import type { TranscriptSegment } from "@elizaos/core/transcripts";
 import type { ImageAttachment } from "../../../api/client-types-chat";
 import type { OsIntent } from "../../../os-intent/contract";
 import { decodeOsIntent } from "../../../os-intent/decode";
-
 /**
  * Bumped only on a breaking change to the envelope/command/snapshot shapes.
  * The native authority rejects a renderer whose version differs rather than
  * trusting a field that may have moved.
  */
 export const SHELL_SYNC_PROTOCOL_VERSION = "3";
-
 export type ShellWindowRole = "owner" | "follower";
-
 /** The command a follower asks the owner to run. Discriminated on `kind`; the
  *  owner switches exhaustively so a new command cannot be silently dropped. */
 export type ShellControllerCommand =
-  | { kind: "open" }
-  | { kind: "requestSignIn" }
-  | { kind: "close" }
+  | {
+      kind: "open";
+    }
+  | {
+      kind: "requestSignIn";
+    }
+  | {
+      kind: "close";
+    }
   | {
       kind: "send";
       text: string;
@@ -40,36 +43,73 @@ export type ShellControllerCommand =
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
     }
-  | { kind: "captureVision" }
-  | { kind: "toggleRecording" }
+  | {
+      kind: "captureVision";
+    }
+  | {
+      kind: "toggleRecording";
+    }
   | {
       kind: "startRecording";
       intent?: "converse" | "dictate" | "transcription" | "ptt";
     }
-  | { kind: "stopRecording" }
-  | { kind: "cancelRecording" }
-  | { kind: "toggleHandsFree" }
-  | { kind: "toggleTranscriptionMode" }
-  | { kind: "stopTranscriptionAndMic" }
-  | { kind: "recheckMicPermission" }
-  | { kind: "speak"; text: string }
-  | { kind: "stopSpeaking" }
-  | { kind: "toggleAgentVoiceMute" }
-  | { kind: "unlockAudio" }
-  | { kind: "setComposerHasDraft"; hasDraft: boolean }
-  | { kind: "clearConversation" }
-  | { kind: "openSettings" }
-  | { kind: "navigateHome" }
-  | { kind: "stop" }
-  | { kind: "navConversation"; direction: "prev" | "next" }
+  | {
+      kind: "stopRecording";
+    }
+  | {
+      kind: "cancelRecording";
+    }
+  | {
+      kind: "toggleHandsFree";
+    }
+  | {
+      kind: "toggleTranscriptionMode";
+    }
+  | {
+      kind: "stopTranscriptionAndMic";
+    }
+  | {
+      kind: "recheckMicPermission";
+    }
+  | {
+      kind: "speak";
+      text: string;
+    }
+  | {
+      kind: "stopSpeaking";
+    }
+  | {
+      kind: "toggleAgentVoiceMute";
+    }
+  | {
+      kind: "unlockAudio";
+    }
+  | {
+      kind: "setComposerHasDraft";
+      hasDraft: boolean;
+    }
+  | {
+      kind: "clearConversation";
+    }
+  | {
+      kind: "openSettings";
+    }
+  | {
+      kind: "navigateHome";
+    }
+  | {
+      kind: "stop";
+    }
+  | {
+      kind: "navConversation";
+      direction: "prev" | "next";
+    }
   | {
       kind: "routeOsIntent";
       intent: OsIntent;
       deliveryPolicy: "execute" | "review-send";
     };
-
 export type ShellControllerCommandKind = ShellControllerCommand["kind"];
-
 export interface ShellAuthorityState {
   endpointId: string;
   ownerEndpointId: string | null;
@@ -79,53 +119,54 @@ export interface ShellAuthorityState {
   snapshotSeq: number;
   snapshot: unknown | null;
 }
-
 export interface ShellAuthorityCommandRequest {
   generation: number;
   commandId: string;
   fromEndpointId: string;
   command: ShellControllerCommand;
 }
-
 export type ShellAuthorityDelivery =
-  | { kind: "dictation"; text: string }
-  | { kind: "composer-prefill"; text: string }
+  | {
+      kind: "dictation";
+      text: string;
+    }
+  | {
+      kind: "composer-prefill";
+      text: string;
+    }
   | {
       kind: "transcript-session";
       segments: TranscriptSegment[];
       startedAtMs: number;
       audioWav: Uint8Array | null;
     };
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function isImageAttachment(value: unknown): value is ImageAttachment {
   if (!isRecord(value)) return false;
   const thumbnail = value.thumbnail;
   return (
     typeof value.data === "string" &&
-    value.data.length <= 32_000_000 &&
+    value.data.length <= 32000000 &&
     typeof value.mimeType === "string" &&
     value.mimeType.length > 0 &&
     value.mimeType.length <= 256 &&
     typeof value.name === "string" &&
     value.name.length > 0 &&
-    value.name.length <= 2_000 &&
+    value.name.length <= 2000 &&
     (value.transcriptId === undefined ||
       (typeof value.transcriptId === "string" &&
         value.transcriptId.length > 0)) &&
     (thumbnail === undefined ||
       (isRecord(thumbnail) &&
         typeof thumbnail.data === "string" &&
-        thumbnail.data.length <= 32_000_000 &&
+        thumbnail.data.length <= 32000000 &&
         typeof thumbnail.mimeType === "string" &&
         thumbnail.mimeType.length > 0 &&
         thumbnail.mimeType.length <= 256))
   );
 }
-
 const NO_ARG_COMMANDS: ReadonlySet<ShellControllerCommandKind> = new Set([
   "open",
   "requestSignIn",
@@ -146,7 +187,6 @@ const NO_ARG_COMMANDS: ReadonlySet<ShellControllerCommandKind> = new Set([
   "navigateHome",
   "stop",
 ]);
-
 /** Deep decoder for commands received from the native authority. */
 export function parseShellControllerCommand(
   value: unknown,
@@ -159,7 +199,7 @@ export function parseShellControllerCommand(
     case "send":
       if (
         typeof value.text !== "string" ||
-        value.text.length > 1_000_000 ||
+        value.text.length > 1000000 ||
         !(
           value.channelType === undefined ||
           value.channelType === "DM" ||
@@ -191,7 +231,7 @@ export function parseShellControllerCommand(
         ? (value as unknown as ShellControllerCommand)
         : null;
     case "speak":
-      return typeof value.text === "string" && value.text.length <= 1_000_000
+      return typeof value.text === "string" && value.text.length <= 1000000
         ? { kind: "speak", text: value.text }
         : null;
     case "setComposerHasDraft":
@@ -218,7 +258,6 @@ export function parseShellControllerCommand(
       return null;
   }
 }
-
 export function parseShellAuthorityState(
   value: unknown,
 ): ShellAuthorityState | null {
@@ -254,7 +293,6 @@ export function parseShellAuthorityState(
     snapshot: value.snapshot,
   };
 }
-
 export function parseShellAuthorityCommandRequest(
   value: unknown,
 ): ShellAuthorityCommandRequest | null {
@@ -278,20 +316,19 @@ export function parseShellAuthorityCommandRequest(
     command,
   };
 }
-
 export function parseShellAuthorityDelivery(
   value: unknown,
 ): ShellAuthorityDelivery | null {
   if (!isRecord(value)) return null;
   if (value.kind === "dictation" || value.kind === "composer-prefill") {
-    return typeof value.text === "string" && value.text.length <= 1_000_000
+    return typeof value.text === "string" && value.text.length <= 1000000
       ? { kind: value.kind, text: value.text }
       : null;
   }
   if (value.kind === "transcript-session") {
     if (
       !Array.isArray(value.segments) ||
-      value.segments.length > 10_000 ||
+      value.segments.length > 10000 ||
       !value.segments.every(
         (segment) =>
           isRecord(segment) &&

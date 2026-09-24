@@ -17,7 +17,7 @@
  * is out of scope here (tracked by #14870 for ASR that these rules miss).
  */
 
-import type { TranscriptSegment } from "@elizaos/shared";
+import { type TranscriptSegment } from "@elizaos/core/transcripts";
 import type {
   ApprovalEnqueueInput,
   ApprovalPayload,

@@ -25,10 +25,10 @@ export type AppAgentState =
   | "error";
 
 export interface AppStartupSnapshot {
-  phase: AppStartupPhase;
-  agentState: AppAgentState;
-  attempt: number;
-  changedAt: number;
+  readonly phase: AppStartupPhase;
+  readonly agentState: AppAgentState;
+  readonly attempt: number;
+  readonly changedAt: number;
 }
 
 const AGENT_STATE_BY_PHASE: Record<AppStartupPhase, AppAgentState> = {
@@ -85,12 +85,12 @@ export class AppStartupStateMachine {
 
   constructor(now: () => number = Date.now) {
     this.now = now;
-    this.#snapshot = {
+    this.#snapshot = Object.freeze({
       phase: "api-binding",
       agentState: "starting",
       attempt: 0,
       changedAt: now(),
-    };
+    });
   }
 
   private readonly now: () => number;
@@ -110,12 +110,12 @@ export class AppStartupStateMachine {
       phase === "runtime-starting"
         ? this.#snapshot.attempt + 1
         : this.#snapshot.attempt;
-    this.#snapshot = {
+    this.#snapshot = Object.freeze({
       phase,
       agentState: AGENT_STATE_BY_PHASE[phase],
       attempt,
       changedAt: this.now(),
-    };
+    });
     return this.#snapshot;
   }
 }

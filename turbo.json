@@ -88,7 +88,7 @@
     "@elizaos/ui#build": {
       "dependsOn": [
         "@elizaos/core#build",
-        "@elizaos/shared#build",
+        "@elizaos/cloud-sdk#build",
         "@elizaos/capacitor-secure-store#build"
       ],
       "env": ["LOG_LEVEL"],
@@ -116,7 +116,7 @@
       "outputs": []
     },
     "@elizaos/plugin-assistant#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": ["dist/**"]
     },
     "lint": {
@@ -161,7 +161,6 @@
         "typecheck:deps",
         "^build",
         "@elizaos/core#build",
-        "@elizaos/shared#build",
         "@elizaos/ui#build",
         "@elizaos/plugin-inbox#build",
         "@elizaos/plugin-wallet#build",
@@ -259,7 +258,7 @@
       "dependsOn": [
         "typecheck:deps",
         "@elizaos/core#build",
-        "@elizaos/shared#build",
+        "^build",
         "@elizaos/plugin-computeruse#build"
       ]
     },
@@ -332,7 +331,7 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/agent#build",
-        "@elizaos/shared#build",
+        "^build",
         "@elizaos/ui#build"
       ],
       "env": [
@@ -378,7 +377,7 @@
     "@elizaos/container-control-plane#typecheck": {
       "dependsOn": [
         "typecheck:deps",
-        "@elizaos/shared#build",
+        "^build",
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
@@ -415,7 +414,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-browser#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
@@ -424,7 +423,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-mcp#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-messages#typecheck": {
       "dependsOn": [
@@ -456,7 +455,7 @@
       ]
     },
     "@elizaos/plugin-openai#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sql#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -469,7 +468,7 @@
       ]
     },
     "@elizaos/auth#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/bench-eliza-1#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -501,7 +500,7 @@
       ]
     },
     "@elizaos/gateway-discord#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/gateway-webhook#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -510,7 +509,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/os#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-benchmarks#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -535,13 +534,18 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-github#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-goals#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
     },
     "@elizaos/plugin-google-workspace#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/core#build",
+        "@elizaos/testing#build",
+        "@elizaos/plugin-assistant#build"
+      ]
     },
     "@elizaos/plugin-health#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
@@ -563,7 +567,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-meetings#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-filesystem#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -572,10 +576,10 @@
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-pty#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-slack#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sqlite#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -591,13 +595,13 @@
       "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
     },
     "@elizaos/plugin-video#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-web-search#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-workflow#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-x#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
@@ -606,7 +610,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "memperf-suite#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/ui#typecheck": {
       "dependsOn": [
@@ -616,6 +620,10 @@
     },
     "@elizaos/plugin-todos#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/ui#typecheck:deps"]
+    },
+    "@elizaos/plugin-native-inference#build": {
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": ["dist/**"]
     }
   }
 }

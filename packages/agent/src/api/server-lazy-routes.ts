@@ -7,27 +7,24 @@
  * uses the shared plugin-route matcher for lazy-load and public-route gates.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { type AgentRuntime } from "@elizaos/core";
+import { type Route } from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 
 type RouteContext = {
   method: string;
   pathname: string;
 };
-
 type RuntimeRouteOptions = {
   method: string;
   pathname: string;
   runtime: AgentRuntime | null | undefined;
 };
-
 // Builtin views are registered once at startup (server.ts). The per-request
 // path below is a safety net for the case where the first /api/views request
 // arrives before startup registration completes; gate it so it runs at most
 // once instead of on every (hot) nav request.
-
 function routeContext(args: readonly unknown[]): RouteContext | null {
   const value = args[0];
   if (!value || typeof value !== "object") return null;
@@ -37,7 +34,6 @@ function routeContext(args: readonly unknown[]): RouteContext | null {
   }
   return { method: ctx.method, pathname: ctx.pathname };
 }
-
 function matchesRuntimeRoute({
   method,
   pathname,
@@ -50,7 +46,6 @@ function matchesRuntimeRoute({
     return matchPluginRoutePath(route.path, pathname) !== null;
   });
 }
-
 function matchesHonoRuntimeRoute({
   method,
   pathname,
@@ -64,7 +59,6 @@ function matchesHonoRuntimeRoute({
     return matchPluginRoutePath(route.path, pathname) !== null;
   });
 }
-
 export function isPublicRuntimePluginRoute(options: {
   runtime: AgentRuntime | null | undefined;
   method: string;
@@ -84,7 +78,6 @@ export function isPublicRuntimePluginRoute(options: {
     return matchPluginRoutePath(route.path, pathname) !== null;
   });
 }
-
 type AccountsRoutesModule = typeof import("./accounts-routes.ts");
 export async function handleAccountsRoutes(
   ...args: Parameters<AccountsRoutesModule["handleAccountsRoutes"]>
@@ -99,7 +92,6 @@ export async function handleAccountsRoutes(
   }
   return (await import("./accounts-routes.ts")).handleAccountsRoutes(...args);
 }
-
 type AgentAdminRoutesModule = typeof import("./agent-admin-routes.ts");
 export async function handleAgentAdminRoutes(
   ...args: Parameters<AgentAdminRoutesModule["handleAgentAdminRoutes"]>
@@ -118,7 +110,6 @@ export async function handleAgentAdminRoutes(
     ...args,
   );
 }
-
 type AgentLifecycleRoutesModule = typeof import("./agent-lifecycle-routes.ts");
 export async function handleAgentLifecycleRoutes(
   ...args: Parameters<AgentLifecycleRoutesModule["handleAgentLifecycleRoutes"]>
@@ -140,7 +131,6 @@ export async function handleAgentLifecycleRoutes(
     await import("./agent-lifecycle-routes.ts")
   ).handleAgentLifecycleRoutes(...args);
 }
-
 type AgentStatusRoutesModule = typeof import("./agent-status-routes.ts");
 export async function handleAgentStatusRoutes(
   ...args: Parameters<AgentStatusRoutesModule["handleAgentStatusRoutes"]>
@@ -159,7 +149,6 @@ export async function handleAgentStatusRoutes(
     ...args,
   );
 }
-
 type AgentTransferRoutesModule = typeof import("./agent-transfer-routes.ts");
 export async function handleAgentTransferRoutes(
   ...args: Parameters<AgentTransferRoutesModule["handleAgentTransferRoutes"]>
@@ -179,7 +168,6 @@ export async function handleAgentTransferRoutes(
     ...args,
   );
 }
-
 type AppPackageRoutesModule = typeof import("./app-package-routes.ts");
 export async function handleAppPackageRoutes(
   ...args: Parameters<AppPackageRoutesModule["handleAppPackageRoutes"]>
@@ -190,7 +178,6 @@ export async function handleAppPackageRoutes(
     ...args,
   );
 }
-
 type AuthRoutesModule = typeof import("./auth-routes.ts");
 export async function handleAuthRoutes(
   ...args: Parameters<AuthRoutesModule["handleAuthRoutes"]>
@@ -199,7 +186,6 @@ export async function handleAuthRoutes(
   if (!ctx?.pathname.startsWith("/api/auth/")) return false;
   return (await import("./auth-routes.ts")).handleAuthRoutes(...args);
 }
-
 type AvatarRoutesModule = typeof import("./avatar-routes.ts");
 export async function handleAvatarRoutes(
   ...args: Parameters<AvatarRoutesModule["handleAvatarRoutes"]>
@@ -208,7 +194,6 @@ export async function handleAvatarRoutes(
   if (!ctx?.pathname.startsWith("/api/avatar/")) return false;
   return (await import("./avatar-routes.ts")).handleAvatarRoutes(...args);
 }
-
 type InteractionsRoutesModule = typeof import("./interactions-routes.ts");
 export async function handleInteractionsRoutes(
   ...args: Parameters<InteractionsRoutesModule["handleInteractionsRoutes"]>
@@ -224,7 +209,6 @@ export async function handleInteractionsRoutes(
     ...args,
   );
 }
-
 type BackgroundTasksRoutesModule =
   typeof import("./background-tasks-routes.ts");
 export async function handleBackgroundTasksRoute(
@@ -236,7 +220,6 @@ export async function handleBackgroundTasksRoute(
     await import("./background-tasks-routes.ts")
   ).handleBackgroundTasksRoute(...args);
 }
-
 type BugReportRoutesModule = typeof import("./bug-report-routes.ts");
 export async function handleBugReportRoutes(
   ...args: Parameters<BugReportRoutesModule["handleBugReportRoutes"]>
@@ -255,7 +238,6 @@ export async function handleBugReportRoutes(
     ...args,
   );
 }
-
 type CharacterRoutesModule = typeof import("./character-routes.ts");
 export async function handleCharacterRoutes(
   ...args: Parameters<CharacterRoutesModule["handleCharacterRoutes"]>
@@ -264,7 +246,6 @@ export async function handleCharacterRoutes(
   if (!ctx?.pathname.startsWith("/api/character")) return false;
   return (await import("./character-routes.ts")).handleCharacterRoutes(...args);
 }
-
 type ConfigRoutesModule = typeof import("./config-routes.ts");
 export async function handleConfigRoutes(
   ...args: Parameters<ConfigRoutesModule["handleConfigRoutes"]>
@@ -280,7 +261,6 @@ export async function handleConfigRoutes(
   }
   return (await import("./config-routes.ts")).handleConfigRoutes(...args);
 }
-
 type ConnectorRoutesModule = typeof import("./connector-routes.ts");
 export async function handleConnectorRoutes(
   ...args: Parameters<ConnectorRoutesModule["handleConnectorRoutes"]>
@@ -289,7 +269,6 @@ export async function handleConnectorRoutes(
   if (!ctx?.pathname.startsWith("/api/connectors")) return false;
   return (await import("./connector-routes.ts")).handleConnectorRoutes(...args);
 }
-
 type DiagnosticsRoutesModule = typeof import("./diagnostics-routes.ts");
 export async function handleDiagnosticsRoutes(
   ...args: Parameters<DiagnosticsRoutesModule["handleDiagnosticsRoutes"]>
@@ -309,7 +288,6 @@ export async function handleDiagnosticsRoutes(
     ...args,
   );
 }
-
 type FirstRunRoutesModule = typeof import("./first-run-routes.ts");
 export async function handleFirstRunRoutes(
   ...args: Parameters<FirstRunRoutesModule["handleFirstRunRoutes"]>
@@ -326,7 +304,6 @@ export async function handleFirstRunRoutes(
   }
   return (await import("./first-run-routes.ts")).handleFirstRunRoutes(...args);
 }
-
 type HealthRoutesModule = typeof import("./health-routes.ts");
 export async function handleHealthRoutes(
   ...args: Parameters<HealthRoutesModule["handleHealthRoutes"]>
@@ -340,7 +317,6 @@ export async function handleHealthRoutes(
   }
   return (await import("./health-routes.ts")).handleHealthRoutes(...args);
 }
-
 type MemoryRoutesModule = typeof import("./memory-routes.ts");
 export async function handleMemoryRoutes(
   ...args: Parameters<MemoryRoutesModule["handleMemoryRoutes"]>
@@ -358,7 +334,6 @@ export async function handleMemoryRoutes(
   }
   return (await import("./memory-routes.ts")).handleMemoryRoutes(...args);
 }
-
 type MiscRoutesModule = typeof import("./misc-routes.ts");
 export async function handleMiscRoutes(
   ...args: Parameters<MiscRoutesModule["handleMiscRoutes"]>
@@ -380,7 +355,6 @@ export async function handleMiscRoutes(
   }
   return (await import("./misc-routes.ts")).handleMiscRoutes(...args);
 }
-
 type MobileOptionalRoutesModule = typeof import("./mobile-optional-routes.ts");
 export async function handleMobileOptionalRoutes(
   ...args: Parameters<MobileOptionalRoutesModule["handleMobileOptionalRoutes"]>
@@ -408,7 +382,6 @@ export async function handleMobileOptionalRoutes(
     await import("./mobile-optional-routes.ts")
   ).handleMobileOptionalRoutes(...args);
 }
-
 type ModelsRoutesModule = typeof import("./models-routes.ts");
 export async function handleModelsRoutes(
   ...args: Parameters<ModelsRoutesModule["handleModelsRoutes"]>
@@ -417,7 +390,6 @@ export async function handleModelsRoutes(
   if (ctx?.pathname !== "/api/models") return false;
   return (await import("./models-routes.ts")).handleModelsRoutes(...args);
 }
-
 type ModelConfigRoutesModule = typeof import("./model-config-routes.ts");
 export async function handleModelConfigRoutes(
   ...args: Parameters<ModelConfigRoutesModule["handleModelConfigRoutes"]>
@@ -428,7 +400,6 @@ export async function handleModelConfigRoutes(
     ...args,
   );
 }
-
 type LifeOpsInboxFallbackModule =
   typeof import("./lifeops-inbox-fallback-routes.ts");
 export async function tryHandleLifeOpsInboxFallbackLazy(
@@ -436,13 +407,16 @@ export async function tryHandleLifeOpsInboxFallbackLazy(
     LifeOpsInboxFallbackModule["tryHandleLifeOpsInboxFallback"]
   >
 ): Promise<boolean> {
-  const options = args[0] as { pathname?: string } | undefined;
+  const options = args[0] as
+    | {
+        pathname?: string;
+      }
+    | undefined;
   if (options?.pathname !== "/api/lifeops/inbox") return false;
   return (
     await import("./lifeops-inbox-fallback-routes.ts")
   ).tryHandleLifeOpsInboxFallback(...args);
 }
-
 type PermissionsRoutesModule = typeof import("./permissions-routes.ts");
 export async function handlePermissionRoutes(
   ...args: Parameters<PermissionsRoutesModule["handlePermissionRoutes"]>
@@ -453,7 +427,6 @@ export async function handlePermissionRoutes(
     ...args,
   );
 }
-
 type ProjectRoutesModule = typeof import("./project-routes.ts");
 export async function handleProjectRoutes(
   ...args: Parameters<ProjectRoutesModule["handleProjectRoutes"]>
@@ -462,7 +435,6 @@ export async function handleProjectRoutes(
   if (!ctx?.pathname.startsWith("/api/projects")) return false;
   return (await import("./project-routes.ts")).handleProjectRoutes(...args);
 }
-
 type PermissionsExtraRoutesModule =
   typeof import("./permissions-routes-extra.ts");
 export async function handlePermissionsExtraRoutes(
@@ -476,7 +448,6 @@ export async function handlePermissionsExtraRoutes(
     await import("./permissions-routes-extra.ts")
   ).handlePermissionsExtraRoutes(...args);
 }
-
 type ProviderSwitchRoutesModule = typeof import("./provider-switch-routes.ts");
 export async function handleProviderSwitchRoutes(
   ...args: Parameters<ProviderSwitchRoutesModule["handleProviderSwitchRoutes"]>
@@ -487,7 +458,6 @@ export async function handleProviderSwitchRoutes(
     await import("./provider-switch-routes.ts")
   ).handleProviderSwitchRoutes(...args);
 }
-
 type RegistryRoutesModule = typeof import("./registry-routes.ts");
 export async function handleRegistryRoutes(
   ...args: Parameters<RegistryRoutesModule["handleRegistryRoutes"]>
@@ -496,7 +466,6 @@ export async function handleRegistryRoutes(
   if (!ctx?.pathname.startsWith("/api/registry")) return false;
   return (await import("./registry-routes.ts")).handleRegistryRoutes(...args);
 }
-
 type RelationshipsRoutesModule = typeof import("./relationships-routes.ts");
 export async function handleRelationshipsRoutes(
   ...args: Parameters<RelationshipsRoutesModule["handleRelationshipsRoutes"]>
@@ -507,7 +476,6 @@ export async function handleRelationshipsRoutes(
     ...args,
   );
 }
-
 type RemoteCapabilityRoutesModule =
   typeof import("./remote-capability-routes.ts");
 export async function handleRemoteCapabilityRoutes(
@@ -521,7 +489,6 @@ export async function handleRemoteCapabilityRoutes(
     await import("./remote-capability-routes.ts")
   ).handleRemoteCapabilityRoutes(...args);
 }
-
 type RouteDispatchModule = typeof import("./server-route-dispatch.ts");
 export async function handleInboxAndCloudRelayRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleInboxAndCloudRelayRouteGroup"]>
@@ -542,7 +509,6 @@ export async function handleInboxAndCloudRelayRouteGroup(
     await import("./server-route-dispatch.ts")
   ).handleInboxAndCloudRelayRouteGroup(...args);
 }
-
 export async function handleCloudAndCoreRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleCloudAndCoreRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleCloudAndCoreRouteGroup"]> {
@@ -552,7 +518,6 @@ export async function handleCloudAndCoreRouteGroup(
     await import("./server-route-dispatch.ts")
   ).handleCloudAndCoreRouteGroup(...args);
 }
-
 export async function handleSandboxRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleSandboxRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleSandboxRouteGroup"]> {
@@ -562,7 +527,6 @@ export async function handleSandboxRouteGroup(
     ...args,
   );
 }
-
 export async function handleConversationRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleConversationRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleConversationRouteGroup"]> {
@@ -582,7 +546,6 @@ export async function handleConversationRouteGroup(
     await import("./server-route-dispatch.ts")
   ).handleConversationRouteGroup(...args);
 }
-
 export async function handleDatabaseRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleDatabaseRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleDatabaseRouteGroup"]> {
@@ -592,13 +555,17 @@ export async function handleDatabaseRouteGroup(
     ...args,
   );
 }
-
 export async function handleLifeOpsRuntimePluginRoute(
   ...args: Parameters<RouteDispatchModule["handleLifeOpsRuntimePluginRoute"]>
 ): ReturnType<RouteDispatchModule["handleLifeOpsRuntimePluginRoute"]> {
   const ctx = routeContext(args);
-  const state = (args[0] as { state?: { runtime?: AgentRuntime | null } })
-    ?.state;
+  const state = (
+    args[0] as {
+      state?: {
+        runtime?: AgentRuntime | null;
+      };
+    }
+  )?.state;
   if (
     !ctx ||
     !matchesRuntimeRoute({
@@ -613,7 +580,6 @@ export async function handleLifeOpsRuntimePluginRoute(
     await import("./server-route-dispatch.ts")
   ).handleLifeOpsRuntimePluginRoute(...args);
 }
-
 type SubscriptionRoutesModule = typeof import("./subscription-routes.ts");
 export async function handleSubscriptionRoutes(
   ...args: Parameters<SubscriptionRoutesModule["handleSubscriptionRoutes"]>
@@ -624,7 +590,6 @@ export async function handleSubscriptionRoutes(
     ...args,
   );
 }
-
 type UpdateRoutesModule = typeof import("./update-routes.ts");
 export async function handleUpdateRoutes(
   ...args: Parameters<UpdateRoutesModule["handleUpdateRoutes"]>
@@ -633,7 +598,6 @@ export async function handleUpdateRoutes(
   if (!ctx?.pathname.startsWith("/api/update/")) return false;
   return (await import("./update-routes.ts")).handleUpdateRoutes(...args);
 }
-
 type ViewsRoutesModule = typeof import("./views-routes.ts");
 export async function handleViewsRoutes(
   ...args: Parameters<ViewsRoutesModule["handleViewsRoutes"]>
@@ -646,7 +610,6 @@ export async function handleViewsRoutes(
     (await import("./views-registry.ts")).registerBuiltinViews(runtime);
   return handleViewsRoutes(...args);
 }
-
 export async function registerBuiltinViews(
   runtime?: import("@elizaos/core").IAgentRuntime | null,
 ): Promise<void> {
@@ -664,7 +627,6 @@ export async function registerBuiltinViews(
     registerViewScopedActions(runtime, "@elizaos/builtin", BUILTIN_VIEWS);
   }
 }
-
 type WorkbenchRoutesModule = typeof import("./workbench-routes.ts");
 export async function handleWorkbenchRoutes(
   ...args: Parameters<WorkbenchRoutesModule["handleWorkbenchRoutes"]>
@@ -673,7 +635,6 @@ export async function handleWorkbenchRoutes(
   if (!ctx?.pathname.startsWith("/api/workbench")) return false;
   return (await import("./workbench-routes.ts")).handleWorkbenchRoutes(...args);
 }
-
 type RuntimePluginRoutesModule = typeof import("./runtime-plugin-routes.ts");
 export async function tryHandleRuntimePluginRoute(
   ...args: Parameters<RuntimePluginRoutesModule["tryHandleRuntimePluginRoute"]>
@@ -684,7 +645,6 @@ export async function tryHandleRuntimePluginRoute(
     await import("./runtime-plugin-routes.ts")
   ).tryHandleRuntimePluginRoute(...args);
 }
-
 type HonoMountModule = typeof import("./hono-mount.ts");
 export async function tryHandleHonoRuntimeRoute(
   ...args: Parameters<HonoMountModule["tryHandleHonoRuntimeRoute"]>
@@ -713,7 +673,6 @@ export async function tryHandleHonoRuntimeRoute(
   }
   return (await import("./hono-mount.ts")).tryHandleHonoRuntimeRoute(...args);
 }
-
 export async function extractConversationMetadataFromRoom(
   ...args: Parameters<
     typeof import("./conversation-metadata.ts")["extractConversationMetadataFromRoom"]
@@ -727,7 +686,6 @@ export async function extractConversationMetadataFromRoom(
     await import("./conversation-metadata.ts")
   ).extractConversationMetadataFromRoom(...args);
 }
-
 export async function createConnectorHealthMonitor(
   ...args: ConstructorParameters<
     typeof import("./connector-health.ts")["ConnectorHealthMonitor"]

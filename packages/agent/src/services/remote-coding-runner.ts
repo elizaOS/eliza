@@ -58,7 +58,7 @@ import {
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export type {
   RemoteRunnerClient,

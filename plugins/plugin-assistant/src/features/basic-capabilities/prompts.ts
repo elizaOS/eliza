@@ -1,5 +1,5 @@
 /** Authored templates for basic capabilities behavior, preserving complete model context. */
-import { registerResponsePolicy } from "../../prompts/response-policy.js";
+import { registerResponsePolicy } from "../../prompts/response-policy.ts";
 
 export const imageDescriptionTemplate = `Task: Analyze image and generate description with multiple detail levels.
 

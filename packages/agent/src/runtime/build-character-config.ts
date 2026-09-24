@@ -19,7 +19,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/core/character-presets";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyAdvancedCapabilitySettings,

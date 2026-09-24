@@ -8,20 +8,17 @@
  * the base. The base schema/hints are computed once and cached; buildConfigSchema
  * layers any plugin/connector metadata on top per call.
  */
-import { CONNECTOR_IDS } from "@elizaos/shared";
+import { CONNECTOR_IDS } from "@elizaos/core/config/schema";
 import { VERSION } from "../runtime/version.ts";
 import { isSensitiveConfigKey } from "./sensitive-keys.ts";
-
-export { CONNECTOR_IDS };
-
 import { ElizaSchema } from "./zod-schema.ts";
 
+export { CONNECTOR_IDS };
 export type ShowIfCondition = {
   field: string;
   op: "eq" | "neq" | "in" | "truthy" | "falsy";
   value?: unknown;
 };
-
 export type ConfigUiHint = {
   label?: string;
   help?: string;
@@ -91,20 +88,15 @@ export type ConfigUiHint = {
     restoreValue?: string;
   };
 };
-
 export type ConfigUiHints = Record<string, ConfigUiHint>;
-
 export type ConfigSchema = ReturnType<typeof ElizaSchema.toJSONSchema>;
-
 type JsonSchemaNode = Record<string, unknown>;
-
 export type ConfigSchemaResponse = {
   schema: ConfigSchema;
   uiHints: ConfigUiHints;
   version: string;
   generatedAt: string;
 };
-
 export type PluginUiMetadata = {
   id: string;
   name?: string;
@@ -139,7 +131,6 @@ export type PluginUiMetadata = {
   >;
   configSchema?: JsonSchemaNode;
 };
-
 export type ConnectorUiMetadata = {
   id: string;
   label?: string;
@@ -147,7 +138,6 @@ export type ConnectorUiMetadata = {
   configSchema?: JsonSchemaNode;
   configUiHints?: Record<string, ConfigUiHint>;
 };
-
 const GROUP_LABELS: Record<string, string> = {
   wizard: "Wizard",
   update: "Update",
@@ -175,7 +165,6 @@ const GROUP_LABELS: Record<string, string> = {
   presence: "Presence",
   voicewake: "Voice Wake",
 };
-
 const GROUP_ORDER: Record<string, number> = {
   wizard: 20,
   update: 25,
@@ -203,7 +192,6 @@ const GROUP_ORDER: Record<string, number> = {
   voicewake: 230,
   logging: 900,
 };
-
 const FIELD_LABELS: Record<string, string> = {
   "meta.firstRunComplete": "First Run Complete",
   "meta.lastTouchedVersion": "Config Last Touched Version",
@@ -499,7 +487,6 @@ const FIELD_LABELS: Record<string, string> = {
   "plugins.installs.*.version": "Plugin Install Version",
   "plugins.installs.*.installedAt": "Plugin Install Time",
 };
-
 const FIELD_HELP: Record<string, string> = {
   "meta.firstRunComplete":
     "Explicit first-run completion marker used to keep the app out of setup until reset.",
@@ -908,7 +895,6 @@ const FIELD_HELP: Record<string, string> = {
   "connectors.slack.dm.policy":
     'Direct message access control ("pairing" recommended). "open" requires connectors.slack.dm.allowFrom=["*"].',
 };
-
 /** Retired keyed web-search settings: WEB_SEARCH is keyless and no runtime
  * path reads these. The zod shape still accepts them so an existing config
  * validates; the settings surface never offers them. */
@@ -920,7 +906,6 @@ const RETIRED_WEB_SEARCH_PATHS = [
   "tools.web.search.perplexity.baseUrl",
   "tools.web.search.perplexity.model",
 ] as const;
-
 const FIELD_PLACEHOLDERS: Record<string, string> = {
   "gateway.remote.url": "ws://host:18789",
   "gateway.remote.tlsFingerprint": "sha256:ab12cd34…",
@@ -931,29 +916,24 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "connectors.mattermost.baseUrl": "https://chat.example.com",
   "agents.list[].identity.avatar": "avatars/eliza.png",
 };
-
 function isSensitivePath(path: string): boolean {
   return isSensitiveConfigKey(path);
 }
-
 type JsonSchemaObject = JsonSchemaNode & {
   type?: string | string[];
   properties?: Record<string, JsonSchemaObject>;
   required?: string[];
   additionalProperties?: JsonSchemaObject | boolean;
 };
-
 function cloneSchema<T>(value: T): T {
   return structuredClone(value);
 }
-
 function asSchemaObject(value: unknown): JsonSchemaObject | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
   return value as JsonSchemaObject;
 }
-
 function isObjectSchema(schema: JsonSchemaObject): boolean {
   const type = schema.type;
   if (type === "object") {
@@ -964,7 +944,6 @@ function isObjectSchema(schema: JsonSchemaObject): boolean {
   }
   return Boolean(schema.properties || schema.additionalProperties);
 }
-
 function mergeObjectSchema(
   base: JsonSchemaObject,
   extension: JsonSchemaObject,
@@ -991,7 +970,6 @@ function mergeObjectSchema(
   }
   return merged;
 }
-
 function buildBaseHints(): ConfigUiHints {
   const hints: ConfigUiHints = {};
   for (const [group, label] of Object.entries(GROUP_LABELS)) {
@@ -1018,7 +996,6 @@ function buildBaseHints(): ConfigUiHints {
   }
   return hints;
 }
-
 function applySensitiveHints(hints: ConfigUiHints): ConfigUiHints {
   const next = { ...hints };
   for (const key of Object.keys(next)) {
@@ -1028,7 +1005,6 @@ function applySensitiveHints(hints: ConfigUiHints): ConfigUiHints {
   }
   return next;
 }
-
 function applyPluginHints(
   hints: ConfigUiHints,
   plugins: PluginUiMetadata[],
@@ -1041,7 +1017,6 @@ function applyPluginHints(
     }
     const name = (plugin.name ?? id).trim() || id;
     const basePath = `plugins.entries.${id}`;
-
     next[basePath] = {
       ...next[basePath],
       label: name,
@@ -1058,7 +1033,6 @@ function applyPluginHints(
       label: `${name} Config`,
       help: `Plugin-defined config payload for ${id}.`,
     };
-
     const uiHints = plugin.configUiHints ?? {};
     for (const [relPathRaw, hint] of Object.entries(uiHints)) {
       const relPath = relPathRaw.trim().replace(/^\./, "");
@@ -1074,7 +1048,6 @@ function applyPluginHints(
   }
   return next;
 }
-
 function applyConnectorHints(
   hints: ConfigUiHints,
   connectors: ConnectorUiMetadata[],
@@ -1094,7 +1067,6 @@ function applyConnectorHints(
       ...(label ? { label } : {}),
       ...(help ? { help } : {}),
     };
-
     const uiHints = connector.configUiHints ?? {};
     for (const [relPathRaw, hint] of Object.entries(uiHints)) {
       const relPath = relPathRaw.trim().replace(/^\./, "");
@@ -1110,7 +1082,6 @@ function applyConnectorHints(
   }
   return next;
 }
-
 function listHeartbeatTargetConnectors(
   connectors: ConnectorUiMetadata[],
 ): string[] {
@@ -1134,7 +1105,6 @@ function listHeartbeatTargetConnectors(
   }
   return ordered;
 }
-
 function applyHeartbeatTargetHints(
   hints: ConfigUiHints,
   connectors: ConnectorUiMetadata[],
@@ -1159,7 +1129,6 @@ function applyHeartbeatTargetHints(
   }
   return next;
 }
-
 function applyPluginSchemas(
   schema: ConfigSchema,
   plugins: PluginUiMetadata[],
@@ -1171,11 +1140,9 @@ function applyPluginSchemas(
   if (!entriesNode) {
     return next;
   }
-
   const entryBase = asSchemaObject(entriesNode.additionalProperties);
   const entryProperties = entriesNode.properties ?? {};
   entriesNode.properties = entryProperties;
-
   for (const plugin of plugins) {
     if (!plugin.configSchema) {
       continue;
@@ -1194,17 +1161,14 @@ function applyPluginSchemas(
       isObjectSchema(pluginSchema)
         ? mergeObjectSchema(baseConfigSchema, pluginSchema)
         : cloneSchema(plugin.configSchema);
-
     entryObject.properties = {
       ...entryObject.properties,
       config: nextConfigSchema,
     };
     entryProperties[plugin.id] = entryObject;
   }
-
   return next;
 }
-
 function applyConnectorSchemas(
   schema: ConfigSchema,
   connectors: ConnectorUiMetadata[],
@@ -1217,7 +1181,6 @@ function applyConnectorSchemas(
   }
   const connectorProps = connectorsNode.properties ?? {};
   connectorsNode.properties = connectorProps;
-
   for (const connector of connectors) {
     if (!connector.configSchema) {
       continue;
@@ -1235,12 +1198,9 @@ function applyConnectorSchemas(
       connectorProps[connector.id] = cloneSchema(connector.configSchema);
     }
   }
-
   return next;
 }
-
 let cachedBase: ConfigSchemaResponse | null = null;
-
 function stripConnectorSchema(schema: ConfigSchema): ConfigSchema {
   const next = cloneSchema(schema);
   const root = asSchemaObject(next);
@@ -1255,7 +1215,6 @@ function stripConnectorSchema(schema: ConfigSchema): ConfigSchema {
   }
   return next;
 }
-
 function buildBaseConfigSchema(): ConfigSchemaResponse {
   if (cachedBase) {
     return cachedBase;
@@ -1275,7 +1234,6 @@ function buildBaseConfigSchema(): ConfigSchemaResponse {
   cachedBase = next;
   return next;
 }
-
 export function buildConfigSchema(params?: {
   plugins?: PluginUiMetadata[];
   connectors?: ConnectorUiMetadata[];

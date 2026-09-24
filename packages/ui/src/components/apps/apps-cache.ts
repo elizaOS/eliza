@@ -5,24 +5,25 @@
  * cache on any malformed or unparseable payload.
  */
 
-import type { RegistryAppInfo } from "@elizaos/shared";
+import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import { shellLocalStorage } from "../../surface-realm-channel";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";
-
 interface CacheEnvelope {
   cachedAt: number;
   apps: RegistryAppInfo[];
 }
-
 function isRegistryAppInfo(value: unknown): value is RegistryAppInfo {
   return (
     value !== null &&
     typeof value === "object" &&
-    typeof (value as { name?: unknown }).name === "string"
+    typeof (
+      value as {
+        name?: unknown;
+      }
+    ).name === "string"
   );
 }
-
 export function readAppsCache(): RegistryAppInfo[] | null {
   if (typeof window === "undefined") return null;
   try {
@@ -44,7 +45,6 @@ export function readAppsCache(): RegistryAppInfo[] | null {
     return null;
   }
 }
-
 export function writeAppsCache(apps: RegistryAppInfo[]): void {
   if (typeof window === "undefined") return;
   try {
@@ -54,7 +54,6 @@ export function writeAppsCache(apps: RegistryAppInfo[]): void {
     /* sandboxed storage — drop silently */
   }
 }
-
 export function clearAppsCache(): void {
   if (typeof window === "undefined") return;
   try {

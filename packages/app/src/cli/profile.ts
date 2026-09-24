@@ -1,7 +1,7 @@
 /**
  * Pre-Commander parsing and env wiring for the CLI's `--profile <name>` /
  * `--dev` flags, which isolate an agent's state, config, and ports under a
- * named XDG namespace. `parseCliProfileArgs` extracts and validates the profile
+ * named state directory. `parseCliProfileArgs` extracts and validates the profile
  * (rejecting `--dev` combined with `--profile`) and strips the flag from argv
  * ahead of the command word; `applyCliProfileEnv` fills ELIZA_PROFILE /
  * ELIZA_NAMESPACE / ELIZA_STATE_DIR / ELIZA_CONFIG_PATH (and the dev gateway
@@ -46,6 +46,11 @@ export function parseCliProfileArgs(argv: string[]): CliProfileParseResult {
     const arg = args[i];
     if (arg === undefined) {
       continue;
+    }
+
+    if (arg === "--") {
+      out.push(...args.slice(i));
+      break;
     }
 
     if (sawCommand) {
@@ -113,8 +118,8 @@ export function applyCliProfileEnv(params: {
   const env = params.env ?? (process.env as Record<string, string | undefined>);
   const homedir = params.homedir ?? os.homedir;
   const profile = params.profile.trim();
-  if (!profile) {
-    return;
+  if (!PROFILE_NAME_RE.test(profile)) {
+    throw new Error("Invalid profile name");
   }
 
   // Convenience only: fill defaults, never override explicit env values.

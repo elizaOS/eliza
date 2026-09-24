@@ -9,7 +9,7 @@ import {
   type StewardSessionResponse,
   type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { type Context, Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";

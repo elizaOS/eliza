@@ -17,7 +17,7 @@ import {
   type StewardOAuthProvider,
   type StewardPkcePair,
   storeStewardPkceVerifier,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   configuredStewardTenantId,
   DEFAULT_STEWARD_TENANT_ID,

@@ -11,7 +11,7 @@ import {
   ElizaError,
   stableStringify,
 } from "@elizaos/core";
-import type { LifeOpsCalendarFeed } from "@elizaos/shared";
+import { type LifeOpsCalendarFeed } from "@elizaos/core/contracts/calendar";
 
 export interface CalendarSnapshotEffectProof {
   readonly resource: EffectResourceRef;

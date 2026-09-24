@@ -13,7 +13,6 @@
     "paths": {
       "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/dist/index.d.ts"

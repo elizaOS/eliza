@@ -18,7 +18,7 @@ the raw corpus is downloaded at run time or read from a fixture and is never
 committed (per the dataset adapter contract).
 
 Output records are intentionally the transcript-span subset of
-``eliza.meeting_artifact.v1`` (packages/shared/src/meeting-artifacts.ts) that a
+``eliza.meeting_artifact.v1`` (packages/core/src/meeting-artifacts.ts) that a
 ``.vtt`` can support: ``startMs``/``endMs``/``text``/``speakerId``. Fields that a
 raw transcript cannot supply (word-level timing, confidence, overlap, media
 provenance) are left to the emitting product runtime, not fabricated here.

@@ -4,7 +4,7 @@
  * are deterministic fixtures, so the test never ends a live account session.
  */
 import { writeFile } from "node:fs/promises";
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { expect, test } from "@playwright/test";
 import {
   CLOUD_AUDIT_DEDICATED_AGENT_ID,

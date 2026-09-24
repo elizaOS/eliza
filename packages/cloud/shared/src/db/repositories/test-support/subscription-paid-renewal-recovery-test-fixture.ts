@@ -210,6 +210,31 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       )
     ).rows[0]!.count;
   }
+  test.each([
+    { plan_key: "app_monthly" },
+    { plan_key: "independent_app_plan" },
+    { billing_scope_id: randomUUID() },
+    { merchant_key: "app-merchant" },
+  ])("rejects non-organization renewal sources before provider reads: %j", async (invalid) => {
+    const f = await seed();
+    const { retrievePaidRenewalObjects } = await import(
+      "../../../lib/services/stripe-paid-renewal-objects"
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Loopback address missing");
+    const stripe = new Stripe("sk_test_cloud_e2e", {
+      host: "127.0.0.1",
+      port: address.port,
+      protocol: "http",
+      maxNetworkRetries: 0,
+    });
+    await expect(
+      retrievePaidRenewalObjects({ ...f.source, ...invalid }, f.invoice.id, stripe),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_ORGANIZATION_SOURCE_UNAVAILABLE" });
+    expect(requests).toEqual([]);
+    expect(await allowanceCount(f.source.organization_id)).toBe(0);
+    expect(writes).toBe(0);
+  });
   test("missed paid renewal heals through the existing cron without a webhook delivery", async () => {
     const f = await seed();
     expect(await allowanceCount(f.source.organization_id)).toBe(0);

@@ -4,15 +4,15 @@
  * assistant DTOs. Transport is owned by the Telegram connector plugin.
  */
 import type { SendHandlerReceipt } from "@elizaos/core";
+import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
-  type LifeOpsConnectorDegradation,
   type LifeOpsConnectorSide,
   type LifeOpsTelegramCapability,
   type LifeOpsTelegramConnectorStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
   type VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   ConnectorDeliveryEvidenceError,

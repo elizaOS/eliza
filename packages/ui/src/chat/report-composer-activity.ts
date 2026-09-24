@@ -4,16 +4,17 @@
  * client-side.
  */
 
-import { getElizaApiBase, getElizaApiToken } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+import {
+  getElizaApiBase,
+  getElizaApiToken,
+} from "@elizaos/core/utils/eliza-globals";
+import { logger } from "@elizaos/ui/logger";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
-
 export type ComposerActivityKind =
   | "typing_started"
   | "typing_paused"
   | "draft_abandoned";
-
 export interface ComposerActivityReport {
   activity: ComposerActivityKind;
   surface: string;
@@ -23,10 +24,8 @@ export interface ComposerActivityReport {
   reason?: "cleared" | "blurred" | "conversation_switched" | "unknown";
   occurredAt?: string;
 }
-
 /** Composer-activity report POST — same 15s Fal #21205 family. */
-const COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS = 15_000;
-
+const COMPOSER_ACTIVITY_FETCH_TIMEOUT_MS = 15000;
 async function postComposerActivity(args: {
   base: string;
   token?: string | null;
@@ -61,7 +60,6 @@ async function postComposerActivity(args: {
   }
   await res.arrayBuffer();
 }
-
 /** Report composer lifecycle metadata to the agent without blocking input. */
 export function reportComposerActivity(report: ComposerActivityReport): void {
   try {

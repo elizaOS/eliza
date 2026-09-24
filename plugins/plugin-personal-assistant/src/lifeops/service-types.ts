@@ -3,20 +3,19 @@
  * state, and related structural types, plus a re-export of the shared
  * LifeOpsServiceError.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { LifeOpsServiceError } from "@elizaos/shared";
-import type {
-  LifeOpsCircadianState,
-  LifeOpsWorkflowRun,
+
+import { type IAgentRuntime } from "@elizaos/core";
+import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
+import {
+  type LifeOpsCircadianState,
+  type LifeOpsWorkflowRun,
 } from "../contracts/index.js";
 
-// LifeOpsServiceError is a runtime-level primitive in `@elizaos/shared`,
+// LifeOpsServiceError is a runtime-level primitive in `@elizaos/core`,
 // re-exported here for `./service-types.js` callers.
 export { LifeOpsServiceError };
-
 export class LifeOpsWorkflowRunFailedUncompensatedError extends LifeOpsServiceError {
   readonly cause: unknown;
-
   constructor(
     readonly run: LifeOpsWorkflowRun,
     readonly failedCompensationKinds: readonly string[],
@@ -32,7 +31,6 @@ export class LifeOpsWorkflowRunFailedUncompensatedError extends LifeOpsServiceEr
     this.cause = cause;
   }
 }
-
 export type LifeOpsWorkflowSchedulerState = {
   managedBy: "task_worker";
   nextDueAt: string | null;
@@ -49,18 +47,15 @@ export type LifeOpsWorkflowSchedulerState = {
   lastFiredEventEndAt?: string | null;
   lastFiredEventId?: string | null;
 };
-
 export type ExecuteWorkflowResult = {
   run: LifeOpsWorkflowRun;
   error: unknown | null;
   disposition: "executed" | "replayed" | "in_progress";
 };
-
 export type RuntimeMessageTarget = Parameters<
   IAgentRuntime["sendMessageToTarget"]
 >[0];
 export type ReminderAttemptLifecycle = "plan" | "escalation";
-
 export type LifeOpsAttentionContext = {
   source?:
     | "proactive_activity_profile"
@@ -105,9 +100,7 @@ export type LifeOpsAttentionContext = {
   screenContextStale?: boolean;
   screenContextConfidence?: number | null;
 };
-
 export type ReminderActivityProfileSnapshot = LifeOpsAttentionContext;
-
 export type RuntimeOwnerContactResolution = {
   sourceOfTruth: "config" | "relationships" | "config+relationships";
   preferredCommunicationChannel: string | null;
@@ -119,7 +112,6 @@ export type RuntimeOwnerContactResolution = {
   lastResponseAt: string | null;
   lastResponseChannel: string | null;
 };
-
 export type LifeOpsServiceOptions = {
   ownerEntityId?: string | null;
 };

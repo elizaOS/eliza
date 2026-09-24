@@ -4,7 +4,7 @@
  * canonical Eliza app origins without reading or mutating external state.
  */
 import { pathToFileURL } from "node:url";
-import { ELIZA_DOMAIN_CONTRACTS } from "../../shared/src/elizacloud/domain-contract.ts";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 const CALLBACK_PATH = "/auth/callback/email";
 const ENVIRONMENTS = new Set(["production", "staging"]);

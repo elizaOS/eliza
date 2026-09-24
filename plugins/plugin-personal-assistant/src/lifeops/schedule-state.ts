@@ -4,18 +4,7 @@
  * state, the substrate the circadian/schedule-insight computations read.
  */
 import crypto from "node:crypto";
-import type {
-  LifeOpsScheduleDeviceKind,
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-  LifeOpsScheduleObservationOrigin,
-  LifeOpsScheduleObservationSnapshot,
-  LifeOpsScheduleStateScope,
-  SyncLifeOpsScheduleObservationInput,
-  SyncLifeOpsScheduleObservationsRequest,
-} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import {
-  asRecord,
   type LifeOpsAwakeProbability,
   type LifeOpsCircadianState,
   type LifeOpsPersonalBaseline,
@@ -24,32 +13,42 @@ import {
   type LifeOpsScheduleMealLabel,
   type LifeOpsScheduleRegularity,
   type LifeOpsUnclearReason,
+} from "@elizaos/core/contracts/personal-assistant";
+import {
   parseIsoMs,
   roundConfidence,
-} from "@elizaos/shared";
+} from "@elizaos/core/lifeops-normalize/time-util";
+import { asRecord } from "@elizaos/core/type-guards";
+import {
+  type LifeOpsScheduleDeviceKind,
+  type LifeOpsScheduleMergedState,
+  type LifeOpsScheduleObservation,
+  type LifeOpsScheduleObservationOrigin,
+  type LifeOpsScheduleObservationSnapshot,
+  type LifeOpsScheduleStateScope,
+  type SyncLifeOpsScheduleObservationInput,
+  type SyncLifeOpsScheduleObservationsRequest,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
-import type { LifeOpsScheduleInsightRecord } from "./repository.js";
+import { type LifeOpsScheduleInsightRecord } from "./repository.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getLocalDateKey,
   getZonedDateParts,
 } from "./time.js";
-
 export const SCHEDULE_OBSERVATION_BUCKET_MINUTES = 30;
-export const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1_000;
-export const SCHEDULE_CLOUD_SYNC_TTL_MS = 15 * 60 * 1_000;
-export const SCHEDULE_CLOUD_STATE_FRESH_MS = 45 * 60 * 1_000;
-
+export const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+export const SCHEDULE_CLOUD_SYNC_TTL_MS = 15 * 60 * 1000;
+export const SCHEDULE_CLOUD_STATE_FRESH_MS = 45 * 60 * 1000;
 const OBSERVATION_TTL_MS: Record<LifeOpsCircadianState, number> = {
-  awake: 4 * 60 * 60 * 1_000,
-  winding_down: 3 * 60 * 60 * 1_000,
-  sleeping: 8 * 60 * 60 * 1_000,
-  waking: 2 * 60 * 60 * 1_000,
-  napping: 2 * 60 * 60 * 1_000,
-  unclear: 60 * 60 * 1_000,
+  awake: 4 * 60 * 60 * 1000,
+  winding_down: 3 * 60 * 60 * 1000,
+  sleeping: 8 * 60 * 60 * 1000,
+  waking: 2 * 60 * 60 * 1000,
+  napping: 2 * 60 * 60 * 1000,
+  unclear: 60 * 60 * 1000,
 };
-
 const STATE_RANK: Record<LifeOpsCircadianState, number> = {
   sleeping: 5,
   napping: 4,
@@ -58,15 +57,12 @@ const STATE_RANK: Record<LifeOpsCircadianState, number> = {
   awake: 1,
   unclear: 0,
 };
-
 type BucketMode = "floor" | "ceil" | "nearest";
 type MergeObservationSnapshot = Partial<LifeOpsScheduleObservationSnapshot>;
-
 export type ResolvedScheduleDeviceIdentity = {
   deviceId: string;
   deviceKind: LifeOpsScheduleDeviceKind;
 };
-
 function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
   return {
     pAwake: 0,
@@ -76,7 +72,6 @@ function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
     computedAt,
   };
 }
-
 function defaultScheduleRegularity(): LifeOpsScheduleRegularity {
   return {
     sri: 0,
@@ -88,7 +83,6 @@ function defaultScheduleRegularity(): LifeOpsScheduleRegularity {
     windowDays: 28,
   };
 }
-
 function bucketIso(
   value: string | null | undefined,
   timezone: string,
@@ -121,18 +115,15 @@ function bucketIso(
   });
   return bucketed.toISOString();
 }
-
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }
-
 function snapshotUncertainty(
   state: LifeOpsCircadianState,
   reason: LifeOpsUnclearReason | null | undefined,
 ): LifeOpsUnclearReason | null {
   return state === "unclear" ? (reason ?? "no_signals") : null;
 }
-
 function toObservationSnapshot(
   insight: LifeOpsScheduleInsight,
 ): LifeOpsScheduleObservationSnapshot {
@@ -164,7 +155,6 @@ function toObservationSnapshot(
     nextMealConfidence: roundConfidence(insight.nextMealConfidence),
   };
 }
-
 function bucketSnapshot(
   snapshot: LifeOpsScheduleObservationSnapshot,
   timezone: string,
@@ -205,7 +195,6 @@ function bucketSnapshot(
     nextMealConfidence: roundConfidence(snapshot.nextMealConfidence),
   };
 }
-
 function observationMetadata(args: {
   snapshot: LifeOpsScheduleObservationSnapshot;
   source: "schedule_insight" | "schedule_sync";
@@ -217,7 +206,6 @@ function observationMetadata(args: {
     ...(args.extra ?? {}),
   };
 }
-
 function observationId(args: {
   agentId: string;
   origin: LifeOpsScheduleObservationOrigin;
@@ -247,7 +235,6 @@ function observationId(args: {
     .slice(0, 16);
   return `lifeops-schedule-observation:${digest}`;
 }
-
 function buildObservationRecord(args: {
   agentId: string;
   origin: LifeOpsScheduleObservationOrigin;
@@ -289,7 +276,6 @@ function buildObservationRecord(args: {
     updatedAt: args.observedAt,
   };
 }
-
 function normalizeDurationMinutes(
   value: number | null | undefined,
 ): number | null {
@@ -298,7 +284,6 @@ function normalizeDurationMinutes(
   }
   return Math.max(0, Math.round(value));
 }
-
 export function resolveScheduleDeviceIdentity(): ResolvedScheduleDeviceIdentity {
   const envDeviceId =
     process.env.ELIZA_DEVICE_ID?.trim() ?? process.env.HOSTNAME?.trim();
@@ -325,7 +310,6 @@ export function resolveScheduleDeviceIdentity(): ResolvedScheduleDeviceIdentity 
     deviceKind: process.platform === "darwin" ? "mac" : "unknown",
   };
 }
-
 export function deriveLocalScheduleObservations(args: {
   agentId: string;
   deviceId: string;
@@ -405,7 +389,6 @@ export function deriveLocalScheduleObservations(args: {
   }
   return observations;
 }
-
 function recordFromSyncInput(args: {
   agentId: string;
   timezone: string;
@@ -532,7 +515,6 @@ function recordFromSyncInput(args: {
     }),
   });
 }
-
 export function recordsFromSyncRequest(args: {
   agentId: string;
   origin: LifeOpsScheduleObservationOrigin;
@@ -551,7 +533,6 @@ export function recordsFromSyncRequest(args: {
     }),
   );
 }
-
 function observationSnapshot(
   observation: LifeOpsScheduleObservation,
 ): MergeObservationSnapshot | null {
@@ -559,7 +540,6 @@ function observationSnapshot(
   const snapshot = asRecord(metadata?.snapshot);
   return snapshot as MergeObservationSnapshot | null;
 }
-
 function observationRelevant(
   observation: LifeOpsScheduleObservation,
   nowMs: number,
@@ -579,7 +559,6 @@ function observationRelevant(
   }
   return startMs <= nowMs && (endMs === null || endMs >= nowMs - ttl);
 }
-
 function latestSnapshotValue<T>(
   observations: LifeOpsScheduleObservation[],
   read: (snapshot: MergeObservationSnapshot) => T | null | undefined,
@@ -593,7 +572,6 @@ function latestSnapshotValue<T>(
   }
   return null;
 }
-
 function isFutureIsoAt(
   value: string | null | undefined,
   nowMs: number,
@@ -601,7 +579,6 @@ function isFutureIsoAt(
   const parsed = parseIsoMs(value);
   return parsed !== null && parsed >= nowMs;
 }
-
 function pickFutureSnapshotValue(
   observations: LifeOpsScheduleObservation[],
   read: (snapshot: MergeObservationSnapshot) => string | null | undefined,
@@ -616,7 +593,6 @@ function pickFutureSnapshotValue(
   }
   return null;
 }
-
 function latestRelevantObservations(
   observations: LifeOpsScheduleObservation[],
   nowMs: number,
@@ -629,7 +605,6 @@ function latestRelevantObservations(
       return rightMs - leftMs;
     });
 }
-
 function bestObservation(
   observations: LifeOpsScheduleObservation[],
   predicate: (observation: LifeOpsScheduleObservation) => boolean,
@@ -649,7 +624,6 @@ function bestObservation(
     })[0] ?? null
   );
 }
-
 function mergedMeals(
   observations: LifeOpsScheduleObservation[],
 ): LifeOpsScheduleMealInsight[] {
@@ -673,7 +647,6 @@ function mergedMeals(
   }
   return [...unique.values()];
 }
-
 function resolveMergedCircadianState(relevant: LifeOpsScheduleObservation[]): {
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
@@ -718,7 +691,6 @@ function resolveMergedCircadianState(relevant: LifeOpsScheduleObservation[]): {
     uncertaintyReason: best.uncertaintyReason,
   };
 }
-
 export function mergeScheduleObservations(args: {
   agentId: string;
   scope: LifeOpsScheduleStateScope;
@@ -927,7 +899,6 @@ export function mergeScheduleObservations(args: {
     updatedAt: mergedAt,
   };
 }
-
 function freshnessMs(
   state: LifeOpsScheduleMergedState,
   nowMs: number,
@@ -938,7 +909,6 @@ function freshnessMs(
   }
   return nowMs - updatedMs;
 }
-
 export function isFreshCloudMergedState(
   state: LifeOpsScheduleMergedState | null | undefined,
   now: Date,
@@ -949,7 +919,6 @@ export function isFreshCloudMergedState(
   const ageMs = freshnessMs(state, now.getTime());
   return ageMs !== null && ageMs <= SCHEDULE_CLOUD_STATE_FRESH_MS;
 }
-
 export function preferEffectiveMergedState(args: {
   now: Date;
   local: LifeOpsScheduleMergedState | null;

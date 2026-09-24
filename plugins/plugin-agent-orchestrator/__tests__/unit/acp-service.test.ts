@@ -14,12 +14,12 @@ import { Writable } from "node:stream";
 import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 import {
   captureHostExecutionBaseline,
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/core/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on

@@ -10,7 +10,7 @@ import {
   MAX_MCP_SCHEMA_DEPTH,
   MAX_MCP_SCHEMA_NODES,
   MCP_TOOL_SCHEMA_UNBOUNDED,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-mcp/protocol-utils/schema-budget";
 import { describe, expect, it } from "vitest";
 import { GoogleMcpCompatibility } from "../src/tool-compatibility/providers/google.ts";
 import { OpenAIMcpCompatibility } from "../src/tool-compatibility/providers/openai.ts";
@@ -21,7 +21,6 @@ describe("MCP tool compatibility", () => {
       provider: "google",
       modelId: "gemini-pro",
     });
-
     // minLength/minItems are set alongside the zero upper bound so a
     // fallback path that only fires when every constraint is skipped
     // can't mask a truthy-check regression on maxLength/maxItems.
@@ -37,7 +36,6 @@ describe("MCP tool compatibility", () => {
         },
       },
     });
-
     expect(transformed.properties?.boundedText).toMatchObject({
       type: "string",
       description: expect.stringContaining("0"),
@@ -47,7 +45,6 @@ describe("MCP tool compatibility", () => {
       description: expect.stringContaining("0"),
     });
   });
-
   it("still rewrites an honest nested object/array schema", () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
@@ -68,7 +65,6 @@ describe("MCP tool compatibility", () => {
       description: expect.stringContaining("4"),
     });
   });
-
   it(`throws ${MCP_TOOL_SCHEMA_UNBOUNDED} one past depth ${MAX_MCP_SCHEMA_DEPTH}`, () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
@@ -86,7 +82,6 @@ describe("MCP tool compatibility", () => {
       expect((error as ElizaError).code).toBe(MCP_TOOL_SCHEMA_UNBOUNDED);
     }
   });
-
   it(`accepts a ${MAX_MCP_SCHEMA_DEPTH - 1}-deep items nest`, () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
@@ -101,13 +96,17 @@ describe("MCP tool compatibility", () => {
     const transformed = compatibility.transformToolSchema(schema as never);
     expect(transformed.type).toBe("array");
   });
-
   it(`throws ${MCP_TOOL_SCHEMA_UNBOUNDED} past ${MAX_MCP_SCHEMA_NODES} nodes`, () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
       modelId: "gemini-pro",
     });
-    const properties: Record<string, { type: "string" }> = {};
+    const properties: Record<
+      string,
+      {
+        type: "string";
+      }
+    > = {};
     // root + properties-object + N property schemas; N = MAX_MCP_SCHEMA_NODES
     // is one past the 2 + N budget.
     for (let i = 0; i < MAX_MCP_SCHEMA_NODES; i++) {
@@ -120,7 +119,6 @@ describe("MCP tool compatibility", () => {
       })
     ).toThrowError(ElizaError);
   });
-
   it("throws MCP_TOOL_SCHEMA_UNBOUNDED on a cyclic items graph, not RangeError", () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
@@ -137,14 +135,13 @@ describe("MCP tool compatibility", () => {
       expect(error).not.toBeInstanceOf(RangeError);
     }
   });
-
   it("does not RangeError a 20k items nest", () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
       modelId: "gemini-pro",
     });
     let schema: Record<string, unknown> = { type: "string" };
-    for (let i = 0; i < 20_000; i++) {
+    for (let i = 0; i < 20000; i++) {
       schema = { type: "array", items: schema };
     }
     expect(() => compatibility.transformToolSchema(schema as never)).toThrowError(ElizaError);
@@ -156,7 +153,6 @@ describe("MCP tool compatibility", () => {
       expect(error).not.toBeInstanceOf(RangeError);
     }
   });
-
   it("enforces the budget when the provider does not apply fixup", () => {
     const compatibility = new OpenAIMcpCompatibility({
       provider: "openai",
@@ -167,7 +163,6 @@ describe("MCP tool compatibility", () => {
     cyclic.items = cyclic;
     expect(() => compatibility.transformToolSchema(cyclic as never)).toThrowError(ElizaError);
   });
-
   it("rejects a provider rewrite that expands beyond the retained-schema byte cap", () => {
     const compatibility = new GoogleMcpCompatibility({
       provider: "google",
@@ -176,7 +171,7 @@ describe("MCP tool compatibility", () => {
     expect(() =>
       compatibility.transformToolSchema({
         type: "string",
-        pattern: "x".repeat(262_055),
+        pattern: "x".repeat(262055),
       })
     ).toThrowError(ElizaError);
   });

@@ -219,7 +219,7 @@ def _parse_publish_all_tiers() -> tuple[str, ...]:
 def test_catalog_manifest_publish_tiers_agree():
     """The Eliza-1 tier set is declared in THREE places that must stay in sync:
     eliza1_manifest.py::ELIZA_1_TIERS (here), catalog.ts::ELIZA_1_TIER_IDS (the
-    runtime catalog, asserted in packages/shared/.../catalog.test.ts), and
+    runtime catalog, asserted in plugins/plugin-native-inference/src/model-catalog/catalog.test.ts), and
     publish_all_eliza1.sh::TIERS (the per-tier publish matrix). Renaming a tier
     means updating all three together. This converts the previously
     comment-only invariant into an enforced one for two of the three surfaces

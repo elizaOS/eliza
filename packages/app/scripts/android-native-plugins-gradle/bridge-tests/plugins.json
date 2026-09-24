@@ -31,6 +31,10 @@
     "name": "Gateway",
     "class": "ai.eliza.plugins.gateway.GatewayPlugin"
   },
+  "plugin-native-inference": {
+    "name": "Tesseract",
+    "class": "ai.eliza.plugins.mlkittext.MlKitTextPlugin"
+  },
   "plugin-native-location": {
     "name": "ElizaLocation",
     "class": "ai.eliza.plugins.location.LocationPlugin"
@@ -38,14 +42,6 @@
   "plugin-native-messages": {
     "name": "ElizaMessages",
     "class": "ai.eliza.plugins.messages.MessagesPlugin"
-  },
-  "plugin-native-mlkit-text": {
-    "name": "Tesseract",
-    "class": "ai.eliza.plugins.mlkittext.MlKitTextPlugin"
-  },
-  "plugin-native-mobile-agent-bridge": {
-    "name": "MobileAgentBridge",
-    "class": "ai.eliza.plugins.mobileagentbridge.MobileAgentBridgePlugin"
   },
   "plugin-native-mobile-signals": {
     "name": "MobileSignals",
@@ -58,10 +54,6 @@
   "plugin-native-phone": {
     "name": "ElizaPhone",
     "class": "ai.eliza.plugins.phone.PhonePlugin"
-  },
-  "plugin-native-screencapture": {
-    "name": "ScreenCapture",
-    "class": "ai.eliza.plugins.screencapture.ScreenCapturePlugin"
   },
   "plugin-native-secure-store": {
     "name": "ElizaSecureStore",

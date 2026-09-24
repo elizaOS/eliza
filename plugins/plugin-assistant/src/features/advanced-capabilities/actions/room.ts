@@ -10,29 +10,30 @@
  * persisted as `agentMuteUntilIso` — services/message/mute-state.ts unmutes
  * on the first inbound message at/after that ISO time.
  */
-
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
+import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  parseBooleanFromText,
+  type State,
+  type UUID,
 } from "@elizaos/core";
-import { logger, ModelType, parseBooleanFromText } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared";
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/shared/i18n/keyword-matching-core";
+} from "@elizaos/core/i18n/keyword-matching-core";
 import {
   setRoomMuteUntil,
   setWorldMuteState,
   worldMuteActive,
 } from "../../../services/message/mute-state.ts";
+import { composePromptFromState } from "../../../text/template-rendering.js";
 import {
   shouldFollowRoomTemplate,
   shouldMuteRoomTemplate,
@@ -42,11 +43,8 @@ import {
 
 const ROOM_OPS = ["follow", "unfollow", "mute", "unmute"] as const;
 type RoomOp = (typeof ROOM_OPS)[number];
-
 const ROOM_CONTEXTS = ["messaging", "contacts", "settings"] as const;
-
 type ParticipantState = "FOLLOWED" | "MUTED" | null;
-
 type RoomOpParams = {
   action?: RoomOp | string;
   op?: RoomOp | string;
@@ -56,13 +54,10 @@ type RoomOpParams = {
   durationMinutes?: number;
   scope?: string;
 };
-
 type RoomOpScope = "room" | "server";
-
 type RuntimeLike = IAgentRuntime & {
   getRoomsForParticipant?: (entityId: UUID) => Promise<UUID[]>;
 };
-
 type OpConfig = {
   template: string;
   nextState: ParticipantState;
@@ -77,7 +72,6 @@ type OpConfig = {
   resultKey: "roomFollowed" | "roomUnfollowed" | "roomMuted" | "roomUnmuted";
   dataKey: "followed" | "unfollowed" | "muted" | "unmuted";
 };
-
 const OPS: Record<RoomOp, OpConfig> = {
   follow: {
     template: shouldFollowRoomTemplate,
@@ -137,7 +131,6 @@ const OPS: Record<RoomOp, OpConfig> = {
     dataKey: "unmuted",
   },
 };
-
 const MUTE_TERMS = getValidationKeywordTerms("action.muteRoom.request", {
   includeAllLocales: true,
 });
@@ -147,7 +140,6 @@ const UNMUTE_TERMS = getValidationKeywordTerms("action.unmuteRoom.request", {
 const FOLLOW_TERMS = getValidationKeywordTerms("action.followRoom.request", {
   includeAllLocales: true,
 });
-
 function normalizeOp(value: unknown): RoomOp | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
@@ -163,32 +155,27 @@ function normalizeOp(value: unknown): RoomOp | null {
   if (normalized === "unfollow") return "unfollow";
   return null;
 }
-
 function normalizeString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function normalizeScope(value: unknown): RoomOpScope {
   if (typeof value !== "string") return "room";
   const normalized = value.trim().toLowerCase();
   return normalized === "server" || normalized === "guild" ? "server" : "room";
 }
-
 function muteUntilIsoFromDuration(
   durationMinutes: number | undefined,
 ): string | undefined {
   return durationMinutes && durationMinutes > 0
-    ? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+    ? new Date(Date.now() + durationMinutes * 60000).toISOString()
     : undefined;
 }
-
 function normalizePlatform(value: unknown): string | undefined {
   const trimmed = normalizeString(value);
   return trimmed ? trimmed.toLowerCase() : undefined;
 }
-
 /**
  * Parse a caller-supplied mute duration.
  *
@@ -206,25 +193,22 @@ function normalizeDurationMinutes(value: unknown): number | undefined | null {
     typeof parsed !== "number" ||
     !Number.isSafeInteger(parsed) ||
     parsed <= 0 ||
-    Number.isNaN(new Date(Date.now() + parsed * 60_000).getTime())
+    Number.isNaN(new Date(Date.now() + parsed * 60000).getTime())
   ) {
     return null;
   }
   return parsed;
 }
-
 function getMessageText(message: Memory): string {
   if (typeof message.content === "string") return message.content;
   return message.content.text ?? "";
 }
-
 function inferOpFromText(text: string): RoomOp | null {
   if (findKeywordTermMatch(text, UNMUTE_TERMS) !== undefined) return "unmute";
   if (findKeywordTermMatch(text, MUTE_TERMS) !== undefined) return "mute";
   if (findKeywordTermMatch(text, FOLLOW_TERMS) !== undefined) return "follow";
   return null;
 }
-
 function preconditionMet(op: RoomOp, current: ParticipantState): boolean {
   switch (op) {
     case "follow":
@@ -237,12 +221,15 @@ function preconditionMet(op: RoomOp, current: ParticipantState): boolean {
       return current === "MUTED";
   }
 }
-
 function readRoomOpParams(options?: HandlerOptions): RoomOpParams {
-  return ((options as { parameters?: RoomOpParams } | undefined)?.parameters ??
-    {}) as RoomOpParams;
+  return ((
+    options as
+      | {
+          parameters?: RoomOpParams;
+        }
+      | undefined
+  )?.parameters ?? {}) as RoomOpParams;
 }
-
 function roomPreconditionFailureResult(args: {
   op: RoomOp;
   current: ParticipantState;
@@ -264,7 +251,6 @@ function roomPreconditionFailureResult(args: {
     },
   };
 }
-
 async function validateRoomOpAvailability(
   runtime: IAgentRuntime,
   message: Memory,
@@ -275,18 +261,15 @@ async function validateRoomOpAvailability(
   if (typeof runtime.getParticipantUserState !== "function") {
     return false;
   }
-
   const params = readRoomOpParams(options);
   const op = forcedOp ?? normalizeOp(params.action) ?? normalizeOp(params.op);
   if (!op) {
     return true;
   }
-
   const platform = normalizePlatform(params.platform);
   const explicitRoomId = normalizeString(params.roomId);
   const chatName = normalizeString(params.chatName);
   let roomId = explicitRoomId as UUID | undefined;
-
   if (platform && (explicitRoomId || chatName)) {
     const targetRoom = await resolveTargetRoom({
       runtime: runtime as RuntimeLike,
@@ -299,9 +282,7 @@ async function validateRoomOpAvailability(
     }
     roomId = targetRoom.id;
   }
-
   roomId = (roomId ?? message.roomId) as UUID;
-
   if (normalizeScope(params.scope) === "server") {
     if (op !== "mute" && op !== "unmute") return false;
     const room = await runtime.getRoom(roomId);
@@ -310,14 +291,12 @@ async function validateRoomOpAvailability(
     const active = worldMuteActive(world);
     return op === "mute" ? !active : active;
   }
-
   const current = (await runtime.getParticipantUserState(
     roomId,
     runtime.agentId,
   )) as ParticipantState;
   return preconditionMet(op, current);
 }
-
 async function decide(
   runtime: IAgentRuntime,
   message: Memory,
@@ -335,7 +314,6 @@ async function decide(
     parseBooleanFromText(response.trim()) ||
     cleaned.includes("true") ||
     cleaned.includes("yes");
-
   if (yes) {
     await runtime.createMemory(
       {
@@ -352,14 +330,12 @@ async function decide(
     );
     return true;
   }
-
   const no =
     cleaned === "false" ||
     cleaned === "no" ||
     cleaned === "n" ||
     cleaned.includes("false") ||
     cleaned.includes("no");
-
   if (no) {
     await runtime.createMemory(
       {
@@ -376,7 +352,6 @@ async function decide(
     );
     return false;
   }
-
   logger.warn(
     {
       src: `plugin:advanced-capabilities:action:room_op:${op}`,
@@ -387,7 +362,6 @@ async function decide(
   );
   return false;
 }
-
 function roomMatchesTarget(args: {
   room: Awaited<ReturnType<IAgentRuntime["getRoom"]>>;
   platform: string;
@@ -397,7 +371,13 @@ function roomMatchesTarget(args: {
   const room = args.room;
   if (!room) return false;
   if (
-    normalizePlatform((room as { source?: unknown }).source) !== args.platform
+    normalizePlatform(
+      (
+        room as {
+          source?: unknown;
+        }
+      ).source,
+    ) !== args.platform
   ) {
     return false;
   }
@@ -415,7 +395,6 @@ function roomMatchesTarget(args: {
     (candidate) => candidate === lookup || candidate.includes(lookup),
   );
 }
-
 async function resolveTargetRoom(args: {
   runtime: RuntimeLike;
   platform: string;
@@ -442,7 +421,6 @@ async function resolveTargetRoom(args: {
   }
   return null;
 }
-
 async function applyOp(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -538,7 +516,6 @@ async function applyOp(args: {
     };
   }
 }
-
 // Server-wide mute/unmute: writes world.metadata (the same record the inbound
 // mute gate consults) instead of per-room participant state, so one op covers
 // every room of the guild — including rooms created after the mute. Skips the
@@ -559,7 +536,6 @@ async function applyServerScopedOp(args: {
     data: { actionName: "ROOM", op, scope: "server", error },
     success: false,
   });
-
   if (!room?.worldId) {
     return failure(
       "ROOM_SERVER_NOT_FOUND",
@@ -580,7 +556,6 @@ async function applyServerScopedOp(args: {
       `Cannot ${op} server from state ${active ? "MUTED" : "NONE"}`,
     );
   }
-
   const untilIso =
     op === "mute" ? muteUntilIsoFromDuration(args.durationMinutes) : undefined;
   await setWorldMuteState(
@@ -607,9 +582,7 @@ async function applyServerScopedOp(args: {
   return {
     text:
       op === "mute"
-        ? `Server muted: ${serverName}${
-            args.durationMinutes ? ` for ${args.durationMinutes} minutes` : ""
-          }`
+        ? `Server muted: ${serverName}${args.durationMinutes ? ` for ${args.durationMinutes} minutes` : ""}`
         : `Server unmuted: ${serverName}`,
     values: {
       success: true,
@@ -635,7 +608,6 @@ async function applyServerScopedOp(args: {
     success: true,
   };
 }
-
 export const roomOpAction: Action = {
   name: "ROOM",
   contexts: [...ROOM_CONTEXTS],
@@ -785,7 +757,6 @@ export const roomOpAction: Action = {
     _responses?: Memory[],
   ): Promise<ActionResult> => {
     const params = readRoomOpParams(options);
-
     const op =
       normalizeOp(params.action) ??
       normalizeOp(params.op) ??
@@ -798,7 +769,6 @@ export const roomOpAction: Action = {
         success: false,
       };
     }
-
     const cfg = OPS[op];
     const platform = normalizePlatform(params.platform);
     const explicitRoomId = normalizeString(params.roomId);
@@ -820,7 +790,6 @@ export const roomOpAction: Action = {
       };
     }
     const scope = normalizeScope(params.scope);
-
     if (scope === "server") {
       if (op !== "mute" && op !== "unmute") {
         return {
@@ -853,7 +822,6 @@ export const roomOpAction: Action = {
         durationMinutes,
       });
     }
-
     // Connector-targeted path: skip the model gate and act directly on the
     // named room resolved by platform + roomId/chatName.
     if (platform && (explicitRoomId || chatName)) {
@@ -915,7 +883,6 @@ export const roomOpAction: Action = {
       }
       return result;
     }
-
     // Default path: operate on the current room with model-decision gating.
     if (!state) {
       return {
@@ -933,22 +900,21 @@ export const roomOpAction: Action = {
         error: new Error("State is required for ROOM"),
       };
     }
-
     const roomId = (explicitRoomId ?? message.roomId) as UUID;
     const current = (await runtime.getParticipantUserState(
       roomId,
       runtime.agentId,
     )) as ParticipantState;
-
     if (!preconditionMet(op, current)) {
       return roomPreconditionFailureResult({ op, current, roomId });
     }
-
     const proceed = await decide(runtime, message, state, cfg, op);
     const room =
-      (state.data.room as { name?: string } | undefined) ??
-      (await runtime.getRoom(roomId));
-
+      (state.data.room as
+        | {
+            name?: string;
+          }
+        | undefined) ?? (await runtime.getRoom(roomId));
     if (!room) {
       return {
         text: `Could not find room to ${op}`,
@@ -957,9 +923,7 @@ export const roomOpAction: Action = {
         success: false,
       };
     }
-
     const roomName = room.name ?? `Room-${String(roomId)}`;
-
     if (!proceed) {
       return {
         text: cfg.declinedText(roomName),
@@ -981,7 +945,6 @@ export const roomOpAction: Action = {
         success: true,
       };
     }
-
     return applyOp({
       runtime,
       message,
@@ -993,7 +956,6 @@ export const roomOpAction: Action = {
     });
   },
 };
-
 function makeRoomOpChildAction(args: {
   name: string;
   op: RoomOp;
@@ -1044,7 +1006,6 @@ function makeRoomOpChildAction(args: {
     },
   };
 }
-
 export const muteRoomAction = makeRoomOpChildAction({
   name: "MUTE_ROOM",
   op: "mute",
@@ -1053,7 +1014,6 @@ export const muteRoomAction = makeRoomOpChildAction({
     "mute room/chat when not MUTED; optional roomId|platform+chatName|durationMinutes",
   similes: ["MUTE_CHAT", "SILENCE_GROUP_CHAT", "MUTE_CHANNEL"],
 });
-
 export const unmuteRoomAction = makeRoomOpChildAction({
   name: "UNMUTE_ROOM",
   op: "unmute",
@@ -1062,7 +1022,6 @@ export const unmuteRoomAction = makeRoomOpChildAction({
     "unmute room/chat only from MUTED participant state; optional roomId|platform+chatName",
   similes: ["UNMUTE_CHAT", "RESTORE_CHAT", "UNMUTE_CHANNEL"],
 });
-
 export const followRoomAction = makeRoomOpChildAction({
   name: "FOLLOW_ROOM",
   op: "follow",
@@ -1071,7 +1030,6 @@ export const followRoomAction = makeRoomOpChildAction({
     "follow room/chat if state is neither FOLLOWED nor MUTED; optional roomId|platform+chatName",
   similes: ["FOLLOW_CHAT", "FOLLOW_CHANNEL", "JOIN_ROOM"],
 });
-
 export const unfollowRoomAction = makeRoomOpChildAction({
   name: "UNFOLLOW_ROOM",
   op: "unfollow",
@@ -1080,7 +1038,6 @@ export const unfollowRoomAction = makeRoomOpChildAction({
     "unfollow room/chat only from FOLLOWED participant state; optional roomId|platform+chatName",
   similes: ["UNFOLLOW_CHAT", "UNFOLLOW_THREAD", "LEAVE_ROOM"],
 });
-
 roomOpAction.subActions = [
   muteRoomAction,
   unmuteRoomAction,

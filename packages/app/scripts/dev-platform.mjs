@@ -67,11 +67,11 @@ import {
 import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { colorizeDevSettingsStartupBanner } from "@elizaos/app/dev-settings-banner-style";
 import {
-  colorizeDevSettingsStartupBanner,
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/shared";
+} from "@elizaos/core/runtime-env";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
@@ -196,8 +196,8 @@ function syncRendererPublicAssets() {
   const syncScript = path.join(
     bundleRoot,
     isElizaMonorepo
-      ? "eliza/packages/shared/scripts/sync-to-public.mjs"
-      : "packages/shared/scripts/sync-to-public.mjs",
+      ? "eliza/packages/ui/scripts/sync-to-public.mjs"
+      : "packages/ui/scripts/sync-to-public.mjs",
   );
   if (!existsSync(syncScript)) {
     return;

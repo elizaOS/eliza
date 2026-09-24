@@ -22,7 +22,7 @@
  * first-party Eliza UI origins plus localhost in non-production.
  */
 
-import type { StewardSessionErrorCode } from "@elizaos/shared";
+import { type StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import {
@@ -41,19 +41,32 @@ import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
-
 function checkOrigin(
-  c: { req: { header: (name: string) => string | undefined } },
+  c: {
+    req: {
+      header: (name: string) => string | undefined;
+    };
+  },
   isProduction: boolean,
-): { ok: true } | { ok: false; reason: string } {
+):
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      reason: string;
+    } {
   return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
-
 function shouldReturnClientToken(
-  c: { req: { header: (name: string) => string | undefined } },
+  c: {
+    req: {
+      header: (name: string) => string | undefined;
+    };
+  },
   isProduction: boolean,
 ): boolean {
   const origin =
@@ -70,20 +83,19 @@ function shouldReturnClientToken(
   // Matches steward-refresh's shouldReturnClientToken.
   return isPermittedElizaBrowserOrigin(origin, host, isProduction);
 }
-
 // ─── Helpers ──────────────────────────────────────────────────────────────
-
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
   return Boolean(env.STEWARD_SESSION_SECRET || env.STEWARD_JWT_SECRET);
 }
-
 function errorBody(
   message: string,
   code: StewardSessionErrorCode,
-): { error: string; code: StewardSessionErrorCode } {
+): {
+  error: string;
+  code: StewardSessionErrorCode;
+} {
   return { error: message, code };
 }
-
 let stewardNonceMetricCounter = 0;
 function logExchange(outcome: string): void {
   stewardNonceMetricCounter += 1;
@@ -93,7 +105,6 @@ function logExchange(outcome: string): void {
     metric: stewardNonceMetricCounter,
   });
 }
-
 function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
   const candidates: Array<[string, string | undefined]> = [
     ["STEWARD_API_URL", env.STEWARD_API_URL],
@@ -119,9 +130,7 @@ function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
   }
   return null;
 }
-
 // ─── Steward exchange call ────────────────────────────────────────────────
-
 interface StewardExchangeOk {
   ok: true;
   token: string;
@@ -134,7 +143,6 @@ interface StewardExchangeErr {
   error?: string;
   code?: string;
 }
-
 /**
  * POST to Steward `/auth/oauth/exchange`. The Steward API authenticates the
  * exchange purely by possession of the one-time `code` — there is no client
@@ -153,9 +161,19 @@ async function callStewardExchange(
   pinnedTenantId?: string,
   signingSecret?: string | null,
 ): Promise<
-  | { kind: "ok"; data: StewardExchangeOk }
-  | { kind: "error"; status: number; data: StewardExchangeErr }
-  | { kind: "transport"; message: string }
+  | {
+      kind: "ok";
+      data: StewardExchangeOk;
+    }
+  | {
+      kind: "error";
+      status: number;
+      data: StewardExchangeErr;
+    }
+  | {
+      kind: "transport";
+      message: string;
+    }
 > {
   const exchangeUrl = new URL(`${baseUrl}/auth/oauth/exchange`);
   const headers = new Headers({
@@ -204,7 +222,6 @@ async function callStewardExchange(
       message: err instanceof Error ? err.message : String(err),
     };
   }
-
   const text = await response.text();
   let parsed: StewardExchangeOk | StewardExchangeErr | null = null;
   try {
@@ -214,7 +231,6 @@ async function callStewardExchange(
   } catch {
     parsed = null;
   }
-
   if (!response.ok || !parsed || parsed.ok !== true) {
     return {
       kind: "error",
@@ -227,11 +243,8 @@ async function callStewardExchange(
   }
   return { kind: "ok", data: parsed };
 }
-
 // ─── Route ────────────────────────────────────────────────────────────────
-
 const app = new Hono<AppEnv>();
-
 app.post("/", async (c) => {
   const isProduction = c.env.NODE_ENV === "production";
   const originCheck = checkOrigin(c, isProduction);
@@ -248,7 +261,6 @@ app.post("/", async (c) => {
     logExchange("csrf-marker-missing");
     return c.json(errorBody("Forbidden", "csrf_marker_required"), 403);
   }
-
   const body = (await c.req.json().catch(() => ({}))) as {
     code?: unknown;
     redirectUri?: unknown;
@@ -259,7 +271,6 @@ app.post("/", async (c) => {
     code_verifier?: unknown;
     telegramContinuation?: unknown;
   };
-
   const code = typeof body.code === "string" ? body.code.trim() : "";
   const redirectUri =
     typeof body.redirectUri === "string"
@@ -292,7 +303,6 @@ app.post("/", async (c) => {
       : typeof body.code_verifier === "string"
         ? body.code_verifier.trim()
         : "";
-
   if (!code) {
     logExchange("missing-code");
     return c.json(errorBody("code required", "missing_code"), 400);
@@ -325,7 +335,6 @@ app.post("/", async (c) => {
       503,
     );
   }
-
   const stewardBaseUrl = resolveStewardBaseUrl(c.env);
   if (!stewardBaseUrl) {
     logExchange("upstream-not-configured");
@@ -337,7 +346,6 @@ app.post("/", async (c) => {
       503,
     );
   }
-
   const exchange = await callStewardExchange(
     stewardBaseUrl,
     {
@@ -349,7 +357,6 @@ app.post("/", async (c) => {
     c.env.STEWARD_TENANT_ID,
     c.env.STEWARD_REQUEST_SIGNING_SECRET,
   );
-
   if (exchange.kind === "transport") {
     logExchange("upstream-transport-error");
     logger.error("[steward-nonce-exchange] upstream transport failure", {
@@ -360,7 +367,6 @@ app.post("/", async (c) => {
       502,
     );
   }
-
   if (exchange.kind === "error") {
     const upstreamCode = exchange.data.code;
     // Pass through the Steward error codes verbatim when they're in our known
@@ -383,15 +389,12 @@ app.post("/", async (c) => {
       status,
     );
   }
-
   const { token, refreshToken } = exchange.data;
-
   const claims = await verifyStewardTokenCached(c.env, token);
   if (!claims) {
     logExchange("invalid-token-after-exchange");
     return c.json(errorBody("Invalid token", "invalid_token"), 401);
   }
-
   let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
   try {
     cloudUser = await syncUserFromSteward({
@@ -413,15 +416,12 @@ app.post("/", async (c) => {
       500,
     );
   }
-
   const ttl = claims.expiration
     ? Math.max(0, claims.expiration - Math.floor(Date.now() / 1000))
     : null;
   const secure = c.env.NODE_ENV === "production";
   const domain = cookieDomainForHost(c.req.header("host"));
-
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
-
   setCookie(c, cookieNames.token, token, {
     httpOnly: true,
     secure,
@@ -430,7 +430,6 @@ app.post("/", async (c) => {
     ...(domain ? { domain } : {}),
     ...(typeof ttl === "number" ? { maxAge: ttl } : {}),
   });
-
   if (typeof refreshToken === "string" && refreshToken.length > 0) {
     setCookie(c, cookieNames.refreshToken, refreshToken, {
       httpOnly: true,
@@ -441,7 +440,6 @@ app.post("/", async (c) => {
       maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
     });
   }
-
   setCookie(c, cookieNames.authed, "1", {
     httpOnly: false,
     secure,
@@ -450,7 +448,6 @@ app.post("/", async (c) => {
     ...(domain ? { domain } : {}),
     maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
   });
-
   logExchange("ok");
   // Returning `token` here so the SPA can mirror it into localStorage. The
   // HttpOnly cookies above are the canonical session; the localStorage copy is
@@ -478,5 +475,4 @@ app.post("/", async (c) => {
     ...(shouldReturnClientToken(c, isProduction) ? { token } : {}),
   });
 });
-
 export default app;

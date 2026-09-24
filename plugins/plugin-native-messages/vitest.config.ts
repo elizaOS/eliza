@@ -19,6 +19,7 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
 
 export default defineConfig({
   root: here,
+  esbuild: { jsx: "automatic" },
   resolve: {
     ...baseConfig.resolve,
     alias: [
@@ -62,14 +63,6 @@ export default defineConfig({
           repoRoot,
           "packages/ui/src/app-navigate-view.ts",
         ),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(repoRoot, "packages/shared/src/$1"),
       },
       ...baseAliases,
     ],

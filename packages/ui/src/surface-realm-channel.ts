@@ -6,7 +6,7 @@
  * of a reserved key (`persistence`, chat drafts, resource-cache, first-run, …)
  * must route through this channel or it throws while a view is foreground. Those
  * writers are leaf modules; importing the broker (which pulls `@elizaos/core` /
- * `@elizaos/shared` / `@elizaos/logger`) into each of them makes them heavy and,
+ * `@elizaos/core` / `@elizaos/logger`) into each of them makes them heavy and,
  * under `vi.resetModules()`, slow — so the channel lives here with no such deps
  * and the broker consumes IT, not the reverse.
  *
@@ -20,18 +20,15 @@
  * on itself (the adversarial boundary is the sandboxed-iframe / native-webview
  * tier, not this flag; see the broker header).
  */
-
 import { developerShellUrl } from "./navigation/developer-route";
 
 // Reentrancy depth, not a boolean: privileged shell paths nest (e.g. the
 // navigation reducer persisting the last tab while pushing a route).
 let privilegedShellDepth = 0;
-
 /** Whether the current call stack is inside a privileged shell scope. */
 export function isPrivilegedShellActive(): boolean {
   return privilegedShellDepth > 0;
 }
-
 /**
  * Run `fn` with the raw-global guards disarmed for the current call stack. Shell
  * internals only. See the module header for the trust model.
@@ -44,7 +41,6 @@ export function runAsPrivilegedShell<T>(fn: () => T): T {
     privilegedShellDepth -= 1;
   }
 }
-
 /**
  * The shell's own localStorage writer. Reads are never guarded, so no `getItem`
  * is provided — read the global directly.
@@ -60,7 +56,6 @@ export const shellLocalStorage = {
     runAsPrivilegedShell(() => window.localStorage.clear());
   },
 };
-
 /** The shell router/chrome's history writer (guard-exempt, DOM signatures). */
 export const shellHistory = {
   pushState(data: unknown, unused: string, url?: string | URL | null): void {

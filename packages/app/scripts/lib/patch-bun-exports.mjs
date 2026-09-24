@@ -706,7 +706,7 @@ export function patchMissingLifecycleScript(
 function loadElizaCharacterPresetsSource(root, targetPath) {
   const sourcePath = resolve(
     root,
-    "eliza/packages/shared/src/character-presets.ts",
+    "eliza/packages/core/src/character-presets.ts",
   );
   const source = readFileSync(sourcePath, "utf8");
   if (!targetPath?.endsWith(".js")) {

@@ -6,6 +6,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   type AnchorRegistry,
   createAnchorRegistry,
@@ -23,7 +24,6 @@ import {
   type ScheduledTaskRunnerHandle,
   TestNoopScheduledTaskDispatcher,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   APPROVAL_OFFSET_MINUTES,

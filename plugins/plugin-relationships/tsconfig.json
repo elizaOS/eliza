@@ -19,8 +19,6 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../plugin-agent-orchestrator/dist/ui/index.d.ts"
       ],
@@ -32,6 +30,21 @@
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
+      ],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../plugin-elizacloud/src/steward-session-client/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
+        "../plugin-native-inference/src/model-catalog/network-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
+        "../plugin-native-inference/src/model-catalog/routing-policy.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../plugin-elizacloud/src/cloud-config/domain-contract.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../plugin-native-inference/src/model-catalog/voice-models.ts"
       ]
     }
   },

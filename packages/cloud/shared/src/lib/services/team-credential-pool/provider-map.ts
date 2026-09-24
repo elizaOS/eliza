@@ -6,10 +6,8 @@
  * licenses and are rejected here — Phase 2 gates them behind an explicit
  * flag + org allowlist, never the public API.
  */
-
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-import type { SecretProvider } from "../../../db/schemas/secrets";
-
+import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import { type SecretProvider } from "../../../db/schemas/secrets";
 export const POOLED_DIRECT_PROVIDERS = [
   "anthropic-api",
   "openai-api",
@@ -18,13 +16,10 @@ export const POOLED_DIRECT_PROVIDERS = [
   "moonshot-api",
   "cerebras-api",
 ] as const satisfies readonly LinkedAccountProviderId[];
-
 export type PooledDirectProvider = (typeof POOLED_DIRECT_PROVIDERS)[number];
-
 export function isPooledDirectProvider(value: string): value is PooledDirectProvider {
   return (POOLED_DIRECT_PROVIDERS as readonly string[]).includes(value);
 }
-
 /** Providers Phase 1 must refuse with a clear "Phase 2" message. */
 export const SUBSCRIPTION_PROVIDER_IDS = [
   "anthropic-subscription",
@@ -34,11 +29,9 @@ export const SUBSCRIPTION_PROVIDER_IDS = [
   "kimi-coding",
   "deepseek-coding",
 ] as const;
-
 export function isSubscriptionProviderId(value: string): boolean {
   return (SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value);
 }
-
 /**
  * Env var each provider's key is delivered under (matches
  * DIRECT_ACCOUNT_PROVIDER_ENV in packages/agent/src/auth/types.ts).
@@ -51,7 +44,6 @@ export const POOLED_PROVIDER_ENV_KEYS: Record<PooledDirectProvider, string> = {
   "moonshot-api": "MOONSHOT_API_KEY",
   "cerebras-api": "CEREBRAS_API_KEY",
 };
-
 /** Secrets-vault provider enum value for each pooled provider. */
 export const POOLED_PROVIDER_SECRET_PROVIDER: Record<PooledDirectProvider, SecretProvider> = {
   "anthropic-api": "anthropic",
@@ -61,7 +53,6 @@ export const POOLED_PROVIDER_SECRET_PROVIDER: Record<PooledDirectProvider, Secre
   "moonshot-api": "custom",
   "cerebras-api": "custom",
 };
-
 export function keyLast4(apiKey: string): string {
   return apiKey.slice(-4);
 }
