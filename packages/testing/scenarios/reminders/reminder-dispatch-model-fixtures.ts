@@ -45,7 +45,7 @@ export function cleanupReminderDefinitions(title: string) {
   return {
     type: "custom" as const,
     name: `remove reminder fixture: ${title}`,
-    async apply({ runtime }: ScenarioContext): Promise<void> {
+    async apply({ runtime }: ScenarioContext): Promise<string | undefined> {
       if (!runtime) throw new Error("Reminder cleanup requires a live runtime");
       const { LifeOpsService } = await import(
         "@elizaos/plugin-personal-assistant/lifeops/service"
@@ -55,6 +55,7 @@ export function cleanupReminderDefinitions(title: string) {
         if (definition.title === title)
           await service.deleteDefinition(definition.id);
       }
+      return undefined;
     },
   };
 }
