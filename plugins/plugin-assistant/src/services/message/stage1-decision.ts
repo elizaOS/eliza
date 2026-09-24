@@ -55,6 +55,7 @@ import { createV5MessageContextObject } from "./context-assembly.js";
 import {
   createContextReadTool,
   extractContextRead,
+  hasContextReadToolCall,
   projectDiscoverableContext,
   READ_CONTEXT_TOOL_NAME,
   withAvailableContextRequests,
@@ -653,10 +654,10 @@ export async function generateStage1Decision(
   rawMessageHandler = interpretNativeReply(rawMessageHandler);
   const contextReadEnabled = () =>
     messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
-  let stage1RetryReason = extractContextRead(
-    rawMessageHandler,
-    contextReadEnabled(),
-  )
+  if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
+    extractContextRead(rawMessageHandler, false);
+  }
+  let stage1RetryReason = hasContextReadToolCall(rawMessageHandler)
     ? null
     : getStage1RetryReason(rawMessageHandler);
   while (
@@ -683,10 +684,10 @@ export async function generateStage1Decision(
       stage1ModelParams,
     )) as string | GenerateTextResult;
     rawMessageHandler = interpretNativeReply(rawMessageHandler);
-    stage1RetryReason = extractContextRead(
-      rawMessageHandler,
-      contextReadEnabled(),
-    )
+    if (!discoveryEnabled && hasContextReadToolCall(rawMessageHandler)) {
+      extractContextRead(rawMessageHandler, false);
+    }
+    stage1RetryReason = hasContextReadToolCall(rawMessageHandler)
       ? null
       : getStage1RetryReason(rawMessageHandler);
   }
@@ -695,7 +696,7 @@ export async function generateStage1Decision(
   let terminalDecisionReviewed = false;
   const terminalReaskEnabled =
     readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
-  if (!args.codingMode) {
+  if (!args.codingMode && !hasContextReadToolCall(rawMessageHandler)) {
     const parsedForRepair = extractMessageHandlerRawParsed(rawMessageHandler);
     // A source quotation is an answer even with no model-authored prose.
     // Terminal decisions retain the channel policy and shared review budget.
@@ -772,33 +773,59 @@ export async function generateStage1Decision(
   let historySelectionRepairAttempted = false;
   let historyReadForDecision = false;
   while (discoveryEnabled) {
-    const nativeRead = extractContextRead(
-      rawMessageHandler,
-      contextReadEnabled(),
-    );
-    const parsedDecision =
-      nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
-    const explicit = readHistoryContextRequests(
-      context,
-      history,
-      parsedDecision,
-      discovery.available,
-    );
-    const historyRequested = requestedHistory(
-      context,
-      history,
-      parsedDecision,
-      explicit,
-      Boolean(nativeRead),
-    );
+    let nativeRead: ReturnType<typeof extractContextRead>;
+    let parsedDecision: ReturnType<typeof extractMessageHandlerRawParsed> =
+      null;
+    let explicit: string[] = [];
+    let invalidReadRepair: string | undefined;
+    try {
+      nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled());
+      parsedDecision =
+        nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
+      explicit = readHistoryContextRequests(
+        context,
+        history,
+        parsedDecision,
+        discovery.available,
+      );
+    } catch (error) {
+      if (
+        routingRepairAttempted ||
+        !(error instanceof ElizaError) ||
+        ![
+          "CONTEXT_DISCOVERY_INVALID_REQUEST",
+          "CONTEXT_DISCOVERY_INVALID_READ",
+        ].includes(error.code) ||
+        stage1HitCompletionLimit(rawMessageHandler, stage1ModelParams.maxTokens)
+      )
+        throw error;
+      // Nothing from an invalid control call can authorize a provider read,
+      // acknowledgment, extraction or action. Reuse the one routing repair;
+      // a repeated invalid response still fails closed.
+      invalidReadRepair = [
+        "context_read_repair: The previous context read was invalid. Nothing from it was read, delivered or executed.",
+        `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.`,
+        "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations, use HANDLE_RESPONSE to select the appropriate available context and action candidates for the planner. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
+      ].join("\n");
+    }
+    const historyRequested = invalidReadRepair
+      ? []
+      : requestedHistory(
+          context,
+          history,
+          parsedDecision,
+          explicit,
+          Boolean(nativeRead),
+        );
     const requested = [...new Set([...explicit, ...historyRequested])];
     const routingRepair =
-      !routingRepairAttempted &&
+      invalidReadRepair ??
+      (!routingRepairAttempted &&
       explicit.length === 0 &&
       (requested.length === 0 ||
         canRepairIncompleteHistorySelection(context, history, parsedDecision))
         ? getStage1RoutingRepair(parsedDecision)
-        : undefined;
+        : undefined);
     repairHistoryIdentity =
       !routingRepair &&
       !historySelectionRepairAttempted &&
