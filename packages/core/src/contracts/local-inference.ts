@@ -9,6 +9,9 @@
  * the type contracts live here.
  */
 
+/** Runtime discriminator carried by model catalog and installed-model payloads. */
+export type RuntimeClass = "fused-eliza1";
+
 /** Agent slot ids the runtime maps to a local model. */
 export type AgentModelSlot =
 	| "TEXT_SMALL"
@@ -108,7 +111,7 @@ export interface InstalledModel {
 	 * `classifyInstalledModelRuntimeClass`; consumers read the field rather than
 	 * re-deriving it from the id.
 	 */
-	runtimeClass?: import("../../../../plugins/plugin-native-inference/src/model-catalog/runtime-class.ts").RuntimeClass;
+	runtimeClass?: RuntimeClass;
 }
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
@@ -469,7 +472,7 @@ export interface CatalogModel {
 	 * The local stack is Eliza-1 only (#8808). Populated by the catalog factory;
 	 * consumers read the field rather than matching the id prefix.
 	 */
-	runtimeClass?: import("../../../../plugins/plugin-native-inference/src/model-catalog/runtime-class.ts").RuntimeClass;
+	runtimeClass?: RuntimeClass;
 	/**
 	 * Whether this tier's bundle is published
 	 * on Hugging Face yet. Defaults to `"published"` when omitted, which

@@ -417,5 +417,50 @@
     "file": "packages/scripts/plugins/plugin-native-bun-runtime/engine/engine-paths.mjs",
     "tokens": ["plugins/plugin-native-bun-runtime"],
     "reason": "native engine tooling retains the plugin-owned C shim, patches, and artifact directory after relocation into canonical repository scripts"
+  },
+  {
+    "file": "packages/scripts/lib/progressive-content-production-targets.mjs",
+    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
+    "reason": "Production conformance evidence binds the six fixed file, tool-output and SQL adapters; discovering interchangeable plugins would invalidate adapter identity and fault coverage."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-coding-tools/file-reference-read-child.ts",
+    "tokens": ["plugins/plugin-coding-tools"],
+    "reason": "Isolated child verifies the owning plugin file-reference production reader in a fresh process."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-coding-tools/shell-capture-memory-child.ts",
+    "tokens": ["plugins/plugin-coding-tools"],
+    "reason": "Isolated child measures the owning plugin shell capture implementation and complete-output persistence."
+  },
+  {
+    "file": "packages/scripts/plugins/plugin-sql/progressive-content-scale-child.mjs",
+    "tokens": ["plugins/plugin-sql"],
+    "reason": "Isolated SQL scale evidence exercises the canonical production adapter and its seek plans."
+  },
+  {
+    "file": "packages/scripts/produce-content-context-deterministic.mjs",
+    "tokens": ["plugins/plugin-coding-tools"],
+    "reason": "Deterministic complete-content evidence imports the production file adapter explicitly to preserve fixture identity."
+  },
+  {
+    "file": "packages/scripts/produce-content-context-postgres.mjs",
+    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
+    "reason": "PostgreSQL evidence intentionally binds the real SQL, file and tool-output adapters; no substitute storage target is allowed."
+  },
+  {
+    "file": "packages/scripts/verify-voice-product-asr-release.mjs",
+    "tokens": ["@elizaos/plugin-native-inference"],
+    "reason": "ASR release verification consumes the native provider voice catalog after its ownership move from shared."
+  },
+  {
+    "file": "packages/cloud/scripts/reconcile-steward-email-callback-config.mjs",
+    "tokens": ["@elizaos/plugin-elizacloud"],
+    "reason": "Cloud callback reconciliation consumes the canonical Cloud domain contract owned by the Cloud plugin."
+  },
+  {
+    "file": "packages/cloud/scripts/verify-steward-email-callback-config.mjs",
+    "tokens": ["@elizaos/plugin-elizacloud"],
+    "reason": "Cloud callback verification consumes the same canonical Cloud domain contract as reconciliation."
   }
 ]

@@ -1585,8 +1585,7 @@
 		"tsup": "^8.5.1",
 		"dotenv": "^17.2.3",
 		"@types/markdown-it": "^14.1.2",
-		"@elizaos/testing": "workspace:*",
-		"@elizaos/plugin-sqlite": "workspace:*"
+		"@elizaos/testing": "workspace:*"
 	},
 	"dependencies": {
 		"zod": "^4.6.5",

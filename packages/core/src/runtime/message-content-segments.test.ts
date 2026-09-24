@@ -5,7 +5,7 @@ import {
 	type Memory,
 	type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 /**
  * Deterministic unit coverage for native message/attachment source projection:
  * exercises Unicode-safe segmentation, bounded traversal, identity stability,
