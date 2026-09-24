@@ -2,13 +2,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	acquireDatabaseStartupLock,
 	applyDatabaseResolutionToEnv,
 	assertSafePgliteResetTarget,
 	backupPgliteDirectory,
 	classifyDatabaseError,
+	createDatabaseSnapshot,
+	updateDatabaseSnapshotStatus,
 	describePglitePath,
 	ensurePgliteDataDir,
 	inspectDatabaseStartupLock,
@@ -18,11 +20,40 @@ import {
 	resolveDefaultPgliteDataDir,
 } from "./index";
 
+const tempDirs: string[] = [];
 function tempDir(name: string): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), `eliza-${name}-`));
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), `eliza-${name}-`));
+	tempDirs.push(dir);
+	return dir;
 }
+afterEach(() => {
+	for (const dir of tempDirs.splice(0))
+		fs.rmSync(dir, { recursive: true, force: true });
+});
 
 describe("database boot policy", () => {
+	it("describes a missing data path without creating directories", () => {
+		const appStateDir = tempDir("inspect");
+		const dataDir = path.join(appStateDir, "missing", "database", "pglite");
+		expect(describePglitePath(dataDir, { appStateDir }).writableParent).toBe(
+			true,
+		);
+		expect(fs.readdirSync(appStateDir)).toEqual([]);
+	});
+	it("clears a resolved error explicitly while retaining an omitted error", () => {
+		const failed = createDatabaseSnapshot({
+			mode: "pglite-persistent",
+			status: "error",
+			postgresUrlSet: false,
+			error: "failed",
+		});
+		expect(updateDatabaseSnapshotStatus(failed, "starting").error).toBe(
+			"failed",
+		);
+		expect(
+			updateDatabaseSnapshotStatus(failed, "ready", { error: null }).error,
+		).toBeNull();
+	});
 	it("uses POSTGRES_URL before any other database source", () => {
 		const result = resolveDatabaseMode({
 			env: {

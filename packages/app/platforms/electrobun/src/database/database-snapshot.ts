@@ -75,9 +75,6 @@ export function databaseRecoveryActions(
 	if (status === "ready" || status === "migrating" || status === "starting") {
 		return ["open-logs"];
 	}
-	if (mode === "postgres") {
-		return ["retry", "open-logs", "switch-to-postgres"];
-	}
 	if (mode === "pglite-persistent") {
 		return [
 			"retry",
@@ -86,9 +83,6 @@ export function databaseRecoveryActions(
 			"reset-pglite",
 			"switch-to-postgres",
 		];
-	}
-	if (mode === "pglite-memory") {
-		return ["retry", "open-logs", "switch-to-postgres"];
 	}
 	return ["retry", "open-logs", "switch-to-postgres"];
 }
@@ -184,7 +178,7 @@ export function updateDatabaseSnapshotStatus(
 		effectiveTarget: snapshot.effectiveTarget,
 		migrationStatus: options?.migrationStatus ?? snapshot.migrationStatus,
 		lock: options?.lock ?? snapshot.lock,
-		error: options?.error ?? snapshot.error,
+		error: options?.error === undefined ? snapshot.error : options.error,
 		warnings: options?.warnings ?? snapshot.warnings,
 		updatedAt: options?.updatedAt,
 	});
