@@ -395,6 +395,7 @@ export {
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,
+	selectHistoricalNavigation,
 	withRequiredCompletionSourceIdentity,
 } from "./runtime/completion-context.ts";
 export {

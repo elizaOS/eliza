@@ -20,6 +20,7 @@ import {
   renderContextObject,
   resolveOptimizedPromptForRuntime,
   segmentBlock,
+  selectHistoricalNavigation,
 } from "@elizaos/core";
 import { messageHandlerTemplate } from "@elizaos/prompts";
 import { composePrompt } from "@elizaos/prompts/rendering";
@@ -190,7 +191,6 @@ export function renderMessageHandlerModelInput(
   messages: ChatMessage[];
   promptSegments: PromptSegment[];
 } {
-  const rendered = renderContextObject(context);
   const completionSources = completionContextSources(context);
   const completionSourceIds = new Map(
     completionSources?.sources.map(({ id, event }) => [event.id, id]),
@@ -203,6 +203,19 @@ export function renderMessageHandlerModelInput(
     options?.history?.sourceSetId === completionSources?.sourceSetId
       ? options?.history
       : undefined;
+  const rendered = renderContextObject(
+    history
+      ? selectHistoricalNavigation(
+          context,
+          new Set([
+            ...history.visibleEventIds,
+            ...completionSources.sources
+              .filter(({ id }) => history.loadedSourceIds.has(id))
+              .map(({ event }) => event.id),
+          ]),
+        )
+      : context,
+  );
   const instructions = renderMessageHandlerInstructions(
     runtime,
     availableContexts,

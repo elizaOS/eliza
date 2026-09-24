@@ -144,6 +144,96 @@ function trajectory(context: ContextObject): PlannerTrajectory {
 	};
 }
 
+describe("source-bound historical navigation", () => {
+	function fixture() {
+		const context = historyContext();
+		context.events.push({
+			id: "navigation:old",
+			type: "segment",
+			source: "message-service",
+			segment: {
+				id: "navigation:old",
+				label: "runtime:historical_navigation",
+				stable: false,
+				content: JSON.stringify({
+					requestSourceEventId: "history:message-3",
+					navigation: [{ success: true, receipt: "EXACT_NAVIGATION_RECEIPT" }],
+				}),
+			},
+		});
+		return context;
+	}
+	it("omits only receipts bound to omitted originals and restores them with the request", () => {
+		const original = fixture();
+		const before = JSON.stringify(original);
+		expect(
+			JSON.stringify(selectCompletionContext(withSelection(original)).context),
+		).not.toContain("EXACT_NAVIGATION_RECEIPT");
+		const selected = selection(original);
+		selected.relevantSourceIds.push("h3");
+		expect(
+			JSON.stringify(
+				selectCompletionContext(withSelection(original, selected)).context,
+			),
+		).toContain("EXACT_NAVIGATION_RECEIPT");
+		expect(JSON.stringify(selectCompletionContext(original).context)).toContain(
+			"EXACT_NAVIGATION_RECEIPT",
+		);
+		expect(JSON.stringify(original)).toBe(before);
+	});
+	it("invalidates selection when a bound receipt changes", () => {
+		const original = fixture();
+		const selected = selection(original);
+		const event = original.events.at(-1);
+		if (event?.type !== "segment") throw new Error("missing receipt");
+		event.segment.content = event.segment.content.replace(
+			"EXACT_NAVIGATION_RECEIPT",
+			"CHANGED_RECEIPT",
+		);
+		expect(
+			selectCompletionContext(withSelection(original, selected)).applied,
+		).toBe(false);
+	});
+	it("keeps unbound receipt evidence instead of silently dropping it", () => {
+		const original = fixture();
+		const event = original.events.at(-1);
+		if (event?.type !== "segment") throw new Error("missing receipt");
+		event.segment.content = event.segment.content.replace(
+			"history:message-3",
+			"unknown-request",
+		);
+		expect(
+			JSON.stringify(selectCompletionContext(withSelection(original)).context),
+		).toContain("EXACT_NAVIGATION_RECEIPT");
+	});
+	it("loads exact receipts beside a deferred handler history read", () => {
+		const context = fixture();
+		const history = {
+			sourceSetId: completionContextSources(context).sourceSetId,
+			scope: {
+				agentId: "agent",
+				roomId: "room-owner",
+				entityId: "owner",
+				roles: ["OWNER"],
+			},
+			visibleEventIds: new Set(["history:message-1", "history:message-4"]),
+			loadedSourceIds: new Set<string>(),
+		};
+		const render = () =>
+			JSON.stringify(
+				renderMessageHandlerModelInput(
+					{ character: { name: "Eliza" } },
+					context,
+					[],
+					{ directMessage: true, history },
+				).messages,
+			);
+		expect(render()).not.toContain("EXACT_NAVIGATION_RECEIPT");
+		history.loadedSourceIds.add("h3");
+		expect(render()).toContain("EXACT_NAVIGATION_RECEIPT");
+	});
+});
+
 describe("source-bound completion relevance", () => {
 	it.each([
 		"relevantSourceIds",
