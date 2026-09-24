@@ -8,3 +8,9 @@ result is `{ words }`, where each word has `text`, `left`, `top`, `width`,
 `height`, `confidence`, `block`, `par`, and `line` fields.
 
 This package does not commit OCR model binaries.
+
+Android preserves the engine's actual word confidence on a 0–100 scale, including
+fractional values. It does not substitute full confidence for uncertain text.
+The bundled recognizer works without installing Google Play services; real-device
+coverage compares bridge scores with the engine's results and checks text,
+bounding boxes, line grouping, and blank images.
