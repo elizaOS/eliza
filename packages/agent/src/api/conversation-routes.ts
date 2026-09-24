@@ -24,6 +24,7 @@ import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   authorizeOwnerExclusiveDisclosure,
+  bindIncomingMessagePersistence,
   ChannelType,
   type Content,
   composeToolDiagnosticRedactor,
@@ -452,7 +453,8 @@ function readViewInteractionClientId(
   }
   return null;
 }
-function withViewInteractionClient(
+
+export function withViewInteractionClient(
   message: Memory,
   req: Pick<http.IncomingMessage, "headers">,
 ): Memory {
@@ -5225,6 +5227,9 @@ async function streamConversationMessage(
         );
         return handled;
       }
+
+      bindIncomingMessagePersistence(routedUserMessage, messageToStore);
+
       // ── Local runtime path (streaming) ───────────────────────
       const endActiveChatTurn = beginActiveChatTurn(state);
       // Completion callbacks belong to this acquired lease, not the mutable
@@ -6227,6 +6232,9 @@ async function sendConversationMessage(
         );
         return true;
       }
+
+      bindIncomingMessagePersistence(routedUserMessage, messageToStore);
+
       const endActiveChatTurn = beginActiveChatTurn(state);
       let generationDelivered = false;
       try {

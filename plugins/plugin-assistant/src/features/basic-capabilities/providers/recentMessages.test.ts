@@ -610,224 +610,60 @@ describe("recentMessagesProvider", () => {
     expect(result.text).toContain("User: bitcoin price?");
   });
 
-  it("renders authorized cross-room interactions on the first compose of a turn", async () => {
-    expect(recentMessagesProvider.alwaysInResponseState).toBe(true);
-    const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
-    const memories = [
-      makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
-    ];
-    const runtime = makeRuntime(
-      memories,
-      {},
-      {
-        getRoomsForParticipants: vi.fn(async () => [OTHER_ROOM_ID]),
-        getRoomsForParticipant: vi.fn(async () => [OTHER_ROOM_ID]),
-        getMemoriesByRoomIds: vi.fn(async () => [
-          {
-            id: "cross-1",
-            agentId: AGENT_ID,
-            roomId: OTHER_ROOM_ID,
-            entityId: USER_ID,
-            createdAt: 500,
-            content: { text: "the blue key is under the mat" },
-          } as Memory,
-        ]),
-      },
-    );
-
-    // Stage-1 compose: no prior provider results in the turn's cached state.
-    const result = await recentMessagesProvider.get(
-      runtime,
-      makeMemory("current", USER_ID, "gm", "discord", 2000),
-      { values: {}, data: {}, text: "" },
-    );
-
-    expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
-    expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-    expect(runtime.getMemoriesByRoomIds).toHaveBeenCalled();
-    expect(result.values?.recentMessageInteractions).toContain(
-      "the blue key is under the mat",
-    );
-    expect(result.data?.recentInteractions).toHaveLength(1);
-    expect(result.data?.recentInteractionsDisclosure).toBe(
-      "owner_private_destination",
-    );
-    expect(result.text).toContain("User: hello agent");
-    expect(result.text).toContain(
-      "# Recent conversations across verified accounts",
-    );
-    expect(result.text).toContain("blue key");
-  });
-
-  it("fetches cross-room interactions on a turn recompose (cached state has this provider)", async () => {
-    const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
-    const SOURCE_ONLY_ROOM_ID = "00000000-0000-0000-0000-00000000000b";
-    const TARGET_ONLY_ROOM_ID = "00000000-0000-0000-0000-00000000000c";
-    const memories = [
-      makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
-    ];
-    const runtime = makeRuntime(
-      memories,
-      {},
-      {
-        getRoomsForParticipants: vi.fn(async () => [
-          ROOM_ID,
-          OTHER_ROOM_ID,
-          SOURCE_ONLY_ROOM_ID,
-        ]),
-        getRoomsForParticipant: vi.fn(async () => [
-          ROOM_ID,
-          OTHER_ROOM_ID,
-          TARGET_ONLY_ROOM_ID,
-        ]),
-        getMemoriesByRoomIds: vi.fn(async () => [
-          {
-            id: "cross-1",
-            agentId: AGENT_ID,
-            roomId: OTHER_ROOM_ID,
-            entityId: USER_ID,
-            createdAt: 500,
-            content: { text: "the blue key is under the mat" },
-          } as Memory,
-        ]),
-      },
-    );
-
-    // Planner/action recompose: the turn's cached state already holds a
-    // RECENT_MESSAGES result from the Stage-1 compose.
-    const result = await recentMessagesProvider.get(
-      runtime,
-      makeMemory("current", USER_ID, "gm", "discord", 2000),
-      {
-        values: {},
-        data: { providers: { RECENT_MESSAGES: { text: "stage-1 result" } } },
-        text: "",
-      },
-    );
-
-    expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
-    expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-    expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
-      tableName: "messages",
-      roomIds: [OTHER_ROOM_ID],
-      accessContext: {
-        requesterEntityId: USER_ID,
-        source: "discord",
-        worldId: undefined,
-        authorizedRoomIds: [ROOM_ID, OTHER_ROOM_ID],
-      },
-    });
-    expect(result.data?.recentInteractions).toHaveLength(1);
-    expect(result.values?.recentMessageInteractions).toContain(
-      "the blue key is under the mat",
-    );
-  });
-
-  it("fails closed before cross-room reads when the destination is not owner-private", async () => {
-    revalidateOwnerExclusiveDisclosure.mockResolvedValueOnce({
-      allowed: false,
-      reason: "participant_mismatch",
-      audience: undefined,
-    });
-    const runtime = makeRuntime(
-      [],
-      {},
-      {
-        getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
-        getMemoriesByRoomIds: vi.fn(async () => []),
-      },
-    );
-
-    const result = await recentMessagesProvider.get(
-      runtime,
-      makeMemory("current", USER_ID, "recall that", "discord", 2000),
-      { values: {}, data: {}, text: "" },
-    );
-
-    expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
-    expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
-    expect(result.data?.recentInteractions).toEqual([]);
-  });
-
-  it("does not duplicate cross-room history owned by a selected dedicated provider", async () => {
-    const getRoomsForParticipants = vi.fn(async () => [ROOM_ID]);
-    const getRoomsForParticipant = vi.fn(async () => [ROOM_ID]);
-    const getMemoriesByRoomIds = vi.fn(async () => []);
-    const runtime = makeRuntime(
-      [],
-      {},
-      {
-        providers: [
-          {
-            name: "recent-conversations",
-            alwaysInResponseState: true,
-          },
-        ],
-        getRoomsForParticipants,
-        getRoomsForParticipant,
-        getMemoriesByRoomIds,
-      },
-    );
-
-    const result = await recentMessagesProvider.get(
-      runtime,
-      makeMemory("current", USER_ID, "recall that", "discord", 2000),
-      { values: {}, data: {}, text: "" },
-      {
-        signal: new AbortController().signal,
-        selectedProviderNames: ["RECENT_MESSAGES", "recent-conversations"],
-      },
-    );
-
-    expect(getRoomsForParticipants).not.toHaveBeenCalled();
-    expect(getRoomsForParticipant).not.toHaveBeenCalled();
-    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
-    expect(result.data?.recentInteractions).toEqual([]);
-  });
-
-  it("renders attachment-only cross-world context without capability URLs", async () => {
-    const otherRoomId = "00000000-0000-0000-0000-00000000000a";
-    const runtime = makeRuntime(
-      [],
-      {},
-      {
-        getRoomsForParticipants: vi.fn(async () => [otherRoomId]),
-        getRoomsForParticipant: vi.fn(async () => [otherRoomId]),
-        getMemoriesByRoomIds: vi.fn(async () => [
-          {
-            id: "cross-attachment",
-            agentId: AGENT_ID,
-            roomId: otherRoomId,
-            entityId: USER_ID,
-            createdAt: 500,
-            content: {
-              text: "",
-              attachments: [
-                {
-                  id: "receipt",
-                  url: "https://private.example/receipt.jpg",
-                  filename: "receipt.jpg",
-                  mimeType: "image/jpeg",
-                  description: "Dinner is at 6:30 for four at Saffron House",
-                },
-              ],
-            },
-          } as Memory,
-        ]),
-      },
-    );
-
-    const result = await recentMessagesProvider.get(
-      runtime,
-      makeMemory("current", USER_ID, "what was on it?", "telegram", 2000),
-      { values: {}, data: {}, text: "" },
-    );
-
-    expect(result.text).toContain(
-      "Dinner is at 6:30 for four at Saffron House",
-    );
-    expect(result.text).not.toContain("private.example");
-  });
+  it.each([false, true])(
+    "keeps complete room history without eager cross-room reads (recompose=%s)",
+    async (recompose) => {
+      const getMemoriesByRoomIds = vi.fn(async () => [
+        {
+          ...makeMemory(
+            "cross-1",
+            USER_ID,
+            "UNRELATED_PRIVATE_ROOM_TEXT",
+            "discord",
+            500,
+          ),
+          roomId: "00000000-0000-0000-0000-00000000000a",
+        },
+      ]);
+      const getRoomsForParticipants = vi.fn(async () => []);
+      const getRoomsForParticipant = vi.fn(async () => []);
+      const memories = [
+        makeMemory("room-2", USER_ID, "second room message", "discord", 2000),
+        makeMemory("room-1", USER_ID, "first room message", "discord", 1000),
+      ];
+      const runtime = makeRuntime(
+        memories,
+        {},
+        {
+          getMemoriesByRoomIds,
+          getRoomsForParticipants,
+          getRoomsForParticipant,
+        },
+      );
+      const result = await recentMessagesProvider.get(
+        runtime,
+        makeMemory("current", USER_ID, "hello", "discord", 3000),
+        {
+          values: {},
+          data: recompose
+            ? { providers: { RECENT_MESSAGES: { text: "old context" } } }
+            : {},
+          text: "",
+        },
+      );
+      expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
+      expect(getRoomsForParticipants).not.toHaveBeenCalled();
+      expect(getRoomsForParticipant).not.toHaveBeenCalled();
+      expect(
+        (result.data.recentMessages as Memory[]).map((memory) => memory.id),
+      ).toEqual(["room-1", "room-2"]);
+      expect(result.text).toContain("first room message");
+      expect(result.text).toContain("second room message");
+      expect(result.text).not.toContain("UNRELATED_PRIVATE_ROOM_TEXT");
+      expect(result.data.recentInteractions).toEqual([]);
+      expect(result.data.recentInteractionsDisclosure).toBeUndefined();
+    },
+  );
 });
 
 describe("recentMessages retained-history disclosure", () => {

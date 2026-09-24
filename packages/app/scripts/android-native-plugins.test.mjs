@@ -1,5 +1,8 @@
 /** Exercises Android instrumentation completion and native module wiring without replacing device behavior. */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   inventory,
@@ -100,4 +103,26 @@ test("rejects unsafe, duplicate, corrupt and incomplete native artifacts", () =>
       "INSTRUMENTATION_STATUS: nativeArtifactName=screen.png\n",
     ),
   );
+});
+
+test("ignores leftover non-package directories but rejects corrupt manifests", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "android-inventory-"));
+  try {
+    const plugins = path.join(root, "plugins");
+    fs.mkdirSync(path.join(plugins, "plugin-native-retired", "dist"), {
+      recursive: true,
+    });
+    const live = path.join(plugins, "plugin-native-current");
+    fs.mkdirSync(live);
+    const manifest = path.join(live, "package.json");
+    fs.writeFileSync(manifest, JSON.stringify({ name: "@elizaos/current" }));
+    assert.deepEqual(
+      inventory(root).map((entry) => entry.name),
+      ["@elizaos/current"],
+    );
+    fs.writeFileSync(manifest, "{");
+    assert.throws(() => inventory(root), SyntaxError);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

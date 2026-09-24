@@ -29,9 +29,6 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "CHARACTER_GATE_NOTICE",
   "ENTITIES",
   "userPersonalityPreferences",
-  "NAMED_NOTES",
-  "recent-conversations",
-  "relevant-conversations",
   "BOT_AWARENESS",
   "CHOICE",
 ] as const;

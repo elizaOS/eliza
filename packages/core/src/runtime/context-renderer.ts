@@ -31,18 +31,18 @@ export interface RenderedContextObject {
 	promptSegments: ContextObjectPromptSegment[];
 }
 
-/**
- * Format one prompt segment as a labeled block. Segments with `label: "system"`
- * are emitted as raw content (the label is implicit in the system role); all
- * other segments get a `<label>:\n<content>` prefix so the model can locate
- * them inside the merged Tier 1 / Tier 2 strings.
- */
+/** Render readable block framing while keeping machine labels in segment metadata. */
 export function segmentBlock(segment: PromptSegment): string {
 	const content = segment.content;
 	const label = (segment as PromptSegment & { label?: unknown }).label;
-	if (label === "system") {
+	if (
+		label === "system" ||
+		(typeof label === "string" &&
+			(label.startsWith("provider:") || label.startsWith("prior_message:")))
+	) {
 		return content;
 	}
+	if (label === "message:user") return `# Current message\n${content}`;
 	return typeof label === "string" && label ? `${label}:\n${content}` : content;
 }
 
@@ -135,11 +135,59 @@ function textFromUnknown(value: unknown): string {
 	return JSON.stringify(value);
 }
 
+/** Render human message content without transport envelopes; the original event
+ * retains all structured metadata for authorization, source binding and replay. */
+function renderMessageContent(event: ContextMessageEvent): string {
+	const content = event.message.content;
+	if (event.message.metadata?.renderAsDialogue !== true)
+		return textFromUnknown(content);
+	if (
+		!content ||
+		typeof content !== "object" ||
+		Array.isArray(content) ||
+		!("text" in content)
+	)
+		return textFromUnknown(content);
+	const text = content.text;
+	if (typeof text !== "string") return textFromUnknown(content);
+	const speaker = event.message.metadata?.speakerName;
+	const lines = [typeof speaker === "string" ? `${speaker}: ${text}` : text];
+	if (
+		"metadata" in content &&
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+	) {
+		for (const [key, value] of Object.entries(content.metadata)) {
+			if (
+				key === "selectedValue" ||
+				key === "selectedValues" ||
+				key === "parentMessageId"
+			)
+				lines.push(`${key}: ${renderEvidenceValue(value)}`);
+		}
+	}
+	if ("attachments" in content && Array.isArray(content.attachments)) {
+		for (const attachment of content.attachments) {
+			lines.push(`# Attachment\n${renderEvidenceValue(attachment)}`);
+		}
+	}
+	return lines.join("\n\n");
+}
+
+/** Complete structured attachment evidence as readable fields, without clipping. */
+function renderEvidenceValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (Array.isArray(value)) return value.map(renderEvidenceValue).join("\n");
+	if (value && typeof value === "object")
+		return Object.entries(value)
+			.map(([key, item]) => `${key}: ${renderEvidenceValue(item)}`)
+			.join("\n");
+	return String(value);
+}
+
 function renderProviderContent(event: ContextProviderEvent): string {
-	// The segment is already labeled `provider:<name>` by `appendPromptSegment`,
-	// which `segmentBlock` then renders as `provider:<name>:\n<content>`. Do NOT
-	// also bake the provider name into the content body — that produced a
-	// duplicated `provider: <name>` line at the top of every provider block.
+	// Provider identity stays in segment metadata rather than prompt framing.
 	const text = event.text;
 	return text === undefined ? "" : text;
 }
@@ -230,7 +278,7 @@ function renderEvent(
 		rendered.promptSegments.push({
 			id: event.message.id ?? event.id,
 			label: `message:${event.message.role}`,
-			content: textFromUnknown(event.message.content),
+			content: renderMessageContent(event),
 			stable: false,
 		});
 		return;

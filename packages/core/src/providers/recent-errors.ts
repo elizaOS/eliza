@@ -137,19 +137,7 @@ function renderText(
 		const suffix = ctx ? ` — ${redact(ctx)}` : "";
 		return `- [${entry.scope}] ${entry.code}: ${redact(entry.message)}${suffix}`;
 	});
-	// The framing must make the block self-quarantining: rendered into a group
-	// turn, an unframed error list reads like conversation topic material — a
-	// live "available_apps provider timeout" got answered as if it were the
-	// user's question (tj-f8249b30e986d6). State explicitly that these are
-	// internal diagnostics and that user messages are never about them unless
-	// the user explicitly asks about errors.
-	return `## Recent runtime errors (internal diagnostics)
-
-The following failures were reported outside the normal action flow. They are internal diagnostics for your own self-awareness — not conversation content. Never assume a user's message refers to them unless the user explicitly asks about errors.
-
-${lines.join("\n")}
-
-If a failure looks actionable, attempt to resolve it (re-run the operation, reconfigure the failing feature, or disable it). If it looks systemic or you cannot resolve it, tell the owner.`;
+	return `Runtime errors (diagnostics, not user requests):\n${lines.join("\n")}`;
 }
 
 /**
@@ -161,10 +149,9 @@ export const recentErrorsProvider: Provider = {
 	description:
 		"Recent runtime failures reported outside the action path (deduped by code)",
 	dynamic: true,
-	// Failures matter most on the narrow planner/tool turns this provider would
-	// otherwise miss (undeclared → ["general"] routing). Always-on is free on the
-	// happy path: it renders nothing when there are no recent errors (#13203).
-	alwaysInResponseState: true,
+	// Diagnostics are relevant to system work, not every conversation.
+	contexts: ["system"],
+	contextGate: { anyOf: ["system"] },
 
 	get: async (
 		runtime: IAgentRuntime,

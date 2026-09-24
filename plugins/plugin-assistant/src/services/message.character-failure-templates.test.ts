@@ -168,6 +168,10 @@ function makeFailingRuntime(
     getCurrentRunId: vi.fn(() => RUN_ID),
     endRun: vi.fn(),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: vi.fn(async () => asUUID(v4())),
     updateMemory: vi.fn(async () => true),
     queueEmbeddingGeneration: vi.fn(async () => undefined),

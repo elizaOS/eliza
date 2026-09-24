@@ -18,6 +18,11 @@ bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
 
+Installed-app launch smoke uses `test:sim:local-chat`; iOS local full-Bun inference uses
+`test:sim:local-chat:ios:full-bun` against a current installed simulator build.
+Use `build:ios:local:sim`, `build:ios:local:device`, and `ios:device:e2e`
+for native builds and physical-device tests.
+
 Web subscription settings select a registered product with `VITE_ELIZA_APPLICATION_SLOT`;
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.

@@ -57,6 +57,10 @@ describe("DefaultMessageService — RUN_ENDED post-delivery detach", () => {
       startRun: () => RUN_ID,
       runActionsByMode: async () => undefined,
       getMemoryById: async () => null,
+      getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+        expect(tableName).toBe("messages");
+        return [];
+      }),
       createMemory: async (memory: Memory) => memory.id,
       queueEmbeddingGeneration: async () => undefined,
       getParticipantUserState: async () => null,

@@ -11,6 +11,7 @@ import {
   type UserConfig,
 } from "vite";
 import { describe, expect, test } from "vitest";
+import { rejectRuntimeInRendererPlugin } from "../scripts/lib/renderer-runtime-boundary.ts";
 import appViteConfig from "../vite.config";
 
 const appRoot = path.resolve(
@@ -48,6 +49,7 @@ async function createAppResolutionServer(
   const server = await createServer({
     configFile: false,
     root: appRoot,
+    plugins: [rejectRuntimeInRendererPlugin()],
     logLevel: "silent",
     optimizeDeps: { noDiscovery: true },
     resolve: {
@@ -164,31 +166,34 @@ describe("workspace package resolution", () => {
   });
 
   test.each(["serve", "build"] as const)(
-    "resolves shared environment utilities through the Node runtime owner while %s config resolves",
+    "resolves canonical browser contracts and rejects runtime imports with %s aliases",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core",
-            path.resolve(appRoot, "../shared/src/env-utils.ts"),
+            "@elizaos/shared/browser-contracts",
+            path.join(appRoot, "src/main.tsx"),
           );
         expect(resolved?.id).toBe(
           normalizePath(
             path.resolve(
               appRoot,
-              command === "serve"
-                ? "../core/dist/index.js"
-                : "../core/dist/index.js",
+              "../shared/scripts/browser-contracts-entry.ts",
             ),
           ),
         );
-        await expect(
-          server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core/client-public",
-            path.join(appRoot, "src/main.tsx"),
-          ),
-        ).rejects.toThrow();
+        for (const runtimeImport of [
+          "@elizaos/core",
+          "@elizaos/core/client-public",
+        ]) {
+          await expect(
+            server.environments.client.pluginContainer.resolveId(
+              runtimeImport,
+              path.join(appRoot, "src/main.tsx"),
+            ),
+          ).rejects.toThrow("Node runtime import");
+        }
       } finally {
         await server.close();
       }

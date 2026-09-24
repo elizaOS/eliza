@@ -104,8 +104,8 @@ export const currentTimeProvider: Provider = {
       timeZone,
     );
     const contextText = userTimeZone
-      ? `User local time: ${humanReadable} (${timeZone}; ${origin === "device" ? "device" : "owner setting; user override wins"}); UTC: ${isoTimestamp}. Use this clock, not prior chat; no timezone arithmetic.`
-      : `${origin === "agent-setting" ? "Agent reference" : "Server reference"} time: ${humanReadable} (${timeZone}); UTC: ${isoTimestamp}. User timezone unknown: never guess; ask if needed. Not user-local; no timezone arithmetic.`;
+      ? `${humanReadable} (${timeZone}), ISO (UTC): ${isoTimestamp}`
+      : `${origin === "agent-setting" ? "Agent" : "Server"} time: ${humanReadable} (${timeZone}), ISO (UTC): ${isoTimestamp}; user timezone unknown.`;
 
     return {
       text: contextText,

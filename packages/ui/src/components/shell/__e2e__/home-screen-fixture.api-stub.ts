@@ -32,6 +32,12 @@ export const client = {
   // so the revision is constant and the subscription is inert.
   getAuthorityRevision: () => 0,
   onAuthorityChange: (_listener: () => void) => () => {},
+  // The fixture can signal a transport restoration while retaining real
+  // subscription teardown when the model-route observer unmounts.
+  onReconnect: (listener: () => void) => {
+    window.addEventListener("eliza-fixture:reconnect", listener);
+    return () => window.removeEventListener("eliza-fixture:reconnect", listener);
+  },
   // Typed widget requests still pass through the fixture's window.fetch mock;
   // mirror the production client's JSON boundary so constructor-based imports
   // and the shared singleton observe the same seeded responses.

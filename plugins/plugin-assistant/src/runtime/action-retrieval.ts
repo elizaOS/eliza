@@ -785,6 +785,47 @@ export function tokenizeActionSearchText(text: string): string[] {
     .map((token) => token.trim())
     .filter((token) => token.length > 1);
 }
+
+/**
+ * Prefer operation names over incidental domain words in long descriptions.
+ * This narrows search results, never authorization: unknown wording keeps the
+ * full lexical matches and every operation remains explicitly discoverable.
+ */
+export function preferredOperationNames(
+  query: string,
+  names: readonly string[],
+): Set<string> {
+  const words = new Set(tokenizeActionSearchText(query));
+  const operationTerms: Readonly<Record<string, readonly string[]>> = {
+    list: ["list", "enumerate", "count"],
+    search: ["search", "find", "lookup"],
+    create: ["create", "add", "write", "save"],
+    update: ["update", "edit", "change", "modify", "replace"],
+    delete: ["delete", "remove", "erase"],
+    get: ["get", "read", "retrieve"],
+    open: ["open", "navigate"],
+    close: ["close"],
+    send: ["send"],
+  };
+  const wanted = new Set<string>();
+  for (const [operation, terms] of Object.entries(operationTerms)) {
+    if (!terms.some((term) => words.has(term))) continue;
+    wanted.add(operation);
+    if (operation === "search") wanted.add("list");
+    if (operation === "update") wanted.add("patch");
+    if (operation === "get") {
+      wanted.add("read");
+      wanted.add("list");
+    }
+    if (operation === "open") wanted.add("show");
+  }
+  return new Set(
+    names.filter((name) =>
+      tokenizeActionSearchText(name).some((term) => wanted.has(term)),
+    ),
+  );
+}
+
 function scoreExactHints(
   parents: ActionCatalogParent[],
   parentActionHints: string[],

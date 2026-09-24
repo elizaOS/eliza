@@ -244,9 +244,13 @@ it("keeps an installed unpublished model removable without offering it as a fres
       },
     ],
   };
-  clientMock.getLocalInferenceHub
-    .mockResolvedValueOnce(installedHub)
-    .mockResolvedValue({ ...installedHub, installed: [] });
+  clientMock.getLocalInferenceHub.mockResolvedValue(installedHub);
+  clientMock.uninstallLocalInferenceModel.mockImplementationOnce(async () => {
+    clientMock.getLocalInferenceHub.mockResolvedValue({
+      ...installedHub,
+      installed: [],
+    });
+  });
   render(<LocalInferencePanel />);
   fireEvent.click(await screen.findByRole("button", { name: "Uninstall" }));
   await waitFor(() =>
