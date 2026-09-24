@@ -5,6 +5,7 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createConnection, createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { reserveStackPort } from "../fixtures/port-reservation.ts";
 import { startCloudStack } from "../fixtures/stack.ts";
 
 async function freePort(): Promise<number> {
@@ -66,6 +67,49 @@ async function closeServer(server: Server | undefined): Promise<void> {
     server.close((error) => (error ? reject(error) : resolve()));
   });
 }
+
+test("stack reservations exclude competing listeners until handoff", async () => {
+  const reservation = await reserveStackPort();
+  let replacement: Server | undefined;
+  try {
+    expect(await occupyPortIfFree(reservation.port)).toBeUndefined();
+    await expect(reserveStackPort(reservation.port)).rejects.toHaveProperty(
+      "code",
+      "EADDRINUSE",
+    );
+    await Promise.all([reservation.release(), reservation.release()]);
+    replacement = await occupyPortIfFree(reservation.port);
+    expect(replacement).toBeDefined();
+  } finally {
+    await reservation.release();
+    await closeServer(replacement);
+  }
+});
+
+test("an unrelated HTTP server cannot satisfy stack API readiness", async () => {
+  const foreignServer = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json({ healthy: true }),
+  });
+  const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-foreign-"));
+  try {
+    await expect(
+      startCloudStack({
+        apiPort: foreignServer.port,
+        logDir,
+        frontend: false,
+        skipMigrate: true,
+      }),
+    ).rejects.toHaveProperty("code", "EADDRINUSE");
+    expect(
+      (await fetch(`http://127.0.0.1:${foreignServer.port}/api/health`)).status,
+    ).toBe(200);
+  } finally {
+    foreignServer.stop(true);
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
 
 test("partial startup failure removes PGlite process and data directory", async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-cleanup-"));
