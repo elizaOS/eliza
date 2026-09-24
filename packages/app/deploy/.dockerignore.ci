@@ -61,7 +61,7 @@ packages/app/ios
 packages/app/platforms/electrobun
 packages/app/.vite
 packages/app/screenshots
-packages/app/test-results
+test-results
 packages/app/test
 packages/app/.eliza
 apps/homepage

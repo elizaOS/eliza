@@ -6,7 +6,7 @@
  * document recall, experience recall) and the FACTS path hit via the same
  * `embedRecallQuery` seam and text normalization; a dropped turn (muted / LLM
  * off) issues no embed; (2) the Stage-1 sender role is resolved once per turn
- * and reused by the pre-LLM shortcut gate through the trajectory context
+ * and reused by later turn work through the trajectory context
  * instead of a second room+world lookup; (3) detached post-turn work owns and
  * flushes one evaluator child before RUN_ENDED, including its failure boundary.
  * Fake runtime over real service code, no live model; the turn runs the
@@ -144,7 +144,7 @@ function makeRuntime(opts: RuntimeOptions = {}) {
         : [],
     ),
     // No text-generation handler: the turn runs the deterministic no-model
-    // path (shortcut gate → should-respond → injection gate → no-model reply),
+    // path (should-respond → injection gate → no-model reply),
     // exercising the prefetch and both role-reuse call sites without a model.
     getModel: vi.fn(() => null),
     isCheckShouldRespondEnabled: vi.fn(() => false),
@@ -711,7 +711,7 @@ describe("post-turn evaluation detachment", () => {
 });
 
 describe("Stage-1 sender role resolved once per turn", () => {
-  it("resolves the sender role once — world fetched for role + mute only, not re-resolved at the shortcut gate", async () => {
+  it("resolves the sender role once, with a separate world-scope mute lookup", async () => {
     const { runtime, getWorld } = makeRuntime();
     const service = new DefaultMessageService();
 
@@ -722,10 +722,8 @@ describe("Stage-1 sender role resolved once per turn", () => {
 
     // The world is fetched exactly twice for the whole turn: once by the
     // single Stage-1 role resolution in handleMessage, once by the
-    // world-scope mute check. Before the per-turn role reuse, the shortcut
-    // gate's own `resolveStage1SenderRole` issued a third world lookup for
-    // the same message; the injection gate short-circuits on zero risk score
-    // so it never re-resolves either.
+    // world-scope mute check. The injection gate short-circuits on zero risk
+    // score, so it does not perform an additional role lookup.
     expect(getWorld).toHaveBeenCalledTimes(2);
   });
 });

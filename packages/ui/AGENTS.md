@@ -182,30 +182,27 @@ not already own; component existence alone does not require another test file.
 The live full-app visual audit lives in `packages/app` (`audit:app` and
 `audit:cloud` in `packages/app`).
 
-Story presence is also checked against
-`scripts/stories-coverage-baseline.json`. `node scripts/stories-coverage.mjs
---check` fails when the covered-component count or coverage ratio falls, or
-when a component newly appears in the missing-story set.
+### Design review
 
-### Design validation
+`bun run --cwd packages/ui lint:check` runs Biome. Typecheck and behavioral tests
+are separate commands. Lint does not run visual audits or compare saved counts.
 
-Design contracts are validated on rendered Storybook and application surfaces.
-Do not add source-text tests for CSS classes, color literals, component names,
-or other implementation tokens; those checks do not prove the resulting pixels
-or interaction behavior. The external `react-doctor design` diagnostics remain
-available behind a repo-root ratchet for redundant
-utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
-hover-only reveals, and similar problems:
+`bun run --cwd packages/ui audit:design` reports component ownership, possible
+duplicates, and native-control usage from the current source. Use `--json` for
+machine-readable output. The report is advisory: similar names or markup do not
+prove two components should merge. Story coverage is also an advisory report.
+There are no minimum caller counts, exact inventory snapshots, expiring design
+exceptions, or story-percentage gates.
 
-```bash
-node packages/scripts/design-doctor-gate.mjs                  # react-doctor design vs committed baseline; fails on any rule growing
-node packages/scripts/design-doctor-gate.mjs --update-baseline  # ratchet the baseline down after a cleanup PR
-```
+Prefer shared primitives for shared behavior. Keep domain-specific composition
+with its owner, and allow native controls in independent platform applications.
+A useful variant may have one caller. Consolidate when it removes duplicated
+behavior without coupling unrelated lifecycles.
 
-The baseline lives in `packages/scripts/design-doctor-baseline.json`; like the
-brand-token ratchet, counts may only decrease. The runner executes npx from a
-temp cwd because the repo root `overrides` conflict with react-doctor's own
-dependency tree.
+Validate changed behavior through component tests and relevant browser states.
+The Storybook gate still detects rendering failures and serious accessibility
+issues; run it when changing stories or shared controls. Follow the root guide
+for proportional visual review rather than a fixed number of capture cycles.
 
 ### Scroll + tap-target certification (`src/testing/scroll-cert.ts`, #14380)
 
@@ -273,10 +270,9 @@ This package mostly reads config injected by the host, not raw env vars:
 - **Add a component:** put it in the right `components/<surface>/` dir, then export
   it from that surface's `index.ts` (and `src/index.ts` only if broadly shared).
   Prefer a subpath export over bloating the root barrel.
-- **Add a primitive:** add under `components/ui/` (the single primitive layer),
-  re-export via `components/primitives/index` / the existing barrel. Never add a
-  second implementation of a base element elsewhere (cloud-ui included) — add a
-  variant to the canonical component, or a composition on top of it.
+- **Add a shared primitive:** keep it in `components/ui/` and export it through
+  the appropriate public subpath. Extend an existing control when behavior is
+  shared; keep unrelated domain or platform behavior with its owner.
 - **Add a nav tab at runtime:** call `registerAppShellPage(registration)`
   (`app-shell-registry.ts`) from the host/plugin; the shell + `navigation/`
   pick it up. The default/explicit `surface.header: "normal"` receives exactly
@@ -316,8 +312,7 @@ This package mostly reads config injected by the host, not raw env vars:
   fallback renderers portal outside collapsible containers. Persistent agent
   notifications stay in `state/notifications/notification-store.ts`, rendered
   by the Home inbox independently of OS interrupts. Do not add another toast
-  library or a screen-overlay window. See [notification-policy.md](notification-policy.md)
-  for platform mapping, permission behavior, and native capability limits.
+  library or a screen-overlay window.
 - `ConnectionStatus` exists twice (cloud-ui string union vs. the composite
   component) — the cloud-ui one is intentionally NOT re-exported from the root
   barrel to avoid the collision (see comment in `index.ts`).

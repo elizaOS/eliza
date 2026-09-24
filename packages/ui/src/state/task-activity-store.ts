@@ -16,13 +16,13 @@
  * only while something is mounted.
  */
 
-import {
-  type SwarmActivityPlanEntry,
-  type SwarmActivityStatus,
-  type SwarmActivityTool,
-  type SwarmEvent,
-  toSwarmActivity,
+import type {
+  SwarmActivityPlanEntry,
+  SwarmActivityStatus,
+  SwarmActivityTool,
+  SwarmEvent,
 } from "@elizaos/core";
+import { toSwarmActivity } from "@elizaos/shared/browser-contracts";
 import { useSyncExternalStore } from "react";
 import { client } from "../api/client";
 

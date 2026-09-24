@@ -9,7 +9,7 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
-import { formatError } from "@elizaos/core";
+import { formatError } from "@elizaos/shared/browser-contracts";
 import { Button, Card, Spinner } from "@elizaos/ui";
 import {
   type AppLaunchResult,

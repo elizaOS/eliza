@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Stage-B on-device STT evaluation driver for issue #9958 (Apple arm).
 //
 // Produces a REAL, measured Stage-B STT result for the Apple
@@ -23,6 +24,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -46,7 +48,7 @@ const NOISE_SNR_DB = 10;
 
 function parseArgs(argv) {
   const args = {
-    out: path.join("test-results", "evidence", `${ISSUE}-stt-stage-b-eval`),
+    out: testOutputPath("evidence", `${ISSUE}-stt-stage-b-eval`),
     voice: "Samantha",
   };
   for (let i = 0; i < argv.length; i++) {

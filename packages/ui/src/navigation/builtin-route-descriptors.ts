@@ -4,11 +4,8 @@
  * canonical route and cannot redeclare its layout or surface policy.
  */
 
-import {
-  IMMERSIVE_WALLPAPER_SURFACE,
-  type PageLayoutManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
+import type { PageLayoutManifest, SurfaceManifest } from "@elizaos/core";
+import { IMMERSIVE_WALLPAPER_SURFACE } from "@elizaos/shared/views/surface-manifest";
 
 /** A route-sensitive surface policy used by launcher roots with opaque children. */
 export interface BuiltinRouteConditionalSurface {

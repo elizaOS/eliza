@@ -1,3 +1,4 @@
+/** Verifies shipped Debian service units and rejects invalid commands using Linux systemd tools. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -29,6 +30,7 @@ function runValidator(directory) {
 }
 
 test("Debian user-unit validation accepts the shipped graph and rejects unknown directives", {
+  // Requires Linux with systemd-analyze to exercise the actual unit validator.
   skip: !canVerify,
 }, () => {
   const valid = runValidator(packaging);

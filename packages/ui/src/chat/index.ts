@@ -2,11 +2,9 @@
  * Shared chat display and command-palette utilities.
  */
 
-import {
-  type EnabledViewKinds,
-  isViewVisible,
-  MESSAGE_SOURCE_CODING_AGENT,
-} from "@elizaos/core";
+import type { EnabledViewKinds } from "@elizaos/core";
+import { MESSAGE_SOURCE_CODING_AGENT } from "@elizaos/shared/browser-contracts";
+import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import type {

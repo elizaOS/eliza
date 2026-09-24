@@ -7,6 +7,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -261,11 +262,7 @@ for (const viewport of [
       height: viewport.height,
     });
     await openVoiceProfiles(page);
-    const screenshotDir = path.join(
-      process.cwd(),
-      "test-results",
-      "voice-profile-lifecycle",
-    );
+    const screenshotDir = testOutputPath("app", "voice-profile-lifecycle");
     await mkdir(screenshotDir, { recursive: true });
     const manage = page.getByTestId("voice-profile-manage-split-source");
     await captureScreenshotWithQualityRetry(

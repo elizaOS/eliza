@@ -37,10 +37,6 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     import(
       "../../../../plugins/plugin-health/src/components/health/HealthView.tsx"
     ) as Promise<{ default: ComponentType }>,
-  finances: () =>
-    import(
-      "../../../../plugins/plugin-finances/src/components/finances/FinancesView.tsx"
-    ) as Promise<{ default: ComponentType }>,
   inbox: () =>
     import(
       "../../../../plugins/plugin-inbox/src/components/inbox/InboxView.tsx"

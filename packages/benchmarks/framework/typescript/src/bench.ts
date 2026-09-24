@@ -18,11 +18,12 @@ import {
   type Character,
   type Content,
   ElizaError,
-  InMemoryDatabaseAdapter,
   type Memory,
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import {
   type BenchmarkResult,
   computeLatencyStats,
@@ -127,7 +128,6 @@ interface ScenarioConfig {
   dbOperation?: "read" | "write";
   dbCount?: number;
   startupOnly?: boolean;
-  minimalBootstrap?: boolean;
 }
 
 interface Scenario {
@@ -347,9 +347,13 @@ async function createBenchmarkRuntime(
   config: ScenarioConfig = { warmup: 0, iterations: 1 },
   llmPlugins: Plugin[] = [mockLlmPlugin],
 ): Promise<AgentRuntime> {
-  const adapter = new InMemoryDatabaseAdapter();
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
 
-  const plugins: Plugin[] = [...llmPlugins, ...extraPlugins];
+  const plugins: Plugin[] = [
+    createAssistantPlugin(),
+    ...llmPlugins,
+    ...extraPlugins,
+  ];
 
   // Add dummy providers if requested
   if (config.dummyProviders && config.dummyProviders > 0) {
@@ -376,9 +380,6 @@ async function createBenchmarkRuntime(
     adapter,
     checkShouldRespond: config.checkShouldRespond ?? false,
     logLevel: "fatal",
-    // When minimalBootstrap is true, disable extended capabilities for a leaner test
-    disableBasicCapabilities: false,
-    enableExtendedCapabilities: config.minimalBootstrap ? false : undefined,
   });
 
   await runtime.initialize();

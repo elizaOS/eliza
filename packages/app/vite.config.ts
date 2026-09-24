@@ -1477,6 +1477,9 @@ function resolveSharedSourceExportTarget(
   if (key === ".") {
     return path.join(sharedPkgDir, "src/index.ts");
   }
+  if (key === "./browser-contracts") {
+    return path.join(sharedPkgDir, "scripts/browser-contracts-entry.ts");
+  }
 
   const exportTarget = resolvePackageExportTarget(value);
   if (!exportTarget) return null;
@@ -1496,7 +1499,11 @@ function rejectRuntimeInRendererPlugin(): Plugin {
     name: "reject-runtime-in-renderer",
     enforce: "pre",
     resolveId(id, importer) {
-      if (id === "@elizaos/core" || id.startsWith("@elizaos/core/")) {
+      if (
+        id === "@elizaos/core" ||
+        id.startsWith("@elizaos/core/") ||
+        id === "@elizaos/shared"
+      ) {
         throw new Error(
           `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
         );
@@ -2859,7 +2866,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // into the eager entry graph.
       {
         find: /^@elizaos\/shared\/logger$/,
-        replacement: path.resolve(elizaRoot, "packages/shared/src/logger.ts"),
+        replacement: path.resolve(
+          elizaRoot,
+          "packages/shared/scripts/browser-logger.ts",
+        ),
       },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the

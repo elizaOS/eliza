@@ -115,8 +115,7 @@ or floating-chat clearance inside the plugin; the shell owns those layers.
 
 ## Notifications
 
-See [notification-policy.md](notification-policy.md) for shared native delivery,
-viewport fallback ownership, interactive popup exceptions, and platform limits.
+See the [package guide](AGENTS.md) for notification ownership and delivery.
 
 The separate `/dev` chat polls recent foreground trajectory summaries for the
 active room. Background activity cannot displace those token counts. Opening
@@ -149,9 +148,11 @@ WAV files and duration, pitch, continuity, and interruption measurements.
 
 This is a library; there is no standalone dev server — run it through a host app.
 
-The ownership, adapter, variant, and exception rules for shared UI live in
-[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md). Run
-`bun run --cwd packages/ui audit:design-system` before submitting changes to
-tokens, controls, or reusable UI patterns.
+Use `bun run --cwd packages/ui audit:design` for an advisory inventory of
+component ownership, possible duplicates, and native controls. Add `--json` for
+structured output. It reports current source without saved count baselines or
+minimum reuse quotas. `lint:check` runs Biome; typecheck, behavioral tests, and
+rendered accessibility checks remain separate. Shared-control guidance lives in
+[AGENTS.md](AGENTS.md).
 
 Realtime voice acknowledgements use turn-scoped transient progress frames and the existing chat status display. They never become saved assistant replies, and clear on final response, interruption, new turn or session teardown. Frames from another trace cannot overwrite the current acknowledgement.

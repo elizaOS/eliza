@@ -1,24 +1,23 @@
 #!/usr/bin/env bun
-// Runs VoiceBench TypeScript latency measurement across STT, LLM, and TTS stages.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import {
   AgentRuntime,
   ChannelType,
   type Character,
   type Content,
   type HandlerCallback,
-  type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   type Memory,
   ModelType,
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+// Runs VoiceBench TypeScript latency measurement across STT, LLM, and TTS stages.
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 
 type VoicebenchMode = {
   id: string;
@@ -666,9 +665,7 @@ function loadDatasetSamples(datasetPath: string): {
   return { datasetName, samples };
 }
 
-async function seedRuntimeGraph(
-  adapter: InMemoryDatabaseAdapter,
-): Promise<void> {
+async function seedRuntimeGraph(adapter: SQLiteDatabaseAdapter): Promise<void> {
   await adapter.createWorlds([
     {
       id: WORLD_ID,
@@ -752,8 +749,8 @@ async function createRuntime(
   profile: string,
   character: Character,
 ): Promise<AgentRuntime> {
-  const adapter = new InMemoryDatabaseAdapter();
-  const plugins = await resolvePlugins(profile);
+  const adapter = await SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
+  const plugins = [createAssistantPlugin(), ...(await resolvePlugins(profile))];
   const runtimeSettings: Record<string, string> = {
     ...(character.settings as Record<string, string> | undefined),
     ALLOW_NO_DATABASE: "true",
@@ -804,7 +801,6 @@ async function createRuntime(
     adapter,
     checkShouldRespond: false,
     logLevel: "fatal",
-    disableBasicCapabilities: false,
   });
 
   await runtime.initialize();

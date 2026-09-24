@@ -192,7 +192,7 @@ build_native_plugin doctr-cpp            ""
 # ── libllama family (MTP) ─────────────────────────────────────────
 echo
 echo "── Step 2: libllama / libggml family (MTP) ──"
-COMPILE_LIBLLAMA="$eliza_root/packages/app-core/scripts/aosp/compile-libllama.mjs"
+COMPILE_LIBLLAMA="$eliza_root/packages/app/scripts/aosp/compile-libllama.mjs"
 if [ ! -f "$COMPILE_LIBLLAMA" ]; then
     echo "  ✗ compile-libllama.mjs missing at $COMPILE_LIBLLAMA"
     FAIL_N=$((FAIL_N+1))
@@ -211,7 +211,7 @@ else
     # its default --assets-dir/--src-dir would land in the wrong tree. Pin both
     # to this eliza checkout so the .so installs where check-riscv64-artifacts.sh
     # scans for it and the build uses the in-repo llama.cpp submodule.
-    libllama_assets_dir="$eliza_root/packages/app-core/platforms/android/app/src/main/assets/agent"
+    libllama_assets_dir="$eliza_root/packages/app/platforms/android/app/src/main/assets/agent"
     libllama_sentinel="$libllama_assets_dir/riscv64/libllama.so"
     libllama_src_args=()
     if [ -f "$eliza_root/plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt" ]; then
@@ -251,7 +251,7 @@ fi
 # ── sigsys-handler-riscv64 ───────────────────────────────────────────
 echo
 echo "── Step 3: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
-COMPILE_SHIM="$eliza_root/packages/app-core/scripts/aosp/compile-shim.mjs"
+COMPILE_SHIM="$eliza_root/packages/app/scripts/aosp/compile-shim.mjs"
 if [ ! -f "$COMPILE_SHIM" ]; then
     echo "  ✗ compile-shim.mjs missing at $COMPILE_SHIM"
     FAIL_N=$((FAIL_N+1))

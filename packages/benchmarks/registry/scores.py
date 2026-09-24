@@ -1275,122 +1275,8 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
-    """Extract scores from RLM benchmark results.
-
-    RLM benchmarks test Recursive Language Model performance on long-context tasks
-    including S-NIAH (Streaming Needle-in-a-Haystack) and OOLONG (long document retrieval).
-
-    Reference: arXiv:2512.24601 - Recursive Language Models
-    """
-    root = expect_dict(data, ctx="rlm_bench:root")
-    metrics = expect_dict(
-        get_required(root, "metrics", ctx="rlm_bench:root"), ctx="rlm_bench:metrics"
-    )
-    overall_acc = expect_float(
-        get_required(metrics, "overall_accuracy", ctx="rlm_bench:metrics"),
-        ctx="rlm_bench:overall_accuracy",
-    )
-    total_tasks = expect_float(
-        get_required(metrics, "total_tasks", ctx="rlm_bench:metrics"),
-        ctx="rlm_bench:total_tasks",
-    )
-    if total_tasks <= 0:
-        raise ValueError("rlm_bench: zero-task score is not publishable")
-    results_raw = root.get("results")
-    if isinstance(results_raw, list) and results_raw:
-        if all(isinstance(item, dict) and item.get("error") for item in results_raw):
-            raise ValueError("rlm_bench: all tasks failed with runtime errors")
-
-    # s_niah_by_length is a dict {length_str: accuracy}, compute average if present
-    s_niah_by_length = get_optional(metrics, "s_niah_by_length")
-    s_niah_avg = 0.0
-    if isinstance(s_niah_by_length, dict) and s_niah_by_length:
-        accuracies = [
-            v for v in s_niah_by_length.values() if isinstance(v, (int, float))
-        ]
-        if accuracies:
-            s_niah_avg = sum(accuracies) / len(accuracies)
-
-    return ScoreExtraction(
-        score=overall_acc,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "overall_accuracy": overall_acc,
-            "total_tasks": total_tasks,
-            "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
-            "s_niah_avg_accuracy": s_niah_avg,  # Computed from s_niah_by_length dict
-            "oolong_accuracy": get_optional(metrics, "oolong_accuracy") or 0,
-            "oolong_pairs_accuracy": get_optional(metrics, "oolong_pairs_accuracy")
-            or 0,
-            "total_cost_usd": get_optional(metrics, "total_cost_usd") or 0,
-            "avg_iterations": get_optional(metrics, "avg_iterations") or 0,
-        },
-    )
 
 
-def _score_from_solana_json(data: JSONValue) -> ScoreExtraction:
-    """Extract scores from Solana benchmark results."""
-    root = expect_dict(data, ctx="solana:root")
-    final_reward_raw = get_optional(root, "final_reward")
-    if final_reward_raw is None:
-        cumulative = get_optional(root, "cumulative_rewards")
-        if isinstance(cumulative, list) and cumulative:
-            final_reward_raw = cumulative[-1]
-    final_reward = expect_float(final_reward_raw, ctx="solana:final_reward")
-    final_programs = root.get("final_programs")
-    if final_programs is None and isinstance(root.get("programs_discovered"), dict):
-        final_programs = len(root["programs_discovered"])
-    messages = root.get("messages")
-    cumulative_rewards = root.get("cumulative_rewards")
-    if (
-        (
-            (
-                isinstance(messages, list)
-                and not messages
-                and isinstance(cumulative_rewards, list)
-                and not cumulative_rewards
-            )
-            or (messages is None and cumulative_rewards is None)
-        )
-        and (final_programs in (None, 0, 0.0))
-        and final_reward == 0.0
-    ):
-        raise ValueError("solana: empty rollout artifact is not publishable")
-    normalized_raw = get_optional(root, "normalized_score")
-    max_reward_raw = get_optional(root, "max_reward")
-    max_reward = 0.0
-    if isinstance(max_reward_raw, (int, float)):
-        max_reward = float(max_reward_raw)
-    else:
-        try:
-            from benchmarks.solana.skill_templates import (
-                get_total_expected_deterministic_reward,
-            )
-
-            max_reward = float(get_total_expected_deterministic_reward())
-        except Exception:
-            max_reward = final_reward if final_reward > 0 else 1.0
-    if isinstance(normalized_raw, (int, float)):
-        normalized_score = float(normalized_raw)
-    else:
-        normalized_score = final_reward / max_reward if max_reward > 0 else 0.0
-    normalized_score = max(0.0, min(1.0, normalized_score))
-    return ScoreExtraction(
-        score=normalized_score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "normalized_score": normalized_score,
-            "final_reward": final_reward,
-            "max_reward": max_reward,
-            "raw_unit": "unique_instructions",
-            "final_programs": final_programs or 0,
-            "model": root.get("model") or "",
-            "run_id": root.get("run_id") or "",
-        },
-    )
 
 
 def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
@@ -2303,87 +2189,8 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_woobench_json(data: JSONValue) -> ScoreExtraction:
-    """Extract normalized WooBench score from its aggregate result JSON."""
-    root = expect_dict(data, ctx="woobench:root")
-    overall = expect_float(
-        get_required(root, "overall_score", ctx="woobench:root"),
-        ctx="woobench:overall_score",
-    )
-    return ScoreExtraction(
-        score=overall / 100.0,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "overall_score": overall,
-            "revenue_efficiency": get_optional(root, "revenue_efficiency") or 0,
-            "resilience_score": get_optional(root, "resilience_score") or 0,
-            "failed_scenarios": get_optional(root, "failed_scenarios") or 0,
-        },
-    )
 
 
-def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
-    """Extract scores from HyperliquidBench results.
-
-    The benchmark writes one aggregated JSON per ``__main__`` invocation
-    containing the average ``final_score`` across all scenarios plus the
-    base/bonus/penalty totals from ``hl-evaluator``. Higher is better.
-    """
-    root = expect_dict(data, ctx="hyperliquid_bench:root")
-    demo_mode = get_optional(root, "demo_mode")
-    if demo_mode is None:
-        demo_mode = True
-    if demo_mode is True:
-        raise ValueError(
-            "hyperliquid_bench: demo-mode result is not publishable as a real harness score"
-        )
-    scenarios = get_optional(root, "scenarios")
-    if not isinstance(scenarios, list) or not scenarios:
-        raise ValueError(
-            "hyperliquid_bench: missing scenario-level live execution evidence"
-        )
-    failed = [
-        item
-        for item in scenarios
-        if not (isinstance(item, dict) and item.get("success") is True)
-    ]
-    if failed:
-        raise ValueError("hyperliquid_bench: failed scenarios are not publishable")
-    unique_signatures: list[str] = []
-    for item in scenarios:
-        if not isinstance(item, dict):
-            continue
-        sigs = item.get("unique_signatures")
-        if isinstance(sigs, list):
-            unique_signatures.extend(str(sig) for sig in sigs if str(sig).strip())
-    if not unique_signatures:
-        raise ValueError(
-            "hyperliquid_bench: no confirmed live action signatures were recorded"
-        )
-    overall = expect_float(
-        get_required(root, "final_score", ctx="hyperliquid_bench:root"),
-        ctx="hyperliquid_bench:final_score",
-    )
-    return ScoreExtraction(
-        score=overall,
-        unit="score",
-        higher_is_better=True,
-        metrics={
-            "final_score": overall,
-            "total_score": get_optional(root, "total_score") or 0,
-            "base": get_optional(root, "base") or 0,
-            "bonus": get_optional(root, "bonus") or 0,
-            "penalty": get_optional(root, "penalty") or 0,
-            "total_scenarios": get_optional(root, "total_scenarios") or 0,
-            "passed_scenarios": get_optional(root, "passed_scenarios") or 0,
-            "mode": get_optional(root, "mode") or "",
-            "model": get_optional(root, "model") or "",
-            "network": get_optional(root, "network") or "",
-            "demo_mode": demo_mode,
-            "canonical_entries": len(set(unique_signatures)),
-        },
-    )
 
 
 def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
@@ -2430,31 +2237,6 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
-    root = expect_dict(data, ctx="scambench:root")
-    metrics = expect_dict(
-        get_required(root, "metrics", ctx="scambench:root"), ctx="scambench:metrics"
-    )
-    score = expect_float(
-        get_required(metrics, "score", ctx="scambench:metrics"),
-        ctx="scambench:metrics.score",
-    )
-    n_scam = expect_float(metrics.get("n_scam") or 0, ctx="scambench:metrics.n_scam")
-    n_legit = expect_float(metrics.get("n_legit") or 0, ctx="scambench:metrics.n_legit")
-    if n_scam + n_legit <= 0:
-        raise ValueError("scambench: zero-example score is not publishable")
-    return ScoreExtraction(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "score": score,
-            "scam_refuse_rate": metrics.get("scam_refuse_rate") or 0,
-            "legit_help_rate": metrics.get("legit_help_rate") or 0,
-            "n_scam": n_scam,
-            "n_legit": n_legit,
-        },
-    )
 
 
 def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction:

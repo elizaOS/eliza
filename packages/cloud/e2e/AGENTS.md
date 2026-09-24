@@ -80,7 +80,7 @@ bun packages/scripts/cloud/siwe-test-login.mjs --base <local-stack-url>
   `process.env` without overriding shell values, so provider keys (e.g.
   `CEREBRAS_API_KEY` for real-LLM lanes) reach both the runner and the worker.
 - **Per-run logs and recordings are gitignored.** Subprocess stdout/stderr
-  stream to `.logs/`; Playwright artifacts go to `test-results/` (or, with
+  stream to `.logs/`; Playwright artifacts go to root `test-results/cloud-e2e/` (or, with
   `E2E_RECORD`, to `e2e-recordings/cloud-e2e/`).
 - **Keep product fixes in their owning package.** This harness may expose bugs
   in `packages/cloud/api` or `packages/app`, but changes belong under those

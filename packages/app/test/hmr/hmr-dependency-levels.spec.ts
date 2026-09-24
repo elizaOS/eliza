@@ -64,10 +64,6 @@ const LEVELS = [
     file: "plugins/plugin-knowledge/src/components/documents/DocumentsView.tsx",
   },
   {
-    name: "plugin view finances",
-    file: "plugins/plugin-finances/src/components/finances/FinancesView.tsx",
-  },
-  {
     name: "plugin view goals",
     file: "plugins/plugin-goals/src/components/goals/GoalsView.tsx",
   },
@@ -106,10 +102,6 @@ const LEVELS = [
   {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet/src/ui/InventoryView.tsx",
-  },
-  {
-    name: "plugin view manager",
-    file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
   },
   {
     name: "plugin view notes",

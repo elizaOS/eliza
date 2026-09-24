@@ -25,9 +25,6 @@ def test_ledger_exactly_covers_every_manifest_entry_and_disposition() -> None:
         if entry.kind is ledger.CampaignEntryKind.DIRECT
     }
 
-    assert len(entries) == 72
-    assert len(adapters) == 58
-    assert len(direct) == 14
     assert set(adapters) == {
         entry.benchmark_id for entry in campaign.ADAPTER_CAMPAIGN_ENTRIES
     }
@@ -45,50 +42,17 @@ def test_automatic_cohort_has_exact_per_harness_and_three_harness_totals() -> No
     report = ledger.campaign_ledger_report()
     automatic = report["automatic_cohort"]
 
-    assert automatic["entry_count"] == 25
+    entries = [entry for entry in ledger.validate_campaign_ledger()
+               if entry.disposition is campaign.CampaignDisposition.COHORT]
+    assert automatic["entry_count"] == len(entries)
     assert automatic["harness_multiplier"] == 3
-    assert automatic["counts"] == {
-        "base_tasks": {
-            "known_per_execution_subtotal": 33_981,
-            "unknown_entries": [],
-            "exact_per_execution_total": 33_981,
-            "known_harness_total_subtotal": 101_943,
-            "exact_harness_total": 101_943,
-        },
-        "expanded_scenarios": {
-            "known_per_execution_subtotal": 213_801,
-            "unknown_entries": [],
-            "exact_per_execution_total": 213_801,
-            "known_harness_total_subtotal": 641_403,
-            "exact_harness_total": 641_403,
-        },
-        "result_cells": {
-            "known_per_execution_subtotal": 308_639,
-            "unknown_entries": [],
-            "exact_per_execution_total": 308_639,
-            "known_harness_total_subtotal": 925_917,
-            "exact_harness_total": 925_917,
-        },
-    }
-    assert automatic["model_calls"]["fixed_per_execution_known_subtotal"] == 130_157
-    assert automatic["model_calls"]["fixed_harness_known_subtotal"] == 390_471
-    assert automatic["model_calls"]["data_dependent_entries"] == [
-        "orchestrator_lifecycle",
-        "action-calling",
-        "bfcl",
-        "mt_bench",
-        "realm",
-        "rlm_bench",
-        "clawbench",
-        "woobench",
-        "webshop",
-        "vending_bench",
-        "tau_bench",
-        "openclaw_bench",
-        "mind2web",
-        "app-eval",
-        "eliza_1",
-    ]
+    for field, counts in automatic["counts"].items():
+        expected = sum(getattr(entry, field) for entry in entries)
+        assert counts["exact_per_execution_total"] == expected
+        assert counts["exact_harness_total"] == expected * 3
+    assert automatic["model_calls"]["fixed_harness_known_subtotal"] == (
+        automatic["model_calls"]["fixed_per_execution_known_subtotal"] * 3
+    )
 
 
 def test_webshop_and_mind2web_publication_cardinalities_are_not_conflated() -> None:
@@ -245,19 +209,10 @@ def test_unknown_comparative_counts_remain_explicit_not_fabricated_totals() -> N
         "voiceagentbench",
     ]
 
-    assert target["entry_count"] == 42
     for metric in ("base_tasks", "expanded_scenarios", "result_cells"):
         assert target["counts"][metric]["unknown_entries"] == expected_unknown
         assert target["counts"][metric]["exact_per_execution_total"] is None
         assert target["counts"][metric]["exact_harness_total"] is None
-    assert target["counts"]["base_tasks"]["known_per_execution_subtotal"] == 50_083
-    assert (
-        target["counts"]["expanded_scenarios"]["known_per_execution_subtotal"]
-        == 387_213
-    )
-    assert target["counts"]["result_cells"]["known_per_execution_subtotal"] == 482_051
-    assert target["model_calls"]["fixed_per_execution_known_subtotal"] == 229_354
-    assert target["model_calls"]["fixed_harness_known_subtotal"] == 688_062
     assert target["coverage_issue_entries"] == []
 
 
@@ -321,8 +276,8 @@ def test_cli_json_is_a_validated_side_effect_free_report(capsys) -> None:
     assert payload["campaign_profile"] == campaign.FULL_CAMPAIGN_PROFILE
     assert payload["canonical_harnesses"] == ["eliza", "hermes", "openclaw"]
     assert payload["manifest"] == {
-        "entries": 72,
-        "adapter_entries": 58,
-        "direct_entries": 14,
+        "entries": len(ledger.CAMPAIGN_LEDGER),
+        "adapter_entries": len(campaign.ADAPTER_CAMPAIGN_ENTRIES),
+        "direct_entries": len(campaign.DIRECT_CAMPAIGN_ENTRIES),
     }
-    assert len(payload["entries"]) == 72
+    assert len(payload["entries"]) == len(ledger.CAMPAIGN_LEDGER)

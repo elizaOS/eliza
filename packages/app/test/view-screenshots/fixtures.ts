@@ -184,93 +184,6 @@ const healthFixtures: Record<string, () => Record<string, unknown>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Finances (plugin-finances) — prop `fetchers`, four states.
-// ---------------------------------------------------------------------------
-
-function financesDashboard() {
-  return {
-    spending: {
-      windowDays: 30,
-      fromDate: "2026-05-18",
-      toDate: "2026-06-17",
-      totalSpendUsd: 1234.5,
-      totalIncomeUsd: 4000,
-      netUsd: 2765.5,
-      transactionCount: 12,
-    },
-    generatedAt: "2026-06-17T12:00:00.000Z",
-  };
-}
-
-function financesSources(status: "active" | "disconnected" = "active") {
-  return {
-    sources: [
-      {
-        id: "src-1",
-        kind: "plaid",
-        label: "Checking",
-        institution: "Acme Bank",
-        status,
-      },
-    ],
-  };
-}
-
-function financesTransactions() {
-  return {
-    transactions: [
-      {
-        id: "tx-1",
-        postedAt: "2026-06-16T09:00:00.000Z",
-        amountUsd: 42.5,
-        direction: "debit",
-        merchantDisplay: "Coffee Bar",
-        merchantNormalized: "coffee-bar",
-        merchantRaw: "COFFEE BAR #12",
-        description: "Latte",
-        category: "dining",
-        currency: "USD",
-      },
-    ],
-  };
-}
-
-function financesRecurring() {
-  return {
-    charges: [
-      {
-        merchantNormalized: "netflix",
-        merchantDisplay: "Netflix",
-        cadence: "monthly",
-        averageAmountUsd: 15.99,
-        nextExpectedAt: "2026-07-01T00:00:00.000Z",
-        category: "entertainment",
-      },
-    ],
-  };
-}
-
-function financesFetchers(sourceStatus: "active" | "disconnected") {
-  return {
-    fetchDashboard: async () => financesDashboard(),
-    fetchSources: async () => financesSources(sourceStatus),
-    fetchTransactions: async () => financesTransactions(),
-    fetchRecurring: async () => financesRecurring(),
-  };
-}
-
-const financesFixtures: Record<string, () => Record<string, unknown>> = {
-  loading: () => ({
-    fetchers: { ...financesFetchers("active"), fetchDashboard: NEVER },
-  }),
-  error: () => ({
-    fetchers: { ...financesFetchers("active"), fetchDashboard: THROW },
-  }),
-  empty: () => ({ fetchers: financesFetchers("disconnected") }),
-  populated: () => ({ fetchers: financesFetchers("active") }),
-};
-
-// ---------------------------------------------------------------------------
 // Inbox (plugin-inbox) — prop `fetchers`, no test; derived from wire shape.
 // ---------------------------------------------------------------------------
 
@@ -984,10 +897,6 @@ export const VIEW_SPECS: Record<string, ViewSpec> = {
   health: {
     states: ["loading", "error", "empty", "populated"],
     propsFor: (s) => healthFixtures[s](),
-  },
-  finances: {
-    states: ["loading", "error", "empty", "populated"],
-    propsFor: (s) => financesFixtures[s](),
   },
   inbox: {
     states: ["loading", "error", "empty", "populated", "degraded"],

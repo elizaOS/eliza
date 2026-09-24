@@ -2,6 +2,10 @@
 
 Android SMS plugin for elizaOS. Adds an SMS inbox, thread viewer, and compose surface to the elizaOS agent shell on Android.
 
+The root TypeScript configuration covers the React view and native bridge together.
+It is package-owned because its JSX and TypeScript import settings differ from
+the generated bridge-only scaffold. Production output uses `tsconfig.build.json`.
+
 ## What it does
 
 - Reads SMS threads and message history from the Android SMS store via the native capacitor bridge.

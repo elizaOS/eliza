@@ -72,3 +72,19 @@ pytest tests/ --cov=elizaos_terminal_bench
   `original-tasks/` into `tasks/`. See [README.md](README.md).
 - Live leaderboard: <https://www.tbench.ai/leaderboard>.
 
+
+## Large task inputs
+
+Seven large task inputs and two protected bytecode fixtures are downloaded
+on demand instead of stored in Git.
+Before running the full corpus or its dataset tests, run from this directory:
+
+```bash
+python3 scripts/fetch-corpus-assets.py
+```
+
+The command restores the exact upstream revision, checks every byte count and
+SHA-256 from `corpus-manifest.json`, and leaves already-valid inputs untouched.
+Downloads are explicit; ordinary installation and sample-task smoke runs do not
+fetch data. The loader reports an actionable error when inputs are missing and
+still verifies the complete original corpus hash after restoration.

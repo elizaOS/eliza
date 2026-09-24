@@ -1,15 +1,16 @@
 #!/usr/bin/env node
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 // iOS Simulator native attachment smoke for #10936. WKWebView is not
 // CDP-drivable, so this mirrors ios-onboarding-smoke: seed Capacitor
 // Preferences, launch the installed app, let the in-app onboarding verifier
 // connect it to a real local agent, then let the attachment verifier exercise
 // the media store + Capacitor Filesystem/Share plugins and report back via
 // Preferences.
-import { execFileSync, spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../scripts/lib/test-output.mjs";
 import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import {
   captureIosSimulatorScreenshot,
@@ -18,7 +19,7 @@ import {
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
-const resultDir = path.join(appDir, "test-results", "ios-attachment-smoke");
+const resultDir = testOutputPath("app", "ios-attachment-smoke");
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",

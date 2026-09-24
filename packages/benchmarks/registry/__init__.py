@@ -7,7 +7,6 @@ Splits the original monolithic registry.py into:
 All public names are re-exported here so existing imports continue to work:
   from benchmarks.registry import get_benchmark_registry
   from benchmarks.registry import load_benchmark_result_json
-  from benchmarks.registry import _score_from_solana_json   # etc.
 
 Standalone-mode callers (e.g. orchestrator scripts that do
 ``from registry import X`` with benchmarks/ on sys.path) also work because
@@ -34,7 +33,6 @@ from .scores import (
     _score_from_gsm8k_json,
     _score_from_hermes_env_json,
     _score_from_humaneval_json,
-    _score_from_hyperliquid_bench_json,
     _score_from_lifeops_bench_json,
     _score_from_meeting_transcription_proof_json,
     _score_from_mind2web_json,
@@ -47,9 +45,6 @@ from .scores import (
     _score_from_orchestrator_lifecycle_json,
     _score_from_osworld_json,
     _score_from_realm_json,
-    _score_from_rlmbench_json,
-    _score_from_scambench_json,
-    _score_from_solana_json,
     _score_from_swebench_json,
     _score_from_swebench_orchestrated_json,
     _score_from_taubench_json,
@@ -63,7 +58,6 @@ from .scores import (
     _score_from_voicebench_json,
     _score_from_voicebench_quality_json,
     _score_from_webshop_json,
-    _score_from_woobench_json,
     _standard_benchmark_metrics,
 )
 
@@ -82,7 +76,6 @@ __all__ = [
     "_score_from_gsm8k_json",
     "_score_from_hermes_env_json",
     "_score_from_humaneval_json",
-    "_score_from_hyperliquid_bench_json",
     "_score_from_lifeops_bench_json",
     "_score_from_meeting_transcription_proof_json",
     "_score_from_mind2web_json",
@@ -95,9 +88,6 @@ __all__ = [
     "_score_from_orchestrator_lifecycle_json",
     "_score_from_osworld_json",
     "_score_from_realm_json",
-    "_score_from_rlmbench_json",
-    "_score_from_scambench_json",
-    "_score_from_solana_json",
     "_score_from_swebench_json",
     "_score_from_swebench_orchestrated_json",
     "_score_from_taubench_json",
@@ -111,6 +101,5 @@ __all__ = [
     "_score_from_voicebench_json",
     "_score_from_voicebench_quality_json",
     "_score_from_webshop_json",
-    "_score_from_woobench_json",
     "_standard_benchmark_metrics",
 ]

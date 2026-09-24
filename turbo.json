@@ -316,12 +316,12 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@elizaos/lifeops-bench#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "@elizaos/testing#typecheck": {
-      "dependsOn": [
-        "@elizaos/capacitor-bun-runtime#build",
-        "@elizaos/plugin-browser#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
       "outputs": []
     }
   }

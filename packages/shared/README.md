@@ -1,5 +1,13 @@
 # @elizaos/shared
 
+`@elizaos/shared/browser-contracts` exposes the pure values needed by renderers.
+Its browser build bundles the selected canonical implementations without the
+Node runtime; Node consumers retain the original core class identities. The
+renderer source build uses the same explicit entry in
+`scripts/browser-contracts-entry.ts`. `@elizaos/shared/logger` selects a browser
+console sink with canonical credential redaction under the browser condition,
+while Node consumers retain the runtime diagnostic stream.
+
 Shared contracts, configuration, utilities, and brand assets used by the agent,
 application hosts, UI, Cloud services, and plugins. This workspace depends on
 `@elizaos/core`; it is not an independent foundation below it.
@@ -61,3 +69,8 @@ See [AGENTS.md](AGENTS.md) for ownership and contribution details.
 normalization, image-description caching, and local media-store URL checks.
 Its transport uses core network guards; importing core does not load this leaf
 or install its MIME detector.
+
+View visibility, surface-policy resolution, and declaration aggregation live in
+`@elizaos/shared/views/view-kind`, `/views/surface-manifest`, and
+`/views/view-declarations`. These modules import only core declaration types and
+can run in browser hosts without loading the Node runtime.

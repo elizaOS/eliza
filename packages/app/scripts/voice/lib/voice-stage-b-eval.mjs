@@ -1,6 +1,8 @@
 // Shares script lib voice stage b eval helpers across repo automation entrypoints.
+
 import fs from "node:fs";
 import path from "node:path";
+import { testOutputPath } from "../../../../scripts/lib/test-output.mjs";
 
 export const STAGE_B_SCHEMA = "eliza_voice_stage_b_stt_eval_v1";
 export const STAGE_B_ISSUE = "9958";
@@ -351,7 +353,7 @@ export function resolveStageBReportPath(env = process.env) {
 
 export function defaultStageBOutputDir(
   env = process.env,
-  repoRoot = process.cwd(),
+  repoRoot = path.dirname(testOutputPath()),
 ) {
   if (env.ELIZA_VOICE_STAGE_B_OUT?.trim()) {
     return path.resolve(env.ELIZA_VOICE_STAGE_B_OUT.trim());

@@ -6,12 +6,12 @@ adb root || true
 adb shell setenforce 0 || true
 bun run --cwd packages/app build  # ensure web dist
 
-mkdir -p packages/app/test-results/android-onboarding-to-home
+mkdir -p test-results/app/android-onboarding-to-home
 ELIZA_API_PORT=31337 \
 ELIZA_PAIRING_DISABLED=1 \
   node packages/app/scripts/run-node-tsx.mjs \
     packages/app/scripts/serve-real-local-agent.ts \
-    > packages/app/test-results/android-onboarding-to-home/host-agent.log 2>&1 &
+    > test-results/app/android-onboarding-to-home/host-agent.log 2>&1 &
 HOST_AGENT_PID=$!
 trap 'kill "$HOST_AGENT_PID" 2>/dev/null || true' EXIT
 for i in $(seq 1 90); do
@@ -23,7 +23,7 @@ for i in $(seq 1 90); do
   fi
   if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
     echo "Host agent exited before becoming healthy"
-    cat packages/app/test-results/android-onboarding-to-home/host-agent.log
+    cat test-results/app/android-onboarding-to-home/host-agent.log
     exit 1
   fi
   sleep 2

@@ -2,13 +2,8 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "dist/**",
-        "build/**"
-      ],
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "package.json",
@@ -26,9 +21,7 @@
       ]
     },
     "typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -47,12 +40,8 @@
       ]
     },
     "test": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "coverage/**"
-      ],
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "package.json",
@@ -180,7 +169,5 @@
       ]
     }
   },
-  "extends": [
-    "//"
-  ]
+  "extends": ["//"]
 }

@@ -66,8 +66,6 @@ export interface DiagnosticsRouteContext
   ) => Promise<T | null>;
   error?: (res: http.ServerResponse, message: string, status?: number) => void;
   eventBuffer: StreamEventEnvelopeLike[];
-  relayPort?: number;
-  checkRelayReachable?: (relayPort: number) => Promise<boolean>;
   initSse?: DiagnosticsSseInit;
   writeSseJson?: DiagnosticsSseWriteJson;
   auditEventTypes: readonly string[];
@@ -84,17 +82,6 @@ export interface DiagnosticsRouteContext
   ) => () => void;
 }
 
-async function defaultCheckRelayReachable(relayPort: number): Promise<boolean> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${relayPort}/`, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(2000),
-    });
-    return response.ok || response.status < 500;
-  } catch {
-    return false;
-  }
-}
 
 function isAutonomyEvent(event: StreamEventEnvelopeLike): boolean {
   return event.type === "agent_event" || event.type === "heartbeat_event";
@@ -263,8 +250,6 @@ export async function handleDiagnosticsRoutes(
     url,
     logBuffer,
     eventBuffer,
-    relayPort: relayPortOverride,
-    checkRelayReachable,
     initSse,
     writeSseJson,
     auditEventTypes,
@@ -553,26 +538,6 @@ export async function handleDiagnosticsRoutes(
     return true;
   }
 
-  if (method === "GET" && pathname === "/api/extension/status") {
-    const relayPort = relayPortOverride ?? 18792;
-    const relayReachable = await (
-      checkRelayReachable ?? defaultCheckRelayReachable
-    )(relayPort);
-
-    // The headless agent only knows whether the browser-bridge relay is
-    // reachable. Extension build artifacts (chromeBuildPath, packaged Safari
-    // app, etc.) live inside the desktop bundle and are resolved by the
-    // desktop RPC `getExtensionStatus` handler, which the UI prefers. When the
-    // client falls back to this HTTP route there is no desktop bundle to probe,
-    // so the artifact fields are genuinely unavailable here rather than null
-    // file paths.
-    json(res, {
-      relayReachable,
-      relayPort,
-      extensionPath: null,
-    });
-    return true;
-  }
 
   return false;
 }

@@ -56,8 +56,6 @@ const buttonVariants = cva(
           "border border-border-strong bg-card text-card-foreground hover:border-accent hover:bg-bg-choice-hover disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:hover:bg-accent-action-hover data-[state=on]:hover:text-accent-action-hover-foreground data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
           "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-inverse-foreground whitespace-normal hover:bg-transparent hover:text-inverse",
-        publicTile:
-          "bg-inverse text-inverse-foreground hover:bg-inverse-foreground hover:text-inverse",
         publicLink:
           "h-auto bg-transparent p-0 text-xs text-muted underline-offset-2 hover:bg-transparent hover:text-txt",
         weatherPrompt:
@@ -147,8 +145,6 @@ const buttonVariants = cva(
           "size-8 rounded-sm p-0 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         pageDrawerTrigger:
           "h-9.5 rounded-sm px-3 text-sm font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
-        publicTile:
-          "h-18 w-full justify-start gap-4 rounded-xs px-5 text-left whitespace-normal",
         memorySidebar:
           "h-11 w-full justify-between gap-2 rounded-sm px-3 text-start text-sm font-medium",
       },

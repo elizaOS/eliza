@@ -2,10 +2,12 @@
  * Playwright configuration for the Playwright Dev Smoke app test lane,
  * including browser projects and app-server wiring.
  */
+
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../scripts/lib/test-output.mjs";
 import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
@@ -64,7 +66,7 @@ export default defineConfig({
   // CI runs staging and local sequentially before one artifact upload.
   // Playwright clears outputDir at invocation start, so each lane owns a
   // directory and cannot erase the previous lane's screenshots/traces.
-  outputDir: `./test-results/dev-smoke-${laneName}`,
+  outputDir: testOutputPath("app", `dev-smoke-${laneName}`),
   use: {
     baseURL: `http://127.0.0.1:${uiPort}`,
     trace: "retain-on-failure",

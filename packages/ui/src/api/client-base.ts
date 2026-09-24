@@ -5,7 +5,7 @@
  * without circular dependency issues.
  */
 
-import { isInferenceTraceId } from "@elizaos/core";
+import { isInferenceTraceId } from "@elizaos/shared/browser-contracts";
 import { parseChatTerminalFailure } from "@elizaos/shared/contracts";
 import {
   isElizaCloudControlPlaneHostname,

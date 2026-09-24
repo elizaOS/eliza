@@ -34,6 +34,7 @@ function embeddingFor(text: string): number[] {
 async function createRealRuntime(): Promise<AgentRuntime> {
   const adapter = SQLiteDatabaseAdapter.create(":memory:", MOCK_AGENT_ID);
   await adapter.initialize();
+  await adapter.ensureEmbeddingDimension(embeddingFor("").length);
   return new AgentRuntime({
     agentId: MOCK_AGENT_ID,
     character: {

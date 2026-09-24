@@ -13,10 +13,6 @@
  *     registered by this plugin's `start`. Always available.
  *
  * Optional targets registered by other plugins:
- *   - `bridge` — registered by this plugin when a `BrowserBridgeRouteService`
- *     is reachable via the runtime; routes commands to the user's real
- *     Chrome / Safari via the Agent Browser Bridge companion extension.
- *     Available iff at least one companion is paired.
  *   - `computeruse` — registered by `@elizaos/plugin-computeruse` on plugin
  *     init when its capabilities indicate the puppeteer-driven Chromium is
  *     ready.
@@ -57,11 +53,6 @@ import {
   type NativeBrowserClientTransport,
   readNativeBrowserPage,
 } from "./native-page-reader.js";
-import {
-  BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
-  type BrowserBridgeRouteService,
-} from "./service.js";
-import { bridgeSupports } from "./targets/bridge-target.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
@@ -79,7 +70,7 @@ import type {
 
 export const BROWSER_SERVICE_TYPE = "browser";
 
-export type BrowserTargetKind = "app" | "companion" | "stagehand" | "external";
+export type BrowserTargetKind = "app" | "stagehand" | "external";
 
 export interface BrowserTargetResolutionContext {
   command: BrowserWorkspaceCommand;
@@ -90,7 +81,7 @@ export interface BrowserTargetResolutionContext {
 /**
  * Pluggable browser backend. Implementations translate the canonical
  * BrowserWorkspaceCommand surface into whatever native shape they speak
- * (electrobun bridge, Chrome companion HTTP, puppeteer CDP, etc.) and
+ * (electrobun bridge, puppeteer CDP, etc.) and
  * return the canonical BrowserWorkspaceCommandResult.
  *
  * Capability-aware dispatch (issue #18258): targets SHOULD declare which
@@ -107,7 +98,7 @@ export interface BrowserTargetResolutionContext {
  * replayed against another target.
  */
 export interface BrowserTarget {
-  /** Stable identifier — `workspace`, `bridge`, `computeruse`, etc. */
+  /** Stable identifier — `workspace`, `computeruse`, etc. */
   readonly id: string;
   /** Short human-readable name for diagnostics. */
   readonly name: string;
@@ -212,7 +203,7 @@ function flattenBrowserCommands(
 export class BrowserService extends Service {
   static override readonly serviceType = BROWSER_SERVICE_TYPE;
   override capabilityDescription =
-    "Single browser dispatcher with a pluggable target registry. Targets (workspace / bridge / computeruse / …) register themselves; the BROWSER action picks the active target or honors a pinned override.";
+    "Single browser dispatcher with a pluggable target registry. Targets (workspace / computeruse / …) register themselves; the BROWSER action picks the active target or honors a pinned override.";
 
   private readonly targets = new Map<string, BrowserTarget>();
   /** Registration order — used as the default preference order. */
@@ -234,18 +225,6 @@ export class BrowserService extends Service {
   static override async start(runtime: IAgentRuntime): Promise<BrowserService> {
     const service = new BrowserService(runtime);
     service.registerTarget(createWorkspaceTarget());
-    // Bridge target self-registers when its dependencies (BrowserBridgeRouteService
-    // implementor) are reachable via the runtime. Missing dependencies keep the
-    // agent in workspace-only mode.
-    try {
-      const bridgeTarget = await maybeCreateBridgeTarget(runtime);
-      if (bridgeTarget) service.registerTarget(bridgeTarget);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.debug(
-        `[BrowserService] bridge target not registered at start: ${message}`,
-      );
-    }
     try {
       const stagehandTarget = await maybeCreateStagehandTarget();
       if (stagehandTarget) service.registerTarget(stagehandTarget);
@@ -719,43 +698,6 @@ function createWorkspaceTarget(): BrowserTarget {
         "./workspace/browser-workspace.js"
       );
       return executeBrowserWorkspaceCommand(command);
-    },
-  };
-}
-
-async function maybeCreateBridgeTarget(
-  runtime: IAgentRuntime,
-): Promise<BrowserTarget | null> {
-  const service = runtime.getService<BrowserBridgeRouteService>(
-    BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
-  );
-  if (!service) return null;
-  return {
-    id: "bridge",
-    name: "Browser Bridge (Chrome / Safari companion)",
-    description:
-      "Routes commands to the user's real Chrome or Safari via the Agent Browser Bridge companion extension. Subset of subactions supported (open / navigate / close / list / state / show / hide / tab / get).",
-    kind: "companion",
-    priority: 80,
-    score: ({ mobile }) => (mobile ? null : 80),
-    // Capability-aware pre-dispatch check (issue #18258): the bridge only
-    // handles a read-mostly subset of subactions. Declaring it here lets the
-    // dispatcher skip the bridge for unsupported commands *before* dispatch
-    // instead of discovering it via a thrown error.
-    supports: bridgeSupports,
-    available: async () => {
-      try {
-        const companions = await service.listBrowserCompanions();
-        return companions.length > 0;
-      } catch {
-        return false;
-      }
-    },
-    execute: async (command) => {
-      const { dispatchBridgeCommand } = await import(
-        "./targets/bridge-target.js"
-      );
-      return dispatchBridgeCommand(service, command);
     },
   };
 }

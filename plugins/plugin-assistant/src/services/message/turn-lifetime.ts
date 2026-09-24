@@ -50,7 +50,6 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { parseCodingActionProfile } from "../../runtime/coding-action-profile.ts";
-import { maybeHandleAnalysisActivation } from "../analysis-mode-handler.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
 import type { ResolvedMessageOptions } from "./contracts.js";
 import {
@@ -182,36 +181,6 @@ export class MessageTurnLifetime {
         },
       );
     }
-    // Analysis-mode token detection runs BEFORE any planner work so the
-    // agent never hallucinates a "performing an analysis" reply. Gated by
-    // `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
-    // services/analysis-mode-handler.ts and review #15.
-    const analysisActivation = maybeHandleAnalysisActivation({
-      text: message.content?.text,
-      roomId: message.roomId,
-    });
-    if (analysisActivation.handled) {
-      if (callback && typeof analysisActivation.responseText === "string") {
-        await callback({
-          text: analysisActivation.responseText,
-          thought: "analysis-mode toggle",
-        });
-      }
-      return {
-        outcome: { status: "completed", effects: [] },
-        didRespond: true,
-        responseContent: {
-          text: analysisActivation.responseText ?? "",
-          thought: "analysis-mode toggle",
-        },
-        responseMessages: [],
-        state: { values: {}, data: {}, text: "" } as State,
-        mode: "none",
-        skipEvaluation: true,
-        reason: "analysis-mode-token",
-      };
-    }
-
     // Central delivery-audience attestation: every connector funnels inbound
     // turns through this seam, so attesting from canonical room state here
     // gives Telegram/iMessage/WhatsApp-style ingress the same evidence the

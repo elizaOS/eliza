@@ -11,8 +11,7 @@ capabilities can be supplied by additional plugins.
 
 Tests use strict deterministic model fixtures or loopback protocol providers;
 real provider tests are opt-in. Package scripts provide `build`, `typecheck`,
-`test` and `lint:check`. See [runtime flows](../../docs/design/runtime-consolidation/FLOWS.md)
-and [migration status](../../docs/design/runtime-consolidation/STATUS.md).
+`test` and `lint:check`. See the [host and assistant ownership review](../../packages/agent/ASSISTANT-BOUNDARY-REVIEW.md).
 
 Optional JSON-file trajectory recording and cost annotation are owned here.
 Core retains the recorder interface and shared value/redaction operations; it
@@ -36,9 +35,8 @@ Conversational entity resolution and entity prompt formatting are owned here.
 Core enforces component visibility using resolved roles and preserves stable
 agent-scoped IDs. Template rendering is imported from shared.
 
-See the [recovery disposition](../../docs/design/runtime-consolidation/RECOVERY.md)
-for deleted retry/compatibility paths, consolidated miss handling, retained
-boundaries and the remaining workflow review.
+The [ownership review](../../packages/agent/ASSISTANT-BOUNDARY-REVIEW.md) records
+consolidation decisions, retained boundaries and remaining verification.
 
 Signed prompt artifacts, activation/rollback and the fixed optimization task catalog
 are owned by `src/services/optimized-prompt.ts`. Import artifact types and
@@ -80,3 +78,8 @@ Cleanup retains running records, temporary writes, unrelated files and records
 belonging to another agent. It does not prune SQL trajectories or Markdown
 review artifacts. Filesystem failures remain visible through normal task error
 handling. Shutdown unregisters the worker and waits for accepted cleanup.
+
+
+The public OAuth provider catalog supports connector/cloud alignment. OAuth
+connection flows live in the host, connectors and cloud services. Assistant does
+not ship a second OAuth callback bus or plugin-configuration action plugin.

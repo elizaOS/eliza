@@ -13,6 +13,7 @@ import type http from "node:http";
 import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import type { Route } from "@elizaos/shared/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { matchPluginRoutePath } from "../plugin-route-path.ts";
 import {
   findProtectedNamespace,
   findRouteModeRule,
@@ -38,25 +39,6 @@ export interface RuntimeRouteModeRule {
 }
 
 export type RouteModeRuntimeLike = object;
-
-function matchPluginRoutePath(pattern: string, pathname: string): boolean {
-  const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
-  const patternSegments = norm(pattern);
-  const pathSegments = norm(pathname);
-
-  for (let i = 0; i < patternSegments.length; i++) {
-    const patternSegment = patternSegments[i];
-    const pathSegment = pathSegments[i];
-    if (!patternSegment) return false;
-    if (patternSegment.startsWith(":") && patternSegment.endsWith("*")) {
-      return pathSegments.slice(i).length > 0;
-    }
-    if (pathSegment === undefined) return false;
-    if (patternSegment.startsWith(":")) continue;
-    if (patternSegment !== pathSegment) return false;
-  }
-  return patternSegments.length === pathSegments.length;
-}
 
 function isRuntimeModeList(
   value: unknown,
@@ -84,7 +66,7 @@ export function findRegisteredRouteModeRule(args: {
   for (const route of routes) {
     if (route.type === "STATIC" || route.type !== method) continue;
     if (!isRuntimeModeList(route.modes) || route.modes.length === 0) continue;
-    if (!matchPluginRoutePath(route.path, args.pathname)) continue;
+    if (matchPluginRoutePath(route.path, args.pathname) === null) continue;
     return {
       path: route.path,
       method: route.type,

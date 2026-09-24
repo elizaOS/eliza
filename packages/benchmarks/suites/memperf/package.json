@@ -6,12 +6,12 @@
   "scripts": {
     "bench": "node run-all.mjs",
     "bench:json": "node run-all.mjs --json",
-    "test": "bun test metric-schema.test.ts",
-    "typecheck": "tsgo --noEmit -p tsconfig.check.json"
+    "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "devDependencies": {
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@types/bun": "^1.2.0",
     "@types/node": "^24.0.0"
   }

@@ -1,11 +1,12 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
     "noEmit": true,
     "composite": false,
     "declaration": false,
     "declarationMap": false,
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../ui/src/*"],
@@ -277,6 +278,9 @@
       ],
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
+      ],
+      "@elizaos/plugin-x/lifeops-message-adapter": [
+        "../../../plugins/plugin-x/src/lifeops-message-adapter.ts"
       ]
     }
   },

@@ -2,7 +2,6 @@
  * Maps connector plugin ids to built-in setup panel tokens while keeping panel
  * availability checks outside the connector list renderer.
  */
-import { getBootConfig } from "../../config/boot-config";
 
 /**
  * Registry that resolves a connector setup-plugin id to the token of the
@@ -29,8 +28,7 @@ export type ConnectorSetupPanelToken =
   | "telegram-bot"
   | "whatsapp"
   | "discord-local"
-  | "imessage"
-  | "lifeops-browser";
+  | "imessage";
 
 type MatchKind = "exact" | "substring";
 
@@ -103,19 +101,3 @@ registerConnectorSetupPanelRule({
   match: "exact",
 });
 
-// The LifeOps browser-bridge panel is a host-provided component (boot-config
-// slot), not a statically bundled one, so its rule only resolves while the host
-// has supplied it. Both namespaced (`lifeopsbrowser`) and short (`browserbridg`)
-// connector ids route to it.
-registerConnectorSetupPanelRule({
-  token: "lifeops-browser",
-  needle: "lifeopsbrowser",
-  match: "substring",
-  available: () => Boolean(getBootConfig().lifeOpsBrowserSetupPanel),
-});
-registerConnectorSetupPanelRule({
-  token: "lifeops-browser",
-  needle: "browserbridg",
-  match: "substring",
-  available: () => Boolean(getBootConfig().lifeOpsBrowserSetupPanel),
-});
