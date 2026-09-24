@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "graphVersion": "2026-09-16.1",
+  "graphVersion": "2026-09-24.1",
   "evidenceTtlHours": 168,
   "reusePolicy": "current-run-only",
   "environment": {
@@ -61,29 +61,6 @@
       "dependsOn": ["canonical"]
     },
     {
-      "id": "cloud-gateway-discord",
-      "workflow": ".github/workflows/cloud-gateway-discord.yml",
-      "workspacePatterns": [
-        "packages/cloud/shared",
-        "packages/cloud/services/gateway-discord",
-        "plugins/plugin-discord"
-      ],
-      "inputs": ["packages/cloud/scripts/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "dev-smoke",
-      "workflow": ".github/workflows/dev-smoke.yml",
-      "workspacePatterns": [
-        "packages/agent",
-        "packages/app",
-        "packages/core",
-        "packages/ui"
-      ],
-      "inputs": ["packages/app/test/ui-smoke/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core"],
@@ -103,13 +80,6 @@
         "packages/ui/src/testing/**"
       ],
       "dependsOn": ["canonical"]
-    },
-    {
-      "id": "ui-stories",
-      "workflow": ".github/workflows/ui-story-gate.yml",
-      "workspacePatterns": ["packages/app", "packages/ui"],
-      "inputs": ["packages/ui/src/**/*.stories.*", ".storybook/**"],
-      "dependsOn": ["ui-core"]
     }
   ]
 }

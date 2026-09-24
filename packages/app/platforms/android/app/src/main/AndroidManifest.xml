@@ -20,6 +20,8 @@
         android:name="android.hardware.telephony"
         android:required="false" />
 
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application
         android:name=".ElizaApplication"
         android:allowBackup="true"
@@ -273,6 +275,10 @@
             </intent-filter>
         </service>
     
+        <activity android:name="ai.elizaos.app.ElizaInCallActivity"
+            android:exported="false" android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />
+
         <service
             android:name="ai.elizaos.app.ElizaInCallService"
             android:exported="true"
@@ -282,7 +288,7 @@
                 android:value="true" />
             <meta-data
                 android:name="android.telecom.IN_CALL_SERVICE_RINGING"
-                android:value="true" />
+                android:value="false" />
             <intent-filter>
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>

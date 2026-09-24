@@ -10,6 +10,17 @@ export async function installOrganizationBillingScopeTestColumns(
   );
   for (const statement of columns.split("--> statement-breakpoint"))
     if (statement.trim()) await execute(statement);
+  const guards = await readFile(
+    new URL("../migrations/0405_subscription_app_scope_guards.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of guards.split("--> statement-breakpoint")) {
+    const index = statement.trim().match(/^CREATE UNIQUE INDEX "([a-z_]+)"/);
+    if (index) {
+      await execute(`DROP INDEX IF EXISTS "${index[1]}"`);
+      await execute(statement);
+    }
+  }
   const commands = await readFile(
     new URL("../migrations/0408_app_billing_command_intents.sql", import.meta.url),
     "utf8",

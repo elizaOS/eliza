@@ -1,5 +1,10 @@
+/**
+ * Verifies system bridge reads against live Android role, audio and settings APIs.
+ * Instrumentation uses real device state without replacing native services.
+ */
 package ai.eliza.plugins.system
 
+import android.app.role.RoleManager
 import android.content.Context
 import android.media.AudioManager
 import android.os.Build
@@ -10,18 +15,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * The first on-device instrumented test for an elizaOS native plugin (issue
- * #9967: "Kotlin runs on no test, on no device").
- *
- * Runs on a real device/emulator and exercises the ACTUAL Android system reads
- * that the launcher's System/Settings view depends on — `RoleManager`,
- * `AudioManager`, and `Settings` via [SystemDeviceReader] — asserting real
- * native side-effects (state reads), not a mocked `Capacitor.Plugins` bridge.
- *
- * Run: `./gradlew :elizaos-capacitor-system:connectedDebugAndroidTest`
- * (from packages/app/platforms/android, with a device/emulator attached).
- */
 @RunWith(AndroidJUnit4::class)
 class SystemDeviceReaderInstrumentedTest {
 
@@ -48,8 +41,9 @@ class SystemDeviceReaderInstrumentedTest {
                     SystemDeviceReader.ROLE_MAP[role.role],
                     role.androidRole,
                 )
-                // `held` is consistent with the live holders list (the real
-                // device side-effect: who actually owns the role right now).
+                val manager = context.getSystemService(RoleManager::class.java)
+                assertEquals(manager.isRoleAvailable(role.androidRole), role.available)
+                assertEquals(manager.isRoleHeld(role.androidRole), role.held)
                 assertEquals(
                     role.holders.contains(context.packageName),
                     role.held,

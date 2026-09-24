@@ -1,3 +1,4 @@
+/** Exercises complete OCR text, geometry and confidence using the real bundled engine on Android. */
 package ai.eliza.plugins.mlkittext
 
 import android.graphics.Bitmap
@@ -5,6 +6,11 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import org.junit.Assert.assertEquals
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -12,16 +18,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * On-device instrumented test for ML Kit text recognition (issue #11001).
- *
- * Renders a known string into a bitmap, runs the real ML Kit Text Recognition
- * v2 engine through [MlKitTextReader] — the exact class the Capacitor plugin
- * ships — and asserts real text plus sane bounding boxes come back. Mirrors
- * the #9453 `connectedDebugAndroidTest` evidence pattern.
- *
- * Run: `./gradlew :elizaos-plugin-native-inference:connectedDebugAndroidTest`
- */
 @RunWith(AndroidJUnit4::class)
 class MlKitTextReaderInstrumentedTest {
 
@@ -83,7 +79,7 @@ class MlKitTextReaderInstrumentedTest {
                 "word '${word.text}' bottom edge inside bitmap",
                 word.top + word.height <= bitmap.height,
             )
-            assertTrue("word '${word.text}' confidence sane", word.confidence in 0..100)
+            assertTrue("word '${word.text}' confidence sane", word.confidence in 0.0..100.0)
         }
 
         // The two rendered lines must land in different block/line groups so the
@@ -95,6 +91,25 @@ class MlKitTextReaderInstrumentedTest {
         val helloTop = words.first { it.text.uppercase().contains("HELLO") }.top
         val bridgeTop = words.first { it.text.uppercase().contains("BRIDGE") }.top
         assertTrue("HELLO ($helloTop) renders above BRIDGE ($bridgeTop)", helloTop < bridgeTop)
+    }
+
+    @Test
+    fun recognize_preservesEngineConfidenceInsteadOfFabricatingCertainty() {
+        val bitmap = renderTextBitmap(listOf("HELLO ELIZA 42", "OCR BRIDGE"))
+        val engine = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            val raw = Tasks.await(engine.process(InputImage.fromBitmap(bitmap, 0)), 60, TimeUnit.SECONDS)
+            val elements = raw.textBlocks.flatMap { it.lines }.flatMap { it.elements }
+            assertTrue("fixture must exercise non-perfect confidence", elements.any { it.confidence > 0f && it.confidence < 1f })
+            val actual = recognizeBlocking(bitmap)
+            assertEquals(elements.map { it.text }, actual.map { it.text })
+            elements.zip(actual).forEach { (element, word) ->
+                assertEquals("preserve actual confidence for ${element.text}", element.confidence.toDouble() * 100.0, word.confidence.toDouble(), 0.0001)
+            }
+        } finally {
+            engine.close()
+            bitmap.recycle()
+        }
     }
 
     @Test

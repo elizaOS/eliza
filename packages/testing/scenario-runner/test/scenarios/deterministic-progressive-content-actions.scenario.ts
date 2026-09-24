@@ -243,7 +243,6 @@ const progressiveModelFixtures: ScenarioModelFixture[] = [
     match: {
       modelType: "RESPONSE_HANDLER",
       input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
-      toolNames: ["HANDLE_RESPONSE"],
     },
     response: {
       json: {

@@ -212,16 +212,6 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     ],
   },
   {
-    packageName: "@elizaos/plugin-native-inference/bridge",
-    iosPods: [
-      {
-        name: "ElizaosCapacitorMobileAgentBridge",
-        kind: "custom",
-        include: "mobileAgentTunnel",
-      },
-    ],
-  },
-  {
     packageName: "llama-cpp-capacitor",
     iosPods: [
       {
@@ -263,8 +253,6 @@ function shouldIncludeIosCustomPod(pod, context) {
       return true;
     case "bunRuntime":
       return context.includeBunRuntime;
-    case "mobileAgentTunnel":
-      return context.includeTunnelBridge;
     case "llama":
       return context.includeLlama && !context.appStoreBuild;
     case "fullBunEngine":
@@ -288,17 +276,13 @@ export function resolveIosCustomPods({
   includeCompatBunRuntime = false,
   includeFullBunEngine = false,
   appStoreBuild = false,
-  includeMobileAgentBridge = false,
 } = {}) {
   const includeBunRuntime = includeCompatBunRuntime || includeFullBunEngine;
-  const includeTunnelBridge =
-    !appStoreBuild && (includeFullBunEngine || includeMobileAgentBridge);
   const context = {
     appStoreBuild,
     includeBunRuntime,
     includeFullBunEngine,
     includeLlama,
-    includeTunnelBridge,
   };
   return manifestIosPods()
     .filter((pod) => pod.kind === "custom")

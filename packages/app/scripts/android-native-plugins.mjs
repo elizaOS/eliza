@@ -174,10 +174,26 @@ async function main() {
   const hardware = adb("shell", "getprop", "ro.hardware").trim();
   if (!/^(ranchu|goldfish|cutf_cvm)$/.test(hardware))
     throw new Error(`Expected an emulator, got ro.hardware=${hardware}`);
+  const networkTransitions = args.includes("--network-transitions");
+  if (networkTransitions) {
+    if (
+      !/^(ranchu|goldfish)$/.test(hardware) ||
+      selected.length !== 1 ||
+      selected[0].directory !== "plugin-native-network-policy"
+    )
+      throw new Error(
+        "Network transitions require a stock isolated emulator and --plugin plugin-native-network-policy",
+      );
+    if (adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim())
+      throw new Error(
+        "Network transitions require an emulator without the user app installed",
+      );
+  }
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
   const report = {
     serial,
     hardware,
+    networkTransitions,
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -186,6 +202,11 @@ async function main() {
     results: [],
   };
   try {
+    report.device = {
+      sdk: adb("shell", "getprop", "ro.build.version.sdk").trim(),
+      fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
+      webView: adb("shell", "dumpsys", "webviewupdate").trim(),
+    };
     if (!args.includes("--no-build")) {
       console.log(`Building ${selected.length} Android native test APKs`);
       let build;
@@ -258,12 +279,25 @@ async function main() {
         entry.apkSha256 = createHash("sha256")
           .update(fs.readFileSync(apk))
           .digest("hex");
-        adb("install", "-r", "-t", "-g", apk);
+        if (plugin.directory === "plugin-native-camera") {
+          // The real microphone-denial test owns its prompt; pregrant only camera access.
+          adb("install", "-r", "-t", apk);
+          adb(
+            "shell",
+            "pm",
+            "grant",
+            applicationId,
+            "android.permission.CAMERA",
+          );
+        } else {
+          adb("install", "-r", "-t", "-g", apk);
+        }
         if (plugin.directory === "plugin-native-mobile-signals")
           adb(
             "shell",
             "appops",
             "set",
+            "--uid",
             applicationId,
             "android:get_usage_stats",
             "allow",
@@ -282,6 +316,7 @@ async function main() {
             "instrument",
             "-w",
             "-r",
+            ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
             `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
           ],
           300000,
