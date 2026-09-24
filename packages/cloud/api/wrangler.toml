@@ -2,8 +2,9 @@
 # eliza-cloud-api — Cloudflare Worker config
 # =============================================================================
 # This file is committed; secrets live in `wrangler secret put` (push them via
-# packages/cloud/scripts/admin/cf-secrets-migrate.mjs).  Anything marked REPLACE_ME must be filled
-# in by the operator after running packages/cloud/scripts/admin/cf-bootstrap.sh.
+# packages/cloud/scripts/admin/cf-secrets-migrate.mjs). Environment bindings below
+# identify provisioned resources. New environments require explicit provisioning
+# and binding configuration before the protected cloud-cf-release.yml workflow.
 # =============================================================================
 
 name = "eliza-cloud-api"

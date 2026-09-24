@@ -82,6 +82,11 @@ source-only benchmark harnesses remain available in the checkout and are not
 installed in generated projects. Native binary and patch directories remain
 intact for builders that discover their contents dynamically.
 
+SMS gateway operations, production Cloud gateway deployment, homepage/DNS
+maintenance, and Docker CI review are checkout-only tools. Run their existing
+package commands from this repository; they require repository sources or
+operator configuration and are not part of the installed app build interface.
+
 Published diagnostics include only the test helpers they use. Repository test
 runners and unrelated assertion, browser, and trajectory harnesses are not
 part of the app-core package.

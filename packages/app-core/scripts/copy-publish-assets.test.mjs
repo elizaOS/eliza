@@ -73,6 +73,15 @@ it("ships consumer build tools without private repository test dependencies", as
     expect(existsSync(path.join(dist, "scripts/copy-publish-assets.mjs"))).toBe(
       false,
     );
+    // An installed app must not carry repository deployment and CI entrypoints.
+    for (const operator of [
+      "deploy-cloud-api-production-gateway.mjs",
+      "continue-sms-gateway-work.mjs",
+      "sync-homepage-porkbun-dns.mjs",
+      "docker-ci-smoke.sh",
+    ]) {
+      expect(existsSync(path.join(dist, "scripts", operator))).toBe(false);
+    }
     const { resolveElectrobunDir } = await import(
       pathToFileURL(path.join(dist, "scripts/lib/app-dir.mjs")).href
     );

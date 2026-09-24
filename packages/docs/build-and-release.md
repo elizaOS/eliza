@@ -22,13 +22,33 @@ GitHub Release event never starts publication.
 1. Rebase the release change on current `develop`.
 2. Run `bun install --frozen-lockfile`, `bun run verify`, `bun run format:check`,
    and `bun run test`.
-3. Set the exact cohort version in the manifests governed by
-   `packages/scripts/release-cohort.json`.
+3. Prepare and commit the manifests governed by
+   `packages/scripts/release-cohort.json`: one exact release version, explicit
+   public access, and published dependency ranges. The existing
+   `scripts/release-set-public-access.mjs` and
+   `packages/scripts/replace-workspace-versions.js` helpers prepare access and
+   dependency ranges before the source SHA is pinned; the workflow refuses
+   in-job manifest rewrites.
 4. Dispatch `release.yaml` from `develop` with the exact source SHA, canonical
    source ref (`refs/heads/develop`), version, channel, and npm publisher.
 
 The workflow refuses any source SHA, source ref, repository, or workflow
 revision that is not the current protected `develop` tip.
+
+The direct root publication shortcuts have been retired. Use
+`bun run release:candidate --help` for the explicit candidate/verify/publish
+arguments, or dispatch the workflow above. Lerna remains the version-preparation
+tool; it no longer has root publication shortcuts.
+
+The explicit cohort includes every public package previously selected by those
+shortcuts, plus cloud-routing. Its current manifests may have different versions
+(for example, taskmarket starts at `0.1.0`); release preparation must align all
+cohort versions deliberately. The candidate rejects unprepared versions and
+workspace dependency ranges instead of publishing a partial selection.
+
+The workflow accepts the npm channel as free text. Its existing downstream
+desktop mapping sends `latest` to `stable` and non-latest channels, including
+`next`, to `beta`; npm and desktop channel names are separate contracts.
 
 ## Transaction design
 
@@ -38,7 +58,7 @@ uploads the immutable candidate artifact.
 
 The publication job receives only that artifact and the protected npm
 environment. It publishes the recorded tarballs and promotes the complete
-cohort to the requested `beta` or `latest` channel.
+cohort to the requested `beta`, `next`, or `latest` npm channel.
 
 The finalization job reads every public npm version and channel back before it
 pushes the planned tag and creates the GitHub Release. Failed or incomplete

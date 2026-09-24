@@ -310,7 +310,10 @@ async function main() {
     let connectProbe = null;
     if (args.runInstall && connectEndpoint) {
       connectProbe = tryConnectWirelessAdb(connectEndpoint.endpoint);
-      const connectedDevices = listAdbDevices();
+      // Connecting changes device state; the pre-connect snapshot is stale.
+      const connectedDevices = listAdbDeviceRows().filter(
+        (device) => device.state === "device",
+      );
       if (connectProbe.ok && connectedDevices.length === 1) {
         console.log(
           `[sms-gateway-watch] wireless adb connected: ${connectEndpoint.endpoint}`,

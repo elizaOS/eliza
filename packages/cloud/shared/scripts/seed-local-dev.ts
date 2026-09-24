@@ -1,12 +1,11 @@
 /**
- * Seeds a local cloud DB with development fixtures: a test organization with a
- * large credit balance, test users (dev@local.test plus the developer's own
- * USER_EMAIL/DEVELOPER_EMAIL when set), the credit-pack catalog with Stripe
- * test-mode fallbacks, and the default Eliza agent. Idempotent via
- * on-conflict upserts, so it is safe to re-run.
+ * Seeds local development users, credit packs and the default agent.
+ * Each run adds 1,000,000 credits to the development organization; other
+ * fixtures are upserted without duplication. USER_EMAIL/DEVELOPER_EMAIL may
+ * attach the developer's account to that organization.
  */
 import { sql } from "drizzle-orm";
-import { loadEnvFiles } from "./local-dev-helpers";
+import { loadEnvFiles } from "../../scripts/admin/local-dev-helpers";
 
 loadEnvFiles([".env", { path: ".env.local", override: true }]);
 
@@ -14,9 +13,9 @@ const DEFAULT_ELIZA_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 
 async function seedLocalDev() {
   const [{ db }, schema, { agentTable, entityTable }] = await Promise.all([
-    import("../../shared/src/db/client"),
-    import("../../shared/src/db/schemas"),
-    import("../../shared/src/db/schemas/eliza"),
+    import("../src/db/client"),
+    import("../src/db/schemas"),
+    import("../src/db/schemas/eliza"),
   ]);
 
   console.log("🌱 Seeding Local Development Data");
@@ -47,6 +46,7 @@ async function seedLocalDev() {
       .insert(schema.users)
       .values({
         email: "dev@local.test",
+        steward_user_id: "local-dev:dev@local.test",
         email_verified: true,
         name: "Local Dev User",
         organization_id: org.id,
@@ -64,6 +64,7 @@ async function seedLocalDev() {
         .insert(schema.users)
         .values({
           email: devEmail,
+          steward_user_id: `local-dev:${devEmail}`,
           email_verified: true,
           name: devEmail.split("@")[0],
           organization_id: org.id,
@@ -87,10 +88,8 @@ async function seedLocalDev() {
         description: "50,000 credits for AI generations",
         credits: 50000,
         price_cents: 4999,
-        stripe_price_id:
-          process.env.STRIPE_SMALL_PACK_PRICE_ID || "price_test_small",
-        stripe_product_id:
-          process.env.STRIPE_SMALL_PACK_PRODUCT_ID || "prod_test_small",
+        stripe_price_id: process.env.STRIPE_SMALL_PACK_PRICE_ID || "price_test_small",
+        stripe_product_id: process.env.STRIPE_SMALL_PACK_PRODUCT_ID || "prod_test_small",
         sort_order: 1,
       },
       {
@@ -98,10 +97,8 @@ async function seedLocalDev() {
         description: "150,000 credits for AI generations",
         credits: 150000,
         price_cents: 12999,
-        stripe_price_id:
-          process.env.STRIPE_MEDIUM_PACK_PRICE_ID || "price_test_medium",
-        stripe_product_id:
-          process.env.STRIPE_MEDIUM_PACK_PRODUCT_ID || "prod_test_medium",
+        stripe_price_id: process.env.STRIPE_MEDIUM_PACK_PRICE_ID || "price_test_medium",
+        stripe_product_id: process.env.STRIPE_MEDIUM_PACK_PRODUCT_ID || "prod_test_medium",
         sort_order: 2,
       },
       {
@@ -109,10 +106,8 @@ async function seedLocalDev() {
         description: "500,000 credits for AI generations",
         credits: 500000,
         price_cents: 39999,
-        stripe_price_id:
-          process.env.STRIPE_LARGE_PACK_PRICE_ID || "price_test_large",
-        stripe_product_id:
-          process.env.STRIPE_LARGE_PACK_PRODUCT_ID || "prod_test_large",
+        stripe_price_id: process.env.STRIPE_LARGE_PACK_PRICE_ID || "price_test_large",
+        stripe_product_id: process.env.STRIPE_LARGE_PACK_PRODUCT_ID || "prod_test_large",
         sort_order: 3,
       },
     ];
@@ -165,21 +160,9 @@ async function seedLocalDev() {
     console.log("\n📋 Test Account:");
     console.log("   Email: dev@local.test");
     console.log("   Organization: Local Dev Organization");
-    console.log("   Credits: 1,000,000");
-    console.log("\n⚠️  CRITICAL: Clear your browser cookies NOW!");
-    console.log("   Your session references the old remote database.");
-    console.log("\n📋 Steps to fix:");
-    console.log("   1. Open browser DevTools (F12)");
-    console.log("   2. Application → Cookies → http://localhost:3000");
-    console.log("   3. Click 'Clear all cookies'");
-    console.log("   4. Close all localhost:3000 tabs");
-    console.log("   5. Run: bun run dev");
-    console.log("   6. Open fresh tab: http://localhost:3000");
+    console.log(`   Credits: ${org.credit_balance}`);
   } catch (error) {
-    console.error(
-      "\n❌ Seeding failed:",
-      error instanceof Error ? error.message : String(error),
-    );
+    console.error("\n❌ Seeding failed:", error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
