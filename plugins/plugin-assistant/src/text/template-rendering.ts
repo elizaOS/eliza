@@ -1,7 +1,10 @@
 /** Renders complete authored templates with unescaped bindings and deterministic example names. */
 
-import { buildDeterministicSeed, getDeterministicNames } from "@elizaos/core/utils/deterministic";
 import { replaceIndexedNameTokens } from "@elizaos/core/name-tokens";
+import {
+  buildDeterministicSeed,
+  getDeterministicNames,
+} from "@elizaos/core/utils/deterministic";
 import type Handlebars from "handlebars";
 import { compileTemplate } from "./template-engine.js";
 

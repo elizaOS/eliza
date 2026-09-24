@@ -55,13 +55,21 @@ import {
 } from "@elizaos/app/api/ios-local-agent-transport";
 import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
-import { type AppBlockerSettingsCardProps, type WebsiteBlockerSettingsCardProps } from "@elizaos/core/contracts/personal-assistant";
-import { CLOUD_PAIR_LOCAL_OWNER_HINT_KEY, cloudPairTokenKeyForAgent, isCloudPairAgentId, isCloudPairLoopbackOrigin } from "@elizaos/core/contracts/cloud-pair";
 import { getStylePresets } from "@elizaos/core/character-presets";
-import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  cloudPairTokenKeyForAgent,
+  isCloudPairAgentId,
+  isCloudPairLoopbackOrigin,
+} from "@elizaos/core/contracts/cloud-pair";
+import {
+  type AppBlockerSettingsCardProps,
+  type WebsiteBlockerSettingsCardProps,
+} from "@elizaos/core/contracts/personal-assistant";
 import { logger } from "@elizaos/core/logger";
+import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";

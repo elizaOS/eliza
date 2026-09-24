@@ -1,5 +1,8 @@
 /** Pure host classifiers shared by the live shell network policy. */
-import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 export function isTrustedPrivateHttpHost(host: string): boolean {
   return (

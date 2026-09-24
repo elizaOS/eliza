@@ -11,18 +11,9 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "lib": [
-      "ES2024",
-      "DOM"
-    ],
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "lib": ["ES2024", "DOM"],
+    "types": ["node", "bun-types"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
   "extends": "../tsconfig.workspace.json"
 }

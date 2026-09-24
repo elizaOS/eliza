@@ -10,26 +10,12 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "ignoreDeprecations": "5.0",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "customConditions": [
-      "eliza-source"
-    ],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "customConditions": ["eliza-source"],
     "jsx": "react-jsx"
   },
-  "include": [
-    "src",
-    "tests",
-    "../scripts/e2e",
-    "playwright.config.ts"
-  ],
+  "include": ["src", "tests", "../scripts/e2e", "playwright.config.ts"],
   "extends": "../../testing/tsconfig.workspace.json"
 }

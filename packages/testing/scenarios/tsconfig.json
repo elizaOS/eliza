@@ -1,26 +1,13 @@
 {
-  "extends": [
-    "../../../tsconfig.json",
-    "../tsconfig.workspace.json"
-  ],
+  "extends": ["../../../tsconfig.json", "../tsconfig.workspace.json"],
   "compilerOptions": {
     "composite": false,
     "declaration": false,
     "declarationMap": false,
-    "types": [
-      "node",
-      "bun-types"
-    ],
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ]
+    "types": ["node", "bun-types"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": [
-    "./**/*.ts",
-    "./**/*.d.ts"
-  ],
+  "include": ["./**/*.ts", "./**/*.d.ts"],
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",

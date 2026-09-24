@@ -455,11 +455,7 @@
       "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sql#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/core#build",
-        "@elizaos/shared#build"
-      ]
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-wallet#typecheck": {
       "dependsOn": [

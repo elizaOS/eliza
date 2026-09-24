@@ -28,13 +28,32 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
-export { type AllPermissionsState, type PermissionCheckResult, type PermissionManagerConfig, type PermissionState, type PermissionStatus, type Platform, type SystemPermissionDefinition, type SystemPermissionId } from "@elizaos/core/contracts/permissions";
-export { type AndroidUserAgentMarker, type AospVariantConfig, type AppAndroidConfig, type AppConfig, type AppDesktopConfig, type AppPackagingConfig, type AppWebConfig, DEFAULT_APP_CONFIG, resolveAppBranding } from "@elizaos/core/config/app-config";
 export * from "@elizaos/core/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app registry versions explicitly so the Node barrel stays authoritative
 // and avoids ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "@elizaos/core/catalog";
+export {
+  type AndroidUserAgentMarker,
+  type AospVariantConfig,
+  type AppAndroidConfig,
+  type AppConfig,
+  type AppDesktopConfig,
+  type AppPackagingConfig,
+  type AppWebConfig,
+  DEFAULT_APP_CONFIG,
+  resolveAppBranding,
+} from "@elizaos/core/config/app-config";
+export {
+  type AllPermissionsState,
+  type PermissionCheckResult,
+  type PermissionManagerConfig,
+  type PermissionState,
+  type PermissionStatus,
+  type Platform,
+  type SystemPermissionDefinition,
+  type SystemPermissionId,
+} from "@elizaos/core/contracts/permissions";
 export * from "@elizaos/core/integration-observability";
 export {
   _resetBuildVariantForTests,
