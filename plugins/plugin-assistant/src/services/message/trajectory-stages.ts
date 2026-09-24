@@ -21,6 +21,7 @@ import { parseToolArguments } from "./tool-arguments.js";
 export async function recordMessageHandlerStage(args: {
   recorder: TrajectoryRecorder;
   trajectoryId: string;
+  stageId?: string;
   messages?: ChatMessage[];
   tools?: ToolDefinition[];
   toolChoice?: unknown;
@@ -55,7 +56,7 @@ export async function recordMessageHandlerStage(args: {
       prompt: flattenTrajectoryMessages(args.messages),
     });
     await args.recorder.recordStage(args.trajectoryId, {
-      stageId: `stage-msghandler-${args.startedAt}`,
+      stageId: args.stageId ?? `stage-msghandler-${args.startedAt}`,
       kind: "messageHandler",
       startedAt: args.startedAt,
       endedAt: args.endedAt,

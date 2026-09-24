@@ -387,7 +387,10 @@ export async function runV5MessageRuntimeStage1(
         trajectoryId,
       },
       (task) => {
-        messageHandlerStageTask = task;
+        messageHandlerStageTask = Promise.all([
+          messageHandlerStageTask,
+          task,
+        ]).then(() => undefined);
       },
     );
 
