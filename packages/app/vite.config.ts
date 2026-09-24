@@ -2488,7 +2488,7 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-native-messages/src/bridge.ts",
         ],
         [
-          "@elizaos/plugin-native-phone",
+          "@elizaos/plugin-native-phone/bridge",
           "plugins/plugin-native-phone/src/bridge.ts",
         ],
         [
@@ -2528,7 +2528,7 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-native-contacts/src/register.ts",
         ],
         [
-          "@elizaos/plugin-native-phone",
+          "@elizaos/plugin-native-phone/register",
           "plugins/plugin-native-phone/src/register.ts",
         ],
         [
