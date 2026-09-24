@@ -99,34 +99,37 @@ test("foreign HTTP success cannot replace a fresh child readiness announcement",
   }
 });
 
-test("readiness accepts only the current child's exact announced URL", async () => {
-  const child = spawn(
-    process.execPath,
-    [
-      "-e",
-      `
-    process.stdout.write("[wrangler:info] Ready on http://127.0.0.1:12345\\n");
+test.each(["stdout", "stderr"] as const)(
+  "readiness accepts only the current child's exact announced URL on %s",
+  async (stream) => {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        `
+    process.${stream}.write("[wrangler:info] Ready on http://127.0.0.1:12345\\n");
     setInterval(() => {}, 1000);
   `,
-    ],
-    { stdio: ["pipe", "pipe", "pipe"] },
-  );
-  const announced = trackOwnedReadiness(child);
-  try {
-    await waitForOwnedReadiness(
-      child,
-      announced,
-      "http://127.0.0.1:12345",
-      2000,
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
     );
-    expect(announced("http://127.0.0.1:1234")).toBe(false);
-    expect(announced("http://127.0.0.1:12345")).toBe(true);
-  } finally {
-    const exited = once(child, "exit");
-    child.kill("SIGTERM");
-    await exited;
-  }
-});
+    const announced = trackOwnedReadiness(child);
+    try {
+      await waitForOwnedReadiness(
+        child,
+        announced,
+        "http://127.0.0.1:12345",
+        2000,
+      );
+      expect(announced("http://127.0.0.1:1234")).toBe(false);
+      expect(announced("http://127.0.0.1:12345")).toBe(true);
+    } finally {
+      const exited = once(child, "exit");
+      child.kill("SIGTERM");
+      await exited;
+    }
+  },
+);
 
 test("stack reservations exclude competing listeners until handoff", async () => {
   const reservation = await reserveStackPort();

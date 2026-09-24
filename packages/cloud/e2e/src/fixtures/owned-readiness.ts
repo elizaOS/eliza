@@ -7,18 +7,20 @@ export function trackOwnedReadiness(
   child: ChildProcess,
 ): (url: string) => boolean {
   const announced = new Set<string>();
-  let pending = "";
-  child.stdout?.on("data", (chunk: Buffer) => {
-    pending += chunk.toString();
-    const lines = pending.split(/\r?\n/);
-    pending = lines.pop() ?? "";
-    for (const line of lines) {
-      const match = stripVTControlCharacters(line).match(
-        /\bReady on (https?:\/\/\S+)\s*$/,
-      );
-      if (match) announced.add(match[1]);
-    }
-  });
+  for (const stream of [child.stdout, child.stderr]) {
+    let pending = "";
+    stream?.on("data", (chunk: Buffer) => {
+      pending += chunk.toString();
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        const match = stripVTControlCharacters(line).match(
+          /\bReady on (https?:\/\/\S+)\s*$/,
+        );
+        if (match) announced.add(match[1]);
+      }
+    });
+  }
   return (url) => announced.has(url);
 }
 
