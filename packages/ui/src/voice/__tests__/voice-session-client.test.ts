@@ -547,6 +547,11 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     micCtx.scriptNode?.feed(input);
     expect(lastFrame().every((byte) => byte === 0)).toBe(true);
     sock.emitAudio(new Uint8Array(6400).fill(1));
+    // ACK audio can precede the first final-answer text. That event must not
+    // reopen capture or let usage settle the turn before device playback ends.
+    sock.emitControl({ t: "llm_first_text", traceId: "T1" });
+    expect(client.state.phase).toBe("speaking");
+    expect(track.enabled).toBe(false);
     sock.emitControl({ t: "speaking_end", traceId: "T1" });
     sock.emitControl({ t: "usage", traceId: "T1", sttMs: 100, ttsChars: 10 });
     expect(client.state.phase).toBe("speaking");

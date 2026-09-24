@@ -196,7 +196,9 @@ export function applyServerEvent(
     case "llm_first_text":
       return {
         ...state,
-        phase: "thinking",
+        // An acknowledgment may already be playing before final answer text.
+        // Only playback completion may release the speaking/microphone gate.
+        phase: state.phase === "speaking" ? "speaking" : "thinking",
         traceId: event.traceId,
         progressText: undefined,
       };
