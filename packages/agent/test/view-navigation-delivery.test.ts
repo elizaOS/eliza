@@ -1,0 +1,211 @@
+/** Real loopback HTTP and registered-view delivery, with actor roles and renderer targets isolated. */
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import {
+  type IAgentRuntime,
+  type Memory,
+  runWithStreamingContext,
+  type UUID,
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
+import { viewsAction } from "../src/actions/views.ts";
+import {
+  closeRuntimeViewRegistry,
+  registerBuiltinViews,
+  registerPluginViews,
+} from "../src/api/views-registry.ts";
+import { handleViewsRoutes } from "../src/api/views-routes.ts";
+
+const owner = "11111111-1111-4111-8111-111111111111" as UUID;
+const room = "22222222-2222-4222-8222-222222222222" as UUID;
+const message: Memory = {
+  id: "33333333-3333-4333-8333-333333333333" as UUID,
+  entityId: owner,
+  roomId: room,
+  content: { text: "Open Notes", metadata: { viewClientId: "origin-client" } },
+};
+const cleanup: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  await Promise.all(cleanup.splice(0).map((close) => close()));
+  vi.unstubAllEnvs();
+});
+async function fixture(delivered = 1) {
+  const frames: Array<{ client: string; frame: object }> = [];
+  let requests = 0;
+  const runtime = {
+    agentId: "44444444-4444-4444-8444-444444444444",
+    getRoom: async () => ({ worldId: "world" }),
+    getWorld: async () => ({
+      id: "world",
+      metadata: { roles: { [owner]: "OWNER" }, ownership: { ownerId: owner } },
+    }),
+    getSetting: () => undefined,
+    getEntityById: async () => null,
+    emitEvent: async () => undefined,
+    reportError: vi.fn(),
+    logger: { debug() {}, info() {}, warn() {}, error() {} },
+  } as unknown as IAgentRuntime;
+  registerBuiltinViews(runtime);
+  await registerPluginViews(
+    runtime,
+    {
+      name: "test-nav-views",
+      description: "Fixture view owner",
+      views: [
+        { id: "notes", label: "Notes", path: "/notes" },
+        { id: "calendar", label: "Calendar", path: "/calendar" },
+      ],
+    },
+    { pluginDir: process.cwd(), indexEmbeddings: false },
+  );
+  const hostKey = {};
+  const server = createServer((req, res) => {
+    requests++;
+    if (req.headers.authorization !== "Bearer local-navigation-test") {
+      res.writeHead(401).end();
+      return;
+    }
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    void handleViewsRoutes({
+      req,
+      res,
+      method: req.method ?? "GET",
+      pathname: url.pathname,
+      url,
+      hostKey,
+      runtime,
+      callerAuthorization: { ok: true, role: "OWNER", identityId: owner },
+      json: (response, body) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify(body));
+      },
+      error: (response, message, code = 500) => {
+        response.writeHead(code, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ error: message }));
+      },
+      broadcastWsToClientId: (client, frame) => {
+        frames.push({ client, frame });
+        return delivered;
+      },
+      broadcastWs: () => {
+        throw new Error("Global navigation is forbidden in this test");
+      },
+    }).catch((error) => {
+      res.writeHead(500).end(String(error));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
+  vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
+  cleanup.push(async () => {
+    closeRuntimeViewRegistry(runtime);
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return { runtime, frames, requests: () => requests };
+}
+async function show(runtime: IAgentRuntime, view: string, input = message) {
+  return viewsAction.handler?.(runtime, input, undefined, {
+    parameters: { action: "show", view },
+  });
+}
+describe("host view navigation", () => {
+  it("discovers the current host action and exposes separate list/show contracts", async () => {
+    const f = await fixture();
+    const loaded: unknown[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      [viewsAction],
+      (actions) => loaded.push(...actions),
+      async () => [viewsAction],
+      { deferNameIndex: true },
+    );
+    const found = await discovery.handler?.(f.runtime, message, undefined, {
+      parameters: { query: "open Calendar view", contexts: ["general"] },
+    });
+    expect(found?.data?.loadedTools).toContain("VIEWS");
+    expect(loaded).toContain(viewsAction);
+    const result = await viewsAction.handler?.(f.runtime, message, undefined, {
+      parameters: { action: "list" },
+    });
+    expect(result).toMatchObject({ success: true });
+    expect(result && typeof result !== "boolean" && result.data?.views).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "notes" }),
+        expect.objectContaining({ id: "calendar" }),
+      ]),
+    );
+    expect(f.requests()).toBe(0);
+  });
+  it("rejects ambiguous labels rather than selecting an arbitrary view", async () => {
+    const f = await fixture();
+    await registerPluginViews(
+      f.runtime,
+      {
+        name: "ambiguous-nav",
+        description: "Ambiguous fixture",
+        views: [{ id: "other-notes", label: "Notes", path: "/other-notes" }],
+      },
+      { pluginDir: process.cwd() },
+    );
+    expect(await show(f.runtime, "Notes")).toMatchObject({
+      success: false,
+      data: { navigation: { status: "ambiguous" } },
+    });
+    expect(f.requests()).toBe(0);
+  });
+
+  it.each(["Notes", "Calendar", "home"])(
+    "delivers %s to only the originating renderer",
+    async (view) => {
+      const f = await fixture();
+      const result = await show(f.runtime, view);
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          navigation: { effect: "view_navigation", status: "delivered" },
+        },
+      });
+      expect(f.frames).toHaveLength(1);
+      expect(f.frames[0].client).toBe("origin-client");
+    },
+  );
+  it("refuses an absent renderer instead of claiming navigation", async () => {
+    const f = await fixture(0);
+    expect(await show(f.runtime, "Notes")).toMatchObject({ success: false });
+  });
+  it("rejects unknown targets and unbound clients before HTTP", async () => {
+    const f = await fixture();
+    expect(await show(f.runtime, "not-a-view")).toMatchObject({
+      success: false,
+    });
+    expect(
+      await show(f.runtime, "Notes", {
+        ...message,
+        content: { text: "Open Notes" },
+      }),
+    ).toMatchObject({ success: false });
+    expect(f.requests()).toBe(0);
+  });
+  it("rejects a non-owner even with a valid renderer identifier", async () => {
+    const f = await fixture();
+    expect(
+      await show(f.runtime, "Notes", {
+        ...message,
+        entityId: "55555555-5555-4555-8555-555555555555" as UUID,
+      }),
+    ).toMatchObject({ success: false });
+    expect(f.requests()).toBe(0);
+  });
+  it("honors cancellation before route dispatch", async () => {
+    const f = await fixture();
+    const abort = new AbortController();
+    abort.abort();
+    expect(
+      await runWithStreamingContext({ abortSignal: abort.signal }, () =>
+        show(f.runtime, "Notes"),
+      ),
+    ).toMatchObject({ success: false });
+    expect(f.requests()).toBe(0);
+  });
+});

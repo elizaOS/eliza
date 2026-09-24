@@ -11,7 +11,7 @@ import {
   promoteSubactionsToActions,
   type ServiceClass,
 } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import {
   ApprovalService,
   GlobalPauseService,
@@ -37,6 +37,7 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { viewsAction } from "../actions/views.ts";
 import { registerAttachmentKnowledgeBackfillWorker } from "../api/attachment-knowledge-backfill.ts";
 import { registerAttachmentKnowledgeIngestHook } from "../api/attachment-knowledge-ingest.ts";
 import {
@@ -83,6 +84,7 @@ import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
+import { retainedPendantSessionSchema } from "./retained-pendant-schema.ts";
 export type ElizaPluginConfig = {
   workspaceDir?: string;
   sessionStorePath?: string;
@@ -112,6 +114,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     // migrates the runtime data model whenever the agent runs.
     schema: {
       ...knowledgeGraphSchema,
+      ...retainedPendantSessionSchema,
     },
     services: [
       AgentEventService as ServiceClass,
@@ -184,6 +187,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...filesRoutes,
     ],
     actions: [
+      viewsAction,
       terminalAction,
       ...promoteSubactionsToActions(triggerAction),
       pageDelegateAction,
