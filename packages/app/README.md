@@ -17,3 +17,8 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
+
+Installed-app launch smoke uses `test:sim:local-chat`; iOS local full-Bun inference uses
+`test:sim:local-chat:ios:full-bun` against a current installed simulator build.
+Use `build:ios:local:sim`, `build:ios:local:device`, and `ios:device:e2e`
+for native builds and physical-device tests.

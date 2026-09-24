@@ -16,3 +16,5 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-scheduling build  # build
 bun run --cwd plugins/plugin-scheduling test   # tests
 ```
+
+Host-owned activity anchors may declare `consumption: "host_claim"`. Automatic admission, execution preparation and mutation hooks preserve owner control metadata, and atomic claim expectations reject stale writes as `raced`. Manual fire does not consume automatic admission. These hooks use the existing runner and store; they do not introduce another scheduler.

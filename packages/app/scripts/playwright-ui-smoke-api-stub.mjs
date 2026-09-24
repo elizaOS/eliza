@@ -1251,137 +1251,6 @@ function safeComponentExportName(value) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : "SmokeView";
 }
 
-function smokeScreenshareBundleSource(view, exportName) {
-  const label = JSON.stringify(view.label);
-  const id = JSON.stringify(view.id);
-  const viewType = JSON.stringify(view.viewType);
-  const pluginName = JSON.stringify(view.pluginName);
-  return `import React from "react";
-
-const viewMeta = {
-  id: ${id},
-  label: ${label},
-  viewType: ${viewType},
-  pluginName: ${pluginName}
-};
-
-function maskSession(value) {
-  if (!value) return "";
-  return value.slice(0, 6) + "\\u2026" + value.slice(-4);
-}
-
-function maskToken(value) {
-  if (!value) return "";
-  return "\\u2022\\u2022\\u2022\\u2022 " + value.slice(-4);
-}
-
-function SmokeView() {
-  const [capabilities, setCapabilities] = React.useState(null);
-  const [host, setHost] = React.useState(null);
-  const [token, setToken] = React.useState("");
-  const [viewerUrl, setViewerUrl] = React.useState("");
-  const [remoteBase, setRemoteBase] = React.useState("");
-  const [remoteSession, setRemoteSession] = React.useState("");
-  const [remoteToken, setRemoteToken] = React.useState("");
-
-  const refreshCapabilities = React.useCallback(async () => {
-    const response = await fetch("/api/apps/screenshare/capabilities");
-    setCapabilities(await response.json());
-  }, []);
-
-  React.useEffect(() => {
-    void refreshCapabilities();
-  }, [refreshCapabilities]);
-
-  const startHost = async () => {
-    const response = await fetch("/api/apps/screenshare/session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ label: "This machine" })
-    });
-    const result = await response.json();
-    setHost(result.session);
-    setToken(result.token);
-    setViewerUrl(result.viewerUrl);
-  };
-
-  const copyDetails = async () => {
-    await navigator.clipboard.writeText(JSON.stringify({
-      sessionId: host?.id,
-      token
-    }));
-  };
-
-  const openHostViewer = () => {
-    if (viewerUrl) window.open(viewerUrl);
-  };
-
-  const openRemote = () => {
-    const url = new URL("/api/apps/screenshare/viewer", remoteBase);
-    url.searchParams.set("sessionId", remoteSession);
-    url.searchParams.set("token", remoteToken);
-    url.searchParams.set("remoteBase", remoteBase);
-    window.open(url.toString());
-  };
-
-  const stopHost = async () => {
-    if (!host?.id) return;
-    const response = await fetch("/api/apps/screenshare/session/" + encodeURIComponent(host.id) + "/stop", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-screenshare-token": token
-      },
-      body: JSON.stringify({ token })
-    });
-    const result = await response.json();
-    setHost(result.session);
-  };
-
-  const capabilityList = capabilities?.capabilities ?? {};
-  return React.createElement(
-    "section",
-    { "aria-label": viewMeta.label, style: { minHeight: "100vh", padding: 24 } },
-    React.createElement("h1", null, viewMeta.label),
-    React.createElement("p", null, viewMeta.pluginName + " dynamic view smoke surface is ready."),
-    React.createElement("h2", null, "Host"),
-    React.createElement("button", { type: "button", onClick: startHost }, "Start host session"),
-    host && React.createElement("button", { type: "button", onClick: copyDetails }, "Copy host details"),
-    host && React.createElement("button", { type: "button", onClick: openHostViewer }, "Open host viewer"),
-    host && React.createElement("button", { type: "button", onClick: stopHost }, "Stop host session"),
-    host && React.createElement("div", null,
-      React.createElement("input", { placeholder: "Session", readOnly: true, value: maskSession(host.id) }),
-      React.createElement("input", { placeholder: "Token", readOnly: true, value: maskToken(token) }),
-      React.createElement("span", null, String(host.frameCount ?? 0)),
-      React.createElement("span", null, String(host.inputCount ?? 0)),
-      React.createElement("span", null, host.status)
-    ),
-    React.createElement("h2", null, "Capabilities"),
-    React.createElement("button", { type: "button", onClick: () => void refreshCapabilities() }, "Refresh capabilities"),
-    React.createElement("div", null,
-      React.createElement("span", null, "Screenshot"),
-      React.createElement("span", null, capabilityList.screenshot?.available ? "Ready" : "Unavailable")
-    ),
-    React.createElement("div", null,
-      React.createElement("span", null, "Keyboard"),
-      React.createElement("span", null, capabilityList.keyboard?.available ? "Ready" : "Unavailable")
-    ),
-    React.createElement("h2", null, "Remote"),
-    React.createElement("input", { placeholder: "Server URL", value: remoteBase, onChange: (event) => setRemoteBase(event.target.value) }),
-    React.createElement("input", { placeholder: "Session", value: remoteSession, onChange: (event) => setRemoteSession(event.target.value) }),
-    React.createElement("input", { placeholder: "Token", value: remoteToken, onChange: (event) => setRemoteToken(event.target.value) }),
-    React.createElement("button", { type: "button", onClick: openRemote }, "Connect to remote")
-  );
-}
-
-export { SmokeView as ${exportName} };
-export default SmokeView;
-export async function interact(capability, params = {}) {
-  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
-}
-`;
-}
-
 function smokeTaskCoordinatorBundleSource(view, exportName) {
   const label = JSON.stringify(view.label);
   const id = JSON.stringify(view.id);
@@ -1540,9 +1409,6 @@ export async function interact(capability, params = {}) {
 
 function smokeViewBundleSource(view) {
   const exportName = safeComponentExportName(view.componentExport);
-  if (view.id === "screenshare") {
-    return smokeScreenshareBundleSource(view, exportName);
-  }
   if (view.id === "task-coordinator") {
     return smokeTaskCoordinatorBundleSource(view, exportName);
   }
@@ -2912,11 +2778,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/agent/status") {
-    sendJson(req, res, 200, { firstRunComplete: true, status: "running" });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/status") {
     sendJson(req, res, 200, {
       state: "running",
@@ -3027,34 +2888,6 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/database/query") {
     const body = (await readJsonBody(req)) || {};
     sendJson(req, res, 200, executeDatabaseQueryResult(String(body.sql ?? "")));
-    return;
-  }
-
-  if (
-    (req.method === "GET" || req.method === "POST") &&
-    url.pathname === "/api/database/vectors/search"
-  ) {
-    const query =
-      req.method === "POST"
-        ? (await readJsonBody(req))?.query
-        : url.searchParams.get("query");
-    sendJson(req, res, 200, {
-      query: typeof query === "string" ? query : "",
-      table: "memories",
-      limit: 10,
-      count: 1,
-      results: [
-        {
-          id: "memory-smoke-1",
-          text: "Deterministic memory fixture for UI smoke.",
-          similarity: 0.98,
-          roomId: "room-smoke",
-          entityId: "entity-smoke",
-          createdAt: SMOKE_GENERATED_AT,
-          tableName: "memories",
-        },
-      ],
-    });
     return;
   }
 
@@ -4233,14 +4066,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/coding-agents/coordinator/threads"
-  ) {
-    sendJson(req, res, 200, { threads: [], total: 0 });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/lifeops/overview") {
     sendJson(req, res, 200, emptyLifeOpsOverview);
     return;
@@ -4509,45 +4334,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/apps/runs") {
     sendJson(req, res, 200, []);
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/apps/screenshare/capabilities"
-  ) {
-    sendJson(req, res, 200, {
-      platform: "smoke",
-      capabilities: {
-        screenshot: { available: true, tool: "screencapture" },
-        headfulGui: { available: true, tool: "browser" },
-        keyboard: { available: false, tool: "computer-use" },
-      },
-    });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/apps/screenshare/sessions"
-  ) {
-    sendJson(req, res, 200, {
-      sessions: [
-        {
-          id: "smoke-session",
-          label: "Smoke session",
-          status: "active",
-          createdAt: SMOKE_GENERATED_AT,
-          updatedAt: SMOKE_GENERATED_AT,
-          stoppedAt: null,
-          platform: "smoke",
-          frameCount: 1,
-          inputCount: 0,
-          lastFrameAt: SMOKE_GENERATED_AT,
-          lastInputAt: null,
-        },
-      ],
-    });
     return;
   }
 

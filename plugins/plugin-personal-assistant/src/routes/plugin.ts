@@ -193,6 +193,7 @@ function buildLifeOpsContext(
       adminEntityId: routeOwnerEntityId(runtime),
       requestEntityId:
         requestPrincipals.get(req)?.entityId ?? routeOwnerEntityId(runtime),
+      authenticatedPrincipal: requestPrincipals.get(req),
     },
     json,
     error,

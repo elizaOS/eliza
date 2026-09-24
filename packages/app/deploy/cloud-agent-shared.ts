@@ -9,6 +9,7 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
+import { ElizaError } from "../../core/src/errors";
 import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
   type: "json",
 };
@@ -420,16 +421,47 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     return new Promise<string>((resolve, reject) => {
       let body = "";
       let totalBytes = 0;
+      let failed = false;
+      const decoder = new TextDecoder("utf-8", {
+        fatal: true,
+        ignoreBOM: true,
+      });
+      const invalidEncoding = (cause: unknown) => {
+        failed = true;
+        reject(
+          new ElizaError("Request body must contain complete valid UTF-8", {
+            code: "CLOUD_AGENT_INVALID_UTF8",
+            context: { boundary: "cloud-agent-bridge" },
+            cause,
+          }),
+        );
+      };
       req.on("data", (chunk: Buffer) => {
         totalBytes += chunk.length;
         if (MAX_BODY_BYTES > 0 && totalBytes > MAX_BODY_BYTES) {
+          failed = true;
           req.destroy();
           reject(new Error("Request body too large"));
           return;
         }
-        body += chunk;
+        if (failed) return;
+        try {
+          body += decoder.decode(chunk, { stream: true });
+        } catch (error) {
+          // error-policy:J2 preserve the decoder cause without accepting replacement text.
+          invalidEncoding(error);
+        }
       });
-      req.on("end", () => resolve(body));
+      req.on("end", () => {
+        if (failed) return;
+        try {
+          body += decoder.decode();
+          resolve(body);
+        } catch (error) {
+          // error-policy:J2 an incomplete final code point is invalid request data.
+          invalidEncoding(error);
+        }
+      });
       req.on("error", reject);
     });
   }
@@ -880,7 +912,10 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
   // ─── Bridge HTTP server ───────────────────────────────────────────────
 
-  const bridgeServer = http.createServer(async (req, res) => {
+  const handleBridgeRequest = async (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ) => {
     res.setHeader("Content-Type", "application/json");
 
     // Auth check (only when BRIDGE_SECRET is configured)
@@ -932,7 +967,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       let body: Record<string, unknown>;
       try {
         body = JSON.parse(await readBody(req)) as Record<string, unknown>;
-      } catch {
+      } catch (error) {
+        // error-policy:J3 invalid JSON is rejected; typed body errors reach the HTTP boundary.
+        if (error instanceof ElizaError) throw error;
         res.writeHead(400);
         res.end(JSON.stringify({ error: "Invalid JSON" }));
         return;
@@ -1233,6 +1270,47 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
     res.writeHead(404);
     res.end(JSON.stringify({ error: "Not Found" }));
+  };
+  const bridgeServer = http.createServer(async (req, res) => {
+    try {
+      await handleBridgeRequest(req, res);
+    } catch (error) {
+      // error-policy:J1 translate body failures before dispatch or state mutation.
+      const invalidUtf8 =
+        error instanceof ElizaError &&
+        error.code === "CLOUD_AGENT_INVALID_UTF8";
+      if (!invalidUtf8)
+        logger.error("Bridge request failed", {
+          errorName:
+            error instanceof ElizaError
+              ? "ElizaError"
+              : error instanceof TypeError
+                ? "TypeError"
+                : error instanceof Error
+                  ? "Error"
+                  : "NonError",
+          code:
+            error instanceof ElizaError &&
+            /^[A-Z][A-Z0-9_]{0,80}$/.test(error.code)
+              ? error.code
+              : "CLOUD_AGENT_REQUEST_FAILED",
+        });
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(invalidUtf8 ? 400 : 500);
+      res.end(
+        JSON.stringify(
+          invalidUtf8
+            ? {
+                error: "Request body must contain complete valid UTF-8",
+                code: "CLOUD_AGENT_INVALID_UTF8",
+              }
+            : { error: "Bridge request failed" },
+        ),
+      );
+    }
   });
 
   const bridgeBindAddress = bridgeSecretGenerated ? "127.0.0.1" : "0.0.0.0";

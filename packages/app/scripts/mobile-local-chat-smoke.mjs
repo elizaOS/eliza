@@ -17,7 +17,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { ANDROID_FULL_TURN_FAILURE_RE } from "../src/platform/chat-failure-strings.ts";
-import { readInstalledRendererStamp } from "./lib/android-device.mjs";
+import { readInstalledRendererStamp, resolveAdb } from "./lib/android-device.mjs";
 import {
   assertMarkerSurvivedRelaunch,
   buildRelaunchMarker,
@@ -425,10 +425,6 @@ function run(command, args, options = {}) {
   }
 }
 
-function executablePath(...candidates) {
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
-}
-
 function appId() {
   // White-label builds install under a different bundle id than the eliza
   // package config. Allow targeting the installed app explicitly so the smoke can
@@ -436,30 +432,6 @@ function appId() {
   if (process.env.ELIZA_SMOKE_APP_ID) return process.env.ELIZA_SMOKE_APP_ID;
   const config = fs.readFileSync(appConfigPath, "utf8");
   return config.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "app.eliza";
-}
-
-function androidSdkRoot() {
-  if (process.env.ANDROID_HOME) return process.env.ANDROID_HOME;
-  if (process.env.ANDROID_SDK_ROOT) return process.env.ANDROID_SDK_ROOT;
-  const home = os.homedir();
-  if (process.platform === "darwin") {
-    return path.join(home, "Library/Android/sdk");
-  }
-  if (process.platform === "win32") {
-    return path.join(home, "AppData/Local/Android/Sdk");
-  }
-  return path.join(home, "Android/Sdk");
-}
-
-function androidTool(relativePath, fallbackName) {
-  return executablePath(
-    path.join(androidSdkRoot(), relativePath),
-    fallbackName,
-  );
-}
-
-function adbPath() {
-  return androidTool("platform-tools/adb", "adb");
 }
 
 function tryExec(command, args, options = {}) {
@@ -891,11 +863,10 @@ function assertInstalledAndroidRendererIsFresh(
 async function launchAndroidEmulatorApp({
   verifyInstalled = assertInstalledAndroidRendererIsFresh,
 } = {}) {
-  const adb = adbPath();
+  const adb = resolveAdb({ required: requireInstalled });
   if (!adb) {
     const message =
       "[local-chat-smoke] Android SDK platform-tools/adb was not found.";
-    if (requireInstalled) throw new Error(message);
     console.warn(message);
     return null;
   }

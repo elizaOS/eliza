@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit",
     "check:tenant-scope": "bun ../scripts/shared/check-tenant-scope.ts",
     "check:migration-prefix-order": "node ../scripts/shared/check-migration-prefix-order.mjs",
-    "verify:tenant-isolation": "bun ../scripts/shared/verify-tenant-db-isolation.ts",
+    "verify:tenant-isolation": "APPS_TENANT_DB_EPHEMERAL=1 bun test src/lib/services/tenant-db/tenant-db-provisioning.integration.test.ts",
     "reconcile:container-delete-jobs": "bun ../scripts/shared/reconcile-container-delete-jobs.ts",
     "test": "node ../scripts/shared/run-bun-tests.mjs",
     "test:docker-compute-lease": "bun ../scripts/shared/test-docker-compute-lease.ts",
