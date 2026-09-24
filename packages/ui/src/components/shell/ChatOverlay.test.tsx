@@ -3706,7 +3706,9 @@ describe("ChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
-      expect(screen.getByTestId("chat-acknowledgment").textContent).toBe("Checking your note.");
+      expect(screen.getByTestId("chat-acknowledgment").textContent).toBe(
+        "Checking your note.",
+      );
       expect(screen.getByText("Your note says hello.")).toBeTruthy();
     });
 

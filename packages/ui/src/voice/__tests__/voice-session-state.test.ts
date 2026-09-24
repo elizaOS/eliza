@@ -231,8 +231,10 @@ describe("transient voice progress", () => {
         text: "stale",
       }),
     ).toBe(progress);
-    expect(applyServerEvent(progress, { t: "llm_first_text", traceId: "current" }).progressText)
-      .toBe("Checking your note.");
+    expect(
+      applyServerEvent(progress, { t: "llm_first_text", traceId: "current" })
+        .progressText,
+    ).toBe("Checking your note.");
     for (const event of [
       { t: "interrupted", traceId: "current", reason: "explicit" },
       { t: "usage", traceId: "current" },
