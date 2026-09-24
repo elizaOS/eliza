@@ -250,6 +250,7 @@ async function main() {
       let applicationId;
       let fixtureInstalled = false;
       try {
+        adb("logcat", "-c");
         if (plugin.directory === "plugin-native-appblocker") {
           const fixture = path.join(
             root,
@@ -352,6 +353,15 @@ async function main() {
             error.stdout,
           );
       } finally {
+        try {
+          fs.writeFileSync(
+            path.join(outputDir, `${plugin.directory}-logcat.log`),
+            adb("logcat", "-d"),
+          );
+        } catch (error) {
+          entry.pass = false;
+          entry.problems.push(`Android log capture: ${error}`);
+        }
         if (fixtureInstalled) {
           try {
             adb("uninstall", "ai.eliza.testing.blocktarget");
