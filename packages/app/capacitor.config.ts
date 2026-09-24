@@ -15,6 +15,7 @@ export function resolveAndroidCapacitorPlugins(
       (name) =>
         (!lp3RemoteFallback || name !== "@capacitor/push-notifications") &&
         (name.startsWith("@elizaos/capacitor-") ||
+          name.startsWith("@elizaos/plugin-native-") ||
           name.startsWith("@capacitor-community/") ||
           (name.startsWith("@capacitor/") &&
             ![
