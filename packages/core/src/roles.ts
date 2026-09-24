@@ -30,13 +30,14 @@ import { worldMetadataValueEquals } from "./database/world-metadata-cas";
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
-import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import type {
 	IDatabaseAdapter,
 	WorldMetadataCompareAndSwapParams,
 	WorldMetadataMutationResult,
 } from "./types/database";
+import type { World } from "./types/environment.js";
 import type { PrincipalService } from "./types/identity";
+import type { Memory } from "./types/memory.js";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
 	MESSAGE_SOURCE_CLIENT_CHAT,
@@ -44,6 +45,8 @@ import {
 	MESSAGE_SOURCE_SUB_AGENT,
 } from "./types/message-source";
 import type { Metadata } from "./types/primitives";
+import type { UUID } from "./types/primitives.js";
+import type { IAgentRuntime } from "./types/runtime.js";
 import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";

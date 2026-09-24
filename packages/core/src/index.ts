@@ -218,18 +218,15 @@ export {
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
 export { validateToolArgs } from "./actions/validate-tool-args.ts";
-export * from "./connectors/connector-config.js";
-export * from "./connectors.js";
+
 export * from "./database/document-source-segments";
 export * from "./embedding-vector-space";
-export * from "./embedding-vector-space.js";
-export * from "./env-utils.js";
-export * from "./errors.js";
+
 export * from "./inference-trace.js";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interactions/dashboard-markers.js";
 export * from "./messaging/interactions/parse.js";
-export * from "./name-tokens.js";
+
 export * from "./retrieval/rerank.js";
 export * from "./retrieval/search.js";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
@@ -367,12 +364,52 @@ export { flattenRuntimeSettings } from "./runtime-settings.ts";
 // Export character schemas
 export * from "./schemas/character";
 // Export security utilities
-export * from "./security";
+export { userRequestFromAugmentedText } from "./security/augmented-request.js";
 export * from "./security/basic-email";
+export { mnemonicValid } from "./security/bip39-wordlist.js";
+export * from "./security/confidential-inference.js";
+export {
+	CompositeEntityRecognizer,
+	canonicalKind,
+	type EntitySpan,
+	GazetteerEntityRecognizer,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	RegexEntityRecognizer,
+	type RegexEntityRecognizerOptions,
+} from "./security/entity-recognizer.js";
 // Envelope unwrap for orchestration surfaces that forward a user message
 // onward (deterministic follow-up sends must never embed the security banner
 // in a child task — live 2026-08-21).
 export { extractWrappedExternalContent } from "./security/external-content";
+export {
+	buildSafeExternalPrompt,
+	containsExternalEnvelopeMarkers,
+	containsExternalEnvelopeMaterial,
+	detectSuspiciousPatterns,
+	type ExternalContentSource,
+	getHookType,
+	isExternalHookSession,
+	renderStoredEnvelopesForPrompt,
+	type WrapExternalContentOptions,
+	wrapExternalContent,
+	wrapWebContent,
+} from "./security/external-content.js";
+export {
+	type GuardedStreamOutput,
+	GuardedStreamScanner,
+	type GuardedStreamScannerOptions,
+} from "./security/guarded-stream.js";
+export {
+	hardenIncomingUserMessage,
+	type IncomingMessageSecurityMetadata,
+	messageHasPromptInjectionFlag,
+	registerCoreIncomingMessageSecurityHook,
+	scrubIncomingMessageTextForStorage,
+	unwrapUserMessageText,
+	unwrapUserMessageTextForDetection,
+} from "./security/incoming-message-security.js";
 export {
 	AUTHORITY_KEYWORDS,
 	containsObfuscatedKeyword,
@@ -402,6 +439,10 @@ export {
 	stripReasoningBlocks,
 } from "./security/model-failure.ts";
 export {
+	ENVELOPE_LEAK_NOTICE,
+	guardOutboundEnvelopeText,
+} from "./security/outbound-envelope-guard.js";
+export {
 	createOutboundEnvelopeStreamLatch,
 	guardOutboundEnvelopeAttachments,
 	reportOutboundEnvelopeBlock,
@@ -412,15 +453,147 @@ export {
 	sanitizeOutboundTextWithLiterals,
 } from "./security/outbound-sanitize.ts";
 export {
+	type AssembleContextPackRequest,
+	assembleContextPack,
+	buildScrubRequestDraft,
+	entityResolverFromStore,
+	type PiiContextFragment,
+	type PiiContextPack,
+	type PiiContextSources,
+	type PiiEntityResolverStore,
+	type PiiResolvedEntity,
+	type PiiScrubCandidate,
+	type RuntimeContextSourceOptions,
+	sourcesFromRuntime,
+} from "./security/pii-context-pack.js";
+export {
+	cardBrand,
+	detectPii,
+	ibanValid,
+	ipv4Valid,
+	luhnValid,
+	PII_DETECTOR_BY_KIND,
+	PII_DETECTORS,
+	type PiiDetector,
+	type PiiMatch,
+	ssnValid,
+	wifValid,
+} from "./security/pii-detectors.js";
+export {
+	type AliasSubstitutionResult,
+	type AssignClusterInput,
+	assertValidSnapshot,
+	CorpusPseudonymMap,
+	type CorpusPseudonymMapOptions,
+	type PseudonymClusterIdentity,
+	type PseudonymClusterRecord,
+	PseudonymMapIntegrityError,
+	type PseudonymMapSnapshot,
+} from "./security/pii-pseudonym-map.js";
+export {
+	EncryptedCachePseudonymMapStore,
+	type EncryptedCachePseudonymMapStoreOptions,
+	PII_PSEUDONYM_MAP_AAD,
+	PII_PSEUDONYM_MAP_CACHE_KEY,
+	type PseudonymMapStore,
+	PseudonymMapStoreError,
+} from "./security/pii-pseudonym-map-store.js";
+export {
+	collectPiiPromptText,
+	DEFAULT_PSEUDONYM_BLOCKLIST,
+	isPiiPseudonymUnbounded,
+	MAX_PII_PSEUDONYM_KEY_BYTES,
+	MAX_PII_PSEUDONYM_WALK_BYTES,
+	MAX_PII_PSEUDONYM_WALK_DEPTH,
+	MAX_PII_PSEUDONYM_WALK_NODES,
+	PII_PSEUDONYM_UNBOUNDED,
+	PII_SWAP_DISABLED_KINDS_SETTING,
+	PII_SWAP_ENABLED_SETTING,
+	PII_SWAP_EXEMPT_VALUES_SETTING,
+	type PseudonymEntry,
+	PseudonymSession,
+	type PseudonymSessionOptions,
+	parsePiiSwapList,
+} from "./security/pii-pseudonymizer.js";
+export {
+	assertValidScrubResult,
+	PiiScrubFabricationError,
+	type ScrubEscalationRequest,
+	type ScrubEscalationResult,
+	type ScrubResultAssertionOptions,
+	scrubWithEscalation,
+	type Tier0Span,
+} from "./security/pii-scrub-seam.js";
+export {
 	isSensitiveKeyName,
 	redactLogArgs,
 	redactObjectSecrets,
 	redactSecrets,
 	redactSensitiveText,
 } from "./security/redact";
+export {
+	createSecretsRedactor,
+	getDefaultRedactPatterns,
+	type RedactOptions,
+	type RedactSensitiveMode,
+	redactToolDetail,
+	redactWithSecrets,
+	type SecretsRedactOptions,
+} from "./security/redact.js";
 export * from "./security/secret-swap";
+export {
+	parseSecretSwapExemptValues,
+	SECRET_SWAP_ENABLED_SETTING,
+	SECRET_SWAP_EXEMPT_VALUES_SETTING,
+	type SecretSwapEntry,
+	SecretSwapSession,
+	SecretSwapUnresolvedPlaceholderError,
+} from "./security/secret-swap.js";
+export {
+	BLOCKED_SPAWN_ENV_KEYS,
+	BLOCKED_SPAWN_ENV_PREFIXES,
+	isBlockedSpawnEnvKey,
+	sanitizeSpawnEnv,
+} from "./security/spawn-env-policy.js";
+export {
+	composeToolDiagnosticRedactor,
+	projectCompleteToolValueForModel,
+	projectModelCallDiagnosticValue,
+	projectProtectedModelCallValue,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	TOOL_DIAGNOSTIC_MASK,
+	type ToolDiagnosticTextRedactor,
+} from "./security/tool-diagnostics.js";
 // Kernel contracts used by independently composed plugins.
 export { projectCompleteToolArgsForModel } from "./security/tool-diagnostics.ts";
+export {
+	attestAuthenticatedApiDeliveryAudience,
+	attestDeliveryAudienceFromCanonicalRoom,
+	authorizeOwnerExclusiveDisclosure,
+	disclosureGateFailure,
+	evaluateOwnerExclusiveDisclosure,
+	getTrustedDeliveryAudience,
+	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	type OwnerExclusiveDisclosureBasis,
+	type OwnerExclusiveDisclosureDecision,
+	type OwnerExclusiveDisclosureDenial,
+	ownerExclusiveDisclosureWasUsed,
+	ownerExclusiveSuppressionNote,
+	PRIVACY_DENIED_TEXT,
+	recordOwnerExclusiveSuppression,
+	registerRuntimeManagedInternalActor,
+	revalidateOwnerExclusiveDisclosure,
+	type TrustedApiPrincipal,
+	type TrustedDeliveryAudience,
+	type TrustedDeliveryAudienceKind,
+	type TrustedDeliveryAudienceProvenance,
+	trustedDeliveryAudienceCacheKey,
+	trustedDeliveryAudienceIsBoundToRuntime,
+} from "./security/trusted-delivery-audience.js";
 export {
 	buildVoiceGatePrompt,
 	type EnsureAgentVoiceOptions,
@@ -596,39 +769,103 @@ export {
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export * from "./tunnel-service";
-export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types
-export * from "./types";
-export {
-	ConnectorAccountHealth,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAuthMethod,
-} from "./types";
+export * from "./types/access-context.js";
+export * from "./types/action-failure.js";
+export * from "./types/action-reply.js";
+export * from "./types/agent.js";
 export * from "./types/agentEvent";
+export * from "./types/channel-config.js";
+export * from "./types/chat-pre-handler.js";
+export * from "./types/coding.js";
+export * from "./types/commands.js";
+export * from "./types/components.js";
+export * from "./types/connector-setup.js";
+export * from "./types/content.js";
+export * from "./types/content-manifest.js";
 export type {
 	ContextEvent,
 	ContextObject,
 	ContextObjectPromptSegment,
 	ContextObjectTool,
 } from "./types/context-object.ts";
+export * from "./types/contexts.js";
+export * from "./types/database.js";
+export * from "./types/documents.js";
 export * from "./types/effects.js";
+export * from "./types/environment.js";
+export * from "./types/evaluator.js";
+export * from "./types/events.js";
+export * from "./types/hook.js";
+export * from "./types/identity.js";
 export * from "./types/interactions.js";
 export * from "./types/long-term-memory.ts";
+export * from "./types/membership.js";
 export * from "./types/memory.js";
+export * from "./types/memory-storage.js";
 export * from "./types/message-service";
 export * from "./types/message-source.js";
+export * from "./types/messaging.js";
+export * from "./types/model.js";
 export type {
 	TokenUsageForCost,
 	TrajectoryRuntimeLogger,
 } from "./types/model-pricing";
-export * from "./types/notification";
 export * from "./types/notification.js";
+export * from "./types/pairing.js";
+export * from "./types/payment.js";
+export {
+	PENDING_USER_ACTION_WEIGHT,
+	type PendingUserAction,
+	type PendingUserActionKind,
+	type PendingUserActionOption,
+	type PendingUserActionResolution,
+	type PendingUserActionResolutionTarget,
+	type RequiresUserResponse,
+} from "./types/pending-user-action.js";
+export * from "./types/pipeline-hooks.js";
+export * from "./types/plugin.js";
 export * from "./types/plugin-manifest";
+export * from "./types/plugin-store.js";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
+export type { JsonPrimitive } from "./types/primitives.js";
 export * from "./types/primitives.js";
+export * from "./types/prompt-optimization-hooks.js";
+export * from "./types/prompt-optimization-score-card.js";
+export * from "./types/prompt-optimization-trace.js";
+export * from "./types/prompts.js";
+export * from "./types/provider-integrations.js";
+export type {
+	ConnectorAccountCapability,
+	ConnectorAccountRef,
+} from "./types/runtime.js";
+export * from "./types/runtime.js";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types/runtime.js";
+export * from "./types/service.js";
+export * from "./types/service-interfaces.js";
+export * from "./types/settings.js";
+export * from "./types/state.js";
+export * from "./types/streaming.js";
+export type {
+	PageLayoutManifest,
+	ResolvedSurfaceManifest,
+	SurfaceCapability,
+	SurfaceIsolationLevel,
+	SurfaceLifecyclePolicy,
+	SurfaceManifest,
+	SurfaceManifestBearer,
+} from "./types/surface-manifest.js";
 export * from "./types/surface-manifest.js";
 export * from "./types/swarm-coordinator.js";
+export * from "./types/task.js";
+export * from "./types/tee.js";
+export type { TestCase, TestSuite } from "./types/testing.js";
+export * from "./types/tools.js";
 export type {
 	ActionAttempt,
 	ARTTrajectory,
@@ -648,13 +885,14 @@ export type {
 	TrajectoryStep,
 } from "./types/trajectory-export.ts";
 export { CONTEXT_OBJECT_TRAJECTORY_VERSION } from "./types/trajectory-export.ts";
+export * from "./types/trigger.js";
 export type {
 	EnabledViewKinds,
 	ViewKind,
 	ViewKindBearer,
 } from "./types/view-kind";
-
 export * from "./types/view-kind.js";
+export * from "./types/workspace-delta.js";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { addHeader, parseKeyValueXml, parseToonKeyValue } from "./utils";

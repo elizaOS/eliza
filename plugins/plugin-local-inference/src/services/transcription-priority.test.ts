@@ -15,10 +15,9 @@
  * any real ASR backend.
  */
 
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime";
-import { ModelType } from "../../../../packages/core/src/types";
 
 interface TranscriptionParams {
 	audio?: Float32Array | Uint8Array | Buffer | string;

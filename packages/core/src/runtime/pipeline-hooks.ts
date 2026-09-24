@@ -2,14 +2,7 @@
 
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
 import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
-import {
-	EventType,
-	type IAgentRuntime,
-	type PipelineHookContext,
-	type PipelineHookPhase,
-	type PipelineHookSpec,
-	type ResolvedPipelineHook,
-} from "../types";
+import { EventType } from "../types/events.js";
 import {
 	PIPELINE_HOOK_DEBUG_LOG_MS,
 	PIPELINE_HOOK_ERROR_LOG_MS,
@@ -18,6 +11,13 @@ import {
 	resolvePipelineHookSpec,
 	sortPipelineHooksByPosition,
 } from "../types/pipeline-hooks";
+import type {
+	PipelineHookContext,
+	PipelineHookPhase,
+	PipelineHookSpec,
+	ResolvedPipelineHook,
+} from "../types/pipeline-hooks.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	isUnavailableLocalModel,
 	TEXT_GENERATION_MODEL_KEYS,
