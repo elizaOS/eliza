@@ -8,18 +8,14 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url)),
-);
+const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 test("source lock updater changes only immutable identity fields", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "eliza-lock-"));
   const lock = path.join(directory, "lock.json");
   await writeFile(
     lock,
-    await readFile(
-      path.join(repoRoot, "release/eliza-source.lock.json"),
-    ),
+    await readFile(path.join(repoRoot, "release/eliza-source.lock.json")),
   );
   await execFileAsync(
     process.execPath,

@@ -39,7 +39,7 @@ describe("standalone source-checkout start contract", () => {
         path.join(isolatedPackage, "package.json"),
       );
       symlinkSync(
-        path.resolve(AGENT_ROOT, "../../node_modules"),
+        path.join(packageRoot, "node_modules"),
         path.join(isolatedPackage, "node_modules"),
         "junction",
       );

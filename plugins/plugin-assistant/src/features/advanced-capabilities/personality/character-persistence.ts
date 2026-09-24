@@ -1,11 +1,8 @@
 /**
- * Service-locator contract for the character-persistence service used by the
- * personality capability. Exports the service-type token, the
- * `CharacterPersistenceServiceLike` structural interface, a runtime type-guard,
- * and `getCharacterPersistenceService` so callers (notably `CharacterFileManager`)
- * can durably persist agent-driven or restored character changes without
- * importing a concrete implementation. The persistence service itself lives
- * outside core; core defines only the shape it must satisfy.
+ * Defines the personality feature's persistence port for character edits.
+ * Hosts implement config, database and history writes; assistant callers resolve
+ * the port without importing host process code. This entry point has no runtime
+ * dependencies, so hosts can share its contract without loading assistant policy.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 
@@ -13,13 +10,38 @@ export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
 
 export type CharacterPersistenceSource = "manual" | "agent" | "restore";
 
+export type PersistableCharacter = {
+  name?: string;
+  username?: string;
+  bio?: string | string[];
+  system?: string;
+  adjectives?: string[];
+  topics?: string[];
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  postExamples?: string[];
+  messageExamples?: unknown;
+  settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+};
+
+export interface PersistCharacterParams {
+  character?: PersistableCharacter;
+  previousCharacter?: PersistableCharacter;
+  previousName?: string;
+  source?: CharacterPersistenceSource;
+}
+
+export interface PersistCharacterResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface CharacterPersistenceServiceLike {
-  persistCharacter(params?: {
-    character?: Record<string, unknown>;
-    previousCharacter?: Record<string, unknown>;
-    previousName?: string;
-    source?: CharacterPersistenceSource;
-  }): Promise<{ success: boolean; error?: string }>;
+  persistCharacter(params?: PersistCharacterParams): Promise<PersistCharacterResult>;
 }
 
 export function isCharacterPersistenceService(

@@ -52,9 +52,7 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
     read("linux/elizaos/mkosi/mkosi.finalize.chroot"),
     read("linux/elizaos/scripts/mkosi-qemu-qualify.py"),
     read("linux/elizaos/scripts/mkosi-persistence-qualify.py"),
-    read("linux/elizaos/debian-snapshot.lock.json").then(
-      JSON.parse,
-    ),
+    read("linux/elizaos/debian-snapshot.lock.json").then(JSON.parse),
   ]);
 
   assert.match(dockerfile, /^FROM \$\{DEBIAN_BASE_IMAGE\}$/m);
@@ -152,12 +150,12 @@ test("release image schema accepts only raw zstd images for supported architectu
 
 test("desktop artifact contract requires one feature-complete shell on all architectures", async () => {
   const [schema, example] = await Promise.all([
-    read(
-      "linux/schemas/desktop-artifact-manifest.schema.json",
-    ).then(JSON.parse),
-    read(
-      "linux/schemas/desktop-artifact-manifest.example.json",
-    ).then(JSON.parse),
+    read("linux/schemas/desktop-artifact-manifest.schema.json").then(
+      JSON.parse,
+    ),
+    read("linux/schemas/desktop-artifact-manifest.example.json").then(
+      JSON.parse,
+    ),
   ]);
 
   assert.deepEqual(schema.properties.architecture.enum, [

@@ -37,7 +37,6 @@ vi.mock("../bridge", () => ({
   },
 }));
 
-
 import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import type { AppContextValue } from "../state/internal";

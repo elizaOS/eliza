@@ -85,7 +85,7 @@ function decisionFromParsedObject(
     );
   }
   for (const key of required) {
-    if (!Object.prototype.hasOwnProperty.call(parsed, key)) {
+    if (!Object.hasOwn(parsed, key)) {
       throw new Error(`harness decision is missing required field ${key}`);
     }
   }

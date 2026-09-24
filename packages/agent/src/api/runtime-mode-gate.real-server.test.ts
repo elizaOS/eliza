@@ -28,8 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(
   HERE,
-  "..",
-  "fixtures",
+  "../../test/fixtures",
   "runtime-mode-gate-server.ts",
 );
 

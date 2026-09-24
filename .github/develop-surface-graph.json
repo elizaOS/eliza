@@ -33,17 +33,13 @@
         "packages/core",
         "packages/agent",
         "packages/auth",
-        "packages/logger",
         "packages/shared",
         "packages/testing/synthetic-world",
-        "packages/skills",
         "plugins/**",
         "packages/app",
-        "packages/homepage",
         "packages/ui",
         "packages/testing/scenario-runner",
         "packages/testing",
-        "plugins/plugin-app-control",
         "plugins/plugin-computeruse",
         "packages/**"
       ],
@@ -51,7 +47,6 @@
         "packages/scripts/**",
         "*.md",
         "**/*.md",
-        "packages/docs/**",
         "packages/scripts/audit-*.mjs",
         "packages/testing/scenario-runner/test/**",
         "packages/scripts/run-all-tests.mjs",
@@ -62,11 +57,7 @@
     {
       "id": "cloud",
       "workflow": ".github/workflows/cloud-tests.yml",
-      "workspacePatterns": [
-        "packages/cloud/**",
-        "plugins/plugin-cloud-apps",
-        "plugins/plugin-elizacloud"
-      ],
+      "workspacePatterns": ["packages/cloud/**", "plugins/plugin-elizacloud"],
       "inputs": ["packages/scripts/cloud/**"],
       "dependsOn": ["canonical"]
     },

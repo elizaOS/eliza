@@ -154,7 +154,9 @@ function scoreState(scenario: Scenario, finalState: SimulatorState): AxisScore {
       raw: 0,
       weight: AXIS_WEIGHTS.state,
       weighted: 0,
-      notes: ["no state expectations defined — axis scores 0, fix the scenario"],
+      notes: [
+        "no state expectations defined — axis scores 0, fix the scenario",
+      ],
     };
   }
   const raw = checks.filter(Boolean).length / checks.length;
@@ -367,7 +369,8 @@ function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
 
   const raw =
     checks.length === 0 ? 0 : checks.filter(Boolean).length / checks.length;
-  if (checks.length === 0) notes.push("no trace checks defined — axis scores 0");
+  if (checks.length === 0)
+    notes.push("no trace checks defined — axis scores 0");
   return {
     raw,
     weight: AXIS_WEIGHTS.trace,

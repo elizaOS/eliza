@@ -269,5 +269,4 @@ describe("committed provisioning workflows match the policy", () => {
     expect(deploy).toContain("cancel-in-progress: false");
     expect(deploy).toContain("queue: max");
   });
-
 });

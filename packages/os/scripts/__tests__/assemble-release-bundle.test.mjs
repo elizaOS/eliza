@@ -9,9 +9,7 @@ import { promisify } from "node:util";
 import { validateManifest } from "../os-release-lib.mjs";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url)),
-);
+const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const sourceManifest = path.join(
   repoRoot,
   "release/v0.1.0-beta.1/manifest.json",

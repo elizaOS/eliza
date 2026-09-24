@@ -6,7 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import type { UUID } from "@elizaos/core";
 import {
@@ -15,13 +15,14 @@ import {
   type JsonValue,
   stringToUuid,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/sqlite-adapter";
 import { sql } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
 import { INBOX_MIGRATION_SERVICE_TYPE } from "../../../../plugins/plugin-inbox/src/inbox/migration.ts";
 import { inboxPlugin } from "../../../../plugins/plugin-inbox/src/plugin.ts";
+import { PgliteDatabaseAdapter } from "../../../../plugins/plugin-sql/src/pglite/adapter.ts";
+import { PGliteClientManager } from "../../../../plugins/plugin-sql/src/pglite/manager.ts";
 import { RuntimeMigrator } from "../../../../plugins/plugin-sql/src/runtime-migrator/runtime-migrator.ts";
 import * as sqlSchema from "../../../../plugins/plugin-sql/src/schema/index.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
@@ -51,7 +52,7 @@ function deferred(): {
   };
 }
 
-class PGliteMigrationAdapter extends SQLiteDatabaseAdapter {
+class PGliteMigrationAdapter extends PgliteDatabaseAdapter {
   readonly pglite: PGlite;
   readonly pgliteDb: PgliteDatabase;
   readonly inboxMigrationEntered = deferred();
@@ -66,8 +67,12 @@ class PGliteMigrationAdapter extends SQLiteDatabaseAdapter {
   transactionReceiverWasAdapterDb = true;
 
   constructor(dataDir: string, agentId: UUID) {
-    super(":memory:", agentId);
-    this.pglite = new PGlite(dataDir, { extensions: { vector } });
+    const manager = new PGliteClientManager({
+      dataDir,
+      extensions: { vector },
+    });
+    super(agentId, manager);
+    this.pglite = manager.getConnection();
     this.pgliteDb = drizzle(this.pglite);
     const adapterDb = this.db;
     const thisAdapter = this;
@@ -141,7 +146,6 @@ class PGliteMigrationAdapter extends SQLiteDatabaseAdapter {
 
   override async close(): Promise<void> {
     await super.close();
-    await this.pglite.close();
   }
 }
 

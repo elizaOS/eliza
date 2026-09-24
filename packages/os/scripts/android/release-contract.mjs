@@ -40,9 +40,7 @@ export const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 export function loadPolicy() {
   return {
     trust: readJson(path.join(root, "android/release-trust.json")),
-    inventory: readJson(
-      path.join(root, "android/hardware-targets.json"),
-    ),
+    inventory: readJson(path.join(root, "android/hardware-targets.json")),
   };
 }
 export const CVD_CHECKS = [

@@ -958,11 +958,7 @@ describe("DesktopManager notifications", () => {
 		const context = manager as unknown as {
 			handleNativeContextMenuClick(event: unknown): void;
 		};
-		for (const action of [
-			"ask-agent",
-			"quote-in-chat",
-			"create-skill",
-		]) {
+		for (const action of ["ask-agent", "quote-in-chat", "create-skill"]) {
 			context.handleNativeContextMenuClick({
 				data: { action, data: { text: "selected" } },
 			});

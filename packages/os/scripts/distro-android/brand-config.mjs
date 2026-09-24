@@ -110,8 +110,7 @@ export function loadBrandConfig(configPath) {
   }
   // Defaults for optional fields.
   parsed.initRcName = parsed.initRcName ?? `init.${parsed.brand}.rc`;
-  parsed.vendorDir =
-    parsed.vendorDir ?? `android/vendor/${parsed.brand}`;
+  parsed.vendorDir = parsed.vendorDir ?? `android/vendor/${parsed.brand}`;
   if (
     parsed.aospLockPath !== undefined &&
     (typeof parsed.aospLockPath !== "string" ||

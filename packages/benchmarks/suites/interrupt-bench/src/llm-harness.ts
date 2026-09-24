@@ -86,7 +86,10 @@ export function decodeHarnessStage1(
   }
   const stringArray = (key: string): string[] => {
     const value = parsed[key];
-    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    if (
+      !Array.isArray(value) ||
+      !value.every((item) => typeof item === "string")
+    ) {
       throw new Error(`harness Stage-1 ${key} must be an array of strings`);
     }
     return value;
@@ -96,7 +99,9 @@ export function decodeHarnessStage1(
   }
   const relationships = parsed.relationships.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error(`harness Stage-1 relationships[${index}] must be an object`);
+      throw new Error(
+        `harness Stage-1 relationships[${index}] must be an object`,
+      );
     }
     const relationship = value as Record<string, unknown>;
     if (
@@ -123,7 +128,9 @@ export function decodeHarnessStage1(
     }
     const op = value as Record<string, unknown>;
     if (typeof op.type !== "string") {
-      throw new Error(`harness Stage-1 threadOps[${index}].type must be a string`);
+      throw new Error(
+        `harness Stage-1 threadOps[${index}].type must be a string`,
+      );
     }
     if (op.workThreadId !== null && typeof op.workThreadId !== "string") {
       throw new Error(

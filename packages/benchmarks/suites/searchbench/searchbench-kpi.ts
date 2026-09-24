@@ -17,16 +17,21 @@
  */
 import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
-import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import { sql } from "drizzle-orm";
-import { v4 } from "uuid";
 // Import the plugin-sql adapter + FTS migration objects from the repo's own
 // source tree (this file benchmarks the current checkout). A relative path
 // pins the measured code to this tree; the bare `@elizaos/plugin-sql` specifier
 // can resolve to an installed copy in a shared-node_modules worktree.
-import { join } from "node:path";
-import { loadBudgets, quantile, recordResult, REPO_ROOT, round } from "./lib.mjs";
+import path, { join } from "node:path";
+import type { IDatabaseAdapter, UUID } from "@elizaos/core";
+import { sql } from "drizzle-orm";
+import { v4 } from "uuid";
+import {
+  loadBudgets,
+  quantile,
+  REPO_ROOT,
+  recordResult,
+  round,
+} from "./lib.mjs";
 
 // The measured code is the ELIZA_REPO_DIR checkout's plugin-sql source,
 // imported directly from that tree so its workspace node_modules resolve.
@@ -36,6 +41,7 @@ const {
   memoryTable,
   plugin: sqlPlugin,
 } = await import(join(REPO_ROOT, "plugins/plugin-sql/src/index.node.ts"));
+
 import { ndcgAtK } from "./metric-schema.mjs";
 
 const CORPUS_SIZE = Number(process.env.SEARCHBENCH_CORPUS ?? 10_000);

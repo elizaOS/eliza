@@ -1,3 +1,4 @@
+/** Exposes the Eliza runtime over HTTP to deterministic LifeOps benchmark runners. */
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
@@ -21,6 +22,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import dotenv from "dotenv";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
@@ -148,7 +150,9 @@ function normalizeBenchmarkTaskAgentEnv(): void {
             : normalized;
 
   process.env.BENCHMARK_TASK_AGENT ??= requested;
-  process.env.ELIZA_AGENT_ORCHESTRATOR ??= "1";
+  if (readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR") === undefined) {
+    process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
+  }
   process.env.ELIZA_AGENT_SELECTION_STRATEGY ??= "fixed";
   if (benchmarkRequested) {
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";

@@ -5,6 +5,7 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import {
   chmod,
@@ -15,7 +16,6 @@ import {
   stat,
   statfs,
 } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DurableAuditStore } from "./audit.js";
@@ -449,7 +449,10 @@ async function loadHmacKey(target: string): Promise<Buffer> {
 
 async function loadCanonicalAccountPoolBroker(): Promise<CredentialLeaseBroker> {
   // ELIZA_REPO may select a different monorepo checkout.
-  const monorepoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
+  const monorepoRoot = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../../..",
+  );
   const elizaRepo = process.env.ELIZA_REPO ?? monorepoRoot;
   if (
     !existsSync(

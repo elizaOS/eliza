@@ -9,12 +9,12 @@
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { MeetingPlatform } from "@elizaos/shared";
 import type {
   ScenarioCleanupStep,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/testing/scenario-runner/schema";
-import type { MeetingPlatform } from "@elizaos/shared";
 import {
   ASSERT_MEETING_MOCK_LEDGER,
   clearMockMeetingScripts,

@@ -114,12 +114,8 @@ function main() {
     path.join(root, "packages", "app", "web-dist"),
   );
   rmPath("packages/app/.vite", path.join(root, "packages", "app", ".vite"));
-  rmPath(
-    path.join(root, "packages", "homepage", "dist"),
-  );
-  rmPath(
-    path.join(root, "packages", "homepage", ".vite"),
-  );
+  rmPath(path.join(root, "packages", "homepage", "dist"));
+  rmPath(path.join(root, "packages", "homepage", ".vite"));
 
   rmPath(
     "eliza/packages/app/dist",

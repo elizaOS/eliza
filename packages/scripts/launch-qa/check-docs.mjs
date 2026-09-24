@@ -129,7 +129,12 @@ function walkPackageJsons(dir) {
 
 function collectDocs(repoRoot, scope = "all") {
   const files = new Set();
-  const dirs = scope === "launchdocs" ? ["launchdocs"] : scope === "docs" ? ["docs"] : ["docs", "launchdocs"];
+  const dirs =
+    scope === "launchdocs"
+      ? ["launchdocs"]
+      : scope === "docs"
+        ? ["docs"]
+        : ["docs", "launchdocs"];
 
   for (const dirName of dirs) {
     for (const filePath of walkMarkdownFiles(path.join(repoRoot, dirName))) {
@@ -353,8 +358,7 @@ function normalizeCwd(repoRoot, docFile, cwdPart) {
   }
   const docRel = rel(repoRoot, docFile);
   const commandBase =
-    docRel.startsWith("docs/") ||
-    docRel.startsWith("launchdocs/")
+    docRel.startsWith("docs/") || docRel.startsWith("launchdocs/")
       ? repoRoot
       : path.dirname(docFile);
   return path.resolve(commandBase, stripped);

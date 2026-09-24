@@ -1025,7 +1025,9 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
 
     await openRouteAndWait(harness, PLUGINS_ROUTE, PLUGINS_SELECTOR);
     const pluginIds = await readVisiblePluginIds(harness);
-    expect(pluginIds).toEqual(expect.arrayContaining(["openai", "local-inference"]));
+    expect(pluginIds).toEqual(
+      expect.arrayContaining(["openai", "local-inference"]),
+    );
     await writeHarnessScreenshot(
       harness,
       testInfo,

@@ -3,7 +3,9 @@
  * deterministic placeholders for repeated values, and fail-loud on a fabricated
  * this-session placeholder. Deterministic and in-process — no model, no DB.
  */
+
 import { describe, expect, it, vi } from "vitest";
+import { BufferUtils } from "../utils/buffer";
 import {
 	SecretSwapSession,
 	SecretSwapUnresolvedPlaceholderError,
@@ -69,17 +71,17 @@ describe("SecretSwapSession", () => {
 		).toBe("curl -H __ELIZA_SECRET_99__");
 	});
 
-	it("fails closed when no cryptographically secure random source exists (W5-032)", () => {
-		// The session nonce must never fall back to Math.random(): a predictable
-		// nonce is recoverable from observed outputs, making placeholders
-		// forgeable and re-enabling the restore-hijack the nonce prevents.
-		vi.stubGlobal("crypto", undefined);
+	it("propagates native entropy failures without using a predictable fallback", () => {
+		const failure = new Error("Native entropy unavailable");
+		const randomBytes = vi
+			.spyOn(BufferUtils, "randomBytes")
+			.mockImplementation(() => {
+				throw failure;
+			});
 		try {
-			expect(() => new SecretSwapSession()).toThrow(
-				/cryptographically secure random source/,
-			);
+			expect(() => new SecretSwapSession()).toThrow(failure);
 		} finally {
-			vi.unstubAllGlobals();
+			randomBytes.mockRestore();
 		}
 	});
 });

@@ -43,7 +43,7 @@ import type {
   ArbiterEvent,
 } from "@elizaos/plugin-local-inference/services/memory-arbiter";
 import type { Eliza1TierId } from "@elizaos/shared/local-inference/catalog";
-import { loadBudgets, ms, recordResult, REPO_ROOT, rssMb } from "./lib.mjs";
+import { loadBudgets, ms, REPO_ROOT, recordResult, rssMb } from "./lib.mjs";
 
 // The measured code is the ELIZA_REPO_DIR checkout's source, imported directly
 // from that tree so its own workspace node_modules resolve its dependencies.
@@ -61,7 +61,10 @@ const { resolveLocalInferenceLoadArgs } = await import(
   join(REPO_ROOT, "plugins/plugin-local-inference/src/services/active-model.ts")
 );
 const { capacitorPressureSource } = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/memory-pressure.ts")
+  join(
+    REPO_ROOT,
+    "plugins/plugin-local-inference/src/services/memory-pressure.ts",
+  )
 );
 const { resolveRamBudget } = await import(
   join(REPO_ROOT, "plugins/plugin-local-inference/src/services/ram-budget.ts")
@@ -72,6 +75,7 @@ const { listInstalledModels } = await import(
 const { ELIZA_1_TIER_IDS } = await import(
   join(REPO_ROOT, "packages/shared/src/local-inference/catalog.ts")
 );
+
 // metric-schema + lib are plain ESM; import via relative path so this file is
 // self-contained and the schema is literally the one #8800 reads.
 import {

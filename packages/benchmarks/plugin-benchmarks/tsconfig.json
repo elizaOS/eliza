@@ -3,13 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "customConditions": [
-      "eliza-source"
-    ],
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "customConditions": ["eliza-source"],
+    "lib": ["ES2022", "DOM"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -26,14 +21,10 @@
     "noImplicitAny": true,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "./**/*.ts"
-  ],
+  "include": ["./**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",

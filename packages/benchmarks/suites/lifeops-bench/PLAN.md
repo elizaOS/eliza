@@ -114,4 +114,4 @@ or nonterminal evidence fails closed.
 
 The exact remaining semantic and provider-evidence coverage is tracked in
 [`LIFEOPS_BENCH_GAPS.md`](./LIFEOPS_BENCH_GAPS.md); the complete corpus inventory
-is in [`CORPUS_AUDIT.md`](./CORPUS_AUDIT.md).
+is in the local corpus audit (`python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json`).

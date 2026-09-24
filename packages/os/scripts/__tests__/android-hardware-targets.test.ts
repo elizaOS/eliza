@@ -6,10 +6,7 @@ const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 test("physical Android target inventory stays fail-closed", () => {
   const inventory = JSON.parse(
-    readFileSync(
-      `${repositoryRoot}/android/hardware-targets.json`,
-      "utf8",
-    ),
+    readFileSync(`${repositoryRoot}/android/hardware-targets.json`, "utf8"),
   );
   const products = readFileSync(
     `${repositoryRoot}/android/vendor/eliza/AndroidProducts.mk`,

@@ -165,7 +165,7 @@ if [[ ( "${PROFILE}" == "local-cerebras" || "${PROFILE}" == "local-eliza1" ) && 
   # from fixture transcripts via macOS `say`.
   if [[ "${PROFILE}" == "local-eliza1" ]]; then
     export VOICEAGENTBENCH_SYNTHESIZE_AUDIO="${VOICEAGENTBENCH_SYNTHESIZE_AUDIO:-1}"
-    export VOICEAGENTBENCH_DATA_PATH="${VOICEAGENTBENCH_DATA_PATH:-${ROOT_DIR}/suites/voiceagentbench/fixtures/test_tasks.jsonl}"
+    export VOICEAGENTBENCH_DATA_PATH="${VOICEAGENTBENCH_DATA_PATH:-${ROOT_DIR}/suites/voiceagentbench/fixtures/mock_tasks.jsonl}"
   fi
   PYTHONPATH="${ROOT_DIR}/suites/voiceagentbench:${ROOT_DIR}/suites/lifeops-bench:${PYTHONPATH:-}" python3 - "${GENERATED_DIR}" "${GENERATED_DATASET}" <<'PY'
 import json

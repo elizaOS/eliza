@@ -1,5 +1,5 @@
-import net from "node:net";
 import { randomUUID } from "node:crypto";
+import net from "node:net";
 
 // The packaged Android runtime uses authenticated NDJSON over an abstract
 // Unix socket. adb forwards that byte stream to this loopback TCP port.

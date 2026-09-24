@@ -11,11 +11,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
-const tracked = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
-  cwd: repositoryRoot,
-  encoding: "utf8",
-  maxBuffer: 16 * 1024 * 1024,
-})
+const tracked = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+  {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  },
+)
   .split("\0")
   .filter((entry) => entry && fs.existsSync(path.join(repositoryRoot, entry)));
 

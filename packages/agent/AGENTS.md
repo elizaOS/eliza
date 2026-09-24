@@ -72,7 +72,6 @@ src/
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
 scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness
-  docs/                     capability-router-remote-plugins.md, remote-coding-runner.md, tee-agent-implementation-plan.md
 ```
 
 ## Key exports / surface
@@ -142,7 +141,7 @@ Verified audio redaction:
 - `ELIZA_AUDIO_REDACTION_VERIFY_STT_URL` and `ELIZA_AUDIO_REDACTION_VERIFY_STT_MODEL` — optional second OpenAI-compatible STT verifier; configure both or neither.
 - `ELIZA_AUDIO_REDACTION_VERIFY_STT_API_KEY` — optional bearer credential for that independent verifier. The guarded client never follows redirects.
 
-Capability router (remote plugins — see `docs/capability-router-remote-plugins.md`):
+Capability router (remote plugins):
 - `ELIZA_CAPABILITY_ROUTER_ENABLED`, `ELIZA_CAPABILITY_ROUTER_URLS`, `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT`.
 
 Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`.
@@ -189,7 +188,7 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
   trajectories, character context, and model output without trimming, deduping,
   summarizing, or silently falling back from a partial prompt. Missing or invalid
   context is an explicit failure; final-wire model limits are enforced by core.
-- Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment; see `docs/tee-agent-implementation-plan.md`.
+- Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>.<ext>` with `nosniff` and a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves through `runtime.getService(ServiceType.REMOTE_FILES)` for `store`/`getUrl`/`list`/`delete`; authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` tool both use it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs on authenticated outgoing paths through the SSRF guard and runs the reference-aware orphan GC. Do not add a second file store, a `files` table, or a second refcount/GC engine; see issue #8876 and the root media invariant.
 - **Trajectory metadata is append-complete.** Persist every extracted insight and
   observation in source order, including duplicates. Page sizes may bound a

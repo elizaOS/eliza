@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
+import { BufferUtils } from "../utils/buffer";
 import {
 	CorpusPseudonymMap,
 	PseudonymMapIntegrityError,
@@ -565,16 +566,17 @@ describe("snapshot validation is fail-closed", () => {
 		).toThrow(PseudonymMapIntegrityError);
 	});
 
-	test("fails closed when no cryptographically secure random source exists (W5-032)", () => {
-		// The map salt seeds deterministic corpus-wide minting; a Math.random()
-		// fallback would let an observer reproduce corpus surrogates.
-		vi.stubGlobal("crypto", undefined);
+	test("propagates native entropy failures without using a predictable fallback", () => {
+		const failure = new Error("Native entropy unavailable");
+		const randomBytes = vi
+			.spyOn(BufferUtils, "randomBytes")
+			.mockImplementation(() => {
+				throw failure;
+			});
 		try {
-			expect(() => new CorpusPseudonymMap()).toThrow(
-				/cryptographically secure random source/,
-			);
+			expect(() => new CorpusPseudonymMap()).toThrow(failure);
 		} finally {
-			vi.unstubAllGlobals();
+			randomBytes.mockRestore();
 		}
 	});
 });

@@ -59,11 +59,15 @@ if (!existsSync(manifestPath)) {
 
 const libPath = resolveFusedLibraryPath(null, process.env);
 if (!libPath) {
-  skip("fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR)");
+  skip(
+    "fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR)",
+  );
 }
 const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
 if (!bundle || !existsSync(path.join(bundle, "asr"))) {
-  skip("no ASR bundle (set ELIZA_ASR_BUNDLE to a dir with asr/eliza-1-asr.gguf)");
+  skip(
+    "no ASR bundle (set ELIZA_ASR_BUNDLE to a dir with asr/eliza-1-asr.gguf)",
+  );
 }
 
 interface ManifestItem {
@@ -120,10 +124,14 @@ try {
   for (const utterance of allUtterances()) {
     const entry = manifestItems.get(utterance.id);
     if (!entry) {
-      skip(`utterance ${utterance.id} missing from audio manifest — re-run corpus:synth`);
+      skip(
+        `utterance ${utterance.id} missing from audio manifest — re-run corpus:synth`,
+      );
     }
     if (entry.text !== utterance.text) {
-      skip(`utterance ${utterance.id} audio is stale (text changed) — re-run corpus:synth`);
+      skip(
+        `utterance ${utterance.id} audio is stale (text changed) — re-run corpus:synth`,
+      );
     }
     const wavPath = path.join(audioDir, entry.wav);
     if (!existsSync(wavPath)) skip(`missing WAV ${wavPath}`);
@@ -131,7 +139,11 @@ try {
       new Uint8Array(readFileSync(wavPath)),
     );
     const started = performance.now();
-    const { text } = ffi.asrTranscribeTimed({ ctx, pcm, sampleRateHz: sampleRate });
+    const { text } = ffi.asrTranscribeTimed({
+      ctx,
+      pcm,
+      sampleRateHz: sampleRate,
+    });
     const asrMs = Math.round(performance.now() - started);
     const hypothesis = (text ?? "").trim();
     if (hypothesis.length === 0) fail(`${utterance.id}: empty transcript`);
@@ -158,7 +170,8 @@ try {
   ffi.close();
 }
 
-const meanWer = items.reduce((a, i) => a + i.wer, 0) / Math.max(1, items.length);
+const meanWer =
+  items.reduce((a, i) => a + i.wer, 0) / Math.max(1, items.length);
 const nameRates = items.filter((i) => i.nameHitRate !== null);
 const meanNameHit =
   nameRates.reduce((a, i) => a + (i.nameHitRate ?? 0), 0) /
@@ -175,7 +188,8 @@ writeFileSync(
       asrBundle: {
         dir: bundle,
         model: statSync(path.join(bundle, "asr", "eliza-1-asr.gguf")).size,
-        mmproj: statSync(path.join(bundle, "asr", "eliza-1-asr-mmproj.gguf")).size,
+        mmproj: statSync(path.join(bundle, "asr", "eliza-1-asr-mmproj.gguf"))
+          .size,
       },
       aggregate: {
         utterances: items.length,

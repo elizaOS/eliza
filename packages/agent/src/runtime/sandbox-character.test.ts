@@ -141,21 +141,21 @@ describe("applySandboxCharacterFromEnv", () => {
           backend: "remote",
           transport: "remote",
           remoteApiBase: "https://old.invalid",
-          primaryModel: "llama3.2",
+          primaryModel: "selected-model",
         },
       },
     } as never;
     const out = applySandboxCharacterFromEnv(config, {
       ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
         name: "Nyx",
-        modelProvider: "llama_local",
+        modelProvider: "near.ai",
       }),
     });
 
     expect(out.serviceRouting?.llmText).toEqual({
-      backend: "ollama",
+      backend: "nearai",
       transport: "direct",
-      primaryModel: "llama3.2",
+      primaryModel: "selected-model",
     });
   });
 

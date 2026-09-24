@@ -21,13 +21,13 @@
 
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
 import {
   classifyMessages,
   InboxTriageClassificationError,
 } from "@eliza-repo/plugins/plugin-inbox/src/inbox/triage-classifier.ts";
 import type { InboundMessage } from "@eliza-repo/plugins/plugin-inbox/src/inbox/types.ts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, describe, expect, it } from "vitest";
 import baseline from "../baseline.json";
 import budgets from "../budgets.json";
 import {

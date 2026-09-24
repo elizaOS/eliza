@@ -107,6 +107,5 @@ export function resolveElizaAssetBaseUrls({
         releaseTag,
         assetRoot: "packages/app/public",
       }),
-
   };
 }

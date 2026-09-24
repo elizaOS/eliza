@@ -490,10 +490,7 @@ describe("AOSP build contracts", () => {
   });
 
   test("canonical Cuttlefish products use only pinned product inputs", () => {
-    const productsRoot = join(
-      repositoryRoot,
-      "android/vendor/eliza/products",
-    );
+    const productsRoot = join(repositoryRoot, "android/vendor/eliza/products");
     const commonProduct = readFileSync(
       join(repositoryRoot, "android/vendor/eliza/eliza_common.mk"),
       "utf8",
@@ -686,9 +683,7 @@ describe("AOSP build contracts", () => {
     expect(common).not.toContain("ElizaSystemBridge");
     expect(common).not.toContain("ai.elizaos.system.bridge");
     expect(
-      existsSync(
-        join(repositoryRoot, "android/system-ui/package.json"),
-      ),
+      existsSync(join(repositoryRoot, "android/system-ui/package.json")),
     ).toBe(false);
   });
 
@@ -719,10 +714,7 @@ describe("AOSP build contracts", () => {
   });
 
   test("the E1 Cuttlefish simulator is a separately locked product", () => {
-    const lockPath = join(
-      repositoryRoot,
-      "android/cuttlefish-e1.lock.json",
-    );
+    const lockPath = join(repositoryRoot, "android/cuttlefish-e1.lock.json");
     const lock = loadCuttlefishE1Lock(lockPath);
     expect(lock.source).toMatchObject({
       url: "https://github.com/elizaOS/research.git",
@@ -758,10 +750,7 @@ describe("AOSP build contracts", () => {
       aospDeviceOverlay: "android/cuttlefish-e1.lock.json",
     });
     const products = readFileSync(
-      join(
-        repositoryRoot,
-        "android/vendor/eliza/AndroidProducts.mk",
-      ),
+      join(repositoryRoot, "android/vendor/eliza/AndroidProducts.mk"),
       "utf8",
     );
     expect(products).toContain("eliza_cf_riscv64_e1_phone.mk");
@@ -800,10 +789,7 @@ describe("AOSP build contracts", () => {
 
   test("the product menu exposes only source-pinned physical targets", () => {
     const products = readFileSync(
-      join(
-        repositoryRoot,
-        "android/vendor/eliza/AndroidProducts.mk",
-      ),
+      join(repositoryRoot, "android/vendor/eliza/AndroidProducts.mk"),
       "utf8",
     );
     for (const absentTarget of [
@@ -817,9 +803,9 @@ describe("AOSP build contracts", () => {
     }
     expect(products).toContain("eliza_tegu_phone");
     expect(products).toContain("eliza_grizzly_phone");
-    expect(
-      existsSync(join(repositoryRoot, "android/pixel9a.lock.json")),
-    ).toBe(true);
+    expect(existsSync(join(repositoryRoot, "android/pixel9a.lock.json"))).toBe(
+      true,
+    );
     const grizzlyLockPath = join(
       repositoryRoot,
       "android/pixel11pro.lock.json",
@@ -852,10 +838,7 @@ describe("AOSP build contracts", () => {
       }),
     );
     const pixelLock = JSON.parse(
-      readFileSync(
-        join(repositoryRoot, "android/pixel9a.lock.json"),
-        "utf8",
-      ),
+      readFileSync(join(repositoryRoot, "android/pixel9a.lock.json"), "utf8"),
     ) as {
       device: {
         productBrand: string;
@@ -865,10 +848,7 @@ describe("AOSP build contracts", () => {
       };
     };
     const pixelProduct = readFileSync(
-      join(
-        repositoryRoot,
-        "android/vendor/eliza/products/eliza_tegu_phone.mk",
-      ),
+      join(repositoryRoot, "android/vendor/eliza/products/eliza_tegu_phone.mk"),
       "utf8",
     );
     const commonProduct = readFileSync(

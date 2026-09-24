@@ -139,10 +139,7 @@ function main() {
   }
   const lock = JSON.parse(
     readFileSync(
-      new URL(
-        "../../release/eliza-source.lock.json",
-        import.meta.url,
-      ),
+      new URL("../../release/eliza-source.lock.json", import.meta.url),
       "utf8",
     ),
   );

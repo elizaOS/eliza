@@ -15,14 +15,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import {
-  basename,
-  dirname,
-  extname,
-  join,
-  relative,
-  resolve,
-} from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   brotliCompressSync,

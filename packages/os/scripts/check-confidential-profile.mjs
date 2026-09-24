@@ -74,10 +74,7 @@ const FILES = {
     "release/schema/confidential-image-manifest.schema.json",
   ),
   pins: path.join(repoRoot, "linux/confidential/dstack-pins.json"),
-  pinsSchema: path.join(
-    repoRoot,
-    "release/schema/dstack-pins.schema.json",
-  ),
+  pinsSchema: path.join(repoRoot, "release/schema/dstack-pins.schema.json"),
   confidentialManifest: path.join(
     repoRoot,
     "release/confidential-2026-05-21/manifest.json",

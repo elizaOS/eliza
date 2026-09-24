@@ -8,9 +8,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url)),
-);
+const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const verifier = path.join(
   repoRoot,
   "scripts/verify-electrobun-linux-package.sh",

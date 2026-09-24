@@ -22,7 +22,6 @@ import type {
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
-import type { ShortcutDefinition } from "./shortcut";
 import type { SurfaceManifest } from "./surface-manifest";
 import type { TestSuite } from "./testing";
 import type { ViewKind } from "./view-kind";
@@ -948,7 +947,6 @@ export interface PluginOwnership {
 	events: PluginEventRegistration[];
 	models: PluginModelRegistration[];
 	services: PluginServiceRegistration[];
-	shortcuts: string[];
 	sendHandlerSources: string[];
 	hasAdapter: boolean;
 	registeredAt: number;
@@ -1263,13 +1261,6 @@ export interface Plugin {
 	// Optional plugin features
 	actions?: Action[];
 	providers?: Provider[];
-	/**
-	 * Shortcut definitions (#8791), registered into the runtime's
-	 * `ShortcutRegistry`. The message service executes only explicit slash/`!`
-	 * protocol invocations before inference; natural definitions remain available
-	 * to caller-controlled discovery surfaces but never bypass the planner.
-	 */
-	shortcuts?: ShortcutDefinition[];
 	/**
 	 * Chat pre-handlers: generic pre-action dispatch hooks drained at the top of
 	 * the chat loop, before normal action processing. A plugin owning a

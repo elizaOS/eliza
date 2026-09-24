@@ -83,29 +83,47 @@ function tokenizeShellStatement(statement) {
 function compilerTokenIndex(tokens) {
   return tokens.findIndex((token, index) => {
     const basename = path.basename(token);
-    if (basename === "tsc" || basename === "tsc6") return true;
+    if (basename === "tsc" || basename === "tsc6" || basename === "tsgo")
+      return true;
     return (
       (basename === "bunx" ||
         (basename === "bun" && tokens[index + 1] === "x")) &&
-      /^(?:tsc|tsc6)$/.test(tokens[index + (basename === "bun" ? 2 : 1)] ?? "")
+      /^(?:tsc|tsc6|tsgo)$/.test(
+        tokens[index + (basename === "bun" ? 2 : 1)] ?? "",
+      )
     );
   });
 }
 
 /** Derive every tsconfig consumed by direct compiler invocations in a script. */
-export function discoverTypecheckProjects(packageDir, script, scripts = {}, active = new Set()) {
+export function discoverTypecheckProjects(
+  packageDir,
+  script,
+  scripts = {},
+  active = new Set(),
+) {
   const projects = [];
   for (const statement of splitShellStatements(script)) {
     const tokens = tokenizeShellStatement(statement);
     const compilerIndex = compilerTokenIndex(tokens);
     if (compilerIndex < 0) {
-      const bunIndex = tokens.findIndex((token) => path.basename(token) === "bun");
+      const bunIndex = tokens.findIndex(
+        (token) => path.basename(token) === "bun",
+      );
       if (bunIndex >= 0 && tokens[bunIndex + 1] === "run") {
         const name = tokens[bunIndex + 2];
         const nested = scripts[name];
         if (nested) {
-          if (active.has(name)) throw new Error(`Cyclic typecheck script: ${name}`);
-          projects.push(...discoverTypecheckProjects(packageDir, nested, scripts, new Set([...active, name])));
+          if (active.has(name))
+            throw new Error(`Cyclic typecheck script: ${name}`);
+          projects.push(
+            ...discoverTypecheckProjects(
+              packageDir,
+              nested,
+              scripts,
+              new Set([...active, name]),
+            ),
+          );
         }
       }
       continue;
@@ -154,24 +172,28 @@ function taskDependencies(turbo, taskName) {
   );
 }
 
-function buildClosure(packageName, manifestsByName, turbo, output = new Set()) {
-  if (output.has(packageName)) return output;
+function buildClosure(packageName, manifestsByName, turbo, output = new Set(), task = "build", visited = new Set()) {
+  const taskId = `${packageName}#${task}`;
+  if (visited.has(taskId)) return output;
+  visited.add(taskId);
   output.add(packageName);
   const manifest = manifestsByName.get(packageName);
   if (!manifest) return output;
-  const dependencies = taskDependencies(turbo, `${packageName}#build`);
+  const dependencies = taskDependencies(turbo, taskId);
   for (const dependency of dependencies) {
     if (dependency === "^build") {
       for (const name of dependencyNames(manifest)) {
         if (manifestsByName.has(name))
-          buildClosure(name, manifestsByName, turbo, output);
+          buildClosure(name, manifestsByName, turbo, output, "build", visited);
       }
-    } else if (dependency.endsWith("#build")) {
+    } else if (/#build(?::[\w-]+)?$/.test(dependency)) {
       buildClosure(
-        dependency.slice(0, -"#build".length),
+        dependency.split("#")[0],
         manifestsByName,
         turbo,
         output,
+        dependency.split("#")[1],
+        visited,
       );
     }
   }
@@ -191,12 +213,13 @@ export function builtBeforeTypecheck(packageName, manifestsByName, turbo) {
         if (manifestsByName.has(name))
           buildClosure(name, manifestsByName, turbo, built);
       }
-    } else if (dependency.endsWith("#build")) {
+    } else if (/#build(?::[\w-]+)?$/.test(dependency)) {
       buildClosure(
-        dependency.slice(0, -"#build".length),
+        dependency.split("#")[0],
         manifestsByName,
         turbo,
         built,
+        dependency.split("#")[1],
       );
     }
   }

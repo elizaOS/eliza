@@ -14,8 +14,8 @@ test("RISC-V builds and requires the current fused inference runtime", () => {
     builder,
     /fused_sentinel="\$libllama_assets_dir\/riscv64\/libelizainference.so"/,
   );
-  assert.match(checker, /^    libelizainference\.so$/m);
-  assert.match(checker, /^    libllama\.so$/m);
+  assert.match(checker, /^ {4}libelizainference\.so$/m);
+  assert.match(checker, /^ {4}libllama\.so$/m);
   assert.doesNotMatch(checker, /libeliza-llama-shim\.so/);
 });
 

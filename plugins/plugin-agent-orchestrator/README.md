@@ -102,7 +102,7 @@ The same plugin supplies Task Coordinator, Orchestrator and Cockpit. Their
 route IDs and capability authority remain stable. Browser hosts import
 `@elizaos/plugin-agent-orchestrator/ui/register` for native page loaders and
 shared UI slots; this entry is separate from the Node subprocess runtime.
-See the [workbench guide](ui/README.md).
+See the [workbench guide](ui/README.md) and [plugin ownership audit](docs/plugin-ownership.md).
 
 ## Action surface
 

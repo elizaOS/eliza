@@ -9,8 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { isMainModule } from "../distro-android/is-main.mjs";
 
 test("entry-point helper honors explicit runtime decisions", () => {
@@ -21,10 +21,8 @@ test("entry-point helper honors explicit runtime decisions", () => {
 test("fallback executes a symlinked entry point but not an imported module", () => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "os-cli-entry-"));
   try {
-    const helper = new URL(
-      "../distro-android/is-main.mjs",
-      import.meta.url,
-    ).href;
+    const helper = new URL("../distro-android/is-main.mjs", import.meta.url)
+      .href;
     const entry = join(root, "entry.mjs");
     const link = join(root, "linked.mjs");
     const importer = join(root, "importer.mjs");

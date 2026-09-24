@@ -57,7 +57,9 @@ export function reportShortcutFired(
     );
   } catch (error) {
     // error-policy:J7 telemetry setup must not interrupt a keyboard shortcut.
-    logger.warn(`[ShortcutReporter] setup failed: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn(
+      `[ShortcutReporter] setup failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 

@@ -7,10 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const checker = fileURLToPath(
-  new URL(
-    "../verify-eliza-source-boundary.mjs",
-    import.meta.url,
-  ),
+  new URL("../verify-eliza-source-boundary.mjs", import.meta.url),
 );
 const reviewedPaths = [
   "plugins/plugin-native-inference/__tests__/aosp-audio-resample.test.ts",

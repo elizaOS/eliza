@@ -26,6 +26,12 @@
       "eliza-source": "./src/features/advanced-capabilities/actions/generateMedia.ts",
       "import": "./dist/actions/generate-media.js",
       "default": "./dist/actions/generate-media.js"
+    },
+    "./character-persistence": {
+      "types": "./dist/character-persistence.d.ts",
+      "eliza-source": "./src/features/advanced-capabilities/personality/character-persistence.ts",
+      "import": "./dist/character-persistence.js",
+      "default": "./dist/character-persistence.js"
     }
   },
   "files": [

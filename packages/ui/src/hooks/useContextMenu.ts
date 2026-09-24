@@ -46,12 +46,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function useContextMenu(): void {
-  const { setState, handleChatSend } = useAppSelectorShallow(
-    (s) => ({
-      setState: s.setState,
-      handleChatSend: s.handleChatSend,
-    }),
-  );
+  const { setState, handleChatSend } = useAppSelectorShallow((s) => ({
+    setState: s.setState,
+    handleChatSend: s.handleChatSend,
+  }));
   const desktopRuntime = isElectrobunRuntime();
 
   useEffect(() => {

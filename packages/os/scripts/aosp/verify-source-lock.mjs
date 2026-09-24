@@ -7,10 +7,7 @@ import { fileURLToPath } from "node:url";
 import { isMainModule } from "../distro-android/is-main.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
-export const defaultLockPath = join(
-  repositoryRoot,
-  "android/aosp.lock.json",
-);
+export const defaultLockPath = join(repositoryRoot, "android/aosp.lock.json");
 
 function fail(message) {
   throw new Error(`[aosp-lock] ${message}`);

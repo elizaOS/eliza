@@ -18,7 +18,6 @@ describe("release plugin policy", () => {
     const availableDependencies = [
       "@elizaos/core",
       "@elizaos/shared",
-      "@elizaos/plugin-app-manager",
       "@elizaos/plugin-imessage",
       "@elizaos/ui",
       "@elizaos/plugin-openai",
@@ -31,7 +30,6 @@ describe("release plugin policy", () => {
       expect.arrayContaining([
         "@elizaos/core",
         "@elizaos/shared",
-        "@elizaos/plugin-app-manager",
         "@elizaos/plugin-imessage",
         "@elizaos/ui",
         "@elizaos/plugin-openai",

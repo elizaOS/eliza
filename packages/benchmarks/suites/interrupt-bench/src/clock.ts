@@ -46,8 +46,10 @@ export class FakeClock {
    * is <= the target. Awaits each fn in order before advancing time.
    */
   async runUntil(targetMs: number): Promise<void> {
-    while (this.queue.length > 0 && this.queue[0]?.at <= targetMs) {
-      const next = this.queue.shift()!;
+    while (true) {
+      const next = this.queue[0];
+      if (!next || next.at > targetMs) break;
+      this.queue.shift();
       this.nowMs = next.at;
       await next.fn();
     }

@@ -14,13 +14,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AgentRuntime,
-  ElizaError,
   ChannelType as ChannelTypes,
   type Character,
   type Content,
+  ElizaError,
   InMemoryDatabaseAdapter,
   type Memory,
-  ModelType,
   type Plugin,
   type UUID,
 } from "@elizaos/core";

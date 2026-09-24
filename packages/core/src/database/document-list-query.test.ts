@@ -577,12 +577,19 @@ it("rechecks current SQLite membership for grants while preserving owner authori
 	};
 	const first = await adapter.updateDocumentDirectGrants(request);
 	expect(first.status).toBe("updated");
+	await expect(adapter.getDocument(request)).resolves.toMatchObject({
+		id: source.id,
+	});
 	if (first.status !== "updated") throw new Error("Initial grant failed");
 	const reviewed = readDocumentMutationSnapshot(first.document);
 	if (!reviewed) throw new Error("Updated document is invalid");
 	await adapter.deleteParticipants([
 		{ entityId: REQUESTER_ID, roomId: ROOM_ID },
 	]);
+	await expect(adapter.getDocument(request)).resolves.toBeNull();
+	await expect(
+		adapter.queryDocuments({ ...request, limit: 25, offset: 0 }),
+	).resolves.toMatchObject({ documents: [], totalVisible: 0, totalMatched: 0 });
 	await expect(
 		adapter.updateDocumentDirectGrants({
 			...request,

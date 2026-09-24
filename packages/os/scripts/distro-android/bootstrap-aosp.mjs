@@ -12,10 +12,7 @@ import { isMainModule } from "./is-main.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDir, "../..");
-export const aospLockPath = path.join(
-  repositoryRoot,
-  "android/aosp.lock.json",
-);
+export const aospLockPath = path.join(repositoryRoot, "android/aosp.lock.json");
 
 function fail(message) {
   throw new Error(`[distro-android:bootstrap] ${message}`);

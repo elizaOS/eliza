@@ -32,13 +32,17 @@ export function readElizaSourceLock(lockPath = defaultElizaSourceLockPath) {
     );
   }
   if (lock.schemaVersion !== 1) {
-    throw new Error(`Unsupported Eliza source lock schema: ${lock.schemaVersion}`);
+    throw new Error(
+      `Unsupported Eliza source lock schema: ${lock.schemaVersion}`,
+    );
   }
   if (lock.repository !== "elizaOS/eliza") {
     throw new Error(`Unexpected Eliza source repository: ${lock.repository}`);
   }
   if (!/^[0-9a-f]{40}$/.test(lock.commit)) {
-    throw new Error("Eliza source lock commit must be a full lowercase Git SHA");
+    throw new Error(
+      "Eliza source lock commit must be a full lowercase Git SHA",
+    );
   }
   if (!/^[A-Za-z0-9._/-]+$/.test(lock.sourceRef)) {
     throw new Error(`Invalid Eliza source ref: ${lock.sourceRef}`);
@@ -47,7 +51,9 @@ export function readElizaSourceLock(lockPath = defaultElizaSourceLockPath) {
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(lock.commitTimestamp) ||
     Number.isNaN(Date.parse(lock.commitTimestamp))
   ) {
-    throw new Error("Eliza source lock timestamp must be an RFC 3339 UTC timestamp");
+    throw new Error(
+      "Eliza source lock timestamp must be an RFC 3339 UTC timestamp",
+    );
   }
   if (lock.submodules !== "recursive") {
     throw new Error("Eliza source lock must require recursive submodules");

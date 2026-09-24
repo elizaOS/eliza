@@ -119,9 +119,7 @@ async function tryBuildAnthropicAdapter(
     // source checkout (ELIZA_REPO). We import it directly because the
     // public bundle doesn't re-export it.
     const mod: { handleImageDescription: typeof handleImageDescription } =
-      await import(
-        elizaSourceUrl("plugins/plugin-anthropic/models/image.ts")
-      );
+      await import(elizaSourceUrl("plugins/plugin-anthropic/models/image.ts"));
     handleImageDescription = mod.handleImageDescription;
   } catch (err) {
     const cause = err instanceof Error ? err.message : String(err);

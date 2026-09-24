@@ -12,6 +12,7 @@ await rm(`${root}dist`, { recursive: true, force: true });
 await build({
   entry: {
     index: `${root}src/index.ts`,
+    "character-persistence": `${root}src/features/advanced-capabilities/personality/character-persistence.ts`,
     "actions/generate-media": `${root}src/features/advanced-capabilities/actions/generateMedia.ts`,
     "prompts/response-policy": `${root}src/prompts/response-policy.ts`,
   },

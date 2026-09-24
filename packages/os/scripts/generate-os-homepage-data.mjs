@@ -64,7 +64,10 @@ const artifacts = manifest.artifacts
       typeof artifact.id !== "string" ||
       typeof artifact.target?.platform !== "string" ||
       typeof artifact.target?.architecture !== "string" ||
-      !(artifact.downloadUrl === null || typeof artifact.downloadUrl === "string")
+      !(
+        artifact.downloadUrl === null ||
+        typeof artifact.downloadUrl === "string"
+      )
     ) {
       throw new Error("release manifest contains an invalid homepage artifact");
     }
@@ -93,4 +96,6 @@ const output = {
 
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`, "utf8");
-console.log(`Generated ${artifacts.length} OS homepage artifacts → ${outputPath}`);
+console.log(
+  `Generated ${artifacts.length} OS homepage artifacts → ${outputPath}`,
+);

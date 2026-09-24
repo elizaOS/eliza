@@ -59,10 +59,9 @@ if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const outDir =
-  process.argv.includes("--out")
-    ? path.resolve(process.argv[process.argv.indexOf("--out") + 1] ?? "")
-    : path.join(__dirname, "results", "audio");
+const outDir = process.argv.includes("--out")
+  ? path.resolve(process.argv[process.argv.indexOf("--out") + 1] ?? "")
+  : path.join(__dirname, "results", "audio");
 mkdirSync(outDir, { recursive: true });
 const manifestPath = path.join(outDir, "manifest.json");
 
@@ -86,18 +85,24 @@ interface Manifest {
 
 const libPath = resolveFusedLibraryPath(null, process.env);
 if (!libPath) {
-  skip("fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR)");
+  skip(
+    "fused lib not found (set ELIZA_INFERENCE_LIBRARY / ELIZA_INFERENCE_LIB_DIR)",
+  );
 }
 const ffi = loadElizaInferenceFfi(libPath);
 if (typeof ffi.kokoroSupported !== "function" || !ffi.kokoroSupported()) {
-  skip(`fused lib (ABI v${ffi.libraryAbiVersion}) does not link the Kokoro engine`);
+  skip(
+    `fused lib (ABI v${ffi.libraryAbiVersion}) does not link the Kokoro engine`,
+  );
 }
 const kokoro = resolveKokoroEngineConfig();
 if (!kokoro) {
   skip("no Kokoro model staged (set ELIZA_KOKORO_MODEL_DIR)");
 }
 
-console.log(`[entity-voice-bench:synth] lib=${libPath} (ABI v${ffi.libraryAbiVersion})`);
+console.log(
+  `[entity-voice-bench:synth] lib=${libPath} (ABI v${ffi.libraryAbiVersion})`,
+);
 console.log(`[entity-voice-bench:synth] model=${kokoro.layout.modelFile}`);
 console.log(`[entity-voice-bench:synth] out=${outDir}`);
 
@@ -136,7 +141,9 @@ const work = allUtterances()
 
 for (const { voice } of work) {
   if (!existsSync(path.join(kokoro.layout.voicesDir, `${voice}.bin`))) {
-    skip(`voice preset "${voice}.bin" is not staged in ${kokoro.layout.voicesDir}`);
+    skip(
+      `voice preset "${voice}.bin" is not staged in ${kokoro.layout.voicesDir}`,
+    );
   }
 }
 
@@ -183,7 +190,8 @@ for (const { utterance, voice } of work) {
   const synthMs = Math.round(performance.now() - started);
   const total = chunks.reduce((a, c) => a + c.length, 0);
   if (total === 0) fail(`${utterance.id}: Kokoro produced no audio`);
-  if (sampleRate !== 24_000) fail(`${utterance.id}: expected 24 kHz, got ${sampleRate}`);
+  if (sampleRate !== 24_000)
+    fail(`${utterance.id}: expected 24 kHz, got ${sampleRate}`);
   const pcm = new Float32Array(total);
   let offset = 0;
   for (const chunk of chunks) {
@@ -229,8 +237,7 @@ function writeManifest(): void {
     ...items,
     ...(previous?.items ?? []).filter(
       (item) =>
-        !processedIds.has(item.id) &&
-        existsSync(path.join(outDir, item.wav)),
+        !processedIds.has(item.id) && existsSync(path.join(outDir, item.wav)),
     ),
   ].sort((a, b) => a.id.localeCompare(b.id));
   const manifest: Manifest = {

@@ -68,6 +68,9 @@
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
+      "@elizaos/plugin-agent-orchestrator": [
+        "../../plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],

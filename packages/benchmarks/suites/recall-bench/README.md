@@ -145,10 +145,9 @@ tuning them against this deterministic embedding would overfit, not improve.
 
 `budgets.json` holds per-mode floors (Recall@5 / nDCG@5 / p95) and a minimum
 observable fail-open drop, calibrated to the 1k baseline with ~20% headroom.
-`.github/workflows/recall-bench.yml` runs the unit tests, the registry-contract
-check (`scripts/check-registry.py`), and the 1k gate; it turns red when a budget
-is crossed (e.g. a bad hybrid-weight change, or semantic recall silently
-collapsing into keyword).
+Run the unit tests, registry contract check (`scripts/check-registry.py`),
+and `bun run bench:1k` locally. The imported standalone workflow is retired;
+execution classifications do not imply an active monorepo CI gate.
 
 ## Files
 

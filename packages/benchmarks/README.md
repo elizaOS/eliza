@@ -97,3 +97,5 @@ python -m benchmarks.orchestrator serve-viewer
 4. Confirm it appears in `python -m benchmarks.orchestrator list-benchmarks`.
 
 Campaign commands and execution requirements: [orchestrator guide](suites/orchestrator/README.md).
+
+Integration findings and validation: [review](REVIEW.md).

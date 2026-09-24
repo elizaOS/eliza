@@ -479,7 +479,6 @@ export default defineConfig({
       // Template plugin tests need a scaffolded environment to run.
       // Skills tests use their own package-level runner.
       // Homepage tests need jsdom environment (run via packages/homepage vitest config).
-      "packages/homepage/**",
     ],
     coverage: {
       provider: "v8",

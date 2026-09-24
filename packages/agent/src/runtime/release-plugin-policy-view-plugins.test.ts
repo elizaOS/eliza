@@ -41,7 +41,19 @@ const declaredDependencies = Object.keys(
  */
 const CYCLE_EXCLUDED_FROM_AGENT_DEPS = new Set(["@elizaos/plugin-inbox"]);
 
-const AGENT_DECLARABLE_VIEW_PLUGINS = MOBILE_VIEW_PLUGINS.filter(
+// Runtime imports may name an export subpath; bundling owns its package root.
+const VIEW_PACKAGES = [
+  ...new Set(
+    MOBILE_VIEW_PLUGINS.map((specifier) =>
+      specifier
+        .split("/")
+        .slice(0, specifier.startsWith("@") ? 2 : 1)
+        .join("/"),
+    ),
+  ),
+];
+
+const AGENT_DECLARABLE_VIEW_PLUGINS = VIEW_PACKAGES.filter(
   (name) => !CYCLE_EXCLUDED_FROM_AGENT_DEPS.has(name),
 );
 
@@ -55,7 +67,7 @@ describe("always-loaded view plugins ship in the runtime bundle", () => {
 
   it("lists each one in the baseline bundled packages", () => {
     const baseline = new Set(BASELINE_BUNDLED_RUNTIME_PACKAGES);
-    const missing = MOBILE_VIEW_PLUGINS.filter((name) => !baseline.has(name));
+    const missing = VIEW_PACKAGES.filter((name) => !baseline.has(name));
     expect(missing).toEqual([]);
   });
 

@@ -14,9 +14,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code"
-        ]
+        "command": ["code"]
       }
     },
     {
@@ -27,9 +25,7 @@
     }
   ],
   "trajectory": "trajectories/982d12a5-beab-424f-8d38-d2a48429e511",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "compare_config",
     "expected": {

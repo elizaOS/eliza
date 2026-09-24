@@ -55,7 +55,10 @@ export default defineConfig(async () => {
   // form (an object spread would destroy the regex entries) and append the
   // `@eliza-repo` mapping used by this suite's gate tests.
   const baseAlias = baseResolve.alias ?? [];
-  const elizaRepoAlias = { find: /^@eliza-repo\/(.+)$/, replacement: `${repo}/$1` };
+  const elizaRepoAlias = {
+    find: /^@eliza-repo\/(.+)$/,
+    replacement: `${repo}/$1`,
+  };
   const alias = Array.isArray(baseAlias)
     ? [...baseAlias, elizaRepoAlias]
     : [

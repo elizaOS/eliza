@@ -90,7 +90,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/actionCallSummary[\s\S]{0,900}\.slice\(/,
 		/blob\.slice\(/,
 	],
-	"packages/testing/scenario-runner/src/judge.ts": [/raw\.slice\(/, /const preview/],
+	"packages/testing/scenario-runner/src/judge.ts": [
+		/raw\.slice\(/,
+		/const preview/,
+	],
 	"packages/testing/scenario-runner/src/reporter.ts": [
 		/truncateText/,
 		/toolInputPreview/,
@@ -104,12 +107,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/ownerMessage\.slice\(/,
 		/const clamped/,
 	],
-	"packages/testing/scenario-runner/src/scenario-assertions/calendar-assertions.ts": [
-		/blob\.slice\(/,
-	],
-	"packages/testing/scenario-runner/src/scenario-assertions/effect-assertions.ts": [
-		/JSON\.stringify\(a\.result\?\.data[^\n]*\.slice\(/,
-	],
+	"packages/testing/scenario-runner/src/scenario-assertions/calendar-assertions.ts":
+		[/blob\.slice\(/],
+	"packages/testing/scenario-runner/src/scenario-assertions/effect-assertions.ts":
+		[/JSON\.stringify\(a\.result\?\.data[^\n]*\.slice\(/],
 	"packages/agent/src/services/agent-export.ts": [
 		/limit:\s*Number\.MAX_SAFE_INTEGER/,
 		/getMemoriesByWorldId\(/,
@@ -1075,7 +1076,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/MAX_DISPLAY_LEN/,
 	],
 	"packages/ui/src/voice/voice-chat-playback.ts": [/MAX_SPOKEN_CHARS/],
-	"packages/ui/src/chat/model-choices.ts": [/MAX_MODEL_CHOICES/],
 	"plugins/plugin-knowledge/src/components/documents/documents-detail.tsx": [
 		/previewText\.slice\(/,
 	],

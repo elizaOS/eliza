@@ -15,10 +15,7 @@ import {
   parseOptions,
   pinnedToolRunner,
 } from "../android/install-release.mjs";
-import {
-  readHealthToken,
-  verifyPostBoot,
-} from "../android/post-boot.mjs";
+import { readHealthToken, verifyPostBoot } from "../android/post-boot.mjs";
 import { generateUpdateManifest } from "../android/publish-update-manifest.mjs";
 import {
   CVD_CHECKS,
@@ -1122,10 +1119,7 @@ test("image and credential named pipes fail without waiting for a writer", {
     ["release-contract.mjs", "hashFile"],
     ["post-boot.mjs", "readHealthToken"],
   ]) {
-    const url = new URL(
-      `../android/${module}`,
-      import.meta.url,
-    ).href;
+    const url = new URL(`../android/${module}`, import.meta.url).href;
     const result = spawnSync(
       process.execPath,
       [
@@ -1154,7 +1148,7 @@ test("slot drift during image hashing is detected before the first write", (t) =
   const imageInode = fs.statSync(path.join(f.directory, "boot.img")).ino;
   let slot = "a";
   const originalRead = fs.readSync;
-  t.mock.method(fs, "readSync", function (fd, ...args) {
+  t.mock.method(fs, "readSync", (fd, ...args) => {
     const count = originalRead.call(fs, fd, ...args);
     if (count === 0 && fs.fstatSync(fd).ino === imageInode) slot = "b";
     return count;

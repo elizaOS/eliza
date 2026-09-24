@@ -18,12 +18,12 @@ import { join } from "node:path";
 import { rankByKeyword } from "@elizaos/agent/api";
 import {
   bm25Scores,
+  factsProvider,
   type Memory,
   normalizeBm25Scores,
   type State,
   type UUID,
 } from "@elizaos/core";
-import { factsProvider } from "@elizaos/core";
 import budgets from "./budgets.json" with { type: "json" };
 import {
   buildCorpus,

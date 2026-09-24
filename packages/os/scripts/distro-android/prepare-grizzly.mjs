@@ -231,8 +231,7 @@ export function resolveRenderEngineOverrides(env = process.env) {
   }
   // Stock keeps Graphite on; a backend override needs Graphite off to be
   // honored unless the probe explicitly asks for Graphite-on-Vulkan.
-  const graphite =
-    graphiteRaw !== null ? graphiteRaw === "1" : !backend;
+  const graphite = graphiteRaw !== null ? graphiteRaw === "1" : !backend;
   return { backend, graphite };
 }
 
@@ -414,9 +413,14 @@ export function normalizeAospKeymasterInit(aospRoot, enabled = false) {
     return;
   }
   const escapePattern = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const blockingPattern = new RegExp(`^([\\t ]*)${escapePattern(blocking)}$`, "m");
+  const blockingPattern = new RegExp(
+    `^([\\t ]*)${escapePattern(blocking)}$`,
+    "m",
+  );
   if (!blockingPattern.test(contents)) {
-    if (new RegExp(`^([\\t ]*)${escapePattern(background)}$`, "m").test(contents)) {
+    if (
+      new RegExp(`^([\\t ]*)${escapePattern(background)}$`, "m").test(contents)
+    ) {
       fail(
         `${sourceInitPath} already uses exec_background without the elizaOS marker`,
       );

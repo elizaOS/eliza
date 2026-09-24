@@ -100,9 +100,11 @@ afterEach(async () => {
 
 describe("packageNameToAppSlug", () => {
   it("strips scoped registry prefixes and app/plugin- basenames", () => {
-    expect(packageNameToAppSlug("@elizaos/plugin-native-wifi")).toBe("wifi");
+    expect(packageNameToAppSlug("@elizaos/plugin-native-wifi")).toBe(
+      "native-wifi",
+    );
     expect(packageNameToAppSlug("@elizaos/app-wifi")).toBe("wifi");
-    expect(packageNameToAppSlug("plugin-native-wifi")).toBe("wifi");
+    expect(packageNameToAppSlug("plugin-native-wifi")).toBe("native-wifi");
     expect(packageNameToAppSlug("@elizaos/agent")).toBe("agent");
   });
 

@@ -8,7 +8,11 @@ import path from "node:path";
 import { parseArgs, sha256File } from "./os-release-lib.mjs";
 
 const architectures = new Set(["x86_64", "arm64", "riscv64"]);
-const buildArchitecture = { x86_64: "amd64", arm64: "arm64", riscv64: "riscv64" };
+const buildArchitecture = {
+  x86_64: "amd64",
+  arm64: "arm64",
+  riscv64: "riscv64",
+};
 
 async function regularFile(value, label) {
   const resolved = path.resolve(value);
@@ -16,13 +20,20 @@ async function regularFile(value, label) {
   if (!stats.isFile() || stats.isSymbolicLink() || stats.size === 0) {
     throw new Error(`${label} must be a nonempty regular file, not a symlink`);
   }
-  return { path: resolved, size: stats.size, sha256: await sha256File(resolved) };
+  return {
+    path: resolved,
+    size: stats.size,
+    sha256: await sha256File(resolved),
+  };
 }
 
 async function jsonFile(value, label) {
   const record = await regularFile(value, label);
   try {
-    return { ...record, document: JSON.parse(await readFile(record.path, "utf8")) };
+    return {
+      ...record,
+      document: JSON.parse(await readFile(record.path, "utf8")),
+    };
   } catch (error) {
     throw new Error(`${label} must contain valid JSON: ${error.message}`);
   }
@@ -44,7 +55,9 @@ if (args.architecture === "x86_64" && !args["legacy-bios-evidence"]) {
   missing.push("legacy-bios-evidence");
 }
 if (missing.length > 0) {
-  throw new Error(`missing required arguments: ${missing.map((name) => `--${name}`).join(", ")}`);
+  throw new Error(
+    `missing required arguments: ${missing.map((name) => `--${name}`).join(", ")}`,
+  );
 }
 if (!architectures.has(args.architecture)) {
   throw new Error("--architecture must be x86_64, arm64, or riscv64");
@@ -56,14 +69,15 @@ if (!/^[a-f0-9]{40}$/.test(args["source-sha"])) {
   throw new Error("--source-sha must be a lowercase 40-character Git commit");
 }
 
-const [compressed, expanded, build, qemu, persistence, sbom] = await Promise.all([
-  regularFile(args.compressed, "compressed image"),
-  regularFile(args.expanded, "expanded image"),
-  jsonFile(args["build-evidence"], "mkosi build evidence"),
-  jsonFile(args["qemu-evidence"], "QEMU evidence"),
-  jsonFile(args["persistence-evidence"], "persistence evidence"),
-  jsonFile(args.sbom, "SPDX SBOM"),
-]);
+const [compressed, expanded, build, qemu, persistence, sbom] =
+  await Promise.all([
+    regularFile(args.compressed, "compressed image"),
+    regularFile(args.expanded, "expanded image"),
+    jsonFile(args["build-evidence"], "mkosi build evidence"),
+    jsonFile(args["qemu-evidence"], "QEMU evidence"),
+    jsonFile(args["persistence-evidence"], "persistence evidence"),
+    jsonFile(args.sbom, "SPDX SBOM"),
+  ]);
 const legacyBios = args["legacy-bios-evidence"]
   ? await jsonFile(args["legacy-bios-evidence"], "legacy BIOS QEMU evidence")
   : null;
@@ -88,7 +102,9 @@ if (
   buildDocument.buildMode !== "release" ||
   buildDocument.sourceDirty !== false
 ) {
-  errors.push("mkosi build evidence is not a successful clean release assembly");
+  errors.push(
+    "mkosi build evidence is not a successful clean release assembly",
+  );
 }
 if (buildDocument.architecture !== buildArchitecture[args.architecture]) {
   errors.push("mkosi build evidence architecture mismatch");
@@ -124,7 +140,8 @@ if (
   qemuDocument.success !== true ||
   qemuDocument.preflightOnly !== false ||
   qemuDocument.diskInterface !== "usb" ||
-  qemuDocument.firmwareMode !== (args.architecture === "riscv64" ? "bios" : "pflash") ||
+  qemuDocument.firmwareMode !==
+    (args.architecture === "riscv64" ? "bios" : "pflash") ||
   qemuDocument.terminationReason !== "required-markers"
 ) {
   errors.push("QEMU evidence is not a successful removable-USB qualification");
@@ -135,7 +152,9 @@ if (
   typeof qemuDocument.emulator?.version !== "string" ||
   qemuDocument.emulator.version.length === 0
 ) {
-  errors.push("QEMU evidence does not record the exact emulator path and version");
+  errors.push(
+    "QEMU evidence does not record the exact emulator path and version",
+  );
 }
 if (qemuDocument.architecture !== buildArchitecture[args.architecture]) {
   errors.push("QEMU evidence architecture mismatch");
@@ -162,14 +181,18 @@ if (qemuDocument.firmwareMode === "pflash") {
     ) ||
     qemuDocument.inputs?.bios
   ) {
-    errors.push("QEMU evidence does not bind one explicit pflash firmware pair");
+    errors.push(
+      "QEMU evidence does not bind one explicit pflash firmware pair",
+    );
   }
 } else if (
   !/^[a-f0-9]{64}$/.test(qemuDocument.inputs?.bios?.sha256 ?? "") ||
   qemuDocument.inputs?.firmwareCode ||
   qemuDocument.inputs?.firmwareVarsTemplate
 ) {
-  errors.push("QEMU evidence does not bind one explicit combined firmware image");
+  errors.push(
+    "QEMU evidence does not bind one explicit combined firmware image",
+  );
 }
 
 if (args.architecture === "x86_64") {
@@ -191,7 +214,9 @@ if (args.architecture === "x86_64") {
     legacyDocument?.firmwareMode !== "bios" ||
     legacyDocument?.terminationReason !== "required-markers"
   ) {
-    errors.push("legacy BIOS evidence is not a successful removable-USB qualification");
+    errors.push(
+      "legacy BIOS evidence is not a successful removable-USB qualification",
+    );
   }
   if (
     typeof legacyDocument?.emulator?.path !== "string" ||
@@ -199,7 +224,9 @@ if (args.architecture === "x86_64") {
     typeof legacyDocument?.emulator?.version !== "string" ||
     legacyDocument.emulator.version.length === 0
   ) {
-    errors.push("legacy BIOS evidence does not record the emulator path and version");
+    errors.push(
+      "legacy BIOS evidence does not record the emulator path and version",
+    );
   }
   if (
     legacyDocument?.inputs?.image?.sha256 !== expanded.sha256 ||
@@ -212,9 +239,14 @@ if (args.architecture === "x86_64") {
     legacyDocument?.inputs?.firmwareCode ||
     legacyDocument?.inputs?.firmwareVarsTemplate
   ) {
-    errors.push("legacy BIOS evidence does not bind one explicit BIOS firmware image");
+    errors.push(
+      "legacy BIOS evidence does not bind one explicit BIOS firmware image",
+    );
   }
-  for (const marker of ["Linux version", "Reached target Graphical Interface"]) {
+  for (const marker of [
+    "Linux version",
+    "Reached target Graphical Interface",
+  ]) {
     if (!legacyDocument?.markersFound?.includes(marker)) {
       errors.push(`legacy BIOS evidence is missing required marker: ${marker}`);
     }
@@ -239,7 +271,9 @@ if (
   persistenceDocument.preflightOnly !== false ||
   persistenceDocument.architecture !== buildArchitecture[args.architecture]
 ) {
-  errors.push("persistence evidence is not a successful architecture-bound qualification");
+  errors.push(
+    "persistence evidence is not a successful architecture-bound qualification",
+  );
 }
 if (
   persistenceDocument.sourceImage?.sha256 !== expanded.sha256 ||
@@ -268,7 +302,10 @@ if (
 ) {
   errors.push("two-boot home growth or sentinel evidence is invalid");
 }
-if (!Array.isArray(persistenceDocument.boots) || persistenceDocument.boots.length !== 2) {
+if (
+  !Array.isArray(persistenceDocument.boots) ||
+  persistenceDocument.boots.length !== 2
+) {
   errors.push("persistence evidence must contain exactly two successful boots");
 } else {
   for (const [index, boot] of persistenceDocument.boots.entries()) {
@@ -290,7 +327,10 @@ if (!Array.isArray(persistenceDocument.boots) || persistenceDocument.boots.lengt
 if (sbom.document.spdxVersion !== "SPDX-2.3") {
   errors.push("SBOM is not SPDX 2.3 JSON");
 }
-if (!Array.isArray(sbom.document.packages) || sbom.document.packages.length === 0) {
+if (
+  !Array.isArray(sbom.document.packages) ||
+  sbom.document.packages.length === 0
+) {
   errors.push("SBOM contains no installed packages");
 }
 

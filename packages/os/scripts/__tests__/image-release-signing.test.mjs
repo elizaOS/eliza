@@ -21,9 +21,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url)),
-);
+const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const architectures = ["x86_64", "arm64", "riscv64"];
 // The signer requires canonical (realpath-stable) artifact roots by design;
 // macOS places os.tmpdir() under the /var -> /private/var symlink, so anchor

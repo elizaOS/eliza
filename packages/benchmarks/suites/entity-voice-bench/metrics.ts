@@ -120,7 +120,8 @@ export function scoreCreation(
 ): PrCell {
   const expected = new Map<string, string>();
   for (const u of session.utterances) {
-    if (u.expectCreates) expected.set(normalize(u.expectCreates), u.expectCreates);
+    if (u.expectCreates)
+      expected.set(normalize(u.expectCreates), u.expectCreates);
   }
   const unmatchedObserved = [...observation.entities];
   let tp = 0;
@@ -252,7 +253,9 @@ export function scoreAttributes(
   for (const e of observation.entities) personNames.add(normalize(e.name));
   const personFacts = observation.facts.filter((record) => {
     const norm = normalize(record);
-    return [...personNames].some((n) => n.length > 0 && norm.includes(n.split(" ")[0] ?? n));
+    return [...personNames].some(
+      (n) => n.length > 0 && norm.includes(n.split(" ")[0] ?? n),
+    );
   });
   let grounded = 0;
   for (const record of personFacts) {
@@ -260,7 +263,8 @@ export function scoreAttributes(
     else details.push(`attribute UNGROUNDED: "${record.slice(0, 120)}"`);
   }
   const fp = personFacts.length - grounded;
-  const precision = personFacts.length > 0 ? grounded / personFacts.length : null;
+  const precision =
+    personFacts.length > 0 ? grounded / personFacts.length : null;
   const recall = tp + fn > 0 ? tp / (tp + fn) : null;
   const f1 =
     precision !== null && recall !== null && precision + recall > 0
@@ -363,7 +367,12 @@ export function scoreSession(
 ): SessionScore {
   const details: string[] = [];
   const creation = scoreCreation(session, observation, details);
-  const recognition = scoreBindings(session, observation, "recognition", details);
+  const recognition = scoreBindings(
+    session,
+    observation,
+    "recognition",
+    details,
+  );
   const attribute = scoreAttributes(session, observation, details);
   const disambBindings = scoreBindings(
     session,
@@ -386,7 +395,12 @@ export function scoreSession(
     ),
     falseMerges,
   };
-  const relationships = scoreRelationships(session, observation, "all", details);
+  const relationships = scoreRelationships(
+    session,
+    observation,
+    "all",
+    details,
+  );
   return {
     sessionId: session.id,
     creation,
@@ -434,9 +448,7 @@ export function nameHitRate(
   if (expectedNames.length === 0) return null;
   const norm = normalize(hypothesis);
   const hits = expectedNames.filter((n) =>
-    n
-      .split(/\s+/)
-      .every((part) => norm.includes(normalize(part))),
+    n.split(/\s+/).every((part) => norm.includes(normalize(part))),
   ).length;
   return hits / expectedNames.length;
 }

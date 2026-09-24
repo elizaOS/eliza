@@ -156,7 +156,10 @@ test("infers the standard evidence source directories", () => {
     "walkthrough",
   );
   assert.equal(
-    inferSource(root, "/repo/packages/testing/scenario-runner/reports/run.jsonl"),
+    inferSource(
+      root,
+      "/repo/packages/testing/scenario-runner/reports/run.jsonl",
+    ),
     "scenario-runner",
   );
   assert.equal(inferSource(root, "/repo/evidence/matrix-run.json"), "evidence");

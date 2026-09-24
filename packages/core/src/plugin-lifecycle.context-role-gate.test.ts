@@ -44,7 +44,6 @@ function makeLifecycleRuntime(contexts: ContextRegistry): IAgentRuntime & {
 			runtime.providers.push(provider);
 		},
 		registerEvaluator: noop,
-		registerShortcut: noop,
 		registerModel: noop,
 		registerEvent: noop,
 		registerService: async () => undefined,

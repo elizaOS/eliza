@@ -29,12 +29,12 @@
 // is only populated when a local libllama-backed model is loaded.
 
 import { spawnSync } from "node:child_process";
-import { androidSocketFetch } from "./lib/android-socket-fetch.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { isMainModule } from "../distro-android/is-main.mjs";
+import { androidSocketFetch } from "./lib/android-socket-fetch.mjs";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,

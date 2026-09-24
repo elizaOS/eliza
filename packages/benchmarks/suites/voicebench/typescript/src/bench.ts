@@ -715,9 +715,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error(`Unsupported VoiceBench real profile: ${profile}`);
   }
 
-  const groqModule = (await import(
-    "@elizaos/plugin-groq"
-  )) as GroqPluginModule;
+  const groqModule = (await import("@elizaos/plugin-groq")) as GroqPluginModule;
   const groq = groqModule.groqPlugin ?? groqModule.default;
   if (!groq) {
     throw new Error("Failed to load Groq TypeScript plugin");
@@ -867,9 +865,13 @@ async function main(): Promise<void> {
 
   const dataset = datasetPath ? loadDatasetSamples(datasetPath) : null;
   const datasetName = dataset ? dataset.datasetName : "single-audio";
-  const samples: DatasetSample[] = dataset
-    ? dataset.samples
-    : [{ id: "single-audio", audioPath: audioPath!, expectedText: null }];
+  let samples: DatasetSample[];
+  if (dataset) {
+    samples = dataset.samples;
+  } else {
+    if (!audioPath) throw new Error("Provide an audio path or a dataset path.");
+    samples = [{ id: "single-audio", audioPath, expectedText: null }];
+  }
 
   const sttProvider = profile === "elevenlabs" ? "elevenLabs" : "groq";
   const ttsProvider = profile === "elevenlabs" ? "elevenLabs" : "groq";

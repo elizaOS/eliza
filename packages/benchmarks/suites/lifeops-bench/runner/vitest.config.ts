@@ -23,11 +23,11 @@ export default defineConfig({
     alias: [
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/node$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
       {

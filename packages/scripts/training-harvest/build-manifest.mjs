@@ -200,7 +200,8 @@ const manifest = {
   goal: "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   provider: {
     mechanism: "API provider selected by packages/testing/src/live-provider.ts",
-    configuration: "Supply provider credentials and model settings through --provider-env or inherited environment variables.",
+    configuration:
+      "Supply provider credentials and model settings through --provider-env or inherited environment variables.",
     note: "Validate a real scenario with the chosen provider before starting a full harvest.",
   },
   trajectoryFormat: {

@@ -6,8 +6,9 @@
  * ELIZA_REPO to point at a github.com/elizaOS/eliza checkout. Stub mode
  * never calls this.
  */
-import { pathToFileURL } from "node:url";
+
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 export function elizaSourceUrl(relPath: string): string {
   const repo = process.env.ELIZA_REPO;

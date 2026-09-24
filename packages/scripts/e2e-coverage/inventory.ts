@@ -366,7 +366,14 @@ const PLUGINS_DIR = path.join(REPO_ROOT, "plugins");
 
 /** Scenario corpora that run keyless on a PR. */
 const KEYLESS_SCENARIO_ROOTS = [
-  path.join(REPO_ROOT, "packages", "testing", "scenario-runner", "test", "scenarios"),
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "testing",
+    "scenario-runner",
+    "test",
+    "scenarios",
+  ),
   ...listDirs(PLUGINS_DIR).map((dir) =>
     path.join(PLUGINS_DIR, dir, "test", "scenarios"),
   ),

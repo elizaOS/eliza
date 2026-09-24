@@ -41,8 +41,8 @@ import {
   join,
   loadBudgets,
   ms,
-  repoRoot,
   recordResult,
+  repoRoot,
   sleep,
   waitForReady,
 } from "./lib.mjs";

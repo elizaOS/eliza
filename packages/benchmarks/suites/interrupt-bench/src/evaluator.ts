@@ -193,11 +193,7 @@ function shouldDeferUntilBurstEnd(
 ): boolean {
   const index = scenario.script.indexOf(step);
   const next = index >= 0 ? scenario.script[index + 1] : undefined;
-  if (
-    !next ||
-    next.channel !== step.channel ||
-    next.sender !== step.sender
-  ) {
+  if (!next || next.channel !== step.channel || next.sender !== step.sender) {
     return false;
   }
 

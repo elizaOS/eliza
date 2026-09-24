@@ -379,7 +379,7 @@ and judge models and spend real inference budget.
 ## Known gaps
 
 See [`LIFEOPS_BENCH_GAPS.md`](./LIFEOPS_BENCH_GAPS.md) and
-[`corpus-audit.json`](./corpus-audit.json). The generated audit replays every
+the local `corpus-audit.json` report. The generated audit replays every
 base scenario in authored action order and records unsupported operations,
 execution errors, mutations, and modeled no-mutation projections. Missing
 scheduled-task mutation targets fail rather than being invented by the

@@ -1,15 +1,15 @@
 /**
- * Exercises the GET /api/views/:id/hero image route: packaged PNG heroes for
- * builtin views, a generated image/svg+xml fallback for plugin views with no hero
- * asset, and a 404 through the error helper for unknown ids. In-process route
- * calls against a mock ServerResponse that captures writeHead/setHeader/end — no
- * HTTP server or LLM. The registry belongs to a real runtime.
+ * Exercises hero delivery through the real runtime registry and route handler:
+ * exact packaged PNG bytes, generated SVG fallbacks, and unknown-view rejection.
+ * Temporary plugin assets make file delivery independent of checkout artwork.
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import {
   closeRuntimeViewRegistry,
   listViews,
@@ -22,12 +22,13 @@ import {
   type ViewsRouteContext,
 } from "./views-routes.ts";
 
-// Unit test for GET /api/views/:id/hero (views-routes.ts ~L710). The route
-// streams image bytes directly via res.writeHead/setHeader/end — NOT the `json`
-// helper. So the mock res here captures writeHead/setHeader/end directly.
-
 let runtime: AgentRuntime;
 let hostKey: object;
+let pluginDirectory: string;
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/B8AAAAASUVORK5CYII=",
+  "base64",
+);
 
 const TEST_PLUGIN = "@test/views-hero";
 
@@ -105,6 +106,8 @@ describe("GET /api/views/:id/hero", () => {
       enableAutonomy: false,
     });
     hostKey = {};
+    pluginDirectory = mkdtempSync(join(tmpdir(), "agent-hero-"));
+    writeFileSync(join(pluginDirectory, "packaged.png"), png);
     registerBuiltinViews(runtime);
     clearCurrentViewState(runtime);
     await registerPluginViews(
@@ -114,6 +117,18 @@ describe("GET /api/views/:id/hero", () => {
         description: "Synthetic hero test plugin.",
         views: [
           {
+            id: "packaged-hero",
+            label: "Packaged Hero",
+            path: "/packaged",
+            heroImagePath: "packaged.png",
+          },
+          {
+            id: "missing-hero",
+            label: "Missing Hero View",
+            path: "/missing",
+            heroImagePath: "missing.png",
+          },
+          {
             id: "no-hero",
             label: "No Hero View",
             path: "/no-hero",
@@ -121,8 +136,7 @@ describe("GET /api/views/:id/hero", () => {
           },
         ],
       },
-      // process.cwd() has no assets/hero.* file → forces the SVG fallback.
-      { pluginDir: process.cwd() },
+      { pluginDir: pluginDirectory },
     );
   });
 
@@ -130,10 +144,14 @@ describe("GET /api/views/:id/hero", () => {
     clearCurrentViewState(runtime);
     closeRuntimeViewRegistry(runtime);
     vi.restoreAllMocks();
+    rmSync(pluginDirectory, { recursive: true, force: true });
   });
 
-  it("serves a generated image/svg+xml fallback for a plugin view with no hero file", async () => {
-    const { ctx, res } = makeHeroCtx("no-hero");
+  it.each([
+    ["no-hero", "No Hero View"],
+    ["missing-hero", "Missing Hero View"],
+  ])("serves an SVG fallback for %s", async (id, label) => {
+    const { ctx, res } = makeHeroCtx(id);
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
@@ -145,59 +163,40 @@ describe("GET /api/views/:id/hero", () => {
 
     const body = bodyFrom(res);
     expect(body).toContain("<svg");
-    expect(body).toContain("No Hero View");
+    expect(body).toContain(label);
   });
 
-  it("marks each builtin according to whether it declares a packaged hero", () => {
-    const builtinViews = listViews(runtime, { includeAllKinds: true }).filter(
-      (view) => view.pluginName === "@elizaos/builtin",
-    );
-
-    expect(builtinViews).toHaveLength(BUILTIN_VIEWS.length);
-    for (const view of builtinViews) {
-      const declaration = BUILTIN_VIEWS.find(
-        (candidate) => candidate.id === view.id,
-      );
-      expect(declaration).toBeDefined();
-      expect(view.hasHeroImage).toBe(Boolean(declaration?.heroImagePath));
-      expect(view.heroImageUrl).toBe(
-        `/api/views/${encodeURIComponent(view.id)}/hero`,
-      );
-    }
+  it("serves packaged PNG bytes without rewriting them", async () => {
+    const { ctx, res, error } = makeHeroCtx("packaged-hero");
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    expect(res.writeHead.mock.calls[0][0]).toBe(200);
+    expect(headersFrom(res)["Content-Type"]).toBe("image/png");
+    expect(headersFrom(res)["Content-Length"]).toBe(png.length);
+    expect(bodyBufferFrom(res)).toEqual(png);
+    expect(
+      listViews(runtime).find((view) => view.id === "packaged-hero")
+        ?.hasHeroImage,
+    ).toBe(true);
+    expect(
+      listViews(runtime).find((view) => view.id === "missing-hero")
+        ?.hasHeroImage,
+    ).toBe(false);
   });
 
-  it("serves packaged PNG heroes for visual builtin views", async () => {
-    for (const view of BUILTIN_VIEWS.filter(
-      (declaration) => declaration.heroImagePath,
-    )) {
-      const { ctx, res } = makeHeroCtx(view.id);
-
-      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
-
+  it("serves a nonempty image for every registered builtin and plugin view", async () => {
+    const views = listViews(runtime, { includeAllKinds: true });
+    expect(views.length).toBeGreaterThan(3);
+    for (const view of views) {
+      const { ctx, res, error } = makeHeroCtx(view.id);
+      await expect(handleViewsRoutes(ctx), view.id).resolves.toBe(true);
+      expect(error, view.id).not.toHaveBeenCalled();
+      expect(res.writeHead.mock.calls[0][0], view.id).toBe(200);
       const headers = headersFrom(res);
-      expect(headers["Content-Type"]).toBe("image/png");
-      expect(headers["Content-Length"]).toBeGreaterThan(0);
-      expect(bodyBufferFrom(res).subarray(0, 8)).toEqual(
-        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      );
-    }
-  });
-
-  it("serves a generated SVG for capability-only builtin views", async () => {
-    const capabilityOnlyViews = BUILTIN_VIEWS.filter(
-      (declaration) => !declaration.heroImagePath,
-    );
-    expect(capabilityOnlyViews.length).toBeGreaterThan(0);
-
-    for (const view of capabilityOnlyViews) {
-      const { ctx, res } = makeHeroCtx(view.id);
-
-      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
-
-      const headers = headersFrom(res);
-      expect(headers["Content-Type"]).toBe("image/svg+xml");
-      expect(headers["Content-Length"]).toBeGreaterThan(0);
-      expect(bodyFrom(res)).toContain("<svg");
+      expect(headers["Content-Type"], view.id).toMatch(/^image\//);
+      const body = bodyBufferFrom(res);
+      expect(body.byteLength, view.id).toBeGreaterThan(0);
+      expect(headers["Content-Length"], view.id).toBe(body.byteLength);
     }
   });
 

@@ -79,10 +79,8 @@ export function renderMarkdown(report: BenchmarkReport): string {
     "| ID | Category | Weight | Score | Boundary | State | Intent | Routing | Trace | Latency | Judge |",
   );
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
-  const axisCell = (axis: {
-    raw: number;
-    excluded?: boolean;
-  }): string => (axis.excluded ? "excl" : (axis.raw * 100).toFixed(0));
+  const axisCell = (axis: { raw: number; excluded?: boolean }): string =>
+    axis.excluded ? "excl" : (axis.raw * 100).toFixed(0);
   for (const r of report.scenarios) {
     const judgeCell = r.judge ? (r.judge.pass ? "PASS" : "fail") : "—";
     lines.push(

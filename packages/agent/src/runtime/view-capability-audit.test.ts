@@ -70,7 +70,6 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   wallet: "plugin-wallet",
   health: "plugin-health",
   focus: "plugin-blocker",
-  finances: "plugin-finances",
   inbox: "plugin-inbox",
   goals: "plugin-goals",
   todos: "plugin-todos",
@@ -105,7 +104,6 @@ const SPATIAL_VIEWS: readonly string[] = [
   "inbox",
   "goals",
   "health",
-  "finances",
   "todos",
   "focus",
 ];

@@ -3,24 +3,16 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "customConditions": [
-      "node",
-      "eliza-source"
-    ],
+    "customConditions": ["node", "eliza-source"],
     "allowImportingTsExtensions": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": "../../../../",
-    "types": [
-      "bun-types",
-      "node"
-    ],
+    "types": ["bun-types", "node"],
     "paths": {
-      "@elizaos/plugin-openai": [
-        "../../../../plugins/plugin-openai/index.ts"
-      ],
+      "@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../../../plugins/plugin-elizacloud/src/index.ts"
       ],
@@ -29,7 +21,5 @@
       ]
     }
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

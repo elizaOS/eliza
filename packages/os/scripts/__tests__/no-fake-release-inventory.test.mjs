@@ -14,9 +14,7 @@ async function source(relativePath) {
 }
 
 test("Android setup discovers OS-owned releases without invented fallbacks", async () => {
-  const adbBackend = await source(
-    "setup/src/backend/adb-backend.ts",
-  );
+  const adbBackend = await source("setup/src/backend/adb-backend.ts");
   assert.match(adbBackend, /repos\/elizaOS\/os\/releases/);
   assert.doesNotMatch(adbBackend, /MOCK_BUILDS/);
   assert.doesNotMatch(adbBackend, /downloads\.elizaos\.ai\/android\/beta/);

@@ -329,12 +329,6 @@ const ALLOWLIST: Record<string, string> = {
   "/api/wallet/market-overview (wallet-market-overview)":
     "public read-only market data; no per-user data exposed",
 
-  // plugin-whatsapp — Meta requires the webhook endpoints to bypass auth.
-  "/api/whatsapp/webhook (whatsapp-webhook-verify)":
-    "Meta webhook verification must bypass auth",
-  "/api/whatsapp/webhook (whatsapp-webhook-event)":
-    "Meta webhook delivery must bypass auth",
-
   // plugin-imessage — Blooio signs inbound delivery at the provider boundary.
   "/api/imessage/webhook/blooio (imessage-blooio-webhook)":
     "Blooio webhook delivery is unauthenticated at the agent gate and verified by provider signature",

@@ -22,10 +22,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileExists, repoRoot } from "./os-release-lib.mjs";
 
-const LAYER_DIR = path.join(
-  repoRoot,
-  "linux/confidential/meta-elizaos",
-);
+const LAYER_DIR = path.join(repoRoot, "linux/confidential/meta-elizaos");
 const CONFIDENTIAL_DIR = path.join(repoRoot, "linux/confidential");
 const LAYER_CONF = path.join(LAYER_DIR, "conf/layer.conf");
 

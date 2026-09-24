@@ -25,10 +25,16 @@ const { MemoryArbiter } = await import(
   join(REPO_ROOT, "plugins/plugin-local-inference/src/services/index.ts")
 );
 const { capacitorPressureSource } = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/memory-pressure.ts")
+  join(
+    REPO_ROOT,
+    "plugins/plugin-local-inference/src/services/memory-pressure.ts",
+  )
 );
 const { SharedResourceRegistry } = await import(
-  join(REPO_ROOT, "plugins/plugin-local-inference/src/services/voice/shared-resources.ts")
+  join(
+    REPO_ROOT,
+    "plugins/plugin-local-inference/src/services/voice/shared-resources.ts",
+  )
 );
 
 function makeArbiter(budgetMb: number) {

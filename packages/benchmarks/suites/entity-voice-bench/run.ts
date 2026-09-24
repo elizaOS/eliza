@@ -49,6 +49,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   ChannelType,
   createMessageMemory,
@@ -57,7 +58,6 @@ import {
   type UUID,
   type VoiceEntityBoundPayload,
 } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   allUtterances,
@@ -71,9 +71,9 @@ import {
   type ObservedEntity,
   type ObservedRelationship,
   type PrCell,
-  scoreSession,
   type SessionObservation,
   type SessionScore,
+  scoreSession,
   type TurnOutcome,
 } from "./metrics.ts";
 
@@ -121,7 +121,9 @@ function loadTranscripts(): Map<string, string> {
   }
   const transcriptsPath = path.join(__dirname, "asr-transcripts.json");
   if (!existsSync(transcriptsPath)) {
-    skip("asr-transcripts.json missing — run corpus:synth + corpus:transcribe first");
+    skip(
+      "asr-transcripts.json missing — run corpus:synth + corpus:transcribe first",
+    );
   }
   const parsed = JSON.parse(readFileSync(transcriptsPath, "utf8")) as {
     items: { id: string; reference: string; hypothesis: string }[];
@@ -129,9 +131,12 @@ function loadTranscripts(): Map<string, string> {
   const byId = new Map(parsed.items.map((i) => [i.id, i]));
   for (const u of allUtterances()) {
     const item = byId.get(u.id);
-    if (!item) skip(`asr-transcripts.json has no entry for ${u.id} — regenerate`);
+    if (!item)
+      skip(`asr-transcripts.json has no entry for ${u.id} — regenerate`);
     if (item.reference !== u.text) {
-      skip(`asr-transcripts.json is stale for ${u.id} (reference text changed) — regenerate`);
+      skip(
+        `asr-transcripts.json is stale for ${u.id} (reference text changed) — regenerate`,
+      );
     }
     map.set(u.id, item.hypothesis);
   }
@@ -185,18 +190,27 @@ async function readKnowledgeGraph(
   const allRelationships = (await relationshipStore.list()).filter(
     (r) => r.fromEntityId === SELF_ENTITY_ID,
   );
-  const relationshipIds = new Set(allRelationships.map((r) => r.relationshipId));
+  const relationshipIds = new Set(
+    allRelationships.map((r) => r.relationshipId),
+  );
   const relationships: ObservedRelationship[] = allRelationships
     .filter((r) => !baseline?.relationshipIds.has(r.relationshipId))
     .map((r) => ({
       toEntityId: r.toEntityId,
       toName: nameById.get(r.toEntityId) ?? r.toEntityId,
-      label: `${r.type} ${String((r.metadata as { label?: unknown } | undefined)?.label ?? "")}`.trim(),
+      label:
+        `${r.type} ${String((r.metadata as { label?: unknown } | undefined)?.label ?? "")}`.trim(),
     }));
   const attributeFacts = entities.flatMap((e) =>
     e.attributes.map((a) => `${e.name} ${a}`),
   );
-  return { entities, relationships, attributeFacts, entityIds, relationshipIds };
+  return {
+    entities,
+    relationships,
+    attributeFacts,
+    entityIds,
+    relationshipIds,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -290,7 +304,9 @@ async function runLlmSession(
   session: BenchSession,
   transcripts: Map<string, string>,
 ): Promise<SessionObservation> {
-  const factory = await import("@elizaos/testing/scenario-runner/runtime-factory");
+  const factory = await import(
+    "@elizaos/testing/scenario-runner/runtime-factory"
+  );
   // A stray proxy env var would silently replace the live model.
   delete process.env.SCENARIO_USE_LLM_PROXY;
   delete process.env.ELIZA_SCENARIO_USE_LLM_PROXY;
@@ -496,7 +512,9 @@ async function parentMain(): Promise<void> {
       "--out",
       outPath,
     ];
-    console.log(`[entity-voice-bench] session ${session.id} (${lane}/${input}) ...`);
+    console.log(
+      `[entity-voice-bench] session ${session.id} (${lane}/${input}) ...`,
+    );
     const child = Bun.spawnSync([process.execPath, ...args], {
       cwd: __dirname,
       env: { ...process.env },

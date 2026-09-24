@@ -25,8 +25,12 @@ describe("first-run options and provider normalizers", () => {
     expect(isSubscriptionProviderSelectionId("anthropic-subscription")).toBe(
       true,
     );
-    expect(isSubscriptionProviderSelectionId("openai-subscription")).toBe(false);
-    expect(isSubscriptionProviderSelectionId("gemini-subscription")).toBe(false);
+    expect(isSubscriptionProviderSelectionId("openai-subscription")).toBe(
+      false,
+    );
+    expect(isSubscriptionProviderSelectionId("gemini-subscription")).toBe(
+      false,
+    );
     expect(isSubscriptionProviderSelectionId("unknown-provider-xyz")).toBe(
       false,
     );

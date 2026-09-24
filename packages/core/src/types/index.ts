@@ -72,7 +72,6 @@ export * from "./service";
 export * from "./service-interfaces";
 export * from "./settings";
 // Setup types
-export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
 export type {

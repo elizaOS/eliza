@@ -70,9 +70,9 @@ describe("runBenchmark", () => {
       },
     };
 
-    await expect(
-      runBenchmark([handler], [scenario("s1")]),
-    ).rejects.toThrow("teardown exploded");
+    await expect(runBenchmark([handler], [scenario("s1")])).rejects.toThrow(
+      "teardown exploded",
+    );
   });
 
   it("excludes setup-incompatible handlers from scored results", async () => {

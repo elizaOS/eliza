@@ -19,12 +19,12 @@
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/ui": ["../src/ui/index.ts"],
-      "@elizaos/ui/*": ["../src/ui/*"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
-        "../src/ui/api/client-types-cloud.ts"
+        "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/ui/navigation": ["../src/ui/navigation/index.ts"],
+      "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
@@ -115,6 +115,21 @@
       ],
       "@elizaos/plugin-native-phone/bridge": [
         "../../plugins/plugin-native-phone/src/bridge.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-swabble": [
+        "../../plugins/plugin-native-swabble/src/index.ts"
+      ],
+      "@elizaos/capacitor-talkmode": [
+        "../../plugins/plugin-native-talkmode/src/index.ts"
+      ],
+      "@elizaos/capacitor-websiteblocker": [
+        "../../plugins/plugin-native-websiteblocker/src/index.ts"
+      ],
+      "@elizaos/plugin-native-messages/bridge": [
+        "../../plugins/plugin-native-messages/src/bridge.ts"
       ]
     }
   },

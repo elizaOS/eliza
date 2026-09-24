@@ -1,7 +1,7 @@
 # LifeOpsBench semantic and evidence gaps
 
 This inventory is generated from the 1,501 registered base scenarios. The machine source
-of truth is [`corpus-audit.json`](./corpus-audit.json), regenerated with:
+of truth is the local `corpus-audit.json` report, regenerated with:
 
 ```bash
 python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json
@@ -75,5 +75,5 @@ than hidden.
   guardian authority and consent explicit until a dedicated safe contract is
   designed.
 
-See [`CORPUS_AUDIT.md`](./CORPUS_AUDIT.md) for the module/persona inventory and
+See the local corpus audit (`python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json`) for the module/persona inventory and
 the deterministic-protocol versus model-inference boundary audit.

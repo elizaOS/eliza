@@ -297,8 +297,6 @@ export * from "./runtime/response-handler-field-registry";
 export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export { RunTerminalOwner } from "./runtime/run-terminal-owner";
-export * from "./runtime/shortcut-registry";
-export * from "./runtime/shortcut-registry.js";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trace-correlation";
 export * from "./runtime/trajectory-gate";
@@ -513,7 +511,6 @@ export * from "./types/notification.js";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export * from "./types/primitives.js";
-export * from "./types/shortcut.js";
 export * from "./types/surface-manifest.js";
 export * from "./types/swarm-coordinator.js";
 export type {

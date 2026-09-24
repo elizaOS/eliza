@@ -38,7 +38,7 @@ ELIZA_REPO_DIR=/path/to/eliza bun run bench:timeliness  # timeliness gate only (
 ```
 
 Measured runs land in `results/*.json` (gitignored; uploaded as a CI
-artifact). CI: `.github/workflows/lifeops-quality-bench.yml` — keyless,
+artifact). Local gates are keyless,
 runs nightly and on demand against a fresh elizaOS checkout.
 
 ## Editing the corpus, fixtures, budgets, or baseline

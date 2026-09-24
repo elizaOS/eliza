@@ -14,10 +14,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const repositoryRoot = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
+const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const packaging = join(repositoryRoot, "linux/packaging/debian");
 const validatorName = "validate-user-units";

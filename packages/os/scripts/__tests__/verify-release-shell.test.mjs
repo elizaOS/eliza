@@ -9,9 +9,7 @@ import { promisify } from "node:util";
 import { sha256File } from "../os-release-lib.mjs";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url)),
-);
+const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const verifier = path.join(repoRoot, "scripts/verify-release.sh");
 
 test("download verifier requires every checksummed payload", async () => {

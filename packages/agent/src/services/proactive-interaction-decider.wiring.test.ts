@@ -183,21 +183,6 @@ describe("registerProactiveInteractionDecider — runtime wiring (#8792)", () =>
     expect(rt.useModel).not.toHaveBeenCalled();
   });
 
-  it("never comments on a slash command even when subscribed (policy-silent)", async () => {
-    const rt = makeRuntime({ chattiness: "chatty" });
-    const { routed } = wire(rt);
-
-    await emitAndSettle(rt, EventType.SLASH_COMMAND_INVOKED, {
-      command: "wallet",
-      targetKind: "navigate",
-      initiatedBy: "user",
-    });
-
-    expect(routed).toEqual([]);
-    // The judge is never even consulted for a policy-silent surface.
-    expect(rt.useModel).not.toHaveBeenCalled();
-  });
-
   it("never routes when chattiness is off (subscribed, but gated live)", async () => {
     const rt = makeRuntime({ chattiness: "off" });
     const { routed } = wire(rt);

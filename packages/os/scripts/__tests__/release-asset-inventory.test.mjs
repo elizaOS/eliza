@@ -24,13 +24,8 @@ import {
 } from "../release-asset-inventory.mjs";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(
-  fileURLToPath(new URL("../..", import.meta.url)),
-);
-const scriptPath = path.join(
-  repoRoot,
-  "scripts/release-asset-inventory.mjs",
-);
+const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const scriptPath = path.join(repoRoot, "scripts/release-asset-inventory.mjs");
 const evidenceCheckerPath = path.join(
   repoRoot,
   "scripts/check-pr-evidence.mjs",

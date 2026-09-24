@@ -35,10 +35,7 @@ const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../..",
 );
-const scanRoots = [
-  "packages/agent/src",
-  "plugins/plugin-app-control/src",
-] as const;
+const scanRoots = ["packages/agent/src"] as const;
 
 const protocolExemptions: readonly ProtocolExemption[] = [
   {
@@ -85,9 +82,6 @@ const expectedProtectedPaths = [
   "packages/agent/src/api/runtime-switch-routes.ts",
   "packages/agent/src/providers/page-scoped-live-state.ts",
   "packages/agent/src/runtime/custom-actions.ts",
-  "plugins/plugin-app-control/src/actions/views-client.ts",
-  "plugins/plugin-app-control/src/actions/views-show.ts",
-  "plugins/plugin-app-control/src/services/verification-helpers.ts",
 ] as const;
 
 const localTargetPattern =

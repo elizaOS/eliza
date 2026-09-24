@@ -7,17 +7,10 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "resolveJsonModule": true,
-    "customConditions": [
-      "eliza-source"
-    ],
+    "customConditions": ["eliza-source"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

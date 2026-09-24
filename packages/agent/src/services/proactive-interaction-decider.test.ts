@@ -1,5 +1,5 @@
 /**
- * Covers the proactive-interaction decider: how view-switch/shortcut/slash-command
+ * Covers the proactive-interaction decider: how view-switch/keyboard-shortcut
  * events are turned into (or suppressed from) a proactive agent comment, judge
  * output parsing, prompt construction, per-event surface policy, and delivery
  * routing (chat vs notify) through `registerProactiveInteractionDecider`.
@@ -9,7 +9,6 @@
 import type {
   IAgentRuntime,
   ShortcutFiredPayload,
-  SlashCommandInvokedPayload,
   ViewSwitchedPayload,
 } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
@@ -272,15 +271,6 @@ describe("interactionSurface — per-event policy (#8792)", () => {
     };
     expect(interactionSurface(shortcut)).toBe("shortcut:open-wallet");
   });
-  it("stays silent on explicitly-typed slash commands (no double-talk)", () => {
-    const slash: SlashCommandInvokedPayload = {
-      runtime: {} as IAgentRuntime,
-      command: "status",
-      targetKind: "agent",
-      initiatedBy: "user",
-    };
-    expect(interactionSurface(slash)).toBeNull();
-  });
   it("denies control/dismiss/help shortcuts before the judge (no surface)", () => {
     for (const id of [
       "close-modal",
@@ -316,24 +306,6 @@ describe("decideProactiveComment — new interaction types", () => {
       now: 0,
     });
     expect(res.text).toBe("Want your balances?");
-  });
-
-  it("never comments on a slash command (policy-silent), even with a judge offer", async () => {
-    const gate = new ProactiveInteractionGate(configForChattiness("chatty"));
-    const slash: SlashCommandInvokedPayload = {
-      runtime: {} as IAgentRuntime,
-      command: "status",
-      targetKind: "agent",
-      initiatedBy: "user",
-    };
-    const res = await decideProactiveComment({
-      payload: slash,
-      gate,
-      judge: async () => "I could do X",
-      now: 0,
-    });
-    expect(res.text).toBeNull();
-    expect(res.reason).toContain("policy-silent");
   });
 });
 

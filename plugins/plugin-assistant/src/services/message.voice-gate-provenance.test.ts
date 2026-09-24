@@ -193,10 +193,10 @@ describe("voice-gate provenance end to end (#14873)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("delivers a genuine model reply through sendMessageToTarget with NO re-voice model call", async () => {
+  it.each(["how did the build go?", "/settings model", "/commands"])("delivers the model reply for %s without a second voice call", async (text) => {
     const replyText = `The build finished clean, 981 tests green. probe-${v4()}`;
     const deliveries = await runTurn(
-      makeMessage("how did the build go?"),
+      makeMessage(text),
       vi.fn(async () => stage1DirectReply(replyText)),
     );
 

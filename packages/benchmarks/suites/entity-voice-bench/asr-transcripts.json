@@ -23,9 +23,7 @@
       "hypothesis": "Hi, my name is Jill.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Jill"
-      ],
+      "expectedNames": ["Jill"],
       "asrMs": 783,
       "wavSha256": "2e2bf4d3f4d04aa369a12bf0ce44d138916b4ecb1d1d2f2c68c76fc2be8dca8a"
     },
@@ -36,9 +34,7 @@
       "hypothesis": "This is my wife, Jill.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Jill"
-      ],
+      "expectedNames": ["Jill"],
       "asrMs": 813,
       "wavSha256": "352b76b7a9f325a0c51374320c8d37c63b727122c953939a0b786f4ca424f5f5"
     },
@@ -49,9 +45,7 @@
       "hypothesis": "Hey there! I'm Bob.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Bob"
-      ],
+      "expectedNames": ["Bob"],
       "asrMs": 859,
       "wavSha256": "ec5fb7db10bf51b371e6ae7659e98f6ec7992734c2720a0a841ff9eb07d6e9a8"
     },
@@ -84,9 +78,7 @@
       "hypothesis": "Jill's birthday is on June twelfth.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Jill"
-      ],
+      "expectedNames": ["Jill"],
       "asrMs": 863,
       "wavSha256": "ba81e8dcf694b19fdd22988b0818a6abd43ec9992c73333b936d65035c8a6b9f"
     },
@@ -97,9 +89,7 @@
       "hypothesis": "Bob works at Riverside Hospital.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Bob"
-      ],
+      "expectedNames": ["Bob"],
       "asrMs": 781,
       "wavSha256": "ce701000691226361ae429f81a93e5a6c207cce0d909da4734ebe52538e6b4dc"
     },
@@ -110,9 +100,7 @@
       "hypothesis": "Hi, it's Jill again.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Jill"
-      ],
+      "expectedNames": ["Jill"],
       "asrMs": 750,
       "wavSha256": "e13c5b31e379c821e0cd86adfdddc96b6af10ce1671b6b06f0c6fb443e145eaf"
     },
@@ -134,9 +122,7 @@
       "hypothesis": "My anniversary with Jill is in September.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Jill"
-      ],
+      "expectedNames": ["Jill"],
       "asrMs": 884,
       "wavSha256": "99ebb8a1ea3f123dda4049adf3af5c416388769f45fc61e8f7e526e811a59c4b"
     },
@@ -169,10 +155,7 @@
       "hypothesis": "This is my colleague Maria Chen. She works at Acme Corporation.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria Chen",
-        "Maria"
-      ],
+      "expectedNames": ["Maria Chen", "Maria"],
       "asrMs": 1317,
       "wavSha256": "7ae7c06f5e59c7e590ace8ad0f8abc2f01b74dd9abb612700578afc6db9c3093"
     },
@@ -183,9 +166,7 @@
       "hypothesis": "Hi, I'm Maria Chen. Nice to meet you.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria Chen"
-      ],
+      "expectedNames": ["Maria Chen"],
       "asrMs": 960,
       "wavSha256": "a82b8b497ae545c8d52d5c56b5f0ff120d281eff00ab7620c858ae7d980bbf46"
     },
@@ -196,9 +177,7 @@
       "hypothesis": "Maria's birthday is on March third.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria"
-      ],
+      "expectedNames": ["Maria"],
       "asrMs": 876,
       "wavSha256": "9601187d85f503ddf081f9f827a17cb44c1c5665e5a1d15cfc6b0cee518e62e2"
     },
@@ -220,9 +199,7 @@
       "hypothesis": "Maria manages the platform team at Agme.",
       "wer": 0.143,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria"
-      ],
+      "expectedNames": ["Maria"],
       "asrMs": 867,
       "wavSha256": "6b8603501cc36eb889820bab4306e07f4d213d251ba3ec05af70416361150280"
     },
@@ -244,9 +221,7 @@
       "hypothesis": "Maria Chen is my colleague.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria Chen"
-      ],
+      "expectedNames": ["Maria Chen"],
       "asrMs": 805,
       "wavSha256": "870d40f858cc1095e6d2e523189dc05fcefda2782bff517ea2b0f82227b4ef86"
     },
@@ -257,9 +232,7 @@
       "hypothesis": "Hello, it's Maria Chen again.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria Chen"
-      ],
+      "expectedNames": ["Maria Chen"],
       "asrMs": 790,
       "wavSha256": "b16e28cc92c2e13d47f21ffd593412ecaf36b2bae610eea270f461a4b4553146"
     },
@@ -270,9 +243,7 @@
       "hypothesis": "Doctor Patel is my dentist.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Patel"
-      ],
+      "expectedNames": ["Patel"],
       "asrMs": 850,
       "wavSha256": "a74c1881c042d476e375035bb80efc6e60d921b9ffb5ecfbbba413217c80b297"
     },
@@ -283,9 +254,7 @@
       "hypothesis": "Doctor Patel's office is on Fifth Avenue.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Patel"
-      ],
+      "expectedNames": ["Patel"],
       "asrMs": 1008,
       "wavSha256": "439477c4f551e3054cd989f4043e74b18530c0ed6557529a6a53d7e235d5b5f8"
     },
@@ -296,9 +265,7 @@
       "hypothesis": "Hi, my name is Maria.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria"
-      ],
+      "expectedNames": ["Maria"],
       "asrMs": 854,
       "wavSha256": "fac79f31eb961f64a1fe57e1b9b0869a0147a3dd977119ab198494ce741e4bbf"
     },
@@ -309,9 +276,7 @@
       "hypothesis": "Hello, I'm Mario.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Mario"
-      ],
+      "expectedNames": ["Mario"],
       "asrMs": 763,
       "wavSha256": "66e95d18751a173940ea1f3c14712242ab472b9d6ea7748d8108a6c6eb123f26"
     },
@@ -322,9 +287,7 @@
       "hypothesis": "Hey, this is Marie.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Marie"
-      ],
+      "expectedNames": ["Marie"],
       "asrMs": 831,
       "wavSha256": "7dc8d17933fd2dc4c324c20be6e18bbabb5065f9ab54faae51ebfcc82f5badba"
     },
@@ -335,9 +298,7 @@
       "hypothesis": "Maria is my partner.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Maria"
-      ],
+      "expectedNames": ["Maria"],
       "asrMs": 768,
       "wavSha256": "b399f205e954d025cef77884789d80283815b4a7819141a5a1c1cbdb51bf999b"
     },
@@ -359,9 +320,7 @@
       "hypothesis": "Mario's birthday is in March.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Mario"
-      ],
+      "expectedNames": ["Mario"],
       "asrMs": 844,
       "wavSha256": "d9f706d7a6d5123a93462529f651d22450910002a8a29d3a1a4d6528a8df8c70"
     },
@@ -383,9 +342,7 @@
       "hypothesis": "Marie works at the public library.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Marie"
-      ],
+      "expectedNames": ["Marie"],
       "asrMs": 840,
       "wavSha256": "1a6488cc545d452fa65c877ec15bc12e82d4c7b546642eaded448cdeef1c5459"
     },
@@ -407,9 +364,7 @@
       "hypothesis": "Mario is my brother.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Mario"
-      ],
+      "expectedNames": ["Mario"],
       "asrMs": 693,
       "wavSha256": "63be6fc8705c87b5e35cfc6a7bbe2f08bd8907c6e1fca20fd63496c76593f374"
     },
@@ -420,9 +375,7 @@
       "hypothesis": "It's Mario again.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Mario"
-      ],
+      "expectedNames": ["Mario"],
       "asrMs": 672,
       "wavSha256": "9084436a12c15bde9c20c22349042cadf2b403c1053b3e80cb9d529d985ce51c"
     },
@@ -433,9 +386,7 @@
       "hypothesis": "Marie is hosting book club on Wednesday.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Marie"
-      ],
+      "expectedNames": ["Marie"],
       "asrMs": 961,
       "wavSha256": "684de6af1de4af046c2fe24cf055412683f0eddd54cc1a3173641d65dcf066d6"
     },
@@ -446,9 +397,7 @@
       "hypothesis": "Hi, I'm Errand.",
       "wer": 0.25,
       "nameHitRate": 0,
-      "expectedNames": [
-        "Erin"
-      ],
+      "expectedNames": ["Erin"],
       "asrMs": 687,
       "wavSha256": "e394e60fa32c75aceb7f798c791dca0c22614c35de91247e95e0972f912e18e3"
     },
@@ -459,9 +408,7 @@
       "hypothesis": "Hey there! I'm Aaron.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Aaron"
-      ],
+      "expectedNames": ["Aaron"],
       "asrMs": 662,
       "wavSha256": "146934ab2cc8b0cee6e7c2010efbe0434dea427895669928b23ef03b6e47f735"
     },
@@ -472,9 +419,7 @@
       "hypothesis": "Aren is my girlfriend.",
       "wer": 0.25,
       "nameHitRate": 0,
-      "expectedNames": [
-        "Erin"
-      ],
+      "expectedNames": ["Erin"],
       "asrMs": 811,
       "wavSha256": "cd892f55ee886b46ed170752cf609e50bfd735cff2d48730d910f8447ab4b64c"
     },
@@ -496,9 +441,7 @@
       "hypothesis": "Aaron works at Basecamp Brewing.",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Aaron"
-      ],
+      "expectedNames": ["Aaron"],
       "asrMs": 787,
       "wavSha256": "b061daf2f57bb07dbb6d5e56dad5c4b09cb1923ceb138096c136536bdc75c6e4"
     },
@@ -520,9 +463,7 @@
       "hypothesis": "Aaron's sister is named Dana.",
       "wer": 0.167,
       "nameHitRate": 0,
-      "expectedNames": [
-        "Erin"
-      ],
+      "expectedNames": ["Erin"],
       "asrMs": 893,
       "wavSha256": "d4f2e9e62f06c96ed78e8edbe25b9a21228f31c21ed6f9b7c1104c6236f12e3c"
     },
@@ -533,9 +474,7 @@
       "hypothesis": "It's Erin. Can you unlock the door?",
       "wer": 0,
       "nameHitRate": 1,
-      "expectedNames": [
-        "Erin"
-      ],
+      "expectedNames": ["Erin"],
       "asrMs": 990,
       "wavSha256": "2b447f2a0397c61af477eddb7169e3fb0b9f81195d5b6ebde47596bd6f804c6e"
     }

@@ -3,11 +3,7 @@
     "target": "ES2022",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": false,
@@ -18,24 +14,13 @@
     "esModuleInterop": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
-      "@elizaos/shared/*": [
-        "../../packages/shared/src/*"
-      ],
-      "@elizaos/plugin-elizacloud": [
-        "../plugin-elizacloud/src/index.ts"
-      ]
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"]
     },
-    "types": [
-      "node",
-      "bun"
-    ]
+    "types": ["node", "bun"]
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "src/ui/**",
     "src/ui.ts",

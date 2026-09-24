@@ -8,7 +8,6 @@
  *
  *   POST /api/views/:id/navigate      → EventType.VIEW_SWITCHED
  *   POST /api/interactions/shortcut   → EventType.SHORTCUT_FIRED
- *   EventType.SLASH_COMMAND_INVOKED   → (policy-silent by design)
  *     → registerProactiveInteractionDecider (real debounce timers)
  *       → REAL ProactiveInteractionGate.wouldAdmit precheck (#14678): the
  *         text-independent rules (cap / global + per-surface cooldown) run
@@ -31,7 +30,6 @@
  * decider's documented `now` seam; the debounce timers run in real time):
  *   s1 navigate wallet (user)        → ADMITTED  → frame 1 (judge + voice gate)
  *   s2 navigate calendar in burst    → SUPPRESSED pre-judge (global cooldown)
- *   s3 slash command                 → policy-silent (judge never called)
  *   s4 control shortcut (focus-composer) → policy-silent (judge never called)
  *   s5 navigate settings (agent-initiated) → skipped (already acknowledged)
  *   s6 +130s shortcut open-command-palette → ADMITTED → frame 2 (judge + voice)
@@ -330,17 +328,6 @@ assert(
   gateDecisions.at(-1)?.admitted === false &&
     gateDecisions.at(-1)?.reason === "global cooldown",
   `s2: gate precheck recorded the suppression reason (${gateDecisions.at(-1)?.reason})`,
-);
-
-// s3 — explicit slash command: policy-silent, judge never called.
-await runtime.emitEvent(EventType.SLASH_COMMAND_INVOKED, {
-  command: "help",
-  initiatedBy: "user",
-});
-await sleep(50);
-assert(
-  judgeCalls === 1 && proactiveFrames().length === 1,
-  "s3: slash command stayed policy-silent (no judge call, no frame)",
 );
 
 // s4 — control shortcut: denied before the judge (gesture, not intent).

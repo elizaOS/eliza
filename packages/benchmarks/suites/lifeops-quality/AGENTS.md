@@ -24,8 +24,8 @@ Recorded-baseline LifeOps quality benchmarks (#10723). Full docs: `README.md`.
   occurrence-mismatch must stay exactly 0, and `maxDeviationMs` stays at
   the tick cadence (300000ms).
 - Lanes: `bun run test` (unit, fast) · `ELIZA_REPO_DIR=… bun run
-  bench[:triage|:timeliness]` (gates; timeliness ~3min). CI:
-  `.github/workflows/lifeops-quality-bench.yml`.
+  bench[:triage|:timeliness]` (gates; timeliness ~3min). Run these locally;
+  the standalone repository workflow is retired.
 - `vitest.gate.config.ts` reuses plugin-personal-assistant's
   `vitest.src-integration.config.ts` wiring — if the gate lane breaks on
   resolve/alias errors, fix it there, not with a parallel config here.

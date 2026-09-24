@@ -113,7 +113,13 @@
       "mode": "live",
       "domain": "calendar",
       "tierTag": "[T4]",
-      "tags": ["shift-rotation", "sleep-protection", "live", "adversarial", "verbatim-exemplar"],
+      "tags": [
+        "shift-rotation",
+        "sleep-protection",
+        "live",
+        "adversarial",
+        "verbatim-exemplar"
+      ],
       "persona": "marcus_shift",
       "coverage": "Verbatim issue exemplar for failing closed when a requested event conflicts with protected sleep.",
       "baselineCanary": false,
@@ -173,7 +179,13 @@
       "mode": "live",
       "domain": "messages",
       "tierTag": "[T4]",
-      "tags": ["shift-rotation", "sleep-protection", "messages", "live", "adversarial"],
+      "tags": [
+        "shift-rotation",
+        "sleep-protection",
+        "messages",
+        "live",
+        "adversarial"
+      ],
       "persona": "marcus_shift",
       "coverage": "Staffing overtime request during protected sleep must be triaged safely.",
       "baselineCanary": false,

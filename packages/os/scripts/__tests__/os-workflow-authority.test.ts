@@ -265,16 +265,11 @@ describe("OS release workflow authority", () => {
         "build",
         "Verify and provision Electrobun runtime",
       );
-      expect(provision.run).toBe(
-        "scripts/provision-electrobun-runtime.sh",
-      );
+      expect(provision.run).toBe("scripts/provision-electrobun-runtime.sh");
     }
 
     const provisioner = readFileSync(
-      join(
-        repositoryRoot,
-        "scripts/provision-electrobun-runtime.sh",
-      ),
+      join(repositoryRoot, "scripts/provision-electrobun-runtime.sh"),
       "utf8",
     );
     expect(provisioner).toContain('version="1.18.1"');
@@ -354,15 +349,9 @@ describe("OS release workflow authority", () => {
     expect(validation.run).toContain("elizaos/scripts/mkosi-lint.sh");
     expect(validation.run).not.toContain("static-smoke.sh");
     expect(source).toContain("assert-canonical-linux-release.mjs");
-    expect(source).toContain(
-      "for script in scripts/*.mjs scripts/*.mjs; do",
-    );
-    expect(source).toContain(
-      "bun run --cwd usb-installer lint:check",
-    );
-    expect(source).not.toContain(
-      "bun run --cwd usb-installer lint\n",
-    );
+    expect(source).toContain("for script in scripts/*.mjs scripts/*.mjs; do");
+    expect(source).toContain("bun run --cwd usb-installer lint:check");
+    expect(source).not.toContain("bun run --cwd usb-installer lint\n");
     const usbValidation = namedJobStep(
       workflow,
       "validate-os-release",
@@ -375,9 +364,7 @@ describe("OS release workflow authority", () => {
     expect(usbValidation.run).toContain(browserInstall);
     expect(usbValidation.run).not.toContain("bunx playwright");
     expect(usbValidation.run.indexOf(browserInstall)).toBeLessThan(
-      usbValidation.run.indexOf(
-        "bun run --cwd usb-installer test:e2e",
-      ),
+      usbValidation.run.indexOf("bun run --cwd usb-installer test:e2e"),
     );
     expect(source).toContain("bun run --cwd setup test");
     expect(source).toContain(
@@ -388,9 +375,7 @@ describe("OS release workflow authority", () => {
   test("Linux CI validates both legacy smoke and canonical mkosi contracts", () => {
     const source = readFileSync(workflowPath("ci.yml"), "utf8");
     expect(source).toContain("bun run verify:linux");
-    expect(source).toContain(
-      "bash linux/elizaos/scripts/mkosi-lint.sh",
-    );
+    expect(source).toContain("bash linux/elizaos/scripts/mkosi-lint.sh");
     expect(source).toContain("test_mkosi_qualification.py");
     expect(source).toContain("test_verify_desktop_artifact.py");
     expect(source).toContain("linux-usb-virtual-block:");
@@ -776,10 +761,7 @@ describe("OS release workflow authority", () => {
       "utf8",
     );
     const desktopEntry = readFileSync(
-      join(
-        repositoryRoot,
-        "linux/packaging/debian/ai.elizaos.app.desktop",
-      ),
+      join(repositoryRoot, "linux/packaging/debian/ai.elizaos.app.desktop"),
       "utf8",
     );
     const appstreamMetadata = readFileSync(
@@ -790,38 +772,23 @@ describe("OS release workflow authority", () => {
       "utf8",
     );
     const autostart = readFileSync(
-      join(
-        repositoryRoot,
-        "linux/packaging/debian/eliza-autostart",
-      ),
+      join(repositoryRoot, "linux/packaging/debian/eliza-autostart"),
       "utf8",
     );
     const autostartPreset = readFileSync(
-      join(
-        repositoryRoot,
-        "linux/packaging/debian/80-elizaos.preset",
-      ),
+      join(repositoryRoot, "linux/packaging/debian/80-elizaos.preset"),
       "utf8",
     );
     const sessionTarget = readFileSync(
-      join(
-        repositoryRoot,
-        "linux/packaging/debian/elizaos-session.target",
-      ),
+      join(repositoryRoot, "linux/packaging/debian/elizaos-session.target"),
       "utf8",
     );
     const agentUnit = readFileSync(
-      join(
-        repositoryRoot,
-        "linux/packaging/debian/elizaos-agent.service",
-      ),
+      join(repositoryRoot, "linux/packaging/debian/elizaos-agent.service"),
       "utf8",
     );
     const desktopUnit = readFileSync(
-      join(
-        repositoryRoot,
-        "linux/packaging/debian/elizaos-desktop.service",
-      ),
+      join(repositoryRoot, "linux/packaging/debian/elizaos-desktop.service"),
       "utf8",
     );
 
@@ -877,15 +844,10 @@ describe("OS release workflow authority", () => {
     expect(source).not.toContain("extracted/opt/elizaos");
     for (const obsolete of ["install", "postinst", "prerm"]) {
       expect(
-        existsSync(
-          join(repositoryRoot, "linux/packaging/debian", obsolete),
-        ),
+        existsSync(join(repositoryRoot, "linux/packaging/debian", obsolete)),
       ).toBe(false);
     }
-    const packagingDirectory = join(
-      repositoryRoot,
-      "linux/packaging/debian",
-    );
+    const packagingDirectory = join(repositoryRoot, "linux/packaging/debian");
     const packagingSource = readdirSync(packagingDirectory)
       .filter((name) => name !== "eliza-autostart")
       .map((name) => join(packagingDirectory, name))
@@ -941,10 +903,7 @@ describe("OS release workflow authority", () => {
 
   test("homepage release E2E resolves workspace Playwright and WebAuthn runtime inputs", () => {
     const homepagePackage = JSON.parse(
-      readFileSync(
-        join(repositoryRoot, "homepage/package.json"),
-        "utf8",
-      ),
+      readFileSync(join(repositoryRoot, "homepage/package.json"), "utf8"),
     ) as {
       dependencies?: Record<string, string>;
       scripts?: Record<string, string>;

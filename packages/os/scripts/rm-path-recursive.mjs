@@ -68,9 +68,7 @@ if (
 ) {
   const rels = process.argv.slice(2);
   if (rels.length === 0) {
-    console.error(
-      "usage: node scripts/rm-path-recursive.mjs <path> [path...]",
-    );
+    console.error("usage: node scripts/rm-path-recursive.mjs <path> [path...]");
     process.exit(1);
   }
   const cwd = process.cwd();

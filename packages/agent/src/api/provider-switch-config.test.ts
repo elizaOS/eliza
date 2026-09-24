@@ -86,19 +86,19 @@ describe("applySubscriptionProviderConfig", () => {
     expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
   });
 
-  it("keeps Gemini CLI subscriptions out of runtime model routing", async () => {
+  it("keeps stored Gemini CLI subscriptions out of runtime model routing", async () => {
     const config: Partial<ElizaConfig> = {};
 
-    applySubscriptionProviderConfig(config, "gemini-subscription");
+    applySubscriptionProviderConfig(config, "gemini-cli");
 
     expect(config.agents?.defaults?.subscriptionProvider).toBe("gemini-cli");
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 
-  it("keeps coding-plan endpoint subscriptions out of direct API routing", async () => {
+  it("keeps stored coding-plan subscriptions out of direct API routing", async () => {
     const config: Partial<ElizaConfig> = {};
 
-    applySubscriptionProviderConfig(config, "zai-coding-subscription");
+    applySubscriptionProviderConfig(config, "zai-coding");
 
     expect(config.agents?.defaults?.subscriptionProvider).toBe("zai-coding");
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();

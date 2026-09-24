@@ -37,14 +37,10 @@ const JSON_ONLY = process.argv.includes("--json");
 const BUN_BIN = process.env.BUN_PATH || "bun";
 
 function runHarness() {
-  const res = spawnSync(
-    BUN_BIN,
-    [join(HERE, "memperf-kpi.ts")],
-    {
-      stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
-      env: process.env,
-    },
-  );
+  const res = spawnSync(BUN_BIN, [join(HERE, "memperf-kpi.ts")], {
+    stdio: JSON_ONLY ? ["ignore", "ignore", "inherit"] : "inherit",
+    env: process.env,
+  });
   if (res.error) {
     console.error(`[memperf] failed to spawn bun: ${res.error.message}`);
     return 1;

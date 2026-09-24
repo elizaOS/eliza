@@ -27,10 +27,7 @@ import { pathToFileURL } from "node:url";
 import { validateAgainstSchema } from "./json-schema-lite.mjs";
 import { parseArgs, readJson, repoRoot } from "./os-release-lib.mjs";
 
-const DEFAULT_PINS = path.join(
-  repoRoot,
-  "linux/confidential/dstack-pins.json",
-);
+const DEFAULT_PINS = path.join(repoRoot, "linux/confidential/dstack-pins.json");
 const SCHEMA_PATH = path.join(
   repoRoot,
   "release/schema/dstack-pins.schema.json",

@@ -43,10 +43,7 @@ describe("AOSP source locks", () => {
   test("the verification profile cannot drift from the Pixel build lock", () => {
     const profile = loadProfile("pixel9a");
     const buildLock = JSON.parse(
-      readFileSync(
-        join(repositoryRoot, "android/pixel9a.lock.json"),
-        "utf8",
-      ),
+      readFileSync(join(repositoryRoot, "android/pixel9a.lock.json"), "utf8"),
     );
 
     expect(profile.manifest).toEqual({

@@ -347,7 +347,6 @@ export function settingsDebugCloudSummary(): Record<string, unknown> {
 }
 export { activityEventToPlaintext } from "../../../core/src/activity-plaintext.ts";
 export { findInteractionRegions } from "../../../core/src/messaging/interactions/parse.ts";
-export { matchShortcut } from "../../../core/src/runtime/shortcut-registry.ts";
 export {
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,

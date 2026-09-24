@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { BufferUtils } from "../utils/buffer";
 import {
 	GazetteerEntityRecognizer,
 	RegexEntityRecognizer,
@@ -355,16 +356,17 @@ describe("compileReplacer", () => {
 		expect(out).toBe("call Globex today");
 	});
 
-	it("fails closed when no cryptographically secure random source exists (W5-032)", () => {
-		// The session salt seeds surrogate minting; a Math.random() fallback
-		// would make session pseudonyms reproducible by an observer.
-		vi.stubGlobal("crypto", undefined);
+	it("propagates native entropy failures without using a predictable fallback", () => {
+		const failure = new Error("Native entropy unavailable");
+		const randomBytes = vi
+			.spyOn(BufferUtils, "randomBytes")
+			.mockImplementation(() => {
+				throw failure;
+			});
 		try {
-			expect(() => new PseudonymSession()).toThrow(
-				/cryptographically secure random source/,
-			);
+			expect(() => new PseudonymSession()).toThrow(failure);
 		} finally {
-			vi.unstubAllGlobals();
+			randomBytes.mockRestore();
 		}
 	});
 });

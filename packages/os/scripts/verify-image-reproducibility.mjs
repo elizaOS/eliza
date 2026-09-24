@@ -269,10 +269,7 @@ async function main() {
   const input =
     typeof args.input === "string"
       ? args.input
-      : path.join(
-          repoRoot,
-          "linux/confidential/image-manifest.example.json",
-        );
+      : path.join(repoRoot, "linux/confidential/image-manifest.example.json");
   const componentsDir =
     typeof args["components-dir"] === "string"
       ? args["components-dir"]

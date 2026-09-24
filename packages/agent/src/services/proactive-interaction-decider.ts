@@ -1,7 +1,7 @@
 /**
  * Proactive-interaction decider (#8792).
  *
- * Consumes UI interaction events (view switches, slash commands, shortcuts) and
+ * Consumes UI interaction events (view switches and keyboard shortcuts) and
  * decides whether to surface a single scoped, helpful offer through either the
  * existing `routeAutonomyTextToUser` → `proactive-message` pipeline with
  * `source: "proactive-interaction"` or the low-priority notification rail.
@@ -19,7 +19,6 @@ import {
   logger,
   ModelType,
   type ShortcutFiredPayload,
-  type SlashCommandInvokedPayload,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
 import { renderViewLiveStateForJudge } from "../providers/page-scoped-live-state.ts";
@@ -34,7 +33,6 @@ export const PROACTIVE_INTERACTION_SOURCE = "proactive-interaction";
 /** Any interaction the decider reacts to (#8792). */
 export type InteractionPayload =
   | ViewSwitchedPayload
-  | SlashCommandInvokedPayload
   | ShortcutFiredPayload;
 
 /**
@@ -92,14 +90,11 @@ export const NON_PROACTIVE_SHORTCUT_IDS: ReadonlySet<string> = new Set([
 
 /**
  * The governance surface for an interaction, or `null` when policy says never
- * comment. Explicitly-typed slash commands return `null`: the user already
- * expressed intent and the command produced its own reply, so a proactive
- * comment would be double-talk (#8792 open question). Control/dismiss shortcuts
+ * comment. Control/dismiss shortcuts
  * are denied (see {@link NON_PROACTIVE_SHORTCUT_IDS}). View switches key on the
  * view; remaining (intent-bearing) shortcuts key on the shortcut id.
  */
 export function interactionSurface(payload: InteractionPayload): string | null {
-  if ("command" in payload) return null; // explicit slash — stay silent
   if ("shortcutId" in payload) {
     if (NON_PROACTIVE_SHORTCUT_IDS.has(payload.shortcutId)) return null;
     return `shortcut:${payload.shortcutId}`;
@@ -428,7 +423,7 @@ export function registerProactiveInteractionDecider(
 
   const handle = (payload: InteractionPayload) => {
     const surface = interactionSurface(payload);
-    if (!surface) return; // policy-silent (e.g. explicit slash commands)
+    if (!surface) return; // policy-silent control gestures
     if (isSuppressed()) return;
 
     const config = resolveConfig();
@@ -492,15 +487,11 @@ export function registerProactiveInteractionDecider(
     }
   };
 
-  // All three interaction events flow through the same governed decider. Slash
-  // commands are consumed but stay silent by policy (see interactionSurface).
+  // View changes and keyboard shortcuts share the governed decider.
   runtime.registerEvent(EventType.VIEW_SWITCHED, async (payload) => {
     handle(payload as ViewSwitchedPayload);
   });
   runtime.registerEvent(EventType.SHORTCUT_FIRED, async (payload) => {
     handle(payload as ShortcutFiredPayload);
-  });
-  runtime.registerEvent(EventType.SLASH_COMMAND_INVOKED, async (payload) => {
-    handle(payload as SlashCommandInvokedPayload);
   });
 }
