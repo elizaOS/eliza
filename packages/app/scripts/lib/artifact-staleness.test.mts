@@ -113,3 +113,19 @@ describe("artifactStaleness", () => {
     expect(result.reason).toBe("fresh");
   });
 });
+
+it("rejects incomplete depth-limited scans instead of declaring an artifact fresh", () => {
+  touch(path.join(tmp, "src/nested/changed.ts"), 5_000_000);
+  expect(() => maxMtimeUnder(path.join(tmp, "src"), { maxDepth: 0 })).toThrow(
+    /exceeds depth/,
+  );
+  expect(() => maxMtimeUnder(tmp, { maxDepth: Number.NaN })).toThrow(
+    /nonnegative safe integer/,
+  );
+});
+
+it("does not hide filesystem errors as missing or unchanged source", () => {
+  touch(path.join(tmp, "file"), 1_000_000);
+  expect(() => maxMtimeUnder(path.join(tmp, "file"))).toThrow();
+  expect(() => fileMtime(path.join(tmp, "file", "child"))).toThrow();
+});
