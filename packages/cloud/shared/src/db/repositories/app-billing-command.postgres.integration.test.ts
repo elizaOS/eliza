@@ -132,6 +132,7 @@ describe.skipIf(!databaseUrl)("app billing command authority PostgreSQL", () => 
     );
     await migrate([
       "0373_subscription_authority",
+      "0397_subscription_checkout_contract",
       "0383_subscription_cancellation_result",
       "0384_subscription_cancellation_undo",
       "0438_app_billing_applied_revision",

@@ -58,7 +58,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "@capacitor/core": "8.4.0"
+    "@capacitor/core": "8.4.0",
+    "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1",
