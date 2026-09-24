@@ -10,7 +10,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { missingWorkflowRootScriptReferences } from "./audit-scripts-inventory.mjs";
-import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -321,18 +320,6 @@ function auditScripts(root) {
     failures.push(
       `[missing-workflow-script] ${file} (${job}) invokes missing root command ${script}`,
     );
-  }
-  if (existsSync(path.join(root, "packages/scripts/run-script-tests.mjs"))) {
-    // The executable inventory checks discovery and required CI lane binding;
-    // informational reachability and LOC reporting stay out of this gate.
-    buildScriptTestInventory({
-      repoRoot: root,
-      packageScripts: rootScripts,
-      ciWorkflow: readFileSync(
-        path.join(root, ".github/workflows/ci.yml"),
-        "utf8",
-      ),
-    });
   }
 
   // (f) Plugin coupling — generic scripts must discover plugins, not name them.

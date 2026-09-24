@@ -55,8 +55,9 @@ Progress checkpoint:
 - Authentication: browser and embedded-server E2E pass with 27 assertions.
 - Provider typecheck, changed-source Biome, workflow syntax, trigger policy,
   and cache policy pass. Core-only build passes without the 74-task bootstrap.
-- Remaining: remove obsolete script-test inventory enforcement, integrate the
-  rest of the test retirement, review cloud/device/certification test entry
+- Executable script audit passes after retiring its obsolete unit-job binding.
+- Remaining: integrate the rest of the test retirement, review
+  cloud/device/certification test entry
   points, and run terminal repository/hosted validation before develop delivery.
 - Mega's native submodule c4401ff01c80e7bf4f9f12149eae772fcb7dfef0 is not
   remotely fetchable. A locally seeded native install is not fresh-fetch proof.
