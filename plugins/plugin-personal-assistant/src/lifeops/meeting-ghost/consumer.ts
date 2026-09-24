@@ -3,6 +3,8 @@
  * transcripts, then persists commitments in the shared ledger. Email approvals
  * bind the connected sender before any queue or ledger writes; retries compare
  * the complete saved envelope, including that sender.
+ * A transcript without a `timeZone` is stamped with the owner's zone first so
+ * relative due dates resolve on the owner's calendar day, not the host's.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -13,6 +15,7 @@ import type {
   ApprovalEnqueueInput,
   ApprovalRequest,
 } from "../approval-queue.types.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   analyzeMeetingGhostTranscript,
@@ -81,6 +84,14 @@ async function enqueueOrReuseApproval(
   return queue.enqueue(request);
 }
 
+// The owner's zone is evaluated at the meeting instant so an active travel
+// window covers the meeting; an unparseable `startedAt` yields no relative due
+// dates anyway, so the current instant is only used to pick the zone.
+function ownerZoneInstant(startedAt: string): Date {
+  const at = new Date(startedAt);
+  return Number.isNaN(at.getTime()) ? new Date() : at;
+}
+
 /**
  * Analyze the transcript and enqueue every derived owner-approval request.
  * Follow-up emails enqueue before calendar-deadline events so the owner sees
@@ -91,9 +102,18 @@ export async function runMeetingGhostForTranscript(
   runtime: IAgentRuntime,
   input: RunMeetingGhostInput,
 ): Promise<MeetingGhostRunResult> {
+  const transcript = input.transcript.timeZone
+    ? input.transcript
+    : {
+        ...input.transcript,
+        timeZone: await resolveOwnerTimeZone(
+          runtime,
+          ownerZoneInstant(input.transcript.startedAt),
+        ),
+      };
   let analysis = analyzeMeetingGhostTranscript({
     agentId: input.agentId,
-    transcript: input.transcript,
+    transcript,
     owner: input.owner,
   });
 
