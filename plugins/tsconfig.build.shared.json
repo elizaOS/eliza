@@ -49,5 +49,6 @@
         "../packages/testing/scenario-runner/src/index.ts"
       ]
     }
-  }
+  },
+  "include": []
 }
