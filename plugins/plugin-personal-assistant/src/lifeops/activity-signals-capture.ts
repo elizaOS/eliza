@@ -752,10 +752,12 @@ export function startLifeOpsActivitySignalCapture(
   const emitCurrentState = (reason: string): void => {
     const generation = runtimeReadinessGeneration;
     void (async () => {
+      const active =
+        document.visibilityState === "visible" && document.hasFocus();
       await sendSignal({
         source: "app_lifecycle",
-        state: "active",
-        metadata: { reason: "resume" },
+        state: active ? "active" : "background",
+        metadata: { reason: active ? "resume" : "pause" },
       });
       if (
         !mounted ||

@@ -50,6 +50,7 @@ import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
   BGE_SMALL_VECTOR_SPACE,
+  createPreparedModelRequestGuard,
   createService,
   ElizaError,
   type GenerateTextParams,
@@ -2690,7 +2691,7 @@ function readFfiPointer(
 ): bigint {
   // NOTE: never hand the Buffer to `ffi.read.ptr` — bun's `read.ptr` takes a
   // raw Pointer NUMBER and throws "Expected a pointer" for a Buffer (verified
-  // on-device, bun 1.3.14). That throw masked every native error diagnostic
+  // on-device, bun 1.4.2). That throw masked every native error diagnostic
   // on the fused-lib error paths. The out-param bytes live in JS memory, so a
   // DataView read is always correct.
   const view = new DataView(
@@ -3078,6 +3079,44 @@ interface AospFusedTextLoaderState {
   kvQuantRejected?: boolean;
   embeddingContextInitialized?: boolean;
   embeddingContextSetting?: string;
+}
+
+interface AospPreparedTextRequestArgs {
+  modelPath: string;
+  contextWindowTokens: number;
+  prompt: string;
+  promptTokenCount: number;
+  stopSequences?: string[];
+  grammar?: string;
+  stopOnFirstSentence?: boolean;
+  minFirstSentenceChars?: number;
+  config: AospLlmStreamConfig;
+}
+
+/**
+ * Admit the exact AOSP request after native tokenization and before stream
+ * open. The tokenizer count is authoritative for the loaded GGUF; rebuilding
+ * the projection on every attempt also detects mutation before the f16 retry.
+ */
+export function createAospPreparedTextRequestGuard(
+  args: AospPreparedTextRequestArgs,
+) {
+  return createPreparedModelRequestGuard({
+    provider: PROVIDER,
+    model: path.basename(args.modelPath),
+    contextWindowTokens: args.contextWindowTokens,
+    outputReserveTokens: args.config.maxTokens,
+    projectRequest: () => ({
+      prompt: args.prompt,
+      stopSequences: args.stopSequences ? [...args.stopSequences] : undefined,
+      grammar: args.grammar,
+      stopOnFirstSentence: args.stopOnFirstSentence,
+      minFirstSentenceChars: args.minFirstSentenceChars,
+      config: { ...args.config },
+    }),
+    countInputTokens: () => args.promptTokenCount,
+    countInputTokensIsExact: true,
+  });
 }
 
 /**
@@ -3545,7 +3584,20 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         disableThinking: false,
         contextSize: active.contextSize,
       };
+      const preparedRequest = createAospPreparedTextRequestGuard({
+        modelPath: active.modelPath,
+        contextWindowTokens:
+          active.contextSize ?? readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
+        prompt: args.prompt,
+        promptTokenCount: promptTokens.length,
+        stopSequences: args.stopSequences,
+        grammar: args.grammar,
+        stopOnFirstSentence: args.stopOnFirstSentence,
+        minFirstSentenceChars: args.minFirstSentenceChars,
+        config,
+      });
       const runStream = async () => {
+        preparedRequest.assertBeforeAttempt();
         const result = await streamGenerate(active.binding, {
           ctx: active.ctx,
           config,

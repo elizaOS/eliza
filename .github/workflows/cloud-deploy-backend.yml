@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -305,8 +305,8 @@ jobs:
             git checkout -B "$BRANCH" "origin/$BRANCH"
 
             # Install runtime dependencies.
-            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then
-              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.4.2" ]; then
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
             for attempt in 1 2 3; do

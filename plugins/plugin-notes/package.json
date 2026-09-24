@@ -57,7 +57,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
@@ -65,14 +65,14 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.1"
   },
   "publishConfig": {
     "access": "public"

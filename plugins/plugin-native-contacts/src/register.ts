@@ -9,6 +9,7 @@
 
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { isElizaOS } from "@elizaos/ui/platform/init";
+import { CONTACTS_VIEW_CAPABILITIES } from "./view-capabilities";
 
 if (isElizaOS()) {
   registerAppShellPage({
@@ -22,7 +23,14 @@ if (isElizaOS()) {
     viewKind: "release",
     surface: {
       header: "fullscreen",
-      capabilities: ["agent-surface"],
+      capabilities: [],
+    },
+    capabilities: CONTACTS_VIEW_CAPABILITIES,
+    interact: async (capability, params) => {
+      const { interact } = await import(
+        "./components/ContactsAppView.interact"
+      );
+      return interact(capability, params);
     },
     loader: () =>
       import("./components/ContactsPage.tsx").then((module) => ({

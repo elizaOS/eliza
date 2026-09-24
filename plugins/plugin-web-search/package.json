@@ -18,6 +18,12 @@
                 "default": "./dist/index.js"
             }
         },
+        "./keyless-web-search": {
+            "types": "./dist/keyless-web-search.d.ts",
+            "eliza-source": "./src/keyless-web-search.ts",
+            "import": "./dist/keyless-web-search.js",
+            "default": "./dist/keyless-web-search.js"
+        },
         "./edge": {
             "types": "./dist/edge.d.ts",
             "eliza-source": {
@@ -44,15 +50,14 @@
         "dist"
     ],
     "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@tavily/core": "^0.7.0"
+        "@elizaos/core": "workspace:*"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.8",
+        "@biomejs/biome": "2.5.14",
         "tsup": "^8.5.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^4.1.10"
+        "vitest": "^5.0.1"
     },
     "scripts": {
         "test": "vitest run --config ./vitest.config.ts",
@@ -68,11 +73,6 @@
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",
-        "pluginParameters": {
-            "TAVILY_API_KEY": {
-                "type": "string",
-                "description": "Tavily API key for accessing news services"
-            }
-        }
+        "pluginParameters": {}
     }
 }

@@ -17,3 +17,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
+
+Web subscription settings select a registered product with `VITE_ELIZA_APPLICATION_SLOT`;
+agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
+These select a product, not a merchant credential or paid entitlement.

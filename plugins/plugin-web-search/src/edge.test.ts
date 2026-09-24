@@ -1,6 +1,6 @@
 /** Exercises the genuine edge plugin at its deterministic network boundary. */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     createWebSearchEdgePlugin,
@@ -10,6 +10,8 @@ import {
     webSearchSourceEvidence,
     webSearchSourceUrls,
 } from "./edge";
+
+import { webSearchPlugin } from "./index";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -23,53 +25,55 @@ describe("webSearchEdgePlugin", () => {
         expect(webSearchEdgeAction.roleGate).toEqual({ minRole: "GUEST" });
     });
 
-    it("returns bounded keyless results through the genuine action", async () => {
-        globalThis.fetch = vi.fn(async () =>
-            Response.json({
-                jsonrpc: "2.0",
-                id: 1,
-                result: {
-                    content: [
+    it.each([webSearchEdgePlugin, webSearchPlugin])(
+        "returns complete keyless results through $name",
+        async (plugin) => {
+            globalThis.fetch = vi.fn(async () =>
+                Response.json({
+                    jsonrpc: "2.0",
+                    id: 1,
+                    result: {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify({
+                                    results: [
+                                        {
+                                            url: "https://example.com/current",
+                                            title: "Current public result",
+                                        },
+                                    ],
+                                }),
+                            },
+                        ],
+                    },
+                })
+            ) as typeof fetch;
+
+            const action = plugin.actions?.[0];
+            if (!action) throw new Error("Web search action is missing");
+            const result = await action.handler({} as IAgentRuntime, {} as Memory, undefined, {
+                parameters: { query: "current public result" },
+            });
+
+            expect(result).toMatchObject({
+                success: true,
+                data: {
+                    actionName: "WEB_SEARCH",
+                    provider: "parallel",
+                    query: "current public result",
+                    observedAt: expect.any(Number),
+                    sourceUrls: ["https://example.com/current"],
+                    sources: [
                         {
-                            type: "text",
-                            text: JSON.stringify({
-                                results: [
-                                    {
-                                        url: "https://example.com/current",
-                                        title: "Current public result",
-                                    },
-                                ],
-                            }),
+                            url: "https://example.com/current",
+                            text: expect.stringContaining("Current public result"),
                         },
                     ],
                 },
-            })
-        ) as typeof fetch;
-
-        const result = await webSearchEdgeAction.handler(
-            {} as IAgentRuntime,
-            {} as Memory,
-            undefined,
-            { parameters: { query: "current public result", numResults: 4 } }
-        );
-
-        expect(result).toMatchObject({
-            success: true,
-            data: {
-                actionName: "WEB_SEARCH",
-                provider: "parallel",
-                query: "current public result",
-                observedAt: expect.any(Number),
-                sourceUrls: ["https://example.com/current"],
-                sources: [
-                    {
-                        url: "https://example.com/current",
-                        text: expect.stringContaining("Current public result"),
-                    },
-                ],
-            },
-        });
-    });
+            });
+        }
+    );
 
     it("extracts structured and prose source URLs without accepting credentials", () => {
         expect(

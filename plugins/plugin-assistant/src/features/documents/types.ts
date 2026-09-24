@@ -1,13 +1,3 @@
-/**
- * Type and schema definitions for the documents capability: the stored-document
- * shape, document/fragment memory metadata, visibility scopes, added-by role and
- * source enums, load results, and the `ModelConfigSchema` zod schema (embedding /
- * text-provider selection, rate-limit knobs, and startup-load config). Also
- * registers the `DOCUMENTS: "documents"` entry into the runtime
- * `ServiceTypeRegistry`. Shared across `service.ts`, `provider.ts`, and the
- * document processors.
- */
-
 import type {
   Content,
   DocumentMetadata,
@@ -17,6 +7,16 @@ import type {
   UUID,
 } from "@elizaos/core";
 import z from "zod";
+
+/**
+ * Type and schema definitions for the documents capability: the stored-document
+ * shape, document/fragment memory metadata, visibility scopes, added-by role and
+ * source enums, load results, and the `ModelConfigSchema` zod schema (embedding /
+ * text-provider selection, rate-limit knobs, and startup-load config). Also
+ * registers the `DOCUMENTS: "documents"` entry into the runtime
+ * `ServiceTypeRegistry`. Shared across `service.ts`, `provider.ts`, and the
+ * document processors.
+ */
 
 const safeIntegerSetting = (
   minimum: 0 | 1,
@@ -262,6 +262,15 @@ export interface DocumentMemoryMetadata
   mediaHash?: string;
   /** Served original-bytes file (content-addressed) linked to this document. */
   mediaFileName?: string;
+  /** Versioned immutable source segments available for bounded reads. */
+  sourceSegmentVersion?: 1;
+  sourceSegmentCount?: number;
+  sourceByteLength?: number;
+  sourceLineCount?: number;
+  sourceFragmentCount?: number;
+  sourceSha256?: string;
+  sourceFingerprint?: string;
+  sourceStorage?: "inline" | "segments";
 }
 export interface DocumentFragmentMemoryMetadata
   extends FragmentMetadata,
@@ -277,6 +286,19 @@ export interface DocumentFragmentMemoryMetadata
   /** Update attempt that staged this fragment; must match the parent's committed token to be readable. */
   revisionAttemptId?: UUID;
   position: number;
+  fragmentRole?: "source-segment" | "embedding-chunk";
+  sourceSegmentVersion?: 1;
+  sourceSegmentSha256?: string;
+  sourceByteStart?: number;
+  sourceByteEnd?: number;
+  sourceLineStart?: number;
+  sourceLineEnd?: number;
+  sourceLineStartBoundary?: boolean;
+  sourceLineEndBoundary?: boolean;
+  sourceFragmentStart?: number;
+  sourceFragmentEnd?: number;
+  sourceFragmentStartBoundary?: boolean;
+  sourceFragmentEndBoundary?: boolean;
   source?: string;
   documentTitle?: string;
   timestamp?: number;

@@ -4,6 +4,8 @@
  * validates structured inputs, and exposes streaming results to the runtime.
  */
 
+import { nativeApplicationOperationHeaders, getNativeApplicationSlot } from "../utils/config";
+import { nativeFundingFailure, withNativeFundingAuthority } from "../utils/native-funding";
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -17,6 +19,7 @@ import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
   MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+  createPreparedModelRequestGuard,
   ElizaError,
   logger,
   ModelType,
@@ -51,6 +54,20 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeNa
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+
+function createCloudPreparedRequestGuard(
+  model: string,
+  body: Record<string, unknown>
+) {
+  const outputReserve = body.max_output_tokens ?? body.max_tokens;
+  return createPreparedModelRequestGuard({
+    provider: "eliza-cloud",
+    model,
+    serializeRequest: () => JSON.stringify(body),
+    outputReserveTokens:
+      typeof outputReserve === "number" ? outputReserve : undefined,
+  });
+}
 
 /**
  * Per-process cap on CONCURRENT native cloud text calls.
@@ -1341,8 +1358,10 @@ async function generateTextWithModel(
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
+  const preparedRequest = createCloudPreparedRequestGuard(modelName, requestBody);
 
   const responsesHeaders: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1357,12 +1376,14 @@ async function generateTextWithModel(
   // A cold gateway's warming 503 is retried in place instead of throwing into
   // the runtime failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/responses", {
         headers: responsesHeaders,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
+      });
+    },
     "responses"
   );
   let data: ResponsesApiResponse = {};
@@ -1456,7 +1477,9 @@ export async function generateNativeChatCompletion(
     context.systemPrompt,
     runtime
   );
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
   const headers: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1479,12 +1502,14 @@ export async function generateNativeChatCompletion(
   // warming 503 is retried in place instead of throwing into the runtime
   // failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
+      });
+    },
     "chat/completions"
   );
   let data: ChatCompletionsResponse = {};
@@ -1881,9 +1906,12 @@ export async function streamNativeChatCompletion(
   requestBody.stream = true;
   // OpenAI-compatible: ask the server to include a final usage-only frame so we
   // can meter the streamed call accurately.
+  const selectedFundingSlot = getNativeApplicationSlot(runtime);
   requestBody.stream_options = { include_usage: true };
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
 
   const headers: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1921,6 +1949,7 @@ export async function streamNativeChatCompletion(
       route: "chat/completions:stream",
     });
     try {
+      preparedRequest.assertBeforeAttempt();
       response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
@@ -2212,8 +2241,9 @@ export async function streamNativeChatCompletion(
       // its deferred result fields, so one transport failure must reject all of
       // them before the original error propagates to the stream consumer.
       failed = true;
-      rejectDeferreds(error);
-      throw error;
+      const failure = nativeFundingFailure(selectedFundingSlot, error);
+      rejectDeferreds(failure);
+      throw failure;
     } finally {
       releasePermit();
       if (!completed && !failed) {
@@ -2245,47 +2275,47 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_SMALL_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_SMALL_MODEL_TYPE, params));
 }
 
 export async function handleTextNano(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_NANO_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_NANO_MODEL_TYPE, params));
 }
 
 export async function handleTextMedium(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_MEDIUM_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_MEDIUM_MODEL_TYPE, params));
 }
 
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_LARGE_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_LARGE_MODEL_TYPE, params));
 }
 
 export async function handleTextMega(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_MEGA_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_MEGA_MODEL_TYPE, params));
 }
 
 export async function handleResponseHandler(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, RESPONSE_HANDLER_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, RESPONSE_HANDLER_MODEL_TYPE, params));
 }
 
 export async function handleActionPlanner(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params));
 }

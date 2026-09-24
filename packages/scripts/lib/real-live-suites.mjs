@@ -334,11 +334,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes:
       "public CoinGecko API, no credential; also runs nightly in external-api-live-drift.yml",
   },
-  {
-    file: "plugins/plugin-web-search/src/services/webSearchService.real.test.ts",
-    requires: ["TAVILY_API_KEY"],
-    notes: "also runs nightly in external-api-live-drift.yml",
-  },
 ];
 
 /**

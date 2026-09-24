@@ -10,6 +10,8 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 ```bash
 bun run --cwd packages/benchmarks/plugin-benchmarks build  # build
 bun run --cwd packages/benchmarks/plugin-benchmarks typecheck  # static validation
+bun run --cwd packages/benchmarks/plugin-benchmarks test  # action contracts
 ```
 
-No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.
+These wrappers capture tool intent; the owning benchmark environment executes
+and scores effects. A successful capture is not proof of a successful task.

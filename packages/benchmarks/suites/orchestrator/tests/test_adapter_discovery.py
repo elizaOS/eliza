@@ -93,7 +93,7 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
     assert ".pytest_cache" not in discovery.all_directories
     assert "memperf" not in discovery.all_directories
     assert "mobile-resource" not in discovery.all_directories
-    assert "lifeops-quality" not in discovery.all_directories
+    assert "lifeops-bench/quality" not in discovery.all_directories
     assert "view-bundle-size" not in discovery.all_directories
     assert "skillsbench" not in discovery.all_directories
     assert "skillsbench" not in orchestrator_adapters.IGNORED_BENCHMARK_DIRS
@@ -263,7 +263,7 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["eliza_replay"].directory == "../harnesses/eliza"
     assert adapters["osworld"].directory == "OSWorld"
     assert adapters["mmau"].directory == "mmau-audio"
-    assert adapters["voicebench_quality"].directory == "voicebench-quality"
+    assert adapters["voicebench_quality"].directory == "voicebench/quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
     assert "mmau" not in discovery.all_directories
     assert "elizaos_mmau" not in discovery.all_directories
@@ -656,6 +656,10 @@ def test_synthetic_calibration_payloads_exercise_all_score_extractors(
                 assert baseline.result_path is None
                 assert "corpus" in baseline.note
                 continue
+            if benchmark_id in {"framework", "swe_bench_orchestrated"}:
+                assert baseline.status == "incompatible"
+                assert baseline.result_path is None
+                continue
             assert baseline.status == "succeeded"
             assert baseline.result_path is not None
             summary = adapter.score_extractor(baseline.result_path)
@@ -1035,10 +1039,12 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count == 0
+    assert report.incompatible_cell_count == 2
     assert report.error_count == 0
     incompatible = [cell for cell in report.cells if not cell.compatible]
-    assert incompatible == []
+    assert {(cell.benchmark_id, cell.harness) for cell in incompatible} == {
+        ("framework", "hermes"), ("framework", "openclaw")
+    }
 
     compatible = [cell for cell in report.cells if cell.compatible]
     assert compatible
@@ -1137,7 +1143,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         "configbench",
         "interrupt_bench",
         "eliza_1",
-        "framework",
         "orchestrator_lifecycle",
         "vending_bench",
         "webshop",
@@ -1161,13 +1166,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
                 assert "--mode=harness" in cell.command
             if benchmark_id == "eliza_1":
                 assert "../../scripts/eliza-1/harness_runner.py" in cell.command_display
-                assert "--harness" in cell.command
-                assert cell.command[cell.command.index("--harness") + 1] == harness
-            if benchmark_id == "framework":
-                assert (
-                    "scripts/framework/harness_runner.py"
-                    in cell.command_display
-                )
                 assert "--harness" in cell.command
                 assert cell.command[cell.command.index("--harness") + 1] == harness
             if benchmark_id == "orchestrator_lifecycle":
@@ -1793,13 +1791,13 @@ def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
 
 
 
-def test_framework_publishes_real_harness_rows() -> None:
+def test_framework_is_an_eliza_only_runtime_measurement() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["framework"]
 
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.agent_compatibility == ("eliza",)
     assert _is_harness_compatible(adapter, "eliza") is True
-    assert _is_harness_compatible(adapter, "hermes") is True
-    assert _is_harness_compatible(adapter, "openclaw") is True
+    assert _is_harness_compatible(adapter, "hermes") is False
+    assert _is_harness_compatible(adapter, "openclaw") is False
 
 
 def test_agentbench_routes_cross_harness_adapter_clients(

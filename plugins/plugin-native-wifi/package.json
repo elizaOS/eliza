@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-wifi",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/plugin-native-wifi/bridge.",
+  "description": "Wi-Fi overlay app for the Eliza Android build \u2014 scan, inspect, and connect to nearby networks via @elizaos/plugin-native-wifi/bridge.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -78,10 +78,10 @@
   ],
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.62.4",
+    "rollup": "^4.63.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "tsup": "^8.5.1"
   },
   "capacitor": {

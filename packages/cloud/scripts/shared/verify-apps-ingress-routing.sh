@@ -7,30 +7,41 @@
 #   bash packages/cloud/scripts/shared/verify-apps-ingress-routing.sh
 set -euo pipefail
 cd "$(dirname "$0")/../../shared" || exit 1 # -> packages/cloud/shared
-NET=apps-ing-net
-APP=apps-ing-app
-CADDY=apps-ing-caddy
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/apps-ingress.XXXXXX")"
+RUN_ID="${WORK##*/}"
+NET="$RUN_ID-net"
+APP="$RUN_ID-app"
+CADDY="$RUN_ID-caddy"
+NET_ID=""; APP_ID=""; CADDY_ID=""
 HOST=abc12345.apps.eliza.app
-PROXY_PORT=18080
-ADMIN_PORT=12019
 PASS=0
 FAIL=0
 check() { if [ "$1" = ok ]; then echo "PASS  $2"; PASS=$((PASS + 1)); else echo "FAIL  $2 ${3:-}"; FAIL=$((FAIL + 1)); fi; }
 cleanup() {
-  docker rm -f "$APP" "$CADDY" >/dev/null 2>&1 || true
-  docker network rm "$NET" >/dev/null 2>&1 || true
-  rm -f /tmp/apps-ing-init.json
+  [ -z "$APP_ID" ] || docker rm -f "$APP_ID" >/dev/null 2>&1 || true
+  [ -z "$CADDY_ID" ] || docker rm -f "$CADDY_ID" >/dev/null 2>&1 || true
+  [ -z "$NET_ID" ] || docker network rm "$NET_ID" >/dev/null 2>&1 || true
+  rm -rf -- "$WORK"
 }
 trap cleanup EXIT
 
-docker network create "$NET" >/dev/null 2>&1 || true
+read -r PROXY_PORT ADMIN_PORT < <(bun -e '
+  const servers = [Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() }),
+    Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() })];
+  console.log(servers.map(server => server.port).join(" "));
+  servers.forEach(server => server.stop(true));
+')
+[[ "$PROXY_PORT" =~ ^[0-9]+$ && "$ADMIN_PORT" =~ ^[0-9]+$ ]]
+
+NET_ID="$(docker network create "$NET")"
 
 echo "=== stock Caddy: admin API + empty srv0 on :80 ==="
-cat >/tmp/apps-ing-init.json <<JSON
+cat >"$WORK/init.json" <<JSON
 {"admin":{"listen":"0.0.0.0:2019","origins":["http://localhost:$ADMIN_PORT"],"enforce_origin":true},"apps":{"http":{"servers":{"srv0":{"listen":[":80"],"routes":[]}}}}}
 JSON
-docker run -d --name "$CADDY" --network "$NET" -p "$PROXY_PORT:80" -p "$ADMIN_PORT:2019" \
-  -v /tmp/apps-ing-init.json:/init.json caddy:2 caddy run --config /init.json >/dev/null
+CADDY_ID="$(docker create --name "$CADDY" --network "$NET_ID" -p "127.0.0.1:$PROXY_PORT:80" -p "127.0.0.1:$ADMIN_PORT:2019" \
+  -v "$WORK/init.json:/init.json" caddy:2 caddy run --config /init.json)"
+docker start "$CADDY_ID" >/dev/null
 for _ in $(seq 1 25); do
   curl -fsS -H "Origin: http://localhost:$ADMIN_PORT" "http://localhost:$ADMIN_PORT/config/" >/dev/null 2>&1 && break
   sleep 1
@@ -49,8 +60,9 @@ echo "=== sample app (http-echo) co-located in Caddy's netns (mirrors loopback-o
 # In prod the container publishes to 127.0.0.1:hostPort and the node-local Caddy
 # dials 127.0.0.1:hostPort. Reproduce that here by sharing Caddy's network
 # namespace, so the app is reachable at 127.0.0.1:5678 from Caddy (and ONLY there).
-docker run -d --name "$APP" --network "container:$CADDY" \
-  hashicorp/http-echo -text="ROUTED-TO-APP" -listen=:5678 >/dev/null
+APP_ID="$(docker create --name "$APP" --network "container:$CADDY_ID" \
+  hashicorp/http-echo -text="ROUTED-TO-APP" -listen=:5678)"
+docker start "$APP_ID" >/dev/null
 
 echo "=== add the route through the REAL origin-aware ingress provisioner ==="
 bun -e "import{addAppRoute}from'./src/lib/services/apps-ingress-provisioner';await addAppRoute({hostname:'$HOST',hostPort:5678,adminBase:'http://localhost:$ADMIN_PORT'})"

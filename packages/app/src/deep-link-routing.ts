@@ -323,3 +323,15 @@ export function buildAssistantLaunchHashRoute(
       return null;
   }
 }
+
+/** True for HTTPS universal links on a configured host or its subdomains. */
+export function isTrustedAppLink(
+  parsed: URL,
+  appLinkHosts: string[] | undefined,
+): boolean {
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.host.toLowerCase();
+  return (appLinkHosts ?? []).some(
+    (h) => host === h.toLowerCase() || host.endsWith(`.${h.toLowerCase()}`),
+  );
+}

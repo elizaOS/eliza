@@ -1,5 +1,5 @@
 /** Reconciles only the latest immutable applied cancellation or undo result with a fresh scheduled provider observation, publishing source, projection and receipt atomically. */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import {
   cancellationReobserve,
@@ -156,6 +156,8 @@ export async function finalizeCancellationEvent(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
         ),
@@ -166,6 +168,7 @@ export async function finalizeCancellationEvent(
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.organization_id, input.organizationId),
           eq(billingSubscriptions.id, input.subscriptionId),
         ),

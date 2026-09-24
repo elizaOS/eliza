@@ -285,6 +285,27 @@ describe("mobile smoke native command boundaries", () => {
     ).toThrow(/does not match source HEAD/);
   });
 
+  it("uses the configured ADB binary for the installed-app launch", async () => {
+    const previous = process.env.ADB;
+    const customAdb = path.join(fakeDirectory, "custom-tools", "adb");
+    fs.mkdirSync(path.dirname(customAdb), { recursive: true });
+    fs.writeFileSync(customAdb, "");
+    process.env.ADB = customAdb;
+    try {
+      const launched = await smoke.launchAndroidEmulatorApp({
+        verifyInstalled: () => {},
+      });
+      expect(launched).toMatchObject({
+        adb: customAdb,
+        serial: "emulator-unit",
+        installed: true,
+      });
+    } finally {
+      if (previous === undefined) delete process.env.ADB;
+      else process.env.ADB = previous;
+    }
+  });
+
   it("refuses an unverifiable installed Android app before launching it", async () => {
     fs.writeFileSync(fakeCommandLog, "");
     await expect(

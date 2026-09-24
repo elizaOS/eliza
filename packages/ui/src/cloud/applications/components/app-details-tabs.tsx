@@ -20,6 +20,7 @@ import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 import { AppAnalytics } from "./app-analytics";
+import { AppConnectionsSettings } from "./app-connections-settings";
 import { AppDomains } from "./app-domains";
 import { AppEarningsDashboard } from "./app-earnings-dashboard";
 import { AppFrontendHosting } from "./app-frontend-hosting";
@@ -144,7 +145,12 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
         {activeTab === "promote" && <AppPromote app={app} />}
         {activeTab === "analytics" && <AppAnalytics appId={app.id} />}
         {activeTab === "earnings" && <AppEarningsDashboard appId={app.id} />}
-        {activeTab === "monetization" && <AppMonetizationSettings app={app} />}
+        {activeTab === "monetization" && (
+          <div className="space-y-6">
+            <AppConnectionsSettings appId={app.id} appName={app.name} />
+            <AppMonetizationSettings app={app} />
+          </div>
+        )}
         {activeTab === "users" && <AppUsers appId={app.id} />}
         {activeTab === "settings" && <AppSettings app={app} />}
       </div>

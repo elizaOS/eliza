@@ -74,7 +74,7 @@ def test_manifest_exactly_covers_discovery_registry_and_directory_gaps() -> None
     assert gaps <= set(direct_directories)
     assert {
         "entity-voice-bench",
-        "lifeops-quality",
+        "lifeops-bench/quality",
         "meeting-corpus-importers",
         "searchbench",
         "voice-rtt",

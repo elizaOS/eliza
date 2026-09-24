@@ -967,7 +967,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
     }
 
     // YAML too, not only `.sh`: a packaging manifest carries its build steps as
-    // an embedded shell script in a block scalar, so `BUN_VERSION="1.3.14"`
+    // an embedded shell script in a block scalar, so `BUN_VERSION="1.4.2"`
     // followed by `bun-v${BUN_VERSION}` is one proven declaration and one use —
     // the same pattern this scan already accepts in a standalone script. Reading
     // only `.sh` left the use unproven, and the way to satisfy the contract was
@@ -1283,7 +1283,7 @@ function scanDockerfile({ rel, text, canonical, record, violate }) {
     const inlineDefault = tag.match(/\$\{BUN_VERSION:-([^}]*)\}/);
     // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
     const bareExpression = !inlineDefault && tag.includes("${BUN_VERSION}");
-    // Image tags carry distro variants (1.3.14-alpine, 1.3.14-debian);
+    // Image tags carry distro variants (1.4.2-alpine, 1.4.2-debian);
     // the version prefix is what must match the canonical pin.
     const tagVersion = tag.match(/^(\d+\.\d+\.\d+)(?:-[A-Za-z0-9.-]+)?$/)?.[1];
     const floating = /^(canary|latest)(?:-|$)/.test(tag);

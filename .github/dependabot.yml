@@ -9,9 +9,25 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      react-stack:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-test-renderer"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@types/react-test-renderer"
       dev-dependencies:
         dependency-type: "development"
     ignore:
+      # Bun types must match the repository's pinned runtime API baseline.
+      - dependency-name: "@types/bun"
+        versions: ["> 1.4.2"]
+      - dependency-name: "bun-types"
+        versions: ["> 1.4.2"]
+      # RainbowKit 2.2.11 requires Wagmi 2; migrate the wallet stack together.
+      - dependency-name: "wagmi"
+        versions: [">= 3.0.0"]
       # This workspace alias intentionally resolves to the public Vite package;
       # Dependabot otherwise queries the synthetic alias name and receives a
       # registry 404, failing the whole weekly update run.

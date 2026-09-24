@@ -1,16 +1,3 @@
-/**
- * Delivery-selection coverage for ATTACHMENT action=read: which text ships to
- * the user versus what stays planner-facing in `data`. Deterministic harness —
- * a hand-rolled runtime stub captures the TEXT_SMALL call and returns a scripted
- * summary; no module mocks and no live model.
- *
- * Regression under test (observed live, trajectory tj-d29ff62e98fbb2): a bare
- * Discord link share routed to ATTACHMENT with addToClipboard=true, and the
- * clipboard-requested branch switched user-visible delivery to the planner
- * record dump — metadata envelope plus the full stored page — which shipped
- * verbatim as a ~13-message Discord wall. The user-visible text must always be
- * the prose answer unless the user explicitly asked for the attachment record.
- */
 import { createHash } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,6 +13,20 @@ import type {
 } from "../../../../../packages/core/src/types/index.ts";
 import { ContentType } from "../../../../../packages/core/src/types/index.ts";
 import { readAttachmentAction } from "./readAttachmentAction.ts";
+
+/**
+ * Delivery-selection coverage for ATTACHMENT action=read: which text ships to
+ * the user versus what stays planner-facing in `data`. Deterministic harness —
+ * a hand-rolled runtime stub captures the TEXT_SMALL call and returns a scripted
+ * summary; no module mocks and no live model.
+ *
+ * Regression under test (observed live, trajectory tj-d29ff62e98fbb2): a bare
+ * Discord link share routed to ATTACHMENT with addToClipboard=true, and the
+ * clipboard-requested branch switched user-visible delivery to the planner
+ * record dump — metadata envelope plus the full stored page — which shipped
+ * verbatim as a ~13-message Discord wall. The user-visible text must always be
+ * the prose answer unless the user explicitly asked for the attachment record.
+ */
 
 const PAGE_MARKER = "Store encrypted hourly backups of your entire Umbrel";
 const STORED_PAGE = [
@@ -139,6 +140,18 @@ async function runRead(params: {
 }
 
 describe("ATTACHMENT read delivery selection", () => {
+  it("passes the complete attachment to the answering model when no page was requested", async () => {
+    const text = `${"full attachment 🙂\n".repeat(2_000)}FINAL ATTACHMENT EVIDENCE`;
+    const { result, calls } = await runRead({
+      modelResponse: SUMMARY,
+      text: "Explain this attachment",
+      attachments: [{ ...makeAttachment(), text }],
+    });
+    expect(result?.success).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].prompt).toContain(text);
+  });
+
   it("bare link share with addToClipboard ships ONE prose summary, never the record dump", async () => {
     const { result, callbackTexts } = await runRead({
       modelResponse: SUMMARY,

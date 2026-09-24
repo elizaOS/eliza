@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-messages",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/plugin-native-messages/bridge.",
+  "description": "Android Messages overlay app for ElizaOS \u2014 SMS inbox and compose surface backed by @elizaos/plugin-native-messages/bridge.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -89,10 +89,10 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.62.4",
+    "rollup": "^4.63.4",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

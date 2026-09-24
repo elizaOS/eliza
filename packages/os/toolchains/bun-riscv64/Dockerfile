@@ -121,7 +121,7 @@ RUN set -eux; \
 # the x86_64 host std (for build.rs etc.) AND the riscv64gc-unknown-linux-musl
 # Tier-2 std for the actual cross-compile.
 # ----------------------------------------------------------------------------
-# RUST_NIGHTLY = the Zig-era v1.3.14 fallback channel (bun-version.json bun.tag
+# RUST_NIGHTLY = the Zig-era v1.4.2 fallback channel (bun-version.json bun.tag
 # build). RUST_CORE_NIGHTLY = the Rust-core port channel
 # (bun-version.json rust_core_port.rust_channel). The same image serves BOTH
 # builds, so we pre-bake BOTH toolchains + their riscv64gc std as root here —

@@ -32,6 +32,10 @@ export interface DeriveCompactionContentManifestOptions {
 	maxDepth?: number;
 }
 
+export interface DeriveCompactionContentManifestsOptions {
+	lastUsedAt: string;
+}
+
 const DEFAULT_MAX_REFERENCES = COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES;
 const DEFAULT_MAX_RANGES_PER_REFERENCE =
 	COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE;
@@ -64,26 +68,10 @@ function rangeKey(range: CompactionContentRange): string {
 	return `${range.unit}:${range.start}:${range.end}`;
 }
 
-/**
- * Build a content-free manifest from the prompt-safe projections in a planner
- * trajectory. Active and archived steps are treated identically so moving a
- * settled step across an archive boundary cannot erase its continuation state.
- */
-export function deriveCompactionContentManifest(
+function collectRestartSafeContentEntries(
 	trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
-	options: DeriveCompactionContentManifestOptions,
-): CompactionContentManifest {
-	const maxReferences = positiveSafeInteger(
-		options.maxReferences,
-		DEFAULT_MAX_REFERENCES,
-		"maxReferences",
-	);
-	const maxRangesPerReference = positiveSafeInteger(
-		options.maxRangesPerReference,
-		DEFAULT_MAX_RANGES_PER_REFERENCE,
-		"maxRangesPerReference",
-	);
-	const lastUsedAt = canonicalTimestamp(options.lastUsedAt, "lastUsedAt");
+	lastUsedAt: string,
+): CompactionContentEntry[] {
 	const entries = new Map<
 		string,
 		CompactionContentEntry & { rangeKeys: Set<string> }
@@ -94,18 +82,10 @@ export function deriveCompactionContentManifest(
 		reason: string,
 		range?: CompactionContentRange,
 	) => {
+		if (reference.resumability !== "restart-safe") return;
 		const key = referenceKey(reference);
 		let entry = entries.get(key);
 		if (!entry) {
-			if (entries.size >= maxReferences) {
-				throw new ElizaError(
-					"Content manifest exceeds the configured reference bound",
-					{
-						code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
-						context: { bound: "references", maxReferences },
-					},
-				);
-			}
 			entry = {
 				reference,
 				...(reference.revision ? { revision: reference.revision } : {}),
@@ -113,6 +93,7 @@ export function deriveCompactionContentManifest(
 				rangesUsed: [],
 				lastUsedAt,
 				retained: true,
+				...(reference.expiresAt ? { expiresAt: reference.expiresAt } : {}),
 				rangeKeys: new Set(),
 			};
 			entries.set(key, entry);
@@ -140,18 +121,6 @@ export function deriveCompactionContentManifest(
 		if (!range) return;
 		const keyForRange = rangeKey(range);
 		if (entry.rangeKeys.has(keyForRange)) return;
-		if (entry.rangesUsed.length >= maxRangesPerReference) {
-			throw new ElizaError(
-				"Content manifest exceeds the configured per-reference range bound",
-				{
-					code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
-					context: {
-						bound: "ranges",
-						maxRangesPerReference,
-					},
-				},
-			);
-		}
 		entry.rangeKeys.add(keyForRange);
 		entry.rangesUsed.push(range);
 	};
@@ -194,19 +163,112 @@ export function deriveCompactionContentManifest(
 		if (step.result.promptData !== undefined)
 			visit(step.result.promptData, reason);
 	}
-
-	return validateCompactionContentManifest({
-		schemaVersion: COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION,
-		contentRefs: [...entries.values()].map(
-			({ rangeKeys: _rangeKeys, ...entry }) => ({
-				...entry,
-				rangesUsed: [...entry.rangesUsed].sort(
-					(a, b) =>
-						a.unit.localeCompare(b.unit) || a.start - b.start || a.end - b.end,
-				),
-			}),
+	return [...entries.values()].map(({ rangeKeys: _rangeKeys, ...entry }) => ({
+		...entry,
+		rangesUsed: [...entry.rangesUsed].sort(
+			(a, b) =>
+				a.unit.localeCompare(b.unit) || a.start - b.start || a.end - b.end,
 		),
+	}));
+}
+
+function manifestFor(contentRefs: CompactionContentEntry[]) {
+	return {
+		schemaVersion: COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION,
+		contentRefs,
 		modifiedFiles: [],
 		pendingProcesses: [],
+	};
+}
+
+/**
+ * Build one content-free manifest for compatibility callers with explicit
+ * bounds. Durable publication uses deriveCompactionContentManifests so count
+ * pressure creates additional immutable shards instead of losing continuity.
+ */
+export function deriveCompactionContentManifest(
+	trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
+	options: DeriveCompactionContentManifestOptions,
+): CompactionContentManifest {
+	const maxReferences = positiveSafeInteger(
+		options.maxReferences,
+		DEFAULT_MAX_REFERENCES,
+		"maxReferences",
+	);
+	const maxRangesPerReference = positiveSafeInteger(
+		options.maxRangesPerReference,
+		DEFAULT_MAX_RANGES_PER_REFERENCE,
+		"maxRangesPerReference",
+	);
+	const entries = collectRestartSafeContentEntries(
+		trajectory,
+		canonicalTimestamp(options.lastUsedAt, "lastUsedAt"),
+	);
+	if (entries.length > maxReferences) {
+		throw new ElizaError(
+			"Content manifest exceeds the configured reference bound",
+			{
+				code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
+				context: { bound: "references", maxReferences },
+			},
+		);
+	}
+	if (
+		entries.some((entry) => entry.rangesUsed.length > maxRangesPerReference)
+	) {
+		throw new ElizaError(
+			"Content manifest exceeds the configured per-reference range bound",
+			{
+				code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
+				context: { bound: "ranges", maxRangesPerReference },
+			},
+		);
+	}
+	return validateCompactionContentManifest(manifestFor(entries));
+}
+
+/** Derive every restart-safe record and split only at lossless schema bounds. */
+export function deriveCompactionContentManifests(
+	trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
+	options: DeriveCompactionContentManifestsOptions,
+): CompactionContentManifest[] {
+	const entries = collectRestartSafeContentEntries(
+		trajectory,
+		canonicalTimestamp(options.lastUsedAt, "lastUsedAt"),
+	).flatMap((entry) => {
+		if (entry.rangesUsed.length === 0) return [entry];
+		const chunks: CompactionContentEntry[] = [];
+		for (
+			let offset = 0;
+			offset < entry.rangesUsed.length;
+			offset += COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE
+		) {
+			chunks.push({
+				...entry,
+				rangesUsed: entry.rangesUsed.slice(
+					offset,
+					offset + COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE,
+				),
+			});
+		}
+		return chunks;
 	});
+	const manifests: CompactionContentManifest[] = [];
+	let current: CompactionContentEntry[] = [];
+	for (const entry of entries) {
+		const candidate = [...current, entry];
+		try {
+			validateCompactionContentManifest(manifestFor(candidate));
+			current = candidate;
+		} catch (error) {
+			if (current.length === 0) throw error;
+			manifests.push(validateCompactionContentManifest(manifestFor(current)));
+			current = [entry];
+			validateCompactionContentManifest(manifestFor(current));
+		}
+	}
+	if (current.length > 0) {
+		manifests.push(validateCompactionContentManifest(manifestFor(current)));
+	}
+	return manifests;
 }

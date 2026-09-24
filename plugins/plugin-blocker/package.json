@@ -61,7 +61,7 @@
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0"
   },
   "elizaos": {
@@ -80,17 +80,17 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.6",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.28.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "vite": "^8.3.0"
   }
 }

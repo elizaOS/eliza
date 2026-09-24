@@ -1,9 +1,10 @@
 /**
- * Sleep-cycle check-in delivery carries one-tap ack chips and honest delivery
+ * Night sleep-cycle delivery carries one-tap ack chips and honest delivery
  * accounting. The marker builder itself is pinned by
  * lifeops-choice-markers.test.ts; this suite covers the dispatch wiring with a
  * mocked check-in engine so generated reports only become day-done markers
- * after an app stream or connector accepts the message.
+ * after an app stream or connector accepts the message. Real sleep-cycle timing
+ * also proves wake projections cannot bypass managed morning dossier admission.
  */
 import { parseInteractionBlocks } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,18 +45,7 @@ vi.mock("../checkin/schedule-resolver.js", () => ({
   })),
 }));
 
-vi.mock("@elizaos/plugin-health", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@elizaos/plugin-health")>();
-  return {
-    ...actual,
-    buildSleepRecapFromSchedule: vi.fn(() => undefined),
-    shouldRunMorningCheckinFromSleepCycle: vi.fn(() => true),
-    shouldRunNightCheckinFromSleepCycle: vi.fn(() => false),
-  };
-});
-
-const NOW = new Date("2026-07-05T08:00:00.000Z");
+const NOW = new Date("2026-07-05T22:40:00.000Z");
 
 const routeCandidates = [
   {
@@ -106,14 +96,20 @@ function makeDomain(
 const currentSchedule = {
   timezone: "UTC",
   circadianState: "awake",
+  baseline: null,
+  regularity: { regularityClass: "regular", sri: 80 },
   wakeAt: "2026-07-05T07:00:00.000Z",
   relativeTime: {
     bedtimeTargetAt: "2026-07-05T23:00:00.000Z",
-    minutesUntilBedtimeTarget: 900,
+    minutesUntilBedtimeTarget: 20,
   },
 } as never;
 
-function runSleepCycleCheckins(domain: RemindersDomain): Promise<void> {
+function runSleepCycleCheckins(
+  domain: RemindersDomain,
+  now = NOW,
+  schedule = currentSchedule,
+): Promise<void> {
   return (
     domain as unknown as {
       processSleepCycleCheckins(args: {
@@ -121,7 +117,7 @@ function runSleepCycleCheckins(domain: RemindersDomain): Promise<void> {
         currentSchedule: unknown;
       }): Promise<void>;
     }
-  ).processSleepCycleCheckins({ now: NOW, currentSchedule });
+  ).processSleepCycleCheckins({ now, currentSchedule: schedule });
 }
 
 beforeEach(() => {
@@ -133,15 +129,40 @@ beforeEach(() => {
 });
 
 describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
-  it("emits the morning summary with ack chips and persists only after the assistant stream accepts it", async () => {
+  it("does not generate or deliver a morning dossier from a wake projection", async () => {
+    const { domain, emitAssistantEvent } = makeDomain();
+    await runSleepCycleCheckins(domain, new Date("2026-07-05T08:00:00.000Z"), {
+      timezone: "UTC",
+      circadianState: "awake",
+      wakeAt: "2026-07-05T07:00:00.000Z",
+      baseline: null,
+      regularity: { regularityClass: "regular", sri: 80 },
+      relativeTime: {
+        bedtimeTargetAt: "2026-07-05T23:00:00.000Z",
+        minutesUntilBedtimeTarget: 900,
+      },
+    } as never);
+    expect(checkinMocks.runMorningCheckin).not.toHaveBeenCalled();
+    expect(checkinMocks.runNightCheckin).not.toHaveBeenCalled();
+    expect(emitAssistantEvent).not.toHaveBeenCalled();
+    expect(checkinMocks.persistCheckinReport).not.toHaveBeenCalled();
+  });
+
+  it("emits the night summary with ack chips and persists only after the assistant stream accepts it", async () => {
     const { domain, emitAssistantEvent } = makeDomain();
 
     await runSleepCycleCheckins(domain);
 
-    expect(checkinMocks.runMorningCheckin).toHaveBeenCalledTimes(1);
-    expect(checkinMocks.runMorningCheckin).toHaveBeenCalledWith(
+    expect(checkinMocks.runNightCheckin).toHaveBeenCalledTimes(1);
+    expect(checkinMocks.runNightCheckin).toHaveBeenCalledWith(
       expect.objectContaining({ now: NOW, timezone: "UTC", persist: false }),
     );
+    expect(checkinMocks.hasCheckinForLocalDay).toHaveBeenCalledWith({
+      kind: "night",
+      now: NOW,
+      timezone: "UTC",
+    });
+    expect(checkinMocks.runMorningCheckin).not.toHaveBeenCalled();
     expect(emitAssistantEvent).toHaveBeenCalledTimes(1);
     const [text, source, data] = emitAssistantEvent.mock.calls[0] as [
       string,
@@ -149,27 +170,30 @@ describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
       Record<string, unknown>,
     ];
     expect(source).toBe("lifeops-checkin");
-    expect(data.reportId).toBe("rep-morning-1");
-    expect(text).toContain("Morning! 2 meetings today, 1 overdue todo.");
+    expect(data.reportId).toBe("rep-night-1");
+    expect(text).toContain("Night recap.");
     const { blocks } = parseInteractionBlocks(text);
     expect(blocks).toHaveLength(1);
     const block = blocks[0];
     expect(block).toMatchObject({
       kind: "choice",
-      scope: "checkin-rep-morning-1",
-      id: "rep-morning-1",
+      scope: "checkin-rep-night-1",
+      id: "rep-night-1",
     });
     if (block?.kind !== "choice") throw new Error("expected choice block");
     // "All good" is a direct owner reply; details/snooze carry the report id.
     expect(block.options.map((o) => o.value)).toEqual([
       "All good",
-      "details rep-morning-1",
-      "snooze rep-morning-1",
+      "details rep-night-1",
+      "snooze rep-night-1",
     ]);
     expect(checkinMocks.persistCheckinReport).toHaveBeenCalledWith(
-      expect.objectContaining({ reportId: "rep-morning-1" }),
+      expect.objectContaining({ reportId: "rep-night-1" }),
       NOW,
     );
+    expect(
+      checkinMocks.persistCheckinReport.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(emitAssistantEvent.mock.invocationCallOrder[0]);
   });
 
   it("skips the emit and persist entirely when the day's check-in already went out", async () => {
@@ -178,7 +202,7 @@ describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
 
     await runSleepCycleCheckins(domain);
 
-    expect(checkinMocks.runMorningCheckin).not.toHaveBeenCalled();
+    expect(checkinMocks.runNightCheckin).not.toHaveBeenCalled();
     expect(emitAssistantEvent).not.toHaveBeenCalled();
     expect(checkinMocks.persistCheckinReport).not.toHaveBeenCalled();
   });
@@ -189,7 +213,7 @@ describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
 
     await runSleepCycleCheckins(domain);
 
-    expect(checkinMocks.runMorningCheckin).toHaveBeenCalledTimes(1);
+    expect(checkinMocks.runNightCheckin).toHaveBeenCalledTimes(1);
     expect(emitAssistantEvent).toHaveBeenCalledTimes(1);
     expect(checkinMocks.persistCheckinReport).not.toHaveBeenCalled();
   });
@@ -244,16 +268,19 @@ describe("sleep-cycle check-in dispatch (#14702, #14733)", () => {
     expect(smsSend).toHaveBeenCalledWith(
       expect.objectContaining({
         target: "+15551230000",
-        message: expect.stringContaining("Morning! 2 meetings today"),
+        message: expect.stringContaining("Night recap."),
         metadata: expect.objectContaining({
-          checkinKind: "morning",
-          reportId: "rep-morning-1",
+          checkinKind: "night",
+          reportId: "rep-night-1",
         }),
       }),
     );
     expect(checkinMocks.persistCheckinReport).toHaveBeenCalledWith(
-      expect.objectContaining({ reportId: "rep-morning-1" }),
+      expect.objectContaining({ reportId: "rep-night-1" }),
       NOW,
     );
+    expect(
+      checkinMocks.persistCheckinReport.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(smsSend.mock.invocationCallOrder[0]);
   });
 });

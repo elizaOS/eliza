@@ -619,23 +619,6 @@ export const CONNECTIONS = [
     ],
     verify: { kind: "none" },
   },
-  {
-    id: "tavily",
-    label: "Tavily (web search)",
-    category: "saas",
-    kind: "api-key",
-    obtain: "https://app.tavily.com/",
-    fields: [
-      { key: "TAVILY_API_KEY", label: "API key", secret: true, required: true },
-    ],
-    verify: {
-      kind: "http",
-      url: "https://api.tavily.com/search",
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: '{"api_key":"{{TAVILY_API_KEY}}","query":"ping","max_results":1}',
-    },
-  },
 
   // --- Web3 ----------------------------------------------------------------
   {

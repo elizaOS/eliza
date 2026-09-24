@@ -149,11 +149,18 @@ export {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskApplyCommitResult,
+  type ScheduledTaskAutomaticAdmission,
+  type ScheduledTaskAutomaticFirePolicy,
   type ScheduledTaskClaimExpectation,
   type ScheduledTaskClaimResult,
+  type ScheduledTaskConditionalUpsertOptions,
+  type ScheduledTaskDefinition,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
+  type ScheduledTaskExecutionPreparation,
+  type ScheduledTaskFireCause,
   type ScheduledTaskFireResult,
+  type ScheduledTaskMutationPolicy,
   type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerExtras,
   type ScheduledTaskRunnerHandle,
@@ -194,6 +201,7 @@ export {
   extractRows,
   type SchedulingSqlExecutor,
 } from "./scheduled-task/sql.ts";
+export { runStandaloneSchedulingTick } from "./scheduled-task/standalone-tick.ts";
 export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,

@@ -21,6 +21,7 @@ classifiers = [
 
 dependencies = [
     "eliza-adapter",
+    "openpyxl>=3.1,<4",
 ]
 
 [tool.uv.sources]

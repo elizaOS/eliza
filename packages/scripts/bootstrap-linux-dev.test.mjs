@@ -13,7 +13,7 @@ const source = readFileSync(scriptPath, "utf8");
 
 describe("Linux development bootstrap", () => {
   it("pins Bun and Node archives by version and SHA-256", () => {
-    assert.match(source, /BUN_VERSION="1\.3\.14"/u);
+    assert.match(source, /BUN_VERSION="1\.4\.2"/u);
     assert.match(source, /NODE_VERSION="24\.15\.0"/u);
     assert.match(source, /BUN_ARCHIVE_SHA256="[a-f0-9]{64}"/u);
     assert.match(source, /NODE_ARCHIVE_SHA256="[a-f0-9]{64}"/u);

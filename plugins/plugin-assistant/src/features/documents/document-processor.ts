@@ -1,17 +1,3 @@
-/**
- * Core ingestion pipeline for the documents capability: turns raw document text
- * into stored FRAGMENT memories. `processFragmentsSynchronously`
- * splits text into overlapping token-sized chunks, optionally contextualizes
- * each chunk through an LLM (the contextual-retrieval step, gated by
- * CTX_DOCUMENTS_ENABLED), generates embeddings when a model is registered, and
- * persists each generic fragment with `runtime.createMemory`. Without an
- * embedding model it persists unembedded fragments for the service's supported
- * BM25 keyword path. Producer-owned pre-chunked fragments retain verbatim
- * metadata and are fully validated before their caller's atomic batch write.
- * A token/request rate limiter derived from
- * {@link getProviderRateLimits} throttles generic ingestion, and 429s are
- * retried. Also exposes text extraction and parent-memory construction.
- */
 import type { Buffer } from "node:buffer";
 import {
   BatchProcessor,
@@ -46,6 +32,21 @@ import {
   convertPdfToTextFromBuffer,
   extractTextFromFileBuffer,
 } from "./utils.ts";
+
+/**
+ * Core ingestion pipeline for the documents capability: turns raw document text
+ * into stored FRAGMENT memories. `processFragmentsSynchronously`
+ * splits text into overlapping token-sized chunks, optionally contextualizes
+ * each chunk through an LLM (the contextual-retrieval step, gated by
+ * CTX_DOCUMENTS_ENABLED), generates embeddings when a model is registered, and
+ * persists each generic fragment with `runtime.createMemory`. Without an
+ * embedding model it persists unembedded fragments for the service's supported
+ * BM25 keyword path. Producer-owned pre-chunked fragments retain verbatim
+ * metadata and are fully validated before their caller's atomic batch write.
+ * A token/request rate limiter derived from
+ * {@link getProviderRateLimits} throttles generic ingestion, and 429s are
+ * retried. Also exposes text extraction and parent-memory construction.
+ */
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -130,6 +131,7 @@ async function persistKeywordOnlyFragments(args: {
     const metadata: DocumentFragmentMemoryMetadata = {
       ...(args.documentMetadata ?? {}),
       type: MemoryType.FRAGMENT,
+      fragmentRole: "embedding-chunk",
       documentId: args.documentId,
       position,
       timestamp: Date.now(),
@@ -454,6 +456,7 @@ export async function preparePreChunkedFragmentMemories({
       ...(documentMetadata ?? {}),
       ...metadata,
       type: MemoryType.FRAGMENT,
+      fragmentRole: "embedding-chunk",
       documentId,
       position,
       timestamp: Date.now(),
@@ -600,6 +603,7 @@ async function processAndSaveFragments({
         const fragmentMetadata: DocumentFragmentMemoryMetadata = {
           ...(documentMetadata ?? {}),
           type: MemoryType.FRAGMENT,
+          fragmentRole: "embedding-chunk",
           documentId,
           position: originalChunkIndex,
           timestamp: Date.now(),
