@@ -149,3 +149,13 @@ bun run verify:android  # ./gradlew clean build test
 
 > **Note:** `bun run build:docs` regenerates this README from JSDoc comments in `src/definitions.ts`. Manual edits will be overwritten on the next docgen run.
 
+
+## Android device verification
+
+The emulator suite drives the real WebView/Capacitor/OkHttp client against a
+loopback WebSocket protocol peer. It verifies authentication, RPCs, pushed events,
+reconnection, rejected handshakes, and cancellation of pending work.
+
+```bash
+node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-gateway
+```

@@ -43,7 +43,12 @@ class GatewayPlugin : Plugin() {
     private var methods: List<String> = emptyList()
     private var events: List<String> = emptyList()
     private var lastSeq: Int? = null
-    private var isClosed = false
+    private var isClosed = true
+    private var authenticated = false
+    private var generation = 0L
+    private var connectRequestId: String? = null
+    private var connectTimeout: Job? = null
+    private val requestTimeouts = mutableMapOf<String, Job>()
     private var backoffMs: Long = 800
     private var reconnectJob: Job? = null
     private var connectContinuation: Continuation<JSObject>? = null
@@ -212,89 +217,77 @@ class GatewayPlugin : Plugin() {
     @PluginMethod
     fun connect(call: PluginCall) {
         val urlString = call.getString("url")
-        if (urlString == null) {
-            call.reject("Missing URL parameter")
+        if (urlString.isNullOrBlank()) {
+            call.reject("Missing URL parameter", "INVALID_INPUT")
             return
         }
-
-        // Store options for reconnection
-        options = call.data
-
-        // Close existing connection
-        closeConnection()
-        isClosed = false
-        backoffMs = 800
-
         scope.launch {
+            reconnectJob?.cancel()
+            reconnectJob = null
+            closeConnection(Exception("Connection replaced"))
+            options = call.data
+            isClosed = false
+            backoffMs = 800
             try {
-                val result = establishConnection(urlString, call.data)
-                call.resolve(result)
-            } catch (e: Exception) {
-                call.reject("Connection failed: ${e.message}")
+                call.resolve(establishConnection(urlString, call.data))
+            } catch (error: Exception) {
+                // error-policy:J1 Translate native connection failure at the bridge.
+                call.reject("Connection failed: ${error.message}", "CONNECTION_FAILED")
             }
         }
     }
 
     @PluginMethod
     fun disconnect(call: PluginCall) {
-        isClosed = true
-        reconnectJob?.cancel()
-        reconnectJob = null
-        closeConnection()
-        sessionId = null
-        protocolVersion = null
-        notifyStateChange("disconnected", "Client disconnect")
-        call.resolve()
+        scope.launch {
+            isClosed = true
+            reconnectJob?.cancel()
+            reconnectJob = null
+            closeConnection()
+            notifyStateChange("disconnected", "Client disconnect")
+            call.resolve()
+        }
     }
 
     @PluginMethod
     fun isConnected(call: PluginCall) {
-        val connected = webSocket != null
-        call.resolve(JSObject().apply {
-            put("connected", connected)
-        })
+        scope.launch { call.resolve(JSObject().apply { put("connected", authenticated) }) }
     }
 
     @PluginMethod
     fun send(call: PluginCall) {
         val method = call.getString("method")
-        if (method == null) {
-            call.reject("Missing method parameter")
+        if (method.isNullOrBlank()) {
+            call.reject("Missing method parameter", "INVALID_INPUT")
             return
         }
-
-        val ws = webSocket
-        if (ws == null) {
-            call.resolve(JSObject().apply {
-                put("ok", false)
-                put("error", JSObject().apply {
-                    put("code", "NOT_CONNECTED")
-                    put("message", "Not connected to gateway")
-                })
-            })
-            return
-        }
-
-        val id = UUID.randomUUID().toString()
-        val params = call.getObject("params") ?: JSObject()
-
-        val frame = JSONObject().apply {
-            put("type", "req")
-            put("id", id)
-            put("method", method)
-            put("params", params.toJson())
-        }
-
         scope.launch {
+            if (!authenticated || webSocket == null) {
+                call.resolve(JSObject().apply {
+                    put("ok", false)
+                    put("error", JSObject().apply {
+                        put("code", "NOT_CONNECTED")
+                        put("message", "Not connected to gateway")
+                    })
+                })
+                return@launch
+            }
+            val id = UUID.randomUUID().toString()
+            val frame = JSONObject().apply {
+                put("type", "req")
+                put("id", id)
+                put("method", method)
+                put("params", (call.getObject("params") ?: JSObject()).toJson())
+            }
             try {
-                val result = sendRequest(id, frame.toString())
-                call.resolve(result)
-            } catch (e: Exception) {
+                call.resolve(sendRequest(id, frame.toString()))
+            } catch (error: Exception) {
+                // error-policy:J1 RPC failures keep the public structured result contract.
                 call.resolve(JSObject().apply {
                     put("ok", false)
                     put("error", JSObject().apply {
                         put("code", "REQUEST_FAILED")
-                        put("message", e.message ?: "Unknown error")
+                        put("message", error.message ?: "Request failed")
                     })
                 })
             }
@@ -303,57 +296,55 @@ class GatewayPlugin : Plugin() {
 
     @PluginMethod
     fun getConnectionInfo(call: PluginCall) {
-        call.resolve(JSObject().apply {
-            put("url", options?.getString("url"))
-            put("sessionId", sessionId)
-            put("protocol", protocolVersion)
-            put("role", role)
-        })
+        scope.launch {
+            call.resolve(JSObject().apply {
+                put("url", options?.getString("url"))
+                put("sessionId", sessionId)
+                put("protocol", protocolVersion)
+                put("role", role)
+            })
+        }
     }
 
     // Private methods
 
     private suspend fun establishConnection(url: String, options: JSObject): JSObject {
+        // Build before saving the continuation: invalid URLs must not leave a
+        // suspended handshake behind. All connection state runs on the main scope.
+        val request = Request.Builder().url(url).build()
         return suspendCoroutine { continuation ->
+            val attempt = ++generation
             connectContinuation = continuation
-
-            okHttpClient = OkHttpClient.Builder()
+            connectRequestId = UUID.randomUUID().toString()
+            authenticated = false
+            notifyStateChange("connecting")
+            val client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(0, TimeUnit.SECONDS) // No read timeout for WebSocket
+                .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build()
-
-            val request = Request.Builder()
-                .url(url)
-                .build()
-
-            webSocket = okHttpClient?.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    Log.d(TAG, "WebSocket connected")
-                    sendConnectFrame(options)
+            okHttpClient = client
+            webSocket = client.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(socket: WebSocket, response: Response) {
+                    scope.launch { if (attempt == generation) sendConnectFrame(options) }
                 }
-
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    handleMessage(text)
+                override fun onMessage(socket: WebSocket, text: String) {
+                    scope.launch { if (attempt == generation) handleMessage(text) }
                 }
-
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "WebSocket failure: ${t.message}")
-                    handleClose(t)
+                override fun onClosing(socket: WebSocket, code: Int, reason: String) {
+                    socket.close(code, reason)
                 }
-
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    Log.d(TAG, "WebSocket closed: $code $reason")
-                    handleClose(null)
+                override fun onFailure(socket: WebSocket, error: Throwable, response: Response?) {
+                    scope.launch { if (attempt == generation) handleClose(error) }
+                }
+                override fun onClosed(socket: WebSocket, code: Int, reason: String) {
+                    scope.launch { if (attempt == generation) handleClose(null) }
                 }
             })
-
-            // Set timeout
-            scope.launch {
+            connectTimeout = scope.launch {
                 delay(30000)
-                if (connectContinuation != null) {
-                    connectContinuation?.resumeWithException(Exception("Connection timeout"))
-                    connectContinuation = null
+                if (attempt == generation && connectContinuation != null) {
+                    handleClose(Exception("Connection timeout"))
                 }
             }
         }
@@ -387,7 +378,7 @@ class GatewayPlugin : Plugin() {
             put("auth", auth)
         }
 
-        val id = UUID.randomUUID().toString()
+        val id = checkNotNull(connectRequestId)
         val frame = JSONObject().apply {
             put("type", "req")
             put("id", id)
@@ -410,8 +401,9 @@ class GatewayPlugin : Plugin() {
             }
 
             // Set timeout
-            scope.launch {
+            requestTimeouts[id] = scope.launch {
                 delay(60000)
+                requestTimeouts.remove(id)
                 pendingRequests.remove(id)?.let {
                     it.resume(JSObject().apply {
                         put("ok", false)
@@ -434,35 +426,51 @@ class GatewayPlugin : Plugin() {
             if (frameType == "res") {
                 val id = json.optString("id")
 
-                // Check if this is the connect response
-                if (connectContinuation != null) {
-                    val ok = json.optBoolean("ok", false)
-                    if (ok) {
-                        val payload = json.optJSONObject("payload")
-                        if (payload != null) {
-                            handleHelloOk(payload)
-                        }
-                        val result = JSObject().apply {
-                            put("connected", true)
-                            put("sessionId", sessionId ?: "")
-                            put("protocol", protocolVersion ?: 3)
-                            put("methods", JSONArray(methods))
-                            put("events", JSONArray(events))
-                            put("role", role ?: "")
-                            put("scopes", JSONArray(scopes))
-                        }
-                        connectContinuation?.resume(result)
-                        connectContinuation = null
-                    } else {
-                        val errorMsg = json.optJSONObject("error")?.optString("message") ?: "Connection failed"
-                        connectContinuation?.resumeWithException(Exception(errorMsg))
-                        connectContinuation = null
+                // Only the matching handshake response may authenticate this socket.
+                if (connectContinuation != null && id == connectRequestId) {
+                    if (!json.optBoolean("ok", false)) {
+                        val message = json.optJSONObject("error")?.optString("message") ?: "Connection failed"
+                        isClosed = true
+                        closeConnection(Exception(message))
+                        notifyStateChange("disconnected", message)
+                        return
                     }
+                    val payload = json.optJSONObject("payload")
+                    if (payload == null || payload.optInt("protocol", -1) != 3) {
+                        isClosed = true
+                        closeConnection(Exception("Invalid gateway handshake"))
+                        notifyStateChange("disconnected", "Invalid gateway handshake")
+                        return
+                    }
+                    try {
+                        handleHelloOk(payload)
+                    } catch (error: Exception) {
+                        // error-policy:J3 Reject a malformed peer handshake and release its promise.
+                        isClosed = true
+                        closeConnection(Exception("Invalid gateway handshake", error))
+                        notifyStateChange("disconnected", "Invalid gateway handshake")
+                        return
+                    }
+                    val continuation = checkNotNull(connectContinuation)
+                    connectContinuation = null
+                    connectRequestId = null
+                    connectTimeout?.cancel()
+                    connectTimeout = null
+                    continuation.resume(JSObject().apply {
+                        put("connected", true)
+                        put("sessionId", sessionId)
+                        put("protocol", protocolVersion)
+                        put("methods", JSONArray(methods))
+                        put("events", JSONArray(events))
+                        put("role", role)
+                        put("scopes", JSONArray(scopes))
+                    })
                     return
                 }
 
                 // Handle pending request
                 pendingRequests.remove(id)?.let { continuation ->
+                    requestTimeouts.remove(id)?.cancel()
                     val ok = json.optBoolean("ok", false)
                     val result = JSObject().apply {
                         put("ok", ok)
@@ -480,7 +488,7 @@ class GatewayPlugin : Plugin() {
             }
 
             // Handle event frames
-            if (frameType == "event") {
+            if (frameType == "event" && authenticated) {
                 val event = json.optString("event")
                 val payload = json.opt("payload")
                 val seq = if (json.has("seq")) json.optInt("seq") else null
@@ -527,30 +535,21 @@ class GatewayPlugin : Plugin() {
         }
 
         backoffMs = 800
+        authenticated = true
         notifyStateChange("connected")
     }
 
     private fun handleClose(error: Throwable?) {
-        webSocket = null
-
-        // Reject all pending requests
-        pendingRequests.forEach { (_, continuation) ->
-            continuation.resumeWithException(Exception("Connection closed"))
-        }
-        pendingRequests.clear()
-
+        closeConnection(Exception("Connection closed", error))
         if (isClosed) {
             notifyStateChange("disconnected", error?.message)
             return
         }
-
-        // Attempt reconnection
         notifyStateChange("reconnecting", error?.message)
         notifyListeners("error", JSObject().apply {
-            put("message", "Connection lost: ${error?.message ?: "unknown"}")
+            put("message", "Connection lost: ${error?.message ?: "peer closed"}")
             put("willRetry", true)
         })
-
         scheduleReconnect()
     }
 
@@ -562,22 +561,49 @@ class GatewayPlugin : Plugin() {
 
         reconnectJob = scope.launch {
             delay(delay)
+            reconnectJob = null
             val url = options?.getString("url")
             if (url != null && !isClosed) {
+                val beforeAttempt = generation
                 try {
-                    establishConnection(url, options ?: JSObject())
-                } catch (e: Exception) {
-                    handleClose(e)
+                    establishConnection(url, checkNotNull(options))
+                } catch (error: Exception) {
+                    // error-policy:J1 Transport callbacks already settle failed attempts.
+                    // Only a synchronous setup failure still owns this generation.
+                    if (generation == beforeAttempt || generation == beforeAttempt + 1) handleClose(error)
                 }
             }
         }
     }
 
-    private fun closeConnection() {
-        webSocket?.close(1000, "Client disconnect")
+    private fun closeConnection(error: Exception = Exception("Client disconnect")) {
+        // Invalidate callbacks before cancelling the transport. Old sockets and
+        // timeout jobs must never settle promises belonging to a later session.
+        generation++
+        authenticated = false
+        val connecting = connectContinuation
+        connectContinuation = null
+        connectRequestId = null
+        connectTimeout?.cancel()
+        connectTimeout = null
+        val requests = pendingRequests.values.toList()
+        pendingRequests.clear()
+        requestTimeouts.values.forEach { it.cancel() }
+        requestTimeouts.clear()
+        webSocket?.cancel()
         webSocket = null
+        okHttpClient?.connectionPool?.evictAll()
         okHttpClient?.dispatcher?.executorService?.shutdown()
         okHttpClient = null
+        sessionId = null
+        protocolVersion = null
+        role = null
+        scopes = emptyList()
+        methods = emptyList()
+        events = emptyList()
+        lastSeq = null
+        connecting?.resumeWithException(error)
+        requests.forEach { it.resumeWithException(error) }
     }
 
     private fun notifyStateChange(state: String, reason: String? = null) {
@@ -590,8 +616,12 @@ class GatewayPlugin : Plugin() {
 
     override fun handleOnDestroy() {
         super.handleOnDestroy()
-        scope.cancel()
-        closeConnection()
+        scope.launch {
+            isClosed = true
+            reconnectJob?.cancel()
+            closeConnection()
+            scope.cancel()
+        }
     }
 
     // Helper extension
