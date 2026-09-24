@@ -39,12 +39,12 @@ import {
   removePublicBuildStamp,
   shouldSkipBuildStamp,
 } from "./scripts/build-stamp.mjs";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
 } from "./scripts/lib/android-cloud-routing-markers.mjs";
+import { CAPACITOR_PLUGIN_NAMES } from "./scripts/lib/capacitor-plugin-names.mjs";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";

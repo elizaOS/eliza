@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 /** Resolves real package layouts and fails before creating phantom package paths. */
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -90,4 +91,36 @@ it("preflights all release manifests and leaves Electrobun source unchanged", ()
     ).toBe("2.0.4-beta.1");
   }
   expect(readFileSync(config, "utf8")).toBe(source);
+});
+
+it("loads canonical workspace errors before package installation", () => {
+  const root = fixture();
+  const helperDir = path.join(root, "packages/app/scripts/lib");
+  const coreDir = path.join(root, "packages/core/src");
+  mkdirSync(helperDir, { recursive: true });
+  mkdirSync(coreDir, { recursive: true });
+  copyFileSync(
+    new URL("./eliza-error.mjs", import.meta.url),
+    path.join(helperDir, "eliza-error.mjs"),
+  );
+  copyFileSync(
+    new URL("../../../core/src/errors.ts", import.meta.url),
+    path.join(coreDir, "errors.ts"),
+  );
+  const probe = path.join(root, "probe.mjs");
+  writeFileSync(
+    probe,
+    `
+    import { ElizaError } from "./packages/app/scripts/lib/eliza-error.mjs";
+    import { ElizaError as Canonical } from "./packages/core/src/errors.ts";
+    if (ElizaError !== Canonical) throw new Error("Wrong error identity");
+    if (new ElizaError("fixture", { code: "FIXTURE" }).code !== "FIXTURE") throw new Error("Lost code");
+  `,
+  );
+  const result = spawnSync(process.execPath, [probe], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 10000,
+  });
+  expect(result.status, result.stderr).toBe(0);
 });

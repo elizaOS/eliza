@@ -584,7 +584,13 @@ export class AccountPool {
     providerId: PoolProviderId,
     accountId: string,
   ): Promise<void> {
-    if (!this.deps.deleteAccount) return;
+    if (!this.deps.deleteAccount) {
+      throw new ElizaError("Account-pool persistence cannot delete metadata", {
+        code: "ACCOUNT_POOL_DELETE_UNSUPPORTED",
+        context: { providerId, accountId },
+        severity: "fatal",
+      });
+    }
     await this.deps.deleteAccount(providerId, accountId);
   }
   // Mutations.
@@ -1792,7 +1798,7 @@ export async function sweepAccountPoolKeepAlive(
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
       const pooled = pool.get(record.id, providerId);
-      if (pooled?.health === "expired") continue;
+      if (pooled?.enabled === false || pooled?.health === "expired") continue;
       // A parked subscription account's refresh grant is dead until a human
       // re-auths, so resolving it burns a doomed refresh against the
       // provider's token endpoint (plus an error log line) every sweep,

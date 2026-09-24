@@ -303,3 +303,15 @@ it("serves identical real HTTP inventory with two full reads instead of one per 
     }
   }
 });
+
+it("rejects metadata deletion when the persistence adapter cannot delete", async () => {
+  const pool = new AccountPool({
+    readAccounts: () => ({}),
+    writeAccount: async () => {},
+  });
+  await expect(
+    pool.deleteMetadata("anthropic-api", "personal"),
+  ).rejects.toMatchObject({
+    code: "ACCOUNT_POOL_DELETE_UNSUPPORTED",
+  });
+});
