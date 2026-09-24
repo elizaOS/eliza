@@ -5,6 +5,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { isAbsolute } from "node:path";
 
 const require = createRequire(import.meta.url);
 const TIMEOUT_MS = 5_000;
@@ -14,7 +15,11 @@ const TIMEOUT_MS = 5_000;
 const WORKER = `
 import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
-const [binding, service, account] = process.argv.slice(1);
+const [binding, service, account, requiredRuntime] = process.argv.slice(1);
+if (requiredRuntime === "node" &&
+    (process.versions.bun || Number(process.versions.node.split(".")[0]) < 24)) {
+  process.exit(2);
+}
 let phase = "binding";
 try {
   const { Entry } = createRequire(binding)(binding);
@@ -47,7 +52,12 @@ export interface KeychainProcessOptions {
   timeoutMs?: number;
 }
 
-function argumentsFor(service: string, account: string, binding?: string) {
+function argumentsFor(
+  service: string,
+  account: string,
+  binding?: string,
+  requireNode = false,
+) {
   return [
     "--input-type=module",
     "--eval",
@@ -55,6 +65,7 @@ function argumentsFor(service: string, account: string, binding?: string) {
     binding ?? require.resolve("@napi-rs/keyring"),
     service,
     account,
+    requireNode ? "node" : "",
   ];
 }
 
@@ -90,9 +101,19 @@ export function readKeychainKeySync(
   account: string,
   options: KeychainProcessOptions = {},
 ): Buffer {
+  // The host's explicit Node selection applies only to this native worker.
+  // Choose before dispatch; never retry denied Keychain access in another runtime.
+  const configuredNode = process.versions.bun
+    ? process.env.ELIZA_NODE_PATH?.trim()
+    : undefined;
+  const invalidNode = () =>
+    new Error(
+      "Invalid ELIZA_NODE_PATH for the Keychain worker; configure an absolute standard Node.js 24+ executable. No alternate worker or replacement key was used.",
+    );
+  if (configuredNode && !isAbsolute(configuredNode)) throw invalidNode();
   const result = spawnSync(
-    process.execPath,
-    argumentsFor(service, account, options.binding),
+    configuredNode || process.execPath,
+    argumentsFor(service, account, options.binding, Boolean(configuredNode)),
     {
       encoding: "utf8",
       timeout: options.timeoutMs ?? TIMEOUT_MS,
@@ -103,6 +124,14 @@ export function readKeychainKeySync(
       stdio: ["ignore", "pipe", "ignore"],
     },
   );
+  if (
+    configuredNode &&
+    (result.status === 2 ||
+      (result.error &&
+        ("code" in result.error ? result.error.code : undefined) !==
+          "ETIMEDOUT"))
+  )
+    throw invalidNode();
   if (result.error || result.status !== 0) throw unavailable();
   return decode(result.stdout);
 }
