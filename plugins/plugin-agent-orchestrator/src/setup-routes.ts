@@ -4,18 +4,17 @@
  * Mounts `/api/coding-agents/*`, `/api/workspace/*`, and `/api/issues/*`
  * through `Plugin.routes` with `rawPath: true`.
  */
-
 import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LegacyRouteHandler,
-  HttpPlugin as Plugin,
-  Route,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared";
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  type LegacyRouteHandler,
+  type HttpPlugin as Plugin,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { getAcpService } from "./actions/common.js";
-import type { RouteContext } from "./api/route-utils.js";
+import { type RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";
 import { getCodingWorkspaceService } from "./services/workspace-service.js";
 
@@ -26,7 +25,6 @@ function buildRouteContext(runtime: IAgentRuntime): RouteContext {
     workspaceService: getCodingWorkspaceService(runtime),
   };
 }
-
 function codingAgentRouteHandler(): LegacyRouteHandler {
   return async (
     req: RouteRequest,
@@ -54,7 +52,6 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
         // Service start failed — downstream handlers will surface 503.
       }
     }
-
     const ctx = buildRouteContext(agentRuntime);
     const handled = await handleCodingAgentRoutes(
       httpReq,
@@ -63,7 +60,6 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
       ctx,
     );
     if (handled) return;
-
     // No matching sub-handler.
     if (!httpRes.headersSent) {
       httpRes.writeHead(404, { "Content-Type": "application/json" });
@@ -73,11 +69,13 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
     }
   };
 }
-
 /** Path templates registered with the runtime route registry. The handler
  * delegates internally based on the actual `req.url`, so several entries
  * resolve to the same dispatcher. */
-export const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
+export const CODING_AGENT_ROUTE_PATHS: Array<{
+  type: string;
+  path: string;
+}> = [
   // Orchestrator durable-task surface
   { type: "GET", path: "/api/orchestrator/status" },
   { type: "GET", path: "/api/orchestrator/capacity" },
@@ -162,9 +160,7 @@ export const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/issues/:owner/:repo/:number/comments" },
   { type: "POST", path: "/api/issues/:owner/:repo/:number/close" },
 ];
-
 const sharedHandler = codingAgentRouteHandler();
-
 const codingAgentRoutes: Route[] = CODING_AGENT_ROUTE_PATHS.map(
   (r) =>
     ({
@@ -174,7 +170,6 @@ const codingAgentRoutes: Route[] = CODING_AGENT_ROUTE_PATHS.map(
       handler: sharedHandler,
     }) as Route,
 );
-
 export const codingAgentRoutePlugin: Plugin = {
   name: "@elizaos/plugin-agent-orchestrator-routes",
   description:

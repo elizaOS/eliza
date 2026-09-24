@@ -1,10 +1,10 @@
 /** Proxies an authenticated Cloud agent's supported wallet operations to its mapped Steward wallet. */
 import { ElizaError } from "@elizaos/core";
-import type {
-  WalletBalancesResponse,
-  WalletConfigStatus,
-  WalletEntry,
-} from "@elizaos/shared";
+import {
+  type WalletBalancesResponse,
+  type WalletConfigStatus,
+  type WalletEntry,
+} from "@elizaos/core/contracts/wallet-types";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { dbWrite } from "@/db/helpers";

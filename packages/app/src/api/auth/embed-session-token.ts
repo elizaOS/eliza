@@ -161,25 +161,37 @@ export function verifyEmbedSessionToken(
     return null;
   }
 
-  let claims: EmbedSessionClaims;
+  let claims: unknown;
   try {
-    claims = JSON.parse(
-      Buffer.from(payload, "base64url").toString("utf8"),
-    ) as EmbedSessionClaims;
+    claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
   } catch {
     // error-policy:J3 untrusted token payload — a malformed base64/JSON segment
     // yields a null (invalid token) result, never fabricated claims.
     return null;
   }
   if (
+    typeof claims !== "object" ||
+    claims === null ||
+    !("entityId" in claims) ||
     typeof claims.entityId !== "string" ||
+    claims.entityId.length === 0 ||
+    !("role" in claims) ||
     !isEmbedRole(claims.role) ||
-    typeof claims.exp !== "number"
+    !("adminMode" in claims) ||
+    typeof claims.adminMode !== "boolean" ||
+    !("exp" in claims) ||
+    typeof claims.exp !== "number" ||
+    !Number.isFinite(claims.exp)
   ) {
     return null;
   }
   if (now >= claims.exp) {
     return null;
   }
-  return claims;
+  return {
+    entityId: claims.entityId,
+    role: claims.role,
+    adminMode: claims.adminMode,
+    exp: claims.exp,
+  };
 }

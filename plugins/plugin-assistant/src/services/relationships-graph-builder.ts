@@ -8,23 +8,19 @@
  * reject) plus cluster-aware getMemories/searchMemories helpers that fan a
  * lookup across every member of a person's identity cluster.
  */
-
-import type {
-  Entity,
-  IAgentRuntime,
-  JsonValue,
-  Memory,
-  Relationship,
-  Room,
-  UUID,
-} from "@elizaos/core";
 import {
   asRecord,
   ElizaError,
+  type Entity,
+  type IAgentRuntime,
+  type JsonValue,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type Memory,
+  type Relationship,
+  type Room,
+  type UUID,
 } from "@elizaos/core";
-
 /** Aligns with `MergeCandidateEvidence` in `relationships.ts` (kept here to avoid a circular import). */
 export type RelationshipsMergeProposalEvidence = {
   platform?: string;
@@ -33,14 +29,12 @@ export type RelationshipsMergeProposalEvidence = {
   notes?: string;
   [extra: string]: JsonValue | UUID[] | undefined;
 };
-
-// Inlined from @elizaos/shared (core does not depend on shared)
+// Inlined from @elizaos/core (core does not depend on shared)
 function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 export type RelationshipsGraphQuery = {
   search?: string | null;
   platform?: string | null;
@@ -48,7 +42,6 @@ export type RelationshipsGraphQuery = {
   offset?: number;
   scope?: "all" | "relevant";
 };
-
 export type RelationshipsMergeCandidate = {
   id: UUID;
   entityA: UUID;
@@ -59,20 +52,17 @@ export type RelationshipsMergeCandidate = {
   proposedAt: string;
   resolvedAt?: string;
 };
-
 export type RelationshipsGraphSnapshot = {
   people: RelationshipsPersonSummary[];
   relationships: RelationshipsGraphEdge[];
   stats: RelationshipsGraphStats;
   candidateMerges: RelationshipsMergeCandidate[];
 };
-
 export type RelationshipsGraphStats = {
   totalPeople: number;
   totalRelationships: number;
   totalIdentities: number;
 };
-
 export type RelationshipsIdentityHandle = {
   entityId: UUID;
   platform: string;
@@ -80,14 +70,12 @@ export type RelationshipsIdentityHandle = {
   status?: string | null;
   verified?: boolean | null;
 };
-
 export type RelationshipsIdentitySummary = {
   entityId: UUID;
   names: string[];
   platforms: string[];
   handles: RelationshipsIdentityHandle[];
 };
-
 export type RelationshipsProfile = {
   entityId: UUID;
   source: string;
@@ -97,7 +85,6 @@ export type RelationshipsProfile = {
   avatarUrl?: string | null;
   canonical?: boolean | null;
 };
-
 export type RelationshipsPersonSummary = {
   groupId: UUID;
   primaryEntityId: UUID;
@@ -118,7 +105,6 @@ export type RelationshipsPersonSummary = {
   profiles: RelationshipsProfile[];
   lastInteractionAt?: string;
 };
-
 export type RelationshipsGraphEdge = {
   id: string;
   sourcePersonId: UUID;
@@ -132,7 +118,6 @@ export type RelationshipsGraphEdge = {
   lastInteractionAt?: string;
   rawRelationshipIds: string[];
 };
-
 export type RelationshipsPersonFact = {
   id: string;
   sourceType: "claim" | "contact" | "memory";
@@ -149,7 +134,6 @@ export type RelationshipsPersonFact = {
   provenance?: RelationshipsFactProvenance;
   extractedInformation?: RelationshipsFactExtractedInformation;
 };
-
 export type RelationshipsFactProvenance = {
   source?: string;
   evaluatorName?: string;
@@ -157,12 +141,10 @@ export type RelationshipsFactProvenance = {
   lastReinforced?: string;
   evidenceMessageIds: string[];
 };
-
 export type RelationshipsFactExtractedInformation = {
   scope?: string;
   raw?: Record<string, unknown>;
 };
-
 export type RelationshipsConversationMessage = {
   id: string;
   entityId?: UUID;
@@ -170,14 +152,12 @@ export type RelationshipsConversationMessage = {
   text: string;
   createdAt?: number;
 };
-
 export type RelationshipsConversationSnippet = {
   roomId: UUID;
   roomName: string;
   lastActivityAt?: string;
   messages: RelationshipsConversationMessage[];
 };
-
 export type RelationshipsIdentityEdge = {
   id: string;
   sourceEntityId: UUID;
@@ -185,7 +165,6 @@ export type RelationshipsIdentityEdge = {
   confidence: number;
   status: string;
 };
-
 export type RelationshipsRelevantMemory = {
   id: string;
   sourceType: "message";
@@ -197,7 +176,6 @@ export type RelationshipsRelevantMemory = {
   createdAt?: string;
   source?: string | null;
 };
-
 export type RelationshipsUserPersonalityPreference = {
   id: string;
   entityId: UUID;
@@ -207,7 +185,6 @@ export type RelationshipsUserPersonalityPreference = {
   source?: string | null;
   createdAt?: string;
 };
-
 export type RelationshipsPersonDetail = RelationshipsPersonSummary & {
   facts: RelationshipsPersonFact[];
   recentConversations: RelationshipsConversationSnippet[];
@@ -216,7 +193,6 @@ export type RelationshipsPersonDetail = RelationshipsPersonSummary & {
   identityEdges: RelationshipsIdentityEdge[];
   userPersonalityPreferences: RelationshipsUserPersonalityPreference[];
 };
-
 export type RelationshipsGraphService = {
   getGraphSnapshot: (
     query?: RelationshipsGraphQuery,
@@ -240,7 +216,6 @@ export type RelationshipsGraphService = {
    */
   prewarmGraphModel: () => void;
 };
-
 type RelationshipsContactLike = {
   entityId: UUID;
   categories?: string[];
@@ -251,7 +226,6 @@ type RelationshipsContactLike = {
   customFields?: Record<string, unknown>;
   lastModified?: string;
 };
-
 export type RelationshipsServiceLike = {
   getContact?: (
     entityId: UUID,
@@ -271,7 +245,6 @@ export type RelationshipsServiceLike = {
     evidence: RelationshipsMergeProposalEvidence,
   ) => Promise<UUID>;
 };
-
 type EntityContext = {
   entityId: UUID;
   entity: Entity | null;
@@ -283,13 +256,11 @@ type EntityContext = {
   phones: string[];
   websites: string[];
 };
-
 type ClusterRecord = {
   groupId: UUID;
   primaryEntityId: UUID;
   memberEntityIds: UUID[];
 };
-
 type GraphEdgeSample = {
   sourcePersonId: UUID;
   targetPersonId: UUID;
@@ -301,7 +272,6 @@ type GraphEdgeSample = {
   lastInteractionAt?: string;
   rawRelationshipIds: string[];
 };
-
 type GraphEdgeAccumulator = {
   sourcePersonId: UUID;
   targetPersonId: UUID;
@@ -313,12 +283,10 @@ type GraphEdgeAccumulator = {
   lastInteractionAt?: string;
   rawRelationshipIds: Set<string>;
 };
-
 type ConversationGraphBuildResult = {
   edgeMap: Map<string, GraphEdgeAccumulator>;
   messageCountsByGroupId: Map<UUID, number>;
 };
-
 const KNOWN_PLATFORM_KEYS = [
   "discord",
   "telegram",
@@ -338,7 +306,6 @@ const KNOWN_PLATFORM_KEYS = [
   "phone",
   "website",
 ] as const;
-
 const CONTACT_PLATFORM_SET = new Set(["email", "phone", "website"]);
 const GENERIC_RELATIONSHIP_TAGS = new Set([
   "identity_link",
@@ -346,31 +313,24 @@ const GENERIC_RELATIONSHIP_TAGS = new Set([
   "updated",
 ]);
 const USER_PERSONALITY_PREFERENCES_TABLE = "user_personality_preferences";
-
 function asString(value: unknown): string | null {
   return asNonEmptyString(value) ?? null;
 }
-
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
-
 function contentRecord(memory: Memory): Record<string, unknown> {
   return asRecord(memory.content) ?? {};
 }
-
 function memoryText(memory: Memory): string | null {
   return asString(contentRecord(memory).text);
 }
-
 function memorySource(memory: Memory): string | null {
   return asString(contentRecord(memory).source);
 }
-
 function parseEvidenceMessageIds(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter(
@@ -379,14 +339,12 @@ function parseEvidenceMessageIds(value: unknown): string[] {
       )
     : [];
 }
-
 function pushUnique(target: string[], value: string | null | undefined): void {
   if (!value || target.includes(value)) {
     return;
   }
   target.push(value);
 }
-
 function normalizePlatform(platform: string): string {
   const normalized = platform.trim().toLowerCase();
   if (normalized === "x") {
@@ -397,7 +355,6 @@ function normalizePlatform(platform: string): string {
   }
   return normalized;
 }
-
 function normalizeProfileSource(source: string): string {
   const normalized = source.trim().toLowerCase();
   if (normalized === "clientchat") {
@@ -408,7 +365,6 @@ function normalizeProfileSource(source: string): string {
   }
   return normalizePlatform(normalized);
 }
-
 function normalizeIdentityHandle(platform: string, handle: string): string {
   const normalizedPlatform = normalizePlatform(platform);
   let normalizedHandle = handle.trim().toLowerCase();
@@ -424,30 +380,22 @@ function normalizeIdentityHandle(platform: string, handle: string): string {
   }
   return normalizedHandle;
 }
-
 function normalizedIdentityKey(platform: string, handle: string): string {
-  return `${normalizePlatform(platform)}:${normalizeIdentityHandle(
-    platform,
-    handle,
-  )}`;
+  return `${normalizePlatform(platform)}:${normalizeIdentityHandle(platform, handle)}`;
 }
-
 function uniqueSorted(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort((left, right) =>
     left.localeCompare(right),
   );
 }
-
 function normalizeRoomType(room: Room): string {
   return typeof room.type === "string" ? room.type.toLowerCase() : "";
 }
-
 function isoFromTimestamp(value?: number | null): string | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? new Date(value).toISOString()
     : undefined;
 }
-
 export function laterIso(left?: string, right?: string): string | undefined {
   if (!left) return right;
   if (!right) return left;
@@ -459,31 +407,26 @@ export function laterIso(left?: string, right?: string): string | undefined {
     return left.localeCompare(right) <= 0 ? left : right;
   return rightSafe > leftSafe ? right : left;
 }
-
 function relationshipStatus(relationship: Relationship): string {
   const metadata = asRecord(relationship.metadata);
   return asString(metadata?.status) ?? "unknown";
 }
-
 function isIdentityLink(relationship: Relationship): boolean {
   return (
     Array.isArray(relationship.tags) &&
     relationship.tags.includes("identity_link")
   );
 }
-
 function isConfirmedIdentityLink(relationship: Relationship): boolean {
   return (
     isIdentityLink(relationship) &&
     relationshipStatus(relationship) === "confirmed"
   );
 }
-
 function relationshipSentiment(relationship: Relationship): string {
   const metadata = asRecord(relationship.metadata);
   return asString(metadata?.sentiment) ?? "neutral";
 }
-
 function relationshipTypes(relationship: Relationship): string[] {
   const metadata = asRecord(relationship.metadata);
   const types = new Set<string>();
@@ -498,7 +441,6 @@ function relationshipTypes(relationship: Relationship): string[] {
   }
   return Array.from(types);
 }
-
 function relationshipStrength(relationship: Relationship): number {
   const metadata = asRecord(relationship.metadata);
   const raw = asNumber(metadata?.strength);
@@ -508,19 +450,16 @@ function relationshipStrength(relationship: Relationship): number {
   const normalized = raw > 1 ? raw / 100 : raw;
   return Math.max(0.05, Math.min(1, normalized));
 }
-
 function relationshipInteractionCount(relationship: Relationship): number {
   const metadata = asRecord(relationship.metadata);
   return Math.max(1, asNumber(metadata?.interactionCount) ?? 1);
 }
-
 function relationshipLastInteractionAt(
   relationship: Relationship,
 ): string | undefined {
   const metadata = asRecord(relationship.metadata);
   return asString(metadata?.lastInteractionAt) ?? undefined;
 }
-
 function relationshipConfidence(relationship: Relationship): number {
   const metadata = asRecord(relationship.metadata);
   return Math.max(
@@ -532,7 +471,6 @@ function relationshipConfidence(relationship: Relationship): number {
     ),
   );
 }
-
 function factProvenanceFromMetadata(
   metadata: Record<string, unknown>,
 ): RelationshipsFactProvenance | undefined {
@@ -546,7 +484,6 @@ function factProvenanceFromMetadata(
     lastReinforced: asString(metadata.lastReinforced) ?? undefined,
     evidenceMessageIds,
   };
-
   if (
     !provenance.source &&
     !provenance.evaluatorName &&
@@ -556,10 +493,8 @@ function factProvenanceFromMetadata(
   ) {
     return undefined;
   }
-
   return provenance;
 }
-
 function factExtractedInformationFromMetadata(
   metadata: Record<string, unknown>,
 ): RelationshipsFactExtractedInformation | undefined {
@@ -571,17 +506,14 @@ function factExtractedInformationFromMetadata(
   if (!raw) {
     return undefined;
   }
-
   const scope =
     asString(raw.scope) ??
     (raw === explicit ? (asString(base?.scope) ?? undefined) : undefined);
-
   return {
     scope,
     raw,
   };
 }
-
 function entityNames(entity: Entity | null): string[] {
   return (
     entity?.names?.filter(
@@ -590,7 +522,6 @@ function entityNames(entity: Entity | null): string[] {
     ) ?? []
   );
 }
-
 function collectIdentityHandles(
   entityId: UUID,
   entity: Entity | null,
@@ -603,11 +534,13 @@ function collectIdentityHandles(
   const rawClaims = Array.isArray(metadata?.identityClaims)
     ? metadata.identityClaims
     : [];
-
   const addHandle = (
     platformValue: unknown,
     handleValue: unknown,
-    options?: { status?: unknown; verified?: unknown },
+    options?: {
+      status?: unknown;
+      verified?: unknown;
+    },
   ) => {
     const platform = asString(platformValue);
     const handle = asString(handleValue);
@@ -626,7 +559,6 @@ function collectIdentityHandles(
       });
     }
   };
-
   for (const identity of rawPlatformIdentities) {
     const record = asRecord(identity);
     addHandle(record?.platform, record?.handle, {
@@ -634,7 +566,6 @@ function collectIdentityHandles(
       verified: record?.verified,
     });
   }
-
   for (const claim of rawClaims) {
     const record = asRecord(claim);
     if (asString(record?.status) === "rejected") {
@@ -645,7 +576,6 @@ function collectIdentityHandles(
       verified: record?.verified,
     });
   }
-
   for (const platform of KNOWN_PLATFORM_KEYS) {
     const platformMetadata = asRecord(metadata?.[platform]);
     if (!platformMetadata) {
@@ -664,10 +594,8 @@ function collectIdentityHandles(
         platformMetadata.id,
     );
   }
-
   return Array.from(handles.values());
 }
-
 function extractContactAliases(
   customFields: Record<string, unknown> | undefined,
 ): string[] {
@@ -684,7 +612,6 @@ function extractContactAliases(
     "handles",
   ]);
 }
-
 function preferredContactLabel(
   contact: RelationshipsContactLike | null,
 ): string | null {
@@ -694,7 +621,6 @@ function preferredContactLabel(
     ) ?? null
   );
 }
-
 function extractContactIdentityHandles(
   entityId: UUID,
   customFields: Record<string, unknown> | undefined,
@@ -702,7 +628,6 @@ function extractContactIdentityHandles(
   if (!customFields) {
     return [];
   }
-
   const handles = new Map<string, RelationshipsIdentityHandle>();
   const addHandle = (platform: string, value: string) => {
     const trimmed = value.trim();
@@ -719,7 +644,6 @@ function extractContactIdentityHandles(
       });
     }
   };
-
   const platformFieldPrefixes: Record<string, string[]> = {
     twitter: ["twitter", "x"],
     github: ["github"],
@@ -735,7 +659,6 @@ function extractContactIdentityHandles(
     nostr: ["nostr"],
     warpcast: ["warpcast"],
   };
-
   for (const [platform, prefixes] of Object.entries(platformFieldPrefixes)) {
     const keys = prefixes.flatMap((prefix) => [
       `${prefix}Handle`,
@@ -751,10 +674,8 @@ function extractContactIdentityHandles(
       addHandle(platform, value);
     }
   }
-
   return Array.from(handles.values());
 }
-
 function extractCustomFieldStrings(
   customFields: Record<string, unknown> | undefined,
   keys: string[],
@@ -775,7 +696,6 @@ function extractCustomFieldStrings(
   }
   return values;
 }
-
 function preferredProfileHandle(profile: RelationshipsProfile): string {
   return (
     asString(profile.handle) ??
@@ -784,7 +704,6 @@ function preferredProfileHandle(profile: RelationshipsProfile): string {
     profile.entityId
   );
 }
-
 function upsertProfile(
   profiles: Map<string, RelationshipsProfile>,
   profile: RelationshipsProfile,
@@ -819,7 +738,6 @@ function upsertProfile(
     canonical: normalizedProfile.canonical ?? existing?.canonical ?? undefined,
   });
 }
-
 function profileValueFromRecord(
   record: Record<string, unknown> | null,
   keys: string[],
@@ -835,7 +753,6 @@ function profileValueFromRecord(
   }
   return null;
 }
-
 function collectEntityProfiles(
   entityId: UUID,
   entity: Entity | null,
@@ -850,7 +767,6 @@ function collectEntityProfiles(
     null;
   const fallbackAvatarUrl =
     profileValueFromRecord(metadata, ["avatarUrl", "avatar"]) ?? null;
-
   for (const handle of handles) {
     if (CONTACT_PLATFORM_SET.has(handle.platform)) {
       continue;
@@ -863,7 +779,6 @@ function collectEntityProfiles(
       avatarUrl: fallbackAvatarUrl,
     });
   }
-
   for (const platform of KNOWN_PLATFORM_KEYS) {
     const platformMetadata = asRecord(metadata?.[platform]);
     if (!platformMetadata) {
@@ -899,12 +814,10 @@ function collectEntityProfiles(
         fallbackAvatarUrl,
     });
   }
-
   return Array.from(profiles.values()).sort((left, right) =>
     left.source.localeCompare(right.source),
   );
 }
-
 function buildEntityContext(
   entityId: UUID,
   entity: Entity | null,
@@ -930,7 +843,6 @@ function buildEntityContext(
   const websites = handles
     .filter((handle) => handle.platform === "website")
     .map((handle) => handle.handle);
-
   const customFields = contact?.customFields;
   for (const email of extractCustomFieldStrings(customFields, [
     "email",
@@ -953,9 +865,7 @@ function buildEntityContext(
   ])) {
     pushUnique(websites, website);
   }
-
   const profiles = collectEntityProfiles(entityId, entity, handles);
-
   return {
     entityId,
     entity,
@@ -968,11 +878,12 @@ function buildEntityContext(
     websites: uniqueSorted(websites),
   };
 }
-
 // A rejected read must not let the tracked build finish before sibling reads.
 async function awaitGraphReads<T extends readonly unknown[]>(
   reads: T,
-): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> {
+): Promise<{
+  -readonly [P in keyof T]: Awaited<T[P]>;
+}> {
   try {
     return await Promise.all(reads);
   } catch (error) {
@@ -981,14 +892,12 @@ async function awaitGraphReads<T extends readonly unknown[]>(
     throw error;
   }
 }
-
 async function collectWorkspaceEntityIds(
   runtime: IAgentRuntime,
   relationshipsService: RelationshipsServiceLike,
   rooms: Room[],
 ): Promise<UUID[]> {
   const entityIds = new Set<UUID>();
-
   if (typeof relationshipsService.searchContacts === "function") {
     const contacts = await relationshipsService.searchContacts({});
     for (const contact of contacts) {
@@ -997,7 +906,6 @@ async function collectWorkspaceEntityIds(
       }
     }
   }
-
   if (rooms.length > 0) {
     const roomEntities = await runtime.getEntitiesForRooms(
       rooms.map((room) => room.id),
@@ -1010,7 +918,6 @@ async function collectWorkspaceEntityIds(
       }
     }
   }
-
   if (entityIds.size > 0) {
     const relationships = await runtime.getRelationships({
       entityIds: Array.from(entityIds),
@@ -1024,10 +931,8 @@ async function collectWorkspaceEntityIds(
       }
     }
   }
-
   return Array.from(entityIds);
 }
-
 async function getWorkspaceRooms(runtime: IAgentRuntime): Promise<Room[]> {
   const worlds = await runtime.getAllWorlds();
   if (worlds.length === 0) {
@@ -1038,7 +943,6 @@ async function getWorkspaceRooms(runtime: IAgentRuntime): Promise<Room[]> {
     5000,
   );
 }
-
 function buildClusters(
   entityIds: UUID[],
   relationships: Relationship[],
@@ -1049,7 +953,6 @@ function buildClusters(
   for (const entityId of entityIds) {
     parent.set(entityId, entityId);
   }
-
   const find = (entityId: UUID): UUID => {
     const current = parent.get(entityId) ?? entityId;
     if (current === entityId) {
@@ -1059,7 +962,6 @@ function buildClusters(
     parent.set(entityId, root);
     return root;
   };
-
   const union = (left: UUID, right: UUID) => {
     const leftRoot = find(left);
     const rightRoot = find(right);
@@ -1067,7 +969,6 @@ function buildClusters(
       parent.set(rightRoot, leftRoot);
     }
   };
-
   for (const relationship of relationships) {
     if (
       isConfirmedIdentityLink(relationship) &&
@@ -1077,7 +978,6 @@ function buildClusters(
       union(relationship.sourceEntityId, relationship.targetEntityId);
     }
   }
-
   const entityIdsByHandle = new Map<string, Set<UUID>>();
   for (const entityId of entityIds) {
     const context = contexts.get(entityId);
@@ -1094,7 +994,6 @@ function buildClusters(
       entityIdsByHandle.set(key, members);
     }
   }
-
   for (const members of entityIdsByHandle.values()) {
     const ids = Array.from(members.values());
     if (ids.length < 2) {
@@ -1108,7 +1007,6 @@ function buildClusters(
       union(anchor, entityId);
     }
   }
-
   const grouped = new Map<UUID, UUID[]>();
   for (const entityId of entityIds) {
     const root = find(entityId);
@@ -1117,7 +1015,6 @@ function buildClusters(
     }
     grouped.get(root)?.push(entityId);
   }
-
   const scoreEntity = (entityId: UUID): number => {
     const context = contexts.get(entityId);
     if (!context) {
@@ -1133,7 +1030,6 @@ function buildClusters(
       context.websites.length
     );
   };
-
   const clusters: ClusterRecord[] = [];
   for (const memberEntityIds of grouped.values()) {
     const sortedMembers = [...memberEntityIds].sort((left, right) => {
@@ -1167,7 +1063,6 @@ function buildClusters(
   }
   return clusters;
 }
-
 async function countFacts(
   runtime: IAgentRuntime,
   entityIds: UUID[],
@@ -1184,14 +1079,16 @@ async function countFacts(
   );
   return counts;
 }
-
 function buildSummaries(
   clusters: ClusterRecord[],
   contexts: Map<UUID, EntityContext>,
   factCounts: Map<UUID, number>,
   ownerInfo: {
     ownerEntityId: UUID | null;
-    ownerExternalIdentity: { source: string; userId: string } | null;
+    ownerExternalIdentity: {
+      source: string;
+      userId: string;
+    } | null;
     configuredOwnerName: string | null;
   },
 ): RelationshipsPersonSummary[] {
@@ -1211,7 +1108,6 @@ function buildSummaries(
     const isOwner =
       typeof ownerInfo.ownerEntityId === "string" &&
       cluster.memberEntityIds.includes(ownerInfo.ownerEntityId);
-
     for (const memberEntityId of cluster.memberEntityIds) {
       const context = contexts.get(memberEntityId);
       if (!context) {
@@ -1255,7 +1151,6 @@ function buildSummaries(
         lastInteractionAt,
         asString(context.contact?.lastModified) ?? undefined,
       );
-
       identities.push({
         entityId: memberEntityId,
         names,
@@ -1265,7 +1160,6 @@ function buildSummaries(
         ),
       });
     }
-
     const primaryContext = contexts.get(cluster.primaryEntityId);
     const fallbackDisplayName =
       preferredContactLabel(primaryContext?.contact ?? null) ??
@@ -1278,9 +1172,7 @@ function buildSummaries(
       isOwner && ownerInfo.configuredOwnerName
         ? ownerInfo.configuredOwnerName
         : fallbackDisplayName;
-
     aliases.delete(displayName);
-
     if (isOwner && ownerInfo.ownerEntityId) {
       upsertProfile(profiles, {
         entityId: ownerInfo.ownerEntityId,
@@ -1299,7 +1191,6 @@ function buildSummaries(
         });
       }
     }
-
     const sortedProfiles = Array.from(profiles.values()).sort((left, right) => {
       if ((left.canonical ?? false) !== (right.canonical ?? false)) {
         return left.canonical ? -1 : 1;
@@ -1311,7 +1202,6 @@ function buildSummaries(
     for (const profile of sortedProfiles) {
       platforms.add(normalizeProfileSource(profile.source));
     }
-
     return {
       groupId: cluster.groupId,
       primaryEntityId: cluster.primaryEntityId,
@@ -1334,13 +1224,11 @@ function buildSummaries(
     };
   });
 }
-
 function graphEdgeKey(sourcePersonId: UUID, targetPersonId: UUID): string {
   return sourcePersonId.localeCompare(targetPersonId) <= 0
     ? `${sourcePersonId}:${targetPersonId}`
     : `${targetPersonId}:${sourcePersonId}`;
 }
-
 function upsertGraphEdgeAccumulator(
   map: Map<string, GraphEdgeAccumulator>,
   sourcePersonId: UUID,
@@ -1368,7 +1256,6 @@ function upsertGraphEdgeAccumulator(
   map.set(key, created);
   return created;
 }
-
 function addGraphEdgeSample(
   map: Map<string, GraphEdgeAccumulator>,
   sample: GraphEdgeSample,
@@ -1398,7 +1285,6 @@ function addGraphEdgeSample(
     accumulator.rawRelationshipIds.add(rawRelationshipId);
   }
 }
-
 function finalizeGraphEdges(
   accumulators: Iterable<GraphEdgeAccumulator>,
   peopleByGroupId: Map<UUID, RelationshipsPersonSummary>,
@@ -1430,7 +1316,6 @@ function finalizeGraphEdges(
     };
   });
 }
-
 function buildRelationshipEdgeMap(
   relationships: Relationship[],
   clusterByEntityId: Map<UUID, ClusterRecord>,
@@ -1440,7 +1325,6 @@ function buildRelationshipEdgeMap(
     if (isIdentityLink(relationship)) {
       continue;
     }
-
     const sourceCluster = clusterByEntityId.get(relationship.sourceEntityId);
     const targetCluster = clusterByEntityId.get(relationship.targetEntityId);
     if (
@@ -1463,7 +1347,6 @@ function buildRelationshipEdgeMap(
   }
   return edges;
 }
-
 async function buildConversationEdgeMap(
   runtime: IAgentRuntime,
   rooms: Room[],
@@ -1472,7 +1355,6 @@ async function buildConversationEdgeMap(
   const edges = new Map<string, GraphEdgeAccumulator>();
   const messageCountsByGroupId = new Map<UUID, number>();
   const batchSize = 24;
-
   for (let index = 0; index < rooms.length; index += batchSize) {
     const roomBatch = rooms.slice(index, index + batchSize);
     await awaitGraphReads(
@@ -1484,7 +1366,6 @@ async function buildConversationEdgeMap(
         if (messages.length < 2) {
           return;
         }
-
         const relevantMessages = [...messages]
           .filter(
             (message) =>
@@ -1497,7 +1378,6 @@ async function buildConversationEdgeMap(
         if (relevantMessages.length < 2) {
           return;
         }
-
         const messageClusterById = new Map<UUID, UUID>();
         const activeClusterIds = new Set<UUID>();
         for (const message of relevantMessages) {
@@ -1520,7 +1400,6 @@ async function buildConversationEdgeMap(
         if (activeClusterIds.size < 2) {
           return;
         }
-
         const pairStats = new Map<
           string,
           {
@@ -1531,7 +1410,6 @@ async function buildConversationEdgeMap(
             lastInteractionAt?: string;
           }
         >();
-
         const touchPair = (
           left: UUID,
           right: UUID,
@@ -1566,7 +1444,6 @@ async function buildConversationEdgeMap(
             lastInteractionAt,
           );
         };
-
         for (
           let messageIndex = 1;
           messageIndex < relevantMessages.length;
@@ -1596,7 +1473,6 @@ async function buildConversationEdgeMap(
             isoFromTimestamp(currentMessage.createdAt),
           );
         }
-
         for (const message of relevantMessages) {
           if (!message.entityId || !message.content.inReplyTo) {
             continue;
@@ -1615,7 +1491,6 @@ async function buildConversationEdgeMap(
             isoFromTimestamp(message.createdAt),
           );
         }
-
         const roomType = normalizeRoomType(room);
         const roomRelationshipTypes =
           activeClusterIds.size <= 2 ||
@@ -1624,7 +1499,6 @@ async function buildConversationEdgeMap(
           roomType === "private"
             ? ["conversation", "direct_exchange"]
             : ["conversation", "shared_room"];
-
         for (const pair of pairStats.values()) {
           const interactionCount = pair.adjacencyCount + pair.replyCount * 2;
           if (interactionCount <= 0) {
@@ -1652,13 +1526,11 @@ async function buildConversationEdgeMap(
       }),
     );
   }
-
   return {
     edgeMap: edges,
     messageCountsByGroupId,
   };
 }
-
 function countRelationshipIndicators(
   edges: RelationshipsGraphEdge[],
 ): Map<UUID, number> {
@@ -1669,7 +1541,6 @@ function countRelationshipIndicators(
   }
   return counts;
 }
-
 function isMeaningfulRelationshipIndicator(
   edge: RelationshipsGraphEdge,
 ): boolean {
@@ -1681,10 +1552,8 @@ function isMeaningfulRelationshipIndicator(
         relationshipType === "conversation" ||
         relationshipType === "shared_room",
     );
-
   return !sharedRoomOnly || edge.interactionCount > 1;
 }
-
 function filterGraphByRelevance(
   summaries: RelationshipsPersonSummary[],
   edges: RelationshipsGraphEdge[],
@@ -1716,14 +1585,12 @@ function filterGraphByRelevance(
         visibleGroupIds: ownerGroupIds,
       };
     }
-
     return {
       summaries: [],
       edges: [],
       visibleGroupIds: new Set(),
     };
   }
-
   // Keep only people who have actually spoken and are connected to another
   // active poster through an explicit or conversation-derived edge.
   const messageBackedEdges = edges.filter(
@@ -1746,7 +1613,6 @@ function filterGraphByRelevance(
       )
       .map((summary) => summary.groupId),
   );
-
   return {
     summaries: summaries.filter((summary) =>
       visibleGroupIds.has(summary.groupId),
@@ -1759,7 +1625,6 @@ function filterGraphByRelevance(
     visibleGroupIds,
   };
 }
-
 function graphViewForScope(
   summaries: RelationshipsPersonSummary[],
   edges: RelationshipsGraphEdge[],
@@ -1773,14 +1638,12 @@ function graphViewForScope(
   if (scope === "relevant") {
     return filterGraphByRelevance(summaries, edges, messageCountsByGroupId);
   }
-
   return {
     summaries,
     edges,
     visibleGroupIds: new Set(summaries.map((summary) => summary.groupId)),
   };
 }
-
 function matchesQuery(
   summary: RelationshipsPersonSummary,
   query: RelationshipsGraphQuery,
@@ -1789,12 +1652,10 @@ function matchesQuery(
   if (platform && !summary.platforms.includes(platform)) {
     return false;
   }
-
   const search = asString(query.search)?.toLowerCase();
   if (!search) {
     return true;
   }
-
   const haystack = [
     summary.displayName,
     summary.primaryEntityId,
@@ -1817,17 +1678,14 @@ function matchesQuery(
   ]
     .join("\n")
     .toLowerCase();
-
   return haystack.includes(search);
 }
-
 function applyRelationshipCounts(
   summaries: RelationshipsPersonSummary[],
   edges: RelationshipsGraphEdge[],
 ): RelationshipsPersonSummary[] {
   const counts = new Map<UUID, number>();
   const lastInteraction = new Map<UUID, string | undefined>();
-
   for (const edge of edges) {
     counts.set(edge.sourcePersonId, (counts.get(edge.sourcePersonId) ?? 0) + 1);
     counts.set(edge.targetPersonId, (counts.get(edge.targetPersonId) ?? 0) + 1);
@@ -1846,7 +1704,6 @@ function applyRelationshipCounts(
       ),
     );
   }
-
   return summaries.map((summary) => ({
     ...summary,
     relationshipCount: counts.get(summary.groupId) ?? 0,
@@ -1856,7 +1713,6 @@ function applyRelationshipCounts(
     ),
   }));
 }
-
 async function buildFacts(
   runtime: IAgentRuntime,
   contexts: Map<UUID, EntityContext>,
@@ -1868,7 +1724,6 @@ async function buildFacts(
       if (!context) {
         return [];
       }
-
       const facts: RelationshipsPersonFact[] = [];
       for (const email of context.emails) {
         facts.push({
@@ -1900,7 +1755,6 @@ async function buildFacts(
           updatedAt: asString(context.contact?.lastModified) ?? undefined,
         });
       }
-
       const memories = await runtime.getMemories({
         tableName: "facts",
         entityId,
@@ -1927,12 +1781,10 @@ async function buildFacts(
           extractedInformation,
         });
       }
-
       return facts;
     }),
   );
   const facts = factGroups.flat();
-
   return facts.sort((left, right) => {
     const leftTime = left.updatedAt ? Date.parse(left.updatedAt) : 0;
     const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : 0;
@@ -1942,7 +1794,6 @@ async function buildFacts(
     return left.id.localeCompare(right.id);
   });
 }
-
 async function buildRecentConversations(
   runtime: IAgentRuntime,
   memberEntityIds: UUID[],
@@ -1954,7 +1805,6 @@ async function buildRecentConversations(
   const rooms = roomIds.length > 0 ? await runtime.getRoomsByIds(roomIds) : [];
   const roomNameById = new Map(rooms.map((room) => [room.id, room.name]));
   const entityNameCache = new Map<UUID, string>();
-
   const resolveSpeaker = async (entityId?: UUID): Promise<string> => {
     if (!entityId) {
       return "Unknown";
@@ -1976,7 +1826,6 @@ async function buildRecentConversations(
     entityNameCache.set(entityId, name);
     return name;
   };
-
   const snippets = await Promise.all(
     roomIds.map(
       async (roomId): Promise<RelationshipsConversationSnippet | null> => {
@@ -2009,7 +1858,6 @@ async function buildRecentConversations(
       },
     ),
   );
-
   return snippets
     .filter(
       (snippet): snippet is RelationshipsConversationSnippet =>
@@ -2028,7 +1876,6 @@ async function buildRecentConversations(
       return left.roomId.localeCompare(right.roomId);
     });
 }
-
 async function buildRelevantMemories(
   runtime: IAgentRuntime,
   memberEntityIds: UUID[],
@@ -2038,7 +1885,6 @@ async function buildRelevantMemories(
   if (memberEntityIds.length === 0) {
     return [];
   }
-
   const batches = await Promise.all(
     memberEntityIds.map((entityId) =>
       runtime.getMemories({
@@ -2061,7 +1907,6 @@ async function buildRelevantMemories(
   );
   const rooms = roomIds.length > 0 ? await runtime.getRoomsByIds(roomIds) : [];
   const roomNameById = new Map(rooms.map((room) => [room.id, room.name]));
-
   return recentMessages
     .map((memory) => {
       const entityId =
@@ -2072,7 +1917,6 @@ async function buildRelevantMemories(
         (entityNames(context?.entity ?? null)[0] ??
           context?.handles[0]?.handle ??
           entityId);
-
       return {
         id:
           memory.id ??
@@ -2099,7 +1943,6 @@ async function buildRelevantMemories(
       return left.id.localeCompare(right.id);
     });
 }
-
 async function buildUserPersonalityPreferences(
   runtime: IAgentRuntime,
   memberEntityIds: UUID[],
@@ -2107,7 +1950,6 @@ async function buildUserPersonalityPreferences(
   if (memberEntityIds.length === 0) {
     return [];
   }
-
   const batches = await Promise.all(
     memberEntityIds.map((entityId) =>
       runtime.getMemories({
@@ -2121,7 +1963,6 @@ async function buildUserPersonalityPreferences(
   );
   const preferences: RelationshipsUserPersonalityPreference[] = [];
   const seen = new Set<string>();
-
   for (const memory of batches.flat()) {
     const entityId =
       typeof memory.entityId === "string" ? memory.entityId : null;
@@ -2145,7 +1986,6 @@ async function buildUserPersonalityPreferences(
       createdAt: isoFromTimestamp(memory.createdAt),
     });
   }
-
   return preferences.sort((left, right) => {
     const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
     const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
@@ -2155,7 +1995,6 @@ async function buildUserPersonalityPreferences(
     return left.id.localeCompare(right.id);
   });
 }
-
 async function buildGraphModel(
   runtime: IAgentRuntime,
   relationshipsService: RelationshipsServiceLike,
@@ -2181,7 +2020,6 @@ async function buildGraphModel(
     (await resolvers.resolveOwnerExternalIdentity?.(runtime)) ?? null;
   const configuredOwnerName = await resolvers.fetchConfiguredOwnerName();
   const entityContexts = new Map<UUID, EntityContext>();
-
   await awaitGraphReads(
     entityIds.map(async (entityId) => {
       const [entity, contact] = await awaitGraphReads([
@@ -2196,7 +2034,6 @@ async function buildGraphModel(
       );
     }),
   );
-
   const relationships =
     entityIds.length > 0 ? await runtime.getRelationships({ entityIds }) : [];
   const factCounts = await countFacts(runtime, entityIds);
@@ -2215,7 +2052,6 @@ async function buildGraphModel(
       clusterByEntityId.set(entityId, cluster);
     }
   }
-
   const summaries = buildSummaries(clustersList, entityContexts, factCounts, {
     ownerEntityId,
     ownerExternalIdentity,
@@ -2253,7 +2089,6 @@ async function buildGraphModel(
     });
   }
   const edges = finalizeGraphEdges(explicitEdgeMap.values(), peopleByGroupId);
-
   return {
     summaries,
     edges,
@@ -2263,7 +2098,6 @@ async function buildGraphModel(
     messageCountsByGroupId: conversationGraph.messageCountsByGroupId,
   };
 }
-
 /**
  * TTL cache for the expensive graph model build. Expiry serves the stale
  * snapshot while a single-flight rebuild refreshes it in the background (see
@@ -2271,17 +2105,17 @@ async function buildGraphModel(
  * latency. Five minutes matches how fast a human-scale contact graph actually
  * changes; merge mutations still invalidate immediately.
  */
-const MODEL_CACHE_TTL_MS = 300_000;
-
+const MODEL_CACHE_TTL_MS = 300000;
 type CachedModel = Awaited<ReturnType<typeof buildGraphModel>>;
-type ModelCache = { model: CachedModel; timestamp: number };
-
+type ModelCache = {
+  model: CachedModel;
+  timestamp: number;
+};
 // Runtime ownership survives graph-instance replacement and cache invalidation.
 const pendingGraphBuilds = new WeakMap<
   IAgentRuntime,
   Set<Promise<CachedModel>>
 >();
-
 /** Drain graph database reads before the owning runtime closes its adapter. */
 export async function drainRelationshipsGraphBuilds(
   runtime: IAgentRuntime,
@@ -2302,22 +2136,20 @@ export async function drainRelationshipsGraphBuilds(
       context: { failedBuilds: failures.length },
     });
 }
-
 export interface GraphResolvers {
-  resolveOwnerExternalIdentity?: (
-    runtime: IAgentRuntime,
-  ) => Promise<{ source: string; userId: string } | null>;
+  resolveOwnerExternalIdentity?: (runtime: IAgentRuntime) => Promise<{
+    source: string;
+    userId: string;
+  } | null>;
   resolveOwnerEntityId: (
     runtime: IAgentRuntime,
   ) => Promise<UUID | string | null>;
   fetchConfiguredOwnerName: () => Promise<string | null>;
 }
-
 const DEFAULT_GRAPH_RESOLVERS: GraphResolvers = {
   resolveOwnerEntityId: async () => null,
   fetchConfiguredOwnerName: async () => null,
 };
-
 export function createNativeRelationshipsGraphService(
   runtime: IAgentRuntime,
   relationshipsService: RelationshipsServiceLike,
@@ -2325,7 +2157,6 @@ export function createNativeRelationshipsGraphService(
 ): RelationshipsGraphService {
   let modelCache: ModelCache | null = null;
   let modelBuildPromise: Promise<CachedModel> | null = null;
-
   function getCachedModel(): Promise<CachedModel> {
     const now = Date.now();
     if (modelCache && now - modelCache.timestamp < MODEL_CACHE_TTL_MS) {
@@ -2366,9 +2197,7 @@ export function createNativeRelationshipsGraphService(
           // stale/prewarm callers retain this rejection observer.
           ownedBuilds.delete(build);
           logger.warn(
-            `[RelationshipsGraph] Graph model rebuild failed; last good snapshot retained: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `[RelationshipsGraph] Graph model rebuild failed; last good snapshot retained: ${err instanceof Error ? err.message : String(err)}`,
           );
         },
       );
@@ -2381,12 +2210,10 @@ export function createNativeRelationshipsGraphService(
     }
     return modelBuildPromise;
   }
-
   function invalidateModelCache(): void {
     modelCache = null;
     modelBuildPromise = null;
   }
-
   /**
    * Fire-and-forget first-build of the graph model. Does not await; errors
    * are already observed by the shared getCachedModel catch handler.
@@ -2395,7 +2222,6 @@ export function createNativeRelationshipsGraphService(
     if (modelCache || modelBuildPromise) return;
     void getCachedModel();
   }
-
   function applyOwnerName(
     summaries: RelationshipsPersonSummary[],
     ownerName: string | null,
@@ -2405,7 +2231,6 @@ export function createNativeRelationshipsGraphService(
       summary.isOwner ? { ...summary, displayName: ownerName } : summary,
     );
   }
-
   return {
     prewarmGraphModel,
     async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
@@ -2448,13 +2273,11 @@ export function createNativeRelationshipsGraphService(
           visibleGroupIds.has(edge.sourcePersonId) &&
           visibleGroupIds.has(edge.targetPersonId),
       );
-
       const candidateMerges = (
         typeof relationshipsService.getCandidateMerges === "function"
           ? await relationshipsService.getCandidateMerges()
           : []
       ) as RelationshipsMergeCandidate[];
-
       return {
         people: visibleSummaries,
         relationships: visibleEdges,
@@ -2469,7 +2292,6 @@ export function createNativeRelationshipsGraphService(
         candidateMerges,
       };
     },
-
     async getPersonDetail(
       primaryEntityId: UUID,
     ): Promise<RelationshipsPersonDetail | null> {
@@ -2486,7 +2308,6 @@ export function createNativeRelationshipsGraphService(
       if (!cluster) {
         return null;
       }
-
       const summary = applyOwnerName(
         applyRelationshipCounts(
           model.summaries.filter((entry) => entry.groupId === cluster.groupId),
@@ -2501,7 +2322,6 @@ export function createNativeRelationshipsGraphService(
       if (!summary) {
         return null;
       }
-
       const memberSet = new Set(cluster.memberEntityIds);
       const identityEdges = model.identityRelationships
         .filter(
@@ -2516,7 +2336,6 @@ export function createNativeRelationshipsGraphService(
           confidence: relationshipConfidence(relationship),
           status: relationshipStatus(relationship),
         }));
-
       const [
         facts,
         recentConversations,
@@ -2537,7 +2356,6 @@ export function createNativeRelationshipsGraphService(
         ),
         buildUserPersonalityPreferences(runtime, cluster.memberEntityIds),
       ]);
-
       return {
         ...summary,
         facts,
@@ -2554,14 +2372,12 @@ export function createNativeRelationshipsGraphService(
         userPersonalityPreferences,
       };
     },
-
     async getCandidateMerges(): Promise<RelationshipsMergeCandidate[]> {
       if (typeof relationshipsService.getCandidateMerges !== "function") {
         return [];
       }
       return (await relationshipsService.getCandidateMerges()) as RelationshipsMergeCandidate[];
     },
-
     async acceptMerge(candidateId: UUID): Promise<void> {
       if (typeof relationshipsService.acceptMerge !== "function") {
         throw new Error(
@@ -2571,7 +2387,6 @@ export function createNativeRelationshipsGraphService(
       await relationshipsService.acceptMerge(candidateId);
       invalidateModelCache();
     },
-
     async rejectMerge(candidateId: UUID): Promise<void> {
       if (typeof relationshipsService.rejectMerge !== "function") {
         throw new Error(
@@ -2581,7 +2396,6 @@ export function createNativeRelationshipsGraphService(
       await relationshipsService.rejectMerge(candidateId);
       invalidateModelCache();
     },
-
     async proposeMerge(
       entityA: UUID,
       entityB: UUID,
@@ -2602,7 +2416,6 @@ export function createNativeRelationshipsGraphService(
     },
   };
 }
-
 // ---------------------------------------------------------------------------
 // Cluster-aware memory helpers
 // ---------------------------------------------------------------------------
@@ -2614,7 +2427,6 @@ export function createNativeRelationshipsGraphService(
 // RelationshipsService (authoritative for cluster membership) and then
 // dispatch getMemories / searchMemories once per member, merging and
 // deduplicating the results.
-
 export type ClusterMemoriesQuery = {
   tableName: string;
   roomId?: UUID;
@@ -2629,7 +2441,6 @@ export type ClusterMemoriesQuery = {
   orderBy?: "createdAt";
   orderDirection?: "asc" | "desc";
 };
-
 export type ClusterSearchQuery = {
   tableName: string;
   embedding: number[];
@@ -2640,15 +2451,15 @@ export type ClusterSearchQuery = {
   roomId?: UUID;
   worldId?: UUID;
 };
-
 type ClusterResolver = {
   getMemberEntityIds: (primaryEntityId: UUID) => Promise<UUID[]>;
 };
-
 function getClusterResolver(runtime: IAgentRuntime): ClusterResolver | null {
   const service = runtime.getService("relationships");
   if (!service) return null;
-  const candidate = service as { getMemberEntityIds?: unknown };
+  const candidate = service as {
+    getMemberEntityIds?: unknown;
+  };
   if (typeof candidate.getMemberEntityIds !== "function") {
     return null;
   }
@@ -2656,7 +2467,6 @@ function getClusterResolver(runtime: IAgentRuntime): ClusterResolver | null {
     getMemberEntityIds: candidate.getMemberEntityIds.bind(service),
   };
 }
-
 function dedupeMemoriesById(memories: Memory[]): Memory[] {
   const seen = new Set<string>();
   const unique: Memory[] = [];
@@ -2672,7 +2482,6 @@ function dedupeMemoriesById(memories: Memory[]): Memory[] {
   }
   return unique;
 }
-
 /**
  * Return memories authored by any member of the identity cluster rooted at
  * `primaryEntityId`. If the RelationshipsService cannot be resolved (no
@@ -2690,7 +2499,6 @@ export async function getMemoriesForCluster(
     ? await resolver.getMemberEntityIds(primaryEntityId)
     : [primaryEntityId];
   const ids = memberIds.length > 0 ? memberIds : [primaryEntityId];
-
   const results = await Promise.all(
     ids.map((entityId) =>
       runtime.getMemories({
@@ -2702,7 +2510,6 @@ export async function getMemoriesForCluster(
   const flat = results.flat();
   return dedupeMemoriesById(flat);
 }
-
 /**
  * Semantic-search variant of {@link getMemoriesForCluster}. Runs one
  * `searchMemories` per cluster member with the same embedding/query
@@ -2718,7 +2525,6 @@ export async function searchMemoriesForCluster(
     ? await resolver.getMemberEntityIds(primaryEntityId)
     : [primaryEntityId];
   const ids = memberIds.length > 0 ? memberIds : [primaryEntityId];
-
   const results = await Promise.all(
     ids.map((entityId) =>
       runtime.searchMemories({

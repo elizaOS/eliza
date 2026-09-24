@@ -1,41 +1,29 @@
-/** Keep inactive array fields required, without advertising operations that the
- * field registry has already marked N/A for this model call. */
+/** Omit inactive fields from a model call while preserving
+ * registered schemas and custom contracts for later turns. */
 import type { JSONSchema } from "@elizaos/core";
 
-export function withInactiveArrayFields(
+export function withoutInactiveFields(
   schema: JSONSchema,
   skippedFields: readonly string[],
 ): JSONSchema {
   let properties = schema.properties;
   for (const name of skippedFields) {
     const field = properties?.[name];
-    // Only plain array contracts whose empty value is unambiguously valid.
-    // Custom/composed contracts retain their complete schema.
-    if (
-      field?.type !== "array" ||
-      Object.keys(field).some(
-        (key) =>
-          ![
-            "type",
-            "items",
-            "description",
-            "minItems",
-            "maxItems",
-            "uniqueItems",
-          ].includes(key),
-      ) ||
-      (typeof field.minItems === "number" && field.minItems > 0)
-    )
-      continue;
-    properties = {
-      ...properties,
-      [name]: {
-        type: "array",
-        items: { type: "string" },
-        maxItems: 0,
-        description: "Inactive this turn; return [].",
-      },
-    };
+    if (!field) continue;
+    properties = { ...properties };
+    delete properties[name];
   }
-  return properties === schema.properties ? schema : { ...schema, properties };
+  return properties === schema.properties
+    ? schema
+    : {
+        ...schema,
+        properties,
+        ...(schema.required
+          ? {
+              required: schema.required.filter(
+                (name) => properties && name in properties,
+              ),
+            }
+          : {}),
+      };
 }

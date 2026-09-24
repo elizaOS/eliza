@@ -502,7 +502,7 @@ describe("TASKS create lane planner integration", () => {
           agents: [
             "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
             "Update packages/core/src/runtime.ts",
-            "Update packages/shared/src/contracts/chat.ts",
+            "Update packages/core/src/contracts/chat.ts",
           ].join(" | "),
         },
       },
@@ -548,7 +548,7 @@ describe("TASKS create lane planner integration", () => {
           agents: [
             "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
             "Update packages/core/src/runtime.ts",
-            "Update packages/shared/src/contracts/chat.ts",
+            "Update packages/core/src/contracts/chat.ts",
           ].join(" | "),
         },
       },

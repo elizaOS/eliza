@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { findPurchasedSubscriptionContract } from "../../db/repositories/subscription-purchased-binding";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { renewalInvoiceSchema, renewalUnavailable } from "./stripe-paid-renewal-validation";
 import {
   resolveSubscriptionPlanDefinition,
@@ -17,6 +18,7 @@ export async function retrievePaidRenewalObjects(
   invoiceId: string,
   stripe: Stripe,
 ) {
+  assertOrganizationSubscription(source);
   const invoice = await stripe.invoices.retrieve(invoiceId);
   const invoiceParsed = renewalInvoiceSchema.safeParse(invoice);
   if (!invoiceParsed.success) renewalUnavailable("unsupported_canonical_invoice");

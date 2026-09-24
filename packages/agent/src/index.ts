@@ -8,10 +8,10 @@
  * than `export *` to dodge duplicate-symbol (TS2308) collisions and to keep
  * heavy plugins lazy-loaded — read the inline notes before widening any of them.
  */
-import type {
-  AgentCloudBillingRouteHandler,
-  AgentCloudCompatRouteHandler,
-  AgentCloudRouteHandler,
+import {
+  type AgentCloudBillingRouteHandler,
+  type AgentCloudCompatRouteHandler,
+  type AgentCloudRouteHandler,
 } from "./api/cloud-route-contracts.ts";
 
 export {
@@ -21,14 +21,12 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/api/http-helpers";
 export interface CloudConfigLike {
   apiKey?: string | null;
   baseUrl?: string | null;
   [key: string]: unknown;
 }
-
 type CloudUrlValidator = (value: string) => Promise<string | null>;
 type ElizaCloudRoutesModule = {
   handleCloudBillingRoute: AgentCloudBillingRouteHandler;
@@ -36,32 +34,27 @@ type ElizaCloudRoutesModule = {
   handleCloudRoute: AgentCloudRouteHandler;
   validateCloudBaseUrl: CloudUrlValidator;
 };
-
 async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
   return import(
     "@elizaos/plugin-elizacloud"
   ) as Promise<ElizaCloudRoutesModule>;
 }
-
 export const handleCloudBillingRoute: AgentCloudBillingRouteHandler = async (
   ...args
 ) => {
   const { handleCloudBillingRoute } = await loadElizaCloudRoutes();
   return handleCloudBillingRoute(...args);
 };
-
 export const handleCloudCompatRoute: AgentCloudCompatRouteHandler = async (
   ...args
 ) => {
   const { handleCloudCompatRoute } = await loadElizaCloudRoutes();
   return handleCloudCompatRoute(...args);
 };
-
 export const handleCloudRoute: AgentCloudRouteHandler = async (...args) => {
   const { handleCloudRoute } = await loadElizaCloudRoutes();
   return handleCloudRoute(...args);
 };
-
 export async function validateCloudBaseUrl(
   value: string,
 ): Promise<string | null> {
@@ -69,10 +62,16 @@ export async function validateCloudBaseUrl(
   return validateCloudBaseUrl(value);
 }
 export * from "@elizaos/auth/auth";
-export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
+export { CONNECTOR_PLUGINS } from "@elizaos/core/config/plugin-auto-enable-engine";
+export { type ElizaConfig, type RolesConfig } from "@elizaos/core/config/types";
+export { type ReleaseChannel } from "@elizaos/core/contracts/config";
 export {
-  CONNECTOR_PLUGINS,
-  normalizeCloudSiteUrl,
+  RESTART_EXIT_CODE,
+  type RestartHandler,
+  requestRestart,
+  setRestartHandler,
+} from "@elizaos/core/restart";
+export {
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
@@ -80,12 +79,11 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
-  RESTART_EXIT_CODE,
-  type RestartHandler,
-  requestRestart,
+} from "@elizaos/core/utils/number-parsing";
+export {
+  normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-  setRestartHandler,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 export * from "./actions/index.ts";
 export * from "./api/config-env.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
@@ -173,7 +171,7 @@ export {
 } from "./api/server-helpers.ts";
 // Loopback-trust + token helpers. These come from the canonical
 // `./api/server-helpers-auth.js` (the same module the live server uses), not a
-// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/shared`
+// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/core`
 // and are not re-surfaced here; the `PluginConfigMutationRejection` type is
 // exported through `./api/server.js`.
 export {
@@ -217,9 +215,9 @@ export {
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
 // `contracts/awareness.js` preserves the agent-owned import surface by
-// re-exporting the canonical awareness contracts from `@elizaos/shared`.
+// re-exporting the canonical awareness contracts from `@elizaos/core`.
 // Config media/custom-action contract types are exported from `./config/index.js`
-// (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
+// (via `@elizaos/core`); do not re-export `./contracts/config.js` here or
 // `tsc` reports duplicate symbol errors (TS2308).
 export * from "./contracts/awareness.ts";
 export * from "./diagnostics/integration-observability.ts";

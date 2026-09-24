@@ -8,28 +8,24 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 // On every frontend host, the
 // browser talks to the Cloud API over same-origin `/api/*` and `/steward/*`
 // paths. This module forwards those paths to the Workers API so the Steward
 // cookie/JWT stays first-party and no CORS preflight is needed.
-
 const DEFAULT_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
 const PREVIEW_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
-
 export interface PagesProxyEnv {
   API_UPSTREAM?: string;
   API_WORKER?: {
     fetch(request: Request): Promise<Response>;
   };
 }
-
 export interface PagesProxyContext {
   request: Request;
   env: PagesProxyEnv;
 }
-
 export function resolveApiWorkerTarget(
   requestUrl: string,
   env: PagesProxyEnv,
@@ -41,10 +37,8 @@ export function resolveApiWorkerTarget(
       ? PREVIEW_UPSTREAM
       : DEFAULT_UPSTREAM;
   const upstream = (env.API_UPSTREAM ?? fallbackUpstream).replace(/\/+$/, "");
-
   return `${upstream}${incoming.pathname}${incoming.search}`;
 }
-
 export function proxyToApiWorker(
   context: PagesProxyContext,
 ): Promise<Response> {
@@ -52,7 +46,6 @@ export function proxyToApiWorker(
   const target = resolveApiWorkerTarget(context.request.url, context.env);
   const method = context.request.method.toUpperCase();
   const headers = new Headers(context.request.headers);
-
   // Browsers omit Origin on same-origin GETs, including Steward's wallet nonce
   // request. The service binding changes the request URL to api.eliza.app, so
   // the API Worker cannot recover the browser host after this boundary. Stamp
@@ -66,7 +59,6 @@ export function proxyToApiWorker(
   ) {
     headers.set("origin", incoming.origin);
   }
-
   const upstreamRequest = new Request(target, {
     method,
     headers,
@@ -74,7 +66,6 @@ export function proxyToApiWorker(
       method === "GET" || method === "HEAD" ? undefined : context.request.body,
     redirect: "manual",
   });
-
   // A Pages Function and an API Worker on routes in the same Cloudflare zone
   // cannot call each other through global fetch: the route is bypassed and
   // Cloudflare attempts to resolve an origin, producing 1016. The service

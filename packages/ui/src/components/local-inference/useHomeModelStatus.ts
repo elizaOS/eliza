@@ -4,11 +4,8 @@
  * model placement are separate: a local agent may still send text to Cerebras.
  */
 
-import {
-  getElizaApiToken,
-  normalizeServiceRoutingConfig,
-  resolveApiUrl,
-} from "@elizaos/shared";
+import { normalizeServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
+import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
@@ -21,6 +18,7 @@ import {
   deriveHomeModelStatus,
   type HomeModelStatus,
 } from "../../services/local-inference/home-model-status";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
 import { observeModelRoute } from "./model-route-recovery";
 
@@ -32,7 +30,6 @@ const NOT_REQUIRED: HomeModelStatus = {
   modelName: null,
   errors: [],
 };
-
 const ROUTING_STATUS_ERROR: HomeModelStatus = {
   kind: "error",
   blocksSend: true,
@@ -41,9 +38,7 @@ const ROUTING_STATUS_ERROR: HomeModelStatus = {
   modelName: null,
   errors: ["Could not verify the active text model provider."],
 };
-
-const CLOUD_ROUTE_RECHECK_MS = 1_000;
-
+const CLOUD_ROUTE_RECHECK_MS = 1000;
 function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
   if (typeof document === "undefined") return () => {};
   document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, onStoreChange);
@@ -54,20 +49,17 @@ function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
     );
   };
 }
-
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
   return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
-
 function supportsLocalInferenceStatus(): boolean {
   const baseUrl = client.getBaseUrl();
   return (
     supportsFullAppShellRoutes(baseUrl) && !isDesktopExternalApiBaseUrl(baseUrl)
   );
 }
-
 /**
  * Collapses the local-inference hub's per-slot text readiness into a single
  * home-surface status, refreshed live from the download stream. The effective
@@ -87,7 +79,6 @@ export function useHomeModelStatus(): HomeModelStatus {
   // the session is authenticated (an unauthenticated tab otherwise streams
   // 401s into the rate limiter).
   const authenticated = useIsAuthenticated();
-
   useEffect(() => {
     if (
       !authenticated ||
@@ -101,16 +92,13 @@ export function useHomeModelStatus(): HomeModelStatus {
       setStatus(NOT_REQUIRED);
       return;
     }
-
     let eventSource: ReturnType<typeof openEventSource> = null;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-
     const stopLocalTracking = () => {
       clearTimeout(refreshTimer);
       eventSource?.close();
       eventSource = null;
     };
-
     const recovery = observeModelRoute(
       async (signal) => {
         if (!supportsLocalInferenceStatus()) {
@@ -125,7 +113,6 @@ export function useHomeModelStatus(): HomeModelStatus {
           setStatus(NOT_REQUIRED);
           return null;
         }
-
         const config = await client.getConfig();
         if (signal.aborted) return null;
         const textRoute = normalizeServiceRoutingConfig(
@@ -134,7 +121,6 @@ export function useHomeModelStatus(): HomeModelStatus {
         const waitingForCloudRoute =
           textRoute?.backend === "elizacloud" &&
           textRoute.transport === "cloud-proxy";
-
         try {
           const hub = await client.getLocalInferenceHub();
           if (!signal.aborted) {
@@ -145,7 +131,6 @@ export function useHomeModelStatus(): HomeModelStatus {
           // or transport recovery can retry the unavailable local hub.
         }
         if (signal.aborted) return null;
-
         if (!eventSource && !getElizaApiToken()) {
           eventSource = openEventSource(
             appendTokenParam(
@@ -167,7 +152,6 @@ export function useHomeModelStatus(): HomeModelStatus {
         setStatus(ROUTING_STATUS_ERROR);
       },
     );
-
     return () => {
       recovery.close();
       stopLocalTracking();
@@ -179,6 +163,5 @@ export function useHomeModelStatus(): HomeModelStatus {
     runtimeMode.isRemoteMode,
     runtimeMode.state.phase,
   ]);
-
   return status;
 }

@@ -8,12 +8,10 @@ import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
   ServiceRouteAccountStrategy,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/service-routing";
 import { parseAccountsListResponse } from "./client-agent-accounts-validator";
 import { ElizaClient } from "./client-base";
-
 export type AccountStrategy = ServiceRouteAccountStrategy;
-
 export type {
   LinkedAccountAccountSource,
   LinkedAccountConfig,
@@ -21,22 +19,18 @@ export type {
   LinkedAccountHealthDetail,
   LinkedAccountProviderId,
   LinkedAccountUsage,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/service-routing";
 export interface AccountWithCredentialFlag extends LinkedAccountConfig {
   hasCredential: boolean;
 }
-
 export interface AccountsListProvider {
   providerId: LinkedAccountProviderId;
   strategy: AccountStrategy;
   accounts: AccountWithCredentialFlag[];
 }
-
 export interface AccountsListResponse {
   providers: AccountsListProvider[];
 }
-
 export interface AccountTestResult {
   ok: boolean;
   latencyMs?: number;
@@ -47,35 +41,41 @@ export interface AccountTestResult {
   modelCatalogTruncated?: boolean;
   modelCatalogUnavailable?: boolean;
 }
-
 export interface AccountRefreshUsageResult {
   account: LinkedAccountConfig;
   source: "pool" | "inline-probe" | "direct-probe" | "coding-plan-probe";
 }
-
 export interface AccountOAuthStartResult {
   sessionId: string;
   authUrl: string;
   needsCodeSubmission: boolean;
   userCode?: string;
 }
-
 declare module "./client-base" {
   interface ElizaClient {
     listAccounts(init?: RequestInit): Promise<AccountsListResponse>;
     createApiKeyAccount(
       providerId: LinkedAccountProviderId,
-      body: { label: string; apiKey: string },
+      body: {
+        label: string;
+        apiKey: string;
+      },
     ): Promise<LinkedAccountConfig>;
     patchAccount(
       providerId: LinkedAccountProviderId,
       accountId: string,
-      body: Partial<{ label: string; enabled: boolean; priority: number }>,
+      body: Partial<{
+        label: string;
+        enabled: boolean;
+        priority: number;
+      }>,
     ): Promise<LinkedAccountConfig>;
     deleteAccount(
       providerId: LinkedAccountProviderId,
       accountId: string,
-    ): Promise<{ deleted: boolean }>;
+    ): Promise<{
+      deleted: boolean;
+    }>;
     testAccount(
       providerId: LinkedAccountProviderId,
       accountId: string,
@@ -86,26 +86,39 @@ declare module "./client-base" {
     ): Promise<AccountRefreshUsageResult>;
     startAccountOAuth(
       providerId: LinkedAccountProviderId,
-      body: { label: string; mode?: "auto" | "localhost" | "device" },
+      body: {
+        label: string;
+        mode?: "auto" | "localhost" | "device";
+      },
     ): Promise<AccountOAuthStartResult>;
     submitAccountOAuthCode(
       providerId: LinkedAccountProviderId,
-      body: { sessionId: string; code: string },
-    ): Promise<{ accepted: boolean }>;
+      body: {
+        sessionId: string;
+        code: string;
+      },
+    ): Promise<{
+      accepted: boolean;
+    }>;
     cancelAccountOAuth(
       providerId: LinkedAccountProviderId,
-      body: { sessionId: string },
-    ): Promise<{ cancelled: boolean }>;
+      body: {
+        sessionId: string;
+      },
+    ): Promise<{
+      cancelled: boolean;
+    }>;
     patchProviderStrategy(
       providerId: LinkedAccountProviderId,
-      body: { strategy: AccountStrategy },
+      body: {
+        strategy: AccountStrategy;
+      },
     ): Promise<{
       providerId: LinkedAccountProviderId;
       strategy: AccountStrategy;
     }>;
   }
 }
-
 ElizaClient.prototype.listAccounts = async function (this: ElizaClient, init) {
   // The agent is a separate process on an operator-controlled host, so its
   // reply is untrusted input: validate the shape once here rather than letting
@@ -116,7 +129,6 @@ ElizaClient.prototype.listAccounts = async function (this: ElizaClient, init) {
       : await this.fetch<unknown>("/api/accounts", init);
   return parseAccountsListResponse(response);
 };
-
 ElizaClient.prototype.createApiKeyAccount = async function (
   this: ElizaClient,
   providerId,
@@ -130,7 +142,6 @@ ElizaClient.prototype.createApiKeyAccount = async function (
     },
   );
 };
-
 ElizaClient.prototype.patchAccount = async function (
   this: ElizaClient,
   providerId,
@@ -142,18 +153,18 @@ ElizaClient.prototype.patchAccount = async function (
     { method: "PATCH", body: JSON.stringify(body) },
   );
 };
-
 ElizaClient.prototype.deleteAccount = async function (
   this: ElizaClient,
   providerId,
   accountId,
 ) {
-  return this.fetch<{ deleted: boolean }>(
+  return this.fetch<{
+    deleted: boolean;
+  }>(
     `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.testAccount = async function (
   this: ElizaClient,
   providerId,
@@ -164,7 +175,6 @@ ElizaClient.prototype.testAccount = async function (
     { method: "POST" },
   );
 };
-
 ElizaClient.prototype.refreshAccountUsage = async function (
   this: ElizaClient,
   providerId,
@@ -175,7 +185,6 @@ ElizaClient.prototype.refreshAccountUsage = async function (
     { method: "POST" },
   );
 };
-
 ElizaClient.prototype.startAccountOAuth = async function (
   this: ElizaClient,
   providerId,
@@ -186,29 +195,30 @@ ElizaClient.prototype.startAccountOAuth = async function (
     { method: "POST", body: JSON.stringify(body) },
   );
 };
-
 ElizaClient.prototype.submitAccountOAuthCode = async function (
   this: ElizaClient,
   providerId,
   body,
 ) {
-  return this.fetch<{ accepted: boolean }>(
-    `/api/accounts/${encodeURIComponent(providerId)}/oauth/submit-code`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
+  return this.fetch<{
+    accepted: boolean;
+  }>(`/api/accounts/${encodeURIComponent(providerId)}/oauth/submit-code`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 };
-
 ElizaClient.prototype.cancelAccountOAuth = async function (
   this: ElizaClient,
   providerId,
   body,
 ) {
-  return this.fetch<{ cancelled: boolean }>(
-    `/api/accounts/${encodeURIComponent(providerId)}/oauth/cancel`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
+  return this.fetch<{
+    cancelled: boolean;
+  }>(`/api/accounts/${encodeURIComponent(providerId)}/oauth/cancel`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 };
-
 ElizaClient.prototype.patchProviderStrategy = async function (
   this: ElizaClient,
   providerId,

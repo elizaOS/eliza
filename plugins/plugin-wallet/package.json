@@ -88,7 +88,6 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@lifi/sdk": "^3.7.9",
     "lucide-react": "^1.0.0",
@@ -105,7 +104,8 @@
     "tweetnacl": "^1.0.3",
     "uuid": "^11.1.0",
     "viem": "^2.48.8",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

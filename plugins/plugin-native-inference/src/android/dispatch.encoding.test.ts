@@ -17,7 +17,7 @@ vi.mock("@elizaos/core", () => ({
   },
   ServiceType: { NOTIFICATION: "notification" },
 }));
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/core/utils/env", () => ({
   readAliasedEnv: () => undefined,
 }));
 

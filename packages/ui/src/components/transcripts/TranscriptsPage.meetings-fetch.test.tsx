@@ -1,6 +1,5 @@
 /** Verifies TranscriptsPage active-meetings fetch failure (three-state) through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * Fallback-slop three-state coverage for TranscriptsPage (#12784 /
  * packages/ui three-state rule).
@@ -18,9 +17,11 @@
  * refresh clears the banner.
  */
 
-import type { MeetingSession, TranscriptSummary } from "@elizaos/shared";
+import type { MeetingSession } from "@elizaos/core/meetings";
+import type { TranscriptSummary } from "@elizaos/core/transcripts";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TranscriptsPage } from "./TranscriptsPage";
 
 const clientMock = vi.hoisted(() => ({
   listTranscripts: vi.fn(),
@@ -33,20 +34,17 @@ const clientMock = vi.hoisted(() => ({
       () => {},
   ),
 }));
-
 // parseMeetingStatusEvent is driven per-test: default null (ignore stray
 // events), but the recovery test swaps in a valid non-terminal event so the
 // ws handler runs its refresh() path.
 const parseMeetingStatusEventMock = vi.hoisted(() =>
   vi.fn((_data: unknown) => null as unknown),
 );
-
 // This standalone page fixture has no connected runtime view installation.
 // Catalog binding and reporting are exercised by the shell/catalog integration tests.
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({ views: [] }),
 }));
-
 vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../api/client-meetings", () => ({
   parseMeetingStatusEvent: parseMeetingStatusEventMock,
@@ -54,30 +52,25 @@ vi.mock("../../api/client-meetings", () => ({
 vi.mock("../shared/ViewHeader", () => ({
   ViewHeader: ({ title }: { title: string }) => <div>{title}</div>,
 }));
-
-import { TranscriptsPage } from "./TranscriptsPage";
-
 const transcript: TranscriptSummary = {
   id: "t1",
   title: "Standup",
-  createdAt: 1_700_000_000_000,
-  durationMs: 65_000,
+  createdAt: 1700000000000,
+  durationMs: 65000,
   speakerCount: 2,
   status: "ready",
   source: "voice-session",
   preview: "ship the build",
   hasAudio: true,
 };
-
 const activeSession = {
   id: "m1",
   status: "recording",
   transcriptId: "t9",
   meetingUrl: "https://meet.example.com/abc",
   platform: "meet",
-  createdAt: 1_700_000_000_000,
+  createdAt: 1700000000000,
 } as unknown as MeetingSession;
-
 describe("TranscriptsPage active-meetings fetch failure (three-state)", () => {
   beforeEach(() => {
     clientMock.listTranscripts.mockReset();
@@ -87,55 +80,43 @@ describe("TranscriptsPage active-meetings fetch failure (three-state)", () => {
     parseMeetingStatusEventMock.mockReset();
     parseMeetingStatusEventMock.mockReturnValue(null);
   });
-
   afterEach(cleanup);
-
   it("surfaces a failed active-meetings fetch instead of a healthy empty strip, while still rendering transcripts", async () => {
     clientMock.listTranscripts.mockResolvedValue({ transcripts: [transcript] });
     clientMock.listMeetings.mockRejectedValue(
       new Error("meetings backend unreachable"),
     );
-
     render(<TranscriptsPage />);
-
     // The meetings-fetch failure is surfaced (not swallowed into empty state).
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain(
         "meetings backend unreachable",
       );
     });
-
     // The transcripts list still renders from its own successful half.
     expect(screen.getByText("Standup")).toBeTruthy();
     // No fabricated active-meetings strip.
     expect(screen.queryByTestId("active-meetings")).toBeNull();
   });
-
   it("falls back to a generic message when the meetings rejection is not an Error", async () => {
     clientMock.listTranscripts.mockResolvedValue({ transcripts: [transcript] });
     clientMock.listMeetings.mockRejectedValue("boom");
-
     render(<TranscriptsPage />);
-
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain(
         "Failed to load active meetings",
       );
     });
   });
-
   it("does not show a meetings error and renders the active strip when the fetch succeeds", async () => {
     clientMock.listTranscripts.mockResolvedValue({ transcripts: [transcript] });
     clientMock.listMeetings.mockResolvedValue({ sessions: [activeSession] });
-
     render(<TranscriptsPage />);
-
     await waitFor(() => {
       expect(screen.getByTestId("active-meetings")).toBeTruthy();
     });
     expect(screen.queryByRole("alert")).toBeNull();
   });
-
   it("clears a stale meetings-error banner once a later refresh succeeds", async () => {
     clientMock.listTranscripts.mockResolvedValue({ transcripts: [transcript] });
     // Capture the ws handler so we can drive a refresh() from a status event.
@@ -146,33 +127,27 @@ describe("TranscriptsPage active-meetings fetch failure (three-state)", () => {
         return () => {};
       },
     );
-
     // A valid, non-terminal ws event so the handler reaches refresh() (a
     // terminal status would also try to reload the open transcript).
     parseMeetingStatusEventMock.mockReturnValue({
       type: "meeting-status",
       session: { id: "m1", status: "recording" } as unknown as MeetingSession,
     });
-
     // First refresh: meetings fetch fails.
     clientMock.listMeetings.mockRejectedValueOnce(new Error("transient 503"));
     // Subsequent refreshes: meetings fetch recovers.
     clientMock.listMeetings.mockResolvedValue({ sessions: [] });
-
     render(<TranscriptsPage />);
-
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain("transient 503");
     });
     expect(wsHandler).toBeTypeOf("function");
-
     // A meeting-status ws event triggers refresh() (parse returns null, so no
     // detail reload — just the list refresh path). Wrap so the async state
     // flush from the resolved refresh is applied deterministically.
     await act(async () => {
       wsHandler?.({});
     });
-
     await waitFor(
       () => {
         expect(screen.queryByRole("alert")).toBeNull();

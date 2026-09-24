@@ -13,7 +13,11 @@ const root = path.resolve(import.meta.dirname, "../../..");
 export function inventory(repoRoot = root) {
   return fs
     .readdirSync(path.join(repoRoot, "plugins"))
-    .filter((name) => name.startsWith("plugin-native-"))
+    .filter(
+      (name) =>
+        name.startsWith("plugin-native-") &&
+        fs.existsSync(path.join(repoRoot, "plugins", name, "package.json")),
+    )
     .sort()
     .map((directory) => {
       const dir = path.join(repoRoot, "plugins", directory);
@@ -196,6 +200,11 @@ async function main() {
             ...selected.map(
               (plugin) => `:${plugin.project}:assembleDebugAndroidTest`,
             ),
+            ...(selected.some(
+              (plugin) => plugin.directory === "plugin-native-appblocker",
+            )
+              ? [":native-block-target:assembleDebug"]
+              : []),
           ],
           1200000,
         );
@@ -218,7 +227,19 @@ async function main() {
       };
       report.results.push(entry);
       let applicationId;
+      let fixtureInstalled = false;
       try {
+        if (plugin.directory === "plugin-native-appblocker") {
+          const fixture = path.join(
+            root,
+            "packages/app/scripts/android-native-plugins-gradle/native-block-target/build/outputs/apk/debug/native-block-target-debug.apk",
+          );
+          entry.fixtureApkSha256 = createHash("sha256")
+            .update(fs.readFileSync(fixture))
+            .digest("hex");
+          fixtureInstalled = true;
+          adb("install", "-r", "-t", fixture);
+        }
         if (!plugin.tests.length)
           throw new Error("No Android device tests exist");
         const apkDir = path.join(
@@ -251,14 +272,21 @@ async function main() {
         // the activity even though its WebView can still answer JavaScript.
         adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
         adb("shell", "wm", "dismiss-keyguard");
-        const output = adb(
-          "shell",
-          "am",
-          "instrument",
-          "-w",
-          "-r",
-          `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
-        );
+        const output = run(
+          "adb",
+          [
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "instrument",
+            "-w",
+            "-r",
+            `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
+          ],
+          300000,
+        ); // Includes real one-minute expiry/replacement contracts.
+
         fs.writeFileSync(
           path.join(outputDir, `${plugin.directory}.log`),
           output,
@@ -289,6 +317,14 @@ async function main() {
             error.stdout,
           );
       } finally {
+        if (fixtureInstalled) {
+          try {
+            adb("uninstall", "ai.eliza.testing.blocktarget");
+          } catch (error) {
+            entry.pass = false;
+            entry.problems.push(`fixture cleanup: ${error}`);
+          }
+        }
         if (applicationId?.endsWith(".test")) {
           try {
             adb("uninstall", applicationId);

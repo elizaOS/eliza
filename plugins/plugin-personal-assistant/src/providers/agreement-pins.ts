@@ -10,7 +10,7 @@ import {
   type Memory,
   type Provider,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { getAgreementKnowledgeService } from "../lifeops/household/agreement-knowledge.js";
 
 export const agreementPinsProvider: Provider = {

@@ -13,7 +13,7 @@
 // navigate event / write the storage key), so this is a genuine red→green guard.
 
 import type { SurfaceManifest } from "@elizaos/core";
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/core/events";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -32,7 +32,6 @@ const UNGRANTED: SurfaceManifest = {
   isolation: "sandboxed-iframe",
   capabilities: [],
 };
-
 /** Mount the frame and return its live iframe + a spy on the frame's postMessage. */
 function mountFrame(surface: SurfaceManifest) {
   render(
@@ -53,7 +52,6 @@ function mountFrame(surface: SurfaceManifest) {
     .mockImplementation(() => {});
   return { iframe, frameWindow, postSpy };
 }
-
 /** Post a request into the parent AS the framed view (event.source === the frame). */
 function postFromFrame(
   frameWindow: Window,
@@ -75,7 +73,6 @@ function postFromFrame(
   Object.defineProperty(event, "source", { value: frameWindow });
   window.dispatchEvent(event);
 }
-
 function lastResponse(postSpy: ReturnType<typeof vi.spyOn>) {
   const calls = postSpy.mock.calls;
   return calls[calls.length - 1]?.[0] as {
@@ -87,7 +84,6 @@ function lastResponse(postSpy: ReturnType<typeof vi.spyOn>) {
     error?: string;
   };
 }
-
 describe("SandboxedViewFrame — real isolation path (#14180)", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -97,7 +93,6 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     vi.restoreAllMocks();
     window.localStorage.clear();
   });
-
   it("renders a REAL sandbox: allow-scripts without allow-same-origin", () => {
     render(
       <SandboxedViewFrame
@@ -114,14 +109,11 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     expect(sandbox.split(" ")).toContain("allow-scripts");
     expect(sandbox.split(" ")).not.toContain("allow-same-origin");
   });
-
   it("DENIES navigate without the grant — no shell route change, typed denial to the frame", async () => {
     const navSpy = vi.fn();
     window.addEventListener(NAVIGATE_VIEW_EVENT, navSpy);
     const { frameWindow, postSpy } = mountFrame(UNGRANTED);
-
     postFromFrame(frameWindow, "navigate", { viewId: "chat" }, "req-nav-deny");
-
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     const res = lastResponse(postSpy);
     expect(res.requestId).toBe("req-nav-deny");
@@ -131,30 +123,24 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     expect(navSpy).not.toHaveBeenCalled();
     window.removeEventListener(NAVIGATE_VIEW_EVENT, navSpy);
   });
-
   it("DENIES storage without the grant — no key is written, typed denial to the frame", async () => {
     const { frameWindow, postSpy } = mountFrame(UNGRANTED);
-
     postFromFrame(
       frameWindow,
       "storage",
       { op: "set", key: "secret", value: "pwn" },
       "req-store-deny",
     );
-
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     expect(lastResponse(postSpy).ok).toBe(false);
     // No key — neither namespaced nor a raw shell key — was written.
     expect(window.localStorage.length).toBe(0);
   });
-
   it("SERVICES navigate with the grant — fires the shell navigate event", async () => {
     const navSpy = vi.fn();
     window.addEventListener(NAVIGATE_VIEW_EVENT, navSpy);
     const { frameWindow, postSpy } = mountFrame(GRANTED);
-
     postFromFrame(frameWindow, "navigate", { viewId: "chat" }, "req-nav-ok");
-
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     expect(lastResponse(postSpy).ok).toBe(true);
     await waitFor(() => expect(navSpy).toHaveBeenCalledTimes(1));
@@ -162,17 +148,14 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     expect(detail).toMatchObject({ viewId: "chat" });
     window.removeEventListener(NAVIGATE_VIEW_EVENT, navSpy);
   });
-
   it("SERVICES storage with the grant — writes ONLY the view-namespaced key", async () => {
     const { frameWindow, postSpy } = mountFrame(GRANTED);
-
     postFromFrame(
       frameWindow,
       "storage",
       { op: "set", key: "draft", value: "hello" },
       "req-store-ok",
     );
-
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     expect(lastResponse(postSpy).ok).toBe(true);
     const namespaced = sandboxStorageKey(VIEW_ID, "draft");
@@ -181,14 +164,11 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     expect(window.localStorage.getItem("draft")).toBeNull();
     expect(window.localStorage.length).toBe(1);
   });
-
   it("keeps colon-bearing view IDs and storage keys in distinct namespaces", async () => {
     const firstView = createSandboxHostFacilities("alpha:beta");
     const secondView = createSandboxHostFacilities("alpha");
-
     await firstView.storage({ op: "set", key: "draft", value: "one" });
     await secondView.storage({ op: "set", key: "beta:draft", value: "two" });
-
     expect(
       window.localStorage.getItem(sandboxStorageKey("alpha:beta", "draft")),
     ).toBe("one");
@@ -197,7 +177,6 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     ).toBe("two");
     expect(window.localStorage.length).toBe(2);
   });
-
   it("IGNORES a message that is not from this frame's window (identity gate)", async () => {
     const { postSpy } = mountFrame(GRANTED);
     // A message with no/other source must not drive the broker.
@@ -215,16 +194,13 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(postSpy).not.toHaveBeenCalled();
   });
-
   it("reports a bad payload as a typed failure with the grant (never a fake success)", async () => {
     const navSpy = vi.fn();
     window.addEventListener(NAVIGATE_VIEW_EVENT, navSpy);
     const { frameWindow, postSpy } = mountFrame(GRANTED);
-
     // Granted, but the payload is missing viewId — the facility throws, and the
     // broker translates it to an observable failure (not a navigate).
     postFromFrame(frameWindow, "navigate", {}, "req-bad");
-
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     const res = lastResponse(postSpy);
     expect(res.ok).toBe(false);

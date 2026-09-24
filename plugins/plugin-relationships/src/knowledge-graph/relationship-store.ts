@@ -11,17 +11,16 @@
  * instead of duplicating; only creates a new edge if no matching
  * `(from, to, type)` exists.
  */
-
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  Relationship,
-  RelationshipFilter,
-  RelationshipSentiment,
-  RelationshipSource,
-  RelationshipState,
-  RelationshipStatus,
-} from "@elizaos/shared";
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  type Relationship,
+  type RelationshipFilter,
+  type RelationshipSentiment,
+  type RelationshipSource,
+  type RelationshipState,
+  type RelationshipStatus,
+} from "@elizaos/core/knowledge-graph/relationship-types";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -42,7 +41,6 @@ import {
 function isoNow(): string {
   return new Date().toISOString();
 }
-
 function readCadenceDays(
   metadata: Record<string, unknown> | undefined,
 ): number | null {
@@ -53,7 +51,6 @@ function readCadenceDays(
   }
   return null;
 }
-
 function rowToRelationship(row: Record<string, unknown>): Relationship {
   const metadata = parseJsonRecord(row.metadata_json);
   const state: RelationshipState = {};
@@ -72,13 +69,11 @@ function rowToRelationship(row: Record<string, unknown>): Relationship {
       row.state_sentiment_trend,
     ) as RelationshipSentiment;
   }
-
   const status = toText(row.status, "active") as RelationshipStatus;
   const retiredAt = row.retired_at ? toText(row.retired_at) : undefined;
   const retiredReason = row.retired_reason
     ? toText(row.retired_reason)
     : undefined;
-
   return {
     relationshipId: toText(row.relationship_id),
     fromEntityId: toText(row.from_entity_id),
@@ -96,10 +91,8 @@ function rowToRelationship(row: Record<string, unknown>): Relationship {
     updatedAt: toText(row.updated_at),
   };
 }
-
 export class RelationshipStore {
   private readonly records: GraphRecordRepository | null;
-
   private operation<T>(work: () => Promise<T>): Promise<T> {
     return this.records ? this.records.transaction(work) : work();
   }
@@ -109,7 +102,6 @@ export class RelationshipStore {
   ) {
     this.records = graphRecordRepository(runtime, agentId);
   }
-
   async upsert(
     input: Omit<
       Relationship,
@@ -121,7 +113,6 @@ export class RelationshipStore {
   ): Promise<Relationship> {
     return this.operation(() => this.upsertOperation(input));
   }
-
   private async upsertOperation(
     input: Omit<
       Relationship,
@@ -137,7 +128,6 @@ export class RelationshipStore {
     const createdAt = existing?.createdAt ?? now;
     const cadenceDays = readCadenceDays(input.metadata);
     const status = input.status ?? existing?.status ?? "active";
-
     if (this.records) {
       return this.records.putRelationship({
         relationshipId,
@@ -160,7 +150,6 @@ export class RelationshipStore {
           : {}),
       });
     }
-
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_relationships_v2 (
@@ -206,7 +195,6 @@ export class RelationshipStore {
          status = EXCLUDED.status,
          updated_at = EXCLUDED.updated_at`,
     );
-
     const fetched = await this.getOperation(relationshipId);
     if (!fetched) {
       throw new Error(
@@ -215,11 +203,9 @@ export class RelationshipStore {
     }
     return fetched;
   }
-
   async get(relationshipId: string): Promise<Relationship | null> {
     return this.operation(() => this.getOperation(relationshipId));
   }
-
   private async getOperation(
     relationshipId: string,
   ): Promise<Relationship | null> {
@@ -234,11 +220,9 @@ export class RelationshipStore {
     const row = rows[0];
     return row ? rowToRelationship(row) : null;
   }
-
   async list(filter?: RelationshipFilter): Promise<Relationship[]> {
     return this.operation(() => this.listOperation(filter));
   }
-
   private async listOperation(
     filter?: RelationshipFilter,
   ): Promise<Relationship[]> {
@@ -261,12 +245,10 @@ export class RelationshipStore {
         const list = types.map((t) => sqlQuote(t)).join(", ");
         clauses.push(`type IN (${list})`);
       }
-
       const limitClause =
         typeof filter?.limit === "number" && Number.isFinite(filter.limit)
           ? `LIMIT ${sqlInteger(filter.limit)}`
           : "";
-
       const rows = await executeRawSql(
         this.runtime,
         `SELECT * FROM app_lifeops.life_relationships_v2
@@ -276,7 +258,6 @@ export class RelationshipStore {
       );
       results = rows.map(rowToRelationship);
     }
-
     if (filter?.metadataMatch) {
       results = results.filter((rel) => {
         if (!rel.metadata) return false;
@@ -287,7 +268,6 @@ export class RelationshipStore {
         );
       });
     }
-
     if (filter?.cadenceOverdueAsOf) {
       const asOfMs = Date.parse(filter.cadenceOverdueAsOf);
       if (!Number.isFinite(asOfMs)) {
@@ -307,10 +287,8 @@ export class RelationshipStore {
         return overdueAtMs <= asOfMs;
       });
     }
-
     return results;
   }
-
   /**
    * Strengthen-or-create. If an active edge with the same
    * `(from, to, type)` exists, fold the new evidence in, bump
@@ -332,7 +310,6 @@ export class RelationshipStore {
   }): Promise<Relationship> {
     return this.operation(() => this.observeOperation(obs));
   }
-
   private async observeOperation(obs: {
     fromEntityId: string;
     toEntityId: string;
@@ -344,19 +321,16 @@ export class RelationshipStore {
     source?: RelationshipSource;
   }): Promise<Relationship> {
     const occurredAt = obs.occurredAt ?? isoNow();
-
     const matching = await this.listOperation({
       fromEntityId: obs.fromEntityId,
       toEntityId: obs.toEntityId,
       type: obs.type,
       includeRetired: true,
     });
-
     // Prefer active edges for strengthening; if all matches are retired,
     // attach evidence to the most-recent retired one without reactivating.
     const active = matching.find((rel) => rel.status === "active");
     const retired = matching.find((rel) => rel.status === "retired");
-
     if (active) {
       const mergedEvidence = Array.from(
         new Set([...active.evidence, ...obs.evidence]),
@@ -380,7 +354,6 @@ export class RelationshipStore {
       });
       return updated;
     }
-
     if (retired) {
       // Log evidence-on-retired without flipping state. Returns the
       // retired record unchanged in shape; updated_at stays.
@@ -391,7 +364,6 @@ export class RelationshipStore {
       });
       return retired;
     }
-
     return this.upsertOperation({
       fromEntityId: obs.fromEntityId,
       toEntityId: obs.toEntityId,
@@ -409,7 +381,6 @@ export class RelationshipStore {
       source: obs.source ?? "extraction",
     });
   }
-
   /**
    * Soft-delete with audit. The edge stays queryable via
    * `list({ includeRetired: true })` but is filtered out by default and
@@ -418,7 +389,6 @@ export class RelationshipStore {
   async retire(relationshipId: string, reason: string): Promise<void> {
     return this.operation(() => this.retireOperation(relationshipId, reason));
   }
-
   private async retireOperation(
     relationshipId: string,
     reason: string,
@@ -453,7 +423,6 @@ export class RelationshipStore {
     );
     await this.appendAudit(relationshipId, "retire", { reason });
   }
-
   async listAuditEvents(relationshipId: string): Promise<
     Array<{
       id: string;
@@ -464,7 +433,6 @@ export class RelationshipStore {
   > {
     return this.operation(() => this.listAuditEventsOperation(relationshipId));
   }
-
   private async listAuditEventsOperation(relationshipId: string): Promise<
     Array<{
       id: string;
@@ -488,7 +456,6 @@ export class RelationshipStore {
       createdAt: toText(row.created_at),
     }));
   }
-
   private async appendAudit(
     relationshipId: string,
     kind: string,

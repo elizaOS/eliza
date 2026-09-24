@@ -4,7 +4,7 @@
  * prefill, but never automatically send, the original request.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import { useCallback, useState } from "react";
 import { useInRouterContext } from "react-router-dom";
 import {
@@ -14,7 +14,6 @@ import {
 import { dispatchNavigateViewRequest } from "../../events";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-
 export function CapabilityHandoffBlock({
   request,
 }: {
@@ -46,7 +45,6 @@ export function CapabilityHandoffBlock({
       setOpening(false);
     }
   }, [inContainedCloudRouter, opening, request]);
-
   return (
     <Card
       asChild

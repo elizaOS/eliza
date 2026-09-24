@@ -16,8 +16,7 @@
     "noEmit": true,
     "paths": {
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"]
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
   "include": [

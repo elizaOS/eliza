@@ -38,7 +38,7 @@ import {
   type Socket as NodeSocket,
 } from "node:net";
 import process from "node:process";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
 

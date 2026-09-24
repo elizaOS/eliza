@@ -2,8 +2,7 @@
  * Defines shell reducer state for overlays, launcher mode, notifications, and
  * surface coordination.
  */
-
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
@@ -11,7 +10,6 @@ import type {
   MessageAttachment,
   NativeToolCallEvent,
 } from "../../api";
-
 /**
  * Shell phase for the device-shell foundation (HomePill + AssistantOverlay +
  * ChatSurface). Drives the pill's visual treatment.
@@ -39,16 +37,13 @@ export const SHELL_PHASES = [
   "processing",
   "responding",
 ] as const;
-
 export type ShellPhase = (typeof SHELL_PHASES)[number];
-
 export function isShellPhase(value: unknown): value is ShellPhase {
   return (
     typeof value === "string" &&
     (SHELL_PHASES as readonly string[]).includes(value)
   );
 }
-
 export interface ShellMessage {
   planningAcknowledgment?: string;
   id: string;
@@ -83,7 +78,6 @@ export interface ShellMessage {
   /** Short topic labels retained for search and memory semantics. */
   topics?: string[];
 }
-
 /**
  * Initial size of the shell transcript's render window — the newest N turns
  * rendered when a conversation first opens. Older turns stay in state (the
@@ -94,7 +88,6 @@ export interface ShellMessage {
  * seam; #13532/#14329 (infinite upward scroll) made it a sliding window.
  */
 export const MAX_RENDERED_SHELL_MESSAGES = 80;
-
 /**
  * Hard upper bound on the render window: however far the reader scrolls up, the
  * transcript never renders more than this many turns at once, so a very long
@@ -103,14 +96,12 @@ export const MAX_RENDERED_SHELL_MESSAGES = 80;
  * loaded turn.
  */
 export const MAX_LOADED_SHELL_WINDOW = 400;
-
 /**
  * How many turns the render window grows per scroll-to-top — one older page, so
  * revealing already-loaded-but-windowed-out turns matches the size of a fetched
  * older page and the reader gets a full page of runway each time.
  */
 export const SHELL_RENDER_WINDOW_STEP = 50;
-
 /**
  * The renderable subset of a shell transcript: drops empty turns — EXCEPT turns
  * that carry non-text content (attachments or a pending secret request: an
@@ -140,7 +131,6 @@ export function filterRenderableShellMessages(
       (m.role === "assistant" && phase === "responding"),
   );
 }
-
 /**
  * Pure transcript-windowing decision (#9141 gap 4 seam): the renderable turns,
  * capped to the newest `max` to bound DOM nodes. Pure + DOM-free so the cap +
@@ -155,7 +145,6 @@ export function selectVisibleShellMessages(
   const kept = filterRenderableShellMessages(messages, phase);
   return max > 0 && kept.length > max ? kept.slice(-max) : [...kept];
 }
-
 /**
  * Decide the render window's response to a scroll-to-top for the infinite
  * upward scroll (#13532/#14329). Two moves, reveal-before-fetch:
@@ -177,7 +166,10 @@ export function planScrollTopLoadOlder(
   windowSize: number,
   loadedRenderableCount: number,
   serverHasMore: boolean,
-): { nextWindowSize: number; shouldFetch: boolean } {
+): {
+  nextWindowSize: number;
+  shouldFetch: boolean;
+} {
   if (windowSize >= MAX_LOADED_SHELL_WINDOW) {
     return { nextWindowSize: MAX_LOADED_SHELL_WINDOW, shouldFetch: false };
   }

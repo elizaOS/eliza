@@ -13,7 +13,6 @@
 // mocked to isolate the host's composition from the panel's data behavior; the
 // app catalog client is mocked to empty so renders are deterministic.
 
-import { resetUiRegistryHostForTests } from "@elizaos/shared";
 import {
   act,
   cleanup,
@@ -25,18 +24,18 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
+import { resetUiRegistryHostForTests } from "../../registry-host.js";
 import { __setAppValueForTests } from "../../state/app-store";
+import { initialProjectsSegmentForPath, TasksPageView } from "./TasksPageView";
 
 const panelProps = vi.hoisted(() => ({
   value: null as Record<string, unknown> | null,
 }));
-
 vi.mock("../views/ShellViewAgentSurface", () => ({
   ShellViewAgentSurface: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
 }));
-
 // The slot indirection resolves to the real coding-agent panel at runtime; here
 // we stub it so the test asserts what props the host passes, not panel internals.
 vi.mock("../../slots/task-coordinator-slots.js", () => ({
@@ -45,7 +44,6 @@ vi.mock("../../slots/task-coordinator-slots.js", () => ({
     return <div data-testid="coding-agent-tasks-panel-stub" />;
   },
 }));
-
 vi.mock("../../api/client", () => ({
   client: {
     listInstalledApps: vi.fn(async () => []),
@@ -55,19 +53,19 @@ vi.mock("../../api/client", () => ({
     stopApp: vi.fn(async () => ({})),
   },
 }));
-
-import { initialProjectsSegmentForPath, TasksPageView } from "./TasksPageView";
-
 function seedAppValue(over: Record<string, unknown> = {}): void {
   __setAppValueForTests({
-    t: (_key: string, opts?: { defaultValue?: string }) =>
-      opts?.defaultValue ?? _key,
+    t: (
+      _key: string,
+      opts?: {
+        defaultValue?: string;
+      },
+    ) => opts?.defaultValue ?? _key,
     setActionNotice: vi.fn(),
     elizaCloudConnected: false,
     ...over,
   } as never);
 }
-
 /** The `cloud-apps` registration `@elizaos/app` installs on native shells. */
 function registerCloudAppsPage(): void {
   registerAppShellPage({
@@ -80,13 +78,10 @@ function registerCloudAppsPage(): void {
     loader: async () => ({ default: () => null }),
   });
 }
-
 const studioRow = () => screen.queryByTestId("my-apps-cloud-studio-row");
-
 function openAppsSegment(): void {
   fireEvent.click(screen.getByTestId("projects-segment-apps"));
 }
-
 afterEach(() => {
   cleanup();
   panelProps.value = null;
@@ -95,7 +90,6 @@ afterEach(() => {
   vi.clearAllMocks();
   window.history.replaceState(null, "", "/");
 });
-
 describe("TasksPageView", () => {
   it("shows one section switcher without a redundant title or launcher back button", () => {
     seedAppValue();
@@ -108,27 +102,22 @@ describe("TasksPageView", () => {
       screen.queryByRole("button", { name: /back to launcher/i }),
     ).toBeNull();
   });
-
   it("mounts the tasks panel in fullPage mode (panel suppresses its own header)", () => {
     seedAppValue();
     render(<TasksPageView />);
     expect(screen.getByTestId("coding-agent-tasks-panel-stub")).toBeTruthy();
     expect(panelProps.value).toMatchObject({ fullPage: true });
   });
-
   it("wraps the view with the tasks-view test id", () => {
     seedAppValue();
     render(<TasksPageView />);
     expect(screen.getByTestId("tasks-view")).toBeTruthy();
   });
-
   it("switches to the Apps segment and renders the app-management surface", async () => {
     seedAppValue();
     render(<TasksPageView />);
     expect(screen.getByTestId("coding-agent-tasks-panel-stub")).toBeTruthy();
-
     openAppsSegment();
-
     expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
     expect(screen.queryByTestId("coding-agent-tasks-panel-stub")).toBeNull();
     expect(screen.getByRole("region", { name: "App actions" })).toBeTruthy();
@@ -137,14 +126,12 @@ describe("TasksPageView", () => {
     const { client } = await import("../../api/client");
     await waitFor(() => expect(client.listInstalledApps).toHaveBeenCalled());
   });
-
   it("hides the Cloud Applications row when the studio page is not registered (web builds)", () => {
     seedAppValue({ elizaCloudConnected: true });
     render(<TasksPageView />);
     openAppsSegment();
     expect(studioRow()).toBeNull();
   });
-
   it("hides the Cloud Applications row while signed out of Eliza Cloud", () => {
     registerCloudAppsPage();
     seedAppValue({ elizaCloudConnected: false });
@@ -152,24 +139,20 @@ describe("TasksPageView", () => {
     openAppsSegment();
     expect(studioRow()).toBeNull();
   });
-
   it("shows the Cloud Applications row when registered + signed in, and opens /cloud-apps", () => {
     registerCloudAppsPage();
     seedAppValue({ elizaCloudConnected: true });
     render(<TasksPageView />);
     openAppsSegment();
-
     const row = studioRow();
     expect(row).toBeTruthy();
     expect(screen.getByText("Eliza Cloud")).toBeTruthy();
-
     // Tapping the row navigates to the registered studio route — the same
     // destination the retired "Apps" launcher tile and the deep-link intent
     // (`eliza://apps/deploy`) open.
     fireEvent.click(row as HTMLElement);
     expect(window.location.pathname).toBe("/cloud-apps");
   });
-
   it("pre-selects the Apps segment for retired My Apps deep links", () => {
     seedAppValue();
     window.history.replaceState(null, "", "/apps");
@@ -177,26 +160,22 @@ describe("TasksPageView", () => {
     expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
     expect(screen.queryByTestId("coding-agent-tasks-panel-stub")).toBeNull();
   });
-
   it("pre-selects Apps for packaged hash routes and follows same-tab route changes", () => {
     seedAppValue();
     window.history.replaceState(null, "", "/?appWindow=1#/apps");
     render(<TasksPageView />);
     expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
-
     act(() => {
       window.location.hash = "#/apps/tasks";
       window.dispatchEvent(new Event("hashchange"));
     });
     expect(screen.getByTestId("coding-agent-tasks-panel-stub")).toBeTruthy();
-
     act(() => {
       window.location.hash = "#/apps/my-apps";
       window.dispatchEvent(new Event("hashchange"));
     });
     expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
   });
-
   it("maps retired and canonical paths to the right initial segment", () => {
     expect(initialProjectsSegmentForPath("/apps")).toBe("apps");
     expect(initialProjectsSegmentForPath("/apps/")).toBe("apps");

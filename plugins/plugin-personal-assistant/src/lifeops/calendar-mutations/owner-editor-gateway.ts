@@ -6,6 +6,13 @@
  */
 import { createHash } from "node:crypto";
 import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarEventCancellationResult,
+} from "@elizaos/core/contracts/calendar";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,
@@ -13,13 +20,6 @@ import {
   CalendarServiceError,
   resolveCalendarEventRange,
 } from "@elizaos/plugin-calendar";
-import type {
-  CreateLifeOpsCalendarEventRequest,
-  CreateLifeOpsCalendarEventResponse,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventCancellationResult,
-} from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalEnqueueInput,

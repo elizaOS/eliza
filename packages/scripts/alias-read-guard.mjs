@@ -14,7 +14,7 @@
  * existing raw reads over time; this guard stops NEW ones from regrowing.
  *
  * The guarded key set is read from the single source of truth
- * (`packages/shared/src/config/brand-env-aliases.ts`) — every `elizaKey` /
+ * (`packages/core/src/config/brand-env-aliases.ts`) — every `elizaKey` /
  * `syncElizaKey` in `BRAND_ENV_ALIAS_DEFINITIONS` — so the guard tracks the
  * table automatically as aliases are added or removed.
  *
@@ -52,7 +52,7 @@ const ts = require("typescript");
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
-const ALIAS_TABLE_FILE = "packages/shared/src/config/brand-env-aliases.ts";
+const ALIAS_TABLE_FILE = "packages/core/src/config/brand-env-aliases.ts";
 
 /**
  * Reader / alias-table / sync files that legitimately name the canonical
@@ -61,11 +61,11 @@ const ALIAS_TABLE_FILE = "packages/shared/src/config/brand-env-aliases.ts";
  * reader implementation, not a bypass of it.
  */
 const ALLOWLIST = new Set([
-  "packages/shared/src/config/brand-env-aliases.ts",
-  "packages/shared/src/config/boot-config.ts",
-  "packages/shared/src/config/boot-config-store.ts",
-  "packages/shared/src/utils/env.ts",
-  "packages/shared/src/runtime-env.ts",
+  "packages/core/src/config/brand-env-aliases.ts",
+  "packages/core/src/config/boot-config.ts",
+  "packages/core/src/config/boot-config-store.ts",
+  "packages/core/src/utils/env.ts",
+  "packages/core/src/runtime-env.ts",
   "packages/core/src/boot-env.ts",
 ]);
 
@@ -489,7 +489,7 @@ function runSelfTest() {
     ["packages/x/src/__tests__/a.ts", false],
     ["packages/x/src/a.d.ts", false],
     ["packages/x/lib/a.ts", false],
-    ["packages/shared/src/runtime-env.ts", false], // allowlisted reader
+    ["packages/core/src/runtime-env.ts", false], // allowlisted reader
     ["packages/core/src/boot-env.ts", false], // allowlisted reader
     ["apps/app/src/a.ts", false], // outside packages/ + plugins/
     ["scripts/a.ts", false],

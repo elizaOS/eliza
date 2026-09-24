@@ -24,50 +24,6 @@
     "plugin must register in Capacitor",
   );
   switch (descriptor.directory) {
-    case "plugin-native-mobile-agent-bridge": {
-      assert(
-        (await call("getTunnelStatus")).state === "idle",
-        "tunnel starts idle",
-      );
-      await rejects("startInboundTunnel");
-      const invalid = await call("startInboundTunnel", {
-        relayUrl: "ftp://invalid.example",
-        deviceId: "test-device",
-      });
-      assert(
-        invalid.state === "error" && typeof invalid.lastError === "string",
-        "invalid relay is an explicit error",
-      );
-      await call("stopInboundTunnel");
-      assert(
-        (await call("getTunnelStatus")).state === "idle",
-        "stop clears tunnel error",
-      );
-      break;
-    }
-    case "plugin-native-screencapture": {
-      const support = await call("isSupported");
-      assert(
-        support.supported && support.features.includes("screenshot"),
-        "screen capture capability crosses bridge",
-      );
-      const state = await call("getRecordingState");
-      assert(
-        !state.isRecording &&
-          !state.isPaused &&
-          state.duration === 0 &&
-          state.fileSize === 0,
-        "recording starts idle",
-      );
-      assert(
-        (await call("checkPermissions")).screenCapture === "prompt",
-        "projection requires user consent",
-      );
-      await rejects("stopRecording");
-      await rejects("pauseRecording");
-      await rejects("resumeRecording");
-      break;
-    }
     case "plugin-native-agent": {
       const status = await call("getStatus");
       assert(
@@ -83,6 +39,11 @@
         status.engine === "bun" && status.ready === false,
         "runtime must report unavailable without host service",
       );
+      assert(
+        (await call("start")).ok === false,
+        "missing host must fail startup explicitly",
+      );
+      await rejects("stop");
       break;
     }
     case "plugin-native-camera": {
@@ -202,7 +163,7 @@
       await rejects("clearWatch");
       break;
     }
-    case "plugin-native-mlkit-text": {
+    case "plugin-native-inference": {
       const canvas = document.createElement("canvas");
       canvas.width = 800;
       canvas.height = 180;

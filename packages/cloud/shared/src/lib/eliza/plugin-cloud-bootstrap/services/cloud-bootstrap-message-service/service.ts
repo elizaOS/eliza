@@ -1,7 +1,6 @@
 /**
  * CloudBootstrapMessageService - Native planner message execution for cloud.
  */
-
 import {
   asUUID,
   ChannelType,
@@ -27,7 +26,7 @@ import {
   truncateToCompleteSentence,
   type UUID,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import { v4 } from "uuid";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";
@@ -80,7 +79,6 @@ import {
   SINGLE_SHOT_TEMPLATE,
   withActionResultsMetadata,
 } from "./types";
-
 export class CloudBootstrapMessageService implements IMessageService {
   private async evaluateShouldRespond(
     runtime: IAgentRuntime,
@@ -95,17 +93,14 @@ export class CloudBootstrapMessageService implements IMessageService {
       true,
     );
     evalState = attachAvailableContexts(evalState, runtime as never);
-
     const shouldRespondPrompt = composePromptFromState({
       state: evalState,
       template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
     });
-
     logger.info("========== LLM CALL: shouldRespond ==========");
     logger.info(`[LLM:shouldRespond] System Prompt:\n${runtime.character.system || "(none)"}`);
     logger.info(`[LLM:shouldRespond] User Prompt:\n${shouldRespondPrompt}`);
     logger.info("==============================================");
-
     const response = await withScopedTextModel(
       "small",
       resolveShouldRespondStepModel(runtime),
@@ -114,17 +109,13 @@ export class CloudBootstrapMessageService implements IMessageService {
           prompt: shouldRespondPrompt,
         }),
     );
-
     logger.info(`[LLM:shouldRespond] Response:\n${response}`);
-
     const responseObject = parseStructuredModelObject(String(response));
-
     return {
       responseObject,
       routing: parseContextRoutingMetadata(responseObject),
     };
   }
-
   async handleMessage(
     runtime: IAgentRuntime,
     message: Memory,
@@ -156,19 +147,16 @@ export class CloudBootstrapMessageService implements IMessageService {
     // Initialize startTime at declaration to avoid non-null assertion in timeout callback
     const startTime = Date.now();
     const responseId = v4();
-
     try {
       logger.info(
         `[CloudBootstrap] Message received from ${message.entityId} in room ${message.roomId}`,
       );
-
       // Set up response tracking
       const previousResponseId = await getLatestResponseId(runtime.agentId, message.roomId);
       if (previousResponseId) {
         logger.debug(`[CloudBootstrap] Updating response ID for room ${message.roomId}`);
       }
       await setLatestResponseId(runtime.agentId, message.roomId, responseId);
-
       // Start run tracking
       signal.throwIfAborted();
       runId = runtime.startRun(message.roomId) as UUID;
@@ -180,7 +168,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         options?.roomHandlerLease,
       );
       options?.onTrajectoryTerminalOwner?.("run");
-
       await runtime.emitEvent(EventType.RUN_STARTED, {
         runtime,
         runId,
@@ -191,7 +178,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         status: "started",
         source: "CloudBootstrapMessageService",
       } as never);
-
       // Set up timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
@@ -234,7 +220,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           });
         }, timeoutDuration);
       });
-
       const processingPromise = runWithStreamingContext(
         { ...getStreamingContext(), messageId: message.id, abortSignal: signal },
         () => this.processMessage(runtime, message, callback, responseId, startTime, turnOptions),
@@ -263,7 +248,6 @@ export class CloudBootstrapMessageService implements IMessageService {
       if (rejectAborted) signal.removeEventListener("abort", rejectAborted);
     }
   }
-
   private async processMessage(
     runtime: IAgentRuntime,
     message: Memory,
@@ -275,7 +259,6 @@ export class CloudBootstrapMessageService implements IMessageService {
     // PERF: Granular timing for message processing phases
     const perfTrace = createPerfTrace("cloud-bootstrap-message");
     perfTrace.mark("init");
-
     // Skip messages from self
     if (message.entityId === runtime.agentId) {
       logger.debug(`[CloudBootstrap] Skipping message from self`);
@@ -288,11 +271,9 @@ export class CloudBootstrapMessageService implements IMessageService {
         mode: "none",
       };
     }
-
     logger.debug(
       `[CloudBootstrap] Processing: ${truncateToCompleteSentence(message.content.text || "", 50)}...`,
     );
-
     // Save incoming message to memory. The document augmentation envelope
     // (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
     // is a model-facing wrapper added just for this turn's LLM prompt; strip it
@@ -317,11 +298,9 @@ export class CloudBootstrapMessageService implements IMessageService {
       memoryToQueue = { ...persistableMessage, id: memoryId };
       await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
     }
-
     // Check LLM off by default setting
     const agentUserState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
     const defLlmOff = parseBooleanFromText(String(runtime.getSetting("BOOTSTRAP_DEFLLMOFF") ?? ""));
-
     if (defLlmOff && agentUserState === null) {
       logger.debug("[CloudBootstrap] LLM is off by default");
       return {
@@ -333,7 +312,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         mode: "none",
       };
     }
-
     // Check if room is muted
     const isMuted =
       agentUserState === "MUTED" &&
@@ -349,7 +327,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         mode: "none",
       };
     }
-
     // Process attachments if any
     if (message.content.attachments && message.content.attachments.length > 0) {
       logger.debug(`[CloudBootstrap] Processing ${message.content.attachments.length} attachments`);
@@ -358,10 +335,8 @@ export class CloudBootstrapMessageService implements IMessageService {
         message.content.attachments,
       );
     }
-
     // Get room context for shouldRespond decision
     const room = await runtime.getRoom(message.roomId);
-
     // Extract mention context from message metadata
     const metadata = message.content.metadata as Record<string, unknown> | undefined;
     const mentionContext: MentionContext | undefined = metadata
@@ -372,18 +347,14 @@ export class CloudBootstrapMessageService implements IMessageService {
           mentionType: metadata.mentionType as MentionContext["mentionType"],
         }
       : undefined;
-
     // Check if we should respond
     const respondDecision = this.shouldRespond(runtime, message, room ?? undefined, mentionContext);
     logger.debug(
       `[CloudBootstrap] shouldRespond: ${respondDecision.shouldRespond} (${respondDecision.reason})`,
     );
-
     // Determine if we should respond, using LLM evaluation if needed
     let shouldRespondToMessage = true;
-
     let routedDecision: ContextRoutingDecision | null = null;
-
     if (respondDecision.skipEvaluation) {
       shouldRespondToMessage = respondDecision.shouldRespond;
       if (respondDecision.shouldRespond) {
@@ -397,15 +368,12 @@ export class CloudBootstrapMessageService implements IMessageService {
       setContextRoutingMetadata(message, routedDecision);
       const nonResponseActions = ["IGNORE", "NONE", "STOP"];
       const actionValue = responseObject?.action;
-
       shouldRespondToMessage =
         typeof actionValue === "string" && !nonResponseActions.includes(actionValue.toUpperCase());
-
       logger.debug(
         `[CloudBootstrap] LLM decided: ${shouldRespondToMessage ? "RESPOND" : "IGNORE"}`,
       );
     }
-
     if (!shouldRespondToMessage) {
       logger.debug(`[CloudBootstrap] Not responding based on evaluation`);
       return {
@@ -417,7 +385,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         mode: "none",
       };
     }
-
     perfTrace.mark("compose-state");
     // PERF: Compose initial state with minimal providers.
     // runNativePlannerCore fetches the full provider set (RECENT_MESSAGES, ACTIONS, etc.)
@@ -425,12 +392,10 @@ export class CloudBootstrapMessageService implements IMessageService {
     // composition. This avoids double-fetching in the native planner path.
     let state = await runtime.composeState(message, ["ENTITIES", "CHARACTER"], true);
     state = attachAvailableContexts(state, runtime as never);
-
     // Determine processing mode - default to native-planner for cloud
     const useNativePlanner =
       options?.useNativePlanner ??
       parseBooleanFromText(String(runtime.getSetting("USE_NATIVE_PLANNER") ?? "true"));
-
     perfTrace.mark("llm-processing");
     options?.abortSignal?.throwIfAborted();
     // Run appropriate processing strategy
@@ -449,12 +414,10 @@ export class CloudBootstrapMessageService implements IMessageService {
       logger.debug("[CloudBootstrap] Using single-shot processing");
       result = await this.runNativeSinglePassCore(runtime, message, state, callback, options);
     }
-
     options?.abortSignal?.throwIfAborted();
     const responseContent = result.responseContent;
     const responseMessages = result.responseMessages;
     state = result.state;
-
     // Race check before sending response
     if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
       logger.info(`[CloudBootstrap] Response discarded - newer message being processed`);
@@ -467,14 +430,11 @@ export class CloudBootstrapMessageService implements IMessageService {
         mode: "none",
       };
     }
-
     if (responseContent && message.id) {
       responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
     }
-
     if (responseContent) {
       const mode = result.mode ?? "actions";
-
       if (mode === "simple") {
         // Simple mode - just call callback with content
         if (callback) {
@@ -483,13 +443,12 @@ export class CloudBootstrapMessageService implements IMessageService {
         }
       }
     }
-
     // Releases response ID tracking only while this request still owns it
     await cleanupLatestResponseId(runtime.agentId, message.roomId, responseId);
-
-    const memoryService = runtime.getService("memory") as { hasStorage?: () => boolean } | null;
+    const memoryService = runtime.getService("memory") as {
+      hasStorage?: () => boolean;
+    } | null;
     const hasEvaluatorStorage = memoryService?.hasStorage?.() !== false;
-
     if (hasEvaluatorStorage) {
       const runtimeWithEvaluators = runtime as RuntimeWithEvaluators;
       try {
@@ -517,11 +476,9 @@ export class CloudBootstrapMessageService implements IMessageService {
     } else {
       logger.debug("[CloudBootstrap] Skipping evaluators because memory storage is unavailable");
     }
-
     perfTrace.mark("finalize");
     perfTrace.end();
     logger.info(`[CloudBootstrap] Completed in ${Date.now() - startTime}ms`);
-
     return {
       outcome: { status: "completed", effects: [] },
       didRespond: true,
@@ -531,7 +488,6 @@ export class CloudBootstrapMessageService implements IMessageService {
       mode: result.mode,
     };
   }
-
   /**
    * Native planner execution: ONE JSON planner tool call at a time.
    * Decision phase selects the next action; summary phase writes the user-facing response.
@@ -551,7 +507,6 @@ export class CloudBootstrapMessageService implements IMessageService {
     let accumulatedState: State = state;
     let finishResponse: string | null = null;
     const activeContexts = getActiveRoutingContexts(getContextRoutingFromMessage(message));
-
     // Save the original system prompt so we can restore it after the native planner loop.
     // The decision phase uses a functional system prompt (embedded in the template),
     // but runtime.character.system is still passed to the LLM by the OpenAI plugin.
@@ -561,7 +516,6 @@ export class CloudBootstrapMessageService implements IMessageService {
     if (!runtime.character.system) {
       runtime.character.system = "Select and execute actions to fulfill user requests.";
     }
-
     const maxIterations =
       options?.maxNativePlannerIterations ??
       parseInt(String(runtime.getSetting("NATIVE_PLANNER_MAX_ITERATIONS") ?? "6"));
@@ -572,12 +526,10 @@ export class CloudBootstrapMessageService implements IMessageService {
     let consecutiveFailures = 0;
     let incompleteReason: string | null = null;
     let wasCancelled = false;
-
     try {
       // ASSUMPTION: MCP service init already completed during runtime creation
       // (RuntimeFactory.waitForMcpServiceIfNeeded). If RuntimeFactory changes to
       // skip that call, MCP tools will be missing on the first message.
-
       // PERF: Fetch providers once upfront. ACTIONS and USER_AUTH_STATUS are truly stable
       // for the request lifetime. RECENT_MESSAGES is cached here to give the decision LLM
       // a consistent view during the loop; the summary step re-fetches it fresh.
@@ -595,7 +547,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         true,
       );
       accumulatedState.data.actionResults = traceActionResult;
-
       // Snapshot provider values for use in the decision loop. ACTIONS and USER_AUTH_STATUS
       // are truly stable. RECENT_MESSAGES is intentionally frozen here so the decision LLM
       // sees a consistent baseline; the summary step fetches fresh RECENT_MESSAGES.
@@ -626,7 +577,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         accumulatedState.data.actionsData !== undefined
           ? { actionsData: accumulatedState.data.actionsData }
           : {};
-
       const streamThinking = async (phase: string, content: string): Promise<void> => {
         if (options?.onReasoningChunk) {
           await options.onReasoningChunk(
@@ -636,23 +586,18 @@ export class CloudBootstrapMessageService implements IMessageService {
           );
         }
       };
-
       while (iterationCount < maxIterations) {
         if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
           logger.info("[NativePlanner] Newer message detected, cancelling stale execution");
           wasCancelled = true;
           break;
         }
-
         iterationCount++;
         logger.debug(`[NativePlanner] Starting iteration ${iterationCount}/${maxIterations}`);
-
         await streamThinking("thinking", `\n--- Step ${iterationCount}/${maxIterations} ---\n`);
-
         // Inject actionResults into message metadata BEFORE composeState
         // so ACTION_STATE provider can read it during state composition
         const messageWithResults = withActionResultsMetadata(message, traceActionResult);
-
         // Only refresh ACTION_STATE + CHARACTER per iteration. ACTIONS, USER_AUTH_STATUS,
         // and RECENT_MESSAGES are stable for the request lifetime and reused from cache.
         const actionOnlyState = await runtime.composeState(
@@ -668,7 +613,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         };
         // Also set on state.data for consistency
         accumulatedState.data.actionResults = traceActionResult;
-
         const remainingSteps = maxIterations - iterationCount;
         const stateWithIterationContext = {
           ...accumulatedState,
@@ -681,12 +625,10 @@ export class CloudBootstrapMessageService implements IMessageService {
           stepsWarning: remainingSteps <= 2,
           remainingSteps,
         };
-
         const prompt = composePromptFromState({
           state: stateWithIterationContext,
           template: runtime.character.templates?.nativePlannerTemplate || nativePlannerTemplate,
         });
-
         // === LLM CALL LOG: nativePlanner ===
         logger.info(
           `========== LLM CALL: nativePlanner (iteration ${iterationCount}/${maxIterations}) ==========`,
@@ -694,7 +636,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         logger.info(`[LLM:nativePlanner] System Prompt:\n${runtime.character.system}`);
         logger.info(`[LLM:nativePlanner] User Prompt:\n${prompt}`);
         logger.info("==============================================");
-
         // PERF: Reduced from 5 to 3 retries. Each retry adds 1-4s with exponential backoff.
         // 3 balances latency (~6-12s max) vs. reliability for complex native-planner queries
         // where LLMs occasionally produce malformed JSON. Override via NATIVE_PLANNER_PARSE_RETRIES.
@@ -703,13 +644,11 @@ export class CloudBootstrapMessageService implements IMessageService {
         );
         let stepResultRaw = "";
         let parsedStep: ValidatedNativePlannerDecision | null = null;
-
         for (let parseAttempt = 1; parseAttempt <= maxParseRetries; parseAttempt++) {
           try {
             logger.debug(
               `[NativePlanner] Decision model call attempt ${parseAttempt}/${maxParseRetries}`,
             );
-
             stepResultRaw = await withScopedTextModel(
               "small",
               resolveActionPlannerStepModel(runtime),
@@ -718,7 +657,6 @@ export class CloudBootstrapMessageService implements IMessageService {
                   prompt,
                 }),
             );
-
             logger.info(
               `[LLM:nativePlanner] Response (attempt ${parseAttempt}):\n${stepResultRaw}`,
             );
@@ -740,10 +678,8 @@ export class CloudBootstrapMessageService implements IMessageService {
               }
               parsedStep = validation.decision || null;
             }
-
             if (parsedStep) {
               logger.debug(`[NativePlanner] Successfully parsed on attempt ${parseAttempt}`);
-
               if (parsedStep.thought && options?.onReasoningChunk) {
                 await streamThinking("planning", parsedStep.thought);
               }
@@ -770,7 +706,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
         }
-
         if (!parsedStep) {
           logger.warn(
             `[NativePlanner] Failed to parse step result after ${maxParseRetries} attempts`,
@@ -784,9 +719,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           consecutiveFailures++;
           break;
         }
-
         const { thought, action, isFinish, parameters } = parsedStep;
-
         // Dedup guard: detect identical consecutive calls
         // Sort keys for deterministic comparison (key order varies across LLM outputs)
         const canonicalParams = (() => {
@@ -808,13 +741,11 @@ export class CloudBootstrapMessageService implements IMessageService {
           break;
         }
         lastActionKey = dedupKey;
-
         if (!action) {
           // Fallback: isFinish flag set without an explicit action
           if (isFinish) {
             logger.info(`[NativePlanner] Task complete (isFinish) at iteration ${iterationCount}`);
             await streamThinking("response", "\n--- Completing task ---\n");
-
             break;
           }
           logger.warn(
@@ -822,7 +753,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           );
           break;
         }
-
         // Terminal planner calls produce the user-facing response directly.
         // FINISH is kept as a compatibility tool while v5 planners prefer
         // toolCalls: [] plus messageToUser.
@@ -835,7 +765,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           await streamThinking("response", "\n--- Final response ---\n");
           break;
         }
-
         if (action === "REPLY" || action === "NONE") {
           const actionParams = parameters || {};
           const replyText =
@@ -846,7 +775,6 @@ export class CloudBootstrapMessageService implements IMessageService {
                 : typeof actionParams.message === "string"
                   ? actionParams.message
                   : "";
-
           if (replyText) {
             finishResponse = replyText;
             logger.info(
@@ -858,7 +786,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           await streamThinking("response", `\n--- ${action} ---\n`);
           break;
         }
-
         try {
           if (!(await isLatestResponseId(runtime.agentId, message.roomId, responseId))) {
             logger.info(
@@ -867,17 +794,13 @@ export class CloudBootstrapMessageService implements IMessageService {
             wasCancelled = true;
             break;
           }
-
           if (!accumulatedState.data) accumulatedState.data = {};
           if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
-
           const actionParams = parameters || {};
           if (Object.keys(actionParams).length > 0) {
             logger.debug(`[NativePlanner] Parsed parameters: ${JSON.stringify(actionParams)}`);
           }
-
           const hasActionParams = Object.keys(actionParams).length > 0;
-
           if (action && hasActionParams) {
             accumulatedState.data.actionParams = actionParams;
             accumulatedState.data.params = toNativeActionParams(action, actionParams);
@@ -891,12 +814,10 @@ export class CloudBootstrapMessageService implements IMessageService {
               `[NativePlanner] Stored parameters for ${action}: ${JSON.stringify(actionParams)}`,
             );
           }
-
           await streamThinking(
             "actions",
             `\nExecuting action: ${action}${hasActionParams ? ` with params: ${JSON.stringify(actionParams)}` : ""}\n`,
           );
-
           const actionMessage: Memory = hasActionParams
             ? {
                 ...message,
@@ -908,7 +829,6 @@ export class CloudBootstrapMessageService implements IMessageService {
                 } as Content,
               }
             : message;
-
           let capturedCallback: Content | undefined;
           const result = await executePlannedToolCall(
             runtime,
@@ -947,7 +867,6 @@ export class CloudBootstrapMessageService implements IMessageService {
               ? result.text
               : capturedCallback?.text;
           const success = (result?.success as boolean) ?? false;
-
           const actionResult: NativePlannerActionResult = {
             data: { actionName: action },
             success,
@@ -955,7 +874,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             values: result?.values,
             error: success ? undefined : resultText,
           };
-
           // Transparent meta-actions (e.g., SEARCH_ACTIONS) don't appear in
           // # Previous Action Results on success — their side-effects (registering
           // new actions) are sufficient. Failures are still recorded so the LLM
@@ -966,7 +884,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           }
           totalActionsExecuted++;
           consecutiveFailures = success ? 0 : consecutiveFailures + 1;
-
           // Track newly discovered actions from SEARCH_ACTIONS for explicit visibility
           if (action === "SEARCH_ACTIONS" && actionResult.success && result) {
             const data = result.data as Record<string, unknown> | undefined;
@@ -979,19 +896,16 @@ export class CloudBootstrapMessageService implements IMessageService {
               logger.info(`[NativePlanner] Discovered actions: ${newlyRegistered.join(", ")}`);
             }
           }
-
           await streamThinking(
             "actions",
             `\nAction ${action} ${success ? "succeeded" : "failed"}: ${actionResult.text || "(no output)"}\n`,
           );
-
           accumulatedState = await refreshStateAfterAction(
             runtime,
             message,
             accumulatedState,
             traceActionResult,
           );
-
           // Check if action requires user input before continuing
           const resultData = result?.data as Record<string, unknown> | undefined;
           if (resultData?.awaitingUserInput === true) {
@@ -1006,11 +920,9 @@ export class CloudBootstrapMessageService implements IMessageService {
             success: false,
             error: errorMessage,
           });
-
           await streamThinking("actions", `\nAction ${action} error: ${errorMessage}\n`);
           consecutiveFailures++;
         }
-
         if (consecutiveFailures >= maxConsecutiveFailures) {
           incompleteReason = `The last ${consecutiveFailures} action attempt(s) failed, so execution was stopped early.`;
           logger.warn(
@@ -1018,7 +930,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           );
           break;
         }
-
         // Compatibility fallback for older planners that set isFinish separately.
         if (isFinish) {
           logger.info(
@@ -1027,14 +938,12 @@ export class CloudBootstrapMessageService implements IMessageService {
           break;
         }
       }
-
       if (iterationCount >= maxIterations) {
         logger.warn(`[NativePlanner] Reached maximum iterations (${maxIterations})`);
         if (!finishResponse && !incompleteReason) {
           incompleteReason = `The task hit the ${maxIterations}-step limit before it finished.`;
         }
       }
-
       if (wasCancelled) {
         return {
           responseContent: null,
@@ -1043,22 +952,18 @@ export class CloudBootstrapMessageService implements IMessageService {
           mode: "none",
         };
       }
-
       // If a terminal response was returned, use it directly and skip summary generation.
       if (finishResponse !== null) {
         logger.info("[NativePlanner] Using terminal response, skipping summary LLM call");
-
         const responseContent: Content = {
           actions: ["FINISH"],
           text: finishResponse,
           thought: "Terminal response returned by planner.",
           simple: true,
         };
-
         if (options?.onStreamChunk) {
           await options.onStreamChunk(finishResponse, message.id as UUID);
         }
-
         const responseMessages: Memory[] = [
           {
             id: asUUID(v4()),
@@ -1069,7 +974,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             createdAt: Date.now(),
           },
         ];
-
         return {
           responseContent,
           responseMessages,
@@ -1077,14 +981,11 @@ export class CloudBootstrapMessageService implements IMessageService {
           mode: "simple",
         };
       }
-
       // Fallback: summary LLM call when the planner stopped without a terminal response.
       await streamThinking("response", "\n--- Generating final response ---\n");
-
       // Inject actionResults into message metadata BEFORE composeState
       // so ACTION_STATE provider can read them during state composition
       const summaryMessageWithResults = withActionResultsMetadata(message, traceActionResult);
-
       // Fetch all providers fresh for the summary. RECENT_MESSAGES will include
       // messages created by action execution, which the summary LLM needs to see.
       const summaryFreshState = await runtime.composeState(
@@ -1116,24 +1017,20 @@ export class CloudBootstrapMessageService implements IMessageService {
       accumulatedState.values.discoveredActions =
         discoveredActions.size > 0 ? [...discoveredActions].join(", ") : "";
       accumulatedState.values.currentDateTime = new Date().toISOString();
-
       const summaryPrompt = composePromptFromState({
         state: accumulatedState,
         template: runtime.character.templates?.nativeResponseTemplate || nativeResponseTemplate,
       });
-
       // === LLM CALL LOG: nativeResponse ===
       logger.info("========== LLM CALL: nativeResponse ==========");
       logger.info(`[LLM:nativeResponse] System Prompt:\n${runtime.character.system || "(none)"}`);
       logger.info(`[LLM:nativeResponse] User Prompt:\n${summaryPrompt}`);
       logger.info("==============================================");
-
       const maxSummaryRetries = parseInt(
         String(runtime.getSetting("NATIVE_RESPONSE_PARSE_RETRIES") ?? "2"),
       );
       let finalOutput = "";
       let summary: Record<string, unknown> | null = null;
-
       for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
         try {
           logger.debug(`[NativePlanner] Summary generation attempt ${summaryAttempt}`);
@@ -1145,10 +1042,8 @@ export class CloudBootstrapMessageService implements IMessageService {
                 prompt: summaryPrompt,
               }),
           );
-
           logger.info(`[LLM:nativeResponse] Response (attempt ${summaryAttempt}):\n${finalOutput}`);
           summary = parseStructuredModelObject(finalOutput);
-
           if (summary?.text) {
             logger.debug(`[NativePlanner] Parsed summary on attempt ${summaryAttempt}`);
             break;
@@ -1175,7 +1070,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
-
       let responseContent: Content | null = null;
       if (summary?.text) {
         responseContent = {
@@ -1185,7 +1079,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             (summary.thought as string) || "Final user-facing message after task completion.",
           simple: true,
         };
-
         if (options?.onStreamChunk) {
           await options.onStreamChunk(summary.text as string, message.id as UUID);
         }
@@ -1199,13 +1092,11 @@ export class CloudBootstrapMessageService implements IMessageService {
           thought: "Summary generation failed after retries.",
           simple: true,
         };
-
         // Stream fallback text for consistent user experience
         if (options?.onStreamChunk) {
           await options.onStreamChunk(fallbackText, message.id as UUID);
         }
       }
-
       const responseMessages: Memory[] = responseContent
         ? [
             {
@@ -1218,7 +1109,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             },
           ]
         : [];
-
       return {
         responseContent,
         responseMessages,
@@ -1231,7 +1121,6 @@ export class CloudBootstrapMessageService implements IMessageService {
       runtime.character.system = originalSystemPrompt;
     }
   }
-
   private async runNativeSinglePassCore(
     runtime: IAgentRuntime,
     message: Memory,
@@ -1245,22 +1134,18 @@ export class CloudBootstrapMessageService implements IMessageService {
     if (!runtime.character.system) {
       runtime.character.system = "Respond to user messages.";
     }
-
     try {
       state = await runtime.composeState(
         message,
         ["RECENT_MESSAGES", "ACTIONS", "CHARACTER"],
         true,
       );
-
       const template = runtime.character.templates?.messageHandlerTemplate || SINGLE_SHOT_TEMPLATE;
       const prompt = composePromptFromState({ state, template });
-
       logger.info("========== LLM CALL: singleShot ==========");
       logger.info(`[LLM:singleShot] System Prompt:\n${runtime.character.system || "(none)"}`);
       logger.info(`[LLM:singleShot] User Prompt:\n${prompt}`);
       logger.info("==============================================");
-
       const maxRetries = options?.maxRetries ?? 3;
       const parsedResponse = await withRetry(
         async () => {
@@ -1281,7 +1166,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         maxRetries,
         "singleShot",
       );
-
       if (!parsedResponse) {
         logger.error("[CloudBootstrap] All single-shot attempts failed");
         return {
@@ -1291,7 +1175,6 @@ export class CloudBootstrapMessageService implements IMessageService {
           mode: "none",
         };
       }
-
       const actions = Array.isArray(parsedResponse.actions)
         ? parsedResponse.actions
             .map((action) => (typeof action === "string" ? action.trim() : ""))
@@ -1302,7 +1185,6 @@ export class CloudBootstrapMessageService implements IMessageService {
               .map((action: string) => action.trim())
               .filter(Boolean)
           : [];
-
       const responseContent: Content = {
         text: String(parsedResponse.text || ""),
         thought: String(parsedResponse.thought || ""),
@@ -1310,11 +1192,9 @@ export class CloudBootstrapMessageService implements IMessageService {
         source: message.content.source,
         inReplyTo: message.id ? createUniqueUuid(runtime, message.id) : undefined,
       };
-
       if (options?.onStreamChunk && responseContent.text) {
         await options.onStreamChunk(responseContent.text, message.id as UUID);
       }
-
       const responseMessages: Memory[] = responseContent.text
         ? [
             {
@@ -1327,7 +1207,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             },
           ]
         : [];
-
       return {
         responseContent: responseContent.text ? responseContent : null,
         responseMessages,
@@ -1338,7 +1217,6 @@ export class CloudBootstrapMessageService implements IMessageService {
       runtime.character.system = originalSystemPrompt;
     }
   }
-
   shouldRespond(
     runtime: IAgentRuntime,
     message: Memory,
@@ -1352,16 +1230,13 @@ export class CloudBootstrapMessageService implements IMessageService {
         reason: "no room context",
       };
     }
-
     const alwaysRespondChannels = [
       ChannelType.DM,
       ChannelType.VOICE_DM,
       ChannelType.SELF,
       ChannelType.API,
     ];
-
     const alwaysRespondSources = ["client_chat"];
-
     function normalizeEnvList(value: unknown): string[] {
       if (!value || typeof value !== "string") return [];
       const cleaned = value.trim().replace(/^\[|\]$/g, "");
@@ -1370,7 +1245,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         .map((v) => v.trim())
         .filter(Boolean);
     }
-
     const customChannels = normalizeEnvList(
       runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
         runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
@@ -1379,20 +1253,16 @@ export class CloudBootstrapMessageService implements IMessageService {
       runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
         runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
     );
-
     const respondChannels = new Set(
       [...alwaysRespondChannels.map((t) => t.toString()), ...customChannels].map((s) =>
         s.trim().toLowerCase(),
       ),
     );
-
     const respondSources = [...alwaysRespondSources, ...customSources].map((s) =>
       s.trim().toLowerCase(),
     );
-
     const roomType = room.type?.toString().toLowerCase();
     const sourceStr = message.content.source?.toLowerCase() || "";
-
     // DM/VOICE_DM/API channels: always respond
     if (respondChannels.has(roomType)) {
       return {
@@ -1401,7 +1271,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         reason: `private channel: ${roomType}`,
       };
     }
-
     // Specific sources (e.g., client_chat): always respond
     if (respondSources.some((pattern) => sourceStr.includes(pattern))) {
       return {
@@ -1410,7 +1279,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         reason: `whitelisted source: ${sourceStr}`,
       };
     }
-
     // Platform mentions and replies: always respond
     const hasPlatformMention = !!(mentionContext?.isMention || mentionContext?.isReply);
     if (hasPlatformMention) {
@@ -1421,7 +1289,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         reason: `platform ${mentionType}`,
       };
     }
-
     // All other cases: let the LLM decide
     return {
       shouldRespond: false,
@@ -1429,17 +1296,13 @@ export class CloudBootstrapMessageService implements IMessageService {
       reason: "needs LLM evaluation",
     };
   }
-
   async processAttachments(runtime: IAgentRuntime, attachments: Media[]): Promise<Media[]> {
     if (!attachments?.length) return attachments;
-
     return Promise.all(
       attachments.map(async (attachment) => {
         if (attachment.description) return attachment;
-
         const contentType = attachment.contentType || "";
         const label = attachment.title || attachment.url;
-
         if (contentType.startsWith("image/")) {
           try {
             const result = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
@@ -1449,7 +1312,11 @@ export class CloudBootstrapMessageService implements IMessageService {
             attachment.description =
               typeof result === "string"
                 ? result
-                : (result as { description?: string })?.description || "Image attachment";
+                : (
+                    result as {
+                      description?: string;
+                    }
+                  )?.description || "Image attachment";
           } catch (error) {
             logger.warn(
               `[CloudBootstrap] Failed to generate image description for ${label}: ${error}`,
@@ -1467,34 +1334,28 @@ export class CloudBootstrapMessageService implements IMessageService {
         } else {
           attachment.description = `Attachment: ${label}`;
         }
-
         return attachment;
       }),
     );
   }
-
   async deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void> {
     if (!message.id) {
       logger.error("[CloudBootstrap] Cannot delete memory: message ID is missing");
       return;
     }
-
     logger.info(
       `[CloudBootstrap] Deleting memory for message ${message.id} from room ${message.roomId}`,
     );
     await runtime.deleteMemory(message.id);
   }
-
   async clearChannel(runtime: IAgentRuntime, roomId: UUID, channelId: string): Promise<void> {
     logger.info(
       `[CloudBootstrap] Clearing message memories from channel ${channelId} -> room ${roomId}`,
     );
-
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: "messages",
       roomIds: [roomId],
     });
-
     let deletedCount = 0;
     for (const memory of memories) {
       if (memory.id) {
@@ -1506,7 +1367,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         }
       }
     }
-
     logger.info(
       `[CloudBootstrap] Cleared ${deletedCount}/${memories.length} memories from channel ${channelId}`,
     );

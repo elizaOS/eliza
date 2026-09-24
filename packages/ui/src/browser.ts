@@ -5,13 +5,16 @@
  * that require Node APIs or server-only runtime state.
  */
 
+export { shouldUseCloudOnlyBranding } from "@elizaos/core/config/cloud-only";
+export {
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
+} from "@elizaos/core/config/plugin-ui-spec";
 export type {
   ActionConfirm,
   ActionOnError,
   ActionOnSuccess,
   AndVisibility,
-  AppDetailExtensionComponent,
-  AppDetailExtensionProps,
   AuthState,
   AuthVisibility,
   BuiltinValidator,
@@ -19,12 +22,9 @@ export type {
   DynamicProp,
   NotVisibility,
   OrVisibility,
-  OverlayApp,
-  OverlayAppContext,
   PatchOp,
   PathVisibility,
   RepeatConfig,
-  RestartHandler,
   UIStreamConfig,
   UiAction,
   UiComponentType,
@@ -36,29 +36,17 @@ export type {
   UiSpecValidationConfig,
   UiSpecVisibilityCondition,
   VisibilityOperator,
-} from "@elizaos/shared";
+} from "@elizaos/core/config/ui-spec";
 export {
-  buildPluginConfigUiSpec,
-  buildPluginListUiSpec,
-  getAllOverlayApps,
-  getAppDetailExtension,
-  getAvailableOverlayApps,
-  getOverlayApp,
-  isAospAndroid,
-  isOverlayApp,
-  modelLooksLikeElizaCloudHosted,
-  type OverlayAppAvailabilityContext,
-  overlayAppToRegistryInfo,
+  RESTART_EXIT_CODE,
+  type RestartHandler,
+  requestRestart,
+  setRestartHandler,
+} from "@elizaos/core/restart";
+export {
   parsePositiveFloat,
   parsePositiveInteger,
-  RESTART_EXIT_CODE,
-  registerDetailExtension,
-  registerOverlayApp,
-  requestRestart,
-  resolveAppAssetUrl,
-  setRestartHandler,
-  shouldUseCloudOnlyBranding,
-} from "@elizaos/shared";
+} from "@elizaos/core/utils/number-parsing";
 // Keep the full app shell on the explicit `@elizaos/ui/App` entry. Exporting it
 // from this broad browser facade creates a second bundled shell copy for plugin
 // host imports, which can fold lazy route modules back into the entry chunk.
@@ -71,6 +59,26 @@ export * from "./api/android-native-agent-transport.ts";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
 export { sendJson, sendJsonError } from "./api/response.ts";
+export { registerAppShellPage } from "./app-shell-registry.ts";
+export {
+  getAppDetailExtension,
+  registerDetailExtension,
+} from "./apps/detail-extension-registry.js";
+export type {
+  AppDetailExtensionComponent,
+  AppDetailExtensionProps,
+} from "./apps/detail-extension-types.js";
+export type { OverlayApp, OverlayAppContext } from "./apps/overlay-app-api.js";
+export {
+  getAllOverlayApps,
+  getAvailableOverlayApps,
+  getOverlayApp,
+  isAospAndroid,
+  isOverlayApp,
+  type OverlayAppAvailabilityContext,
+  overlayAppToRegistryInfo,
+  registerOverlayApp,
+} from "./apps/overlay-app-registry.js";
 export * from "./bridge/index.ts";
 export * from "./cache-telemetry.ts";
 export * from "./chat/index.ts";
@@ -215,9 +223,11 @@ export * from "./slots/task-coordinator-slots.tsx";
 export * from "./state/index.ts";
 export * from "./themes/index.ts";
 export * from "./types/index.ts";
+export { resolveAppAssetUrl } from "./utils/asset-url.js";
 export { copyTextToClipboard } from "./utils/clipboard.ts";
 export { confirmDesktopAction } from "./utils/desktop-dialogs.ts";
 export { loadDesktopWorkspaceSnapshot } from "./utils/desktop-workspace.ts";
+export { modelLooksLikeElizaCloudHosted } from "./utils/eliza-cloud-model-route.js";
 export * from "./utils/format.ts";
 export {
   navigatePreOpenedWindow,

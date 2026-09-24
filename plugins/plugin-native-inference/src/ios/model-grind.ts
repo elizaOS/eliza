@@ -12,9 +12,7 @@
  * Deps are injected from `ios/bridge.ts` (the native helpers are module-private
  * there), keeping this orchestration testable and free of native coupling.
  */
-
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-
 export interface ModelGrindDeps {
   callIosHost: (
     method: string,
@@ -24,28 +22,30 @@ export interface ModelGrindDeps {
   /** Load the GGUF for a slot ("TEXT_SMALL" | "TEXT_LARGE"); resolves when warm. */
   ensureTextModelLoaded: (slot: string) => Promise<unknown>;
   /** Synthesize speech, returns WAV bytes + sampleRate. */
-  synthesizeTts: (
-    text: string,
-  ) => Promise<{ bytes: Uint8Array; sampleRate: number }>;
+  synthesizeTts: (text: string) => Promise<{
+    bytes: Uint8Array;
+    sampleRate: number;
+  }>;
   /** Transcribe mono PCM (any rate); returns the transcript. */
   transcribeAsr: (pcm: number[], sampleRate: number) => Promise<string>;
   /** Native hardware/memory probe (total_ram_gb, available_ram_gb, ...). */
   hardwareInfo: () => Promise<Record<string, unknown>>;
   bundleDir: string | null;
 }
-
 export interface ModelGrindResult {
   model: string;
   ok: boolean;
   loadMs?: number;
   inferMs?: number;
   firstResultMs?: number;
-  throughput?: { kind: "tokens_per_sec" | "rtf" | "wer"; value: number };
+  throughput?: {
+    kind: "tokens_per_sec" | "rtf" | "wer";
+    value: number;
+  };
   detail?: Record<string, unknown>;
   loadDetail?: Record<string, unknown>;
   error?: string;
 }
-
 export interface ModelGrindReport {
   startedAtEpochMs: number;
   finishedAtEpochMs: number;
@@ -58,18 +58,19 @@ export interface ModelGrindReport {
     peakUsedDeltaGb: number | null;
   };
   models: ModelGrindResult[];
-  overall: { allPassed: boolean; passed: number; failed: number };
+  overall: {
+    allPassed: boolean;
+    passed: number;
+    failed: number;
+  };
 }
-
 const GRIND_PHRASE = "Eliza local voice end to end check, one two three.";
-
 function now(): number {
   // performance.now() is monotonic; epoch via Date is only used for stamps.
   return typeof performance !== "undefined"
     ? performance.now()
-    : Number(process.hrtime.bigint() / 1_000_000n);
+    : Number(process.hrtime.bigint() / 1000000n);
 }
-
 /**
  * Word error rate via token Levenshtein (lowercased, punctuation-stripped).
  *
@@ -77,8 +78,8 @@ function now(): number {
  * `[a-z0-9]` to whitespace, so apostrophes and non-ASCII letters are dropped.
  * That is fine here because the grind self-test compares against a fixed ASCII
  * English phrase (`GRIND_PHRASE`). The canonical, Unicode-aware WER used
- * elsewhere lives in `@elizaos/shared/voice-wer`; this local copy stays
- * dependency-free so the mobile bridge bundle does not pull in `@elizaos/shared`.
+ * elsewhere lives in `@elizaos/core/voice-wer`; this local copy stays
+ * dependency-free so the mobile bridge bundle does not pull in `@elizaos/core`.
  */
 export function wordErrorRate(reference: string, hypothesis: string): number {
   const norm = (s: string): string[] =>
@@ -103,7 +104,6 @@ export function wordErrorRate(reference: string, hypothesis: string): number {
   }
   return dp[hyp.length] / ref.length;
 }
-
 /** Parse a PCM WAV (int16 or float32) to a mono Float-ish number[] in [-1,1]. */
 export function decodeWavToPcm(bytes: Uint8Array): {
   pcm: number[];
@@ -116,7 +116,7 @@ export function decodeWavToPcm(bytes: Uint8Array): {
   let offset = 12;
   let fmt = 1;
   let channels = 1;
-  let sampleRate = 24_000;
+  let sampleRate = 24000;
   let bitsPerSample = 16;
   let dataOffset = -1;
   let dataLen = 0;
@@ -127,7 +127,7 @@ export function decodeWavToPcm(bytes: Uint8Array): {
     if (id === 0x666d7420 /* "fmt " */) {
       fmt = view.getUint16(body, true);
       channels = view.getUint16(body + 2, true) || 1;
-      sampleRate = view.getUint32(body + 4, true) || 24_000;
+      sampleRate = view.getUint32(body + 4, true) || 24000;
       bitsPerSample = view.getUint16(body + 14, true) || 16;
     } else if (id === 0x64617461 /* "data" */) {
       dataOffset = body;
@@ -146,12 +146,11 @@ export function decodeWavToPcm(bytes: Uint8Array): {
   ) {
     const sample = isFloat
       ? view.getFloat32(p, true)
-      : view.getInt16(p, true) / 32_768;
+      : view.getInt16(p, true) / 32768;
     pcm.push(sample); // channel 0 only (mono assumption for ASR)
   }
   return { pcm, sampleRate };
 }
-
 /** Linear resample mono PCM to a target rate. */
 export function resamplePcm(pcm: number[], from: number, to: number): number[] {
   if (from === to || pcm.length === 0) return pcm;
@@ -166,19 +165,16 @@ export function resamplePcm(pcm: number[], from: number, to: number): number[] {
   }
   return out;
 }
-
 function availGb(hw: Record<string, unknown>): number | null {
   const v = Number(hw.available_ram_gb ?? hw.free_ram_gb ?? NaN);
   return Number.isFinite(v) ? v : null;
 }
-
 export async function runModelGrind(
   deps: ModelGrindDeps,
 ): Promise<ModelGrindReport> {
   const startedAtEpochMs = Date.now();
   const t0 = now();
   const models: ModelGrindResult[] = [];
-
   let device: Record<string, unknown> = {};
   let beforeAvailGb: number | null = null;
   try {
@@ -196,7 +192,6 @@ export async function runModelGrind(
       /* memory probe is best-effort telemetry */
     }
   };
-
   // ── 1. Text LLM (load + generate, MTP if available) ─────────────────────
   {
     const r: ModelGrindResult = { model: "text", ok: false };
@@ -248,7 +243,7 @@ export async function runModelGrind(
           top_k: 40,
           stop: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
         },
-        120_000,
+        120000,
       )) as Record<string, unknown>;
       r.inferMs = Math.round(now() - gt);
       const outTokens = Number(res.outputTokens ?? res.tokens ?? 0);
@@ -287,9 +282,11 @@ export async function runModelGrind(
     await trackMem();
     models.push(r);
   }
-
   // ── 2. TTS (synthesize; RTF) ────────────────────────────────────────────
-  let ttsWav: { bytes: Uint8Array; sampleRate: number } | null = null;
+  let ttsWav: {
+    bytes: Uint8Array;
+    sampleRate: number;
+  } | null = null;
   {
     const r: ModelGrindResult = { model: "tts", ok: false };
     try {
@@ -313,16 +310,15 @@ export async function runModelGrind(
     await trackMem();
     models.push(r);
   }
-
   // ── 3. ASR round-trip (TTS → ASR; WER) ──────────────────────────────────
   {
     const r: ModelGrindResult = { model: "asr", ok: false };
     try {
       if (!ttsWav) throw new Error("no TTS audio to transcribe (TTS failed)");
       const { pcm, sampleRate } = decodeWavToPcm(ttsWav.bytes);
-      const pcm16k = resamplePcm(pcm, sampleRate, 16_000);
+      const pcm16k = resamplePcm(pcm, sampleRate, 16000);
       const at = now();
-      const transcript = await deps.transcribeAsr(pcm16k, 16_000);
+      const transcript = await deps.transcribeAsr(pcm16k, 16000);
       r.inferMs = Math.round(now() - at);
       const wer = wordErrorRate(GRIND_PHRASE, transcript);
       r.throughput = { kind: "wer", value: Math.round(wer * 1000) / 1000 };
@@ -340,7 +336,6 @@ export async function runModelGrind(
     await trackMem();
     models.push(r);
   }
-
   let afterAvailGb: number | null = null;
   try {
     afterAvailGb = availGb(await deps.hardwareInfo());
@@ -351,7 +346,6 @@ export async function runModelGrind(
     beforeAvailGb !== null && minAvailGb !== null
       ? Math.round((beforeAvailGb - minAvailGb) * 1000) / 1000
       : null;
-
   const passed = models.filter((m) => m.ok).length;
   const finishedAtEpochMs = Date.now();
   return {

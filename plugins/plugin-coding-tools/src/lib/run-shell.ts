@@ -28,12 +28,12 @@ import {
   sanitizeSpawnEnv,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import { resolveRuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
-} from "@elizaos/shared/host-execution-env";
-import type { ShellOutputArtifact } from "./shell-output-artifact.js";
+} from "@elizaos/core/host-execution-env";
+import { type ShellOutputArtifact } from "./shell-output-artifact.js";
 import {
   ForegroundShellCapture,
   type ShellCaptureProjection,
@@ -44,7 +44,6 @@ import {
   missingToolMessage,
   resolveHostShell,
 } from "./terminal-capabilities.js";
-
 export type ShellSandboxBackend =
   | "host"
   | "capability-router"
@@ -53,7 +52,6 @@ export type ShellSandboxBackend =
   | "wsl2"
   | "appcontainer"
   | "none";
-
 export interface ShellResult {
   exitCode: number;
   stdout: string;
@@ -77,14 +75,12 @@ export interface ShellResult {
     message: string;
   };
 }
-
 export interface BackgroundShellStartResult {
   process: HostShellProcess;
   pid: number | undefined;
   sandbox: ShellSandboxBackend;
   startedAt: number;
 }
-
 export interface HostShellProcess {
   pid?: number;
   stdout: Readable;
@@ -101,7 +97,6 @@ export interface HostShellProcess {
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
   ): this;
 }
-
 export interface HostShellWritable {
   write(chunk: string): unknown;
   end(): unknown;
@@ -109,7 +104,6 @@ export interface HostShellWritable {
   writableEnded?: boolean;
   on?(event: "error", listener: (error: Error) => void): unknown;
 }
-
 interface RuntimeSandboxManager {
   exec: (options: {
     command: string;
@@ -126,16 +120,13 @@ interface RuntimeSandboxManager {
     capture?: UpstreamCaptureAttestation;
   }>;
 }
-
 interface UpstreamCaptureAttestation {
   complete: true;
   maxBytes: number;
   stdoutBytes: number;
   stderrBytes: number;
 }
-
-const MAX_ATTESTED_UPSTREAM_CAPTURE_BYTES = 1_000_000;
-
+const MAX_ATTESTED_UPSTREAM_CAPTURE_BYTES = 1000000;
 function hasValidUpstreamCaptureAttestation(result: {
   stdout: string;
   stderr: string;
@@ -152,7 +143,6 @@ function hasValidUpstreamCaptureAttestation(result: {
       capture.stdoutBytes + capture.stderrBytes <= capture.maxBytes,
   );
 }
-
 async function finalizeAttestedUpstreamResult(
   runtime: IAgentRuntime,
   opts: RunShellOptions,
@@ -187,7 +177,6 @@ async function finalizeAttestedUpstreamResult(
     throw error;
   }
 }
-
 function getRuntimeSandboxManager(
   runtime: IAgentRuntime,
 ): RuntimeSandboxManager | null {
@@ -198,19 +187,19 @@ function getRuntimeSandboxManager(
   ).getSandboxManager?.();
   return candidate ?? null;
 }
-
 function backendForManager(
   manager: RuntimeSandboxManager,
 ): Exclude<ShellSandboxBackend, "host" | "capability-router"> {
   const internal = manager as RuntimeSandboxManager & {
-    engine?: { engineType?: string };
+    engine?: {
+      engineType?: string;
+    };
   };
   const engineType = internal.engine?.engineType;
   if (engineType === "docker") return "docker";
   if (engineType === "apple-container") return "apple-container";
   return "none";
 }
-
 function toSandboxWorkdir(cwd: string): string | undefined {
   const root = process.cwd();
   const relative = importPath.relative(
@@ -223,11 +212,9 @@ function toSandboxWorkdir(cwd: string): string | undefined {
   }
   return undefined;
 }
-
 function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
 }
-
 function shellArgsForCommand(shell: {
   command: string;
   args: string[];
@@ -259,7 +246,6 @@ function shellArgsForCommand(shell: {
   }
   return shell.args;
 }
-
 function killHostProcess(
   pid: number | undefined,
   signal: NodeJS.Signals,
@@ -277,7 +263,6 @@ function killHostProcess(
     // the timeout firing and kill delivery, so a failed signal is a no-op.
   }
 }
-
 interface BunHostSubprocess {
   pid: number;
   stdout: unknown;
@@ -290,7 +275,6 @@ interface BunHostSubprocess {
   signalCode: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals): void;
 }
-
 interface BunHostRuntime {
   spawn(options: {
     cmd: string[];
@@ -308,15 +292,18 @@ interface BunHostRuntime {
     ) => void;
   }): BunHostSubprocess;
 }
-
 function getBunRuntime(): BunHostRuntime | null {
-  return (globalThis as { Bun?: BunHostRuntime }).Bun ?? null;
+  return (
+    (
+      globalThis as {
+        Bun?: BunHostRuntime;
+      }
+    ).Bun ?? null
+  );
 }
-
 function isBunRuntime(): boolean {
   return typeof getBunRuntime()?.spawn === "function";
 }
-
 function startHostProcess(opts: {
   command: string;
   args: string[];
@@ -340,7 +327,6 @@ function startHostProcess(opts: {
     detached: opts.detached,
   }) as HostShellProcess;
 }
-
 function startBunHostProcess(opts: {
   command: string;
   args: string[];
@@ -387,7 +373,6 @@ function startBunHostProcess(opts: {
   let exitCode: number | null = null;
   let signalCode: NodeJS.Signals | null = null;
   let exitError: Error | undefined;
-
   proc.exited
     .then((code) => {
       exitCode = code;
@@ -404,7 +389,6 @@ function startBunHostProcess(opts: {
         events.emit("close", exitCode, signalCode);
       });
     });
-
   return {
     pid: proc.pid,
     stdout,
@@ -434,7 +418,6 @@ function startBunHostProcess(opts: {
     },
   };
 }
-
 function streamEnded(stream: Readable): Promise<void> {
   return new Promise((resolve) => {
     if (stream.readableEnded) {
@@ -445,7 +428,6 @@ function streamEnded(stream: Readable): Promise<void> {
     stream.once("close", resolve);
   });
 }
-
 function createStdinFifo(): {
   path: string;
   open(events: EventEmitter): HostShellWritable;
@@ -475,26 +457,21 @@ function createStdinFifo(): {
     },
   };
 }
-
 function withShellStdinRedirect(args: string[], fifoPath: string): string[] {
   const commandFlagIndex = args.lastIndexOf("-c");
   if (commandFlagIndex < 0 || commandFlagIndex + 1 >= args.length) {
     return args;
   }
-  const redirected = `exec < ${quoteShellArg(fifoPath)}; ${
-    args[commandFlagIndex + 1]
-  }`;
+  const redirected = `exec < ${quoteShellArg(fifoPath)}; ${args[commandFlagIndex + 1]}`;
   return [
     ...args.slice(0, commandFlagIndex + 1),
     redirected,
     ...args.slice(commandFlagIndex + 2),
   ];
 }
-
 function quoteShellArg(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
-
 function runOnHost(
   runtime: IAgentRuntime,
   opts: RunShellOptions,
@@ -523,7 +500,6 @@ function runOnHost(
     },
   );
 }
-
 function assertHostBackgroundSupported(
   runtime: IAgentRuntime,
   command: string,
@@ -534,7 +510,6 @@ function assertHostBackgroundSupported(
       "Background shell sessions are not supported by the capability-router backend.",
     );
   }
-
   const mode = resolveRuntimeExecutionMode(runtime);
   if (mode === "cloud") {
     throw new Error("Background shell sessions are disabled in cloud mode.");
@@ -544,25 +519,21 @@ function assertHostBackgroundSupported(
       "Background shell sessions require a managed sandbox backend with session support; this runtime only exposes one-shot sandbox exec.",
     );
   }
-
   const support = detectTerminalSupport();
   if (!support.supported) {
     throw new Error(
       support.message ?? "Local terminal execution is unavailable.",
     );
   }
-
   const missingTool = missingToolForCommand(command);
   if (missingTool) {
     throw new Error(missingToolMessage(missingTool));
   }
-
   const resolvedCwd = importPath.resolve(cwd);
   if (!existsSync(resolvedCwd)) {
     throw new Error(`cwd does not exist: ${cwd}`);
   }
 }
-
 export function startBackgroundShellOnHost(
   runtime: IAgentRuntime,
   opts: {
@@ -592,21 +563,18 @@ export function startBackgroundShellOnHost(
     startedAt: Date.now(),
   };
 }
-
 export function signalHostProcessGroup(
   proc: HostShellProcess,
   signal: NodeJS.Signals,
 ): void {
   killHostProcess(proc.pid, signal, process.platform !== "win32", proc);
 }
-
 function resolveExecutableForHost(
   name: string,
   fallback: string,
 ): string | undefined {
   return resolveHostExecutable(name) ?? resolveHostExecutable(fallback);
 }
-
 async function runOnHostWithShell(
   runtime: IAgentRuntime,
   opts: RunShellOptions,
@@ -645,7 +613,6 @@ async function runOnHostWithShell(
       detached: useProcessGroup,
     });
     let timedOut = false;
-
     // Preserve code points split across OS pipe chunks before encrypted spill.
     proc.stdout.setEncoding("utf8");
     proc.stderr.setEncoding("utf8");
@@ -661,7 +628,6 @@ async function runOnHostWithShell(
         capture.onDrain("stderr", () => proc.stderr.resume());
       }
     });
-
     const timer = setTimeout(() => {
       timedOut = true;
       killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
@@ -670,7 +636,6 @@ async function runOnHostWithShell(
       }, 1500);
     }, opts.timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
-
     proc.on("close", (code, signal) => {
       clearTimeout(timer);
       const exitCode = code ?? -1;
@@ -703,7 +668,6 @@ async function runOnHostWithShell(
     });
   });
 }
-
 async function runThroughCapabilityRouter(
   runtime: IAgentRuntime,
   opts: RunShellOptions,
@@ -770,7 +734,6 @@ async function runThroughCapabilityRouter(
     throw error;
   }
 }
-
 export interface RunShellOptions {
   command: string;
   cwd: string;
@@ -780,7 +743,6 @@ export interface RunShellOptions {
     ownerConversationId: string;
   };
 }
-
 /**
  * Run a shell command, dispatching against the active runtime mode:
  *  - `cloud`      → throws ("Local shell execution disabled in cloud mode.").
@@ -793,7 +755,6 @@ export async function runShell(
   opts: RunShellOptions,
 ): Promise<ShellResult> {
   const mode = resolveRuntimeExecutionMode(runtime);
-
   const routed = await runThroughCapabilityRouter(runtime, opts);
   if (routed) {
     if (routed.upstreamCaptureAttested) {
@@ -811,23 +772,19 @@ export async function runShell(
       },
     };
   }
-
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");
   }
-
   const support = detectTerminalSupport();
   if (!support.supported) {
     throw new Error(
       support.message ?? "Local terminal execution is unavailable.",
     );
   }
-
   const missingTool = missingToolForCommand(opts.command);
   if (missingTool) {
     throw new Error(missingToolMessage(missingTool));
   }
-
   if (mode === "local-safe") {
     const manager = getRuntimeSandboxManager(runtime);
     if (!manager) {
@@ -874,6 +831,5 @@ export async function runShell(
       },
     };
   }
-
   return runOnHost(runtime, opts);
 }

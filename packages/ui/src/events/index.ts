@@ -2,14 +2,13 @@
  * Typed constants for eliza:* custom events dispatched across the app.
  *
  * The cross-platform event names + detail payloads + dispatch helpers live in
- * `@elizaos/shared/events` (the single source of truth, also consumed by the
+ * `@elizaos/core/events` (the single source of truth, also consumed by the
  * server). This module re-exports them and adds the UI-only events that have no
  * server producer (focus-connector, voice-control, tutorial chat-control, and
  * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions
  * here widen the shared unions with those UI-only events, so the local
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
-
 import {
   CONNECT_EVENT,
   createNavigateViewEvent,
@@ -18,26 +17,22 @@ import {
   type NavigateViewEvent,
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/events";
+import { logger } from "@elizaos/ui/logger";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
 export {
-  // Agent / bridge
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
   APP_PAUSE_EVENT,
-  // App state
   APP_RESUME_EVENT,
   type AppEmoteEventDetail,
   BRIDGE_READY_EVENT,
   CHAT_AVATAR_VOICE_EVENT,
   type ChatAvatarVoiceEventDetail,
-  // App lifecycle
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   createNavigateViewEvent,
-  // Shared dispatch helpers
   dispatchAppEmoteEvent,
   dispatchElizaCloudStatusUpdated,
   dispatchNavigateViewEvent,
@@ -55,29 +50,22 @@ export {
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
-  // Sidebar sync
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,
   STOP_EMOTE_EVENT,
   TRAY_ACTION_EVENT,
-  // Voice / config
   VOICE_CONFIG_UPDATED_EVENT,
-  // Avatar / VRM
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/shared";
+} from "@elizaos/core/events";
 export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
 export * from "../views/view-event-bus";
 export * from "../views/view-event-types";
-
 // ── UI-only events (no server producer) ──────────────────────────────────
-
 export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
 const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";
-
 export interface FocusConnectorEventDetail {
   connectorId: string;
 }
-
 /**
  * A server-side agent action (START/STOP_TRANSCRIPTION) drives the shell's
  * transcription capture through this event: the `voice-control` agent-event
@@ -89,13 +77,11 @@ export const VOICE_CONTROL_EVENT = "eliza:voice-control" as const;
 export interface VoiceControlEventDetail {
   command: "start" | "stop";
 }
-
 /** Dispatch a transcription start/stop command to the shell. */
 export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(VOICE_CONTROL_EVENT, { detail }));
 }
-
 // ── Shared → dedicated cloud-agent handoff ───────────────────────────────
 /**
  * First-run provisions a personal cloud agent and lands the user in chat on the
@@ -106,7 +92,6 @@ export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
  * a progress indicator can render it instead of the user seeing nothing.
  */
 export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
-
 /**
  * `migrating` — personal container is provisioning; user is on the shared
  * adapter. `switched` — conversation copied and the live client moved to the
@@ -126,7 +111,6 @@ export type CloudHandoffPhase =
   | "timed-out"
   | "failed"
   | "insufficient-credits";
-
 export interface CloudHandoffPhaseDetail {
   agentId: string;
   phase: CloudHandoffPhase;
@@ -135,7 +119,6 @@ export interface CloudHandoffPhaseDetail {
   /** Error message on `failed`. */
   error?: string;
 }
-
 /**
  * Re-run a `timed-out`/`failed` shared→dedicated handoff for `agentId`. The
  * failure surface (banner) dispatches this when the user asks to retry; the
@@ -143,11 +126,9 @@ export interface CloudHandoffPhaseDetail {
  * so a transient container-boot failure isn't a silent permanent fallback.
  */
 export const CLOUD_HANDOFF_RETRY_EVENT = "eliza:cloud-handoff-retry" as const;
-
 export interface CloudHandoffRetryDetail {
   agentId: string;
 }
-
 export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
 /**
  * Open (expand) the floating chat from anywhere — fired when the launcher's
@@ -170,31 +151,26 @@ export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
  */
 export const OPEN_NOTIFICATION_CENTER_EVENT =
   "eliza:notifications:open" as const;
-
 export interface ChatPrefillEventDetail {
   text: string;
   /** Select the inserted draft after focusing the composer. Defaults to false. */
   select?: boolean;
 }
-
 /** Dispatch a request to open the floating chat and prefill its composer. */
 export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(CHAT_PREFILL_EVENT, { detail }));
 }
-
 /** Dispatch a request to open (expand) the floating chat. See {@link CHAT_OPEN_EVENT}. */
 export function dispatchChatOpen(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
 }
-
 /** Request the floating chat to collapse. Onboarding may deliberately ignore it. */
 export function dispatchChatClose(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(CHAT_CLOSE_EVENT));
 }
-
 /** Request the notification center to open (surface-agnostic — see
  * {@link OPEN_NOTIFICATION_CENTER_EVENT}). */
 export function dispatchOpenNotificationCenter(): void {
@@ -204,7 +180,6 @@ export function dispatchOpenNotificationCenter(): void {
   requestNotificationCenterOpen();
   window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
 }
-
 // ── Android hardware back ─────────────────────────────────────────────────
 /**
  * The Android hardware/gesture back press, surfaced to shell consumers BEFORE
@@ -220,7 +195,6 @@ export function dispatchOpenNotificationCenter(): void {
  * fall-through path is unchanged there.
  */
 export const ELIZA_BACK_INTENT_EVENT = "eliza:back-intent" as const;
-
 export interface BackIntentEventDetail {
   /**
    * A consumer flips this to `true` when it handles the back press (e.g. by
@@ -230,7 +204,6 @@ export interface BackIntentEventDetail {
    */
   handled: boolean;
 }
-
 /**
  * Dispatch the Android back-intent to shell consumers and report whether one of
  * them handled it (closed a surface). Returns `false` when nothing consumed the
@@ -243,13 +216,10 @@ export function dispatchBackIntent(): boolean {
   window.dispatchEvent(new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }));
   return detail.handled;
 }
-
 // ── Event-name unions (shared base widened with the UI-only events) ───────
-
 export type ElizaDocumentEventName =
   | SharedDocumentEventName
   | typeof FOCUS_CONNECTOR_EVENT;
-
 export type ElizaWindowEventName =
   | SharedWindowEventName
   | typeof VOICE_CONTROL_EVENT
@@ -257,11 +227,8 @@ export type ElizaWindowEventName =
   | typeof CLOUD_HANDOFF_PHASE_EVENT
   | typeof CLOUD_HANDOFF_RETRY_EVENT
   | typeof ELIZA_BACK_INTENT_EVENT;
-
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
-
 // ── Helpers ──────────────────────────────────────────────────────────────
-
 /** Dispatch a typed custom event on `document`. */
 export function dispatchAppEvent(
   name: ElizaDocumentEventName,
@@ -269,37 +236,40 @@ export function dispatchAppEvent(
 ): void {
   document.dispatchEvent(new CustomEvent(name, { detail }));
 }
-
 export interface ConnectRequestDetail {
   gatewayUrl: string;
   token?: string;
   completeFirstRun?: boolean;
   skipConfirm?: boolean;
 }
-
 export type ConnectRequestResult =
-  | { status: "connected" }
-  | { status: "cancelled" }
-  | { status: "superseded" }
-  | { status: "failed"; message: string };
-
+  | {
+      status: "connected";
+    }
+  | {
+      status: "cancelled";
+    }
+  | {
+      status: "superseded";
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
 type ConnectRequestListener = (detail: ConnectRequestDetail) =>
   | ConnectRequestResult
   | void
   // biome-ignore lint/suspicious/noConfusingVoidType: legacy async owners return void; absent completion is an explicit failed result.
   | Promise<ConnectRequestResult | void>;
-
 type ConnectRequestState = {
   claimed: boolean;
   settled: boolean;
   result: Promise<ConnectRequestResult>;
   complete: (result: ConnectRequestResult) => void;
 };
-
 const connectRequestStates = new WeakMap<object, ConnectRequestState>();
 let pendingConnectRequest: ConnectRequestDetail | null = null;
 let activeConnectRequest: ConnectRequestDetail | null = null;
-
 function connectRequestState(
   request: ConnectRequestDetail,
 ): ConnectRequestState {
@@ -322,11 +292,9 @@ function connectRequestState(
   connectRequestStates.set(request, state);
   return state;
 }
-
 function emitConnectRequest(detail: ConnectRequestDetail): void {
   document.dispatchEvent(new CustomEvent(CONNECT_EVENT, { detail }));
 }
-
 function queueConnectRequest(request: ConnectRequestDetail): void {
   if (pendingConnectRequest && pendingConnectRequest !== request) {
     connectRequestState(pendingConnectRequest).complete({
@@ -335,13 +303,11 @@ function queueConnectRequest(request: ConnectRequestDetail): void {
   }
   pendingConnectRequest = request;
 }
-
 function replayPendingConnectRequest(): void {
   if (!activeConnectRequest && pendingConnectRequest) {
     emitConnectRequest(pendingConnectRequest);
   }
 }
-
 /**
  * Retains native requests across startup/shell remounts and serializes adoption
  * against the singleton client. The latest unclaimed request replaces an older
@@ -357,7 +323,6 @@ export function dispatchConnectRequest(
   emitConnectRequest(request);
   return state.result;
 }
-
 /**
  * Claims one request for the mounted startup or live-shell owner. An active
  * adoption finishes before another owner can repoint the singleton client.
@@ -372,7 +337,11 @@ export function listenForConnectRequests(
       !detail ||
       typeof detail !== "object" ||
       Array.isArray(detail) ||
-      typeof (detail as { gatewayUrl?: unknown }).gatewayUrl !== "string"
+      typeof (
+        detail as {
+          gatewayUrl?: unknown;
+        }
+      ).gatewayUrl !== "string"
     ) {
       return;
     }
@@ -418,12 +387,10 @@ export function listenForConnectRequests(
       failed(error);
     }
   };
-
   document.addEventListener(CONNECT_EVENT, handle);
   queueMicrotask(replayPendingConnectRequest);
   return () => document.removeEventListener(CONNECT_EVENT, handle);
 }
-
 // A listener reports whether it actually APPLIED the request by returning
 // `true`/`void`; returning `false` (or throwing) means "not applied" so the
 // intent stays eligible for a later-mounting or retried listener instead of
@@ -431,13 +398,11 @@ export function listenForConnectRequests(
 type NavigateViewRequestListener = (
   event: NavigateViewEvent,
 ) => boolean | undefined;
-
 interface NavigateViewRequestClaim {
   claimed: boolean;
   /** Durably consumes the request: unqueues it and resolves its dispatch promise `true`. */
   commit: () => void;
 }
-
 const MAX_PENDING_NAVIGATE_VIEW_REQUESTS = 16;
 const navigateViewRequestClaims = new WeakMap<
   object,
@@ -449,12 +414,10 @@ const navigateViewRequestResolvers = new WeakMap<
 >();
 const pendingNavigateViewRequests: NavigateViewDetail[] = [];
 let drainingNavigateViewRequests = false;
-
 function emitNavigateViewRequest(detail: NavigateViewDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(createNavigateViewEvent(detail));
 }
-
 function drainNavigateViewRequests(): void {
   if (drainingNavigateViewRequests || typeof window === "undefined") return;
   drainingNavigateViewRequests = true;
@@ -470,7 +433,6 @@ function drainNavigateViewRequests(): void {
     drainingNavigateViewRequests = false;
   }
 }
-
 function dropOldestPendingNavigateViewRequest(): void {
   const dropped = pendingNavigateViewRequests.shift();
   if (!dropped) return;
@@ -488,7 +450,6 @@ function dropOldestPendingNavigateViewRequest(): void {
   navigateViewRequestResolvers.delete(dropped);
   navigateViewRequestClaims.delete(dropped);
 }
-
 /**
  * Dispatches a native navigation intent without losing it during cold boot,
  * and resolves only once some listener has actually APPLIED it — never
@@ -526,7 +487,6 @@ export function dispatchNavigateViewRequest(
   drainNavigateViewRequests();
   return applied;
 }
-
 /**
  * Subscribes to navigation events and synchronously replays unclaimed native
  * intents. A request is claimed — durably removed from the replay queue, with
@@ -562,12 +522,10 @@ export function listenForNavigateViewRequests(
     }
     if (applied) claim?.commit();
   };
-
   window.addEventListener(NAVIGATE_VIEW_EVENT, handle);
   drainNavigateViewRequests();
   return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, handle);
 }
-
 /** Dispatch a typed custom event on `window`. */
 export function dispatchWindowEvent(
   name: ElizaWindowEventName,
@@ -576,24 +534,20 @@ export function dispatchWindowEvent(
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
-
 // Last dispatched handoff phase, kept so surfaces that MOUNT AFTER a phase
 // fired (the home provisioning tile renders only once onboarding lands, i.e.
 // after the runner's initial `migrating` dispatch) still see the in-flight
 // state instead of nothing. Session-scoped by design — a reload's in-flight
 // handoff is re-driven by resumePendingCloudHandoff, which re-dispatches.
 let lastCloudHandoffPhaseDetail: CloudHandoffPhaseDetail | null = null;
-
 /** The most recent handoff phase dispatched this session (null before any). */
 export function getLastCloudHandoffPhaseDetail(): CloudHandoffPhaseDetail | null {
   return lastCloudHandoffPhaseDetail;
 }
-
 /** Test-only: forget the cached phase so specs start from a clean session. */
 export function __resetLastCloudHandoffPhaseDetailForTests(): void {
   lastCloudHandoffPhaseDetail = null;
 }
-
 /**
  * Surface a shared→dedicated handoff phase. Replaces the silent
  * `startCloudAgentHandoff(...).catch(() => {})` discard so the typed
@@ -605,14 +559,12 @@ export function dispatchCloudHandoffPhase(
   lastCloudHandoffPhaseDetail = detail;
   dispatchWindowEvent(CLOUD_HANDOFF_PHASE_EVENT, detail);
 }
-
 /** Ask the armed handoff runner to retry a failed shared→dedicated handoff. */
 export function dispatchCloudHandoffRetry(
   detail: CloudHandoffRetryDetail,
 ): void {
   dispatchWindowEvent(CLOUD_HANDOFF_RETRY_EVENT, detail);
 }
-
 export function readPendingFocusConnector(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -624,7 +576,6 @@ export function readPendingFocusConnector(): string | null {
     return null;
   }
 }
-
 export function clearPendingFocusConnector(connectorId?: string): void {
   if (typeof window === "undefined") return;
   try {
@@ -637,7 +588,6 @@ export function clearPendingFocusConnector(connectorId?: string): void {
     // Ignore storage failures; the event still drives the current page.
   }
 }
-
 export function dispatchFocusConnector(connectorId: string): void {
   const normalized = connectorId.trim();
   if (!normalized) return;
@@ -650,7 +600,6 @@ export function dispatchFocusConnector(connectorId: string): void {
   }
   dispatchAppEvent(FOCUS_CONNECTOR_EVENT, { connectorId: normalized });
 }
-
 // ── Generic app aliases (preferred) ──────────────────────────────────────
 export type AppDocumentEventName = ElizaDocumentEventName;
 export type AppWindowEventName = ElizaWindowEventName;

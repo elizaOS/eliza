@@ -14,7 +14,6 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/plugin-coding-tools": [

@@ -3,7 +3,7 @@
  * digest to channels with real personal-inbox semantics (gmail, x_dm, imessage,
  * whatsapp, sms) since chat connectors lack reliable per-owner read state.
  */
-import type { GetLifeOpsInboxRequest } from "@elizaos/shared";
+import { type GetLifeOpsInboxRequest } from "@elizaos/core/contracts/personal-assistant";
 
 const PROACTIVE_INBOX_DIGEST_REQUEST = {
   limit: 24,

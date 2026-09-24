@@ -5,11 +5,11 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, stableStringify } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventAttendee,
-  LifeOpsCalendarProvider,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarEventAttendee,
+  type LifeOpsCalendarProvider,
+} from "@elizaos/core/contracts/calendar";
 import type { ApprovalRequest } from "../approval-queue.types.js";
 import {
   executeRawSql,

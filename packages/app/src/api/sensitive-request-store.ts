@@ -212,7 +212,7 @@ export class LocalSensitiveRequestStore {
 
   fulfill(id: string, event: SensitiveRequestEvent, now = Date.now()): void {
     const record = this.records.get(id);
-    if (!record) return;
+    if (record?.status !== "pending" || !record.tokenUsedAt) return;
     const at = iso(now);
     record.status = "fulfilled";
     record.fulfilledAt = at;
@@ -227,7 +227,7 @@ export class LocalSensitiveRequestStore {
 
   fail(id: string, reason: string, now = Date.now()): void {
     const record = this.records.get(id);
-    if (!record) return;
+    if (record?.status !== "pending" || !record.tokenUsedAt) return;
     const at = iso(now);
     record.status = "failed";
     record.updatedAt = at;
@@ -243,7 +243,7 @@ export class LocalSensitiveRequestStore {
     const record = this.records.get(id) ?? null;
     if (!record) return null;
     this.expireIfNeeded(record, now);
-    if (record.status !== "pending") return record;
+    if (record.status !== "pending" || record.tokenUsedAt) return record;
     const at = iso(now);
     record.status = "canceled";
     record.updatedAt = at;
@@ -276,7 +276,9 @@ export class LocalSensitiveRequestStore {
     record: LocalSensitiveRequestRecord,
     now = Date.now(),
   ): void {
-    if (record.status !== "pending") return;
+    // Consumption admits a single effect; its receipt, not token expiry,
+    // decides the final status once execution has begun.
+    if (record.status !== "pending" || record.tokenUsedAt) return;
     if (Date.parse(record.expiresAt) > now) return;
     const at = iso(now);
     record.status = "expired";

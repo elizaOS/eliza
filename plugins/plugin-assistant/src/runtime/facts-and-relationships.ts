@@ -18,43 +18,38 @@
  * The trajectory recorder logs this as a `facts_and_relationships` stage so
  * extraction quality can be reviewed offline.
  */
-
-import type {
-  ChatMessage,
-  IAgentRuntime,
-  JSONSchema,
-  MessageHandlerExtract,
-  MessageHandlerExtractedRelationship,
-  Relationship,
-  State,
-  ToolDefinition,
-  UUID,
-} from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
+  type ChatMessage,
   ElizaError,
   type FactKind,
   type FactVerificationStatus,
   getUserMessageText,
+  type IAgentRuntime,
   isObjectRecord,
   isSyntheticConversationArtifactMemory,
+  type JSONSchema,
   type Memory,
   MemoryType,
+  type MessageHandlerExtract,
+  type MessageHandlerExtractedRelationship,
   ModelType,
   parseJsonObject,
+  type Relationship,
   resolveCanonicalOwnerId,
+  type State,
+  type ToolDefinition,
+  type UUID,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { getEntityDetails } from "../entities.ts";
 import {
   buildFactKeywordsForStorage,
   factClaimsEquivalent,
   scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
-
 export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
   "FACTS_AND_RELATIONSHIPS_VALIDATE";
-
 /**
  * Confidence assigned to Stage-1 extracted facts. These are unverified,
  * single-message extractions, so they sit below the reflection pass's
@@ -62,7 +57,6 @@ export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
  * unclassified facts (FACTS provider's DEFAULT_FACT_CONFIDENCE).
  */
 const DEFAULT_STAGE_FACT_CONFIDENCE = 0.6;
-
 export const factsAndRelationshipsSchema: JSONSchema = {
   type: "object",
   additionalProperties: false,
@@ -96,7 +90,6 @@ export const factsAndRelationshipsSchema: JSONSchema = {
   },
   required: ["facts", "relationships", "thought"],
 };
-
 export function createFactsAndRelationshipsTool(): ToolDefinition {
   return {
     name: FACTS_AND_RELATIONSHIPS_TOOL_NAME,
@@ -107,7 +100,6 @@ export function createFactsAndRelationshipsTool(): ToolDefinition {
     parameters: factsAndRelationshipsSchema,
   };
 }
-
 export const factsAndRelationshipsInstructions = `task: Validate candidate facts and relationships extracted from the latest user message. Persist only what is genuinely new.
 
 rules:
@@ -126,19 +118,16 @@ rules:
 - relationships use snake_case predicates ("works_with", "lives_in", "manages")
 - if every candidate is a duplicate, return empty arrays
 - thought is a one-line internal note about the dedup decision`;
-
 /** A validated fact paired with the speaker it belongs to. */
 export interface ExtractedFactWithSubject {
   subject: string;
   fact: string;
 }
-
 export interface FactsAndRelationshipsResult {
   facts: ExtractedFactWithSubject[];
   relationships: MessageHandlerExtractedRelationship[];
   thought: string;
 }
-
 export interface FactsAndRelationshipsRunArgs {
   runtime: IAgentRuntime;
   message: Memory;
@@ -148,13 +137,14 @@ export interface FactsAndRelationshipsRunArgs {
   /** Settled planner tool results for this turn, in execution order. */
   executedTools?: readonly FactsStageExecutedTool[];
 }
-
 /** The subset of a settled planner tool result the stage inspects. */
 export interface FactsStageExecutedTool {
   name: string;
-  result: { success: boolean; data?: Record<string, unknown> };
+  result: {
+    success: boolean;
+    data?: Record<string, unknown>;
+  };
 }
-
 export interface FactsAndRelationshipsRunResult {
   parsed: FactsAndRelationshipsResult;
   messages: ChatMessage[];
@@ -171,21 +161,23 @@ export interface FactsAndRelationshipsRunResult {
   provider?: string;
   /** Set when a deterministic gate answered the stage without a model call. */
   skipReason?: string;
-  written: { facts: number; relationships: number };
+  written: {
+    facts: number;
+    relationships: number;
+  };
 }
-
 const MEMORY_MUTATION_ACTION = /^MEMORY(?:CREATE|UPDATE)?$/;
 const REMEMBER_PREFIX =
   /^(?:(?:hey|hi|ok|okay)[\s,]+)?(?:please\s+)?(?:remember|note|keep in mind|save)\s+(?:that\s+)?/i;
-
 function normalizeMemoryActionName(name: string): string {
   return name.toUpperCase().replace(/[^A-Z]/g, "");
 }
-
 /** True when Stage 1 routed the turn to a MEMORY create/update. */
 export function planNamesMemoryMutation(plan: {
   candidateActions?: readonly string[];
-  deterministicToolCall?: { name: string };
+  deterministicToolCall?: {
+    name: string;
+  };
 }): boolean {
   const names = [
     ...(plan.candidateActions ?? []),
@@ -195,7 +187,6 @@ export function planNamesMemoryMutation(plan: {
     MEMORY_MUTATION_ACTION.test(normalizeMemoryActionName(name)),
   );
 }
-
 function storedMemoryTexts(
   executedTools: readonly FactsStageExecutedTool[],
 ): string[] {
@@ -215,18 +206,24 @@ function storedMemoryTexts(
       data.op === "create"
         ? data.text
         : data.op === "update"
-          ? (data.memory as { content?: { text?: unknown } } | null | undefined)
-              ?.content?.text
+          ? (
+              data.memory as
+                | {
+                    content?: {
+                      text?: unknown;
+                    };
+                  }
+                | null
+                | undefined
+            )?.content?.text
           : undefined;
     if (typeof stored === "string" && stored.trim()) texts.push(stored.trim());
   }
   return texts;
 }
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
 /** The user's claim minus the agent mention and the remember/save prefix. */
 function residualUserClaim(runtime: IAgentRuntime, message: Memory): string {
   let text = getUserMessageText(message).replace(/^<@!?\d+>\s*/, "");
@@ -242,7 +239,6 @@ function residualUserClaim(runtime: IAgentRuntime, message: Memory): string {
   }
   return text.replace(REMEMBER_PREFIX, "").trim();
 }
-
 /** Only an identical stored claim proves coverage without semantic judgment. */
 function storedTextsCoverClaim(
   claim: string,
@@ -250,7 +246,6 @@ function storedTextsCoverClaim(
 ): boolean {
   return claim.length > 0 && storedTexts.some((text) => text === claim);
 }
-
 export async function runFactsAndRelationshipsStage(
   args: FactsAndRelationshipsRunArgs,
 ): Promise<FactsAndRelationshipsRunResult> {
@@ -284,7 +279,6 @@ export async function runFactsAndRelationshipsStage(
       written: { facts: 0, relationships: 0 },
     };
   }
-
   const candidateFacts = filterCandidateFacts(runtime, extract.facts ?? []);
   const candidateRelationships = filterCandidateRelationships(
     extract.relationships ?? [],
@@ -301,7 +295,6 @@ export async function runFactsAndRelationshipsStage(
       written: { facts: 0, relationships: 0 },
     };
   }
-
   // A successful MEMORY create/update holding the identical residual claim
   // already persisted it. Paraphrases still require semantic validation.
   if (candidateRelationships.length === 0) {
@@ -327,7 +320,6 @@ export async function runFactsAndRelationshipsStage(
       };
     }
   }
-
   const [similarFacts, existingRelationships, roomEntities] = await Promise.all(
     [
       searchSimilarFacts(runtime, message, candidateFacts),
@@ -335,7 +327,6 @@ export async function runFactsAndRelationshipsStage(
       fetchRoomEntities(runtime, message),
     ],
   );
-
   const tools = [createFactsAndRelationshipsTool()];
   const messages = buildFactsStageMessages({
     runtime,
@@ -350,7 +341,6 @@ export async function runFactsAndRelationshipsStage(
     roomEntities,
     priorDialogue: args.priorDialogue ?? [],
   });
-
   const raw = await runtime.useModel(ModelType.TEXT_LARGE, {
     messages,
     tools,
@@ -361,17 +351,14 @@ export async function runFactsAndRelationshipsStage(
   // TEXT_LARGE call that overwrites the runtime-wide last-resolved value (#13623).
   const provider = runtime.getLastResolvedModelProvider?.(ModelType.TEXT_LARGE);
   const parsed = parseFactsAndRelationshipsOutput(raw);
-
   const written = await persistFactsAndRelationships({
     runtime,
     message,
     roomEntities,
     parsed,
   });
-
   return { parsed, messages, tools, rawResponse: raw, provider, written };
 }
-
 interface BuildMessagesArgs {
   runtime: IAgentRuntime;
   message: Memory;
@@ -381,7 +368,6 @@ interface BuildMessagesArgs {
   roomEntities: RoomEntityRef[];
   priorDialogue: readonly Memory[];
 }
-
 function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
   const systemContent = [
     buildCanonicalSystemPrompt({ character: args.runtime.character }),
@@ -389,12 +375,10 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
   ]
     .filter(Boolean)
     .join("\n\n");
-
   const userBlocks: string[] = [
     `current_message_author: user (id: ${args.message.entityId})`,
     `agent_identity: agent (id: ${args.runtime.agentId})`,
   ];
-
   // Label each line with the actual speaker so the model can attribute facts
   // to the right participant. Collapsing every human to "user" made facts
   // stated by one speaker attributable to whoever spoke next in shared rooms.
@@ -421,7 +405,6 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
   if (dialogueLines.length > 0) {
     userBlocks.push(`recent_conversation:\n${dialogueLines.join("\n")}`);
   }
-
   const currentText =
     typeof args.message.content.text === "string"
       ? args.message.content.text
@@ -431,7 +414,6 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
       `current_message:\n${args.runtime.redactSecrets(currentText)}`,
     );
   }
-
   if (args.similarFacts.length > 0) {
     const lines = args.similarFacts
       .map((memory) =>
@@ -443,7 +425,6 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
       userBlocks.push(`existing_similar_facts:\n${lines.join("\n")}`);
     }
   }
-
   if (args.existingRelationships.length > 0) {
     const lines = args.existingRelationships
       .map((rel) => formatRelationshipForPrompt(rel))
@@ -453,14 +434,12 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
       userBlocks.push(`existing_relationships:\n${lines.join("\n")}`);
     }
   }
-
   const roomEntityLines = args.roomEntities.map((entity) =>
     formatRoomEntityRef(entity),
   );
   if (roomEntityLines.length > 0) {
     userBlocks.push(`room_entities:\n${roomEntityLines.join("\n")}`);
   }
-
   const candidateLines: string[] = [];
   for (const fact of args.extract.facts ?? []) {
     candidateLines.push(`- fact: ${fact}`);
@@ -471,18 +450,15 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
     );
   }
   userBlocks.push(`candidates:\n${candidateLines.join("\n")}`);
-
   return [
     { role: "system", content: systemContent },
     { role: "user", content: userBlocks.join("\n\n") },
   ];
 }
-
 type RoomEntityRef = {
   id?: UUID;
   names: string[];
 };
-
 /**
  * Fetch the room's participant entities directly for facts-stage grounding.
  *
@@ -536,12 +512,10 @@ async function fetchRoomEntities(
     return [];
   }
 }
-
 function formatRoomEntityRef(entity: RoomEntityRef): string {
   const names = entity.names.join(", ") || "(unnamed)";
   return entity.id ? `- ${names} (id: ${entity.id})` : `- ${names}`;
 }
-
 function formatRelationshipForPrompt(relationship: Relationship): string {
   const tags = Array.isArray(relationship.tags)
     ? relationship.tags.filter((t): t is string => typeof t === "string")
@@ -551,7 +525,6 @@ function formatRelationshipForPrompt(relationship: Relationship): string {
   const target = String(relationship.targetEntityId);
   return `${source} ${predicate} ${target}`;
 }
-
 async function searchSimilarFacts(
   runtime: IAgentRuntime,
   message: Memory,
@@ -564,7 +537,6 @@ async function searchSimilarFacts(
       context: { roomId: message.roomId },
     });
   }
-
   let results: unknown;
   try {
     results = await runtime.getMemories({
@@ -594,7 +566,6 @@ async function searchSimilarFacts(
     .sort((left, right) => right.relevance - left.relevance)
     .map((entry) => entry.memory);
 }
-
 async function fetchExistingRelationships(
   runtime: IAgentRuntime,
   message: Memory,
@@ -641,7 +612,6 @@ async function fetchExistingRelationships(
   }
   return results;
 }
-
 export function parseFactsAndRelationshipsOutput(
   raw: unknown,
 ): FactsAndRelationshipsResult {
@@ -666,7 +636,6 @@ export function parseFactsAndRelationshipsOutput(
       code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID",
     });
   }
-
   const facts = parsed.facts
     .map((entry, index): ExtractedFactWithSubject => {
       // Providers that ignore strict tool schemas occasionally emit the
@@ -715,7 +684,6 @@ export function parseFactsAndRelationshipsOutput(
   const thought = parsed.thought;
   return { facts, relationships, thought };
 }
-
 function extractText(raw: unknown): string {
   if (typeof raw === "string") return raw;
   if (raw && typeof raw === "object") {
@@ -747,14 +715,12 @@ function extractText(raw: unknown): string {
   }
   return "";
 }
-
 interface PersistArgs {
   runtime: IAgentRuntime;
   message: Memory;
   roomEntities: RoomEntityRef[];
   parsed: FactsAndRelationshipsResult;
 }
-
 /**
  * The explicit MEMORY tool may store the same user statement as a durable row
  * while this stage is still deduplicating (both run off one Stage-1 response,
@@ -765,7 +731,6 @@ interface PersistArgs {
  * with the model-side dedupe, and a fact about another participant ("Bob
  * prefers oat milk too") is never suppressed by the author's own durable row.
  */
-
 async function readSameMessageDurableFacts(
   runtime: IAgentRuntime,
   message: Memory,
@@ -786,7 +751,6 @@ async function readSameMessageDurableFacts(
     );
   });
 }
-
 function coveredBySameMessageDurableFact(
   fact: string,
   factEntityId: UUID,
@@ -799,15 +763,14 @@ function coveredBySameMessageDurableFact(
     return factClaimsEquivalent(fact, rowText);
   });
 }
-
-async function persistFactsAndRelationships(
-  args: PersistArgs,
-): Promise<{ facts: number; relationships: number }> {
+async function persistFactsAndRelationships(args: PersistArgs): Promise<{
+  facts: number;
+  relationships: number;
+}> {
   const { runtime, message, parsed } = args;
   const roomEntities = args.roomEntities;
   let factsWritten = 0;
   let relationshipsWritten = 0;
-
   if (parsed.facts.length > 0 && typeof runtime.createMemory === "function") {
     const sameMessageDurableFacts = await readSameMessageDurableFacts(
       runtime,
@@ -880,7 +843,6 @@ async function persistFactsAndRelationships(
       factsWritten += 1;
     }
   }
-
   if (
     parsed.relationships.length > 0 &&
     typeof runtime.createMemory === "function"
@@ -955,10 +917,8 @@ async function persistFactsAndRelationships(
       relationshipsWritten += 1;
     }
   }
-
   return { facts: factsWritten, relationships: relationshipsWritten };
 }
-
 function filterCandidateFacts(
   runtime: IAgentRuntime,
   facts: readonly string[],
@@ -975,7 +935,6 @@ function filterCandidateFacts(
   }
   return out;
 }
-
 function filterCandidateRelationships(
   relationships: readonly MessageHandlerExtractedRelationship[],
 ): MessageHandlerExtractedRelationship[] {
@@ -993,7 +952,6 @@ function filterCandidateRelationships(
   }
   return out;
 }
-
 function normalizeRelationshipForPersistence(
   relationship: MessageHandlerExtractedRelationship,
 ): MessageHandlerExtractedRelationship | null {
@@ -1012,9 +970,7 @@ function normalizeRelationshipForPersistence(
     return null;
   return { subject, predicate, object };
 }
-
 const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
-
 /**
  * A redaction marker is not identity evidence. Only the canonical owner marker
  * can resolve to the speaker, and only when trusted runtime configuration
@@ -1036,7 +992,6 @@ function resolveRedactedRelationshipEnds(
   }
   return normalized;
 }
-
 /**
  * Render known IDs as human labels while retaining their identity separately.
  * Display names may collide with role aliases or other participants' names;
@@ -1066,7 +1021,11 @@ function humanizeRelationshipEnds(
   };
   const humanize = (
     value: string,
-  ): { value: string; entityId?: UUID; fromId: boolean } | null => {
+  ): {
+    value: string;
+    entityId?: UUID;
+    fromId: boolean;
+  } | null => {
     const uuid = asUuidOrNull(value);
     if (!uuid) {
       return {
@@ -1110,18 +1069,15 @@ function humanizeRelationshipEnds(
     targetEntityId: object.entityId,
   };
 }
-
 function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {
   const cleaned = cleanText(value);
   if (!cleaned) return "";
   if (containsSecretSignal(cleaned)) return "";
   return runtime.redactSecrets(cleaned).trim();
 }
-
 function cleanText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
-
 function cleanPredicate(value: string): string {
   return value
     .replace(/[^a-zA-Z0-9_ -]/g, "")
@@ -1129,7 +1085,6 @@ function cleanPredicate(value: string): string {
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
 }
-
 function normalizeForComparison(value: string): string {
   return value
     .toLowerCase()
@@ -1137,7 +1092,6 @@ function normalizeForComparison(value: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
-
 function containsSecretSignal(value: string): boolean {
   return (
     /\b(?:api[_\s-]?key|secret|password|access[_\s-]?token|refresh[_\s-]?token|private[_\s-]?key)\b/i.test(
@@ -1148,7 +1102,6 @@ function containsSecretSignal(value: string): boolean {
     )
   );
 }
-
 function isLowSignalCandidate(value: string): boolean {
   const normalized = normalizeForComparison(value);
   return (
@@ -1162,11 +1115,9 @@ function isLowSignalCandidate(value: string): boolean {
     /\b(?:ordinary chat|small talk|chitchat)\b/.test(normalized)
   );
 }
-
 function isSyntheticMemory(memory: Memory): boolean {
   return isSyntheticConversationArtifactMemory(memory);
 }
-
 function resolveRelationshipEntityId(
   value: string,
   entities: readonly RoomEntityRef[],
@@ -1216,7 +1167,6 @@ function resolveRelationshipEntityId(
   if (matches.has(message.entityId)) return message.entityId;
   return undefined;
 }
-
 /** Display names the connector recorded for the message author. */
 function messageAuthorNames(message: Memory): string[] {
   const names: string[] = [];
@@ -1238,7 +1188,6 @@ function messageAuthorNames(message: Memory): string[] {
   }
   return names;
 }
-
 function asUuidOrNull(value: string): UUID | null {
   if (
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(

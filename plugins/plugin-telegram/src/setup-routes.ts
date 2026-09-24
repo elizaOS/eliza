@@ -23,8 +23,11 @@ import {
   logger,
   type SetupState,
 } from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
-
+import {
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import { DEFAULT_ACCOUNT_ID } from "./accounts";
 import { resolveTelegramBotCredential } from "./bot-credential";
 import {
@@ -33,14 +36,12 @@ import {
 } from "./poller-lock";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
-
 interface TelegramBotInfo {
   id: number;
   is_bot: boolean;
   first_name: string;
   username: string;
 }
-
 // `SetupState` is the canonical connector lifecycle union from @elizaos/core.
 // The response below specializes the generic `SetupStatusResponse<TDetail>`
 // with Telegram's connector literal + detail shape, so it stays local.
@@ -60,7 +61,6 @@ interface SetupStatusResponse {
     message?: string;
   };
 }
-
 function sendSetupError(
   res: RouteResponse,
   status: number,
@@ -69,11 +69,9 @@ function sendSetupError(
 ): void {
   res.status(status).json({ error: { code, message } });
 }
-
 function sendStatus(res: RouteResponse, body: SetupStatusResponse): void {
   res.status(200).json(body);
 }
-
 /**
  * Minimal interface for the connector-setup service exposed by the agent.
  * Plugins access it via `runtime.getService("connector-setup")`.
@@ -98,7 +96,6 @@ interface ConnectorSetupService {
     roomId?: string;
   }): boolean;
 }
-
 function isConnectorSetupService(
   service: unknown,
 ): service is ConnectorSetupService {
@@ -114,16 +111,13 @@ function isConnectorSetupService(
     typeof candidate.setOwnerContact === "function"
   );
 }
-
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   const service = runtime.getService("connector-setup");
   return isConnectorSetupService(service) ? service : null;
 }
-
 async function readJsonBody<T>(req: RouteRequest): Promise<T | null> {
   return (req.body as T) ?? null;
 }
-
 function readSavedToken(
   setupService: ConnectorSetupService | null,
   runtime: IAgentRuntime,
@@ -149,7 +143,6 @@ function readSavedToken(
     ? fromSetting
     : null;
 }
-
 function isConfiguredPollerConnected(
   runtime: IAgentRuntime,
   token: string | null,
@@ -162,11 +155,14 @@ function isConfiguredPollerConnected(
       poller.accountId === DEFAULT_ACCOUNT_ID,
   );
 }
-
 /** Only identities validated by setup are available without contacting Telegram or Vault. */
-function readConfiguredBot(
-  config: Record<string, unknown> | undefined,
-): { id: number; username: string; firstName: string } | undefined {
+function readConfiguredBot(config: Record<string, unknown> | undefined):
+  | {
+      id: number;
+      username: string;
+      firstName: string;
+    }
+  | undefined {
   const value = config?.bot;
   if (!value || typeof value !== "object") return undefined;
   const bot = value as Record<string, unknown>;
@@ -180,7 +176,6 @@ function readConfiguredBot(
     return undefined;
   return { id: bot.id, username: bot.username, firstName: bot.firstName };
 }
-
 async function currentStatus(
   setupService: ConnectorSetupService | null,
   runtime: IAgentRuntime,
@@ -235,9 +230,7 @@ async function currentStatus(
     },
   };
 }
-
 const setupMutations = new WeakSet<IAgentRuntime>();
-
 /** Reject overlapping setup effects before token validation or configuration writes. */
 function exclusiveSetup(
   handler: NonNullable<Route["handler"]>,
@@ -260,12 +253,10 @@ function exclusiveSetup(
     }
   };
 }
-
 interface BotDisconnector {
   assertDefaultBotDisconnect(token?: string): string | null;
   disconnectDefaultBot(token?: string): Promise<void>;
 }
-
 function isBotDisconnector(service: unknown): service is BotDisconnector {
   if (!service || typeof service !== "object") return false;
   const candidate = service as Partial<BotDisconnector>;
@@ -274,14 +265,15 @@ function isBotDisconnector(service: unknown): service is BotDisconnector {
     typeof candidate.disconnectDefaultBot === "function"
   );
 }
-
 /** Disconnect the managed default bot without changing personal or named accounts. */
 async function handleDisconnect(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const body = await readJsonBody<{ expectedBotId?: number }>(req);
+  const body = await readJsonBody<{
+    expectedBotId?: number;
+  }>(req);
   const expectedBotId = body?.expectedBotId;
   if (
     typeof expectedBotId !== "number" ||
@@ -458,7 +450,6 @@ async function handleDisconnect(
     );
   }
 }
-
 // ── GET /api/setup/telegram/status ──────────────────────────────────
 async function handleStatus(
   _req: RouteRequest,
@@ -478,21 +469,20 @@ async function handleStatus(
     );
   }
 }
-
 // ── POST /api/setup/telegram/start ──────────────────────────────────
 async function handleStart(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const body = await readJsonBody<{ token?: string }>(req);
+  const body = await readJsonBody<{
+    token?: string;
+  }>(req);
   const token = typeof body?.token === "string" ? body.token.trim() : "";
-
   if (!token) {
     sendSetupError(res, 400, "bad_request", "token is required");
     return;
   }
-
   // Basic format check: <bot_id>:<alphanumeric>
   if (!/^\d+:[A-Za-z0-9_-]{30,}$/.test(token)) {
     sendSetupError(
@@ -503,11 +493,10 @@ async function handleStart(
     );
     return;
   }
-
   let apiRes: Response;
   try {
     apiRes = await fetch(`${TELEGRAM_API_BASE}/bot${token}/getMe`, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(10000),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -519,7 +508,6 @@ async function handleStart(
     );
     return;
   }
-
   if (!apiRes.ok) {
     sendSetupError(
       res,
@@ -529,7 +517,6 @@ async function handleStart(
     );
     return;
   }
-
   const data = (await apiRes.json()) as {
     ok: boolean;
     result?: TelegramBotInfo;
@@ -543,10 +530,8 @@ async function handleStart(
     );
     return;
   }
-
   const bot = data.result;
   const setupService = getSetupService(runtime);
-
   if (setupService) {
     const storedToken = setupService.persistConnectorCredential
       ? ((await setupService.persistConnectorCredential({
@@ -577,7 +562,6 @@ async function handleStart(
       };
       delete connectors.telegram.disconnectPending;
     });
-
     // getMe identifies the bot, not the human owner or an authorized chat.
     // Owner pairing establishes reminder destinations independently of token setup.
     // Add Telegram to the escalation channel list
@@ -587,7 +571,6 @@ async function handleStart(
       "[telegram-setup] connector-setup service not available — token saved to runtime only",
     );
   }
-
   sendStatus(res, {
     connector: "telegram",
     state: "configuring",
@@ -602,7 +585,6 @@ async function handleStart(
     },
   });
 }
-
 // ── POST /api/setup/telegram/cancel ─────────────────────────────────
 async function handleCancel(
   _req: RouteRequest,
@@ -610,7 +592,6 @@ async function handleCancel(
   runtime: IAgentRuntime,
 ): Promise<void> {
   const setupService = getSetupService(runtime);
-
   if (setupService) {
     let storedToken: string | null = null;
     setupService.updateConfig((config) => {
@@ -629,10 +610,8 @@ async function handleCancel(
       await setupService.removeConnectorCredentialReference(storedToken);
     }
   }
-
   await handleStatus(_req, res, runtime);
 }
-
 /**
  * Plugin routes for Telegram bot setup.
  * Registered with `rawPath: true` to expose the canonical `/api/setup/telegram/*`

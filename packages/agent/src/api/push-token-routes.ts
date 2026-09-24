@@ -21,9 +21,8 @@
  *   GET    /api/notifications/push-tokens
  *     Diagnostics: `{ count, platforms: { ios, android } }`.
  */
-
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/shared";
+import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
 import {
   NOTIFICATION_PUSH_SERVICE_TYPE,
   NotificationPushService,
@@ -33,22 +32,19 @@ import {
   type PushPlatform,
   type PushTokenRegistry,
 } from "../services/push/push-token-registry.ts";
-
 export interface PushTokenRouteState {
-  runtime: { getService: (type: string) => unknown } | null;
+  runtime: {
+    getService: (type: string) => unknown;
+  } | null;
 }
-
 const PUSH_TOKENS_PREFIX = "/api/notifications/push-tokens";
-
 function getRegistry(state: PushTokenRouteState): PushTokenRegistry | null {
   const svc = state.runtime?.getService(NOTIFICATION_PUSH_SERVICE_TYPE);
   return svc instanceof NotificationPushService ? svc.getRegistry() : null;
 }
-
 function parsePlatform(value: unknown): PushPlatform | null {
   return value === "ios" || value === "android" ? value : null;
 }
-
 export async function handlePushTokenRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -58,13 +54,11 @@ export async function handlePushTokenRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith(PUSH_TOKENS_PREFIX)) return false;
-
   const registry = getRegistry(state);
   if (!registry) {
     helpers.error(res, "push delivery service not ready", 503);
     return true;
   }
-
   // ── GET /api/notifications/push-tokens ────────────────────────────
   if (method === "GET" && pathname === PUSH_TOKENS_PREFIX) {
     const tokens = await registry.list();
@@ -77,7 +71,6 @@ export async function handlePushTokenRoute(
     helpers.json(res, { count: tokens.length, platforms: { ios, android } });
     return true;
   }
-
   // ── POST /api/notifications/push-tokens ───────────────────────────
   if (method === "POST" && pathname === PUSH_TOKENS_PREFIX) {
     const body = await helpers.readJsonBody<Record<string, unknown>>(req, res, {
@@ -111,7 +104,6 @@ export async function handlePushTokenRoute(
     helpers.json(res, { ok: true }, 201);
     return true;
   }
-
   // ── DELETE /api/notifications/push-tokens ─────────────────────────
   if (method === "DELETE" && pathname === PUSH_TOKENS_PREFIX) {
     const body = await helpers.readJsonBody<Record<string, unknown>>(req, res, {
@@ -125,7 +117,6 @@ export async function handlePushTokenRoute(
     }
     return unregisterOrError(registry, token, res, helpers);
   }
-
   // ── Legacy DELETE /api/notifications/push-tokens/:token ───────────
   const tokenMatch = pathname.match(
     /^\/api\/notifications\/push-tokens\/([^/]+)$/,
@@ -141,11 +132,9 @@ export async function handlePushTokenRoute(
     }
     return unregisterOrError(registry, token, res, helpers);
   }
-
   helpers.error(res, "push-token route not found", 404);
   return true;
 }
-
 /**
  * Run `registry.unregister`, applying the same byte-bound validation as the
  * register path across BOTH DELETE shapes. A typed validation failure maps to

@@ -3,13 +3,10 @@
  * app consumers can register, list, and drain the deferred loaders that
  * mount plugin-owned HTTP routes once the runtime is ready.
  */
-export type {
-  AppRoutePluginLoader,
-  AppRoutePluginRegistryEntry,
-} from "@elizaos/shared";
 export {
+  type AppRoutePluginLoader,
+  type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
   registerAppRoutePluginLoader,
-} from "@elizaos/shared/api/app-route-plugin-registry";
-
-export { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";
+} from "@elizaos/core/api/app-route-plugin-registry";
+export { drainAppRoutePluginLoaders } from "@elizaos/core/api/drain-app-route-plugins";

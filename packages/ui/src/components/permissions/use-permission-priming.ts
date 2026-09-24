@@ -2,11 +2,12 @@
  * Coordinates the onboarding soft-ask permission sequence across web, desktop,
  * and native registries without prompting the OS until the user opts in.
  */
+
 import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionStatus,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/permissions";
 import * as React from "react";
 import { client } from "../../api/client";
 import {
@@ -19,7 +20,6 @@ import {
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
 import { createClientPermissionsRegistry } from "../composites/chat/permission-card.helpers";
-
 /**
  * Sequencing controller for the onboarding permission-priming modal.
  *
@@ -36,9 +36,7 @@ import { createClientPermissionsRegistry } from "../composites/chat/permission-c
  * Permission request failures stay distinct from user denials so recovery copy
  * never blames the user for a broken native bridge or app identity.
  */
-
 export type PrimingItemStatus = PermissionStatus | "unknown";
-
 export interface PrimingItem {
   id: PermissionId;
   status: PrimingItemStatus;
@@ -57,7 +55,6 @@ export interface PrimingItem {
    */
   resolved: boolean;
 }
-
 export interface PermissionPrimingController {
   /** Promptable items in order (already-granted/N-A ids are excluded). */
   items: PrimingItem[];
@@ -84,11 +81,9 @@ export interface PermissionPrimingController {
   /** Skip every remaining card at once ("Not now" for the whole flow). */
   skipAll: () => void;
 }
-
 const PRIMING_FEATURE = { app: "onboarding", action: "permission-priming" };
 const PRIMING_REASON =
   "Requested during onboarding so the assistant is ready to use this feature.";
-
 /** Statuses that need no action, so their card is never shown. */
 function isSatisfied(status: PrimingItemStatus): boolean {
   return (
@@ -97,13 +92,11 @@ function isSatisfied(status: PrimingItemStatus): boolean {
     status === "restricted"
   );
 }
-
 function selectRegistry(): IPermissionsRegistry {
   return isNative && !isDesktopPlatform()
     ? createMobileSignalsPermissionsRegistry(undefined, client)
     : createClientPermissionsRegistry(client);
 }
-
 async function openSettingsFor(id: PermissionId): Promise<void> {
   if (isNative && !isDesktopPlatform()) {
     await openMobilePermissionSettings(id);
@@ -111,17 +104,14 @@ async function openSettingsFor(id: PermissionId): Promise<void> {
   }
   await client.openPermissionSettings(id);
 }
-
 export function usePermissionPriming(
   ids: readonly PermissionId[],
 ): PermissionPrimingController {
   const registry = React.useMemo(selectRegistry, []);
   const idsKey = ids.join(",");
-
   const [items, setItems] = React.useState<PrimingItem[]>([]);
   const [ready, setReady] = React.useState(false);
   const requestingRef = React.useRef<Set<PermissionId>>(new Set());
-
   // Mount check: probe each id WITHOUT prompting, then keep only the ones that
   // still need action. Already-granted / not-applicable / restricted ids are
   // dropped so no card is shown for them.
@@ -169,7 +159,6 @@ export function usePermissionPriming(
     };
     // idsKey captures the id list identity; registry is stable (useMemo []).
   }, [idsKey, registry]);
-
   const patch = React.useCallback(
     (id: PermissionId, next: Partial<PrimingItem>) => {
       setItems((current) =>
@@ -178,7 +167,6 @@ export function usePermissionPriming(
     },
     [],
   );
-
   const request = React.useCallback(
     async (id: PermissionId) => {
       if (requestingRef.current.has(id)) return;
@@ -218,18 +206,15 @@ export function usePermissionPriming(
     },
     [patch, registry],
   );
-
   const skip = React.useCallback(
     (id: PermissionId) => {
       patch(id, { resolved: true });
     },
     [patch],
   );
-
   const openSettings = React.useCallback(async (id: PermissionId) => {
     await openSettingsFor(id);
   }, []);
-
   const recheck = React.useCallback(
     async (id: PermissionId) => {
       try {
@@ -254,15 +239,12 @@ export function usePermissionPriming(
     },
     [patch, registry],
   );
-
   const skipAll = React.useCallback(() => {
     setItems((current) => current.map((item) => ({ ...item, resolved: true })));
   }, []);
-
   const activeIndex = items.findIndex((item) => !item.resolved);
   const active = activeIndex === -1 ? null : items[activeIndex];
   const done = ready && active === null;
-
   return {
     items,
     activeIndex: activeIndex === -1 ? items.length : activeIndex,

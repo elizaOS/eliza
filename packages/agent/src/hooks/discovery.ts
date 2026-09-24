@@ -7,7 +7,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { parseFrontmatterDocument } from "@elizaos/shared/markdown";
+import { parseFrontmatterDocument } from "@elizaos/core/markdown";
 import type {
   ElizaHookMetadata,
   Hook,

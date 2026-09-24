@@ -33,24 +33,18 @@
       ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "@elizaos/agent": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/app": ["./src/platform/empty-node-module.ts"],
-      "@elizaos/app/*": ["./src/platform/empty-node-module.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
       "@capacitor/app": [
         "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
-      "@elizaos/agent/*": ["./src/platform/empty-node-module.ts"],
       "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
@@ -97,7 +91,43 @@
       "@elizaos/capacitor-system": [
         "../../plugins/plugin-native-system/src/index.ts"
       ],
-      "@elizaos/auth": ["../auth/src/sdk/index.ts"]
+      "@elizaos/auth": ["../auth/src/sdk/index.ts"],
+      "@elizaos/plugin-native-inference/model-catalog/recommendation": [
+        "../../plugins/plugin-native-inference/src/model-catalog/recommendation.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/catalog": [
+        "../../plugins/plugin-native-inference/src/model-catalog/catalog.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
+        "../../plugins/plugin-native-inference/src/model-catalog/routing-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
+        "../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
+      ],
+      "@elizaos/plugin-elizacloud/steward-session-client": [
+        "../../plugins/plugin-elizacloud/src/steward-session-client/index.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
+        "../../plugins/plugin-native-inference/src/model-catalog/network-policy.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/runtime-class": [
+        "../../plugins/plugin-native-inference/src/model-catalog/runtime-class.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/base-url": [
+        "../../plugins/plugin-elizacloud/src/cloud-config/base-url.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts"
+      ],
+      "@elizaos/plugin-native-inference/model-catalog/verify": [
+        "../../plugins/plugin-native-inference/src/model-catalog/verify.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets": [
+        "../../plugins/plugin-elizacloud/src/cloud-config/cloud-secrets.ts"
+      ],
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../../plugins/plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
+      ]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],

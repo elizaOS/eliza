@@ -20,7 +20,6 @@ if (!Number.isInteger(port) || port < 1024 || port > 65535 || port === 50001) {
     "LIFEOPS_E2E_PORT must be a non-native port from 1024 to 65535.",
   );
 }
-
 const adapterStub = join(here, "lifeops-connections-adapter-stub.ts");
 const result = await viteBuild({
   configFile: false,
@@ -33,12 +32,6 @@ const result = await viteBuild({
       name: "lifeops-production-adapter-stub",
       enforce: "pre",
       resolveId(source, importer) {
-        if (
-          source === "@elizaos/shared" &&
-          importer?.endsWith("/lifeops/time.ts")
-        ) {
-          return join(here, "lifeops-time-host-fixture.ts");
-        }
         if (source === "./handoff-adapter.js") return adapterStub;
         if (
           source === "./deletion-adapter.js" &&
@@ -75,13 +68,11 @@ const styles = buildResult.output
   .join("\n");
 if (!styles)
   throw new Error("LifeOps fixture omitted production control styles.");
-
 const emittedAssets = new Map(
   buildResult.output
     .filter((entry) => entry.type === "asset")
     .map((entry) => [`/${entry.fileName}`, entry.source]),
 );
-
 const html = `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--brand-orange:#ff6a1f;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -123,7 +114,6 @@ const server = Bun.serve({
     return new Response("Not found", { status: 404 });
   },
 });
-
 const outputDir = await mkdtemp(join(tmpdir(), "eliza-lifeops-e2e-"));
 const baseURL = `http://127.0.0.1:${port}`;
 const holdOpen = process.env.LIFEOPS_E2E_HOLD_OPEN === "1";
@@ -132,7 +122,6 @@ function assert(condition, message) {
   process.stdout.write(`${condition ? "PASS" : "FAIL"} ${message}\n`);
   if (!condition) failures += 1;
 }
-
 function relativeLuminance(color) {
   const [red, green, blue] = color
     .match(/[\d.]+/g)
@@ -143,7 +132,6 @@ function relativeLuminance(color) {
     );
   return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
-
 function contrastRatio(foreground, background) {
   const light = Math.max(
     relativeLuminance(foreground),
@@ -155,7 +143,6 @@ function contrastRatio(foreground, background) {
   );
   return (light + 0.05) / (dark + 0.05);
 }
-
 async function openFamilyMonth(page, month) {
   const input = page.getByLabel("Month to prepare");
   if ((await input.inputValue()) === month) return;
@@ -165,7 +152,6 @@ async function openFamilyMonth(page, month) {
     .getByRole("heading", { name: `Selected correspondence for ${month}` })
     .waitFor();
 }
-
 const browser = await chromium.launch({
   headless: true,
   slowMo: process.env.ELIZA_LIFEOPS_E2E_RECORD_SLOW === "1" ? 750 : 0,
@@ -260,7 +246,6 @@ try {
     fullPage: true,
     animations: "disabled",
   });
-
   await desktop.getByRole("button", { name: "7 days", exact: true }).click();
   await desktop.getByRole("button", { name: "Seed selected context" }).click();
   await desktop.getByTestId("seed-receipt").waitFor();
@@ -275,7 +260,6 @@ try {
     fullPage: true,
     animations: "disabled",
   });
-
   await desktop
     .getByRole("button", {
       name: "Retry all connection checks and synchronization",
@@ -289,7 +273,6 @@ try {
       (await desktop.getByTestId("seed-receipt").count()) === 1,
     "partial failure recovers through an explicit retry",
   );
-
   await desktop
     .getByRole("button", { name: /Purge imported Google data/ })
     .click();
@@ -337,7 +320,6 @@ try {
     ),
     "purge receipt denies provider mutation",
   );
-
   await desktop
     .getByRole("button", { name: /Disconnect Google account/ })
     .click();
@@ -354,7 +336,6 @@ try {
     fullPage: true,
     animations: "disabled",
   });
-
   await desktop.getByRole("button", { name: /Continue to Google/ }).click();
   await desktop
     .getByRole("combobox", { name: "Active Google account" })
@@ -384,7 +365,6 @@ try {
     "calendar review stays separate from provider mutation",
   );
   assert(pageErrors.length === 0, "desktop flow has no page errors");
-
   const multiAccount = await browser.newPage({
     viewport: { width: 1180, height: 850 },
   });
@@ -460,7 +440,6 @@ try {
     fullPage: true,
   });
   await multiAccount.close();
-
   for (const unresolved of [true, false]) {
     const recovery = await browser.newPage({
       viewport: { width: 390, height: 844 },
@@ -525,7 +504,6 @@ try {
       });
     await recovery.close();
   }
-
   const appleOnly = await browser.newPage({
     viewport: { width: 1024, height: 800 },
   });
@@ -558,7 +536,6 @@ try {
     animations: "disabled",
   });
   await appleOnly.close();
-
   const capabilityPage = await browser.newPage({
     viewport: { width: 1024, height: 800 },
   });
@@ -593,7 +570,6 @@ try {
     "effect scopes are requested only after explicit selection",
   );
   await capabilityPage.close();
-
   for (const [permission, label] of [
     ["limited", "Write only"],
     ["restricted", "Restricted"],
@@ -607,7 +583,6 @@ try {
     );
     await permissionPage.close();
   }
-
   const requestPermission = await browser.newPage();
   await requestPermission.goto(`${baseURL}?permission=not-determined`);
   await requestPermission
@@ -624,7 +599,6 @@ try {
     "Apple permission request refreshes to the granted state",
   );
   await requestPermission.close();
-
   const faultCases = [
     {
       query: "failure=load",
@@ -759,7 +733,6 @@ try {
     );
     await faultPage.close();
   }
-
   for (const width of [1180, 390]) {
     const context = await browser.newContext({
       viewport: { width, height: 850 },
@@ -928,7 +901,6 @@ try {
     );
     await context.close();
   }
-
   for (const width of [1180, 390]) {
     const context = await browser.newContext({
       viewport: { width, height: 850 },
@@ -1285,7 +1257,6 @@ try {
       .getByText("The pickup arrangement changed.", { exact: true })
       .waitFor();
     await captureIntake(`family-request-reopened-${width}.png`);
-
     await writeFile(
       join(outputDir, `family-intake-${width}-diagnostics.json`),
       JSON.stringify(diagnostics, null, 2),
@@ -1299,7 +1270,6 @@ try {
     if (video)
       await video.saveAs(join(outputDir, `family-intake-${width}.webm`));
   }
-
   for (const width of [1180, 390]) {
     const family = await browser.newPage({
       viewport: { width, height: 850 },
@@ -1646,7 +1616,6 @@ try {
     "failed save cannot approve unsaved edits",
   );
   await failedEdit.close();
-
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
@@ -1759,7 +1728,6 @@ try {
 } finally {
   await browser.close();
 }
-
 process.stdout.write(`Evidence: ${outputDir}\n`);
 if (failures > 0) process.exitCode = 1;
 if (holdOpen && failures === 0) {

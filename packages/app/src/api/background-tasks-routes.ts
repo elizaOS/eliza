@@ -6,8 +6,8 @@
  * scheduler. Returns 503 when the runtime or task service is unavailable.
  */
 import type http from "node:http";
+import { BackgroundTaskRunCoordinator } from "@elizaos/agent/host-use-cases";
 import { type Service, ServiceType } from "@elizaos/core";
-import { BackgroundTaskRunCoordinator } from "@elizaos/shared/host-use-cases";
 import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson } from "./response";
@@ -69,6 +69,7 @@ export async function handleBackgroundTasksRoute(
       coalesced: result.coalesced,
     });
   } catch (error) {
+    runtime.reportError("app.backgroundTasks", error, { phase: "runDueTasks" });
     sendJson(res, 500, {
       ok: false,
       error: error instanceof Error ? error.message : String(error),

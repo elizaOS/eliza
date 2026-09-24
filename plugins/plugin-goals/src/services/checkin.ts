@@ -31,6 +31,10 @@
 import crypto from "node:crypto";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
+  type LifeOpsGoalDefinition,
+  type LifeOpsGoalReviewState,
+} from "@elizaos/core/contracts/personal-assistant";
+import {
   getScheduledTaskRunner,
   OWNER_LOCAL_TZ,
   type ScheduledTask,
@@ -41,10 +45,6 @@ import {
   type ScheduledTaskTrigger,
   type TerminalState,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsGoalDefinition,
-  LifeOpsGoalReviewState,
-} from "@elizaos/shared";
 import { GoalsRepository } from "../db/goals-repository.ts";
 import { fail, requireAgentId } from "../goal-normalize.ts";
 import type { GoalsCheckinSync } from "../goals-service.ts";

@@ -7,11 +7,10 @@
  * Targeted stale-credential purges require a proven agent owner and preserve
  * every unrelated profile, active-server credential, and loopback owner hint.
  */
-
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/cloud-pair";
 import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,
@@ -51,7 +50,6 @@ function tryRemoveFromStorage(remove: () => void, key?: string): boolean {
     return false;
   }
 }
-
 /** Remove one key from both storage backends, each deletion isolated so a
  * failing store cannot abort clearing the rest. */
 function removePairKeyFromBothStorages(key: string): void {
@@ -64,7 +62,6 @@ function removePairKeyFromBothStorages(key: string): void {
     }
   }, key);
 }
-
 /** Remove a loopback owner hint only when it names the credential being purged. */
 function clearLocalOwnerHintForAgent(agentId: string): void {
   try {
@@ -96,10 +93,8 @@ function clearLocalOwnerHintForAgent(agentId: string): void {
     );
   }
 }
-
 /** Prefix for all per-agent cloud-pair token keys */
 const CLOUD_PAIR_SCOPED_PREFIX = "eliza:cloud-pair:api-token:";
-
 /**
  * Remove all scoped cloud-pair token keys from localStorage.
  * Used when an explicit disconnect happens but we can't resolve a specific agentId.
@@ -128,7 +123,6 @@ function clearAllScopedCloudPairKeys(): void {
   // Legacy single-key format
   removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
 }
-
 /**
  * Remove all scoped cloud-pair token keys from sessionStorage.
  */
@@ -160,7 +154,6 @@ function clearAllScopedCloudPairKeysSession(): void {
     window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
   }, CLOUD_PAIR_SESSION_STORAGE_KEY);
 }
-
 /**
  * Remove the durable pair token from BOTH storages the write channel targets.
  * Storage-scoped on purpose — the live bearer/boot-config are left alone so
@@ -179,7 +172,6 @@ export function clearCloudPairApiToken(agentId?: string): void {
   const scopedKey = agentId?.trim()
     ? cloudPairTokenKeyForAgent(agentId.trim())
     : null;
-
   if (scopedKey) {
     removePairKeyFromBothStorages(scopedKey);
     clearLocalOwnerHintForAgent(agentId?.trim() ?? "");
@@ -191,7 +183,6 @@ export function clearCloudPairApiToken(agentId?: string): void {
     removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
   }
 }
-
 /** A cloud profile belongs to `agentId` via its explicit id or its API base. */
 function profileMatchesDedicatedAgent(
   profile: AgentProfile,
@@ -201,7 +192,6 @@ function profileMatchesDedicatedAgent(
   if (profile.cloudAgentId === agentId) return true;
   return dedicatedAgentIdFromApiBase(profile.apiBase) === agentId;
 }
-
 /**
  * Purge the persisted credentials for ONE dedicated cloud agent whose adopted
  * bearer a caller has independently observed rejected. The pairing mint is
@@ -223,7 +213,6 @@ function profileMatchesDedicatedAgent(
 export function clearStalePairCredentialsForAgent(agentId: string): void {
   const target = agentId.trim();
   if (!target) return;
-
   const activeServer = loadPersistedActiveServer();
   // The durable key is per-agent, so purge THIS agent's scoped key regardless
   // of which agent is the active server — it provably belongs to the target.
@@ -234,7 +223,6 @@ export function clearStalePairCredentialsForAgent(agentId: string): void {
   if (activeServer && resolveDedicatedAgentId(activeServer) === target) {
     scrubPersistedActiveServerToken();
   }
-
   const registry = loadAgentProfileRegistry();
   let changed = false;
   registry.profiles = registry.profiles.map((profile) => {

@@ -4,27 +4,29 @@
  * gesture to its approval queue and durable mutation ledger before invoking
  * those provider methods.
  */
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  CreateLifeOpsCalendarEventResponse,
-  CreateLifeOpsLinkedCalendarLinkRequest,
-  DisconnectLifeOpsLinkedCalendarRequest,
-  LifeOpsCalendarAllDayRange,
-  LifeOpsCalendarCancellationMode,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventCancellationResult,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsLinkedCalendarControlMutationResult,
-  LifeOpsLinkedCalendarMutationResponse,
-  RebindLifeOpsLinkedCalendarRequest,
-  RebindLifeOpsLinkedCalendarResponse,
-  ResolveLifeOpsLinkedCalendarConflictRequest,
-  RunLifeOpsLinkedCalendarReconciliationRequest,
-  UpdateLifeOpsLinkedCalendarControlRequest,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type CreateLifeOpsCalendarEventResponse,
+  type CreateLifeOpsLinkedCalendarLinkRequest,
+  type DisconnectLifeOpsLinkedCalendarRequest,
+  type LifeOpsCalendarAllDayRange,
+  type LifeOpsCalendarCancellationMode,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarEventCancellationResult,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsLinkedCalendarControlMutationResult,
+  type LifeOpsLinkedCalendarMutationResponse,
+  type RebindLifeOpsLinkedCalendarRequest,
+  type RebindLifeOpsLinkedCalendarResponse,
+  type ResolveLifeOpsLinkedCalendarConflictRequest,
+  type RunLifeOpsLinkedCalendarReconciliationRequest,
+  type UpdateLifeOpsLinkedCalendarControlRequest,
+} from "@elizaos/core/contracts/calendar";
+import {
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+} from "@elizaos/core/contracts/personal-assistant";
 
 export const CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE =
   "calendar_owner_mutation_gateway";

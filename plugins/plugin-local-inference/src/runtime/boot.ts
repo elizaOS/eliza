@@ -25,15 +25,14 @@
  * boot steps it skips on mobile (telegram polling, app-route plugins, etc.);
  * this hook only owns the local-inference-specific init.
  */
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
 
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import {
 	shouldEnableMobileLocalInference,
 	warnIfMobileGateActiveWithoutPlatform,
 } from "./mobile-local-inference-gate";
-
 /**
  * Install the local-inference model handler at the pre-ready boot phase.
  *
@@ -53,7 +52,6 @@ export async function registerLocalInferenceBoot(
 		mobilePlatform: isMobilePlatform(),
 		warn: logger.warn,
 	});
-
 	if (isMobilePlatform()) {
 		// Mobile bundle wires the local model handler only when a mobile-safe
 		// backend (device-bridge / AOSP FFI / bionic host / riscv64) is enabled;
@@ -63,7 +61,6 @@ export async function registerLocalInferenceBoot(
 		}
 		return;
 	}
-
 	// Desktop / server: ensureLocalInferenceHandler self-skips on a cloud
 	// runtime mode or when no local backend is available.
 	await ensureLocalInferenceHandler(runtime);

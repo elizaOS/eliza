@@ -9,13 +9,7 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
-import type { OverlayApp } from "@elizaos/shared";
-import {
-  getAvailableOverlayApps,
-  getOverlayApp,
-  isOverlayApp,
-} from "@elizaos/shared";
-import { formatError } from "@elizaos/shared/browser-contracts";
+import { formatError } from "@elizaos/core/utils/format-error";
 import { Button, Card, Spinner } from "@elizaos/ui";
 import {
   type AppLaunchResult,
@@ -24,6 +18,12 @@ import {
   type RegistryAppInfo,
 } from "@elizaos/ui/api";
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
+import { type OverlayApp } from "@elizaos/ui/apps/overlay-app-api";
+import {
+  getAvailableOverlayApps,
+  getOverlayApp,
+  isOverlayApp,
+} from "@elizaos/ui/apps/overlay-app-registry";
 import { findAppBySlug, getAppSlug } from "@elizaos/ui/components/apps/helpers";
 import {
   getInternalToolAppDescriptors,
@@ -36,12 +36,6 @@ import {
   resolveViewerReadyEventType,
   shouldUseEmbeddedAppViewer,
 } from "@elizaos/ui/components/apps/viewer-auth";
-// Static imports for the internal-tool views. WHY not React.lazy: each of
-// these is also statically imported by the main shell (App.tsx + tab
-// routers + DetachedShellRoot), so a `lazy(() => import(...))` here would
-// be folded back into the main chunk by Rollup with a warning. If you
-// ever want true code splitting for these, move the lazy boundary up to
-// the call site that owns the only path to the module.
 import { ChatView } from "@elizaos/ui/components/pages/ChatView";
 import { DatabasePageView } from "@elizaos/ui/components/pages/DatabasePageView";
 import { LogsView } from "@elizaos/ui/components/pages/LogsView";
@@ -63,12 +57,17 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Tab } from "../../../../ui/src/navigation";
+import { type Tab } from "../../../../ui/src/navigation";
 
+// Static imports for the internal-tool views. WHY not React.lazy: each of
+// these is also statically imported by the main shell (App.tsx + tab
+// routers + DetachedShellRoot), so a `lazy(() => import(...))` here would
+// be folded back into the main chunk by Rollup with a warning. If you
+// ever want true code splitting for these, move the lazy boundary up to
+// the call site that owns the only path to the module.
 interface AppWindowRendererProps {
   slug: string;
 }
-
 function AppWindowSuspense({
   children,
 }: {
@@ -86,7 +85,6 @@ function AppWindowSuspense({
     </Suspense>
   );
 }
-
 function RegisteredWalletInventoryView(): JSX.Element {
   const registration = listAppShellPages().find(
     (entry) => entry.id === "wallet.inventory" || entry.path === "/inventory",
@@ -104,12 +102,10 @@ function RegisteredWalletInventoryView(): JSX.Element {
   }
   return <Component />;
 }
-
 const appShellPageLazyComponentCache = new WeakMap<
   NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
   ComponentType<Record<string, unknown>>
 >();
-
 function getAppShellPageLazyComponent(
   loader: NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
 ): ComponentType<Record<string, unknown>> {
@@ -119,7 +115,6 @@ function getAppShellPageLazyComponent(
   appShellPageLazyComponentCache.set(loader, created);
   return created;
 }
-
 function RegisteredAppShellPageView({
   registration,
 }: {
@@ -139,7 +134,6 @@ function RegisteredAppShellPageView({
   }
   return <Component />;
 }
-
 /** Render a built-in tab component bare (no chat pane / sidebar). */
 function renderInternalToolTab(tab: Tab): JSX.Element | null {
   switch (tab) {
@@ -177,7 +171,6 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
       return null;
   }
 }
-
 function AppWindowError({ message }: { message: string }): JSX.Element {
   return (
     <Card
@@ -189,7 +182,6 @@ function AppWindowError({ message }: { message: string }): JSX.Element {
     </Card>
   );
 }
-
 function AppWindowSpinner({ label }: { label: string }): JSX.Element {
   const { t } = useApp();
   return (
@@ -204,7 +196,6 @@ function AppWindowSpinner({ label }: { label: string }): JSX.Element {
     </div>
   );
 }
-
 function AppWindowFrame({ children }: { children: JSX.Element }): JSX.Element {
   return (
     <div className="flex h-dvh min-h-0 w-full flex-col overflow-hidden bg-bg text-txt">
@@ -212,7 +203,6 @@ function AppWindowFrame({ children }: { children: JSX.Element }): JSX.Element {
     </div>
   );
 }
-
 function exitAppWindow(): void {
   if (typeof window === "undefined") return;
   try {
@@ -221,7 +211,6 @@ function exitAppWindow(): void {
     /* ignore — window.close may be no-op outside the app window context */
   }
 }
-
 const overlayLazyComponentCache = new WeakMap<
   NonNullable<OverlayApp["loader"]>,
   ComponentType<{
@@ -230,7 +219,6 @@ const overlayLazyComponentCache = new WeakMap<
     t: (key: string, opts?: Record<string, unknown>) => string;
   }>
 >();
-
 function getOverlayLazyComponent(overlay: OverlayApp): ComponentType<{
   exitToApps: () => void;
   uiTheme: "light" | "dark";
@@ -243,11 +231,9 @@ function getOverlayLazyComponent(overlay: OverlayApp): ComponentType<{
   overlayLazyComponentCache.set(overlay.loader, created);
   return created;
 }
-
 function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
   const overlay = getOverlayApp(appName);
   const { uiTheme, t } = useApp();
-
   if (!overlay) {
     return (
       <AppWindowError
@@ -255,9 +241,7 @@ function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
       />
     );
   }
-
   const theme = uiTheme === "dark" ? "dark" : "light";
-
   const LazyComponent = getOverlayLazyComponent(overlay);
   if (LazyComponent) {
     return (
@@ -266,7 +250,6 @@ function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
       </AppWindowSuspense>
     );
   }
-
   const Component = overlay.Component;
   if (!Component) {
     return (
@@ -277,14 +260,12 @@ function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
   }
   return <Component exitToApps={exitAppWindow} uiTheme={theme} t={t} />;
 }
-
 interface RegistryRunState {
   status: "loading" | "ready" | "external" | "error";
   run: AppRunSummary | null;
   launchUrl: string | null;
   message: string | null;
 }
-
 function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
   const { t } = useApp();
   const { catalog, error: catalogError } = useRegistryCatalog();
@@ -297,14 +278,11 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
   const [retryCounter, setRetryCounter] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
-
   const resolvedApp = useMemo<RegistryAppInfo | null>(() => {
     if (!catalog) return null;
     return findAppBySlug(catalog, slug) ?? null;
   }, [catalog, slug]);
-
   const displayName = resolvedApp?.displayName ?? slug;
-
   // Launch the app once we know the package name.
   useEffect(() => {
     if (!resolvedApp) return;
@@ -321,7 +299,6 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
           : null,
     });
     authSentRef.current = false;
-
     void (async () => {
       try {
         const result: AppLaunchResult = await client.launchApp(
@@ -377,12 +354,10 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
         });
       }
     })();
-
     return () => {
       cancelled = true;
     };
   }, [resolvedApp, retryCounter, t]);
-
   // postMessage auth handshake — mirrors GameViewOverlay / GameView.
   const run = runState.run;
   const viewerUrl = run?.viewer?.url ?? "";
@@ -397,7 +372,6 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
   const useEmbedded = useMemo(() => shouldUseEmbeddedAppViewer(run), [run]);
   const authMessage = run?.viewer?.authMessage ?? null;
   const requiresAuth = run?.viewer?.postMessageAuth === true;
-
   useEffect(() => {
     if (
       runState.status !== "ready" ||
@@ -411,8 +385,11 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     if (authSentRef.current) return;
     const expectedReadyType = resolveViewerReadyEventType(authMessage);
     if (!expectedReadyType) return;
-
-    const onMessage = (event: MessageEvent<{ type?: string }>) => {
+    const onMessage = (
+      event: MessageEvent<{
+        type?: string;
+      }>,
+    ) => {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
@@ -421,13 +398,11 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       iframeWindow.postMessage(authMessage, targetOrigin);
       authSentRef.current = true;
     };
-
     window.addEventListener("message", onMessage);
     return () => {
       window.removeEventListener("message", onMessage);
     };
   }, [authMessage, requiresAuth, runState.status, targetOrigin, useEmbedded]);
-
   if (catalogError) {
     return <AppWindowError message={catalogError} />;
   }
@@ -441,11 +416,9 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       />
     );
   }
-
   if (runState.status === "loading") {
     return <AppWindowSpinner label={displayName} />;
   }
-
   if (runState.status === "error") {
     return (
       <Card
@@ -471,7 +444,6 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       </Card>
     );
   }
-
   if (runState.status === "external") {
     return (
       <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
@@ -486,7 +458,6 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       </div>
     );
   }
-
   // status === "ready" && we have an embedded viewer URL.
   const sandbox = run?.viewer?.sandbox;
   return (
@@ -500,7 +471,6 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     />
   );
 }
-
 export function AppWindowRenderer({
   slug,
 }: AppWindowRendererProps): JSX.Element {
@@ -511,7 +481,6 @@ export function AppWindowRenderer({
     // We cannot reverse-look-up by slug directly, so iterate the descriptors.
     return resolveInternalToolTabFromSlug(slug);
   }, [slug]);
-
   if (internalTab) {
     const view = renderInternalToolTab(internalTab);
     if (view) {
@@ -522,7 +491,6 @@ export function AppWindowRenderer({
       );
     }
   }
-
   const appShellPage = resolveAppShellPageFromSlug(slug);
   if (appShellPage) {
     return (
@@ -533,7 +501,6 @@ export function AppWindowRenderer({
       </AppWindowFrame>
     );
   }
-
   // Overlay apps register by package name. The slug is derived from the
   // package name via getAppSlug.
   const overlayName = resolveOverlayAppNameFromSlug(slug);
@@ -544,7 +511,6 @@ export function AppWindowRenderer({
       </AppWindowFrame>
     );
   }
-
   // Otherwise, treat as a registry/catalog app slug and launch via the API.
   return (
     <AppWindowFrame>
@@ -552,7 +518,6 @@ export function AppWindowRenderer({
     </AppWindowFrame>
   );
 }
-
 /**
  * Resolve a `/apps/<slug>` to its internal-tool target tab using the
  * internal-tool descriptor table as the source of truth.
@@ -567,7 +532,6 @@ function resolveInternalToolTabFromSlug(slug: string): Tab | null {
   }
   return null;
 }
-
 function resolveAppShellPageFromSlug(
   slug: string,
 ): ReturnType<typeof listAppShellPages>[number] | null {
@@ -581,7 +545,6 @@ function resolveAppShellPageFromSlug(
     }) ?? null
   );
 }
-
 /**
  * Reverse-lookup an overlay app name from its slug.
  *

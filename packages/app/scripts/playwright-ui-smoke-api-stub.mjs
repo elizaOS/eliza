@@ -8,6 +8,8 @@ import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// Pure catalog data; keep the Node-run stub aligned without loading a runtime.
+import { VOICE_MODEL_VERSIONS } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { WebSocketServer } from "ws";
 // Single source of the host-external view-import rewrite (owned by the agent
 // bundle route). Plain ESM so this node-run stub can import it without a build.
@@ -15,8 +17,6 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.ts";
-// Pure catalog data; keep the Node-run stub aligned without loading a runtime.
-import { VOICE_MODEL_VERSIONS } from "../../shared/src/local-inference/voice-models.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
@@ -4062,30 +4062,6 @@ const server = http.createServer(async (req, res) => {
       taskCount: 0,
       tasks: [],
       pendingConfirmations: 0,
-    });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/coding-agents/coordinator/threads"
-  ) {
-    sendJson(req, res, 200, { threads: [], total: 0 });
-    return;
-  }
-  if (req.method === "GET" && url.pathname === "/api/extension/status") {
-    sendJson(req, res, 200, {
-      installed: false,
-      connected: false,
-      relayReachable: false,
-      relayPort: 0,
-      extensionPath: null,
-      chromeBuildPath: null,
-      chromePackagePath: null,
-      safariWebExtensionPath: null,
-      safariAppPath: null,
-      safariPackagePath: null,
-      releaseManifest: null,
     });
     return;
   }

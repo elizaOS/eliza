@@ -2,9 +2,6 @@
  * Plugin list utilities — pure functions, constants, and type aliases
  * shared across the plugin management UI.
  */
-
-import { autoLabel } from "@elizaos/shared";
-import type { LucideIcon } from "lucide-react";
 import {
   Binary,
   Bird,
@@ -41,6 +38,7 @@ import {
   Link,
   Lock,
   LockKeyhole,
+  type LucideIcon,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -82,15 +80,14 @@ import type { PluginInfo, PluginParamDef } from "../../api";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
+import { autoLabel } from "../../utils/labels.js";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
 
 const DISCORD_DEVELOPER_PORTAL_URL =
   "https://discord.com/developers/applications";
 const DISCORD_INVITE_PERMISSIONS = "67193856";
 const DISCORD_INVITE_SCOPES = "bot applications.commands";
-
 /* ── Always-on plugins (hidden from all views) ────────────────────────── */
-
 /**
  * Plugin IDs hidden from Features/Connectors views.
  * Core plugins are visible in Admin > Plugins instead.
@@ -132,9 +129,7 @@ export const ALWAYS_ON_PLUGIN_IDS = new Set([
   "vision",
   "computeruse",
 ]);
-
 /* ── Helpers ────────────────────────────────────────────────────────── */
-
 /** Detect advanced / debug parameters that should be collapsed by default. */
 export function isAdvancedParam(param: PluginParamDef): boolean {
   const k = param.key.toUpperCase();
@@ -150,7 +145,6 @@ export function isAdvancedParam(param: PluginParamDef): boolean {
     d.includes("debug")
   );
 }
-
 /** Convert PluginParamDef[] to a JSON Schema + ConfigUiHints for ConfigRenderer. */
 export function paramsToSchema(
   params: PluginParamDef[],
@@ -162,7 +156,6 @@ export function paramsToSchema(
   const properties: Record<string, Record<string, unknown>> = {};
   const required: string[] = [];
   const hints: Record<string, ConfigUiHint> = {};
-
   for (const p of params) {
     // Build JSON Schema property
     const prop: Record<string, unknown> = {};
@@ -178,7 +171,6 @@ export function paramsToSchema(
     if (p.options?.length) {
       prop.enum = p.options;
     }
-
     // Auto-detect format from key name
     const keyUpper = p.key.toUpperCase();
     if (
@@ -196,7 +188,6 @@ export function paramsToSchema(
     ) {
       prop.format = "date";
     }
-
     // Auto-detect number types from key patterns
     if (keyUpper.includes("PORT") && prop.type === "string") {
       prop.type = "number";
@@ -220,7 +211,6 @@ export function paramsToSchema(
     ) {
       prop.type = "number";
     }
-
     // Auto-detect boolean from key patterns
     if (
       prop.type === "string" &&
@@ -237,7 +227,6 @@ export function paramsToSchema(
     ) {
       prop.type = "boolean";
     }
-
     // Auto-detect number from key patterns (RATE, DELAY, THRESHOLD, SIZE, TEMPERATURE)
     if (
       prop.type === "string" &&
@@ -252,7 +241,6 @@ export function paramsToSchema(
     ) {
       prop.type = "number";
     }
-
     // Auto-detect comma-separated lists → array renderer
     if (prop.type === "string" && !prop.enum) {
       const descLower = (p.description || "").toLowerCase();
@@ -279,7 +267,6 @@ export function paramsToSchema(
         prop.items = { type: "string" };
       }
     }
-
     // Auto-detect textarea (prompts, instructions, templates, greetings)
     if (prop.type === "string" && !prop.enum && !keyUpper.includes("MODEL")) {
       if (
@@ -292,7 +279,6 @@ export function paramsToSchema(
         prop.maxLength = 999;
       }
     }
-
     // Auto-detect JSON fields (json-encoded or serialized values)
     if (prop.type === "string" && !p.sensitive) {
       const descLower = (p.description || "").toLowerCase();
@@ -305,7 +291,6 @@ export function paramsToSchema(
         (prop as Record<string, unknown>).__jsonHint = true;
       }
     }
-
     // Auto-detect file/directory paths → file renderer
     if (prop.type === "string") {
       if (
@@ -318,23 +303,18 @@ export function paramsToSchema(
         (prop as Record<string, unknown>).__fileHint = true;
       }
     }
-
     // Auto-detect textarea from long descriptions
     if (p.description && p.description.length > 200) {
       prop.maxLength = 999;
     }
-
     properties[p.key] = prop;
-
     if (p.required) required.push(p.key);
-
     // Build UI hint
     const hint: ConfigUiHint = {
       label: autoLabel(p.key, pluginId),
       sensitive: p.sensitive ?? false,
       advanced: isAdvancedParam(p),
     };
-
     // Port numbers — constrain range
     if (keyUpper.includes("PORT")) {
       hint.min = 1;
@@ -342,7 +322,6 @@ export function paramsToSchema(
       prop.minimum = 1;
       prop.maximum = 65535;
     }
-
     // Timeout/interval — show unit
     if (
       keyUpper.includes("TIMEOUT") ||
@@ -353,7 +332,6 @@ export function paramsToSchema(
       prop.minimum = 0;
       hint.min = 0;
     }
-
     // Count/limit — non-negative
     if (
       keyUpper.includes("COUNT") ||
@@ -363,7 +341,6 @@ export function paramsToSchema(
       hint.min = 0;
       prop.minimum = 0;
     }
-
     // Retry — bounded range
     if (keyUpper.includes("RETRY") || keyUpper.includes("RETRIES")) {
       hint.min = 0;
@@ -371,7 +348,6 @@ export function paramsToSchema(
       prop.minimum = 0;
       prop.maximum = 100;
     }
-
     // Debug/verbose/enabled — mark as advanced
     if (
       keyUpper.includes("DEBUG") ||
@@ -380,12 +356,10 @@ export function paramsToSchema(
     ) {
       hint.advanced = true;
     }
-
     // Model selection — NOT advanced (important user-facing choice)
     if (keyUpper.includes("MODEL") && p.options?.length) {
       hint.advanced = false;
     }
-
     // Region/zone — suggest common cloud regions when no options provided
     if (
       (keyUpper.includes("REGION") || keyUpper.includes("ZONE")) &&
@@ -401,19 +375,16 @@ export function paramsToSchema(
         { value: "ap-northeast-1", label: "Asia Pacific (Tokyo)" },
       ];
     }
-
     // File/directory path → file renderer
     if ((prop as Record<string, unknown>).__fileHint) {
       hint.type = "file";
       delete (prop as Record<string, unknown>).__fileHint;
     }
-
     // JSON-encoded value → json renderer
     if ((prop as Record<string, unknown>).__jsonHint) {
       hint.type = "json";
       delete (prop as Record<string, unknown>).__jsonHint;
     }
-
     // Model name fields get helpful input hints, overridden by server-provided
     // model options via configUiHints.
     if (
@@ -435,7 +406,6 @@ export function paramsToSchema(
         }
       }
     }
-
     // Mode/strategy fields — extract options from description if available
     if (
       prop.type === "string" &&
@@ -471,7 +441,6 @@ export function paramsToSchema(
         }
       }
     }
-
     if (p.description) {
       hint.help = p.description;
       if (p.default != null) hint.help += ` (default: ${String(p.default)})`;
@@ -481,15 +450,12 @@ export function paramsToSchema(
     else if (p.default) hint.placeholder = `Default: ${String(p.default)}`;
     hints[p.key] = hint;
   }
-
   return {
     schema: { type: "object", properties, required } as JsonSchemaObject,
     hints,
   };
 }
-
 /* ── Icon Lookup ───────────────────────────────────────────────────── */
-
 /**
  * Lucide name → component map. Entries declare their icon by Lucide
  * component name in `render.icon` (PluginInfo.iconName); this map resolves
@@ -571,7 +537,6 @@ const ICON_BY_LUCIDE_NAME: Record<string, LucideIcon> = {
   Wrench,
   Zap,
 };
-
 /** Resolve display icon. Order: explicit image URL on PluginInfo.icon →
  *  registry-provided Lucide name (PluginInfo.iconName) → null. */
 export function resolveIcon(p: PluginInfo): LucideIcon | string | null {
@@ -583,7 +548,6 @@ export function resolveIcon(p: PluginInfo): LucideIcon | string | null {
   if (p.iconName) return ICON_BY_LUCIDE_NAME[p.iconName] ?? null;
   return null;
 }
-
 export function iconImageSource(icon: string): string | null {
   const value = icon.trim();
   if (!value) return null;
@@ -596,9 +560,7 @@ export function iconImageSource(icon: string): string | null {
   }
   return null;
 }
-
 /* ── Visual identity (logos, monograms, gradients) ─────────────────── */
-
 /** Stable 32-bit hash of a string (FNV-1a), used to derive deterministic hues. */
 function hashString(input: string): number {
   let hash = 0x811c9dc5;
@@ -608,7 +570,6 @@ function hashString(input: string): number {
   }
   return hash >>> 0;
 }
-
 /** One- or two-character monogram for a plugin (skips leading punctuation). */
 export function pluginMonogram(plugin: PluginInfo): string {
   const source = (plugin.name ?? plugin.id ?? "?").replace(/^[^a-z0-9]+/i, "");
@@ -619,7 +580,6 @@ export function pluginMonogram(plugin: PluginInfo): string {
   const single = words[0] ?? source;
   return single.slice(0, 2).toUpperCase() || "·";
 }
-
 /**
  * Deterministic monogram-tile gradient derived from the plugin name hash.
  * Hues stay inside the brand-orange family so every monogram tile reads
@@ -635,9 +595,7 @@ export function pluginTileGradient(plugin: PluginInfo): string {
   const angle = 120 + (hash % 6) * 12;
   return `linear-gradient(${angle}deg, hsl(${base} 82% 56%), hsl(${second} 78% 47%))`;
 }
-
 export type TranslateFn = AppTranslateFn;
-
 function resolvePluginParamValue(
   plugin: Pick<PluginInfo, "parameters">,
   key: string,
@@ -647,16 +605,13 @@ function resolvePluginParamValue(
   if (draftValue) {
     return draftValue;
   }
-
   const param = plugin.parameters?.find((candidate) => candidate.key === key);
   if (!param || param.sensitive || !param.isSet) {
     return null;
   }
-
   const persistedValue = param.currentValue?.trim();
   return persistedValue ? persistedValue : null;
 }
-
 export function buildDiscordInviteUrl(applicationId: string): string {
   const params = new URLSearchParams({
     client_id: applicationId,
@@ -665,7 +620,6 @@ export function buildDiscordInviteUrl(applicationId: string): string {
   });
   return `https://discord.com/oauth2/authorize?${params.toString()}`;
 }
-
 export function getPluginResourceLinks(
   plugin: Pick<
     PluginInfo,
@@ -674,16 +628,20 @@ export function getPluginResourceLinks(
   options?: {
     draftConfig?: Record<string, string>;
   },
-): Array<{ key: string; url: string }> {
+): Array<{
+  key: string;
+  url: string;
+}> {
   const seen = new Set<string>();
-  const ordered: Array<{ key: string; url?: string | null }> = [];
-
+  const ordered: Array<{
+    key: string;
+    url?: string | null;
+  }> = [];
   if (plugin.id === "discord") {
     ordered.push({
       key: "discord-developer-portal",
       url: DISCORD_DEVELOPER_PORTAL_URL,
     });
-
     const applicationId = resolvePluginParamValue(
       plugin,
       "DISCORD_APPLICATION_ID",
@@ -696,13 +654,11 @@ export function getPluginResourceLinks(
       });
     }
   }
-
   ordered.push(
     { key: "guide", url: plugin.setupGuideUrl },
     { key: "official", url: plugin.homepage },
     { key: "source", url: plugin.repository },
   );
-
   return ordered.flatMap((item) => {
     const url = item.url?.trim();
     if (!url || seen.has(url)) return [];
@@ -710,7 +666,6 @@ export function getPluginResourceLinks(
     return [{ key: item.key, url }];
   });
 }
-
 export function pluginResourceLinkLabel(t: TranslateFn, key: string): string {
   if (key === "discord-developer-portal") {
     return t("pluginsview.DiscordDeveloperPortal", {
@@ -730,14 +685,11 @@ export function pluginResourceLinkLabel(t: TranslateFn, key: string): string {
   }
   return t("logsview.Source", { defaultValue: "Source" });
 }
-
 /* ── Sub-group Classification ──────────────────────────────────────── */
-
 // Per-plugin sub-group assignment lives in the registry as `render.group`.
 // This file used to mirror it as a hardcoded FEATURE_SUBGROUP map; that
 // duplication is gone. The order/labels/nav-icons below are GROUP-level
 // metadata that the per-entry registry does not (yet) model.
-
 export const SUBGROUP_DISPLAY_ORDER = [
   "ai-provider",
   "connector",
@@ -754,7 +706,6 @@ export const SUBGROUP_DISPLAY_ORDER = [
   "feature-other",
   "showcase",
 ] as const;
-
 export const SUBGROUP_LABELS: Record<string, string> = {
   "ai-provider": "AI Providers",
   connector: "Connectors",
@@ -771,7 +722,6 @@ export const SUBGROUP_LABELS: Record<string, string> = {
   streaming: "Streaming Destinations",
   showcase: "Showcase",
 };
-
 export const SUBGROUP_NAV_ICONS: Record<string, LucideIcon> = {
   all: Package,
   "ai-provider": Brain,
@@ -789,7 +739,6 @@ export const SUBGROUP_NAV_ICONS: Record<string, LucideIcon> = {
   "feature-other": Puzzle,
   showcase: Sparkles,
 };
-
 export function subgroupForPlugin(plugin: PluginInfo): string {
   if (plugin.id === "__ui-showcase__") return "showcase";
   if (plugin.group) return plugin.group;
@@ -799,7 +748,6 @@ export function subgroupForPlugin(plugin: PluginInfo): string {
   if (plugin.category === "streaming") return "streaming";
   return "feature-other";
 }
-
 export type StatusFilter = "all" | "enabled" | "disabled";
 export type PluginsViewMode =
   | "all"
@@ -807,8 +755,11 @@ export type PluginsViewMode =
   | "connectors"
   | "streaming"
   | "social";
-export type SubgroupTag = { id: string; label: string; count: number };
-
+export type SubgroupTag = {
+  id: string;
+  label: string;
+  count: number;
+};
 export function isPluginReady(plugin: PluginInfo): boolean {
   if (!plugin.enabled) return false;
   const needsConfig =
@@ -817,7 +768,6 @@ export function isPluginReady(plugin: PluginInfo): boolean {
     ) ?? false;
   return !needsConfig;
 }
-
 export function comparePlugins(left: PluginInfo, right: PluginInfo): number {
   // Ready plugins (enabled + fully configured) float to the top
   const leftReady = isPluginReady(left);
@@ -827,7 +777,6 @@ export function comparePlugins(left: PluginInfo, right: PluginInfo): number {
   if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
   return (left.name ?? "").localeCompare(right.name ?? "");
 }
-
 export function matchesPluginFilters(
   plugin: PluginInfo,
   searchLower: string,
@@ -847,7 +796,6 @@ export function matchesPluginFilters(
     plugin.id.toLowerCase().includes(searchLower);
   return matchesStatus && matchesSearch;
 }
-
 export function sortPlugins(
   filteredPlugins: PluginInfo[],
   pluginOrder: string[],
@@ -856,7 +804,6 @@ export function sortPlugins(
   if (!allowCustomOrder || pluginOrder.length === 0) {
     return [...filteredPlugins].sort(comparePlugins);
   }
-
   const orderMap = new Map(pluginOrder.map((id, index) => [id, index]));
   return [...filteredPlugins].sort((left, right) => {
     const leftIndex = orderMap.get(left.id);
@@ -867,7 +814,6 @@ export function sortPlugins(
     return comparePlugins(left, right);
   });
 }
-
 export function buildPluginListState(options: {
   allowCustomOrder: boolean;
   effectiveSearch: string;
@@ -930,7 +876,6 @@ export function buildPluginListState(options: {
       visiblePlugins.push(plugin);
     }
   }
-
   const subgroupTags = [
     { id: "all", label: "All", count: sorted.length },
     ...SUBGROUP_DISPLAY_ORDER.filter(
@@ -941,7 +886,6 @@ export function buildPluginListState(options: {
       count: subgroupCounts[subgroupId] ?? 0,
     })),
   ];
-
   return {
     nonDbPlugins,
     sorted,

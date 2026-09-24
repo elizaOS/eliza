@@ -1,16 +1,16 @@
 /**
  * Lists an app's users after validating pagination and access at the HTTP boundary.
  */
-import { parsePositiveInteger } from "@elizaos/shared";
+
+import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_LIMIT = 100;
-
 /**
  * GET /api/v1/apps/[id]/users
  * Gets a list of users who have interacted with a specific app.
@@ -25,7 +25,13 @@ const MAX_LIMIT = 100;
  */
 async function __hono_GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  {
+    params,
+  }: {
+    params: Promise<{
+      id: string;
+    }>;
+  },
 ) {
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
@@ -42,10 +48,8 @@ async function __hono_GET(
         { status: 400 },
       );
     }
-
     // Verify the app exists and belongs to the user's organization
     const existingApp = await appsService.getById(id);
-
     if (!existingApp) {
       return Response.json(
         {
@@ -55,7 +59,6 @@ async function __hono_GET(
         { status: 404 },
       );
     }
-
     if (existingApp.organization_id !== user.organization_id) {
       return Response.json(
         {
@@ -74,10 +77,8 @@ async function __hono_GET(
         { status: 403 },
       );
     }
-
     // Get app users
     const appUsers = await appsService.getAppUsers(id, limit);
-
     return Response.json({
       success: true,
       users: appUsers,
@@ -99,7 +100,6 @@ async function __hono_GET(
     );
   }
 }
-
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, {

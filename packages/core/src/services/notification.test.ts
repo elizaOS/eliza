@@ -3,7 +3,6 @@
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
 
-import { ElizaError, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import {
 	afterAll,
@@ -15,6 +14,7 @@ import {
 	vi,
 } from "vitest";
 import { createCharacter } from "../character.ts";
+import { ElizaError } from "../errors.js";
 import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import {
@@ -23,6 +23,7 @@ import {
 } from "../types/notification.ts";
 import type { Plugin } from "../types/plugin.ts";
 import { ServiceType } from "../types/service.ts";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { AgentEventService } from "./agentEvent.ts";
 import { NotificationService } from "./notification.ts";
 

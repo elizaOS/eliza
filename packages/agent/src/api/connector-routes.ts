@@ -7,17 +7,15 @@
  * callback. Blocked object keys are rejected to prevent prototype pollution.
  */
 import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { PostConnectorRequestSchema } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import { PostConnectorRequestSchema } from "@elizaos/core/contracts/connector-routes";
+import { type ElizaConfig } from "../config/config.ts";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";
-import type { ConnectorConfig } from "../config/types.eliza.ts";
-
+import { type ConnectorConfig } from "../config/types.eliza.ts";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 export interface ConnectorRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -51,25 +49,29 @@ export interface ConnectorRouteContext {
   /** Optional host-supplied callback fired on every disconnect path. */
   onConnectorDisconnect?: (connectorName: string) => Promise<void> | void;
 }
-
 function getConfiguredConnectorsFromEnv(): Record<
   string,
-  { enabled: true; configuredViaEnv: true }
+  {
+    enabled: true;
+    configuredViaEnv: true;
+  }
 > {
-  const configured: Record<string, { enabled: true; configuredViaEnv: true }> =
-    {};
-
+  const configured: Record<
+    string,
+    {
+      enabled: true;
+      configuredViaEnv: true;
+    }
+  > = {};
   for (const [connectorName, envMap] of Object.entries(CONNECTOR_ENV_MAP)) {
     const envKeys = new Set(Object.values(envMap));
     if (connectorName === "discord") {
       envKeys.add("DISCORD_BOT_TOKEN");
     }
-
     const hasAnyEnvValue = [...envKeys].some((envKey) => {
       const value = process.env[envKey];
       return typeof value === "string" && value.trim().length > 0;
     });
-
     if (hasAnyEnvValue) {
       configured[connectorName] = {
         enabled: true,
@@ -77,10 +79,8 @@ function getConfiguredConnectorsFromEnv(): Record<
       };
     }
   }
-
   return configured;
 }
-
 function listVisibleConnectors(config: ElizaConfig): Record<string, unknown> {
   const rawConnectors =
     config.connectors ??
@@ -94,7 +94,6 @@ function listVisibleConnectors(config: ElizaConfig): Record<string, unknown> {
     !Array.isArray(rawConnectors)
       ? { ...rawConnectors }
       : {};
-
   for (const [connectorName, summary] of Object.entries(
     getConfiguredConnectorsFromEnv(),
   )) {
@@ -102,14 +101,11 @@ function listVisibleConnectors(config: ElizaConfig): Record<string, unknown> {
       visibleConnectors[connectorName] = summary;
     }
   }
-
   return visibleConnectors;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 export async function handleConnectorRoutes(
   ctx: ConnectorRouteContext,
 ): Promise<boolean> {
@@ -129,7 +125,6 @@ export async function handleConnectorRoutes(
     cloneWithoutBlockedObjectKeys,
     onConnectorDisconnect,
   } = ctx;
-
   // ── GET /api/connectors ──────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/connectors") {
     json(res, {
@@ -137,7 +132,6 @@ export async function handleConnectorRoutes(
     });
     return true;
   }
-
   // ── POST /api/connectors ─────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/connectors") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
@@ -211,7 +205,6 @@ export async function handleConnectorRoutes(
     });
     return true;
   }
-
   // ── DELETE /api/connectors/:name ─────────────────────────────────────
   if (method === "DELETE" && pathname.startsWith("/api/connectors/")) {
     const rawName = pathname.slice("/api/connectors/".length);
@@ -246,7 +239,6 @@ export async function handleConnectorRoutes(
     if (channels && previousChannel !== undefined) {
       delete channels[name];
     }
-
     try {
       saveElizaConfig(state.config);
     } catch (err) {
@@ -283,6 +275,5 @@ export async function handleConnectorRoutes(
     });
     return true;
   }
-
   return false;
 }

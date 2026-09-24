@@ -41,7 +41,8 @@ export function benignExternalMessageFixture(
 }
 const MESSAGE_USER_SUFFIX_BOUNDARY =
   /\n\n(?:event:|provider:|current_turn_boundary:|The Stage 1 router)/;
-const MESSAGE_USER_BLOCK_MARKER = /(?:^|\n\n)message:user:\n/g;
+const MESSAGE_USER_BLOCK_MARKER =
+  /(?:^|\n\n)(message:user:\n|# Current message\n)/g;
 
 type JsonObjectKeyInspection = {
   hasDuplicateRootKeys: boolean;
@@ -201,23 +202,27 @@ function decodeStage1JsonMessageEnvelope(value: string): string | null {
   return extractExternalContent(record.text) ?? record.text.trim();
 }
 
-function latestMessageUserMarkerIndex(value: string): number {
+function latestMessageUserContent(value: string): {
+  index: number;
+  dialogue: boolean;
+} {
   let blockIndex = -1;
+  let dialogue = false;
   for (const match of value.matchAll(MESSAGE_USER_BLOCK_MARKER)) {
-    blockIndex =
-      (match.index ?? 0) + match[0].length - MESSAGE_USER_MARKER.length;
+    blockIndex = (match.index ?? 0) + match[0].length;
+    dialogue = match[1] === "# Current message\n";
   }
-  return blockIndex === -1
-    ? value.lastIndexOf(MESSAGE_USER_MARKER)
-    : blockIndex;
+  if (blockIndex !== -1) return { index: blockIndex, dialogue };
+  const legacyIndex = value.lastIndexOf(MESSAGE_USER_MARKER);
+  return {
+    index: legacyIndex === -1 ? -1 : legacyIndex + MESSAGE_USER_MARKER.length,
+    dialogue: false,
+  };
 }
 
 function extractScenarioInput(value: string): string | null {
-  const markerIndex = latestMessageUserMarkerIndex(value);
-  const afterMarker =
-    markerIndex === -1
-      ? value
-      : value.slice(markerIndex + MESSAGE_USER_MARKER.length);
+  const { index: markerIndex, dialogue } = latestMessageUserContent(value);
+  const afterMarker = markerIndex === -1 ? value : value.slice(markerIndex);
   const candidate =
     afterMarker.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
   if (
@@ -225,6 +230,35 @@ function extractScenarioInput(value: string): string | null {
     (candidate[0] === "{" || candidate[0] === "[" || candidate[0] === '"')
   ) {
     return decodeStage1JsonMessageEnvelope(candidate);
+  }
+  // Only the canonical current-message block admits the renderer's default
+  // speaker prefix. Unframed text and arbitrary colon prefixes stay exact.
+  if (dialogue && candidate.startsWith("user: ")) {
+    let text = candidate.slice("user: ".length);
+    const attachmentsIndex = text.lastIndexOf("\n\nattachments: ");
+    if (attachmentsIndex !== -1) {
+      const attachmentJson = text.slice(
+        attachmentsIndex + "\n\nattachments: ".length,
+      );
+      try {
+        const attachments: unknown = JSON.parse(attachmentJson);
+        if (
+          !Array.isArray(attachments) ||
+          attachments.some(
+            (attachment) =>
+              attachment === null ||
+              typeof attachment !== "object" ||
+              Array.isArray(attachment),
+          )
+        )
+          return null;
+      } catch {
+        // error-policy:J3 Invalid attachment framing cannot match a request fixture.
+        return null;
+      }
+      text = text.slice(0, attachmentsIndex);
+    }
+    return extractExternalContent(text) ?? text;
   }
   const externalContent = extractExternalContent(candidate);
   if (externalContent !== null) return externalContent;

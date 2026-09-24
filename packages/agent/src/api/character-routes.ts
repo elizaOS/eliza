@@ -10,8 +10,8 @@
  */
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ModelType, validateUuid } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { PostCharacterGenerateRequestSchema } from "@elizaos/shared";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import { PostCharacterGenerateRequestSchema } from "@elizaos/core/contracts/character-routes";
 import {
   buildCharacterHistorySnapshot,
   type CharacterHistorySnapshot,

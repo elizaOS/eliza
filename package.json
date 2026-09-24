@@ -41,12 +41,6 @@
     "publish:eliza1": "cd packages/training && node ../scripts/run-python.mjs -m scripts.publish.publish_eliza1_all",
     "dev:agent": "bun run --cwd packages/agent dev",
     "build": "node packages/scripts/run-turbo.mjs run build --concurrency=8 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.mjs",
-    "content-context:produce": "bun packages/scripts/produce-content-context.mjs",
-    "content-context:benchmark": "bun packages/scripts/run-progressive-content-benchmark.mjs",
-    "content-context:e2e": "bun packages/scripts/produce-content-context-e2e.mjs",
-    "content-context:live-trajectories": "bun packages/scripts/produce-content-context-live-trajectories.mjs",
-    "content-context:postgres": "bun packages/scripts/produce-content-context-postgres.mjs",
-    "content-context:soak": "bun packages/scripts/run-content-context-soak.mjs",
     "build:client": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app",
     "build:views": "node packages/scripts/build-views.mjs",
     "format": "node packages/scripts/check-biome-version-consistency.mjs && node packages/scripts/run-turbo.mjs run format",
@@ -104,7 +98,13 @@
     "verify:cloud": "node packages/scripts/run-turbo.mjs run lint:check typecheck --filter='./packages/cloud/**'",
     "db:cloud:migrate": "bun --conditions=eliza-source packages/cloud/scripts/admin/migrate-with-diagnostics.ts",
     "db:cloud:pglite": "bun run packages/cloud/scripts/admin/dev/pglite-server.ts",
-    "reset:state": "node packages/scripts/rm-path-recursive.mjs .eliza .elizadb"
+    "reset:state": "node packages/scripts/rm-path-recursive.mjs .eliza .elizadb",
+    "content-context:produce": "bun packages/scripts/produce-content-context.mjs",
+    "content-context:benchmark": "bun packages/scripts/run-progressive-content-benchmark.mjs",
+    "content-context:e2e": "bun packages/scripts/produce-content-context-e2e.mjs",
+    "content-context:live-trajectories": "bun packages/scripts/produce-content-context-live-trajectories.mjs",
+    "content-context:postgres": "bun packages/scripts/produce-content-context-postgres.mjs",
+    "content-context:soak": "bun packages/scripts/run-content-context-soak.mjs"
   },
   "packageManager": "bun@1.4.2",
   "workspaces": [
@@ -135,8 +135,6 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/testing": "workspace:*",
     "@elizaos/vitest-vite": "npm:vite@7.3.5",
     "@playwright/test": "^1.63.0",
     "@testing-library/react": "^16.3.3",
@@ -144,12 +142,7 @@
     "@types/node": "25.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.3",
-<<<<<<< HEAD
-    "@types/react-test-renderer": "^19.0.0",
-    "@types/semver": "^7.8.0",
-=======
     "@types/react-test-renderer": "^19.3.0",
->>>>>>> origin/develop
     "@typescript/native": "npm:typescript@^7.0.2",
     "@typescript/typescript6": "^6.0.2",
     "@vitejs/plugin-react": "^6.1.1",
@@ -180,18 +173,13 @@
     "tsx": "^4.21.0",
     "turbo": "^2.11.2",
     "typescript": "^6.0.3",
-    "verdaccio": "6.10.4",
     "vite": "8.3.0",
-<<<<<<< HEAD
-    "vitest": "^4.1.10",
-    "yaml": "2.9.0"
-=======
     "vitest": "^5.0.1",
     "verdaccio": "6.10.4",
     "yaml": "2.9.0",
     "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-native-inference": "workspace:*",
     "stripe": "^22.0.0"
->>>>>>> origin/develop
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
@@ -201,10 +189,11 @@
     "@types/react-dom": "19.2.3",
     "form-data": "4.0.6",
     "@solana/kit": "5.5.1",
+    "@farcaster/quick-auth": "0.0.8",
     "@types/node": "25.6.2",
     "typedoc-plugin-markdown": "4.11.0",
     "typedoc": "0.28.19",
-    "zod": "^4.6.5",
+    "zod": "^4.4.3",
     "drizzle-orm": "0.45.2",
     "@electric-sql/client": "1.0.14",
     "@electric-sql/experimental": "1.0.14",
@@ -219,7 +208,6 @@
   "overrides": {
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/app": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/plugin-solana": "2.0.0-alpha.3",
@@ -397,6 +385,7 @@
     "pg": "^8.23.0",
     "tailwind-merge": "3.7.0",
     "zod": "^4.6.5",
-    "@elizaos/cloud-routing": "workspace:*"
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/ui": "workspace:*"
   }
 }

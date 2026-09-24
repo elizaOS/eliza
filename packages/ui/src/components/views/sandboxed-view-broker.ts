@@ -20,7 +20,7 @@
  */
 
 import type { ResolvedSurfaceManifest, SurfaceCapability } from "@elizaos/core";
-import { surfaceGrants } from "@elizaos/shared/views/surface-manifest";
+import { surfaceGrants } from "@elizaos/core/views/surface-manifest";
 
 /** Marks every frame of the sandboxed-view protocol so unrelated postMessages are ignored. */
 export const SANDBOXED_VIEW_CHANNEL = "eliza:sandboxed-view" as const;

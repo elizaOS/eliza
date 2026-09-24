@@ -144,7 +144,6 @@ describe("root Vitest boundaries", () => {
         env: {
           ...process.env,
           CHOKIDAR_USEPOLLING: "1",
-          NODE_OPTIONS: "--no-addons",
           WS_NO_BUFFER_UTIL: "1",
           WS_NO_UTF_8_VALIDATE: "1",
         },

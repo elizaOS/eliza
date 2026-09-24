@@ -12,7 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readVoiceE2eTestEnv } from "../../shared/src/test-env-config.ts";
+import { readVoiceE2eTestEnv } from "@elizaos/core/test-env-config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -5,7 +5,6 @@ import { defineConfig } from "vitest/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreSrcRoot = path.resolve(__dirname, "../../src");
-const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
 
 export default defineConfig({
@@ -22,14 +21,6 @@ export default defineConfig({
 			{
 				find: /^@elizaos\/app\/(.*)$/,
 				replacement: path.join(appCoreSrcRoot, "$1"),
-			},
-			{
-				find: /^@elizaos\/shared$/,
-				replacement: path.join(sharedSrcRoot, "index.ts"),
-			},
-			{
-				find: /^@elizaos\/shared\/(.*)$/,
-				replacement: path.join(sharedSrcRoot, "$1"),
 			},
 			{
 				find: /^bun:ffi$/,

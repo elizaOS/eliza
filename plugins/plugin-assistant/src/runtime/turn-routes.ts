@@ -16,8 +16,7 @@
  *
  * Registered by the basic-capabilities plugin so every runtime gets them.
  */
-
-import type { Route } from "@elizaos/shared";
+import { type Route } from "@elizaos/core/api/http-plugin";
 
 const TURN_ABORT_ROUTE: Route = {
   type: "POST",
@@ -41,7 +40,6 @@ const TURN_ABORT_ROUTE: Route = {
     res.status(200).json({ aborted, roomId, reason });
   },
 };
-
 const TURN_STATUS_ROUTE: Route = {
   type: "GET",
   path: "/api/turns/:roomId",
@@ -60,7 +58,6 @@ const TURN_STATUS_ROUTE: Route = {
     res.status(200).json({ roomId, active, hasSignal });
   },
 };
-
 export const TURN_CONTROL_ROUTES: ReadonlyArray<Route> = [
   TURN_ABORT_ROUTE,
   TURN_STATUS_ROUTE,

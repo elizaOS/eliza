@@ -49,6 +49,7 @@ import {
 import { referenceRepeatedHistory } from "./history-wire.ts";
 import { reviewRecoveredReply } from "./recovery-grounding.ts";
 import {
+  emptyTrackedStateClaimScopes,
   replyClaimsCompletedSideEffect,
   replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
@@ -296,7 +297,46 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
       action,
     ]),
   );
-  return args.results.some((result) => {
+  return args.results.some((result, resultIndex) => {
+    if (
+      args.kind === "empty_tracked_state" &&
+      result.success === true &&
+      result.data?.readOnlyOperation === true
+    ) {
+      const observation = result.emptyTrackedState;
+      const name =
+        typeof result.data?.actionName === "string"
+          ? result.data.actionName
+          : "";
+      const action = actionsByName.get(normalizeActionIdentifier(name));
+      const tags = new Set(action?.tags ?? []);
+      const scopes = emptyTrackedStateClaimScopes(args.reply);
+      if (
+        observation?.resource === "notes" &&
+        observation.scope === "entire_current_inventory" &&
+        observation.count === 0 &&
+        Number.isSafeInteger(observation.revision) &&
+        observation.revision >= 0 &&
+        typeof observation.observedAt === "string" &&
+        Number.isFinite(Date.parse(observation.observedAt)) &&
+        tags.has("resource:tracked-work") &&
+        tags.has("resource:notes") &&
+        tags.has("capability:read") &&
+        !args.results.slice(resultIndex + 1).some((later) => {
+          const laterName = later.data?.actionName;
+          return (
+            typeof laterName === "string" &&
+            actionsByName
+              .get(normalizeActionIdentifier(laterName))
+              ?.tags?.includes("resource:notes")
+          );
+        }) &&
+        scopes.length > 0 &&
+        scopes.every((scope) => scope === observation.resource)
+      )
+        return true;
+    }
+
     const canonicalUserFacingText = result.userFacingText?.trim();
     if (
       result.verifiedUserFacing !== true ||

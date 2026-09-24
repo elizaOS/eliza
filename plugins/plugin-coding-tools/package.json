@@ -68,7 +68,6 @@
   "dependencies": {
     "@elizaos/plugin-web-search": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
     "cross-spawn": "^7.0.6",
     "minimatch": "^10.2.6",

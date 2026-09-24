@@ -5,13 +5,13 @@
  * the exact source snapshot consumed by Dedicated cutover.
  */
 
+import { type SharedTodoMutationCutoverRecord } from "@elizaos/core/todo-cutover";
 import {
   createTodosSqlStore,
   serializeTodoMutationRecord,
   type Todo,
   type TodoStore,
 } from "@elizaos/plugin-todos";
-import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared";
 import { dbWrite } from "../../../db/client";
 import {
   type SharedTodoSourceScope,
@@ -25,17 +25,14 @@ export {
   sharedRuntimeWorldId,
   sharedTodoStorageScope,
 } from "./shared-runtime-storage-identity";
-
 export interface SharedTodoCutoverState {
   todos: Todo[];
   mutations: SharedTodoMutationCutoverRecord[];
 }
-
 /** Creates the canonical TodoStore over Cloud's request-scoped Hyperdrive DB. */
 export function createSharedTodoStore(): TodoStore {
   return createTodosSqlStore(dbWrite);
 }
-
 /**
  * Reads the Todo rows and durable mutation ledger from one scope-locked
  * transaction for tier cutover. Storage failures propagate; readable empty

@@ -1,25 +1,25 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { Buffer } from "node:buffer";
+import { type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  type AccessContext,
+  type IAgentRuntime,
+  type UUID,
+} from "@elizaos/core";
+import { type Route } from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { type Hono } from "hono";
+import { buildHonoAppForRuntime } from "./hono-adapter.ts";
+import { matchPluginRoutePath } from "./plugin-route-path.ts";
+
 /**
  * Bridge between Node's `http.IncomingMessage` / `ServerResponse` and a Hono
  * app. Lets the existing raw-Node server hand requests off to Hono for the
  * subset of routes that go through `runtime.routes`.
  */
-
-import { Buffer } from "node:buffer";
-import type { IncomingMessage, ServerResponse } from "node:http";
-
-import type { AccessContext, IAgentRuntime, UUID } from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
-import type { Hono } from "hono";
-
-import { buildHonoAppForRuntime } from "./hono-adapter.ts";
-import { matchPluginRoutePath } from "./plugin-route-path.ts";
-
 interface RuntimeHonoCache {
   runtime: WeakRef<IAgentRuntime>;
   app: Hono;
 }
-
 let cached: RuntimeHonoCache | null = null;
 const INTERNAL_AUTHORIZED_HEADER = "x-eliza-internal-authorized";
 const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
@@ -28,9 +28,7 @@ const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
 // tryHandleHonoRuntimeRoute always overwrites/deletes it before dispatch, so a
 // client-supplied value can never smuggle a principal in.
 const INTERNAL_ACCESS_CONTEXT_HEADER = "x-eliza-internal-access-context";
-
 const ROLE_NAMES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
-
 /**
  * Parse the internal access-context header back into a typed AccessContext.
  * The value is producer-controlled (set by this module's own caller), but the
@@ -76,7 +74,6 @@ function parseInternalAccessContext(
     return undefined;
   }
 }
-
 function getHonoApp(runtime: IAgentRuntime): Hono {
   if (cached && cached.runtime.deref() === runtime) {
     return cached.app;
@@ -93,24 +90,20 @@ function getHonoApp(runtime: IAgentRuntime): Hono {
   cached = { runtime: new WeakRef(runtime), app };
   return app;
 }
-
 /** Reset the cached Hono app — call when `runtime.routes` changes. */
 export function resetHonoMountCache(): void {
   cached = null;
 }
-
 // Matches the 1 MiB cap applied to the sibling JSON/body readers in
 // server.ts (MAX_BODY_BYTES). The Hono fallback path never goes through that
 // reader, so it needs its own guard: without it a POST to any Hono-eligible
 // plugin routeHandler with an unbounded body is fully buffered into an
 // ArrayBuffer with no 413, hanging or OOM-ing the process.
 export const DEFAULT_MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
-
 interface ReadNodeBodyResult {
   body: ArrayBuffer | null;
   tooLarge: boolean;
 }
-
 async function readNodeBody(
   req: IncomingMessage,
   maxBodyBytes: number,
@@ -119,7 +112,6 @@ async function readNodeBody(
   if (method === "GET" || method === "HEAD") {
     return { body: null, tooLarge: false };
   }
-
   const declaredLength = Number(req.headers["content-length"]);
   if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
     // Drain without retaining bytes so the peer can finish its write and read
@@ -128,11 +120,9 @@ async function readNodeBody(
     req.resume();
     return { body: null, tooLarge: true };
   }
-
   return new Promise<ReadNodeBodyResult>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
-
     const cleanup = () => {
       req.off("data", onData);
       req.off("end", onEnd);
@@ -168,14 +158,12 @@ async function readNodeBody(
       }
       chunks.push(buf);
     };
-
     req.on("data", onData);
     req.once("end", onEnd);
     req.once("error", onError);
     req.once("aborted", onAborted);
   });
 }
-
 function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
   const out = new Headers();
   for (const [key, value] of Object.entries(headers)) {
@@ -188,7 +176,6 @@ function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
   }
   return out;
 }
-
 async function pipeWebBodyToNodeResponse(
   body: ReadableStream<Uint8Array>,
   res: ServerResponse,
@@ -226,7 +213,6 @@ async function pipeWebBodyToNodeResponse(
     reader.releaseLock();
   }
 }
-
 /**
  * Try to dispatch a request through the runtime-routes Hono app. Returns
  * `true` if Hono produced a response (including 404 from Hono itself for any
@@ -254,7 +240,6 @@ function normalizeRoutePathname(pathname: string): string {
     ? collapsed.slice(0, -1)
     : collapsed;
 }
-
 function findHonoEligibleRoute(
   runtime: IAgentRuntime,
   method: string,
@@ -270,7 +255,6 @@ function findHonoEligibleRoute(
   }
   return null;
 }
-
 export async function tryHandleHonoRuntimeRoute(options: {
   req: IncomingMessage;
   res: ServerResponse;
@@ -282,7 +266,6 @@ export async function tryHandleHonoRuntimeRoute(options: {
 }): Promise<boolean> {
   const { req, res, runtime } = options;
   if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
-
   const method = req.method ?? "GET";
   const requestUrl = req.url ?? "/";
   const pathname = normalizeRoutePathname(
@@ -295,14 +278,11 @@ export async function tryHandleHonoRuntimeRoute(options: {
       }
     })(),
   );
-
   const matchedRoute = findHonoEligibleRoute(runtime, method, pathname);
   if (!matchedRoute) {
     return false;
   }
-
   const app = getHonoApp(runtime);
-
   const maxBodyBytes = matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
   const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
   if (tooLarge) {
@@ -341,26 +321,21 @@ export async function tryHandleHonoRuntimeRoute(options: {
   } else {
     headers.delete(INTERNAL_ACCESS_CONTEXT_HEADER);
   }
-
   // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
   const request = new Request(url, {
     method: req.method ?? "GET",
     headers,
     body: bodyBytes ?? undefined,
   });
-
   const response: Response = await app.fetch(request);
-
   res.statusCode = response.status;
   response.headers.forEach((value, key) => {
     res.setHeader(key, value);
   });
-
   if (!response.body) {
     res.end();
     return true;
   }
-
   // Stream the body through the Node response.
   void pipeWebBodyToNodeResponse(response.body, res);
   return true;

@@ -11,34 +11,35 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import type {
-  WalletExportRejection as CompatWalletExportRejection,
-  WalletExportRequestBody,
-} from "@elizaos/shared";
+import {
+  type WalletExportRejection as CompatWalletExportRejection,
+  type WalletExportRequestBody,
+} from "@elizaos/core/contracts/wallet-types";
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,
   body: WalletExportRequestBody,
 ) => CompatWalletExportRejection | null;
-
 interface RateLimitEntry {
   lastExportAt: number;
 }
-
 interface HardenedExportRequestBody extends WalletExportRequestBody {
   exportNonce?: string;
   requestNonce?: boolean;
 }
-
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
-const EXPORT_DELAY_MS = 10_000;
+const EXPORT_DELAY_MS = 10000;
 const MAX_PENDING_NONCES_PER_IP = 3;
 const NONCE_TTL_MS = 5 * 60 * 1000;
-
 const rateLimitMap = new Map<string, RateLimitEntry>();
-const pendingExportNonces = new Map<string, { issuedAt: number; ip: string }>();
-
+const pendingExportNonces = new Map<
+  string,
+  {
+    issuedAt: number;
+    ip: string;
+  }
+>();
 const sweepTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of rateLimitMap) {
@@ -47,15 +48,12 @@ const sweepTimer = setInterval(() => {
     }
   }
 }, RATE_LIMIT_SWEEP_INTERVAL_MS);
-
 if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
   sweepTimer.unref();
 }
-
 function normalizeCompatReason(reason: string): string {
   return reason;
 }
-
 function mirrorCompatHeaders(req: Pick<http.IncomingMessage, "headers">): void {
   const headerAliases = [
     ["x-elizaos-token", "x-eliza-token"],
@@ -65,32 +63,29 @@ function mirrorCompatHeaders(req: Pick<http.IncomingMessage, "headers">): void {
     ["x-elizaos-ui-language", "x-eliza-ui-language"],
     ["x-elizaos-agent-action", "x-eliza-agent-action"],
   ] as const;
-
   for (const [appHeader, elizaHeader] of headerAliases) {
     const appValue = req.headers[appHeader];
     const elizaValue = req.headers[elizaHeader];
-
     if (appValue != null && elizaValue == null) {
       req.headers[elizaHeader] = appValue;
     }
-
     if (elizaValue != null && appValue == null) {
       req.headers[appHeader] = elizaValue;
     }
   }
 }
-
 export function normalizeCompatRejection<
-  T extends { status: number; reason: string } | null,
+  T extends {
+    status: number;
+    reason: string;
+  } | null,
 >(rejection: T): T {
   if (!rejection) {
     return rejection;
   }
-
   rejection.reason = normalizeCompatReason(rejection.reason);
   return rejection;
 }
-
 export function runWithCompatAuthContext<T>(
   req: Pick<http.IncomingMessage, "headers">,
   operation: () => T,
@@ -98,16 +93,13 @@ export function runWithCompatAuthContext<T>(
   mirrorCompatHeaders(req);
   return operation();
 }
-
 function getClientIp(req: http.IncomingMessage): string | null {
   return req.socket.remoteAddress ?? null;
 }
-
 function getUserAgent(req: http.IncomingMessage): string {
   const userAgent = req.headers["user-agent"];
   return typeof userAgent === "string" ? userAgent : "unknown";
 }
-
 function recordWalletExportAudit(entry: {
   ip: string;
   outcome: "allowed" | "rate-limited" | "rejected";
@@ -123,7 +115,6 @@ function recordWalletExportAudit(entry: {
     "[server-wallet-trade] Wallet export audit",
   );
 }
-
 function issueExportNonce(ip: string): string | null {
   const now = Date.now();
   for (const [key, value] of pendingExportNonces) {
@@ -131,39 +122,40 @@ function issueExportNonce(ip: string): string | null {
       pendingExportNonces.delete(key);
     }
   }
-
   let countForIp = 0;
   for (const entry of pendingExportNonces.values()) {
     if (entry.ip === ip) {
       countForIp++;
     }
   }
-
   if (countForIp >= MAX_PENDING_NONCES_PER_IP) {
     return null;
   }
-
   const nonce = `wxn_${crypto.randomBytes(16).toString("hex")}`;
   pendingExportNonces.set(nonce, { issuedAt: now, ip });
   return nonce;
 }
-
 function validateExportNonce(
   nonce: string,
   ip: string,
-): { valid: true } | { reason: string; valid: false } {
+):
+  | {
+      valid: true;
+    }
+  | {
+      reason: string;
+      valid: false;
+    } {
   const entry = pendingExportNonces.get(nonce);
   if (!entry) {
     return { valid: false, reason: "Invalid or expired export nonce." };
   }
-
   if (entry.ip !== ip) {
     return {
       valid: false,
       reason: "Export nonce was issued to a different client.",
     };
   }
-
   const elapsed = Date.now() - entry.issuedAt;
   if (elapsed < EXPORT_DELAY_MS) {
     const remaining = Math.ceil((EXPORT_DELAY_MS - elapsed) / 1000);
@@ -172,11 +164,9 @@ function validateExportNonce(
       reason: `Export confirmation delay not met. Wait ${remaining} more seconds.`,
     };
   }
-
   pendingExportNonces.delete(nonce);
   return { valid: true };
 }
-
 function createHardenedExportGuard(
   upstream: UpstreamRejectionFn,
 ): (
@@ -189,7 +179,6 @@ function createHardenedExportGuard(
   ): CompatWalletExportRejection | null => {
     const ip = getClientIp(req);
     const userAgent = getUserAgent(req);
-
     if (!ip) {
       recordWalletExportAudit({
         timestamp: new Date().toISOString(),
@@ -203,7 +192,6 @@ function createHardenedExportGuard(
         reason: "Unable to determine client IP; request rejected.",
       };
     }
-
     const upstreamRejection = upstream(req, body);
     if (upstreamRejection) {
       recordWalletExportAudit({
@@ -215,7 +203,6 @@ function createHardenedExportGuard(
       });
       return upstreamRejection;
     }
-
     if (body.requestNonce) {
       const nonce = issueExportNonce(ip);
       if (!nonce) {
@@ -232,7 +219,6 @@ function createHardenedExportGuard(
             "Too many pending export requests. Complete or wait for existing nonces to expire.",
         };
       }
-
       recordWalletExportAudit({
         timestamp: new Date().toISOString(),
         ip,
@@ -250,7 +236,6 @@ function createHardenedExportGuard(
         }),
       };
     }
-
     if (!body.exportNonce) {
       recordWalletExportAudit({
         timestamp: new Date().toISOString(),
@@ -265,7 +250,6 @@ function createHardenedExportGuard(
           'Export requires a confirmation delay. First send { "confirm": true, "exportToken": "...", "requestNonce": true } to start the countdown.',
       };
     }
-
     const nonceResult = validateExportNonce(body.exportNonce, ip);
     if (nonceResult.valid === false) {
       recordWalletExportAudit({
@@ -277,7 +261,6 @@ function createHardenedExportGuard(
       });
       return { status: 403, reason: nonceResult.reason };
     }
-
     const rateLimitEntry = rateLimitMap.get(ip);
     if (rateLimitEntry) {
       const elapsed = Date.now() - rateLimitEntry.lastExportAt;
@@ -292,11 +275,10 @@ function createHardenedExportGuard(
         });
         return {
           status: 429,
-          reason: `Rate limit exceeded. One export per ${RATE_LIMIT_WINDOW_MS / 60_000} minutes. Retry after ${retryAfter} seconds.`,
+          reason: `Rate limit exceeded. One export per ${RATE_LIMIT_WINDOW_MS / 60000} minutes. Retry after ${retryAfter} seconds.`,
         };
       }
     }
-
     rateLimitMap.set(ip, { lastExportAt: Date.now() });
     recordWalletExportAudit({
       timestamp: new Date().toISOString(),
@@ -304,11 +286,9 @@ function createHardenedExportGuard(
       userAgent,
       outcome: "allowed",
     });
-
     return null;
   };
 }
-
 function resolveCompatWalletExportRejection(
   ...args: Parameters<typeof upstreamResolveWalletExportRejection>
 ): CompatWalletExportRejection | null {
@@ -317,11 +297,9 @@ function resolveCompatWalletExportRejection(
     normalizeCompatRejection(upstreamResolveWalletExportRejection(...args)),
   );
 }
-
 const hardenedGuard = createHardenedExportGuard(
   resolveCompatWalletExportRejection,
 );
-
 export function resolveWalletExportRejection(
   ...args: Parameters<typeof upstreamResolveWalletExportRejection>
 ): CompatWalletExportRejection | null {

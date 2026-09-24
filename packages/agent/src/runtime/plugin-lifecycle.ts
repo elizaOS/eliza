@@ -6,7 +6,7 @@ import type {
   PluginOwnership,
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   beginViewInstallation,
   closeRuntimeViewRegistry,

@@ -3,5 +3,5 @@
  * occurrences).
  */
 
-export { tokenizeNameOccurrences } from "@elizaos/shared";
-export { replaceNameTokens } from "@elizaos/shared/browser-contracts";
+export { replaceNameTokens } from "@elizaos/core/name-tokens";
+export { tokenizeNameOccurrences } from "@elizaos/core/utils/name-tokens";

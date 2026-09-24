@@ -8,13 +8,14 @@
  */
 
 import { type AccessContext, logger, type UUID } from "@elizaos/core";
-import type {
-	Transcript,
-	TranscriptScope,
-	TranscriptSegment,
-	TranscriptSummary,
-} from "@elizaos/shared";
-import { transcriptDurationMs, transcriptSpeakerCount } from "@elizaos/shared";
+import {
+	type Transcript,
+	type TranscriptScope,
+	type TranscriptSegment,
+	type TranscriptSummary,
+	transcriptDurationMs,
+	transcriptSpeakerCount,
+} from "@elizaos/core/transcripts";
 import { transcriptKnowledgePayload } from "./transcript-knowledge";
 import {
 	TranscriptStore,
@@ -34,15 +35,18 @@ interface DocumentsLike {
 		scope?: TranscriptScope;
 		addedFrom?: string;
 		metadata?: Record<string, unknown>;
-		fragments?: Array<{ text: string; metadata?: Record<string, unknown> }>;
-	}): Promise<{ storedDocumentMemoryId: UUID }>;
+		fragments?: Array<{
+			text: string;
+			metadata?: Record<string, unknown>;
+		}>;
+	}): Promise<{
+		storedDocumentMemoryId: UUID;
+	}>;
 }
-
 /** Store runtime + service resolution (the real IAgentRuntime satisfies it). */
 export interface TranscriptServiceRuntime extends TranscriptStoreRuntime {
 	getService<T>(name: string): T | null;
 }
-
 export interface CreateTranscriptInput {
 	worldId: UUID;
 	roomId: UUID;
@@ -50,23 +54,22 @@ export interface CreateTranscriptInput {
 	entityId: UUID;
 	transcript: Transcript;
 }
-
 export interface UpdateTranscriptInput {
 	/** Ids the knowledge re-mirror is attributed to (default to the agent ctx). */
 	worldId: UUID;
 	roomId: UUID;
 	entityId: UUID;
 	/** The user edit: a new title and/or replacement segments. */
-	patch: { title?: string; segments?: TranscriptSegment[] };
+	patch: {
+		title?: string;
+		segments?: TranscriptSegment[];
+	};
 }
-
 export class TranscriptService {
 	private readonly store: TranscriptStore;
-
 	constructor(private readonly runtime: TranscriptServiceRuntime) {
 		this.store = new TranscriptStore(runtime);
 	}
-
 	/** Mirror the transcript text into knowledge, then persist the record. */
 	async create(input: CreateTranscriptInput): Promise<Transcript> {
 		const { worldId, roomId, entityId, transcript } = input;
@@ -81,7 +84,6 @@ export class TranscriptService {
 			: transcript;
 		return this.store.create({ worldId, roomId, entityId, transcript: record });
 	}
-
 	list(
 		roomId?: UUID,
 		limit?: number,
@@ -89,11 +91,9 @@ export class TranscriptService {
 	): Promise<TranscriptSummary[]> {
 		return this.store.list(roomId, limit, accessContext);
 	}
-
 	get(id: UUID, accessContext?: AccessContext): Promise<Transcript | null> {
 		return this.store.get(id, accessContext);
 	}
-
 	/**
 	 * Apply a user edit to a transcript record (title and/or segment text) and
 	 * persist it, re-mirroring the new text into the knowledge index so search
@@ -107,7 +107,6 @@ export class TranscriptService {
 	): Promise<Transcript | null> {
 		const existing = await this.store.get(id);
 		if (!existing) return null;
-
 		const segments = input.patch.segments ?? existing.segments;
 		const next: Transcript = {
 			...existing,
@@ -117,7 +116,6 @@ export class TranscriptService {
 			speakerCount: transcriptSpeakerCount(segments),
 			editedAt: Date.now(),
 		};
-
 		// Replace the knowledge mirror so search reflects the corrected text.
 		if (existing.knowledgeDocumentId) {
 			try {
@@ -140,10 +138,8 @@ export class TranscriptService {
 			next,
 		);
 		next.knowledgeDocumentId = knowledgeDocumentId;
-
 		return this.store.update(next);
 	}
-
 	/** Delete the record + its knowledge mirror (mirror removal best-effort). */
 	async delete(id: UUID): Promise<void> {
 		const existing = await this.store.get(id);
@@ -163,7 +159,6 @@ export class TranscriptService {
 		}
 		await this.store.delete(id);
 	}
-
 	/**
 	 * Best-effort mirror into the documents store. Returns the stored document id
 	 * to link, or undefined when no documents service is loaded or the mirror

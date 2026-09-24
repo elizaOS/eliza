@@ -296,6 +296,8 @@ export interface PlannerTrajectory {
 
 export interface PlannerTerminalFailure {
 	kind:
+		| "resource_limit"
+		| "planner_timeout"
 		| "coding_mutation_unverified"
 		| "coding_verification_failed"
 		| "coding_tool_failure"

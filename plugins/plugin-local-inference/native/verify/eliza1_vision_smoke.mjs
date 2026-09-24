@@ -633,7 +633,7 @@ function buildReport(args) {
     report.action = "mark-text-voice-only";
     report.reason =
       `${tier} is text/voice-only by the Eliza-1 tier contract: this tier does not ship image-analysis mmproj files, ` +
-      "packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, " +
+      "plugins/plugin-native-inference/src/model-catalog/catalog.ts has no sourceModel.components.vision for this tier, " +
       "and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; " +
       "Eliza-1 vision mmproj files are tied to their text backbones and are not compatible substitutes.";
     report.imageAnalysis.reason = "skipped because manifest.files.vision is empty";

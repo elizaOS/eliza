@@ -41,7 +41,7 @@
  *
  *   1. **Local (`eliza-local-inference`)** — tier-aware Eliza-1 voice,
  *      using the ordered `ELIZA_1_VOICE_BACKENDS` policy in
- *      `@elizaos/shared/local-inference/catalog` (OmniVoice first where
+ *      `@elizaos/plugin-native-inference/model-catalog/catalog` (OmniVoice first where
  *      bundled, Kokoro fallback where bundled). Always preferred when
  *      available.
  *   2. **Eliza Cloud (`elizacloud`)** — managed cloud proxy. Picked when

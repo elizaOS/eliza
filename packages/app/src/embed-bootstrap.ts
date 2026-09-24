@@ -184,14 +184,20 @@ export async function runEmbedHandshake(
     return { status: "failed", reason: "bad_response" };
   }
 
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return { status: "failed", reason: "bad_response" };
+  }
   if (typeof body.token !== "string" || body.token.length === 0) {
     return { status: "failed", reason: "no_token" };
   }
 
+  if (typeof body.role !== "string" || typeof body.adminMode !== "boolean") {
+    return { status: "failed", reason: "bad_response" };
+  }
   embedClient.setToken(body.token);
   return {
     status: "authenticated",
-    role: typeof body.role === "string" ? body.role : "ADMIN",
+    role: body.role,
     adminMode: body.adminMode === true,
   };
 }

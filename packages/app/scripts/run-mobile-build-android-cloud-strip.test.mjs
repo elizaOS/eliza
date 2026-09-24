@@ -160,6 +160,35 @@ it("removes BGE runtime and its instrumented tests from an actual cloud source t
       }),
     );
 
+    const pluginManifest = path.join(
+      cloud,
+      "app/src/main/assets/capacitor.plugins.json",
+    );
+    fs.writeFileSync(
+      pluginManifest,
+      JSON.stringify([
+        {
+          pkg: "@capacitor-community/sqlite",
+          classpath:
+            "com.getcapacitor.community.database.sqlite.CapacitorSQLitePlugin",
+        },
+        {
+          pkg: "@capacitor/app",
+          classpath: "com.capacitorjs.plugins.app.AppPlugin",
+        },
+      ]),
+    );
+    const settings = path.join(cloud, "capacitor.settings.gradle");
+    fs.writeFileSync(
+      settings,
+      "// generated\ninclude ':capacitor-community-sqlite'\nproject(':capacitor-community-sqlite').projectDir = new File('../node_modules/@capacitor-community/sqlite/android')\ninclude ':capacitor-app'\n",
+    );
+    const build = path.join(cloud, "app/capacitor.build.gradle");
+    fs.writeFileSync(
+      build,
+      "dependencies {\n implementation project(':capacitor-community-sqlite')\n implementation project(':capacitor-app')\n}\n",
+    );
+
     const files = [
       ["main", "BgeEmbeddingSession.java"],
       ["main", "ElizaBgePlugin.java"],
@@ -220,6 +249,17 @@ it("removes BGE runtime and its instrumented tests from an actual cloud source t
         timeout: 30000,
       },
     );
+    expect(JSON.parse(fs.readFileSync(pluginManifest, "utf8"))).toEqual([
+      {
+        pkg: "@capacitor/app",
+        classpath: "com.capacitorjs.plugins.app.AppPlugin",
+      },
+    ]);
+    for (const file of [settings, build]) {
+      const content = fs.readFileSync(file, "utf8");
+      expect(content).not.toContain("capacitor-community-sqlite");
+      expect(content).toContain("capacitor-app");
+    }
     for (const [sourceSet, name] of files) {
       const relative = path.join(
         "app",

@@ -9,20 +9,18 @@ import {
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
   MAX_CHAT_UPLOAD_ATTACHMENTS,
-} from "@elizaos/shared";
+} from "@elizaos/core/chat-upload-limits";
 import type {
   ImageAttachment,
   TransientClientMediaInput,
 } from "../api/client-types-chat";
-
 /**
  * Per-message attachment count cap. Sourced from the SAME shared constant the
- * server's validateChatImages enforces (@elizaos/shared/chat-upload-limits) so
+ * server's validateChatImages enforces (@elizaos/core/chat-upload-limits) so
  * client and server cannot drift. Applies to all attachment kinds, not just
  * images.
  */
 export const MAX_CHAT_IMAGES = MAX_CHAT_UPLOAD_ATTACHMENTS;
-
 /**
  * Per-file intake cap for an IMAGE attachment, in raw bytes (20 MB). Images
  * over the server's base64 cap ({@link MAX_CHAT_IMAGE_BASE64_BYTES}) are
@@ -33,7 +31,6 @@ export const MAX_CHAT_IMAGES = MAX_CHAT_UPLOAD_ATTACHMENTS;
  * {@link perFileByteCap}.
  */
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
-
 /**
  * Per-file raw-byte intake cap for a candidate file. Images may exceed the
  * server cap at intake because the downscale pass re-encodes them under it;
@@ -45,7 +42,6 @@ export function perFileByteCap(file: File): number {
     ? MAX_ATTACHMENT_BYTES
     : Math.min(MAX_ATTACHMENT_BYTES, MAX_CHAT_MEDIA_RAW_BYTES);
 }
-
 /**
  * Combined size cap across all attachments on a single message, in bytes
  * (60 MB). Even when every individual file is under {@link MAX_ATTACHMENT_BYTES}
@@ -53,19 +49,16 @@ export function perFileByteCap(file: File): number {
  * blow the request body.
  */
 export const MAX_ATTACHMENTS_TOTAL_BYTES = 60 * 1024 * 1024;
-
 /** Human-readable MB for a byte cap, used in user-facing notices. */
 export function bytesToMb(bytes: number): number {
   return Math.round(bytes / (1024 * 1024));
 }
-
 /** A file that was rejected during intake, with the reason it was dropped. */
 export interface DroppedFile {
   name: string;
   /** Why the file was rejected. */
   reason: "too-large" | "over-count";
 }
-
 /** Outcome of partitioning a candidate file list against the size/count caps. */
 export interface PartitionedAttachmentFiles {
   /** Files that passed every cap and should be read into attachments. */
@@ -75,7 +68,6 @@ export interface PartitionedAttachmentFiles {
   /** Files rejected because they exceeded the per-message count cap. */
   droppedOverCount: DroppedFile[];
 }
-
 export interface PartitionAttachmentFilesOptions {
   /**
    * Per-file byte cap applied to every kind. Defaults to the kind-aware
@@ -93,7 +85,6 @@ export interface PartitionAttachmentFilesOptions {
    */
   existingCount?: number;
 }
-
 /**
  * Pure size/count gate for attachment intake. Walks the candidate files in
  * order and partitions them into accepted vs. dropped, recording *why* each
@@ -111,11 +102,9 @@ export function partitionAttachmentFiles(
   const maxTotalBytes = options.maxTotalBytes ?? MAX_ATTACHMENTS_TOTAL_BYTES;
   const maxCount = options.maxCount ?? MAX_CHAT_IMAGES;
   const existingCount = options.existingCount ?? 0;
-
   const accepted: File[] = [];
   const droppedTooLarge: DroppedFile[] = [];
   const droppedOverCount: DroppedFile[] = [];
-
   let runningBytes = 0;
   for (const file of Array.from(files)) {
     const size = file.size ?? 0;
@@ -134,14 +123,11 @@ export function partitionAttachmentFiles(
     accepted.push(file);
     runningBytes += size;
   }
-
   return { accepted, droppedTooLarge, droppedOverCount };
 }
-
 /** `accept` attribute for the chat upload <input> — images, audio, video, PDFs, text docs. */
 export const CHAT_UPLOAD_ACCEPT =
   "image/*,audio/*,video/*,application/pdf,text/plain,text/csv,text/markdown,application/json";
-
 /**
  * True when a file's MIME type is an attachment kind chat upload accepts.
  * Any `image/*` is accepted — subtypes outside the server allowlist (HEIC,
@@ -155,7 +141,6 @@ export function isSupportedChatUpload(file: File): boolean {
   if (mime.startsWith("image/")) return true;
   return CHAT_UPLOAD_MIME_TYPE_SET.has(mime);
 }
-
 /** Map a MIME type to the rendered attachment kind (for preview tiles). */
 export function chatUploadKind(
   mimeType: string,
@@ -166,12 +151,10 @@ export function chatUploadKind(
   if (mime.startsWith("video/")) return "video";
   return "document";
 }
-
 /** Longest edge (px) of a generated thumbnail. */
 const THUMBNAIL_MAX_DIM = 512;
 /** Don't bother thumbnailing images smaller than this — the original is light enough. */
 const THUMBNAIL_MIN_SOURCE_BYTES = 96 * 1024;
-
 function readFileAsImageElement(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -187,7 +170,6 @@ function readFileAsImageElement(file: File): Promise<HTMLImageElement> {
     img.src = url;
   });
 }
-
 /**
  * Generate a downscaled JPEG thumbnail for a large image, entirely client-side
  * via `<canvas>` (works in every browser/desktop/iOS/Android webview — no
@@ -196,9 +178,10 @@ function readFileAsImageElement(file: File): Promise<HTMLImageElement> {
  * `<canvas>.toDataURL` is used for universal webview support (WebP/OffscreenCanvas
  * are not reliable on older WKWebView).
  */
-export async function createImageThumbnail(
-  file: File,
-): Promise<{ data: string; mimeType: string } | null> {
+export async function createImageThumbnail(file: File): Promise<{
+  data: string;
+  mimeType: string;
+} | null> {
   const mime = file.type.toLowerCase();
   if (
     !mime.startsWith("image/") ||
@@ -233,7 +216,6 @@ export async function createImageThumbnail(
     return null;
   }
 }
-
 /**
  * A file that passed intake but cannot be made sendable client-side — the
  * browser can't decode it for the canvas re-encode, or it stays over the
@@ -242,7 +224,6 @@ export async function createImageThumbnail(
  * toast, which must be clearer than the server 400 it replaces.
  */
 export class UnsendableAttachmentError extends Error {}
-
 /**
  * True when an image payload can NOT ship as-is: its subtype is outside the
  * server allowlist (HEIC/TIFF/SVG/…) or its base64 body is over the server's
@@ -260,12 +241,10 @@ export function imageNeedsReencode(
     base64Length > MAX_CHAT_IMAGE_BASE64_BYTES
   );
 }
-
 /** Longest edge (px) tried first by the chat-image downscale pass. */
 const REENCODE_DIMENSION_STEPS = [2048, 1600, 1280, 1024] as const;
 /** JPEG qualities tried (per dimension) until the payload fits the server cap. */
 const REENCODE_JPEG_QUALITIES = [0.85, 0.72, 0.6] as const;
-
 /**
  * Downscale/re-encode an image to a JPEG whose base64 payload fits the
  * server's image cap, entirely client-side via `<canvas>` (mirroring
@@ -280,14 +259,13 @@ const REENCODE_JPEG_QUALITIES = [0.85, 0.72, 0.6] as const;
  * first frame) — a still image that sends beats a 400 that destroys the
  * message.
  */
-export async function reencodeImageToChatCap(
-  file: File,
-): Promise<{ data: string; mimeType: string }> {
+export async function reencodeImageToChatCap(file: File): Promise<{
+  data: string;
+  mimeType: string;
+}> {
   const label = file.name || "image";
   const undecodable = new UnsendableAttachmentError(
-    `Couldn't attach "${label}" — this browser can't convert ${
-      file.type || "this image format"
-    } for upload. Convert it to JPEG or PNG and try again.`,
+    `Couldn't attach "${label}" — this browser can't convert ${file.type || "this image format"} for upload. Convert it to JPEG or PNG and try again.`,
   );
   if (typeof document === "undefined") throw undecodable;
   let img: HTMLImageElement;
@@ -321,12 +299,9 @@ export async function reencodeImageToChatCap(
     }
   }
   throw new UnsendableAttachmentError(
-    `"${label}" is still too large after compression (max ${bytesToMb(
-      MAX_CHAT_IMAGE_BASE64_BYTES,
-    )} MB) — try a smaller image.`,
+    `"${label}" is still too large after compression (max ${bytesToMb(MAX_CHAT_IMAGE_BASE64_BYTES)} MB) — try a smaller image.`,
   );
 }
-
 /** Read a file's bytes as raw base64 (the `data:<mime>;base64,` prefix stripped). */
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise<string>((resolve, reject) => {
@@ -342,7 +317,6 @@ function readFileAsBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-
 /**
  * Read one accepted file into a sendable {@link ImageAttachment}: base64 the
  * bytes, re-encode an image that the server would reject (over-cap or
@@ -368,7 +342,6 @@ async function fileToChatAttachment(
     ...(thumbnail ? { thumbnail } : {}),
   };
 }
-
 /**
  * Read supported files (images, audio, video, PDFs, text docs) into base64
  * {@link ImageAttachment} payloads (the `data:<mime>;base64,` prefix stripped).
@@ -398,14 +371,12 @@ export function filesToImageAttachments(
   });
   return Promise.all(accepted.map(fileToChatAttachment));
 }
-
 /** Result of {@link intakeAttachmentFiles}: the read attachments plus drops. */
 export interface AttachmentIntakeResult {
   attachments: TransientClientMediaInput[];
   droppedTooLarge: DroppedFile[];
   droppedOverCount: DroppedFile[];
 }
-
 /**
  * Full intake pipeline for the chat composer: filters unsupported files,
  * applies the byte and count caps via {@link partitionAttachmentFiles}, reads
@@ -424,7 +395,6 @@ export async function intakeAttachmentFiles(
   const attachments = await filesToImageAttachments(accepted);
   return { attachments, droppedTooLarge, droppedOverCount };
 }
-
 /**
  * Build the i18n params for a "kept N, dropped M" notice from an intake/
  * partition result, or `null` when nothing was dropped (no notice needed).
@@ -453,7 +423,6 @@ export function summarizeDroppedAttachments(result: {
     maxMb: bytesToMb(MAX_ATTACHMENT_BYTES),
   };
 }
-
 /**
  * Character count at/above which a plain-text paste is converted into a
  * collapsed text attachment chip (Claude-Code / claude.ai style) rather than
@@ -461,7 +430,6 @@ export function summarizeDroppedAttachments(result: {
  * as normal.
  */
 export const LARGE_PASTE_CHAR_THRESHOLD = 2000;
-
 /**
  * True when a pasted plain-text block is large enough to become a text
  * attachment instead of landing in the textarea. Uses the *trimmed* length so
@@ -476,7 +444,6 @@ export function shouldConvertPasteToAttachment(text: string): boolean {
   if (/^https?:\/\/\S+$/i.test(trimmed)) return false;
   return true;
 }
-
 /**
  * Encode a string to base64 in a UTF-8-safe, chunk-safe way. Raw `btoa(text)`
  * throws on any code point > 0xFF (so any non-ASCII / emoji paste would break),
@@ -493,10 +460,8 @@ function utf8ToBase64(text: string): string {
   }
   return btoa(binary);
 }
-
 /** Default file name for a pasted-text attachment. */
 const PASTED_TEXT_DEFAULT_NAME = "pasted-text.md";
-
 /**
  * Convert a large pasted plain-text block into an {@link ImageAttachment} (the
  * shared chat-attachment shape) so it renders as a collapsed chip and ships to
@@ -507,7 +472,9 @@ const PASTED_TEXT_DEFAULT_NAME = "pasted-text.md";
  */
 export function pastedTextToAttachment(
   text: string,
-  opts: { name?: string } = {},
+  opts: {
+    name?: string;
+  } = {},
 ): ImageAttachment {
   return {
     data: utf8ToBase64(text),
@@ -515,7 +482,6 @@ export function pastedTextToAttachment(
     name: opts.name ?? PASTED_TEXT_DEFAULT_NAME,
   };
 }
-
 /**
  * Classify a composer paste so both chat surfaces handle clipboard pastes
  * identically. Returns either:
@@ -528,10 +494,17 @@ export function pastedTextToAttachment(
  * Pure + DOM-free so it unit-tests without a real ClipboardEvent.
  */
 export type ComposerPasteIntent =
-  | { kind: "files"; files: File[] }
-  | { kind: "text-attachment"; attachment: ImageAttachment }
-  | { kind: "passthrough" };
-
+  | {
+      kind: "files";
+      files: File[];
+    }
+  | {
+      kind: "text-attachment";
+      attachment: ImageAttachment;
+    }
+  | {
+      kind: "passthrough";
+    };
 export function classifyComposerPaste(data: {
   files: File[];
   text: string;
@@ -547,7 +520,6 @@ export function classifyComposerPaste(data: {
   }
   return { kind: "passthrough" };
 }
-
 /**
  * Build the translated "kept N, dropped M" notice for the composer from an
  * intake/partition result, choosing the right i18n key based on whether the
@@ -564,7 +536,6 @@ export function buildDroppedAttachmentNotice(
 ): string | null {
   const summary = summarizeDroppedAttachments(result);
   if (!summary) return null;
-
   const { kept, dropped, droppedTooLarge, droppedOverCount, maxMb } = summary;
   if (droppedTooLarge > 0 && droppedOverCount > 0) {
     return t("chat.attachmentsKeptDroppedMixed", {

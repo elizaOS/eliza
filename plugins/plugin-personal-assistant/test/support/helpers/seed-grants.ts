@@ -9,7 +9,7 @@ import {
   type LifeOpsConnectorSide,
   type LifeOpsGoogleCapability,
   type LifeOpsXCapability,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   googleCapabilitiesToScopes,
   normalizeGoogleCapabilities,

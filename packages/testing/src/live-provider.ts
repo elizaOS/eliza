@@ -12,23 +12,20 @@
  *   const provider = requireLiveProvider();           // skips test if none
  *   const provider = requireLiveProvider("openai");   // skips if openai key missing
  */
-
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveAliasedEnvValue } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://api.eliza.app/api/v1";
 const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
-
 function loadConfiguredCloudApiKey(): string {
   const namespace =
     resolveAliasedEnvValue("ELIZA_NAMESPACE")?.trim() || "eliza";
   const configuredPath =
     resolveAliasedEnvValue("ELIZA_CONFIG_PATH")?.trim() ||
     path.join(os.homedir(), `.${namespace}`, `${namespace}.json`);
-
   try {
     const raw = fs.readFileSync(configuredPath, "utf8");
     const parsed = JSON.parse(raw) as {
@@ -43,7 +40,6 @@ function loadConfiguredCloudApiKey(): string {
     return "";
   }
 }
-
 // Module-level cache of the on-disk cloud API key. Read on first use rather
 // than at module-init so tests that change env vars between test files
 // observe the latest value, and so this module's import graph stays
@@ -56,13 +52,10 @@ function getConfiguredCloudApiKey(): string {
   }
   return cachedConfiguredCloudApiKey;
 }
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 export type LiveProviderName = "groq" | "openai" | "anthropic" | "openrouter";
-
 export type LiveProviderConfig = {
   name: LiveProviderName;
   apiKey: string;
@@ -74,11 +67,9 @@ export type LiveProviderConfig = {
   /** Env vars to set for the runtime process. */
   env: Record<string, string>;
 };
-
 // ---------------------------------------------------------------------------
 // Provider definitions
 // ---------------------------------------------------------------------------
-
 const PROVIDERS: Array<{
   name: LiveProviderName;
   plugin: string;
@@ -132,11 +123,9 @@ const PROVIDERS: Array<{
     defaultLargeModel: "google/gemini-2.5-flash-lite",
   },
 ];
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-
 /**
  * Select the first available LLM provider based on environment variables.
  * Returns null if no provider API keys are found.
@@ -149,7 +138,6 @@ export function selectLiveProvider(
   const candidates = preferredProvider
     ? PROVIDERS.filter((p) => p.name === preferredProvider)
     : PROVIDERS;
-
   for (const def of candidates) {
     let apiKey = "";
     let apiKeyEnvVar = "";
@@ -162,14 +150,12 @@ export function selectLiveProvider(
       }
     }
     if (!apiKey) continue;
-
     const isCerebrasOpenAi =
       def.name === "openai" && apiKeyEnvVar === "CEREBRAS_API_KEY";
     const baseUrl = def.baseUrlEnvVar
       ? process.env[def.baseUrlEnvVar]?.trim() ||
         (isCerebrasOpenAi ? CEREBRAS_OPENAI_BASE_URL : def.defaultBaseUrl)
       : def.defaultBaseUrl;
-
     const defaultSmallModel = isCerebrasOpenAi
       ? DEFAULT_CEREBRAS_TEXT_MODEL
       : def.defaultSmallModel;
@@ -180,7 +166,6 @@ export function selectLiveProvider(
       process.env[def.smallModelEnvVar]?.trim() || defaultSmallModel;
     const largeModel =
       process.env[def.largeModelEnvVar]?.trim() || defaultLargeModel;
-
     const env: Record<string, string> = {};
     for (const envVar of def.keyEnvVars) {
       const val = process.env[envVar]?.trim();
@@ -198,7 +183,6 @@ export function selectLiveProvider(
     env[def.largeModelEnvVar] = largeModel;
     env.SMALL_MODEL = process.env.SMALL_MODEL?.trim() || smallModel;
     env.LARGE_MODEL = process.env.LARGE_MODEL?.trim() || largeModel;
-
     return {
       name: def.name,
       apiKey,
@@ -209,7 +193,6 @@ export function selectLiveProvider(
       env,
     };
   }
-
   const cloudApiKey =
     process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
     process.env.ELIZA_CLOUD_API_KEY?.trim() ||
@@ -220,7 +203,6 @@ export function selectLiveProvider(
       process.env.OPENAI_LARGE_MODEL?.trim() ||
       process.env.OPENAI_SMALL_MODEL?.trim() ||
       "gpt-5.4-mini";
-
     return {
       name: "openai",
       apiKey: cloudApiKey,
@@ -238,10 +220,8 @@ export function selectLiveProvider(
       },
     };
   }
-
   return null;
 }
-
 /**
  * Select a live provider, or skip the current test if none is available.
  * Useful as a top-level call in describe/it blocks.
@@ -257,14 +237,12 @@ export function requireLiveProvider(
   }
   return provider;
 }
-
 /**
  * Check if live testing is enabled via ELIZA_LIVE_TEST or LIVE env vars.
  */
 export function isLiveTestEnabled(): boolean {
   return process.env.ELIZA_LIVE_TEST === "1" || process.env.LIVE === "1";
 }
-
 /**
  * Returns a list of all LLM provider env var names that have keys set.
  */

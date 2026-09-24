@@ -1,7 +1,7 @@
 /** Runs scale SQL realization and cold/warm reads in a fresh Bun process per object. */
 
 import { execFile } from "node:child_process";
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -66,9 +66,11 @@ interface ScaleChildReport {
 }
 
 async function runChild(family: ScaleChildReport["family"]): Promise<ScaleChildReport> {
-  const script = path.resolve(
-    process.cwd(),
-    "plugins/plugin-sql/scripts/progressive-content-scale-child.mjs"
+  const script = fileURLToPath(
+    new URL(
+      "../../../../../packages/scripts/plugins/plugin-sql/progressive-content-scale-child.mjs",
+      import.meta.url
+    )
   );
   const { stdout } = await execFileAsync(
     "bun",

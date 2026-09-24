@@ -7,7 +7,7 @@
  * than coupling this hook to useLifecycleState directly.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { useCallback, useState } from "react";
 import type { AgentStatus } from "../api";
 import { type CharacterData, client } from "../api";

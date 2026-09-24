@@ -3,12 +3,11 @@
  * the host avoids an ambient declaration for a package that may be absent and
  * gives every dynamic-loader boundary one versioned shape to validate.
  */
-import type {
-  LegacyRouteHandler,
-  PaymentEnabledRoute,
-  Route,
-} from "@elizaos/shared";
-
+import {
+  type LegacyRouteHandler,
+  type PaymentEnabledRoute,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
 export interface X402PluginModule {
   __mobileStub?: boolean;
   createPaymentAwareHandler(route: PaymentEnabledRoute): LegacyRouteHandler;
@@ -16,7 +15,9 @@ export interface X402PluginModule {
   validateX402Startup?(
     routes: Route[],
     character: unknown,
-    options: { agentId?: string },
+    options: {
+      agentId?: string;
+    },
   ): {
     valid: boolean;
     errors: string[];

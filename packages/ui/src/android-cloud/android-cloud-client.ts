@@ -7,12 +7,12 @@
  * returned by that API.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import { logger } from "@elizaos/ui/logger";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,

@@ -16,3 +16,5 @@ bun run --cwd plugins/plugin-native-messages test   # tests
 
 The package-owned root TypeScript configuration covers its React view and
 native bridge. Production output uses `tsconfig.build.json`.
+
+Native view and app-shell declarations share an ADMIN-gated capability catalog. Agents use named complete-or-error reads; mutations and generic renderer/DOM operations require human interaction. A bridge result at its non-paginated boundary is an explicit incomplete-read error. Device-status failures remain errors rather than fabricated empty state.

@@ -4,19 +4,15 @@
  * ElevenLabs model, and the helper that derives a `VoiceConfig` from a selected
  * character roster entry (honoring whether an API key is configured).
  */
-
 import {
   EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
-} from "@elizaos/shared";
+} from "@elizaos/core/voice";
 import type { VoiceConfig } from "../../api/client";
 import type { CharacterRosterEntry } from "./CharacterRoster";
-
 /* ── Constants ─────────────────────────────────────────────────────── */
-
 export const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
-
 export const ELEVENLABS_VOICE_GROUPS = [
   {
     labelKey: "charactereditor.VoiceGroupFemale",
@@ -43,7 +39,6 @@ export const ELEVENLABS_VOICE_GROUPS = [
     })),
   },
 ];
-
 export const EDGE_VOICE_GROUPS = [
   {
     labelKey: "charactereditor.BackupVoices",
@@ -54,13 +49,9 @@ export const EDGE_VOICE_GROUPS = [
     })),
   },
 ];
-
 /* ── Types ─────────────────────────────────────────────────────────── */
-
 export type CharacterEditorVoiceConfig = VoiceConfig;
-
 /* ── Helpers ───────────────────────────────────────────────────────── */
-
 export function buildVoiceConfigForCharacterEntry(args: {
   entry: CharacterRosterEntry;
   useElevenLabs: boolean;
@@ -76,7 +67,6 @@ export function buildVoiceConfigForCharacterEntry(args: {
   if (!presetVoice) {
     return null;
   }
-
   if (args.useElevenLabs) {
     const existingElevenlabs =
       typeof args.voiceConfig.elevenlabs === "object"
@@ -104,7 +94,6 @@ export function buildVoiceConfigForCharacterEntry(args: {
       selectedVoicePresetId: presetVoice.id,
     };
   }
-
   const edgeGender =
     presetVoice.gender === "male" ? "edge-male" : "edge-female";
   const edgeVoice = EDGE_BACKUP_VOICES.find((voice) => voice.id === edgeGender);

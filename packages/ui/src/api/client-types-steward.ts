@@ -6,7 +6,6 @@
  * there reference them. Re-export them here so consumers only need a single
  * import path for steward work.
  */
-
 import type {
   StewardApprovalInfo,
   StewardBalanceResponse,
@@ -16,7 +15,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/wallet-types";
 
 export type {
   StewardApprovalInfo,
@@ -28,7 +27,6 @@ export type {
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
 };
-
 /** Response from GET /api/wallet/steward-status. */
 export interface StewardStatusResponse {
   configured: boolean;
@@ -38,13 +36,14 @@ export interface StewardStatusResponse {
   agentId?: string;
   evmAddress?: string;
   error?: string | null;
-  walletAddresses?: { evm: string | null; solana: string | null };
+  walletAddresses?: {
+    evm: string | null;
+    solana: string | null;
+  };
   agentName?: string;
   vaultHealth?: "ok" | "degraded" | "error";
 }
-
 // Steward transaction history and approval queue.
-
 export type StewardTxStatus =
   | "pending"
   | "approved"
@@ -53,7 +52,6 @@ export type StewardTxStatus =
   | "broadcast"
   | "confirmed"
   | "failed";
-
 /** A transaction record from the Steward vault history. */
 export interface StewardTxRecord {
   id: string;
@@ -73,7 +71,6 @@ export interface StewardTxRecord {
   signedAt?: string;
   confirmedAt?: string;
 }
-
 /** A pending approval entry from the Steward approval queue. */
 export interface StewardPendingApproval {
   queueId: string;
@@ -81,22 +78,17 @@ export interface StewardPendingApproval {
   requestedAt: string;
   transaction: StewardTxRecord;
 }
-
 /** Response shape for GET /api/wallet/steward-history */
 export type StewardHistoryResponse = StewardTxRecord[];
-
 /** Response shape for GET /api/wallet/steward-pending */
 export type StewardPendingResponse = StewardPendingApproval[];
-
 /** Response shape for POST /api/wallet/steward-approve and steward-reject */
 export interface StewardApprovalActionResponse {
   ok: boolean;
   txHash?: string;
   error?: string;
 }
-
 // Steward vault signing.
-
 /** Request body for signing a transaction through the Steward vault. */
 export interface StewardSignRequest {
   to: string;
@@ -106,7 +98,6 @@ export interface StewardSignRequest {
   broadcast?: boolean;
   description?: string;
 }
-
 /** Response from a Steward vault sign operation. */
 export interface StewardSignResponse {
   approved: boolean;
@@ -114,5 +105,8 @@ export interface StewardSignResponse {
   txId?: string;
   pending?: boolean;
   denied?: boolean;
-  violations?: Array<{ policy: string; reason: string }>;
+  violations?: Array<{
+    policy: string;
+    reason: string;
+  }>;
 }

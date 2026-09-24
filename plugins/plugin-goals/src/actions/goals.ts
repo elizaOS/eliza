@@ -25,7 +25,7 @@ import {
   type State,
   type SubactionsMap,
 } from "@elizaos/core";
-import type { LifeOpsGoalRecord } from "@elizaos/shared";
+import { type LifeOpsGoalRecord } from "@elizaos/core/contracts/personal-assistant";
 import { GoalsServiceError } from "../goal-normalize.ts";
 import { createOwnerGoalsService } from "../goals-runtime.ts";
 import {

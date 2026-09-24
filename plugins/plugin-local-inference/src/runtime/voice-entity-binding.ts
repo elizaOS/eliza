@@ -28,7 +28,7 @@ import {
 import {
 	AGENT_SELF_VOICE_THRESHOLD,
 	ECHO_WINDOW_MS,
-} from "@elizaos/shared/voice/respond-gate";
+} from "@elizaos/core/voice/respond-gate";
 import type {
 	VoiceNextSpeaker,
 	VoiceTurnSignal,

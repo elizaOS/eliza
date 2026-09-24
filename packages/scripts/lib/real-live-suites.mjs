@@ -64,6 +64,16 @@ const DISCOVERY_SKIP_DIRS = new Set([
 
 export const GUARDED_REAL_LIVE_SUITES = [
   {
+    file: "plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts",
+    optIn: "ELIZA_LIVE_TEST",
+    anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
+    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
+  },
+  {
+    file: "plugins/plugin-sql/src/__tests__/integration/progressive-content-postgres-targets.real.test.ts",
+    requires: ["POSTGRES_URL"],
+  },
+  {
     file: "packages/core/src/__tests__/message-addressing-gate.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
@@ -182,10 +192,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-form/src/tests/json-integration.live.test.ts",
     anyOf: [["ANTHROPIC_API_KEY"], ["OPENAI_API_KEY"]],
-  },
-  {
-    file: "plugins/plugin-google-genai/__tests__/integration/google-genai.live.test.ts",
-    requires: ["GOOGLE_GENERATIVE_AI_API_KEY"],
   },
   {
     file: "plugins/plugin-health/test/fitbit-connector.real.test.ts",

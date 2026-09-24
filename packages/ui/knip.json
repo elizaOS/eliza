@@ -37,7 +37,6 @@
     "src/widgets/index.ts",
     "src/bridge/gateway-discovery.ts",
     "src/first-run/use-microphone-permission.ts",
-    "src/platform/empty-node-module.ts",
     "src/platform/is-native-server.ts",
     "src/services/local-inference/index.ts",
     "src/views/view-interact-protocol.ts",

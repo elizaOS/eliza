@@ -9,7 +9,7 @@
  * PairingService, real core `checkPairingAllowed`).
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";

@@ -11,15 +11,13 @@
  * it is used.
  */
 import type http from "node:http";
-import type {
-  ReadJsonBodyOptions,
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/shared";
 import {
-  PostLogExportRequestSchema,
-  parseClampedInteger,
-} from "@elizaos/shared";
+  type ReadJsonBodyOptions,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core/api/route-helpers";
+import { PostLogExportRequestSchema } from "@elizaos/core/contracts/diagnostics-routes";
+import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
 
 interface LogEntryLike {
   timestamp: number;
@@ -28,14 +26,12 @@ interface LogEntryLike {
   source: string;
   tags: string[];
 }
-
 interface StreamEventEnvelopeLike {
   type: string;
   eventId: string;
   runId?: string;
   seq?: number;
 }
-
 interface AuditEntryLike {
   timestamp: string;
   type: string;
@@ -43,14 +39,12 @@ interface AuditEntryLike {
   severity: string;
   metadata?: Record<string, string | number | boolean | null>;
 }
-
 type DiagnosticsSseInit = (res: http.ServerResponse) => void;
 type DiagnosticsSseWriteJson = (
   res: http.ServerResponse,
   payload: unknown,
   event?: string,
 ) => void;
-
 export interface DiagnosticsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json"> {
@@ -81,11 +75,9 @@ export interface DiagnosticsRouteContext
     subscriber: (entry: AuditEntryLike) => void,
   ) => () => void;
 }
-
 function isAutonomyEvent(event: StreamEventEnvelopeLike): boolean {
   return event.type === "agent_event" || event.type === "heartbeat_event";
 }
-
 function defaultInitSse(res: http.ServerResponse): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -94,7 +86,6 @@ function defaultInitSse(res: http.ServerResponse): void {
     "X-Accel-Buffering": "no",
   });
 }
-
 function defaultWriteSseData(
   res: http.ServerResponse,
   data: string,
@@ -106,7 +97,6 @@ function defaultWriteSseData(
   const safe = data.replace(/\r?\n/g, "\ndata: ");
   res.write(`data: ${safe}\n\n`);
 }
-
 function defaultWriteSseJson(
   res: http.ServerResponse,
   payload: unknown,
@@ -114,7 +104,6 @@ function defaultWriteSseJson(
 ): void {
   defaultWriteSseData(res, JSON.stringify(payload), event);
 }
-
 function parseAuditSince(raw: string | null): {
   value?: number;
   error?: string;
@@ -126,7 +115,6 @@ function parseAuditSince(raw: string | null): {
       error: 'Invalid "since" filter: expected epoch ms or ISO timestamp.',
     };
   }
-
   // Canonical integer epoch only. Number("1e2") is 100 and Number("Infinity")
   // is Infinity — both used to silently filter the live log viewer (or empty
   // it) instead of rejecting the cursor.
@@ -139,7 +127,6 @@ function parseAuditSince(raw: string | null): {
       error: 'Invalid "since" filter: expected epoch ms or ISO timestamp.',
     };
   }
-
   // Date.parse("007") / Date.parse("1.5") are implementation-defined and
   // must not become a silent cursor. Only ISO-shaped timestamps fall through.
   if (!/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/.test(trimmed)) {
@@ -155,7 +142,6 @@ function parseAuditSince(raw: string | null): {
   }
   return { value: parsed };
 }
-
 function isTruthyQueryParam(value: string | null): boolean {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
@@ -166,14 +152,12 @@ function isTruthyQueryParam(value: string | null): boolean {
     normalized === "on"
   );
 }
-
 interface LogFilter {
   source?: string;
   level?: string;
   tag?: string;
   sinceMs?: number;
 }
-
 function applyLogFilter(
   buffer: readonly LogEntryLike[],
   filter: LogFilter,
@@ -194,14 +178,12 @@ function applyLogFilter(
   }
   return entries.slice();
 }
-
 function csvEscape(value: string): string {
   if (/[",\n\r]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
-
 function logsToCsv(entries: readonly LogEntryLike[]): string {
   const header = "timestamp,level,source,tags,message";
   const lines = entries.map((entry) => {
@@ -218,7 +200,6 @@ function logsToCsv(entries: readonly LogEntryLike[]): string {
   });
   return [header, ...lines].join("\n");
 }
-
 function matchesAuditFilter(
   entry: AuditEntryLike,
   filters: {
@@ -237,7 +218,6 @@ function matchesAuditFilter(
   }
   return true;
 }
-
 export async function handleDiagnosticsRoutes(
   ctx: DiagnosticsRouteContext,
 ): Promise<boolean> {
@@ -258,7 +238,6 @@ export async function handleDiagnosticsRoutes(
     subscribeAuditFeed,
     json,
   } = ctx;
-
   if (method === "GET" && pathname === "/api/logs") {
     const sinceRaw = url.searchParams.get("since");
     let sinceMs: number | undefined;
@@ -276,13 +255,11 @@ export async function handleDiagnosticsRoutes(
       tag: url.searchParams.get("tag") ?? undefined,
       sinceMs,
     });
-
     const sources = [...new Set(logBuffer.map((entry) => entry.source))].sort();
     const tags = [...new Set(logBuffer.flatMap((entry) => entry.tags))].sort();
     json(res, { entries, sources, tags });
     return true;
   }
-
   if (method === "DELETE" && pathname === "/api/logs") {
     const cleared = ctx.clearLogBuffer
       ? ctx.clearLogBuffer()
@@ -294,7 +271,6 @@ export async function handleDiagnosticsRoutes(
     json(res, { cleared });
     return true;
   }
-
   if (method === "POST" && pathname === "/api/logs/export") {
     const errorFn = ctx.error;
     if (!ctx.readJsonBody || !errorFn) {
@@ -314,7 +290,6 @@ export async function handleDiagnosticsRoutes(
     }
     const body = parsedExp.data;
     const formatRaw = body.format;
-
     let sinceMs: number | undefined;
     if (typeof body.since === "string" && body.since.trim()) {
       const sinceFilter = parseAuditSince(body.since);
@@ -334,7 +309,6 @@ export async function handleDiagnosticsRoutes(
       }
       sinceMs = body.since;
     }
-
     let tag: string | undefined;
     if (Array.isArray(body.tags)) {
       const first = body.tags.find(
@@ -345,7 +319,6 @@ export async function handleDiagnosticsRoutes(
     } else if (typeof body.tags === "string" && body.tags.trim()) {
       tag = body.tags.trim();
     }
-
     let entries = applyLogFilter(logBuffer, {
       source:
         typeof body.source === "string" && body.source.trim()
@@ -358,12 +331,10 @@ export async function handleDiagnosticsRoutes(
       tag,
       sinceMs,
     });
-
     if (typeof body.limit === "number" && Number.isFinite(body.limit)) {
-      const cap = Math.max(1, Math.min(10_000, Math.floor(body.limit)));
+      const cap = Math.max(1, Math.min(10000, Math.floor(body.limit)));
       entries = entries.slice(-cap);
     }
-
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     if (formatRaw === "json") {
       const payload = JSON.stringify({ entries }, null, 2);
@@ -375,7 +346,6 @@ export async function handleDiagnosticsRoutes(
       res.end(payload);
       return true;
     }
-
     const csv = logsToCsv(entries);
     res.writeHead(200, {
       "Content-Type": "text/csv; charset=utf-8",
@@ -385,7 +355,6 @@ export async function handleDiagnosticsRoutes(
     res.end(csv);
     return true;
   }
-
   if (method === "GET" && pathname === "/api/agent/events") {
     const limit = parseClampedInteger(url.searchParams.get("limit"), {
       min: 1,
@@ -413,7 +382,6 @@ export async function handleDiagnosticsRoutes(
         (event) => typeof event.seq === "number" && event.seq >= fromSeq,
       );
     }
-
     let startIndex = 0;
     if (afterEventId) {
       const index = autonomyEvents.findIndex(
@@ -423,11 +391,9 @@ export async function handleDiagnosticsRoutes(
         startIndex = index + 1;
       }
     }
-
     const events = autonomyEvents.slice(startIndex, startIndex + limit);
     const latestEventId =
       events.length > 0 ? events[events.length - 1].eventId : null;
-
     json(res, {
       events,
       latestEventId,
@@ -436,7 +402,6 @@ export async function handleDiagnosticsRoutes(
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/security/audit") {
     const typeFilterRaw = url.searchParams.get("type");
     const severityFilterRaw = url.searchParams.get("severity");
@@ -446,12 +411,10 @@ export async function handleDiagnosticsRoutes(
       fallback: 200,
     });
     const sinceFilter = parseAuditSince(url.searchParams.get("since"));
-
     if (sinceFilter.error) {
       json(res, { error: sinceFilter.error }, 400);
       return true;
     }
-
     let typeFilter: string | undefined;
     if (typeFilterRaw) {
       const candidate = typeFilterRaw.trim();
@@ -467,7 +430,6 @@ export async function handleDiagnosticsRoutes(
       }
       typeFilter = candidate;
     }
-
     let severityFilter: string | undefined;
     if (severityFilterRaw) {
       const candidate = severityFilterRaw.trim();
@@ -483,7 +445,6 @@ export async function handleDiagnosticsRoutes(
       }
       severityFilter = candidate;
     }
-
     const streamRequested =
       isTruthyQueryParam(url.searchParams.get("stream")) ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -492,7 +453,6 @@ export async function handleDiagnosticsRoutes(
       severity: severityFilter,
       sinceMs: sinceFilter.value,
     };
-
     if (!streamRequested) {
       const entries = queryAuditFeed({
         ...filter,
@@ -505,7 +465,6 @@ export async function handleDiagnosticsRoutes(
       });
       return true;
     }
-
     const startSse = initSse ?? defaultInitSse;
     const sendSseJson = writeSseJson ?? defaultWriteSseJson;
     startSse(res);
@@ -514,12 +473,10 @@ export async function handleDiagnosticsRoutes(
       entries: queryAuditFeed({ ...filter, limit: limitFilter }),
       totalBuffered: getAuditFeedSize(),
     });
-
     const unsubscribe = subscribeAuditFeed((entry) => {
       if (!matchesAuditFilter(entry, filter)) return;
       sendSseJson(res, { type: "entry", entry });
     });
-
     let closed = false;
     const close = () => {
       if (closed) return;
@@ -529,13 +486,10 @@ export async function handleDiagnosticsRoutes(
         res.end();
       }
     };
-
     req.on("close", close);
     req.on("aborted", close);
     res.on("close", close);
-
     return true;
   }
-
   return false;
 }

@@ -16,7 +16,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 import type { LiveProviderName } from "@elizaos/testing";
 import {
   DEFAULT_SCENARIO_LANE,

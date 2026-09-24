@@ -14,7 +14,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { type AddressInfo, createConnection, createServer } from "node:net";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -40,6 +40,8 @@ import {
 } from "./backend-fault-proxy";
 import { buildSharedEnv } from "./env";
 import { type RunningMockLlm, startMockLlm } from "./mock-llm";
+import { trackOwnedReadiness, waitForOwnedReadiness } from "./owned-readiness";
+import { reserveStackPort } from "./port-reservation";
 
 /**
  * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
@@ -106,18 +108,6 @@ export interface StackHandle {
   };
   dataDir: string;
   logDir: string;
-}
-
-async function pickFreePort(): Promise<number> {
-  return new Promise((resolvePort, rejectPort) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", rejectPort);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo;
-      server.close(() => resolvePort(port));
-    });
-  });
 }
 
 async function waitForTcp(
@@ -199,6 +189,7 @@ async function waitForHttpOk(
     intervalMs?: number;
     requestTimeoutMs?: number;
     label?: string;
+    process?: ChildProcess;
   } = {},
 ): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
@@ -207,12 +198,24 @@ async function waitForHttpOk(
   const label = opts.label ?? url;
   const start = Date.now();
   let lastErr: unknown;
+  const assertRunning = () => {
+    if (
+      opts.process &&
+      (opts.process.exitCode !== null || opts.process.signalCode !== null)
+    ) {
+      throw new Error(`[stack] owned ${label} exited before HTTP readiness`);
+    }
+  };
   while (Date.now() - start < timeoutMs) {
+    assertRunning();
     try {
       const res = await fetch(url, {
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
-      if (res.status < 500) return;
+      if (res.ok) {
+        assertRunning();
+        return;
+      }
       lastErr = new Error(`status ${res.status}`);
     } catch (err) {
       lastErr = err;
@@ -228,6 +231,7 @@ interface SpawnedProc {
   child: ChildProcess;
   log: WriteStream;
   name: string;
+  announced: (url: string) => boolean;
 }
 
 function spawnLogged(
@@ -254,7 +258,7 @@ function spawnLogged(
   child.on("exit", (code, signal) => {
     log.write(`\n[${name}] exited code=${code} signal=${signal}\n`);
   });
-  return { child, log, name };
+  return { child, log, name, announced: trackOwnedReadiness(child) };
 }
 
 async function runLoggedStep(
@@ -414,10 +418,21 @@ async function startCloudStackOwned(
   const pgDataDir = join(dataDir, "pgdata");
   await mkdir(pgDataDir, { recursive: true });
 
-  const pglitePort = opts.pglitePort ?? (await pickFreePort());
-  const apiPort = opts.apiPort ?? (await pickFreePort());
-  const inspectorPort = opts.inspectorPort ?? (await pickFreePort());
-  const frontendPort = opts.frontendPort ?? (await pickFreePort());
+  // Keep ports bound while mocks and database migrations start. A closed probe
+  // can be reassigned to one of this very stack's ephemeral mock servers.
+  const reserve = async (port?: number) => {
+    const reservation = await reserveStackPort(port);
+    startup.add(reservation.release);
+    return reservation;
+  };
+  const pgliteReservation = await reserve(opts.pglitePort);
+  const apiReservation = await reserve(opts.apiPort);
+  const inspectorReservation = await reserve(opts.inspectorPort);
+  const frontendReservation = await reserve(opts.frontendPort);
+  const pglitePort = pgliteReservation.port;
+  const apiPort = apiReservation.port;
+  const inspectorPort = inspectorReservation.port;
+  const frontendPort = frontendReservation.port;
 
   // 1. In-process mocks
   const hetzner = await startHetznerMock({
@@ -490,6 +505,7 @@ async function startCloudStackOwned(
     PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
   };
   const pgliteLogFile = join(logDir, "pglite.log");
+  await pgliteReservation.release();
   procs.push(
     spawnLogged(
       "pglite",
@@ -560,6 +576,9 @@ async function startCloudStackOwned(
     stackEnv.STRIPE_CLOUD_E2E_API_ORIGIN = fakeStripe.url;
   }
 
+  await apiReservation.release();
+  await inspectorReservation.release();
+
   // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
   // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
   // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
@@ -586,12 +605,18 @@ async function startCloudStackOwned(
   startup.add(() => killProc(cloudApiProc));
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
-  await withFakeStripeBootstrapRollback(fakeStripe, () =>
-    waitForHttpOk(`${apiUrl}/api/health`, {
+  await withFakeStripeBootstrapRollback(fakeStripe, async () => {
+    await waitForOwnedReadiness(
+      cloudApiProc.child,
+      cloudApiProc.announced,
+      apiUrl,
+    );
+    await waitForHttpOk(`${apiUrl}/api/health`, {
       timeoutMs: 180_000,
       label: "cloud-api",
-    }),
-  );
+      process: cloudApiProc.child,
+    });
+  });
 
   const backendFaults = opts.backendFaults
     ? await withFakeStripeBootstrapRollback(fakeStripe, () =>
@@ -631,6 +656,7 @@ async function startCloudStackOwned(
       VITE_API_BASE_URL: frontendApiUrl,
       NEXT_PUBLIC_API_BASE_URL: frontendApiUrl,
     };
+    await frontendReservation.release();
     procs.push(
       await withFakeStripeBootstrapRollback(fakeStripe, () =>
         spawnLogged(
@@ -657,6 +683,7 @@ async function startCloudStackOwned(
         // readiness probe itself from ever observing a healthy cold start.
         requestTimeoutMs: 60_000,
         label: "frontend",
+        process: frontendProc.child,
       }),
     );
   } else {
@@ -664,6 +691,7 @@ async function startCloudStackOwned(
     // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
     // fixtures (authenticatedPage) skip explicitly rather than reading an empty
     // `urls.frontend` as a pass.
+    await frontendReservation.release();
     frontendSkipReason =
       "frontend boot disabled (stack started with { frontend: false }).";
   }

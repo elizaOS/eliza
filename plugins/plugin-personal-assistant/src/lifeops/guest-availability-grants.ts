@@ -6,7 +6,13 @@
  * into provider/account/calendar coordinates; action parameters never do.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
+import {
+  type Entity,
+  type EntityAttribute,
+  type EntityIdentity,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
 import {
   CALENDAR_GUEST_AVAILABILITY_PURPOSE,
   type CalendarGuestAvailabilityGrant,
@@ -15,20 +21,16 @@ import {
   CalendarServiceError,
 } from "@elizaos/plugin-calendar";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import type { Entity, EntityAttribute, EntityIdentity } from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   createHouseholdCoordinationService,
   getHouseholdCoordinationService,
 } from "./household/service.js";
-
 export const CALENDAR_GUEST_AVAILABILITY_GRANTS_ATTRIBUTE =
   "calendar.guest_availability_grants.v1";
 export const CALENDAR_GUEST_AVAILABILITY_GRANTS_TAG =
   "calendar-guest-availability";
 export const CALENDAR_GUEST_AVAILABILITY_GRANTS_SCHEMA =
   "calendar.guest-availability-grants.v1";
-
 export interface StoredCalendarGuestAvailabilityGrant {
   grantId: string;
   principalEntityId: string;
@@ -41,12 +43,10 @@ export interface StoredCalendarGuestAvailabilityGrant {
   expiresAt: string;
   revokedAt: string | null;
 }
-
 export interface StoredCalendarGuestAvailabilityGrantEnvelope {
   schemaVersion: typeof CALENDAR_GUEST_AVAILABILITY_GRANTS_SCHEMA;
   grants: StoredCalendarGuestAvailabilityGrant[];
 }
-
 function authorizationError(
   message: string,
   code:
@@ -63,13 +63,11 @@ function authorizationError(
     code,
   );
 }
-
 function recordValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
-
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
     throw authorizationError(
@@ -79,7 +77,6 @@ function requiredString(value: unknown, field: string): string {
   }
   return value.trim();
 }
-
 function requiredInstant(value: unknown, field: string): string {
   const instant = requiredString(value, field);
   if (!Number.isFinite(Date.parse(instant))) {
@@ -90,7 +87,6 @@ function requiredInstant(value: unknown, field: string): string {
   }
   return instant;
 }
-
 function provider(value: unknown): CalendarGuestAvailabilityProvider {
   if (value !== "google" && value !== "microsoft") {
     throw authorizationError(
@@ -100,7 +96,6 @@ function provider(value: unknown): CalendarGuestAvailabilityProvider {
   }
   return value;
 }
-
 function purpose(value: unknown): typeof CALENDAR_GUEST_AVAILABILITY_PURPOSE {
   if (value !== CALENDAR_GUEST_AVAILABILITY_PURPOSE) {
     throw authorizationError(
@@ -110,7 +105,6 @@ function purpose(value: unknown): typeof CALENDAR_GUEST_AVAILABILITY_PURPOSE {
   }
   return value;
 }
-
 function parseStoredGrant(
   value: unknown,
 ): StoredCalendarGuestAvailabilityGrant {
@@ -147,7 +141,6 @@ function parseStoredGrant(
     revokedAt,
   };
 }
-
 function grantsFromAttribute(
   attribute: EntityAttribute,
 ): StoredCalendarGuestAvailabilityGrant[] {
@@ -174,7 +167,6 @@ function grantsFromAttribute(
   }
   return envelope.grants.map(parseStoredGrant);
 }
-
 function identityMatchesGrant(
   identities: readonly EntityIdentity[],
   grant: StoredCalendarGuestAvailabilityGrant,
@@ -193,7 +185,6 @@ function identityMatchesGrant(
       identity.handle.trim().toLowerCase() === calendarId,
   );
 }
-
 async function requirePrincipalScope(input: {
   runtime: IAgentRuntime;
   principalEntityId: string;
@@ -211,7 +202,6 @@ async function requirePrincipalScope(input: {
     at: input.at,
   });
 }
-
 function validateRequestedGrant(input: {
   stored: StoredCalendarGuestAvailabilityGrant;
   guest: Entity;
@@ -269,7 +259,6 @@ function validateRequestedGrant(input: {
     expiresAt: stored.expiresAt,
   };
 }
-
 /**
  * Resolve all requested grants atomically. Any missing, duplicate, expired,
  * revoked, cross-principal, or identity-mismatched record rejects the whole
@@ -316,7 +305,10 @@ export async function resolveCalendarGuestAvailabilityGrants(
   const requested = new Set(requestedGrantIds);
   const matches = new Map<
     string,
-    { stored: StoredCalendarGuestAvailabilityGrant; guest: Entity }
+    {
+      stored: StoredCalendarGuestAvailabilityGrant;
+      guest: Entity;
+    }
   >();
   for (const guest of guests) {
     const attribute =
@@ -342,7 +334,6 @@ export async function resolveCalendarGuestAvailabilityGrants(
       "CALENDAR_GUEST_AVAILABILITY_GRANT_MISSING",
     );
   }
-
   const resolved: CalendarGuestAvailabilityGrant[] = [];
   for (const grantId of requestedGrantIds) {
     const match = matches.get(grantId);

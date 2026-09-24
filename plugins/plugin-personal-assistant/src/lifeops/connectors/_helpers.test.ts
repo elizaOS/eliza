@@ -2,13 +2,13 @@
  * Real (no-mock) unit suite for the connector translation spine.
  *
  * Exercises the ACTUAL helpers against the REAL `LifeOpsServiceError`
- * (`@elizaos/shared`) — the same class the connectors throw at runtime, so the
+ * (`@elizaos/core`) — the same class the connectors throw at runtime, so the
  * `instanceof` branch in `errorToDispatchResult` is covered for real rather than
  * against a stand-in. The spine feeds failure-classification / retry /
  * degradation for every send-capable connector, so its mapping and its
  * payload guard must be pinned exactly.
  */
-import { LifeOpsServiceError } from "@elizaos/shared";
+import { LifeOpsServiceError } from "@elizaos/core/lifeops-normalize/service-error";
 import { describe, expect, it } from "vitest";
 import {
   dispatchReceipt,
@@ -18,7 +18,7 @@ import {
   missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
-import type { DispatchResult } from "./contract.js";
+import { type DispatchResult } from "./contract.js";
 
 describe("errorToDispatchResult", () => {
   it("maps 401/410 to auth_expired (user-actionable)", () => {
@@ -35,7 +35,6 @@ describe("errorToDispatchResult", () => {
       });
     }
   });
-
   it("maps 403 to auth_expired (missing permission still needs user action)", () => {
     const result = errorToDispatchResult(
       new LifeOpsServiceError(403, "forbidden"),
@@ -48,7 +47,6 @@ describe("errorToDispatchResult", () => {
       message: "forbidden",
     });
   });
-
   it("maps 404 to unknown_recipient", () => {
     const result = errorToDispatchResult(
       new LifeOpsServiceError(404, "no such chat"),
@@ -61,7 +59,6 @@ describe("errorToDispatchResult", () => {
       message: "no such chat",
     });
   });
-
   it("maps 409 and 503 to disconnected", () => {
     for (const status of [409, 503]) {
       const result = errorToDispatchResult(
@@ -76,7 +73,6 @@ describe("errorToDispatchResult", () => {
       });
     }
   });
-
   it("maps 429 to rate_limited with a default retryAfterMinutes", () => {
     const result = errorToDispatchResult(
       new LifeOpsServiceError(429, "slow down"),
@@ -90,7 +86,6 @@ describe("errorToDispatchResult", () => {
       message: "slow down",
     });
   });
-
   it("maps any other status to transport_error", () => {
     const result = errorToDispatchResult(
       new LifeOpsServiceError(500, "upstream boom"),
@@ -103,7 +98,6 @@ describe("errorToDispatchResult", () => {
       message: "upstream boom",
     });
   });
-
   it("maps a generic Error to transport_error, preserving its message", () => {
     const result = errorToDispatchResult(new Error("socket hang up"));
     expect(result).toEqual({
@@ -114,7 +108,6 @@ describe("errorToDispatchResult", () => {
       message: "socket hang up",
     });
   });
-
   it("stringifies a non-Error throw into the transport_error message", () => {
     const result = errorToDispatchResult("kaboom");
     expect(result).toEqual({
@@ -125,7 +118,6 @@ describe("errorToDispatchResult", () => {
       message: "kaboom",
     });
   });
-
   // Regression for the crash found by the #11003 payload fuzzer: a connector
   // that rejects with a value whose primitive conversion throws would take down
   // the whole dispatch path (`TypeError: Cannot convert object to primitive
@@ -146,7 +138,6 @@ describe("errorToDispatchResult", () => {
         message: "[object Object]",
       });
     });
-
     it("survives an object whose toString throws", () => {
       const poisoned = {
         toString() {
@@ -165,7 +156,6 @@ describe("errorToDispatchResult", () => {
         message: "[object Object]",
       });
     });
-
     it("survives an object whose Symbol.toPrimitive throws", () => {
       const poisoned = {
         [Symbol.toPrimitive]() {
@@ -184,7 +174,6 @@ describe("errorToDispatchResult", () => {
         message: "[object Object]",
       });
     });
-
     it("stringifies a Symbol without throwing", () => {
       const result = errorToDispatchResult(Symbol("boom"));
       expect(result).toEqual({
@@ -195,14 +184,12 @@ describe("errorToDispatchResult", () => {
         message: "Symbol(boom)",
       });
     });
-
     it("still prefers a real Error's message over any fallback", () => {
       const result = errorToDispatchResult(new Error("socket hang up"));
       expect(result.message).toBe("socket hang up");
     });
   });
 });
-
 describe("legacyStatusToConnectorStatus", () => {
   it("maps connected without degradations to ok", () => {
     const status = legacyStatusToConnectorStatus({ connected: true });
@@ -210,7 +197,6 @@ describe("legacyStatusToConnectorStatus", () => {
     expect(status.message).toBeUndefined();
     expect(Number.isNaN(Date.parse(status.observedAt))).toBe(false);
   });
-
   it("maps connected with degradations to degraded (first message wins)", () => {
     const status = legacyStatusToConnectorStatus({
       connected: true,
@@ -227,7 +213,6 @@ describe("legacyStatusToConnectorStatus", () => {
     expect(status.state).toBe("degraded");
     expect(status.message).toBe("media unavailable");
   });
-
   it("maps not-connected to disconnected, preferring authError over reason", () => {
     const status = legacyStatusToConnectorStatus({
       connected: false,
@@ -237,7 +222,6 @@ describe("legacyStatusToConnectorStatus", () => {
     expect(status.state).toBe("disconnected");
     expect(status.message).toBe("token expired");
   });
-
   it("falls back to reason when there is no authError, else undefined", () => {
     expect(
       legacyStatusToConnectorStatus({ connected: false, reason: "offline" })
@@ -247,12 +231,10 @@ describe("legacyStatusToConnectorStatus", () => {
       legacyStatusToConnectorStatus({ connected: false }).message,
     ).toBeUndefined();
   });
-
   it("treats a missing connected flag as disconnected", () => {
     expect(legacyStatusToConnectorStatus({}).state).toBe("disconnected");
   });
 });
-
 describe("rejectInvalidPayload", () => {
   it("returns a non-actionable transport_error failure", () => {
     expect(rejectInvalidPayload()).toEqual({
@@ -265,7 +247,6 @@ describe("rejectInvalidPayload", () => {
     });
   });
 });
-
 describe("dispatchReceipt", () => {
   it("builds a typed provider receipt only when provider id and idempotency key exist", () => {
     const receipt = dispatchReceipt({
@@ -284,7 +265,6 @@ describe("dispatchReceipt", () => {
     });
     expect(Number.isNaN(Date.parse(receipt?.acceptedAt ?? ""))).toBe(false);
   });
-
   it("refuses to fabricate a receipt from a provider boolean or missing provider id", () => {
     expect(
       dispatchReceipt({
@@ -306,7 +286,6 @@ describe("dispatchReceipt", () => {
     ).toBeNull();
   });
 });
-
 describe("missingProviderReceipt", () => {
   it("classifies provider success without an id as ambiguous, never retryable", () => {
     expect(missingProviderReceipt("Gmail")).toEqual({
@@ -319,14 +298,12 @@ describe("missingProviderReceipt", () => {
     });
   });
 });
-
 describe("isConnectorSendPayload", () => {
   it("accepts a well-formed payload", () => {
     expect(
       isConnectorSendPayload({ target: "+15550000000", message: "hi" }),
     ).toBe(true);
   });
-
   it("accepts a well-formed payload with metadata", () => {
     expect(
       isConnectorSendPayload({
@@ -336,7 +313,6 @@ describe("isConnectorSendPayload", () => {
       }),
     ).toBe(true);
   });
-
   it("accepts a well-formed payload with a durable idempotency key", () => {
     expect(
       isConnectorSendPayload({
@@ -346,7 +322,6 @@ describe("isConnectorSendPayload", () => {
       }),
     ).toBe(true);
   });
-
   it("rejects non-object and structurally invalid payloads", () => {
     expect(isConnectorSendPayload(null)).toBe(false);
     expect(isConnectorSendPayload(undefined)).toBe(false);
@@ -356,11 +331,9 @@ describe("isConnectorSendPayload", () => {
     expect(isConnectorSendPayload({ target: 42, message: "hi" })).toBe(false);
     expect(isConnectorSendPayload({ target: "x", message: 42 })).toBe(false);
   });
-
   it("rejects an empty-string target (adversarial: unroutable recipient)", () => {
     expect(isConnectorSendPayload({ target: "", message: "hi" })).toBe(false);
   });
-
   it("rejects a whitespace-only target (adversarial: unroutable recipient)", () => {
     expect(isConnectorSendPayload({ target: "   ", message: "hi" })).toBe(
       false,

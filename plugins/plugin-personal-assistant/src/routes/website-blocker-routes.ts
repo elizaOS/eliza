@@ -7,8 +7,8 @@
  * the reconciler cannot leave a window of unprotected state.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import {
   getSelfControlStatus,
   isWebsiteBlockedByPolicy,
@@ -17,10 +17,9 @@ import {
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
-import type { RouteRequestContext } from "@elizaos/shared";
-import type {
-  LifeOpsOccurrence,
-  LifeOpsTaskDefinition,
+import {
+  type LifeOpsOccurrence,
+  type LifeOpsTaskDefinition,
 } from "../contracts/index.js";
 import { listCallerDefinitions } from "../lifeops/domains/definition-authorization.js";
 import { defaultOwnerEntityId } from "../lifeops/service-normalize.js";
@@ -30,12 +29,10 @@ type WebsiteBlockerRequestBody = {
   websites?: string[] | string;
   durationMinutes?: number | string | null;
 };
-
 export interface WebsiteBlockerRouteContext extends RouteRequestContext {
   runtime?: IAgentRuntime | null;
   ownerEntityId?: string | null;
 }
-
 function buildBlockRequest(
   body: WebsiteBlockerRequestBody,
 ): ReturnType<typeof parseSelfControlBlockRequest> {
@@ -43,25 +40,21 @@ function buildBlockRequest(
     websites?: string[] | string;
     durationMinutes?: number | string | null;
   } = {};
-
   if (body.websites !== undefined) {
     parameters.websites = body.websites;
   }
   if (body.durationMinutes !== undefined) {
     parameters.durationMinutes = body.durationMinutes;
   }
-
   return parseSelfControlBlockRequest({
     parameters,
   });
 }
-
 interface RequiredTaskInfo {
   id?: string;
   title: string;
   completed: boolean;
 }
-
 interface WebsiteBlockerHostResponse {
   blocked: boolean;
   host: string;
@@ -69,15 +62,16 @@ interface WebsiteBlockerHostResponse {
   requiredTasks: RequiredTaskInfo[];
   websites: string[];
 }
-
 async function resolveRequiredTasksForHost(
   runtime: IAgentRuntime,
   ownerEntityId: string,
   host: string,
-): Promise<{ groupKey: string | null; requiredTasks: RequiredTaskInfo[] }> {
+): Promise<{
+  groupKey: string | null;
+  requiredTasks: RequiredTaskInfo[];
+}> {
   const { LifeOpsRepository } = await import("../lifeops/repository.js");
   const repo = new LifeOpsRepository(runtime);
-
   const agentId = String(runtime.agentId);
   const definitions: LifeOpsTaskDefinition[] = await listCallerDefinitions(
     repo,
@@ -87,25 +81,20 @@ async function resolveRequiredTasksForHost(
     },
     { activeOnly: true },
   );
-
   const matchingDefinitions = definitions.filter((definition) =>
     definition.websiteAccess?.websites.some(
       (website) => website.toLowerCase() === host,
     ),
   );
-
   if (matchingDefinitions.length === 0) {
     return { groupKey: null, requiredTasks: [] };
   }
-
   const firstMatchingDefinition = matchingDefinitions[0];
   const groupKey = firstMatchingDefinition.websiteAccess?.groupKey ?? null;
   const requiredTasks: RequiredTaskInfo[] = [];
-
   for (const definition of matchingDefinitions) {
     const occurrences: LifeOpsOccurrence[] =
       await repo.listOccurrencesForDefinition(agentId, definition.id);
-
     const currentOccurrence = occurrences
       .filter(
         (occurrence) =>
@@ -116,7 +105,6 @@ async function resolveRequiredTasksForHost(
         const rightTime = Date.parse(right.relevanceStartAt);
         return rightTime - leftTime;
       })[0];
-
     const task: RequiredTaskInfo = {
       title: definition.title,
       completed: currentOccurrence?.state === "completed",
@@ -126,10 +114,8 @@ async function resolveRequiredTasksForHost(
     }
     requiredTasks.push(task);
   }
-
   return { groupKey, requiredTasks };
 }
-
 export async function handleWebsiteBlockerRoutes(
   ctx: WebsiteBlockerRouteContext,
 ): Promise<boolean> {
@@ -144,23 +130,19 @@ export async function handleWebsiteBlockerRoutes(
     runtime,
     ownerEntityId,
   } = ctx;
-
   if (
     pathname !== "/api/website-blocker" &&
     pathname !== "/api/website-blocker/status"
   ) {
     return false;
   }
-
   if (method === "GET") {
     const url = new URL(req.url ?? "/", "http://localhost");
     const queriedHost = url.searchParams.get("host")?.trim().toLowerCase();
-
     if (!queriedHost) {
       json(res, await getSelfControlStatus());
       return true;
     }
-
     const status = await getSelfControlStatus();
     const hostBlocked =
       status.active &&
@@ -172,7 +154,6 @@ export async function handleWebsiteBlockerRoutes(
         },
         queriedHost,
       );
-
     const result: WebsiteBlockerHostResponse = {
       blocked: hostBlocked,
       host: queriedHost,
@@ -180,7 +161,6 @@ export async function handleWebsiteBlockerRoutes(
       requiredTasks: [],
       websites: status.active ? status.blockedWebsites : [],
     };
-
     if (hostBlocked && runtime) {
       try {
         const tasks = await resolveRequiredTasksForHost(
@@ -200,23 +180,18 @@ export async function handleWebsiteBlockerRoutes(
         );
         error(
           res,
-          `Failed to resolve required tasks for blocked host: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `Failed to resolve required tasks for blocked host: ${err instanceof Error ? err.message : String(err)}`,
           500,
         );
         return true;
       }
     }
-
     json(res, result);
     return true;
   }
-
   if (method === "POST" || method === "PUT") {
     const body = await readJsonBody<WebsiteBlockerRequestBody>(req, res);
     if (!body) return true;
-
     const parsed = buildBlockRequest(body);
     if (!parsed.request) {
       json(
@@ -230,7 +205,6 @@ export async function handleWebsiteBlockerRoutes(
       );
       return true;
     }
-
     if (parsed.request.durationMinutes !== null && !runtime) {
       error(
         res,
@@ -239,7 +213,6 @@ export async function handleWebsiteBlockerRoutes(
       );
       return true;
     }
-
     const result = await startSelfControlBlock({
       ...parsed.request,
       scheduledByAgentId: runtime ? String(runtime.agentId) : null,
@@ -274,7 +247,6 @@ export async function handleWebsiteBlockerRoutes(
           return true;
         }
       }
-
       json(
         res,
         {
@@ -297,7 +269,6 @@ export async function handleWebsiteBlockerRoutes(
     }
     return true;
   }
-
   if (method === "DELETE") {
     // harsh_no_bypass rules refuse every manual bypass, including this HTTP
     // route (the chat unblock action has the same gate). Non-harsh rules are
@@ -340,6 +311,5 @@ export async function handleWebsiteBlockerRoutes(
     }
     return true;
   }
-
   return false;
 }

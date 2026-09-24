@@ -2,7 +2,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import { describe, expect, it } from "vitest";
 import {
 	embedBgeInput,

@@ -9,31 +9,32 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger, stringToUuid } from "@elizaos/core";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared";
 import {
-  deriveFirstRunCredentialPersistencePlan,
   getDefaultStylePreset,
   getStylePresets,
-  isCloudProvisionedContainer,
-  migrateLegacyRuntimeConfig,
   normalizeCharacterLanguage,
-  normalizeDeploymentTargetConfig,
+} from "@elizaos/core/character-presets";
+import {
+  deriveFirstRunCredentialPersistencePlan,
+  migrateLegacyRuntimeConfig,
   normalizeFirstRunCredentialInputs,
+} from "@elizaos/core/contracts/first-run-options";
+import {
+  type DeploymentTargetConfig,
+  type LinkedAccountFlagsConfig,
+  normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-  PREMADE_VOICES,
-} from "@elizaos/shared";
+  type ServiceRoutingConfig,
+} from "@elizaos/core/contracts/service-routing";
+import { PREMADE_VOICES } from "@elizaos/core/voice";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { resolveProviderCredential } from "./credential-resolver";
-import type { FirstRunConfigWriteObserver } from "./first-run-rollback";
+import { type FirstRunConfigWriteObserver } from "./first-run-rollback";
 
 // ---------------------------------------------------------------------------
 // First-run API key persistence
 // ---------------------------------------------------------------------------
-
 function trimToUndefined(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -41,12 +42,10 @@ function trimToUndefined(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
 const ELEVENLABS_VOICE_ID_BY_PRESET = new Map(
   PREMADE_VOICES.map((voice) => [voice.id, voice.voiceId]),
 );
-
 function resolveCompatFirstRunStyle(
   body: Record<string, unknown>,
   language: string,
@@ -57,7 +56,6 @@ function resolveCompatFirstRunStyle(
     const byId = presets.find((preset) => preset.id === requestedPresetId);
     if (byId) return byId;
   }
-
   if (
     typeof body.avatarIndex === "number" &&
     Number.isFinite(body.avatarIndex)
@@ -67,16 +65,13 @@ function resolveCompatFirstRunStyle(
     );
     if (byAvatar) return byAvatar;
   }
-
   const requestedName = trimToUndefined(body.name);
   if (requestedName) {
     const byName = presets.find((preset) => preset.name === requestedName);
     if (byName) return byName;
   }
-
   return getDefaultStylePreset(language);
 }
-
 const DEPRECATED_FIRST_RUN_REQUEST_KEYS = [
   "connection",
   "runMode",
@@ -87,7 +82,6 @@ const DEPRECATED_FIRST_RUN_REQUEST_KEYS = [
   "smallModel",
   "largeModel",
 ] as const;
-
 export function hasDeprecatedFirstRunRequestFields(
   body: Record<string, unknown>,
 ): boolean {
@@ -95,7 +89,6 @@ export function hasDeprecatedFirstRunRequestFields(
     Object.hasOwn(body, key),
   );
 }
-
 /**
  * Extract canonical first-run credential inputs from an first-run request body
  * and persist them to config + process.env. Returns the env key name if a local
@@ -126,7 +119,6 @@ export async function extractAndPersistFirstRunApiKey(
   let effectiveCredentialInputs = credentialInputs;
   let effectiveServiceRouting = explicitServiceRouting;
   let llmSelection = initialPlan.llmSelection;
-
   if (!llmSelection && !initialPlan.cloudApiKey) {
     logger.warn(
       "[first-run] No first-run credentials resolved from request body",
@@ -136,7 +128,6 @@ export async function extractAndPersistFirstRunApiKey(
   logger.info(
     `[first-run] Resolved selection: transport=${llmSelection?.transport ?? "none"}, provider=${llmSelection?.backend ?? "N/A"}, hasKey=${Boolean(llmSelection?.apiKey)}, hasCloudKey=${Boolean(initialPlan.cloudApiKey)}`,
   );
-
   // If the key is masked (from IPC) or missing, try to resolve the real
   // key from local credential stores (files, keychain, env). A "****xxxx"
   // value is the server's own GET-response masking echoed back by the
@@ -179,14 +170,12 @@ export async function extractAndPersistFirstRunApiKey(
       );
       return null;
     }
-
     llmSelection = deriveFirstRunCredentialPersistencePlan({
       credentialInputs: effectiveCredentialInputs,
       deploymentTarget: explicitDeploymentTarget,
       serviceRouting: effectiveServiceRouting,
     }).llmSelection;
   }
-
   const config = loadElizaConfig();
   const before = structuredClone(config);
   const result = await applyFirstRunCredentialPersistence(config, {
@@ -197,13 +186,11 @@ export async function extractAndPersistFirstRunApiKey(
   });
   saveElizaConfig(config);
   onConfigWrite?.(before, config);
-
   if (result) {
     logger.info(`[first-run] Persisted ${result} from first-run credentials`);
   }
   return result;
 }
-
 export function persistFirstRunDefaults(
   body: Record<string, unknown>,
   onConfigWrite?: FirstRunConfigWriteObserver,
@@ -212,7 +199,6 @@ export function persistFirstRunDefaults(
   if (!name) {
     return null;
   }
-
   const config = loadElizaConfig();
   const before = structuredClone(config);
   const language = normalizeCharacterLanguage(body.language);
@@ -224,10 +210,8 @@ export function persistFirstRunDefaults(
   if (!agents.defaults || typeof agents.defaults !== "object") {
     agents.defaults = {};
   }
-
   const adminEntityId = stringToUuid(`${name}-admin-entity`);
   agents.defaults.adminEntityId = adminEntityId;
-
   if (!Array.isArray(agents.list) || agents.list.length === 0) {
     (agents as Record<string, unknown>).list = [{ id: "main", default: true }];
   }
@@ -254,7 +238,6 @@ export function persistFirstRunDefaults(
   if (Array.isArray(body.messageExamples)) {
     agentEntry.messageExamples = body.messageExamples;
   }
-
   if (!config.ui || typeof config.ui !== "object") {
     (config as Record<string, unknown>).ui = {};
   }
@@ -279,7 +262,6 @@ export function persistFirstRunDefaults(
   } else if (stylePreset.id) {
     ui.presetId = stylePreset.id;
   }
-
   const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
   const voicePresetId = stylePreset.voicePresetId.trim();
   const voiceId = voicePresetId
@@ -298,7 +280,6 @@ export function persistFirstRunDefaults(
       existingTts.elevenlabs && typeof existingTts.elevenlabs === "object"
         ? (existingTts.elevenlabs as Record<string, unknown>)
         : {};
-
     messages.tts = {
       ...existingTts,
       provider: "elevenlabs",
@@ -313,13 +294,11 @@ export function persistFirstRunDefaults(
       },
     };
   }
-
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   saveElizaConfig(config);
   onConfigWrite?.(before, config);
   return adminEntityId;
 }
-
 export function deriveFirstRunReplayBody(body: Record<string, unknown>): {
   isCloudMode: boolean;
   replayBody: Record<string, unknown>;
@@ -337,9 +316,7 @@ export function deriveFirstRunReplayBody(body: Record<string, unknown>): {
   const serviceRouting: ServiceRoutingConfig | undefined =
     normalizeServiceRoutingConfig(body.serviceRouting) ?? undefined;
   const isCloudMode = deploymentTarget?.runtime === "cloud";
-
   const replayBody = { ...body };
-
   if (deploymentTarget) {
     replayBody.deploymentTarget = deploymentTarget;
   }
@@ -352,10 +329,8 @@ export function deriveFirstRunReplayBody(body: Record<string, unknown>): {
   if (explicitCredentialInputs) {
     replayBody.credentialInputs = explicitCredentialInputs;
   }
-
   return { isCloudMode, replayBody };
 }
-
 /**
  * Check if this is a cloud-provisioned container.
  *

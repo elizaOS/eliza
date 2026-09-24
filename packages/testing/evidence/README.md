@@ -16,7 +16,9 @@ bun run --cwd packages/testing test
 
 Generated evidence uses repository-root `test-results/`: `aesthetic-audit/`,
 `device-e2e/`, `app/`, `cloud-e2e/`, and `core/` contain their respective producers.
-Keep producer inventories and artifact uploads aligned with these paths.
+Android plugin instrumentation uses `android-native-plugins/`; embedded-agent
+lifecycle evidence uses `android-native-agent/runs/`. Runtime staging stays outside
+that evidence inventory. Keep producer inventories and artifact uploads aligned.
 
 ## Choose the work you need
 

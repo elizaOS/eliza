@@ -4,7 +4,7 @@
 
 import type http from "node:http";
 import { validateMcpServerConfig } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
 import type { TerminalRunRejection } from "./server-helpers-auth.ts";
 import { resolveTerminalRunRejection } from "./server-helpers-auth.ts";

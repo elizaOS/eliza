@@ -10,7 +10,7 @@ import {
 import {
   conversationClientUserMemoryId,
   readDurableConversationChatMarker,
-} from "@elizaos/shared/conversation-chat-marker";
+} from "@elizaos/core/conversation-chat-marker";
 
 const NAVIGATION_FIELDS = new Set([
   "effect",

@@ -19,7 +19,9 @@ import {
   trustedLocalMediaUrl,
   VISION_IMAGE_FETCH_TIMEOUT_MS,
   VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/shared/media";
+} from "@elizaos/core/media";
+import { hashAttachmentIdForLocator } from "../../../../../packages/core/src/runtime/message-content-segments.ts";
+
 /**
  * Attachment-reading helpers behind the ATTACHMENT action of the working-memory
  * capability. Gathers the attachments visible in the current conversation window
@@ -33,9 +35,6 @@ import {
  * carried alongside `Media` — `_messageId` names the message memory whose
  * stored copy of the attachment on-demand enrichment must update.
  */
-
-import { hashAttachmentIdForLocator } from "../../../../../packages/core/src/runtime/message-content-segments.ts";
-
 type AttachmentWithInlineData = Media & {
   _data?: string;
   _mimeType?: string;
@@ -43,29 +42,25 @@ type AttachmentWithInlineData = Media & {
   _messageId?: UUID;
   redacted?: true;
 };
-
 type ReadAttachmentResult = {
   attachment: AttachmentWithInlineData;
   content: string;
   autoSelected: boolean;
 };
-
 const NATIVE_ATTACHMENT_REFERENCE =
   /^attachment:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9a-f]{64})$/i;
-
-function parseNativeAttachmentReference(
-  value: string,
-): { messageId: UUID; attachmentIdHash: string } | null {
+function parseNativeAttachmentReference(value: string): {
+  messageId: UUID;
+  attachmentIdHash: string;
+} | null {
   const match = NATIVE_ATTACHMENT_REFERENCE.exec(value);
   return match?.[1] && match[2]
     ? { messageId: match[1] as UUID, attachmentIdHash: match[2].toLowerCase() }
     : null;
 }
-
 function attachmentLocator(attachment: Media): string {
   return attachment.title?.trim() || attachment.url || attachment.id;
 }
-
 function isUnreadableFallbackDescription(value: string): boolean {
   return [
     "An image attachment (recognition failed)",
@@ -79,7 +74,6 @@ function isUnreadableFallbackDescription(value: string): boolean {
     "A video attachment",
   ].includes(value.trim());
 }
-
 function attachmentStoredContent(attachment: Media): string {
   return [attachment.text, attachment.description]
     .filter(
@@ -91,7 +85,6 @@ function attachmentStoredContent(attachment: Media): string {
     .join("\n\n")
     .trim();
 }
-
 const MEMORY_SCOPES: ReadonlySet<string> = new Set<MemoryScope>([
   "global",
   "shared",
@@ -101,7 +94,6 @@ const MEMORY_SCOPES: ReadonlySet<string> = new Set<MemoryScope>([
   "user-private",
   "agent-private",
 ]);
-
 function attachmentMessageScope(memory: Memory): MemoryScope {
   const rawScope = (memory.metadata as Record<string, unknown> | undefined)
     ?.scope;
@@ -110,7 +102,6 @@ function attachmentMessageScope(memory: Memory): MemoryScope {
     ? (rawScope as MemoryScope)
     : "owner-private";
 }
-
 async function buildAttachmentAccessContext(
   runtime: IAgentRuntime,
   message: Memory,
@@ -134,7 +125,6 @@ async function buildAttachmentAccessContext(
     return { requesterEntityId: message.entityId as UUID };
   }
 }
-
 function selectAttachmentForRequester(
   memory: Memory,
   attachment: AttachmentWithInlineData,
@@ -180,7 +170,6 @@ function selectAttachmentForRequester(
     redacted: true,
   };
 }
-
 /**
  * Resolves an attachment URL to inline data-URL bytes so the vision model
  * never fetches a caller-controlled URL itself — the same contract the
@@ -225,14 +214,12 @@ async function inlineAttachmentImage(
     res.headers.get("content-type") || "application/octet-stream";
   return `data:${contentType};base64,${buffer.toString("base64")}`;
 }
-
 /**
  * Visibly distinct unavailable state for a describe attempt whose image bytes
  * could not be resolved; recognized by isUnreadableFallbackDescription so a
  * stored copy is never mistaken for readable content.
  */
 const IMAGE_BYTES_UNAVAILABLE = "An image attachment (image bytes unavailable)";
-
 async function describeImageAttachment(
   runtime: IAgentRuntime,
   attachment: AttachmentWithInlineData,
@@ -268,7 +255,6 @@ async function describeImageAttachment(
   );
   return (described?.text || described?.description || "").trim();
 }
-
 async function readableAttachmentContent(
   runtime: IAgentRuntime,
   attachment: AttachmentWithInlineData,
@@ -279,11 +265,12 @@ async function readableAttachmentContent(
   }
   return content;
 }
-
 export async function listConversationAttachments(
   runtime: IAgentRuntime,
   message: Memory,
-  options: { maxLookback?: number } = {},
+  options: {
+    maxLookback?: number;
+  } = {},
 ): Promise<AttachmentWithInlineData[]> {
   void options;
   const currentMessageAttachments = (message.content.attachments ??
@@ -295,7 +282,6 @@ export async function listConversationAttachments(
     unique: false,
     tableName: "messages",
   });
-
   if (
     !recentMessages ||
     !Array.isArray(recentMessages) ||
@@ -318,9 +304,7 @@ export async function listConversationAttachments(
         Boolean(attachment),
       );
   }
-
   const attachmentsById = new Map<string, AttachmentWithInlineData>();
-
   const rememberAttachment = (
     attachment: AttachmentWithInlineData,
     createdAt: number,
@@ -336,7 +320,6 @@ export async function listConversationAttachments(
       _messageId: messageId,
     });
   };
-
   for (const attachment of currentMessageAttachments) {
     const selected = selectAttachmentForRequester(
       message,
@@ -347,7 +330,6 @@ export async function listConversationAttachments(
     if (selected)
       rememberAttachment(selected, message.createdAt ?? Date.now(), message.id);
   }
-
   for (const recentMessage of recentMessages) {
     const messageAttachments = (recentMessage.content.attachments ??
       []) as AttachmentWithInlineData[];
@@ -362,12 +344,10 @@ export async function listConversationAttachments(
       if (selected) rememberAttachment(selected, createdAt, recentMessage.id);
     }
   }
-
   return Array.from(attachmentsById.values()).sort(
     (left, right) => (right._createdAt ?? 0) - (left._createdAt ?? 0),
   );
 }
-
 export async function resolveAttachmentSelection(
   _runtime: IAgentRuntime,
   message: Memory,
@@ -401,7 +381,6 @@ export async function resolveAttachmentSelection(
   }
   return null;
 }
-
 export async function readAttachmentRecord(
   runtime: IAgentRuntime,
   message: Memory,
@@ -427,7 +406,6 @@ export async function readAttachmentRecord(
     autoSelected: !attachmentId?.trim(),
   };
 }
-
 export async function readAttachmentRecords(
   runtime: IAgentRuntime,
   message: Memory,
@@ -459,7 +437,6 @@ export async function readAttachmentRecords(
   }
   const currentAttachments = (message.content.attachments ??
     []) as AttachmentWithInlineData[];
-
   // A "what's in this image" on a message that CARRIES its own attachment must
   // analyze THAT attachment — never a prior attachment's cached description. The
   // planner may name a stale id (a previously generated/described image is the
@@ -485,7 +462,6 @@ export async function readAttachmentRecords(
         })),
     );
   }
-
   // No current-message attachment: honor an explicit id against the
   // conversation window, else auto-select from it.
   if (trimmedId.length > 0) {
@@ -495,7 +471,6 @@ export async function readAttachmentRecords(
   const record = await readAttachmentRecord(runtime, message);
   return record ? [record] : [];
 }
-
 export function summarizeAttachment(attachment: Media): string {
   const storedContent = attachmentStoredContent(attachment);
   return [

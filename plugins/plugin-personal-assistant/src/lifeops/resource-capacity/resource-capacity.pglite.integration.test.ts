@@ -3,25 +3,26 @@
  * authorization, idempotent proposal reviews, shared ScheduledTasks, restart,
  * and concurrent writers.
  */
+
 import { randomUUID } from "node:crypto";
 import {
   type AgentRuntime,
   createMessageMemory,
   type Memory,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
-import type { ApprovalQueue } from "../approval-queue.types.js";
+import { type ApprovalQueue } from "../approval-queue.types.js";
 import {
   authenticatedHouseholdInboundIdentity,
   parseHouseholdInboundApprovalCommand,
@@ -58,7 +59,6 @@ describe("household resource capacity — real PGlite", () => {
   let approvals: ApprovalQueue;
   let repository: ResourceCapacityRepository;
   let service: ResourceCapacityService;
-
   let now = new Date("2027-03-10T12:00:00.000Z");
   const childOneId = "capacity-child-one";
   const childTwoId = "capacity-child-two";
@@ -66,11 +66,9 @@ describe("household resource capacity — real PGlite", () => {
   const partnerId = "capacity-partner";
   const partnerHandle = "capacity-partner-telegram";
   const outsiderId = "capacity-outsider";
-
   function currentDate(): Date {
     return new Date(now);
   }
-
   async function upsertPerson(
     entityId: string,
     preferredName: string,
@@ -98,7 +96,6 @@ describe("household resource capacity — real PGlite", () => {
       state: {},
     });
   }
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -115,7 +112,6 @@ describe("household resource capacity — real PGlite", () => {
     await upsertPerson(caregiverId, "Capacity Caregiver");
     await upsertPerson(partnerId, "Capacity Partner", partnerHandle);
     await upsertPerson(outsiderId, "Capacity Outsider");
-
     household =
       getHouseholdCoordinationService(runtime) ??
       createHouseholdCoordinationService(runtime);
@@ -155,7 +151,6 @@ describe("household resource capacity — real PGlite", () => {
       issuedByEntityId: SELF_ENTITY_ID,
       expiresAt: "2027-04-01T00:00:00.000Z",
     });
-
     approvals = createApprovalQueue(runtime, { agentId: runtime.agentId });
     repository = new ResourceCapacityRepository(runtime, runtime.agentId);
     service = new ResourceCapacityService({
@@ -171,12 +166,10 @@ describe("household resource capacity — real PGlite", () => {
       now: currentDate,
     });
     await service.initialize();
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   function authorization(
     overrides?: Partial<HouseholdResourceDefinition["authorization"]>,
   ): HouseholdResourceDefinition["authorization"] {
@@ -190,7 +183,6 @@ describe("household resource capacity — real PGlite", () => {
       ...overrides,
     };
   }
-
   function availability(
     resourceId: string,
     overrides?: Partial<HouseholdResourceDefinition["availability"][number]>,
@@ -208,7 +200,6 @@ describe("household resource capacity — real PGlite", () => {
       },
     ];
   }
-
   function caregiverResource(
     householdId: string,
     resourceId: string,
@@ -231,7 +222,6 @@ describe("household resource capacity — real PGlite", () => {
       ...overrides,
     };
   }
-
   function vehicleResource(
     householdId: string,
     resourceId: string,
@@ -256,7 +246,6 @@ describe("household resource capacity — real PGlite", () => {
       ...overrides,
     };
   }
-
   function carSeatResource(
     householdId: string,
     resourceId: string,
@@ -283,7 +272,6 @@ describe("household resource capacity — real PGlite", () => {
       ...overrides,
     };
   }
-
   async function seedResourceSet(
     householdId: string,
     suffix: string,
@@ -324,7 +312,6 @@ describe("household resource capacity — real PGlite", () => {
       carSeatResourceId,
     };
   }
-
   function need(input: {
     needId: string;
     startsAt: string;
@@ -385,7 +372,6 @@ describe("household resource capacity — real PGlite", () => {
       sourceRefs: [`calendar-event:${input.needId}:v1`],
     };
   }
-
   function assignments(
     needs: readonly CapacityNeed[],
     resources: {
@@ -412,7 +398,6 @@ describe("household resource capacity — real PGlite", () => {
       },
     ]);
   }
-
   function plan(
     householdId: string,
     needs: readonly CapacityNeed[],
@@ -424,7 +409,6 @@ describe("household resource capacity — real PGlite", () => {
       needs: [...needs],
     };
   }
-
   function transitions(
     resources: {
       caregiverResourceId: string;
@@ -445,7 +429,6 @@ describe("household resource capacity — real PGlite", () => {
       expiresAt: "2027-03-10T18:00:00.000Z",
     }));
   }
-
   function evaluationInput(
     householdId: string,
     needs: readonly CapacityNeed[],
@@ -463,7 +446,6 @@ describe("household resource capacity — real PGlite", () => {
       maximumSourceAgeMinutes: 24 * 60,
     };
   }
-
   function partnerApprovalMessage(approvalRequestId: string): Memory {
     const message = createMessageMemory({
       entityId: runtime.agentId,
@@ -489,7 +471,6 @@ describe("household resource capacity — real PGlite", () => {
     };
     return message;
   }
-
   it("persists append-only resource revisions and rejects concurrent stale writers", async () => {
     const householdId = "capacity-household-cas";
     const resourceId = "caregiver-capacity-cas";
@@ -499,7 +480,6 @@ describe("household resource capacity — real PGlite", () => {
       expectedRevision: 0,
     });
     expect(first).toMatchObject({ resourceId, revision: 1 });
-
     const results = await Promise.allSettled([
       service.putResource({
         principalEntityId: SELF_ENTITY_ID,
@@ -526,7 +506,6 @@ describe("household resource capacity — real PGlite", () => {
         code: "RESOURCE_CAPACITY_CONFLICT",
       }),
     });
-
     const restarted = new ResourceCapacityRepository(runtime, runtime.agentId);
     await restarted.ensureSchema();
     expect(await restarted.getCurrentResource(resourceId)).toMatchObject({
@@ -543,7 +522,6 @@ describe("household resource capacity — real PGlite", () => {
     );
     expect(revisionRows.map((row) => Number(row.revision))).toEqual([1, 2]);
   });
-
   it("rejects floating local timestamps before resource evidence is persisted", async () => {
     const householdId = "capacity-household-absolute-time";
     const resourceId = "caregiver-floating-time";
@@ -567,7 +545,6 @@ describe("household resource capacity — real PGlite", () => {
     });
     expect(await repository.getCurrentResource(resourceId)).toBeNull();
   });
-
   it("detects one caregiver, vehicle, and car-seat conflict across non-overlapping adult events", async () => {
     const householdId = "capacity-household-g48";
     const resources = await seedResourceSet(householdId, "g48");
@@ -612,7 +589,6 @@ describe("household resource capacity — real PGlite", () => {
     );
     expect(result.noReservationCreated).toBe(true);
   });
-
   it("accepts exact handoffs, authorization, restraint compatibility, accessibility, and sourced transitions", async () => {
     const householdId = "capacity-household-feasible";
     const resources = await seedResourceSet(householdId, "feasible");
@@ -646,7 +622,6 @@ describe("household resource capacity — real PGlite", () => {
     });
     expect(result.resourceSnapshots).toHaveLength(3);
   });
-
   it("finds a feasible distinct-restraint matching instead of depending on child order", async () => {
     const householdId = "capacity-household-restraint-matching";
     const caregiverResourceId = "caregiver-restraint-matching";
@@ -756,7 +731,6 @@ describe("household resource capacity — real PGlite", () => {
     });
     expect(result.resourceSnapshots).toHaveLength(4);
   });
-
   it("drives the production owner action service through the real database without an external effect", async () => {
     const householdId = "capacity-household-action";
     const resourceId = "caregiver-production-action";
@@ -815,7 +789,6 @@ describe("household resource capacity — real PGlite", () => {
       revision: 1,
     });
   });
-
   it("fails closed for outsider access, self-granting caregivers, stale evidence, and incompatible constraints", async () => {
     const householdId = "capacity-household-adversarial";
     const resources = await seedResourceSet(householdId, "adversarial");
@@ -845,7 +818,6 @@ describe("household resource capacity — real PGlite", () => {
     ).rejects.toMatchObject({
       code: "RESOURCE_CAPACITY_ACCESS_DENIED",
     });
-
     const staleVehicleId = "vehicle-adversarial-stale";
     const staleSeatId = "seat-adversarial-stale";
     await service.putResource({
@@ -885,7 +857,6 @@ describe("household resource capacity — real PGlite", () => {
       ]),
     );
   });
-
   it("does not reuse one driver or restraint and rejects contradictory transition evidence", async () => {
     const householdId = "capacity-household-distinct-resources";
     const resources = await seedResourceSet(householdId, "distinct-resources");
@@ -968,7 +939,6 @@ describe("household resource capacity — real PGlite", () => {
         "car_seat_incompatible",
       ]),
     );
-
     const first = need({
       needId: "conflicting-route-one",
       startsAt: "2027-03-10T14:00:00.000Z",
@@ -999,7 +969,6 @@ describe("household resource capacity — real PGlite", () => {
       ),
     ).toHaveLength(3);
   });
-
   it("requires fresh restraint-installation evidence", async () => {
     const householdId = "capacity-household-stale-installation";
     const resources = await seedResourceSet(householdId, "stale-installation");
@@ -1039,7 +1008,6 @@ describe("household resource capacity — real PGlite", () => {
       ]),
     );
   });
-
   it("creates one immutable review proposal, shared approvals, and one shared ScheduledTask under concurrent retry", async () => {
     const householdId = "capacity-household-proposal";
     const resources = await seedResourceSet(householdId, "proposal");
@@ -1069,7 +1037,6 @@ describe("household resource capacity — real PGlite", () => {
     });
     expect(first.approvals).toHaveLength(2);
     expect(first.reviewTaskId).toBeTruthy();
-
     const proposalRows = await executeRawSql(
       runtime,
       `SELECT proposal_id, status
@@ -1133,7 +1100,6 @@ describe("household resource capacity — real PGlite", () => {
         },
       });
     }
-
     const competingNeed = need({
       needId: "competing-school-run",
       startsAt: "2027-03-12T15:30:00.000Z",
@@ -1155,7 +1121,6 @@ describe("household resource capacity — real PGlite", () => {
     ).toBe(true);
     expect(blocked.approvals).toEqual([]);
     expect(blocked.reviewTaskId).toBeNull();
-
     await expect(
       service.createProposal({
         ...input,
@@ -1172,7 +1137,6 @@ describe("household resource capacity — real PGlite", () => {
       }),
     ).rejects.toMatchObject({ code: "RESOURCE_CAPACITY_CONFLICT" });
   });
-
   it("terminalizes rejected and cancelled reviews, releases overlapping resources, and dismisses shared watchers across restart", async () => {
     const rejectedHouseholdId = "capacity-household-rejected-terminal";
     const rejectedResources = await seedResourceSet(
@@ -1200,7 +1164,6 @@ describe("household resource capacity — real PGlite", () => {
       (approval) => approval.partyEntityId === SELF_ENTITY_ID,
     );
     if (!ownerApproval) throw new Error("owner review approval missing");
-
     const [, concurrentEvaluation] = await Promise.all([
       service.respondToProposal({
         principalEntityId: SELF_ENTITY_ID,
@@ -1226,7 +1189,6 @@ describe("household resource capacity — real PGlite", () => {
         (conflict) => conflict.kind !== "duplicate_assignment",
       ),
     ).toBe(true);
-
     const releasedAfterRejection = await service.evaluate({
       principalEntityId: SELF_ENTITY_ID,
       evaluation: evaluationInput(
@@ -1249,7 +1211,6 @@ describe("household resource capacity — real PGlite", () => {
     expect(declined.approvals.map((approval) => approval.state).sort()).toEqual(
       ["expired", "rejected"],
     );
-
     const cancelledHouseholdId = "capacity-household-cancelled-terminal";
     const cancelledResources = await seedResourceSet(
       cancelledHouseholdId,
@@ -1348,7 +1309,6 @@ describe("household resource capacity — real PGlite", () => {
         (conflict) => conflict.kind === "pending_proposal_reservation",
       ),
     ).toBe(false);
-
     const terminalRows = await executeRawSql(
       runtime,
       `SELECT proposal_id, terminal_state
@@ -1381,7 +1341,6 @@ describe("household resource capacity — real PGlite", () => {
         "dismissed",
       );
     }
-
     const recoveryHouseholdId = "capacity-household-rejection-recovery";
     const recoveryResources = await seedResourceSet(
       recoveryHouseholdId,
@@ -1420,7 +1379,6 @@ describe("household resource capacity — real PGlite", () => {
         recoveryProposal.proposal.proposalId,
       ),
     ).toBeNull();
-
     const restarted = new ResourceCapacityService({
       runtime,
       agentId: runtime.agentId,
@@ -1473,7 +1431,6 @@ describe("household resource capacity — real PGlite", () => {
       }),
     ).resolves.toMatchObject({ feasible: true });
   });
-
   it("invalidates review after resource drift and stops treating it as a pending reservation", async () => {
     const householdId = "capacity-household-invalidated-review";
     const resources = await seedResourceSet(householdId, "invalidated-review");
@@ -1492,7 +1449,6 @@ describe("household resource capacity — real PGlite", () => {
     });
     const ownerApproval = proposal.approvals[0];
     if (!ownerApproval) throw new Error("owner review approval missing");
-
     await service.putResource({
       principalEntityId: SELF_ENTITY_ID,
       definition: caregiverResource(
@@ -1523,7 +1479,6 @@ describe("household resource capacity — real PGlite", () => {
         reason: "This should be re-evaluated first.",
       }),
     ).rejects.toMatchObject({ code: "RESOURCE_CAPACITY_CONFLICT" });
-
     const replacement = await service.evaluate({
       principalEntityId: SELF_ENTITY_ID,
       evaluation: evaluationInput(householdId, [capacityNeed], resources),
@@ -1535,7 +1490,6 @@ describe("household resource capacity — real PGlite", () => {
       ),
     ).toBe(false);
   });
-
   it("invalidates review when source evidence ages out and releases the proposal-only conflict", async () => {
     const householdId = "capacity-household-stale-review";
     const resources = await seedResourceSet(householdId, "stale-review");
@@ -1554,7 +1508,6 @@ describe("household resource capacity — real PGlite", () => {
     });
     const ownerApproval = proposal.approvals[0];
     if (!ownerApproval) throw new Error("owner review approval missing");
-
     now = new Date("2027-03-11T12:01:00.000Z");
     try {
       const invalidated = await service.readProposal({
@@ -1583,7 +1536,6 @@ describe("household resource capacity — real PGlite", () => {
           reason: "Attempted review after source expiry.",
         }),
       ).rejects.toMatchObject({ code: "RESOURCE_CAPACITY_CONFLICT" });
-
       const replacement = await service.evaluate({
         principalEntityId: SELF_ENTITY_ID,
         evaluation: evaluationInput(householdId, [capacityNeed], resources),
@@ -1597,7 +1549,6 @@ describe("household resource capacity — real PGlite", () => {
       now = new Date("2027-03-10T12:00:00.000Z");
     }
   });
-
   it("accepts an exact verified co-parent review through the shared replay-receipted inbound path", async () => {
     const householdId = "capacity-household-partner-inbound";
     const resources = await seedResourceSet(householdId, "partner-inbound");
@@ -1626,7 +1577,6 @@ describe("household resource capacity — real PGlite", () => {
     if (!command || !identity) {
       throw new Error("partner inbound fixture is invalid");
     }
-
     const reviewed = await processHouseholdInboundApproval({
       runtime,
       message,
@@ -1666,7 +1616,6 @@ describe("household resource capacity — real PGlite", () => {
       resolvedBy: partnerId,
     });
   });
-
   it("projects exact human review states without turning approval into execution", async () => {
     const householdId = "capacity-household-review";
     const resources = await seedResourceSet(householdId, "review");
@@ -1741,7 +1690,6 @@ describe("household resource capacity — real PGlite", () => {
     ).toBe(true);
     expect(reviewed.proposal.status).toBe("pending_review");
   });
-
   it("rejects unrelated or child reviewers before any approval artifact exists", async () => {
     const householdId = "capacity-household-review-auth";
     const resources = await seedResourceSet(householdId, "review-auth");

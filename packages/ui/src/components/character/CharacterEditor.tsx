@@ -7,17 +7,28 @@
  * can land here without a chunk fetch.
  */
 
+import { getStylePresets } from "@elizaos/core/character-presets";
+import { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
 import {
-  getStylePresets,
   hasConfiguredApiKey,
-  normalizeCharacterMessageExamples,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/voice";
+import { logger } from "@elizaos/ui/logger";
+import {
+  type ChangeEvent,
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
-import type { CharacterData } from "../../api/client";
-import { client } from "../../api/client";
+import { type CharacterData, client } from "../../api/client";
 import {
   APP_EMOTE_EVENT,
   dispatchWindowEvent,
@@ -27,6 +38,16 @@ import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { useAppSelectorShallow } from "../../state";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CharacterExamplesPanel,
@@ -70,44 +91,18 @@ const Icon = ({ className, d }: { className?: string; d: string }) => (
     <path d={d} />
   </svg>
 );
-
 const DownloadIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
     d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
   />
 );
-
 const UploadIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
     d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"
   />
 );
-
-import {
-  type ChangeEvent,
-  type ComponentPropsWithoutRef,
-  type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Input } from "../ui/input";
-
 /* ── Shared accent styles ────────────────────────────────────────── */
 const accentGradientStyle = {
   background:
@@ -115,16 +110,13 @@ const accentGradientStyle = {
   color: "var(--accent-foreground)",
   borderColor: "rgba(var(--accent-rgb), 0.5)",
 } as const;
-
 const idleSaveBtnStyle = {
   background:
     "linear-gradient(180deg, rgba(var(--accent-rgb),0.16) 0%, rgba(var(--accent-rgb),0.1) 100%)",
   color: "rgba(var(--accent-rgb), 0.78)",
   borderColor: "rgba(var(--accent-rgb), 0.22)",
 } as const;
-
 /* ── Constants ─────────────────────────────────────────────────────── */
-
 // The companion scene-overlay's editor-panel tabs. These are sub-panels of the
 // Personality editor (a spatial surface with no shell chrome), a different axis
 // from the Character FAMILY sections (Personality/Relationships/Skills/
@@ -132,7 +124,6 @@ const idleSaveBtnStyle = {
 // peer hub (#13594), not an editor panel, so it is not a tab here.
 const CHARACTER_EDITOR_PAGES = ["personality", "style", "examples"] as const;
 type CharacterEditorPage = (typeof CHARACTER_EDITOR_PAGES)[number];
-
 /**
  * Cheap structural check — returns true when value already has the
  * { examples: { name, content: { text } }[] }[] shape the UI expects.
@@ -143,24 +134,38 @@ function hasValidMessageExamplesShape(value: unknown): boolean {
   if (!Array.isArray(value)) return false;
   return value.every((convo) => {
     if (!convo || typeof convo !== "object") return false;
-    const examples = (convo as { examples?: unknown }).examples;
+    const examples = (
+      convo as {
+        examples?: unknown;
+      }
+    ).examples;
     if (!Array.isArray(examples)) return false;
     return examples.every((msg) => {
       if (!msg || typeof msg !== "object") return false;
-      const name = (msg as { name?: unknown }).name;
-      const content = (msg as { content?: unknown }).content;
+      const name = (
+        msg as {
+          name?: unknown;
+        }
+      ).name;
+      const content = (
+        msg as {
+          content?: unknown;
+        }
+      ).content;
       return (
         typeof name === "string" &&
         !!content &&
         typeof content === "object" &&
-        typeof (content as { text?: unknown }).text === "string"
+        typeof (
+          content as {
+            text?: unknown;
+          }
+        ).text === "string"
       );
     });
   });
 }
-
 /* ── Agent-surface control wrappers ────────────────────────────────── */
-
 /**
  * Wraps a tab button so the agent can select editor pages by id. Mirrors the
  * SettingsNavButton pattern: the hook lives at the top level of a tiny child
@@ -219,7 +224,6 @@ function CharacterPageTabButton({
     </Button>
   );
 }
-
 /**
  * Wraps a composite `<Button>` action so the agent can activate it by id. The
  * hook runs at the top level here (not inside the parent render function that
@@ -253,9 +257,7 @@ function CharacterAgentButton({
   });
   return <Button {...buttonProps} {...agentProps} />;
 }
-
 /* ── Component ─────────────────────────────────────────────────────── */
-
 export function CharacterEditor({
   initialPage,
   sceneOverlay = false,
@@ -343,16 +345,13 @@ export function CharacterEditor({
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   }));
-
   /** ElevenLabs voices are available only when direct key or cloud voice routing is active. */
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
-
   useEffect(() => {
     void loadCharacter();
     void loadRegistryStatus();
     void loadDropStatus();
   }, [loadCharacter, loadRegistryStatus, loadDropStatus]);
-
   const handleFieldEdit = useCallback(
     (field: string, value: unknown) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);
@@ -363,7 +362,6 @@ export function CharacterEditor({
     },
     [handleCharacterFieldInput],
   );
-
   const handleStyleEdit = useCallback(
     (key: "all" | "chat" | "post", value: string) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);
@@ -371,25 +369,28 @@ export function CharacterEditor({
     },
     [handleCharacterStyleInput],
   );
-
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
     initialPage ?? "personality",
   );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<
-    | { kind: "page"; page: CharacterEditorPage }
-    | { kind: "character"; entry: CharacterRosterEntry }
+    | {
+        kind: "page";
+        page: CharacterEditorPage;
+      }
+    | {
+        kind: "character";
+        entry: CharacterRosterEntry;
+      }
     | null
   >(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-
   // Sync rightTab with activePage (for overlay mode's right panel toggle)
   useEffect(() => {
     if (activePage === "style") setRightTab("style");
     else if (activePage === "examples") setRightTab("examples");
   }, [activePage]);
-
   // Sync activePage when an embedded router renders a specific editor sub-panel
   // in split view.
   useEffect(() => {
@@ -397,7 +398,6 @@ export function CharacterEditor({
       setActivePage(initialPage);
     }
   }, [initialPage, activePage]);
-
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
     Record<string, string>
@@ -405,7 +405,6 @@ export function CharacterEditor({
   const [styleEntryDrafts, setStyleEntryDrafts] = useState<
     Record<string, string[]>
   >({ all: [], chat: [], post: [] });
-
   /* ── Roster state ───────────────────────────────────────────────── */
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(
     null,
@@ -429,19 +428,16 @@ export function CharacterEditor({
   const [rosterStyles, setRosterStyles] = useState<FirstRunPreset[]>([
     ...firstRunPresetStyles,
   ]);
-
   /* ── Voice config state ─────────────────────────────────────────── */
   const [voiceConfig, setVoiceConfig] = useState<CharacterEditorVoiceConfig>(
     {},
   );
-
   const handleChatAvatarSpeakingChange = useCallback(
     (isSpeaking: boolean) => {
       setState("chatAvatarSpeaking", isSpeaking);
     },
     [setState],
   );
-
   const voice = useVoiceChat({
     cloudConnected: useElevenLabs,
     interruptOnSpeech: false,
@@ -449,7 +445,6 @@ export function CharacterEditor({
     voiceConfig,
     onTranscript: () => {},
   });
-
   useChatAvatarVoiceBridge({
     mouthOpen: voice.mouthOpen,
     isSpeaking: voice.isSpeaking,
@@ -461,7 +456,6 @@ export function CharacterEditor({
   const [, setSelectedVoicePresetId] = useState<string | null>(null);
   const [voiceSelectionLocked] = useState(false);
   const activeCharacterIdRef = useRef<string | null>(null);
-
   /* ── Load roster ────────────────────────────────────────────────── */
   // Use static STYLE_PRESETS shipped in the frontend bundle — no API call
   // needed. If the server provides styles via firstRunOptions, prefer those.
@@ -489,7 +483,6 @@ export function CharacterEditor({
       setRosterStyles(localizedPresets);
     }
   }, [firstRunPresetStyles, uiLanguage]);
-
   const baseRosterEntries = useMemo(() => {
     const base = resolveRosterEntries(rosterStyles);
     if (activePackId && _customVrmUrl) {
@@ -517,7 +510,6 @@ export function CharacterEditor({
     customCatchphrase,
     customVoicePresetId,
   ]);
-
   // If the user renamed the selected character, reflect it in the roster
   const characterRoster = useMemo(() => {
     const activeId = selectedCharacterId ?? savedCharacterId;
@@ -533,7 +525,6 @@ export function CharacterEditor({
     savedCharacterId,
     characterDraft.name,
   ]);
-
   const d = characterDraft;
   const fallbackCharacterName =
     (typeof d.name === "string" && d.name.trim()) ||
@@ -555,13 +546,11 @@ export function CharacterEditor({
       : Array.isArray(d.bio)
         ? (d.bio as string[]).join("\n")
         : "";
-
   const hasCharacterContent = (c: unknown) =>
     Boolean(c && Object.keys(c as Record<string, unknown>).length > 0);
   const currentCharacter = hasCharacterContent(characterDraft)
     ? characterDraft
     : characterData;
-
   /* ── Resolve active roster entry ────────────────────────────────── */
   const activeCharacterRosterEntry: CharacterRosterEntry | null =
     useMemo(() => {
@@ -573,7 +562,6 @@ export function CharacterEditor({
         (e) => e.avatarIndex === selectedVrmIndex,
       );
       if (byVrm) return byVrm;
-
       if (!currentCharacter) return null;
       const currentName =
         typeof currentCharacter.name === "string"
@@ -588,7 +576,6 @@ export function CharacterEditor({
       selectedCharacterId,
       selectedVrmIndex,
     ]);
-
   /* ── Seed savedCharacterId from server data on first load ────────── */
   useEffect(() => {
     if (savedCharacterId) return; // already set
@@ -598,12 +585,10 @@ export function CharacterEditor({
       setSavedCharacterId(activeCharacterRosterEntry.id);
     }
   }, [activeCharacterRosterEntry, savedCharacterId, selectedCharacterId]);
-
   /** True when the user has made changes that haven't been saved yet. */
   const hasPendingChanges =
     fieldsEdited ||
     (selectedCharacterId !== null && selectedCharacterId !== savedCharacterId);
-
   useEffect(() => {
     if (!hasPendingChanges) return;
     const handler = (event: BeforeUnloadEvent) => {
@@ -613,36 +598,30 @@ export function CharacterEditor({
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasPendingChanges]);
-
   useEffect(() => {
     if (!Array.isArray(d.messageExamples) || d.messageExamples.length === 0) {
       return;
     }
-
     // Skip normalization when the draft already has the expected shape —
     // otherwise empty turns the user just added (blank text) get stripped
     // out before they can type into them.
     if (hasValidMessageExamplesShape(d.messageExamples)) return;
-
     const normalized = normalizeCharacterMessageExamples(
       d.messageExamples,
       fallbackCharacterName,
     );
-
     if (JSON.stringify(d.messageExamples) === JSON.stringify(normalized)) {
       return;
     }
-
     suppressDirtyRef.current = true;
     handleFieldEdit("messageExamples", normalized);
     queueMicrotask(() => {
       suppressDirtyRef.current = false;
     });
   }, [d.messageExamples, fallbackCharacterName, handleFieldEdit]);
-
   /* ── Load voice config on mount ─────────────────────────────────── */
   /* Load voice config from server — but don't overwrite a roster-derived
-     voice preset that was already applied by auto-select. */
+       voice preset that was already applied by auto-select. */
   const voicePresetAppliedRef = useRef(false);
   const voiceConfigReadyRef = useRef(false);
   useEffect(() => {
@@ -650,7 +629,9 @@ export function CharacterEditor({
       setVoiceLoading(true);
       try {
         const cfg = await client.getConfig();
-        type MessagesConfig = { tts?: CharacterEditorVoiceConfig };
+        type MessagesConfig = {
+          tts?: CharacterEditorVoiceConfig;
+        };
         const messages = cfg.messages as MessagesConfig | undefined;
         const tts = messages?.tts;
         if (tts) {
@@ -700,7 +681,6 @@ export function CharacterEditor({
       setVoiceLoading(false);
     })();
   }, []);
-
   /* ── Voice helpers ──────────────────────────────────────────────── */
   const applyVoicePresetForEntry = useCallback(
     (entry: CharacterRosterEntry) => {
@@ -718,7 +698,6 @@ export function CharacterEditor({
     },
     [useElevenLabs, voiceConfig],
   );
-
   /* ── Character defaults ─────────────────────────────────────────── */
   const applyCharacterDefaults = useCallback(
     (entry: CharacterRosterEntry) => {
@@ -734,7 +713,6 @@ export function CharacterEditor({
     },
     [handleFieldEdit],
   );
-
   const commitCharacterSelection = useCallback(
     (entry: CharacterRosterEntry, applyDefaults: boolean) => {
       const isNewCharacter = selectedCharacterId !== entry.id;
@@ -769,11 +747,9 @@ export function CharacterEditor({
       if (applyDefaults) {
         applyCharacterDefaults(entry);
       }
-
       if (isNewCharacter && entry.catchphrase) {
         // Immediate cleanup of old character's speech
         voice.stopSpeaking();
-
         // Queue greeting animation to play after the VRM teleport-in dissolve finishes
         pendingGreetingRef.current = {
           characterId: entry.id,
@@ -795,7 +771,6 @@ export function CharacterEditor({
       voice,
     ],
   );
-
   const requestPageChange = useCallback(
     (page: CharacterEditorPage) => {
       if (page === activePage) return;
@@ -808,7 +783,6 @@ export function CharacterEditor({
     },
     [activePage, hasPendingChanges],
   );
-
   const requestCharacterSelection = useCallback(
     (entry: CharacterRosterEntry) => {
       if (entry.id === selectedCharacterId) return;
@@ -820,7 +794,6 @@ export function CharacterEditor({
     },
     [commitCharacterSelection, hasPendingChanges, selectedCharacterId],
   );
-
   /* ── Select character from roster ───────────────────────────────── */
   const handleSelectCharacter = useCallback(
     (entry: CharacterRosterEntry) => {
@@ -828,7 +801,6 @@ export function CharacterEditor({
     },
     [requestCharacterSelection],
   );
-
   /* ── Auto-select on mount ───────────────────────────────────────── */
   useEffect(() => {
     if (
@@ -852,12 +824,10 @@ export function CharacterEditor({
           currentCharacter.system),
     );
     const hasMeaningfulContent = isNamed || hasBioOrSystem;
-
     const entry =
       activeCharacterRosterEntry ??
       (!hasMeaningfulContent ? characterRoster[0] : null);
     if (!entry) return;
-
     // Apply preset defaults if: no saved content, OR the active VRM character
     // differs from what's saved (name mismatch means user switched presets).
     const applyDefaults = shouldApplyPresetDefaults(
@@ -865,7 +835,6 @@ export function CharacterEditor({
       currentCharacter.name,
       entry.name,
     );
-
     // Suppress dirty-tracking during programmatic auto-select
     suppressDirtyRef.current = true;
     commitCharacterSelection(entry, applyDefaults);
@@ -880,10 +849,8 @@ export function CharacterEditor({
     selectedCharacterId,
     activeCharacterRosterEntry,
   ]);
-
   /* ── Play greeting animation + catchphrase when VRM teleport-in dissolve finishes ── */
   const greetingTimerRef = useRef<number | null>(null);
-
   // Clear any stale greeting timer before queueing a new one on character change
   useEffect(() => {
     if (greetingTimerRef.current != null) {
@@ -891,7 +858,6 @@ export function CharacterEditor({
       greetingTimerRef.current = null;
     }
   }, []);
-
   useEffect(() => {
     if (!sceneOverlay) return;
     const handler = () => {
@@ -899,7 +865,6 @@ export function CharacterEditor({
       if (!greeting) return;
       // Do not play a queued greeting if the user has already switched away
       if (greeting.characterId !== activeCharacterIdRef.current) return;
-
       pendingGreetingRef.current = null;
       // Delay the emote dispatch so the idle animation can fully settle
       // after the teleport dissolve before we cross-fade into the greeting.
@@ -909,7 +874,6 @@ export function CharacterEditor({
       greetingTimerRef.current = window.setTimeout(() => {
         greetingTimerRef.current = null;
         if (greeting.characterId !== activeCharacterIdRef.current) return;
-
         if (greeting.animationPath) {
           dispatchWindowEvent(APP_EMOTE_EVENT, {
             emoteId: "greeting",
@@ -933,7 +897,6 @@ export function CharacterEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voice.speak, sceneOverlay]);
-
   /* ── Dispatch camera offset for editor panel ─────────────────────── */
   useEffect(() => {
     if (!sceneOverlay || typeof window === "undefined") return;
@@ -959,7 +922,6 @@ export function CharacterEditor({
       );
     };
   }, [tab, sceneOverlay]);
-
   /* ── Sync style entry drafts ────────────────────────────────────── */
   useEffect(() => {
     setStyleEntryDrafts({
@@ -968,9 +930,7 @@ export function CharacterEditor({
       post: [...(d.style?.post ?? [])],
     });
   }, [d.style]);
-
   /* ── Voice test ─────────────────────────────────────────────────── */
-
   /* ── Persist voice config ───────────────────────────────────────── */
   const persistVoiceConfig = useCallback(async () => {
     setVoiceSaveError(null);
@@ -1024,7 +984,6 @@ export function CharacterEditor({
     await client.updateConfig({ messages: { tts: normalizedVoiceConfig } });
     dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
   }, [voiceConfig, useElevenLabs]);
-
   /* ── Save all ───────────────────────────────────────────────────── */
   const handleSaveAll = useCallback(async () => {
     setVoiceSaving(true);
@@ -1058,7 +1017,6 @@ export function CharacterEditor({
     selectedCharacterId,
     activeCharacterRosterEntry,
   ]);
-
   /* ── Reset to defaults ──────────────────────────────────────────── */
   const handleResetToDefaults = useCallback(() => {
     if (!activeCharacterRosterEntry) return;
@@ -1069,7 +1027,6 @@ export function CharacterEditor({
     applyCharacterDefaults,
     applyVoicePresetForEntry,
   ]);
-
   /* ── Export character JSON ────────────────────────────────────────── */
   const handleExportCharacter = useCallback(() => {
     const data = currentCharacter;
@@ -1090,19 +1047,15 @@ export function CharacterEditor({
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   }, [currentCharacter]);
-
   const resolvePendingNavigation = useCallback(
     async (shouldSave: boolean) => {
       const target = pendingNavigation;
       if (!target) return;
-
       if (shouldSave) {
         const saved = await handleSaveAll();
         if (!saved) return;
       }
-
       setPendingNavigation(null);
-
       if (target.kind === "page") {
         setActivePage(target.page);
         if (target.page === "style" || target.page === "examples") {
@@ -1110,19 +1063,16 @@ export function CharacterEditor({
         }
         return;
       }
-
       commitCharacterSelection(target.entry, true);
     },
     [commitCharacterSelection, handleSaveAll, pendingNavigation],
   );
-
   useEffect(() => {
     onHeaderActionsChange?.(null);
     return () => {
       onHeaderActionsChange?.(null);
     };
   }, [onHeaderActionsChange]);
-
   const renderContentActionButtons = (uploadInputId: string) => (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <CharacterAgentButton
@@ -1210,7 +1160,6 @@ export function CharacterEditor({
       </CharacterAgentButton>
     </div>
   );
-
   /* ── Style entry handlers ───────────────────────────────────────── */
   const handlePendingStyleEntryChange = useCallback(
     (key: string, value: string) => {
@@ -1218,7 +1167,6 @@ export function CharacterEditor({
     },
     [],
   );
-
   const handleAddStyleEntry = useCallback(
     (key: string) => {
       const value = pendingStyleEntries[key].trim();
@@ -1232,7 +1180,6 @@ export function CharacterEditor({
     },
     [d.style, handleStyleEdit, pendingStyleEntries],
   );
-
   const handleRemoveStyleEntry = useCallback(
     (key: string, index: number) => {
       const nextItems = [...(d.style?.[key as "all" | "chat" | "post"] ?? [])];
@@ -1241,14 +1188,12 @@ export function CharacterEditor({
     },
     [d.style, handleStyleEdit],
   );
-
   const handleReorderStyleEntries = useCallback(
     (key: string, items: string[]) => {
       handleStyleEdit(key as "all" | "chat" | "post", items.join("\n"));
     },
     [handleStyleEdit],
   );
-
   const handleStyleEntryDraftChange = useCallback(
     (key: string, index: number, value: string) => {
       setStyleEntryDrafts((prev) => {
@@ -1259,7 +1204,6 @@ export function CharacterEditor({
     },
     [],
   );
-
   const handleCommitStyleEntry = useCallback(
     (key: string, index: number) => {
       const nextValue = styleEntryDrafts[key]?.[index]?.trim() ?? "";
@@ -1273,10 +1217,8 @@ export function CharacterEditor({
     },
     [d.style, handleStyleEdit, styleEntryDrafts],
   );
-
   /* ── Derived ────────────────────────────────────────────────────── */
   const combinedSaveError = voiceSaveError ?? characterSaveError;
-
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
     const loadingState = (
@@ -1306,7 +1248,6 @@ export function CharacterEditor({
       </FramedPage>
     );
   }
-
   /* ── Render ─────────────────────────────────────────────────────── */
   return (
     <ShellViewAgentSurface viewId="character">
@@ -1702,7 +1643,6 @@ export function CharacterEditor({
     </ShellViewAgentSurface>
   );
 }
-
 /**
  * Re-export as CharacterView so the upstream App.tsx import resolves here
  * when the Vite alias redirects ./CharacterView to this file.

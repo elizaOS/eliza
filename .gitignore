@@ -149,10 +149,8 @@ plugins/plugin-app-manager/src/**/*.d.ts
 plugins/plugin-app-manager/src/**/*.d.ts.map
 
 # Accidental emit next to TS in mixed packages (hand-written ambient .d.ts kept; build output is dist/)
-packages/shared/src/**/*.js.map
-packages/shared/src/**/*.d.ts.map
-packages/shared/src/config/types.tools.d.ts
-packages/shared/src/local-inference/types.d.ts
+packages/core/src/config/types.tools.d.ts
+packages/core/src/contracts/local-inference.d.ts
 packages/app/src/platform/ios-runtime-backends.d.ts
 packages/app/src/platform/ios-runtime-backends.d.ts.map
 packages/cloud/shared/src/lib/types/cloud-api.js
@@ -391,7 +389,6 @@ standalone.ts
 .claude/cache/
 
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
-packages/shared/src/i18n/generated/
 packages/core/src/i18n/generated/
 
 tsconfig.test.json
@@ -419,11 +416,6 @@ packages/agent/src/**/*.d.ts
 packages/agent/src/**/*.d.ts.map
 !packages/agent/src/external-modules.d.ts
 !packages/agent/src/types/elizaos-action-augments.d.ts
-packages/shared/src/**/*.js
-packages/shared/src/**/*.js.map
-packages/shared/src/**/*.d.ts
-packages/shared/src/**/*.d.ts.map
-!packages/shared/src/elizaos-core-roles.d.ts
 packages/ui/src/**/*.js
 packages/ui/src/**/*.js.map
 packages/ui/src/**/*.d.ts
@@ -799,13 +791,13 @@ waifu.fun/
 /packages/app/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_HQ_1080p.mp4
-/packages/shared/assets/background/Clouds_Loop_HQ_1080p.mp4
+/packages/ui/assets/background/Clouds_Loop_HQ_1080p.mp4
 /plugins/plugin-companion/public/vrms/eliza-6.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-1.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-3.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-2.vrm.gz
 /packages/app/public/brand/concepts/billboard_concept.jpg
-/packages/shared/assets/concepts/billboard_concept.jpg
+/packages/ui/assets/concepts/billboard_concept.jpg
 /plugins/plugin-trajectory-logger/assets/hero.png
 /packages/docs/images/shakespeare-discord-screenshot.jpeg
 /plugins/plugin-knowledge/assets/hero.png
@@ -839,7 +831,7 @@ waifu.fun/
 /packages/app/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_Mobile_480p.mp4
-/packages/shared/assets/background/Clouds_Loop_Mobile_480p.mp4
+/packages/ui/assets/background/Clouds_Loop_Mobile_480p.mp4
 /packages/training/datasets/eliza1-sft-0_6b/train.jsonl
 /plugins/plugin-companion/public_src/animations/mixamo/Crying.fbx
 /plugins/plugin-companion/public_src/animations/BreathingIdle.fbx
@@ -858,7 +850,7 @@ waifu.fun/
 /packages/app/public/app-heroes/log-viewer.png
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing.fbx
 /packages/app/public/brand/concepts/concept_minipc.jpg
-/packages/shared/assets/concepts/concept_minipc.jpg
+/packages/ui/assets/concepts/concept_minipc.jpg
 /plugins/plugin-companion/public_src/animations/mixamo/Blow A Kiss.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thinking.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Kneeling Idle.fbx
@@ -875,9 +867,9 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Happy Idle.fbx
 /plugins/plugin-companion/public/animations/mixamo/Angry.fbx.gz
 /packages/app/public/brand/concepts/chibi_usb_concept.jpg
-/packages/shared/assets/concepts/chibi_usb_concept.jpg
+/packages/ui/assets/concepts/chibi_usb_concept.jpg
 /packages/app/public/brand/concepts/concept_usbdrive.jpg
-/packages/shared/assets/concepts/concept_usbdrive.jpg
+/packages/ui/assets/concepts/concept_usbdrive.jpg
 /plugins/plugin-companion/public/animations/mixamo/Hip Hop Dancing 2.fbx.gz
 /plugins/plugin-companion/public/animations/mixamo/Happy.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Cheering.fbx
@@ -924,7 +916,7 @@ waifu.fun/
 /packages/app/platforms/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/elizaos/templates/project/apps/app/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/app/public/brand/concepts/concept_phone.jpg
-/packages/shared/assets/concepts/concept_phone.jpg
+/packages/ui/assets/concepts/concept_phone.jpg
 /plugins/plugin-companion/public/animations/emotes/dance-popping.glb.gz
 /packages/ui/src/components/shell/__e2e__/output/03-desktop-full.png
 /packages/ui/src/components/shell/__e2e__/output/04-desktop-beyond-full-rubberband.png

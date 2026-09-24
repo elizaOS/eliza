@@ -32,7 +32,7 @@ import { logger, MemoryType, resolveStateDir } from "@elizaos/core";
 import {
   DEFAULT_FRONTMATTER_MAX_DEPTH,
   parseFrontmatterDocument,
-} from "@elizaos/shared/markdown";
+} from "@elizaos/core/markdown";
 import { stringify as stringifyYaml } from "yaml";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import {

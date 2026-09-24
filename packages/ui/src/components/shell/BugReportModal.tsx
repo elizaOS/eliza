@@ -8,8 +8,8 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/utils/unicode";
+import { logger } from "@elizaos/ui/logger";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";

@@ -26,10 +26,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "simple",
       label: "Simple",
-      description:
-        "Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from general context.",
-      descriptionCompressed:
-        "Direct reply, no tools/external data; sole context",
+      description: "Answer from supplied context without tools.",
       sensitivity: "public",
       cacheStable: true,
       cacheScope: "global",
@@ -38,17 +35,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "general",
       label: "General",
-      // The current conversation's own history must be nameable here: a
-      // group-chat "what were the last 100 messages in this chat, summary?"
-      // (live 2026-08-21) routed to contexts=["general"], whose catalog line
-      // carried no channel-history vocabulary and whose surface had no
-      // message-history tool, so the planner honestly refused content every
-      // participant can already scroll. CHANNEL_RECAP registers under this
-      // context; cross-channel/inbox search stays gated in messaging.
-      description:
-        "Normal conversation and public agent behavior. Use when the reply needs general agent state but no other context's tools. Also covers reading back or summarizing the current chat itself — 'summarize this chat', 'recap the channel', 'what were the last 100 messages', 'what did people say here earlier' — via the room-scoped CHANNEL_RECAP tool; cross-channel or inbox-wide message work stays in messaging.",
-      descriptionCompressed:
-        "Chat + current-channel history recall: 'summarize this chat', 'recap the channel', last N messages here",
+      description: "Conversation and current-room information.",
       sensitivity: "public",
       cacheStable: true,
       cacheScope: "global",
@@ -57,17 +44,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "memory",
       label: "Memory",
-      // Covers both the MEMORY and EXPERIENCE actions, which register under
-      // this context. Naming the mutations (edit/delete/forget) and the
-      // record kinds (memories, facts, learned experiences) is what lets
-      // Stage 1 route "forget that fact" / "delete the experience about X"
-      // here instead of misclassifying them as a `simple` direct reply
-      // (#14623). The bare label "Memory" alone gave the compact-tier
-      // catalog no signal for the destructive verbs.
-      description:
-        "Read, write, recall, edit, and delete the agent's stored memories, long-term facts, and learned experiences — including forgetting a specific memory or experience. Personal interaction preferences and standing rules use PERSONALITY show_state/remove_directive; factual records use MEMORY.",
-      descriptionCompressed:
-        "Agent memories, facts & learned experiences: recall, edit, delete/forget. Personal interaction rules: PERSONALITY.",
+      description: "Stored facts, experiences and personal preferences.",
       sensitivity: "personal",
       cacheScope: "agent",
       roleGate: { minRole: "USER" },
@@ -75,14 +52,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "documents",
       label: "Documents",
-      // "delete" must stay in both descriptions: the DOCUMENT action owns
-      // document deletion, and a Stage-1 inventory that only advertises
-      // save/search/recall makes models refuse "delete that document" as
-      // unsupported instead of classifying into this context (#16942).
-      description:
-        "Read, write, edit, delete, search, and list stored long-form documents and uploads. Use whenever the user asks to save findings, summaries, files, or another persisted document, to search and recall prior documents and uploaded files, or to remove a stored document. Sticky Notes app records use the plugin-provided notes context and do not use this context.",
-      descriptionCompressed:
-        "Long-form documents/uploads: save, search, recall, delete; sticky Notes use notes + NOTES",
+      description: "Stored documents and uploaded files.",
       sensitivity: "personal",
       cacheScope: "agent",
       subcontexts: ["knowledge", "research"],
@@ -91,9 +61,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "knowledge",
       label: "Knowledge",
-      description:
-        "Stored knowledge, notes, facts, semantic recall, RAG, and memory-backed answers. Use for retrieve/answer-from-knowledge requests, not live web lookup.",
-      descriptionCompressed: "Answer from stored knowledge/RAG, not live web",
+      description: "Stored knowledge and semantic retrieval.",
       parent: "documents",
       sensitivity: "personal",
       cacheScope: "agent",
@@ -102,8 +70,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "research",
       label: "Research",
-      description:
-        "Multi-step investigation, source gathering, synthesis, citations, and research artifacts. Use when the user asks to investigate, compare, produce findings, or save research.",
+      description: "Investigation, sources and research artifacts.",
       parent: "documents",
       sensitivity: "personal",
       cacheScope: "conversation",
@@ -112,10 +79,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "web",
       label: "Web",
-      description:
-        "Live/current public internet lookup: search, open pages, read URLs, verify facts, prices, laws, news, docs, schedules, or anything likely to change.",
-      descriptionCompressed:
-        "Live web lookup: search, URLs, current facts/prices/news",
+      description: "Current public information and web pages.",
       sensitivity: "public",
       cacheScope: "turn",
       subcontexts: ["browser"],
@@ -124,8 +88,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "browser",
       label: "Browser",
-      description:
-        "Drive a browser session: navigate, click, type, and extract page state.",
+      description: "Browser navigation and page interaction.",
       parent: "web",
       sensitivity: "personal",
       cacheScope: "turn",
@@ -134,10 +97,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "code",
       label: "Code",
-      description:
-        "Read, edit, run, or review code, including spawned coding sub-agents. A short snippet or one-line script the reply can carry inline (e.g. 'a python script that just prints hello') is simple: put the code in the reply, do not route here.",
-      descriptionCompressed:
-        "Read/edit/run/review code, coding sub-agents; a one-line snippet is simple (code in reply)",
+      description: "Code, repositories and coding agents.",
       sensitivity: "personal",
       cacheScope: "conversation",
       subcontexts: ["files", "terminal"],
@@ -146,10 +106,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "files",
       label: "Files",
-      description:
-        "Admin-only local filesystem operations: read, write, list, attach raw files on disk. NOT for saving documents/notes/research — use the 'documents' context for that.",
-      descriptionCompressed:
-        "Raw local filesystem ops; use documents for notes/research",
+      description: "Local files and directories.",
       parent: "code",
       sensitivity: "private",
       cacheScope: "turn",
@@ -158,7 +115,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "terminal",
       label: "Terminal",
-      description: "Execute shell commands and inspect local processes.",
+      description: "Shell commands and processes.",
       parent: "code",
       sensitivity: "private",
       cacheScope: "turn",
@@ -167,8 +124,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "email",
       label: "Email",
-      description:
-        "Read, send, draft, triage, and search the user's email accounts.",
+      description: "Email accounts and messages.",
       sensitivity: "private",
       cacheScope: "turn",
       roleGate: { minRole: "ADMIN" },
@@ -176,10 +132,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "calendar",
       label: "Calendar",
-      description:
-        "Availability, events, meetings, appointments, invites, travel time, scheduling constraints, reschedules, and calendar-derived reminders. A timed request such as 'add demo tomorrow at 9am' is a calendar event unless the user explicitly asks for a task or reminder.",
-      descriptionCompressed:
-        "Read/write calendar events and schedules; timed add-X requests are events unless explicitly tasks/reminders",
+      description: "Events, appointments and availability.",
       sensitivity: "private",
       cacheScope: "turn",
       roleGate: { minRole: "ADMIN" },
@@ -187,8 +140,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "contacts",
       label: "Contacts",
-      description:
-        "Look up, add, or update people in the user's contacts and relationship graph.",
+      description: "People and relationships.",
       sensitivity: "private",
       cacheScope: "agent",
       roleGate: { minRole: "ADMIN" },
@@ -196,10 +148,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "tasks",
       label: "Tasks",
-      description:
-        "Personal-assistant action requests of any kind: any imperative ('remind me to…', 'set up a habit…', 'create a routine…', 'make this a goal', 'count it if…', 'block apps when I work', 'every morning do X', 'twice a week', 'cancel that habit'), any habit/routine/reminder/alarm/goal/todo/recurring-task setup or change, any time-bound or recurring schedule the user owns, any 'I want a goal…', 'my goal is…', 'track this goal…', 'every day / every week / on weekdays / at 9am / before bed / after lunch' framing, hygiene/health/exercise/medication/hydration routines, screen-time / app-block / focus rules, calendar event creation/move/cancel that the user explicitly asks for, follow-ups they want surfaced later, check-in cadence, status of their own todos, habits, and goals, and any recap/summary/status ask over their tracked day or week ('recap my day', 'what did I get done today', 'what's left today', 'did I finish everything', 'how did I do this week'). Pick this whenever the user is asking the assistant to *do* something on their behalf (set, schedule, remind, cancel, complete, snooze, track, count, save) OR asking for the status, recap, or summary of work the assistant tracks for them, rather than chat or look up an external fact.",
-      descriptionCompressed:
-        "Reminders/habits/routines/todos/goals/schedules — user asks assistant to do/schedule/track/save something, or wants a recap/status/summary of their own tracked todos, habits, goals, or day ('recap my day', 'what's left today')",
+      description: "Todos, reminders, habits, routines and tracked progress.",
       sensitivity: "personal",
       cacheScope: "agent",
       subcontexts: ["goals", "todos", "productivity"],
@@ -208,10 +157,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "goals",
       label: "Goals",
-      description:
-        "Long-horizon owner outcomes and aspirations: create, ground, review, update, or delete life goals, success criteria, support strategies, and progress check-ins. Use for goal-setting requests even when the support plan mentions reminders, habits, routines, savings, travel, trips, learning, health, or fitness.",
-      descriptionCompressed:
-        "Life goals: create/ground/review outcomes, success criteria, support plans",
+      description: "Long-term goals and progress.",
       parent: "tasks",
       sensitivity: "personal",
       cacheScope: "agent",
@@ -220,8 +166,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "todos",
       label: "Todos",
-      description:
-        "Concrete task-list operations: create, list, update, complete, delete, prioritize, defer, or review todos and reminders.",
+      description: "Task lists and reminders.",
       parent: "tasks",
       sensitivity: "personal",
       cacheScope: "agent",
@@ -230,8 +175,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "productivity",
       label: "Productivity",
-      description:
-        "Work planning and personal operations spanning tasks, calendar, documents, contacts, workflows, and prioritization.",
+      description: "Work planning and prioritization.",
       parent: "tasks",
       sensitivity: "personal",
       cacheScope: "conversation",
@@ -240,7 +184,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "health",
       label: "Health",
-      description: "Personal health metrics and wellness data.",
+      description: "Health metrics and wellness data.",
       sensitivity: "private",
       cacheScope: "turn",
       roleGate: { minRole: "OWNER" },
@@ -248,8 +192,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "screen_time",
       label: "Screen Time",
-      description: "Device, app, and screen-time controls and reporting.",
-      descriptionCompressed: "App/site blocking, focus rules, usage reports",
+      description: "App/site blocking and device usage.",
       sensitivity: "private",
       cacheScope: "turn",
       aliases: ["screen-time", "screentime"],
@@ -258,7 +201,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "subscriptions",
       label: "Subscriptions",
-      description: "Recurring services, billing awareness, and renewals.",
+      description: "Recurring services and renewals.",
       sensitivity: "private",
       cacheScope: "turn",
       roleGate: { minRole: "OWNER" },
@@ -266,8 +209,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "finance",
       label: "Finance",
-      description:
-        "Money, balances, portfolio value, accounts, invoices, and financial overview questions.",
+      description: "Accounts, balances, invoices and financial overview.",
       sensitivity: "private",
       cacheScope: "turn",
       aliases: ["money", "balance", "balances", "portfolio"],
@@ -277,7 +219,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "payments",
       label: "Payments",
-      description: "Payment methods, invoices, and financial workflows.",
+      description: "Payments and payment methods.",
       parent: "finance",
       sensitivity: "private",
       cacheScope: "turn",
@@ -286,8 +228,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "wallet",
       label: "Wallet",
-      description:
-        "Wallet and account operations: balances, transfers, swaps, signing, and portfolio holdings.",
+      description: "Wallet balances, transfers and signing.",
       parents: ["finance"],
       sensitivity: "private",
       cacheScope: "turn",
@@ -298,8 +239,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "crypto",
       label: "Crypto",
-      description:
-        "Crypto assets, tokens, DeFi positions, wallet balances, swaps, bridges, and on-chain transfers.",
+      description: "Crypto assets and on-chain operations.",
       parents: ["finance", "wallet"],
       sensitivity: "private",
       cacheScope: "turn",
@@ -309,8 +249,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "messaging",
       label: "Messaging",
-      description:
-        "Read, send, draft, search, triage, mute, follow, or manage private/group messages across Discord, Slack, Telegram, iMessage, WhatsApp, X DMs, and similar.",
+      description: "Private and group messages and inboxes.",
       sensitivity: "private",
       cacheScope: "turn",
       subcontexts: ["phone", "social"],
@@ -319,8 +258,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "phone",
       label: "Phone",
-      description:
-        "Phone-based messaging and voice calls (SMS, iMessage, RCS, dialing).",
+      description: "Calls and phone messages.",
       sensitivity: "private",
       cacheScope: "turn",
       parent: "messaging",
@@ -330,10 +268,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "social_posting",
       label: "Social Posting",
-      description:
-        "Public social posts, feeds, replies, searches, timelines, and posting actions on platforms like X. Use messaging for DMs.",
-      descriptionCompressed:
-        "Public posts/feeds/timelines; DMs go to messaging",
+      description: "Public social feeds and posts.",
       sensitivity: "private",
       cacheScope: "turn",
       aliases: ["social-posting", "posting"],
@@ -343,7 +278,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
       id: "social",
       label: "Social",
       description:
-        "Social platforms broadly: public feed/search/posting plus private DMs when platform-specific intent is ambiguous.",
+        "Social accounts spanning public posts and private messages.",
       parents: ["messaging", "social_posting"],
       sensitivity: "private",
       cacheScope: "turn",
@@ -353,8 +288,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "media",
       label: "Media",
-      description:
-        "Generate or process images, audio, and video. Includes screenshots and transcription.",
+      description: "Images, audio, video and attachments.",
       sensitivity: "personal",
       cacheScope: "turn",
       roleGate: { minRole: "USER" },
@@ -362,10 +296,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "automation",
       label: "Automation",
-      description:
-        "Automations, workflows, triggers, cron/heartbeat jobs, recurring runs, monitors, reminders that execute later, and proactive follow-up tasks.",
-      descriptionCompressed:
-        "Workflows/triggers/cron jobs/monitors that execute later",
+      description: "Workflows, scheduled runs and monitors.",
       sensitivity: "personal",
       cacheScope: "agent",
       roleGate: { minRole: "ADMIN" },
@@ -373,8 +304,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "connectors",
       label: "Connectors",
-      description:
-        "MCP, OAuth, app integrations, connector accounts, scopes, auth state, connection repair, list/configure/connect/disconnect flows.",
+      description: "App integrations, accounts and connections.",
       sensitivity: "private",
       cacheScope: "agent",
       roleGate: { minRole: "ADMIN" },
@@ -382,8 +312,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "settings",
       label: "Settings",
-      description:
-        "Agent/user preferences, capability toggles, identity, profile, model/provider config, app settings, saved-login lookup, and non-secret configuration.",
+      description: "Preferences and configuration.",
       sensitivity: "private",
       cacheScope: "agent",
       subcontexts: ["character"],
@@ -392,8 +321,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "character",
       label: "Character",
-      description:
-        "Agent personality, name, voice, style, system prompt, bio, behavior, and persistent character/profile edits.",
+      description: "Agent identity, personality and behavior.",
       parent: "settings",
       sensitivity: "private",
       cacheScope: "agent",
@@ -402,7 +330,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "secrets",
       label: "Secrets",
-      description: "Credentials, API keys, and session tokens.",
+      description: "Credentials and session tokens.",
       sensitivity: "system",
       cacheScope: "none",
       roleGate: { minRole: "OWNER" },
@@ -410,8 +338,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "admin",
       label: "Admin",
-      description:
-        "Owner/admin-only control plane: roles, permissions, plugins, trust, policy, system configuration, and dangerous/private management actions.",
+      description: "Roles, permissions and plugin administration.",
       sensitivity: "system",
       cacheScope: "none",
       subcontexts: ["system"],
@@ -420,8 +347,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "system",
       label: "System",
-      description:
-        "Runtime/system internals, diagnostics, process state, platform control, and owner-only operational commands.",
+      description: "Runtime diagnostics and platform control.",
       parent: "admin",
       sensitivity: "system",
       cacheScope: "none",
@@ -431,9 +357,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "state",
       label: "State",
-      description:
-        "Current runtime, room, device, app, workflow, or game state inspection/mutation when the request is about state rather than user content.",
-      descriptionCompressed: "Inspect/mutate runtime/room/device/app state",
+      description: "Current application or device state.",
       parent: "system",
       sensitivity: "system",
       cacheScope: "turn",
@@ -442,8 +366,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "world",
       label: "World",
-      description:
-        "World/server/room membership, environment topology, channels, participants, simulation state, and shared-world operations.",
+      description: "Rooms, membership and shared environments.",
       parent: "system",
       sensitivity: "private",
       cacheScope: "turn",
@@ -453,9 +376,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "game",
       label: "Game",
-      description:
-        "Game/session commands and game-state tools. Use only when there is an active game/simulation/world interaction or the user is controlling gameplay.",
-      descriptionCompressed: "Active game/simulation control only",
+      description: "Active games and simulations.",
       parent: "world",
       sensitivity: "personal",
       cacheScope: "turn",
@@ -464,8 +385,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
     {
       id: "agent_internal",
       label: "Agent Internal",
-      description:
-        "Self-management and internal autonomous tasks not intended for users.",
+      description: "Internal autonomous work.",
       sensitivity: "system",
       cacheScope: "none",
       aliases: ["internal", "self"],

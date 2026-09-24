@@ -84,8 +84,34 @@ function readCommitFromGitHead(cwd: string): string | null {
   if (!head) return null;
   if (head.startsWith("ref:")) {
     const ref = head.replace(/^ref:\s*/i, "").trim();
-    const refPath = path.resolve(path.dirname(headPath), ref);
-    return formatCommit(fs.readFileSync(refPath, "utf-8").trim());
+    const gitDir = path.dirname(headPath);
+    let commonDir = gitDir;
+    try {
+      commonDir = path.resolve(
+        gitDir,
+        fs.readFileSync(path.join(gitDir, "commondir"), "utf-8").trim(),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    for (const dir of new Set([gitDir, commonDir])) {
+      try {
+        return formatCommit(fs.readFileSync(path.join(dir, ref), "utf-8"));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    try {
+      for (const line of fs
+        .readFileSync(path.join(commonDir, "packed-refs"), "utf-8")
+        .split("\n")) {
+        const [commit, name] = line.split(" ");
+        if (name === ref) return formatCommit(commit);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return null;
   }
   return formatCommit(head);
 }

@@ -5,8 +5,8 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
+import { logger } from "@elizaos/ui/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,
@@ -300,10 +300,17 @@ export async function hydrateInitialConversation(
 
   try {
     const { conversations: rawConversations } = await api.listConversations();
-    if (
-      !Array.isArray(rawConversations) ||
-      !rawConversations.every(isConversationRecord)
-    ) {
+    const invalidRows = Array.isArray(rawConversations)
+      ? rawConversations.filter((row) => !isConversationRecord(row)).length
+      : null;
+    if (invalidRows === null || invalidRows > 0) {
+      logger.warn(
+        {
+          isArray: Array.isArray(rawConversations),
+          invalidRows,
+        },
+        "[useChatCallbacks] invalid conversation list during hydration",
+      );
       return null;
     }
     const conversations = normalizeConversationList(rawConversations);
@@ -461,7 +468,12 @@ export async function hydrateInitialConversation(
       }
       return null;
     }
-  } catch {
+  } catch (error) {
+    // error-policy:J4 Keep hydration unavailable and expose the failed restore for diagnosis.
+    logger.warn(
+      { error },
+      "[useChatCallbacks] initial conversation hydration failed",
+    );
     return null;
   }
 }

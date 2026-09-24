@@ -307,6 +307,7 @@ async function main() {
     "REDIS_URL",
     "CACHE_ENABLED",
     "CACHE_BACKEND",
+    "REQUIRE_PROVISIONING_WORKER",
   ].flatMap((key) => {
     const value = process.env[key];
     return value ? ["--var", `${key}:${value}`] : [];

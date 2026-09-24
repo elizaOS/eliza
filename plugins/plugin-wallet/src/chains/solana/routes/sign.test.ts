@@ -4,25 +4,23 @@
  * shaping. `resolveWalletBackend` is mocked, so no real Solana signer or RPC
  * is exercised.
  */
+
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/shared";
+import type { RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solanaSignRoutes } from "./sign";
 
 const walletBackendMocks = vi.hoisted(() => ({
   resolveWalletBackend: vi.fn(),
 }));
-
 vi.mock("../../../wallet/select-backend", () => ({
   resolveWalletBackend: walletBackendMocks.resolveWalletBackend,
 }));
-
 function runtime(token: string | null): IAgentRuntime {
   return {
     getSetting: vi.fn((key: string) => (key === "WALLET_BROWSER_SIGN_TOKEN" ? token : undefined)),
   } as unknown as IAgentRuntime;
 }
-
 function req(args: {
   method?: string;
   authorization?: string;
@@ -40,7 +38,6 @@ function req(args: {
     body: args.body,
   } as unknown as RouteRequest;
 }
-
 function res(): RouteResponse & {
   statusCode?: number;
   body?: unknown;
@@ -67,24 +64,20 @@ function res(): RouteResponse & {
     headers: Record<string, string>;
   };
 }
-
 function route(name: string) {
   const found = solanaSignRoutes.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`missing route ${name}`);
   if (!found.handler) throw new Error(`route ${name} has no handler`);
   return { ...found, handler: found.handler };
 }
-
 describe("Solana browser signing routes", () => {
   beforeEach(() => {
     walletBackendMocks.resolveWalletBackend.mockReset();
   });
-
   it("does not mark browser signing routes as public", () => {
     expect(solanaSignRoutes).toHaveLength(6);
     expect(solanaSignRoutes.every((candidate) => candidate.public !== true)).toBe(true);
   });
-
   it("closes the surface when the signing token is missing or too short", async () => {
     for (const token of [null, "short-token"]) {
       const response = res();
@@ -93,14 +86,12 @@ describe("Solana browser signing routes", () => {
         response,
         runtime(token)
       );
-
       expect(response.statusCode).toBe(503);
       expect(response.body).toEqual({
         error: "WALLET_BROWSER_SIGN_TOKEN not configured",
       });
     }
   });
-
   it("rejects malformed authorization schemes and bad header tokens", async () => {
     for (const request of [
       req({ authorization: "Basic 1234567890abcdef" }),
@@ -108,12 +99,10 @@ describe("Solana browser signing routes", () => {
     ]) {
       const response = res();
       await route("wallet-solana-pubkey").handler(request, response, runtime("1234567890abcdef"));
-
       expect(response.statusCode).toBe(401);
       expect(response.body).toEqual({ error: "invalid sign token" });
     }
   });
-
   it("never reflects an arbitrary cross-origin or sends credentialed CORS", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(
@@ -121,7 +110,6 @@ describe("Solana browser signing routes", () => {
       response,
       runtime("1234567890abcdef")
     );
-
     expect(response.statusCode).toBe(204);
     expect(response.body).toEqual({});
     // ACAO must NOT echo the attacker origin, and credentials must be absent.
@@ -129,7 +117,6 @@ describe("Solana browser signing routes", () => {
     expect(response.headers["Access-Control-Allow-Credentials"]).not.toBe("true");
     expect(response.headers["Access-Control-Allow-Headers"]).toContain("X-Wallet-Sign-Token");
   });
-
   it("allows a loopback origin without credentialed CORS", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(
@@ -137,12 +124,10 @@ describe("Solana browser signing routes", () => {
       response,
       runtime("1234567890abcdef")
     );
-
     expect(response.statusCode).toBe(204);
     expect(response.headers["Access-Control-Allow-Origin"]).toBe("http://127.0.0.1:2138");
     expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
   });
-
   it("gates every Solana signing route behind the browser signing token", async () => {
     // public: true for the cross-origin browser signing surface, so the central
     // session gate does not protect them — their WALLET_BROWSER_SIGN_TOKEN check
@@ -153,7 +138,6 @@ describe("Solana browser signing routes", () => {
       "wallet-solana-sign-message",
       "wallet-solana-sign-and-send-transaction",
     ];
-
     for (const routeName of signingRouteNames) {
       const response = res();
       await route(routeName).handler(
@@ -165,7 +149,6 @@ describe("Solana browser signing routes", () => {
       expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
     }
   });
-
   it("validates message body shape before resolving wallet backend", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(
@@ -176,12 +159,10 @@ describe("Solana browser signing routes", () => {
       response,
       runtime("1234567890abcdef")
     );
-
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "messageBase64 required" });
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
   });
-
   it("rejects malformed base64 messages before resolving wallet backend", async () => {
     const response = res();
     await route("wallet-solana-sign-message").handler(
@@ -192,12 +173,10 @@ describe("Solana browser signing routes", () => {
       response,
       runtime("1234567890abcdef")
     );
-
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "invalid base64 payload" });
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
   });
-
   it("rejects invalid transaction bytes before resolving wallet backend", async () => {
     const response = res();
     await route("wallet-solana-sign-transaction").handler(
@@ -208,7 +187,6 @@ describe("Solana browser signing routes", () => {
       response,
       runtime("1234567890abcdef")
     );
-
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "invalid transaction payload" });
     expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();

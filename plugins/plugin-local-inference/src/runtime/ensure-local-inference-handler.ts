@@ -47,9 +47,9 @@ import {
 	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
+import { fetchRemoteMedia } from "@elizaos/core/media";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
-import { readAliasedEnv } from "@elizaos/shared";
-import { fetchRemoteMedia } from "@elizaos/shared/media";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,

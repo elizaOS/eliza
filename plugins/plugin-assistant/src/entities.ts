@@ -14,12 +14,12 @@ import {
   type World,
   withVisibleComponents,
 } from "@elizaos/core";
-import { composePrompt } from "@elizaos/shared";
 import {
   type EntityMatch,
   normalizeEntityMatchesStrict,
   readEntityResolutionField,
 } from "./entity-matches";
+import { composePrompt } from "./text/template-rendering.js";
 
 type EntityDetailsRecord = Pick<
   Entity,
@@ -28,14 +28,19 @@ type EntityDetailsRecord = Pick<
   name?: string;
   data: string;
 };
-
 interface ParsedResolution {
   resolvedId?: string;
   confidence?: string;
   matches?: {
     match?:
-      | { name?: string; reason?: string }
-      | { name?: string; reason?: string }[];
+      | {
+          name?: string;
+          reason?: string;
+        }
+      | {
+          name?: string;
+          reason?: string;
+        }[];
   };
   /** True when the model supplied match evidence in an unusable shape. */
   malformedMatches?: boolean;
@@ -44,17 +49,14 @@ interface ParsedResolution {
   /** True when supplied entityId and resolvedId strings disagree. */
   conflictingEntityId?: boolean;
 }
-
 function isAbsentResolutionId(value: unknown): boolean {
   return value === undefined || value === null || value === "null";
 }
-
 function isUsableResolutionId(value: unknown): value is string {
   return (
     typeof value === "string" && value !== "null" && value.trim().length > 0
   );
 }
-
 /**
  * The decisive resolution types the model contract supports. A response
  * without one of these types (or with AMBIGUOUS/UNKNOWN) is not decisive
@@ -66,10 +68,12 @@ const DECISIVE_RESOLUTION_TYPES = new Set([
   "NAME_MATCH",
   "RELATIONSHIP_MATCH",
 ]);
-
-function parseEntityResolutionResponse(
-  response: unknown,
-): (ParsedResolution & { type?: string; entityId?: string }) | null {
+function parseEntityResolutionResponse(response: unknown):
+  | (ParsedResolution & {
+      type?: string;
+      entityId?: string;
+    })
+  | null {
   if (!response) return null;
   let parsedJson: unknown = response;
   if (typeof response === "string") {
@@ -83,7 +87,6 @@ function parseEntityResolutionResponse(
       return null;
     }
   }
-
   if (parsedJson && typeof parsedJson === "object") {
     const typeValue = readEntityResolutionField(parsedJson, "type");
     const entityIdValue = readEntityResolutionField(parsedJson, "entityId");
@@ -117,7 +120,6 @@ function parseEntityResolutionResponse(
     // entry the walk drops) is malformed supplied evidence.
     const { matches, dropped } = normalizeEntityMatchesStrict(rawMatches);
     const malformedMatches = rawMatches !== undefined && dropped;
-
     if (type || entityId || matches.length > 0) {
       return {
         type,
@@ -128,7 +130,6 @@ function parseEntityResolutionResponse(
         conflictingEntityId,
       };
     }
-
     // A response carrying only malformed evidence (for example
     // `matches: 42` with no id and no type) is still a supplied-evidence
     // defect; surface it so the gate rejects rather than treating the
@@ -144,10 +145,8 @@ function parseEntityResolutionResponse(
       };
     }
   }
-
   return null;
 }
-
 const ENTITY_RESOLUTION_SCHEMA = {
   type: "object",
   properties: {
@@ -175,7 +174,6 @@ const ENTITY_RESOLUTION_SCHEMA = {
     },
   },
 };
-
 const entityResolutionTemplate = `# Task: Resolve Entity Name
 Message Sender: {{senderName}} (ID: {{senderId}})
 Agent: {{agentName}} (ID: {{agentId}})
@@ -210,19 +208,15 @@ Return a JSON object with:
 - matches: array of { "name": "matched-name", "reason": "why this entity matches" }
 
 IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
-
 function normalizeEntityName(value: string): string {
   return value.trim().toLowerCase();
 }
-
 function stripAtPrefix(value: string): string {
   return normalizeEntityName(value).replace(/^@+/, "");
 }
-
 function referentTextOf(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
-
 /**
  * Exact contextual self/agent references ("me", "myself", "you", "yourself")
  * bind to the message sender and the agent before any ordinary identity
@@ -234,7 +228,6 @@ function referentTextOf(message: Memory): string {
  */
 const CONTEXTUAL_SELF_REFERENT = new Set(["me", "myself"]);
 const CONTEXTUAL_AGENT_REFERENT = new Set(["you", "yourself"]);
-
 function contextualReferentTarget(referent: string): "sender" | "agent" | null {
   const normalized = normalizeEntityName(referent);
   if (CONTEXTUAL_SELF_REFERENT.has(normalized)) {
@@ -245,7 +238,6 @@ function contextualReferentTarget(referent: string): "sender" | "agent" | null {
   }
   return null;
 }
-
 function formatRecentMessagesForResolution(memories: Memory[]): string {
   return memories
     .map((memory) => {
@@ -255,7 +247,6 @@ function formatRecentMessagesForResolution(memories: Memory[]): string {
     })
     .join("\n");
 }
-
 function uniqueEntitiesById(entities: Entity[]): Entity[] {
   const seen = new Set<string>();
   const unique: Entity[] = [];
@@ -271,7 +262,6 @@ function uniqueEntitiesById(entities: Entity[]): Entity[] {
   }
   return unique;
 }
-
 type IndexedEntity = {
   entity: Entity;
   normalizedNames: Set<string>;
@@ -281,7 +271,6 @@ type IndexedEntity = {
   normalizedHandles: Set<string>;
   strippedHandles: Set<string>;
 };
-
 function indexEntities(entities: Entity[]): IndexedEntity[] {
   return entities.map((entity) => {
     const normalizedNames = new Set<string>();
@@ -290,7 +279,6 @@ function indexEntities(entities: Entity[]): IndexedEntity[] {
       normalizedNames.add(normalizeEntityName(name));
       strippedNames.add(stripAtPrefix(name));
     }
-
     const normalizedUsernames = new Set<string>();
     const strippedUsernames = new Set<string>();
     const normalizedHandles = new Set<string>();
@@ -304,7 +292,6 @@ function indexEntities(entities: Entity[]): IndexedEntity[] {
         normalizedUsernames.add(normalizeEntityName(username));
         strippedUsernames.add(stripAtPrefix(username));
       }
-
       const handle =
         typeof component.data?.handle === "string"
           ? component.data.handle
@@ -314,7 +301,6 @@ function indexEntities(entities: Entity[]): IndexedEntity[] {
         strippedHandles.add(stripAtPrefix(handle));
       }
     }
-
     return {
       entity,
       normalizedNames,
@@ -326,7 +312,6 @@ function indexEntities(entities: Entity[]): IndexedEntity[] {
     };
   });
 }
-
 function indexedEntityMatches(
   entry: IndexedEntity,
   matchName: string,
@@ -341,7 +326,6 @@ function indexedEntityMatches(
     entry.normalizedHandles.has(matchName)
   );
 }
-
 function entitiesMatchingReferent(
   indexed: IndexedEntity[],
   referent: string,
@@ -353,30 +337,32 @@ function entitiesMatchingReferent(
     .filter((entry) => indexedEntityMatches(entry, matchName, matchKey))
     .map((entry) => entry.entity);
 }
-
 async function getRecentInteractions(
   sourceEntityId: UUID,
   candidateEntities: Entity[],
   recentMessages: Memory[],
   relationships: Relationship[],
-): Promise<{ entity: Entity; interactions: Memory[]; count: number }[]> {
+): Promise<
+  {
+    entity: Entity;
+    interactions: Memory[];
+    count: number;
+  }[]
+> {
   const results: Array<{
     entity: Entity;
     interactions: Memory[];
     count: number;
   }> = [];
-
   const messageEntityById = new Map<UUID, UUID>();
   for (const recentMessage of recentMessages) {
     if (recentMessage.id && recentMessage.entityId) {
       messageEntityById.set(recentMessage.id, recentMessage.entityId);
     }
   }
-
   for (const entity of candidateEntities) {
     const interactions: Memory[] = [];
     let interactionScore = 0;
-
     const directReplies = recentMessages.filter((msg) => {
       if (!msg.entityId || !msg.content.inReplyTo) {
         return false;
@@ -387,9 +373,7 @@ async function getRecentInteractions(
         (msg.entityId === entity.id && repliedToEntityId === sourceEntityId)
       );
     });
-
     interactions.push(...directReplies);
-
     const relationship = relationships.find(
       (rel) =>
         (rel.sourceEntityId === sourceEntityId &&
@@ -397,14 +381,11 @@ async function getRecentInteractions(
         (rel.targetEntityId === sourceEntityId &&
           rel.sourceEntityId === entity.id),
     );
-
     const relationshipMetadata = relationship?.metadata;
     if (relationshipMetadata?.interactions) {
       interactionScore = relationshipMetadata.interactions as number;
     }
-
     interactionScore += directReplies.length;
-
     const uniqueInteractions = [...new Set(interactions)];
     results.push({
       entity,
@@ -412,10 +393,8 @@ async function getRecentInteractions(
       count: Math.round(interactionScore),
     });
   }
-
   return results.sort((a, b) => b.count - a.count);
 }
-
 export async function findEntityByName(
   runtime: IAgentRuntime,
   message: Memory,
@@ -429,11 +408,9 @@ export async function findEntityByName(
     );
     return null;
   }
-
   const world: World | null = room.worldId
     ? await runtime.getWorld(room.worldId)
     : null;
-
   const entitiesInRoom = await runtime.getEntitiesForRoom(room.id, true);
   const relationships = await runtime.getRelationships({
     entityIds: [message.entityId],
@@ -454,7 +431,6 @@ export async function findEntityByName(
     const entity = counterpartById.get(id);
     return entity ? [entity] : [];
   });
-
   const filteredEntities = await Promise.all(
     entitiesInRoom.map((entity) =>
       withVisibleComponents(runtime, world, entity, message.entityId),
@@ -465,14 +441,12 @@ export async function findEntityByName(
       withVisibleComponents(runtime, world, entity, message.entityId),
     ),
   );
-
   const allEntities = uniqueEntitiesById([
     ...filteredEntities,
     ...filteredRelationshipEntities,
   ]);
   const indexedEntities = indexEntities(allEntities);
   const referent = referentTextOf(message);
-
   // Exact contextual self/agent references bind to the sender/agent before
   // any ordinary identity lookup — a literal "Me"/"You" entity must not
   // capture them (#24765). Once the referent is recognized as contextual,
@@ -491,7 +465,6 @@ export async function findEntityByName(
     }
     return null;
   }
-
   const uniqueReferentHits = entitiesMatchingReferent(
     indexedEntities,
     referent,
@@ -499,7 +472,6 @@ export async function findEntityByName(
   if (uniqueReferentHits.length === 1) {
     return uniqueReferentHits[0] ?? null;
   }
-
   // Complete room transcript: this is model-facing resolution context, so a
   // single unbounded read (no LIMIT clause) — not a page or window — feeds it.
   const recentMessages = await runtime.getMemories({
@@ -513,7 +485,6 @@ export async function findEntityByName(
     recentMessages,
     relationships,
   );
-
   const senderEntity = allEntities.find(
     (entity) => entity.id === message.entityId,
   );
@@ -537,17 +508,21 @@ export async function findEntityByName(
     },
     template: entityResolutionTemplate,
   });
-
   const result = await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
     responseSchema: ENTITY_RESOLUTION_SCHEMA,
     responseFormat: { type: "json_object" },
   });
-
   const resolution = parseEntityResolutionResponse(result);
   const candidateById = new Map(
     allEntities
-      .filter((entity): entity is Entity & { id: UUID } => Boolean(entity.id))
+      .filter(
+        (
+          entity,
+        ): entity is Entity & {
+          id: UUID;
+        } => Boolean(entity.id),
+      )
       .map((entity) => [entity.id, entity]),
   );
   if (!resolution) {
@@ -557,7 +532,6 @@ export async function findEntityByName(
     );
     return null;
   }
-
   // Only the contract's decisive types may resolve. AMBIGUOUS and UNKNOWN
   // are terminal unresolved results — their `matches` arrays are diagnostic
   // context, not decisive evidence — and a missing or unsupported type is
@@ -565,7 +539,6 @@ export async function findEntityByName(
   if (!resolution.type || !DECISIVE_RESOLUTION_TYPES.has(resolution.type)) {
     return null;
   }
-
   let matchesArray: EntityMatch[] = [];
   const parsedResolution = resolution as ParsedResolution;
   const parsedResolutionMatches = parsedResolution.matches;
@@ -573,7 +546,6 @@ export async function findEntityByName(
     const matchValue = parsedResolutionMatches.match;
     matchesArray = Array.isArray(matchValue) ? matchValue : [matchValue];
   }
-
   // Decisive evidence must validate uniquely and agree on exactly one
   // id-bearing in-scope entity. Every SUPPLIED identification field — the
   // `entityId`/`resolvedId` for any decisive type (EXACT_MATCH included)
@@ -589,7 +561,6 @@ export async function findEntityByName(
     parsedResolution.malformedMatches === true ||
     parsedResolution.malformedEntityId === true ||
     parsedResolution.conflictingEntityId === true;
-
   if (resolution.entityId) {
     suppliedEvidence = true;
     const byId = candidateById.get(resolution.entityId as UUID);
@@ -599,7 +570,6 @@ export async function findEntityByName(
       invalidated = true;
     }
   }
-
   for (const match of matchesArray) {
     if (!match?.name) continue;
     suppliedEvidence = true;
@@ -622,7 +592,6 @@ export async function findEntityByName(
     }
     evidenceIds.add(labeled.id);
   }
-
   if (suppliedEvidence && !invalidated && evidenceIds.size === 1) {
     const evidenceId = [...evidenceIds][0] as UUID;
     const resolved = candidateById.get(evidenceId);
@@ -639,10 +608,8 @@ export async function findEntityByName(
       }
     }
   }
-
   return null;
 }
-
 export async function getEntityDetails({
   runtime,
   roomId,
@@ -657,9 +624,7 @@ export async function getEntityDetails({
         runtime.getRoom(roomId),
         runtime.getEntitiesForRoom(roomId, true),
       ]);
-
       const uniqueEntities = new Map<string, EntityDetailsRecord>();
-
       for (const entity of roomEntities) {
         const entityId = entity.id;
         // An optional-but-absent id on a persisted room entity is a storage
@@ -670,9 +635,7 @@ export async function getEntityDetails({
         // untrusted request data, so the invariant fails fast here.
         if (!entityId) {
           throw new ElizaError(
-            `Room ${roomId} contains an entity without an id (names: ${
-              entity.names?.length ? entity.names.join(", ") : "(none)"
-            })`,
+            `Room ${roomId} contains an entity without an id (names: ${entity.names?.length ? entity.names.join(", ") : "(none)"})`,
             {
               code: "ROOM_ENTITY_ID_MISSING",
               severity: "fatal",
@@ -685,7 +648,6 @@ export async function getEntityDetails({
           );
         }
         if (uniqueEntities.has(entityId)) continue;
-
         const mergedData: Record<string, unknown> = {};
         for (const component of entity.components || []) {
           const componentData = component.data;
@@ -723,7 +685,6 @@ export async function getEntityDetails({
             mergedData[key] = value;
           }
         }
-
         const getEntityNameFromMetadata = (
           source: string,
         ): string | undefined => {
@@ -740,7 +701,6 @@ export async function getEntityDetails({
           }
           return undefined;
         };
-
         uniqueEntities.set(entityId, {
           id: entityId,
           agentId: entity.agentId,
@@ -752,7 +712,6 @@ export async function getEntityDetails({
           data: stableStringify({ ...mergedData, ...entity.metadata }),
         });
       }
-
       return Array.from(uniqueEntities.values()).sort((left, right) => {
         const leftName = left.name ?? left.names[0] ?? "";
         const rightName = right.name ?? right.names[0] ?? "";
@@ -764,18 +723,15 @@ export async function getEntityDetails({
     },
   );
 }
-
 function formatEntityNames(names: string[]): string {
   const uniqueNames = [...new Set(names.filter(Boolean))];
   const renderedNames =
     uniqueNames.length > 0 ? `"${uniqueNames.join('" aka "')}"` : '"(unnamed)"';
   return renderedNames;
 }
-
 export function formatEntityMetadata(metadata: unknown): string {
   return stableStringify(metadata);
 }
-
 export function formatEntities({ entities }: { entities: Entity[] }) {
   const sortedEntities = [...entities].sort((left, right) => {
     const leftName = left.names[0] ?? "";
@@ -785,7 +741,6 @@ export function formatEntities({ entities }: { entities: Entity[] }) {
       String(left.id ?? "").localeCompare(String(right.id ?? ""))
     );
   });
-
   const entityStrings = sortedEntities.map((entity: Entity) => {
     const header = `${formatEntityNames(entity.names)}\nID: ${entity.id}${
       entity.metadata && Object.keys(entity.metadata).length > 0

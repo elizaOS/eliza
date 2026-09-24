@@ -32,7 +32,7 @@
  * shares the SAME scroller node with `useThreadAutoScroll` via `scrollRef`.
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 /**

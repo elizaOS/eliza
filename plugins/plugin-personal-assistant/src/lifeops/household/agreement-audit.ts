@@ -4,7 +4,7 @@
  * persisted transition; an audit failure rolls back the mutation as well.
  */
 import crypto from "node:crypto";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { sqlQuote, sqlText } from "../sql.js";
 
 export type AgreementAuditKind =

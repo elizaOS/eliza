@@ -5,21 +5,20 @@
  * each permission state (not-determined/granted/limited/denied/restricted) and
  * its CTA: request, upgrade, open-settings, unavailable, and grant collapse.
  */
+
 import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionState,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/permissions";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { PermissionCard } from "./permission-card";
 import { parsePermissionRequestFromText } from "./permission-card.helpers";
 
 afterEach(() => {
   cleanup();
 });
-
 function makeRegistry(
   initial: PermissionState,
   overrides: Partial<IPermissionsRegistry> = {},
@@ -37,20 +36,17 @@ function makeRegistry(
     openSettings: overrides.openSettings ?? vi.fn(async () => false),
   };
 }
-
 function state(
   overrides: Omit<PermissionState, "platform"> &
     Partial<Pick<PermissionState, "platform">>,
 ): PermissionState {
   return { platform: "darwin", ...overrides };
 }
-
 const baseProps = {
   permission: "reminders" as PermissionId,
   reason: "I'd like to add 'pick up groceries' to your Apple Reminders.",
   feature: "lifeops.reminders.create",
 };
-
 describe("PermissionCard", () => {
   it("renders the friendly title and reason for not-determined state", () => {
     render(
@@ -72,7 +68,6 @@ describe("PermissionCard", () => {
         .textContent,
     ).toContain("Grant access");
   });
-
   it("calls registry.request and reports granted on success", async () => {
     const grantedState: PermissionState = state({
       id: "reminders",
@@ -97,20 +92,17 @@ describe("PermissionCard", () => {
         onGranted={onGranted}
       />,
     );
-
     const btn = screen.getByTestId("permission-card-primary");
     fireEvent.click(btn);
     // findByTestId waits for the granted confirmation to appear after the
     // async request resolves and the component re-renders.
     await screen.findByTestId("permission-card-granted");
-
     expect(registry.request).toHaveBeenCalledWith("reminders", {
       reason: baseProps.reason,
       feature: { app: "lifeops", action: "reminders.create" },
     });
     expect(onGranted).toHaveBeenCalledWith(grantedState);
   });
-
   it("renders 'Open System Settings' when denied and canRequest is false", () => {
     render(
       <PermissionCard
@@ -129,7 +121,6 @@ describe("PermissionCard", () => {
         .textContent,
     ).toContain("Open System Settings");
   });
-
   it("opens settings when not-determined cannot be requested directly", () => {
     const onOpenSettings = vi.fn();
     render(
@@ -153,7 +144,6 @@ describe("PermissionCard", () => {
     fireEvent.click(button);
     expect(onOpenSettings).toHaveBeenCalledWith("screentime");
   });
-
   it("renders disabled 'Coming soon' when restricted by entitlement", () => {
     render(
       <PermissionCard
@@ -175,7 +165,6 @@ describe("PermissionCard", () => {
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toContain("Coming soon");
   });
-
   it("renders unavailable for platform-unsupported restricted permissions", () => {
     render(
       <PermissionCard
@@ -197,7 +186,6 @@ describe("PermissionCard", () => {
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toContain("Unavailable on this platform");
   });
-
   it("auto-collapses to 'Access granted' when initial state is granted", () => {
     render(
       <PermissionCard
@@ -214,7 +202,6 @@ describe("PermissionCard", () => {
     expect(screen.getByTestId("permission-card-granted")).toBeTruthy();
     expect(screen.queryByTestId("permission-card")).toBeNull();
   });
-
   it("renders write-only calendar access as limited until an upgrade succeeds", async () => {
     const limitedState: PermissionState = state({
       id: "calendar",
@@ -233,7 +220,6 @@ describe("PermissionCard", () => {
       request: vi.fn(async () => fullState),
     });
     const onGranted = vi.fn();
-
     render(
       <PermissionCard
         {...baseProps}
@@ -244,7 +230,6 @@ describe("PermissionCard", () => {
         onGranted={onGranted}
       />,
     );
-
     expect(screen.queryByTestId("permission-card-granted")).toBeNull();
     expect(screen.getByTestId("permission-card").dataset.status).toBe(
       "limited",
@@ -257,12 +242,10 @@ describe("PermissionCard", () => {
       "permission-card-primary",
     ) as HTMLButtonElement;
     expect(button.textContent).toContain("Upgrade access");
-
     fireEvent.click(button);
     await screen.findByTestId("permission-card-granted");
     expect(onGranted).toHaveBeenCalledWith(fullState);
   });
-
   it("sends non-requestable limited access to system settings", () => {
     const onOpenSettings = vi.fn();
     render(
@@ -279,12 +262,10 @@ describe("PermissionCard", () => {
         onOpenSettings={onOpenSettings}
       />,
     );
-
     expect(screen.queryByTestId("permission-card-granted")).toBeNull();
     fireEvent.click(screen.getByTestId("permission-card-primary"));
     expect(onOpenSettings).toHaveBeenCalledWith("calendar");
   });
-
   it("dismisses on 'Not now'", () => {
     const onDismiss = vi.fn();
     render(
@@ -304,7 +285,6 @@ describe("PermissionCard", () => {
     expect(onDismiss).toHaveBeenCalled();
     expect(screen.queryByTestId("permission-card")).toBeNull();
   });
-
   it("emits fallback choice when offered and clicked", () => {
     const onFallback = vi.fn();
     render(
@@ -330,7 +310,6 @@ describe("PermissionCard", () => {
     });
     expect(screen.queryByTestId("permission-card")).toBeNull();
   });
-
   it("parsePermissionRequestFromText extracts fenced permission_request", () => {
     const text =
       "I can add that.\n```json\n" +
@@ -343,17 +322,14 @@ describe("PermissionCard", () => {
     expect(result?.payload.fallbackOffered).toBe(true);
     expect(result?.payload.fallbackLabel).toBe("Use internal reminders");
   });
-
   it("preserves a permission card and its display after a 100k response prefix", () => {
-    const display = "A".repeat(120_000);
+    const display = "A".repeat(120000);
     const result = parsePermissionRequestFromText(
       `${display}\n\`\`\`json\n{"action":"permission_request","permission":"reminders","reason":"add groceries","feature":"lifeops.reminders.create"}\n\`\`\``,
     );
-
     expect(result?.display).toBe(display);
     expect(result?.payload.permission).toBe("reminders");
   });
-
   it("parsePermissionRequestFromText returns null for non-permission actions", () => {
     expect(
       parsePermissionRequestFromText(
@@ -361,7 +337,6 @@ describe("PermissionCard", () => {
       ),
     ).toBeNull();
   });
-
   it("hides fallback button when fallbackOffered is false", () => {
     render(
       <PermissionCard

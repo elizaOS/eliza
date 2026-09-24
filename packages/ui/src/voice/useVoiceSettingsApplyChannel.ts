@@ -14,11 +14,10 @@
  * partial broadcast can only ever write a known continuous mode or a fully
  * numeric VAD pair, never a malformed value into the capture path.
  */
-
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared";
+} from "@elizaos/core/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   loadOsIntentAutoStartConsent,
@@ -28,19 +27,15 @@ import {
 } from "../state/persistence";
 import { readContinuousMode, readVadAutoStop } from "./voice-settings-payload";
 
-export type { VoiceSettingsApplyPayload } from "@elizaos/shared";
+export type { VoiceSettingsApplyPayload } from "@elizaos/core/events";
 export { VOICE_SETTINGS_APPLY_EVENT };
-
 export function useVoiceSettingsApplyChannel(): void {
   useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
     const payload = event.payload as VoiceSettingsApplyPayload;
-
     const continuous = readContinuousMode(payload.continuous);
     if (continuous) saveContinuousChatMode(continuous);
-
     const vadAutoStop = readVadAutoStop(payload.vadAutoStop);
     if (vadAutoStop) saveVadAutoStop(vadAutoStop);
-
     if (
       typeof payload.osIntentAutoStartVoice === "boolean" ||
       typeof payload.osIntentAutoStartTranscription === "boolean"

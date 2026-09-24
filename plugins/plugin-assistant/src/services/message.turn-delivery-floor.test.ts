@@ -168,6 +168,10 @@ function createHarness(
     getCurrentRunId: vi.fn(() => runId),
     endRun: vi.fn(),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: vi.fn(async (memory: Memory) => {
       persisted.push(memory);
       return asUUID(v4());

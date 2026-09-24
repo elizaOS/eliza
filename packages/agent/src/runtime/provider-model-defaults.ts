@@ -6,7 +6,7 @@
  * Seeding order matters: every default here is set-if-missing, so explicit
  * operator config (env or character settings folded into env) always wins.
  */
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 
 /** Set an env default without clobbering an operator-provided value. */
 export function setEnvIfMissing(key: string, value: string | undefined): void {

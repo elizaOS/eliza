@@ -6,9 +6,11 @@
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/auth/auth": ["../../packages/auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/plugin-agent-orchestrator": ["./src/index.ts"]
+      "@elizaos/plugin-agent-orchestrator": ["./src/index.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
+        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
+      ]
     }
   },
   "include": [

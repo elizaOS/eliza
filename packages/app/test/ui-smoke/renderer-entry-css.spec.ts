@@ -57,10 +57,11 @@ test.beforeAll(async () => {
     ],
     resolve: {
       alias: {
-        "@elizaos/shared/elizacloud/domain-contract": path.join(
-          appRoot,
-          "../shared/src/elizacloud/domain-contract.ts",
-        ),
+        "../../../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts":
+          path.join(
+            appRoot,
+            "../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts",
+          ),
       },
     },
     define: {
@@ -101,7 +102,7 @@ for (const [route, renderer] of [
   ["/login", "public-web-entry"],
   ["/agent", "main"],
 ] as const) {
-  test(`${renderer} loads its own CSS without evaluating other renderers`, async ({
+  test(`${route}: ${renderer} loads its own CSS without evaluating other renderers`, async ({
     page,
   }) => {
     await page.goto(`https://eliza.app${route}`);

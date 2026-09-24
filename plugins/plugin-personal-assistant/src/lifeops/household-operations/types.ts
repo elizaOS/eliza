@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { ElizaError, stableStringify } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/shared";
+import { isValidTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 
 export type HouseholdOperationsJson =
   | null

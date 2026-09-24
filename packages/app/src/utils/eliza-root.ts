@@ -2,34 +2,22 @@
  * Locates the elizaOS core package root at runtime by walking ancestor
  * directories until it finds a `package.json` whose name is `"eliza"`. Candidate
  * start dirs are derived from a module URL, `argv[1]` (including
- * `node_modules/.bin` shim resolution), and the cwd. Exposes async
- * (`resolveElizaPackageRoot`) and sync (`resolveElizaPackageRootSync`) variants;
- * both return null when no matching root is found.
+ * `node_modules/.bin` shim resolution), and the cwd. Returns null when no matching root is found.
  */
 import fsSync from "node:fs";
-import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CORE_PACKAGE_NAME = "eliza";
-
-async function readPackageName(dir: string): Promise<string | null> {
-  try {
-    const raw = await fs.readFile(path.join(dir, "package.json"), "utf-8");
-    const parsed = JSON.parse(raw) as { name?: unknown };
-    return typeof parsed.name === "string" ? parsed.name : null;
-  } catch {
-    return null;
-  }
-}
 
 function readPackageNameSync(dir: string): string | null {
   try {
     const raw = fsSync.readFileSync(path.join(dir, "package.json"), "utf-8");
     const parsed = JSON.parse(raw) as { name?: unknown };
     return typeof parsed.name === "string" ? parsed.name : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
 }
 
@@ -45,19 +33,6 @@ function listAncestorDirs(startDir: string, maxDepth = 12): string[] {
     current = parent;
   }
   return dirs;
-}
-
-async function findPackageRoot(
-  startDir: string,
-  maxDepth = 12,
-): Promise<string | null> {
-  for (const candidate of listAncestorDirs(startDir, maxDepth)) {
-    const name = await readPackageName(candidate);
-    if (name === CORE_PACKAGE_NAME) {
-      return candidate;
-    }
-  }
-  return null;
 }
 
 function findPackageRootSync(startDir: string, maxDepth = 12): string | null {
@@ -103,21 +78,6 @@ function candidateDirsFromOptions(opts: ResolveElizaRootOptions): string[] {
   }
 
   return candidates;
-}
-
-export async function resolveElizaPackageRoot(
-  opts: ResolveElizaRootOptions,
-): Promise<string | null> {
-  const candidates = candidateDirsFromOptions(opts);
-
-  for (const candidate of candidates) {
-    const found = await findPackageRoot(candidate);
-    if (found) {
-      return found;
-    }
-  }
-
-  return null;
 }
 
 export function resolveElizaPackageRootSync(

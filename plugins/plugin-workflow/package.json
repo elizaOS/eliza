@@ -74,14 +74,12 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@types/bun": "1.4.2",
     "@types/node": "^25.1.0",
     "bun-types": "1.4.2",
@@ -99,7 +97,6 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/shared": "workspace:*",
     "smthrs": "0.35.0",
     "zod": "^4.6.5",
     "drizzle-orm": "0.45.2",

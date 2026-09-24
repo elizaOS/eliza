@@ -3,8 +3,8 @@
   "compilerOptions": {
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
-      "@elizaos/shared": ["../../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../../packages/shared/dist/*"]
+      "@elizaos/plugin-sqlite": ["../../plugin-sqlite/index.ts"],
+      "@elizaos/plugin-sql/database-utils/*": ["./database-utils/*"]
     }
   }
 }

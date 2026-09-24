@@ -6,7 +6,6 @@
  * evidence for the subject without allowing owner state or model parameters
  * to select a jurisdiction, grant access, or authorize disclosure.
  */
-
 import crypto from "node:crypto";
 import {
   ElizaError,
@@ -14,8 +13,11 @@ import {
   type Memory,
   Service,
 } from "@elizaos/core";
+import {
+  type Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { type Entity, SELF_ENTITY_ID } from "@elizaos/shared";
 import { resolveAuthenticatedFamilyPrincipal } from "../family-communications/production-wiring.js";
 import {
   createHouseholdCoordinationService,
@@ -50,22 +52,18 @@ import {
   type ParentingRequesterRole,
   type ParentingTopic,
 } from "./types.js";
-
 export const PARENTING_GUIDANCE_SERVICE = "lifeops_parenting_guidance";
 export const PARENTING_AGE_BAND_ATTRIBUTE =
   "lifeops.parenting.ageBand" as const;
 export const PARENTING_RECORD_SCOPE_ATTRIBUTE =
   "lifeops.parenting.recordScope" as const;
-
 export type ParentingGuidanceErrorCode =
   | "PARENTING_GUIDANCE_ACCESS_DENIED"
   | "PARENTING_GUIDANCE_CONTEXT_INCOMPLETE"
   | "PARENTING_GUIDANCE_GRAPH_UNAVAILABLE"
   | "PARENTING_GUIDANCE_PERSISTED_DATA_INVALID";
-
 export class ParentingGuidanceError extends ElizaError {
   override readonly name = "ParentingGuidanceError";
-
   constructor(
     message: string,
     code: ParentingGuidanceErrorCode,
@@ -84,7 +82,6 @@ export class ParentingGuidanceError extends ElizaError {
     });
   }
 }
-
 export interface ParentingGuidanceConversationInput {
   readonly message: Memory;
   readonly subjectEntityId?: string;
@@ -92,7 +89,6 @@ export interface ParentingGuidanceConversationInput {
   readonly topic: ParentingTopic;
   readonly requestedFramework?: "none" | "good_inside";
 }
-
 export interface ParentingGuidanceDelivery {
   readonly schemaVersion: typeof PARENTING_GUIDANCE_VERSION;
   readonly guidanceId: string;
@@ -108,7 +104,6 @@ export interface ParentingGuidanceDelivery {
   readonly humanNextStep: string;
   readonly externalEffectsPerformed: false;
 }
-
 export interface ParentingGuidanceServiceDependencies {
   readonly runtime: IAgentRuntime;
   readonly now?: () => Date;
@@ -121,7 +116,6 @@ export interface ParentingGuidanceServiceDependencies {
   ) => HouseholdCoordinationService;
   readonly requestId?: () => string;
 }
-
 interface SubjectContext {
   readonly subjectEntityId: string;
   readonly ageBand: ParentingAgeBand;
@@ -129,7 +123,6 @@ interface SubjectContext {
   readonly grantedScopes: readonly string[];
   readonly recordScope: "household_shared" | "adult_private" | "teen_private";
 }
-
 function requiredText(value: unknown, field: string, maximum?: number): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new ParentingGuidanceError(
@@ -148,7 +141,6 @@ function requiredText(value: unknown, field: string, maximum?: number): string {
   }
   return normalized;
 }
-
 function requesterRole(
   principalEntityId: string,
   binding: HouseholdRoleBinding | undefined,
@@ -179,7 +171,6 @@ function requesterRole(
   }
   return roleMap[binding.role];
 }
-
 function trustedAttribute(entity: Entity, key: string): unknown | undefined {
   const attribute = entity.attributes?.[key];
   if (!attribute) return undefined;
@@ -196,7 +187,6 @@ function trustedAttribute(entity: Entity, key: string): unknown | undefined {
   }
   return attribute.value;
 }
-
 function ageBandFrom(
   entity: Entity,
   requested: ParentingAgeBand | undefined,
@@ -222,7 +212,6 @@ function ageBandFrom(
     { subjectEntityId: entity.entityId },
   );
 }
-
 function recordScopeFrom(
   entity: Entity,
 ): "household_shared" | "adult_private" | "teen_private" {
@@ -241,7 +230,6 @@ function recordScopeFrom(
     { entityId: entity.entityId },
   );
 }
-
 function candidateSubjectId(input: {
   requested?: string;
   principalEntityId: string;
@@ -279,7 +267,6 @@ function candidateSubjectId(input: {
     { candidateCount: accessibleChildIds.length },
   );
 }
-
 function validateTopic(topic: ParentingTopic): ParentingTopic {
   if (!PARENTING_TOPICS.includes(topic)) {
     throw new ParentingGuidanceError(
@@ -290,7 +277,6 @@ function validateTopic(topic: ParentingTopic): ParentingTopic {
   }
   return topic;
 }
-
 function validateFramework(
   framework: "none" | "good_inside" | undefined,
 ): "none" | "good_inside" {
@@ -302,7 +288,6 @@ function validateFramework(
     { framework },
   );
 }
-
 function guidanceUncertainty(
   decision: ParentingGuidanceDecision,
   resources: ParentingHandoffResourceResolution,
@@ -318,7 +303,6 @@ function guidanceUncertainty(
   }
   return "The available structural evidence is not sufficient for ordinary guidance.";
 }
-
 function humanNextStep(
   decision: ParentingGuidanceDecision,
   resources: ParentingHandoffResourceResolution,
@@ -350,12 +334,10 @@ function humanNextStep(
       return "Clarify whether anyone may be in immediate danger and whether self-harm, harm to others, abuse, medication, severe symptoms, or a legal question is involved before using ordinary parenting options.";
   }
 }
-
 function contactText(contact: ParentingHandoffContact): string {
   if (contact.kind === "website") return `${contact.label}: ${contact.url}`;
   return `${contact.label}: ${contact.value}`;
 }
-
 export function renderParentingGuidanceDelivery(
   delivery: ParentingGuidanceDelivery,
 ): string {
@@ -406,7 +388,6 @@ export function renderParentingGuidanceDelivery(
   lines.push(`Human next step: ${delivery.humanNextStep}`);
   return lines.join("\n");
 }
-
 export class ParentingGuidanceService {
   private readonly now: () => Date;
   private readonly authenticate: NonNullable<
@@ -416,7 +397,6 @@ export class ParentingGuidanceService {
     ParentingGuidanceServiceDependencies["resolveHousehold"]
   >;
   private readonly requestId: () => string;
-
   constructor(private readonly deps: ParentingGuidanceServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.authenticate =
@@ -429,7 +409,6 @@ export class ParentingGuidanceService {
     this.requestId =
       deps.requestId ?? (() => `parenting-guidance:${crypto.randomUUID()}`);
   }
-
   private async subjectContext(input: {
     principalEntityId: string;
     requestedSubjectEntityId?: string;
@@ -521,7 +500,6 @@ export class ParentingGuidanceService {
       recordScope: recordScopeFrom(entity),
     };
   }
-
   async advise(
     input: ParentingGuidanceConversationInput,
   ): Promise<ParentingGuidanceDelivery> {
@@ -619,15 +597,11 @@ export class ParentingGuidanceService {
     };
   }
 }
-
 export class ParentingGuidanceRuntimeService extends Service {
   static override serviceType = PARENTING_GUIDANCE_SERVICE;
-
   override capabilityDescription =
     "Authenticated, source-grounded parenting education with structural safety/privacy gates and subject-location-bound human handoffs";
-
   readonly guidance: ParentingGuidanceService;
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (!runtime) {
@@ -638,22 +612,18 @@ export class ParentingGuidanceRuntimeService extends Service {
     }
     this.guidance = new ParentingGuidanceService({ runtime });
   }
-
   static async start(
     runtime: IAgentRuntime,
   ): Promise<ParentingGuidanceRuntimeService> {
     return new ParentingGuidanceRuntimeService(runtime);
   }
-
   async stop(): Promise<void> {}
-
   advise(
     input: ParentingGuidanceConversationInput,
   ): Promise<ParentingGuidanceDelivery> {
     return this.guidance.advise(input);
   }
 }
-
 export function getParentingGuidanceService(
   runtime: IAgentRuntime,
 ): ParentingGuidanceRuntimeService | null {

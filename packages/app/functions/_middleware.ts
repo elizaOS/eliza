@@ -29,13 +29,12 @@
 //   worker gets `no-store` (not `no-cache`) so the zone edge never caches it:
 //   an edge-cached .js response has its browser TTL rewritten to the zone
 //   default (max-age=14400), which would delay SW update propagation by hours.
-
 import {
   canonicalCloudPathForLegacyDashboard,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
@@ -43,12 +42,10 @@ interface MiddlewareContext {
   env: PagesProxyEnv;
   next: (input?: Request) => Promise<Response>;
 }
-
 const OIDC_PROTOCOL_PATHS = new Set([
   "/.well-known/openid-configuration",
   "/.well-known/oidc/jwks.json",
 ]);
-
 function isProtocolPath(pathname: string): boolean {
   return (
     pathname === "/api" ||
@@ -58,7 +55,6 @@ function isProtocolPath(pathname: string): boolean {
     OIDC_PROTOCOL_PATHS.has(pathname)
   );
 }
-
 /** Resolve browser-facing legacy aliases to their canonical host. */
 export function resolveCanonicalPageRedirect(
   requestUrl: string,
@@ -69,7 +65,6 @@ export function resolveCanonicalPageRedirect(
   if (LANDING_AB_HOSTNAMES.includes(url.hostname.toLowerCase())) return null;
   const classified = classifyElizaHostname(url.hostname);
   if (!classified.environment) return null;
-
   const contract = ELIZA_DOMAIN_CONTRACTS[classified.environment];
   const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
     url.pathname,
@@ -103,15 +98,12 @@ export function resolveCanonicalPageRedirect(
   }
   return origin ? `${origin}${url.pathname}${url.search}` : null;
 }
-
 const ASSETS_PREFIX = "/assets/";
 const SERVICE_WORKER_PATH = "/sw.js";
-
 // Vite content-hashes every file it emits under /assets/, so a hit is
 // immutable by construction; a byte change always produces a new filename.
 const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const SERVICE_WORKER_CACHE_CONTROL = "no-store";
-
 const withCacheControl = (response: Response, value: string): Response => {
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", value);
@@ -121,7 +113,6 @@ const withCacheControl = (response: Response, value: string): Response => {
     headers,
   });
 };
-
 // The SPA fallback is the only text/html producer under /assets/ — the Vite
 // asset dir contains js/css/fonts/wasm/images only — so an html content type
 // is the definitive miss signal.
@@ -129,7 +120,6 @@ const isSpaFallback = (response: Response): boolean =>
   (response.headers.get("Content-Type") ?? "")
     .toLowerCase()
     .includes("text/html");
-
 const serveAsset = async (context: MiddlewareContext): Promise<Response> => {
   const headers = new Headers(context.request.headers);
   headers.delete("If-None-Match");
@@ -137,7 +127,6 @@ const serveAsset = async (context: MiddlewareContext): Promise<Response> => {
   const response = await context.next(
     new Request(context.request, { headers }),
   );
-
   if (isSpaFallback(response)) {
     // Constructed responses bypass `public/_headers`, so the safety headers
     // are set explicitly. no-store keeps the 404 out of every cache layer so
@@ -152,12 +141,10 @@ const serveAsset = async (context: MiddlewareContext): Promise<Response> => {
       },
     });
   }
-
   return response.ok
     ? withCacheControl(response, ASSET_CACHE_CONTROL)
     : response;
 };
-
 // robots.txt and sitemap.xml ship as ordinary files in `public/`, so the Pages
 // static layer already serves their bytes through next(). The middleware only
 // has to keep them out of the fail-closed .txt/.xml 404 below and pin the
@@ -170,13 +157,11 @@ const CRAWL_ASSET_CONTENT_TYPES = new Map([
   ["/robots.txt", "text/plain; charset=utf-8"],
   ["/sitemap.xml", "application/xml; charset=utf-8"],
 ]);
-
 const serveCrawlAsset = async (
   context: MiddlewareContext,
   contentType: string,
 ): Promise<Response> => {
   const response = await context.next();
-
   // A static miss falls through to index.html. Serving that as robots.txt
   // would advertise an HTML document as the crawl policy, so it fails closed
   // and is loud enough to notice in Cloudflare's status metrics.
@@ -190,14 +175,12 @@ const serveCrawlAsset = async (
       },
     });
   }
-
   const headers = new Headers(response.headers);
   headers.set("Content-Type", contentType);
   headers.set("Cache-Control", "no-cache");
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(response.body, { status: response.status, headers });
 };
-
 // The hosted-web SPA is embedded inside the Discord Activities and Telegram
 // Mini App iframes. The global `public/_headers` rule pins every response to
 // `X-Frame-Options: SAMEORIGIN` + CSP `frame-ancestors 'self'`, which denies
@@ -205,24 +188,19 @@ const serveCrawlAsset = async (
 // embedding policy for the one requesting platform — never a wildcard, never
 // both platforms at once — and denies it everywhere else.
 export type EmbedPlatform = "telegram" | "discord";
-
 const EMBED_FRAME_ANCESTORS: Record<EmbedPlatform, string> = {
   telegram: "frame-ancestors https://web.telegram.org https://*.telegram.org",
   discord: "frame-ancestors https://discord.com https://*.discord.com",
 };
-
 const EMBED_FRAME_ANCESTORS_DENY = "frame-ancestors 'none'";
-
 const isEmbedPlatform = (value: string | null): value is EmbedPlatform =>
   value === "telegram" || value === "discord";
-
 // Maps the requesting platform to its `frame-ancestors` CSP directive. Unknown
 // or missing platforms get `'none'` so the embed surface fails closed.
 export const embedFrameAncestors = (platform: string | null): string =>
   isEmbedPlatform(platform)
     ? EMBED_FRAME_ANCESTORS[platform]
     : EMBED_FRAME_ANCESTORS_DENY;
-
 /**
  * Replace only the `frame-ancestors` directive inside an existing CSP string,
  * preserving every other directive. The `/embed` route must relax framing
@@ -250,35 +228,28 @@ export const swapCspFrameAncestors = (
   }
   return directives.join("; ");
 };
-
 const isEmbedPath = (pathname: string): boolean =>
   pathname === "/embed" || pathname.startsWith("/embed/");
-
 export const onRequest = async (
   context: MiddlewareContext,
 ): Promise<Response> => {
   const url = new URL(context.request.url);
-
   const canonicalRedirect = resolveCanonicalPageRedirect(url.href);
   if (canonicalRedirect) {
     return Response.redirect(canonicalRedirect, 308);
   }
-
   if (isProtocolPath(url.pathname)) {
     return proxyToApiWorker(context);
   }
-
   if (url.pathname.startsWith(ASSETS_PREFIX)) {
     return serveAsset(context);
   }
-
   // A single lookup decides both that this is a crawl asset and what type it
   // must be served as, so the two can never drift apart.
   const crawlAssetContentType = CRAWL_ASSET_CONTENT_TYPES.get(url.pathname);
   if (crawlAssetContentType !== undefined) {
     return serveCrawlAsset(context, crawlAssetContentType);
   }
-
   if (
     !isProtocolPath(url.pathname) &&
     !url.pathname.startsWith(ASSETS_PREFIX) &&
@@ -293,17 +264,13 @@ export const onRequest = async (
       },
     });
   }
-
   const response = await context.next();
-
   if (url.pathname === SERVICE_WORKER_PATH) {
     return withCacheControl(response, SERVICE_WORKER_CACHE_CONTROL);
   }
-
   if (!isEmbedPath(url.pathname)) {
     return response;
   }
-
   // Serve the same SPA bundle, but override the frame embedding policy so the
   // page renders inside the matched platform's iframe. Only the
   // `frame-ancestors` value inside the inherited `_headers` CSP is swapped —
@@ -321,7 +288,6 @@ export const onRequest = async (
       : frameAncestors,
   );
   headers.delete("X-Frame-Options");
-
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

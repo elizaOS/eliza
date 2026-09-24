@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
+import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/core/voice/first-sentence-snip";
 import {
 	fingerprintVoiceSettings,
 	FirstLineCache,

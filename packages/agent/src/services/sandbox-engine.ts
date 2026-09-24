@@ -6,7 +6,7 @@ import { ElizaError, logger, sanitizeSpawnEnv } from "@elizaos/core";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/core/host-execution-env";
 
 export type SandboxEngineType = "docker" | "apple-container" | "auto";
 

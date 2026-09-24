@@ -46,6 +46,7 @@ function write(repoRoot: string, relPath: string, content: string): void {
 /** Fixture repo mirroring the real silo layouts inspected on develop. */
 function buildFixtureRepo(): string {
   const repo = tmpDir();
+  write(repo, "test-results/android-native-agent/runs/run/report.json", "{}");
   write(
     repo,
     "test-results/android-native-plugins/run/emulator/report.json",
@@ -353,6 +354,7 @@ describe("ingestAllSilos", () => {
         artifactCount,
       ]),
     ).toEqual([
+      ["android-native-agent", "ingested", 1],
       ["android-native-plugins", "ingested", 1],
       ["e2e-recordings", "ingested", 3],
       ["aesthetic-audit", "ingested", 5],

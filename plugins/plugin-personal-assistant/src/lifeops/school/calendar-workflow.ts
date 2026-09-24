@@ -19,11 +19,11 @@ import {
   ServiceType,
   stringToUuid,
 } from "@elizaos/core";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import { fetchRemoteMedia, readResponseWithLimit } from "@elizaos/core/media";
 import { DocumentService } from "@elizaos/plugin-assistant";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar";
 import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { fetchRemoteMedia, readResponseWithLimit } from "@elizaos/shared/media";
 import {
   beginFamilyWorkspaceOperation,
   settleFamilyWorkspaceOperation,

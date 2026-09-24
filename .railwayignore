@@ -9,7 +9,7 @@
 # itself died (live: staging gateway deploy run 31877865041, 2026-08-15).
 #
 # Every Railway-deployed service's Dockerfile COPYs only from
-# packages/cloud/**, packages/core, packages/logger, packages/shared and
+# packages/cloud/**, packages/core, packages/logger, packages/core and
 # workspace manifests — none of the trees below are ever part of a Railway
 # build context, so excluding them cannot change any image. This file is
 # about UPLOAD size only; repo-level artifact policy (LFS/releases) is a

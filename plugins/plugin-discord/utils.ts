@@ -22,7 +22,7 @@ import {
 	trimTokens,
 	truncateWellFormed,
 } from "@elizaos/core";
-import { fetchRemoteMedia, MediaFetchError } from "@elizaos/shared/media";
+import { fetchRemoteMedia, MediaFetchError } from "@elizaos/core/media";
 
 export { normalizeDiscordMessageText } from "./discord-structured-text";
 

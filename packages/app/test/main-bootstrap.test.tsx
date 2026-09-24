@@ -226,7 +226,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
       ...bindings,
       exports: {},
       APP_BRANDING: { version },
-      CodingAgentTasksPanel: () => null,
+      AppBlockerSettingsCard: () => null,
       hot: hotEnabled
         ? {
             data: hotData,
@@ -323,8 +323,8 @@ describe("main renderer bootstrap ownership", () => {
       apiToken: "test-runtime-token",
     });
     expect(harness.getBootConfig().runtimeOwned).toBe(firstConfig.runtimeOwned);
-    expect(harness.getBootConfig().codingAgentTasksPanel).not.toBe(
-      firstConfig.codingAgentTasksPanel,
+    expect(harness.getBootConfig().appBlockerSettingsCard).not.toBe(
+      firstConfig.appBlockerSettingsCard,
     );
     expect(
       document.querySelector('[data-bootstrap-version="second"]'),

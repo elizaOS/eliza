@@ -8,13 +8,12 @@
  * installed at runtime) and runtime-registered overlay apps are merged in on the
  * frontend; this endpoint covers only the static, declared catalog.
  */
-
 import type http from "node:http";
 import { resolveAppHeroImage } from "@elizaos/agent";
-import type { RegistryAppInfo } from "@elizaos/shared";
-import { type AppEntry, getApps, loadRegistry } from "@elizaos/shared/catalog";
+import { type AppEntry, getApps, loadRegistry } from "@elizaos/core/catalog";
+import { type RegistryAppInfo } from "@elizaos/core/contracts/apps";
 import { ensureRouteAuthorized } from "./auth.ts";
-import type { CompatRuntimeState } from "./compat-route-shared";
+import { type CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 
 function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
@@ -51,7 +50,6 @@ function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
     uiExtension: entry.launch.uiExtension,
   };
 }
-
 export async function handleCatalogRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -59,17 +57,14 @@ export async function handleCatalogRoutes(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
-
   if (!url.pathname.startsWith("/api/catalog")) {
     return false;
   }
-
   if (method === "GET" && url.pathname === "/api/catalog/apps") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const apps = getApps(loadRegistry()).filter((a) => a.render.visible);
     sendJsonResponse(res, 200, apps.map(appEntryToRegistryAppInfo));
     return true;
   }
-
   return false;
 }

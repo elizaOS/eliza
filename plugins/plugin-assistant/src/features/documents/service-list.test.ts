@@ -186,7 +186,26 @@ describe("DocumentService complete source reads", () => {
         userMessage(),
       ),
     ).resolves.toMatchObject({ text: prefix, start: 0, end: 1 });
+    const accessContext = {
+      requesterEntityId: USER_ID,
+      role: "USER" as const,
+      isOwner: false,
+    };
+    await expect(
+      service.readDocumentRangeWithAccessContext(
+        added.storedDocumentMemoryId,
+        { unit: "byte", offset: 0 },
+        accessContext,
+      ),
+    ).resolves.toMatchObject({ text: content });
     await adapter.deleteParticipants([{ entityId: USER_ID, roomId: ROOM_A }]);
+    await expect(
+      service.readDocumentRangeWithAccessContext(
+        added.storedDocumentMemoryId,
+        { unit: "byte", offset: 0 },
+        accessContext,
+      ),
+    ).resolves.toBeNull();
     await expect(
       service.readDocumentRange(
         added.storedDocumentMemoryId,

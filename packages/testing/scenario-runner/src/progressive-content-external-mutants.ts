@@ -2,11 +2,10 @@
  * Completes the progressive-content external mutant catalog with real private
  * artifact readback and selected-live credential preflight operations.
  */
-
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {
   createCoreProgressiveContentExternalMutantExecutors,
   type ProgressiveContentExternalMutantExecutor,
@@ -22,10 +21,8 @@ import { scenarioLiveProviderPreflightProblems } from "./runtime-factory.ts";
 const OWNER_AGENT = "00000000-0000-4000-8000-000000000101";
 const OWNER_CONVERSATION = "00000000-0000-4000-8000-000000000102";
 const STATE_DIR_ENV_KEY = ["ELIZA", "STATE_DIR"].join("_");
-
 class ExternalMutantKilledError extends Error {
   readonly vector: string;
-
   constructor(vector: string, cause: unknown) {
     super(`Progressive-content external mutant rejected by ${vector}`, {
       cause,
@@ -34,7 +31,6 @@ class ExternalMutantKilledError extends Error {
     this.vector = vector;
   }
 }
-
 function reexternalizedArtifactExecutor(): ProgressiveContentExternalMutantExecutor {
   return {
     async execute() {
@@ -98,7 +94,6 @@ function reexternalizedArtifactExecutor(): ProgressiveContentExternalMutantExecu
     },
   };
 }
-
 function selectedLiveCredentialExecutor(): ProgressiveContentExternalMutantExecutor {
   return {
     execute() {
@@ -131,7 +126,6 @@ function selectedLiveCredentialExecutor(): ProgressiveContentExternalMutantExecu
     },
   };
 }
-
 /** Build the exact 13-member, production-backed external executor registry. */
 export function createProgressiveContentExternalMutantExecutors(): Record<
   ProgressiveContentExternalMutantId,

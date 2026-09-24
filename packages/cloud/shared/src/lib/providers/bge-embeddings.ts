@@ -1,6 +1,6 @@
 /** Applies the canonical BGE input, vector identity, normalization and batch accounting contract to backend transports. */
 import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import type { EmbeddingModel } from "ai";
 import { z } from "zod";
 

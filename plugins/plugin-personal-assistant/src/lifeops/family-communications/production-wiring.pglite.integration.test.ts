@@ -3,6 +3,7 @@
  * non-owner ingress, short-lived attestations, and structural child schedule
  * projection. Spoofed or ambiguous identity metadata must fail closed.
  */
+
 import { randomUUID } from "node:crypto";
 import {
   type AgentRuntime,
@@ -12,8 +13,8 @@ import {
   setEntityRole,
   type UUID,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -58,7 +59,6 @@ describe("family communications production wiring — real PGlite", () => {
   const ambiguousHandle = `telegram-${randomUUID()}`;
   const testRoomId = randomUUID() as UUID;
   const testWorldId = randomUUID() as UUID;
-
   async function putPerson(input: {
     entityId: string;
     handle?: string;
@@ -89,7 +89,6 @@ describe("family communications production wiring — real PGlite", () => {
       state: {},
     });
   }
-
   async function bindChild(entityId: string): Promise<void> {
     await household.bindRole({
       entityId,
@@ -106,7 +105,6 @@ describe("family communications production wiring — real PGlite", () => {
       issuedByEntityId: SELF_ENTITY_ID,
     });
   }
-
   async function establishRuntimeUser(entityId: string): Promise<void> {
     await runtime.ensureConnection({
       entityId: entityId as UUID,
@@ -129,7 +127,6 @@ describe("family communications production wiring — real PGlite", () => {
     seed.worldId = testWorldId;
     await setEntityRole(runtime, seed, entityId, "USER");
   }
-
   function connectorMessage(input: {
     entityId: string;
     handle: string;
@@ -163,7 +160,6 @@ describe("family communications production wiring — real PGlite", () => {
     };
     return message;
   }
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -206,12 +202,10 @@ describe("family communications production wiring — real PGlite", () => {
     ]) {
       await bindChild(entityId);
     }
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   it("registers the action and ordered runtime verifier/service in the production plugin", () => {
     const serviceTypes = (personalAssistantPlugin.services ?? []).map(
       (service) => service.serviceType,
@@ -237,7 +231,6 @@ describe("family communications production wiring — real PGlite", () => {
     expect(getAuthenticatedRuntimeSpeakerVerifier(runtime)).not.toBeNull();
     expect(getFamilyCommunicationsService(runtime)).not.toBeNull();
   });
-
   it("uses a verified direct-message identity to mint a short-lived attestation and run the inert action path", async () => {
     const message = connectorMessage({
       entityId: verifiedChildId,
@@ -257,7 +250,6 @@ describe("family communications production wiring — real PGlite", () => {
     await expect(
       verifier.verify({ ...issued.attestation, proof: "tampered-proof" }),
     ).resolves.toEqual({ kind: "unverified", reason: "invalid_proof" });
-
     const action = createFamilyCommunicationsAction({
       resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
       issueSpeakerAttestation: issueAuthenticatedMessageSpeakerAttestation,
@@ -318,7 +310,6 @@ describe("family communications production wiring — real PGlite", () => {
         : undefined,
     );
   });
-
   it("rejects entity, platformName, and content-metadata impersonation", async () => {
     const entityOnly = createMessageMemory({
       id: randomUUID() as UUID,
@@ -334,7 +325,6 @@ describe("family communications production wiring — real PGlite", () => {
     await expect(
       resolveAuthenticatedFamilyPrincipal(runtime, entityOnly),
     ).resolves.toBeNull();
-
     const contentSpoof = createMessageMemory({
       id: randomUUID() as UUID,
       entityId: verifiedChildId as UUID,
@@ -357,7 +347,6 @@ describe("family communications production wiring — real PGlite", () => {
     await expect(
       resolveAuthenticatedFamilyPrincipal(runtime, contentSpoof),
     ).resolves.toBeNull();
-
     const mismatchedEntity = connectorMessage({
       entityId: outsiderId,
       handle: verifiedHandle,
@@ -373,7 +362,6 @@ describe("family communications production wiring — real PGlite", () => {
       code: "FAMILY_COMMUNICATIONS_ACCESS_DENIED",
     });
   });
-
   it.each(["client_chat", "api", "sub_agent"])(
     "rejects the %s provider even when connector-like metadata is present",
     async (provider) => {
@@ -387,7 +375,6 @@ describe("family communications production wiring — real PGlite", () => {
       ).resolves.toBeNull();
     },
   );
-
   it.each(["group", "public"])(
     "rejects a %s channel for non-owner family authentication",
     async (chatType) => {
@@ -401,7 +388,6 @@ describe("family communications production wiring — real PGlite", () => {
       ).resolves.toBeNull();
     },
   );
-
   it("rejects unverified and ambiguous connector claims before role/scope authorization", async () => {
     const unverified = connectorMessage({
       entityId: unverifiedChildId,
@@ -418,7 +404,6 @@ describe("family communications production wiring — real PGlite", () => {
       resolveAuthenticatedFamilyPrincipal(runtime, ambiguous),
     ).resolves.toBeNull();
   });
-
   it("keeps the owner path role-authenticated and projects only exact child household schedules", async () => {
     const ownerMessage = createMessageMemory({
       id: randomUUID() as UUID,

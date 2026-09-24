@@ -6,11 +6,11 @@
  * state — onboarding state lives in the conductor's refs plus `firstRunComplete`.
  */
 
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  getDefaultStylePreset,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/service-routing";
 import type { UiLanguage } from "../i18n";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
@@ -18,9 +18,7 @@ import {
   buildFirstRunRuntimeConfig,
 } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
-
 export type FirstRunRuntime = "local" | "cloud" | "remote";
-
 /**
  * When the user picks the Local runtime, this is the inference sub-choice:
  * - `all-local` runs every model on-device (kicks off model downloads now).
@@ -36,12 +34,9 @@ export type FirstRunLocalInference =
   | "all-local"
   | "cloud-inference"
   | "configure-later";
-
 const FIRST_RUN_STATE_STORAGE_KEY = "eliza:first-run";
-
 /** Default agent name when the user does not pick one (the first style preset). */
 export const DEFAULT_AGENT_NAME = getDefaultStylePreset().name;
-
 export interface FirstRunProfileDraft {
   agentName: string;
   runtime: FirstRunRuntime;
@@ -49,28 +44,23 @@ export interface FirstRunProfileDraft {
   remoteApiBase: string;
   remoteToken: string;
 }
-
 export interface FirstRunSubmitPlan {
   payload: Record<string, unknown>;
   runtimeConfig: BuildFirstRunRuntimeConfigResult;
 }
-
 export interface FirstRunSubmitValidation {
   valid: boolean;
   message: string | null;
 }
-
 function trimmedOrDefault(value: string, fallback: string): string {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : fallback;
 }
-
 export function normalizeFirstRunName(
   value: string | null | undefined,
 ): string {
   return (value ?? "").trim().replace(/\s+/g, " ");
 }
-
 /** Drop the legacy wizard's persisted draft (old installs may still carry it). */
 export function clearPersistedFirstRunState(): void {
   if (typeof window === "undefined") return;
@@ -82,7 +72,6 @@ export function clearPersistedFirstRunState(): void {
     return;
   }
 }
-
 export function firstRunRuntimeTarget(
   runtime: FirstRunRuntime,
   localInference: FirstRunLocalInference = "all-local",
@@ -91,7 +80,6 @@ export function firstRunRuntimeTarget(
   if (runtime === "remote") return "remote";
   return localInference === "cloud-inference" ? "elizacloud-hybrid" : "local";
 }
-
 /**
  * Whether the current runtime selection needs an Eliza Cloud connection before
  * setup can finish. True for the Cloud runtime and for Local + cloud-inference
@@ -109,7 +97,6 @@ export function firstRunNeedsCloudConnect(
     draft.runtime === "local" && draft.localInference === "cloud-inference"
   );
 }
-
 /**
  * Whether finishing a Local runtime should kick off the on-device model
  * download. Only `all-local` pulls a local model; `cloud-inference` routes
@@ -120,7 +107,6 @@ export function firstRunDownloadsLocalModel(
 ): boolean {
   return localInference === "all-local";
 }
-
 function normalizeRemoteTarget(value: string): string {
   return value
     .trim()
@@ -133,7 +119,6 @@ function normalizeRemoteTarget(value: string): string {
     .replace(/\s+/g, "")
     .trim();
 }
-
 function looksLikeRemoteTarget(value: string): boolean {
   if (/^https?:\/\//i.test(value)) {
     try {
@@ -151,7 +136,6 @@ function looksLikeRemoteTarget(value: string): boolean {
     value,
   );
 }
-
 export function validateFirstRunSubmitDraft(
   draft: FirstRunProfileDraft,
 ): FirstRunSubmitValidation {
@@ -172,7 +156,6 @@ export function validateFirstRunSubmitDraft(
   }
   return { valid: true, message: null };
 }
-
 export function buildFirstRunSubmitPlan(args: {
   draft: FirstRunProfileDraft;
   uiLanguage: UiLanguage;
@@ -215,7 +198,6 @@ export function buildFirstRunSubmitPlan(args: {
   const systemPrompt =
     style.system?.replace(/\{\{name\}\}/g, agentName) ??
     `You are ${agentName}, an autonomous AI agent powered by elizaOS.`;
-
   return {
     runtimeConfig,
     payload: {

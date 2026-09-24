@@ -18,7 +18,7 @@
  * hidden with no layout breakage.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import {
   ArrowDown,
   ArrowUp,
@@ -73,7 +73,6 @@ type Translate = (
   key: string,
   vars?: Record<string, string | number | boolean | null | undefined>,
 ) => string;
-
 export interface AccountCommandTableProps {
   providerId: LinkedAccountProviderId;
   accounts: readonly AccountWithCredentialFlag[];
@@ -85,7 +84,11 @@ export interface AccountCommandTableProps {
   saving: Set<string>;
   onPatch: (
     accountId: string,
-    body: Partial<{ label: string; enabled: boolean; priority: number }>,
+    body: Partial<{
+      label: string;
+      enabled: boolean;
+      priority: number;
+    }>,
   ) => Promise<void>;
   onReauthenticate?: (account: AccountWithCredentialFlag) => void;
   onDelete: (accountId: string) => Promise<void>;
@@ -104,17 +107,14 @@ export interface AccountCommandTableProps {
     direction: "up" | "down",
   ) => Promise<void>;
 }
-
 interface UsageBarProps {
   label: string;
   pct: number | undefined;
 }
-
 function clampPct(value: number | undefined): number | undefined {
   if (value == null || Number.isNaN(value)) return undefined;
   return Math.max(0, Math.min(100, value));
 }
-
 function UsageBar({ label, pct }: UsageBarProps) {
   const clamped = clampPct(pct);
   const tone =
@@ -128,9 +128,7 @@ function UsageBar({ label, pct }: UsageBarProps) {
   return (
     <div
       className="flex items-center gap-1.5"
-      title={`${label}: ${
-        clamped == null ? "Unknown" : `${Math.round(clamped)}%`
-      }`}
+      title={`${label}: ${clamped == null ? "Unknown" : `${Math.round(clamped)}%`}`}
     >
       <span className="w-6 shrink-0 text-2xs font-medium uppercase tracking-wider text-muted">
         {label}
@@ -147,7 +145,6 @@ function UsageBar({ label, pct }: UsageBarProps) {
     </div>
   );
 }
-
 interface SortHeaderProps {
   label: string;
   columnKey: AccountSortKey;
@@ -155,7 +152,6 @@ interface SortHeaderProps {
   onSort: (key: AccountSortKey) => void;
   align?: "left" | "right";
 }
-
 function SortHeader({
   label,
   columnKey,
@@ -188,7 +184,6 @@ function SortHeader({
     </Button>
   );
 }
-
 /**
  * `aria-sort` belongs on the header CELL, not the button inside it. Returns the
  * ARIA value for a given sortable column so each sortable `<th>` announces its
@@ -201,12 +196,10 @@ function ariaSortFor(
   if (sort.key !== columnKey) return "none";
   return sort.direction === "asc" ? "ascending" : "descending";
 }
-
 interface HealthCellProps {
   account: AccountWithCredentialFlag;
   t: Translate;
 }
-
 function HealthCell({ account, t }: HealthCellProps) {
   const health = describeHealth(account);
   const countdown = health.until ? formatResetIn(health.until) : null;
@@ -228,7 +221,6 @@ function HealthCell({ account, t }: HealthCellProps) {
     </div>
   );
 }
-
 export function AccountCommandTable({
   providerId,
   accounts,
@@ -250,12 +242,10 @@ export function AccountCommandTable({
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
-
   const showLeaseColumn = useMemo(
     () => hasLeaseObservability(accounts),
     [accounts],
   );
-
   // Priority order is the pool's own ordering and the axis reorder swaps
   // operate on - kept separate from the (view-only) table sort so move
   // up/down always targets the correct neighbour even when the user has
@@ -269,11 +259,9 @@ export function AccountCommandTable({
       ),
     [accounts],
   );
-
   const rows = useMemo(() => sortAccounts(accounts, sort), [accounts, sort]);
   const hasWindowUsage =
     providerId === "anthropic-subscription" || providerId === "openai-codex";
-
   const handleSort = useCallback((key: AccountSortKey) => {
     setSort((prev) =>
       prev.key === key
@@ -286,10 +274,8 @@ export function AccountCommandTable({
           },
     );
   }, []);
-
   const deleteBusy = deleteModal.state.status === "submitting";
   const confirmingDelete = deleteModal.state.status !== "closed";
-
   const requestDelete = useCallback(
     (accountId: string) => {
       setPendingDeleteId(accountId);
@@ -297,13 +283,11 @@ export function AccountCommandTable({
     },
     [deleteModal],
   );
-
   const confirmDelete = useCallback(() => {
     if (!pendingDeleteId) return;
     const id = pendingDeleteId;
     void deleteModal.submit(() => Promise.resolve(onDelete(id)));
   }, [deleteModal, onDelete, pendingDeleteId]);
-
   const runAction = useCallback((action: () => Promise<void>) => {
     setActionError(null);
     void action().catch((error: unknown) => {
@@ -312,12 +296,10 @@ export function AccountCommandTable({
       );
     });
   }, []);
-
   const beginLabelEdit = useCallback((account: AccountWithCredentialFlag) => {
     setEditingLabelId(account.id);
     setLabelDraft(account.label);
   }, []);
-
   const finishLabelEdit = useCallback(
     (account: AccountWithCredentialFlag, save: boolean) => {
       const next = labelDraft.trim();
@@ -328,11 +310,9 @@ export function AccountCommandTable({
     },
     [labelDraft, onPatch],
   );
-
   // Column count for the empty/degenerate colspan. Base columns are:
   // account, health, usage, resets, priority, enabled, last-used, actions.
   const columnCount = showLeaseColumn ? 9 : 8;
-
   return (
     <div
       className="overflow-x-auto rounded-sm border border-border/40"

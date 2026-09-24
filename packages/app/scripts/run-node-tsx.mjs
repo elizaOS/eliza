@@ -7,6 +7,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import {
   parseRunNodeTsxArgs,
   signalChildProcessTree,
@@ -49,6 +50,11 @@ function withWorkspaceNodePath(env) {
   const modulePaths = [rootModules, bunModules];
   return {
     ...env,
+    // The launcher is also invoked from package directories whose tooling
+    // tsconfigs omit JSX. Use the repository runtime config unless overridden.
+    TSX_TSCONFIG_PATH:
+      env.TSX_TSCONFIG_PATH ||
+      fileURLToPath(new URL("../../../tsconfig.json", import.meta.url)),
     NODE_PATH: env.NODE_PATH
       ? `${modulePaths.join(path.delimiter)}${path.delimiter}${env.NODE_PATH}`
       : modulePaths.join(path.delimiter),
