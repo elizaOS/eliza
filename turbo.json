@@ -327,9 +327,6 @@
       ],
       "outputs": ["dist/**"]
     },
-    "@elizaos/lifeops-bench#build": {
-      "dependsOn": ["@elizaos/app#build:dist", "^build"]
-    },
     "@elizaos/lifeops-bench#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/app#build:dist", "^build"]
     },
