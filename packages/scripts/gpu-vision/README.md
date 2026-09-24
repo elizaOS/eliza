@@ -28,9 +28,7 @@ records when no GPU service is reachable) is a separate task in `packages/testin
 | `lib.mjs` | Shared pure logic (model pins, lockfile, version gate, arg/port helpers, readiness poller). |
 | `models.lock.json` | Pinned sha256/size/URL per blob. First real download records it; later runs verify and fail loud on drift. |
 
-The repository `test:scripts` lane discovers this unit suite. For a focused
-run, use `node --test packages/scripts/gpu-vision/*.test.mjs`. Operational scripts are
-invoked directly by path: `node packages/scripts/gpu-vision/<script>.mjs`.
+Operational scripts are invoked directly by path: `node packages/scripts/gpu-vision/<script>.mjs`.
 
 ## Quick start
 

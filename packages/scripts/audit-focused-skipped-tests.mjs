@@ -2015,9 +2015,7 @@ function selfTest() {
     },
   ];
 
-  // The JUnit evidence gate in run-script-tests.mjs binds skipped counts to
-  // this classification; these cases pin which shapes bless a file and which
-  // (documented-but-unconditional, orphaned) never do.
+  // Conditional skip shapes require an actual runtime condition.
   const conditionalCases = [
     {
       name: "conditional: runner ternary is a runtime-conditional site",

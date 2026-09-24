@@ -4,7 +4,7 @@
  * repository MJS tools. This deliberately partial inventory is advisory: textual
  * references do not prove execution, and absence does not prove a tool is unused.
  * Documentation and test mentions are not evidence of an executable caller.
- * Workflow command validation and script-test discovery retain their own checks.
+ * Executable workflow command validation remains a separate required check.
  */
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -19,7 +19,6 @@ import {
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
 } from "./lib/repository-file-integrity.mjs";
-import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -483,16 +482,6 @@ function buildInventory() {
     workflowExecutionSteps(source, file),
   );
   const ciText = workflowSteps.map(({ run }) => run).join("\n");
-  const ciWorkflowPath = ".github/workflows/ci.yml";
-  if (!candidateFiles.includes(ciWorkflowPath)) {
-    throw new Error(`script inventory is missing ${ciWorkflowPath}`);
-  }
-  const scriptTests = buildScriptTestInventory({
-    repoRoot: ROOT,
-    candidateFiles,
-    packageScripts: rootScripts,
-    ciWorkflow: readRepositoryText(ciWorkflowPath),
-  });
   const missingWorkflowScripts = missingWorkflowRootScriptReferences(
     workflowSources,
     rootScripts,
@@ -526,20 +515,14 @@ function buildInventory() {
     fileUniverse,
   );
 
-  // Only command bodies and the executable test inventory seed file categories.
+  // Only executable command bodies seed file categories.
   // A source comment or self-test mentioning a helper cannot establish a caller.
   const verifyFiles = filesFromRootScripts(
     verifyRoots,
     rootScripts,
     fileUniverse,
   );
-  const testFiles = new Set([
-    ...filesFromRootScripts(testRoots, rootScripts, fileUniverse),
-    ...scriptTests.files
-      .map(({ file }) => file)
-      .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/.test(file))
-      .map((file) => path.posix.basename(file)),
-  ]);
+  const testFiles = filesFromRootScripts(testRoots, rootScripts, fileUniverse);
   const buildFiles = filesFromRootScripts(
     buildRoots,
     rootScripts,
@@ -691,13 +674,10 @@ function buildInventory() {
       totalAppScripts: appScriptList.length,
       unclassifiedAppScripts: appTotals.unclassified,
       appScriptsByCategory: appTotals,
-      totalScriptTests: scriptTests.discoveredCount,
-      excludedScriptTests: scriptTests.excludedCount,
     },
     files,
     roots,
     appScripts: appScriptList,
-    scriptTests,
   };
 }
 
@@ -766,14 +746,6 @@ function printSummary(inv) {
     for (const a of appOrphans) w(`    - ${a.name}\n`);
     w("\n");
   }
-
-  w("[audit-scripts-inventory] packages/scripts executable tests\n\n");
-  w(
-    `  discovered: ${summary.totalScriptTests}  explicit exclusions: ${summary.excludedScriptTests}\n`,
-  );
-  w(
-    `  runner: ${inv.scriptTests.runner.command}\n  lanes: ${inv.scriptTests.runner.lanes.join(", ")}\n\n`,
-  );
 }
 
 export function parseInventoryArgs(args) {

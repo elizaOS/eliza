@@ -8,14 +8,15 @@ with their owning packages, and GitHub-specific helpers remain in `.github/scrip
 Run commands from the repository root:
 
 ```bash
-bun run test:scripts
-node packages/scripts/run-script-tests.mjs --inventory
+bun run test:e2e
+node packages/scripts/audit-scripts-inventory.mjs
 node packages/scripts/audit-scripts.mjs
 bun run verify
 ```
 
-The script test runner discovers tests recursively here and in
-`packages/cloud/scripts/`, including untracked files during development.
+The canonical E2E command exercises authentication and assistant/tool flows with
+strict deterministic model responses. Additional product flows require explicit
+E2E review before joining this lane.
 Relative module imports resolve from their source file; operational outputs and
 repository configuration resolve from the checkout root. Keep those paths
 correct when moving tools between subdirectories.
