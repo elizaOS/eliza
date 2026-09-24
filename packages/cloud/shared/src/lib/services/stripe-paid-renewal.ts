@@ -12,13 +12,9 @@ import {
 } from "../../db/repositories/subscription-renewal-finalization";
 import { billingSubscriptions } from "../../db/schemas/billing-subscriptions";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
-import { renewalInvoiceSchema, renewalUnavailable } from "./stripe-paid-renewal-validation";
-import {
-  resolveSubscriptionPlanDefinition,
-  resolveSubscriptionProviderBinding,
-} from "./subscription-catalog";
+import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
+import { renewalUnavailable } from "./stripe-paid-renewal-validation";
 
 const eventSchema = z.object({
   id: z.string().regex(/^evt_[A-Za-z0-9]+$/),
@@ -122,45 +118,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     renewalUnavailable("receipt_lease_unavailable");
   try {
     const projection = await subscriptionEntitlementsRepository.find(source.organization_id);
-    const stripe = requireStripe();
-    const invoice = await stripe.invoices.retrieve(event.data.object.id);
-    const invoiceParsed = renewalInvoiceSchema.safeParse(invoice);
-    if (!invoiceParsed.success) renewalUnavailable("unsupported_canonical_invoice");
-    const binding = resolveSubscriptionProviderBinding(
-      getCloudAwareEnv(),
-      source.plan_key,
-      source.catalog_version,
-    );
-    const plan = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version);
-    const [subscription, customer, paymentIntent, charge, price, product] = await Promise.all([
-      stripe.subscriptions.retrieve(source.stripe_subscription_id),
-      stripe.customers.retrieve(source.stripe_customer_id),
-      stripe.paymentIntents.retrieve(invoiceParsed.data.payment_intent),
-      stripe.charges.retrieve(invoiceParsed.data.charge),
-      stripe.prices.retrieve(binding.priceId),
-      stripe.products.retrieve(binding.productId),
-    ]);
-    // Archiving a historical price prevents new purchases, not renewal of existing subscriptions.
-    if (
-      price.id !== binding.priceId ||
-      price.product !== binding.productId ||
-      price.livemode !== binding.expectedLivemode ||
-      price.currency !== "usd" ||
-      price.unit_amount !== plan.amountCents ||
-      price.type !== "recurring" ||
-      price.billing_scheme !== "per_unit" ||
-      price.transform_quantity !== null ||
-      !price.recurring ||
-      price.recurring.interval !== "month" ||
-      price.recurring.interval_count !== 1 ||
-      price.recurring.usage_type !== "licensed" ||
-      price.recurring.trial_period_days !== null ||
-      product.id !== binding.productId ||
-      ("deleted" in product && product.deleted) ||
-      !("livemode" in product) ||
-      product.livemode !== binding.expectedLivemode
-    )
-      renewalUnavailable("historical_catalog_binding_mismatch");
+    const objects = await retrievePaidRenewalObjects(source, event.data.object.id, requireStripe());
     await finalizePaidRenewal({
       ...lease,
       subscriptionId: source.id,
@@ -169,11 +127,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
       expectedProjectionRevision: projection?.projection_revision ?? null,
       providerEventId: event.id,
       eventCreatedAt: created,
-      invoice,
-      subscription,
-      customer,
-      paymentIntent,
-      charge,
+      ...objects,
     });
   } catch (error) {
     // error-policy:J2 Release only this delivery's lease and preserve its retryable failure.
