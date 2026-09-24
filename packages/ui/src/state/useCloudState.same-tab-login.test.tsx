@@ -10,7 +10,7 @@
 // intact for the round trip. A live popup handle keeps the device-code popup
 // flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
@@ -124,6 +124,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   });
 
   afterEach(() => {
+    cleanup();
     localStorage.clear();
     setBootConfig(structuredClone(originalBootConfig));
     delete globalWithPlatform.Capacitor;
@@ -1256,6 +1257,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
   });
 
   afterEach(() => {
+    cleanup();
     localStorage.clear();
     delete globalWithPlatform.Capacitor;
     restorePinnedRemote();
