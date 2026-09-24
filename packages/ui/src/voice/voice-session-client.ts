@@ -553,12 +553,14 @@ export function createVoiceSessionClient(
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     // Binary downlink audio → straight to the streaming playback sink.
     if (data instanceof ArrayBuffer) {
+      if (state.traceId === state.progressCancelledTraceId) return;
       playback?.enqueue(new Uint8Array(data));
       notifyPlaybackUnlockState();
       mark("downlink_audio", state.traceId);
       return;
     }
     if (ArrayBuffer.isView(data)) {
+      if (state.traceId === state.progressCancelledTraceId) return;
       const view = data as ArrayBufferView;
       playback?.enqueue(
         new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
@@ -583,6 +585,17 @@ export function createVoiceSessionClient(
       mark("not_reached(unparseable_control)", state.traceId);
       return;
     }
+
+    // A local interruption takes effect before the server acknowledges it.
+    // Queued speech controls from that turn must not reopen the flushed sink.
+    // Keep settlement/history frames available; a new STT turn has its own ID.
+    if (
+      (event.t === "llm_first_text" ||
+        event.t === "speaking_start" ||
+        event.t === "speaking_end") &&
+      event.traceId === state.progressCancelledTraceId
+    )
+      return;
 
     // End-of-generation is not end-of-playback: keep the mic closed and the
     // speaking state visible until the device consumes the last audio frame.
