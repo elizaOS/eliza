@@ -62,7 +62,7 @@ const { imported } = await Contacts.importVCard({ vcardText: myVCardString });
 | Option  | Type     | Default | Description |
 |---------|----------|---------|-------------|
 | `query` | `string` | —       | Case-insensitive search across name, phone, and email. |
-| `limit` | `number` | all matches | Optional positive caller-requested result limit. |
+| `limit` | `number` | all matches | Optional positive safe integer result limit; omitted reads are complete. |
 
 Returns `{ contacts: ContactSummary[] }`.
 
@@ -107,3 +107,26 @@ bun run --cwd plugins/plugin-native-contacts build
 ```
 
 Runs TypeScript compilation and Rollup to produce `dist/esm/` (ESM) and `dist/plugin.cjs.js` (CJS).
+
+## Android read validation
+
+Malformed explicit limits reject with `INVALID_LIMIT`; numeric integer values
+are accepted regardless of Android JSON boxing. A missing limit leaves the
+read unbounded. Provider failures, including a missing phone/email cursor,
+reject the complete read with `CONTACTS_UNAVAILABLE`. Valid empty cursors
+remain empty arrays.
+
+`ContactsBridgeInstrumentedTest` runs the real Capacitor bridge and Android
+ContactsProvider in an isolated test app. It verifies create/read/search,
+complete and explicitly limited reads, and malformed-limit rejection. Only
+null/empty child-query cases use an injected provider, with the production
+reader unchanged. Cleanup removes only raw contacts carrying the unique test
+names. Build `:elizaos-capacitor-contacts:assembleDebugAndroidTest`, install its
+test APK on an exclusive emulator, then run:
+
+```bash
+adb -s DEVICE shell am instrument -w \
+  ai.eliza.plugins.contacts.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Inspect the final instrumentation result; shell exit 0 alone is insufficient.
