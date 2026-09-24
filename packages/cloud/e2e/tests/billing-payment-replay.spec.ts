@@ -6,8 +6,9 @@
  * first Checkout creation commits at that provider and loses its response. The
  * Worker must leave durable ambiguity, recover the same Session on an
  * application retry, and settle one credit/ledger/invoice receipt from
- * duplicate signed webhooks. The mini-app lane also proves PaymentIntent-first
- * delivery cannot double-credit and malformed paid authority reaches the DLQ.
+ * duplicate signed webhooks. The mini-app lane also proves a declined
+ * PaymentIntent attempt remains payable, PaymentIntent-first success cannot
+ * double-credit, and malformed paid authority reaches the DLQ.
  */
 
 import { createHmac } from "node:crypto";
@@ -696,7 +697,10 @@ test("mini-app card charge settles only on Checkout and retains malformed paid e
 
   const signEvent = (
     eventId: string,
-    type: "payment_intent.succeeded" | "checkout.session.completed",
+    type:
+      | "payment_intent.payment_failed"
+      | "payment_intent.succeeded"
+      | "checkout.session.completed",
     object: Record<string, unknown>,
   ) => {
     const timestamp = Math.floor(Date.now() / 1_000);
@@ -739,6 +743,59 @@ test("mini-app card charge settles only on Checkout and retains malformed paid e
     expect(response.status).toBe(200);
     return (await response.json()) as Record<string, unknown>;
   };
+
+  const failedAttemptEvent = signEvent(
+    "evt_app_charge_pi_failed_attempt",
+    "payment_intent.payment_failed",
+    {
+      id: paymentIntentId,
+      object: "payment_intent",
+      invoice: null,
+      status: "requires_payment_method",
+      amount: 1000,
+      amount_received: 0,
+      currency: "usd",
+      customer: customerId,
+      metadata,
+      last_payment_error: {
+        code: "card_declined",
+        message: "Your card was declined.",
+      },
+    },
+  );
+  expect((await deliver(failedAttemptEvent)).status).toBe(200);
+  const failedAttemptDrain = await drain();
+  expect(failedAttemptDrain).toMatchObject({
+    before: 1,
+    after: 0,
+    attempted: 1,
+    acked: 1,
+    retried: 0,
+    dlqed: 0,
+  });
+  const chargeAfterFailedAttempt =
+    await cryptoPaymentsRepository.findById(chargeRequestId);
+  const creditAfterFailedAttempt =
+    await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
+  const earningsAfterFailedAttempt =
+    await appEarningsRepository.findTransactionByPaymentIntent(
+      appId,
+      paymentIntentId,
+    );
+  const callbacksAfterFailedAttempt = await (
+    await import("@elizaos/cloud-shared/db/helpers")
+  ).dbRead.query.appChargeCallbackOutbox.findMany();
+  const matchingCallbacksAfterFailedAttempt =
+    callbacksAfterFailedAttempt.filter(
+      (callback) => callback.charge_request_id === chargeRequestId,
+    );
+  const balanceAfterFailedAttempt =
+    await creditsService.getOrganizationBalanceUsd(seededUser.organizationId);
+  expect(chargeAfterFailedAttempt?.status).toBe("requested");
+  expect(creditAfterFailedAttempt).toBeUndefined();
+  expect(earningsAfterFailedAttempt).toBeUndefined();
+  expect(matchingCallbacksAfterFailedAttempt).toHaveLength(0);
+  expect(balanceAfterFailedAttempt).toBe(startingBalance);
 
   const paymentIntentEvent = signEvent(
     "evt_app_charge_pi_succeeded",
@@ -945,6 +1002,12 @@ test("mini-app card charge settles only on Checkout and retains malformed paid e
     domainArtifactPath,
     JSON.stringify(
       {
+        failedAttemptDrain,
+        chargeAfterFailedAttempt,
+        creditAfterFailedAttempt: creditAfterFailedAttempt ?? null,
+        earningsAfterFailedAttempt: earningsAfterFailedAttempt ?? null,
+        callbacksAfterFailedAttempt: matchingCallbacksAfterFailedAttempt,
+        balanceAfterFailedAttempt,
         paymentIntentDrain,
         checkoutDrain,
         malformedDrain,

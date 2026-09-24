@@ -449,6 +449,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_app_credit",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: "pi_app_credit",
           amount_total: 1000,
@@ -485,6 +486,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_direct_app_credit",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: "pi_direct_app_credit",
           amount_total: 1000,
@@ -516,6 +518,7 @@ describe("processStripeEvent dispatch", () => {
       await processStripeEvent(
         delivery("checkout.session.completed", {
           id: "cs_app_credit_amount_mismatch",
+          mode: "payment",
           payment_status: "paid",
           payment_intent: "pi_app_credit_amount_mismatch",
           amount_total: 500,
@@ -708,7 +711,7 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
     expect(failChargeAndEnqueue).not.toHaveBeenCalled();
   });
 
-  test("forwards a miniapp charge failure with the Stripe error message", async () => {
+  test("keeps a Checkout-owned miniapp charge payable after a failed attempt", async () => {
     expect(
       await processStripeEvent(
         delivery("payment_intent.payment_failed", {
@@ -717,6 +720,7 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
           status: "requires_payment_method",
           amount: 199,
           metadata: {
+            type: "app_credit_purchase",
             source: "miniapp_app",
             app_id: "app-1",
             charge_request_id: "cr-1",
@@ -728,62 +732,59 @@ describe("processStripeEvent payment_intent.payment_failed", () => {
         }),
       ),
     ).toBe("ack");
-    expect(failChargeAndEnqueue).toHaveBeenCalledWith({
-      appId: "app-1",
-      chargeRequestId: "cr-1",
-      status: "failed",
-      provider: "stripe",
-      providerPaymentId: "pi_app_failed",
-      amountUsd: 1.99,
-      payerUserId: "user-1",
-      payerOrganizationId: "org-1",
-      reason: "Your card was declined.",
-      metadata: { stripe_payment_intent_status: "requires_payment_method" },
-    });
+    expect(failChargeAndEnqueue).not.toHaveBeenCalled();
   });
 
-  test("falls back to the error code then a default reason", async () => {
-    expect(
-      await processStripeEvent(
-        delivery("payment_intent.payment_failed", {
-          id: "pi_code_only",
-          invoice: null,
-          status: "requires_payment_method",
-          amount: 100,
-          metadata: {
-            source: "miniapp_app",
-            app_id: "app-1",
-            charge_request_id: "cr-2",
-          },
-          last_payment_error: { code: "card_declined" },
-        }),
-      ),
-    ).toBe("ack");
-    expect(failChargeAndEnqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ reason: "card_declined", amountUsd: 1 }),
-    );
+  test("fails a miniapp charge only from terminal Checkout events", async () => {
+    const cases = [
+      ["checkout.session.expired", "expired", "Checkout Session expired"],
+      [
+        "checkout.session.async_payment_failed",
+        "complete",
+        "Checkout Session asynchronous payment failed",
+      ],
+    ] as const;
 
-    failChargeAndEnqueue.mockClear();
-    expect(
-      await processStripeEvent(
-        delivery("payment_intent.payment_failed", {
-          id: "pi_no_error",
-          invoice: null,
-          status: "requires_payment_method",
-          metadata: {
-            source: "miniapp_app",
-            app_id: "app-1",
-            charge_request_id: "cr-3",
-          },
-        }),
-      ),
-    ).toBe("ack");
-    expect(failChargeAndEnqueue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        reason: "Payment failed",
-        amountUsd: undefined,
-      }),
-    );
+    for (const [eventType, sessionStatus, reason] of cases) {
+      failChargeAndEnqueue.mockClear();
+      expect(
+        await processStripeEvent(
+          delivery(eventType, {
+            id: `cs_${sessionStatus}`,
+            mode: "payment",
+            payment_status: "unpaid",
+            payment_intent: "pi_app_failed",
+            status: sessionStatus,
+            amount_total: 199,
+            metadata: {
+              type: "app_credit_purchase",
+              source: "miniapp_app",
+              app_id: "app-1",
+              charge_request_id: "cr-1",
+              user_id: "user-1",
+              organization_id: "org-1",
+              credits: "1.99",
+            },
+          }),
+        ),
+      ).toBe("ack");
+      expect(failChargeAndEnqueue).toHaveBeenCalledWith({
+        appId: "app-1",
+        chargeRequestId: "cr-1",
+        status: "failed",
+        provider: "stripe",
+        providerPaymentId: "pi_app_failed",
+        amountUsd: 1.99,
+        payerUserId: "user-1",
+        payerOrganizationId: "org-1",
+        reason,
+        metadata: {
+          stripe_checkout_session_id: `cs_${sessionStatus}`,
+          stripe_checkout_session_status: sessionStatus,
+          stripe_event_type: eventType,
+        },
+      });
+    }
   });
 });
 
@@ -994,6 +995,7 @@ function miniAppPaidCheckout(overrides?: {
   const paymentIntentId = overrides?.paymentIntentId ?? "pi_deleted_app";
   return delivery("checkout.session.completed", {
     id: "cs_deleted_app",
+    mode: "payment",
     payment_status: "paid",
     payment_intent: paymentIntentId,
     amount_total: 1000,

@@ -5,7 +5,7 @@
  * settle. Confirmed stays idempotent for the same provider payment.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/common";
+import { ElizaError } from "@elizaos/core";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";

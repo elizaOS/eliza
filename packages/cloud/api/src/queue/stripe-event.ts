@@ -368,6 +368,10 @@ export async function processStripeEvent(
       case "checkout.session.completed":
         await handleCheckoutSessionCompleted(event);
         break;
+      case "checkout.session.expired":
+      case "checkout.session.async_payment_failed":
+        await handleCheckoutSessionTerminalFailure(event);
+        break;
       case "payment_intent.succeeded":
         await handlePaymentIntentSucceeded(event);
         break;
@@ -854,6 +858,59 @@ async function handleCheckoutSessionCompleted(
   }
 }
 
+async function handleCheckoutSessionTerminalFailure(
+  event: Stripe.Event,
+): Promise<void> {
+  const session = event.data.object as Stripe.Checkout.Session;
+  if (
+    session.mode !== "payment" ||
+    session.payment_status === "paid" ||
+    session.metadata?.source !== "miniapp_app" ||
+    session.metadata.type !== "app_credit_purchase"
+  ) {
+    return;
+  }
+
+  const appId = session.metadata.app_id;
+  const chargeRequestId = session.metadata.charge_request_id;
+  if (!appId || !chargeRequestId) return;
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : (session.payment_intent?.id ?? session.id);
+  const amountUsd =
+    parseAndValidateCredits(
+      session.metadata.credits || session.metadata.amount || "",
+    ) ??
+    (typeof session.amount_total === "number" &&
+    Number.isInteger(session.amount_total) &&
+    session.amount_total > 0
+      ? Math.round(session.amount_total) / 100
+      : undefined);
+  const reason =
+    event.type === "checkout.session.expired"
+      ? "Checkout Session expired"
+      : "Checkout Session asynchronous payment failed";
+
+  await appChargeCallbacksService.failChargeAndEnqueue({
+    appId,
+    chargeRequestId,
+    status: "failed",
+    provider: "stripe",
+    providerPaymentId: paymentIntentId,
+    amountUsd,
+    payerUserId: session.metadata.user_id,
+    payerOrganizationId: session.metadata.organization_id,
+    reason,
+    metadata: {
+      stripe_checkout_session_id: session.id,
+      stripe_checkout_session_status: session.status,
+      stripe_event_type: event.type,
+    },
+  });
+}
+
 async function enqueueAgentRestartAfterTopUp(params: {
   agentId: string;
   organizationId: string;
@@ -1043,6 +1100,20 @@ function numberField(
 // payment_intent.succeeded
 // ---------------------------------------------------------------------------
 
+function isCheckoutOwnedPaymentIntent(
+  paymentIntent: Stripe.PaymentIntent,
+): boolean {
+  const purchaseType = paymentIntent.metadata?.type;
+  const purchaseSource = paymentIntent.metadata?.source;
+  return Boolean(
+    paymentIntent.metadata?.checkout_order_id ||
+      purchaseType === "custom_amount" ||
+      purchaseType === "credit_pack" ||
+      purchaseType === "app_credit_purchase" ||
+      (purchaseSource === "miniapp_app" && purchaseType !== "auto_top_up"),
+  );
+}
+
 async function handlePaymentIntentSucceeded(
   event: Stripe.Event,
 ): Promise<void> {
@@ -1054,16 +1125,9 @@ async function handlePaymentIntentSucceeded(
   // affiliate markup is applied when the PaymentIntent is created, so
   // the only payout here is the auto-top-up affiliate fee.
   const purchaseType = paymentIntent.metadata?.type;
-  const purchaseSource = paymentIntent.metadata?.source;
   // Checkout-owned one-time purchases, including mini-app charge requests,
   // fulfill on checkout.session.completed. Auto-top-up is PaymentIntent-owned.
-  if (
-    paymentIntent.metadata?.checkout_order_id ||
-    purchaseType === "custom_amount" ||
-    purchaseType === "credit_pack" ||
-    purchaseType === "app_credit_purchase" ||
-    (purchaseSource === "miniapp_app" && purchaseType !== "auto_top_up")
-  ) {
+  if (isCheckoutOwnedPaymentIntent(paymentIntent)) {
     logger.debug(
       `[Stripe Queue] Skipping Checkout-owned payment intent ${paymentIntent.id}; checkout.session.completed owns fulfillment`,
     );
@@ -1382,6 +1446,13 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
     organizationId: orgId,
     errorReason,
   });
+
+  if (isCheckoutOwnedPaymentIntent(paymentIntent)) {
+    logger.debug(
+      `[Stripe Queue] Checkout-owned payment intent ${paymentIntent.id} failed an attempt; waiting for a terminal Checkout Session event`,
+    );
+    return;
+  }
 
   if (purchaseSource === "miniapp_app" && appId && chargeRequestId) {
     await appChargeCallbacksService.failChargeAndEnqueue({

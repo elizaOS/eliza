@@ -30,7 +30,9 @@ const STRIPE_WEBHOOK_TOLERANCE_SECONDS = 300;
  */
 function extractPaymentIntentId(event: Stripe.Event): string | undefined {
   switch (event.type) {
-    case "checkout.session.completed": {
+    case "checkout.session.completed":
+    case "checkout.session.expired":
+    case "checkout.session.async_payment_failed": {
       const session = event.data.object as Stripe.Checkout.Session;
       return typeof session.payment_intent === "string"
         ? session.payment_intent
