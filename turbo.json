@@ -90,7 +90,7 @@
         "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ],
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "@elizaos/app#build:dist"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -233,7 +233,7 @@
         "@elizaos/capacitor-mobile-signals#build",
         "@elizaos/macosreminders#build",
         "@elizaos/native-activity-tracker#build",
-        "@elizaos/app#build:dist"
+        "@elizaos/app#build"
       ],
       "outputs": []
     },
@@ -329,7 +329,7 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": ["@elizaos/app#build:dist", "^build"],
+      "dependsOn": ["@elizaos/app#build", "^build"],
       "outputs": []
     },
     "@elizaos/testing#typecheck": {
