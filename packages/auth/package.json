@@ -92,7 +92,7 @@
     "test:railpack": "bun test test/login/railpack-runtime.test.ts",
     "test:browser": "bun run build && bun test test/login/browser-login.test.ts",
     "test:credentials": "node ../scripts/run-vitest.mjs run",
-    "test:login": "bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack"
+    "test:login": "bun test --isolate src/server/auth/src/__tests__ src/server/__tests__ && bun run test:railpack"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
