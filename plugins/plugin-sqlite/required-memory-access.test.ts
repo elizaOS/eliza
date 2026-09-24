@@ -2,6 +2,7 @@
  * Exercises mandatory request memory scope through real SQLite and AgentRuntime.
  * Fixtures supply verified authority; enrollment and session verification belong
  * to the host suite. No storage, ranking, or runtime read implementation is mocked.
+ * Registered deterministic model handlers observe dispatch; no remote model is used.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +12,7 @@ import {
   AgentRuntime,
   createCharacter,
   type Memory,
+  ModelType,
   stringToUuid,
   withRequiredMemoryAccess,
 } from "@elizaos/core";
@@ -266,6 +268,126 @@ it("scopes omitted contexts before ranking, counts and point reads and isolates 
       ).rejects.toMatchObject({ code: "MEMORY_ACCESS_SCOPE_CLOSED" });
     });
     expect(await runtime.countMemories({ tableName: "messages" })).toBe(4);
+  } finally {
+    await runtime.stop();
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
+
+it("rechecks request authority before model handlers after preprocessing and caught read rejection", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-required-model-"));
+  const agentId = stringToUuid("required-model-agent");
+  const actor = stringToUuid("required-model-actor");
+  const adapter = SQLiteDatabaseAdapter.create(
+    join(directory, "agent.sqlite"),
+    agentId,
+  );
+  const runtime = new AgentRuntime({
+    agentId,
+    adapter,
+    character: createCharacter({ name: "Required model" }),
+    plugins: [],
+    enableAutonomy: false,
+    logLevel: "fatal",
+  });
+  let live = true;
+  let calls = 0;
+  let revokeDuringPreparation = false;
+  const authority = {
+    context: {
+      requesterEntityId: actor,
+      role: "USER" as const,
+      authorizedRoomIds: [],
+    },
+    authorize: async () => {
+      if (!live) throw new Error("Fixture grant revoked");
+    },
+  };
+  const completePrompt = "Complete authorized model input ".repeat(5000);
+  runtime.registerModel(
+    ModelType.TEXT_SMALL,
+    async (_runtime, params) => {
+      calls += 1;
+      expect(params.prompt).toBe(completePrompt);
+      return "Synthetic model response";
+    },
+    "required-scope-fixture",
+  );
+  runtime.registerPipelineHook({
+    id: "fixture-revoke-during-preparation",
+    phase: "pre_model",
+    handler: async () => {
+      if (revokeDuringPreparation) live = false;
+    },
+  });
+  try {
+    await runtime.initialize();
+    await withRequiredMemoryAccess(runtime, authority, async () => {
+      expect(
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: completePrompt,
+        }),
+      ).toBe("Synthetic model response");
+    });
+    expect(calls).toBe(1);
+    revokeDuringPreparation = true;
+    await withRequiredMemoryAccess(runtime, authority, async () => {
+      await expect(
+        runtime.useModel(ModelType.TEXT_SMALL, { prompt: completePrompt }),
+      ).rejects.toMatchObject({ code: "MEMORY_ACCESS_SCOPE_CLOSED" });
+    });
+    expect(calls).toBe(1);
+    live = true;
+    revokeDuringPreparation = false;
+    await withRequiredMemoryAccess(runtime, authority, async () => {
+      live = false;
+      await expect(
+        runtime.getMemories({ tableName: "messages" }),
+      ).rejects.toMatchObject({ code: "MEMORY_ACCESS_AUTHORITY_REJECTED" });
+      live = true;
+      await expect(
+        runtime.useModel(ModelType.TEXT_SMALL, { prompt: completePrompt }),
+      ).rejects.toMatchObject({ code: "MEMORY_ACCESS_SCOPE_CLOSED" });
+    });
+    expect(calls).toBe(1);
+    let revokeAfterPrimary = false;
+    let primaryCalls = 0;
+    let fallbackCalls = 0;
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        primaryCalls += 1;
+        if (revokeAfterPrimary) live = false;
+        throw new Error("You've hit your session limit for now.");
+      },
+      "fixture-limited-primary",
+      100,
+    );
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        fallbackCalls += 1;
+        return "Synthetic fallback response";
+      },
+      "fixture-fallback",
+      10,
+    );
+    await withRequiredMemoryAccess(runtime, authority, async () => {
+      expect(
+        await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: completePrompt,
+        }),
+      ).toBe("Synthetic fallback response");
+    });
+    revokeAfterPrimary = true;
+    await withRequiredMemoryAccess(runtime, authority, async () => {
+      await expect(
+        runtime.useModel(ModelType.TEXT_LARGE, { prompt: completePrompt }),
+      ).rejects.toMatchObject({ code: "MEMORY_ACCESS_AUTHORITY_REJECTED" });
+    });
+    expect(primaryCalls).toBe(2);
+    expect(fallbackCalls).toBe(1);
   } finally {
     await runtime.stop();
     await runtime.close();

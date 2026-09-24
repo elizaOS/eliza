@@ -11,6 +11,10 @@ import {
 	setInferenceModelProvider,
 } from "../../inference-timing";
 import {
+	hasRequiredMemoryAccess,
+	resolveRequiredMemoryAccess,
+} from "../../required-memory-access";
+import {
 	type ConfidentialInferenceAuthority,
 	ConfidentialInferenceOperation,
 	runWithConfidentialInference,
@@ -817,6 +821,8 @@ export class RuntimeModelDispatch {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		if (hasRequiredMemoryAccess(this.runtime.agentId))
+			await resolveRequiredMemoryAccess(this.runtime.agentId);
 		const explicitSignal = isPlainObject(params)
 			? (params as { signal?: AbortSignal }).signal
 			: undefined;
@@ -1612,25 +1618,6 @@ export class RuntimeModelDispatch {
 					"Using model",
 				);
 
-				// The model-call timing window opens HERE, not at useModel entry:
-				// everything above (streaming setup, secret/PII swap sessions,
-				// pre_model hooks, prompt extraction) is runtime work, and charging
-				// it to the provider span makes `model:*` timings unreadable as
-				// provider latency (#16394).
-				startTime = performance.now();
-				recordInferenceSpan(
-					`model-preprocess:${String(modelType)}`,
-					Date.now() - preprocessingStartedAt,
-					attemptMeta,
-				);
-				throwIfAborted();
-				handlerStartedAt = Date.now();
-				providerAttempt = {
-					modelType: resolvedModelKey,
-					provider: resolvedModel.provider,
-					handler,
-				};
-				providerAttempts.push(providerAttempt);
 				const { result: handlerResult, recordingState } =
 					await runWithModelCallRecordingScope(() =>
 						runWithConfidentialInference(
@@ -1641,11 +1628,31 @@ export class RuntimeModelDispatch {
 								handler,
 								operation: confidentialOperation,
 							},
-							() =>
-								handler(
+							async () => {
+								// Preprocessing and confidential admission may await external work.
+								// Revalidate the request immediately before invoking this provider.
+								if (hasRequiredMemoryAccess(this.runtime.agentId))
+									await resolveRequiredMemoryAccess(this.runtime.agentId);
+								// Authorization is runtime preparation, not provider inference time.
+								throwIfAborted();
+								startTime = performance.now();
+								handlerStartedAt = Date.now();
+								recordInferenceSpan(
+									`model-preprocess:${String(modelType)}`,
+									Date.now() - preprocessingStartedAt,
+									attemptMeta,
+								);
+								providerAttempt = {
+									modelType: resolvedModelKey,
+									provider: resolvedModel.provider,
+									handler,
+								};
+								providerAttempts.push(providerAttempt);
+								return handler(
 									this.runtime,
 									modelParams as Record<string, JsonValue | object>,
-								),
+								);
+							},
 						),
 					);
 				// Expose the mutable recording state to the catch block so it can
@@ -2125,6 +2132,9 @@ export class RuntimeModelDispatch {
 							error: deliveryError,
 						}),
 					);
+				// error-policy:J2 Revoked request authority supersedes provider retry/fallback.
+				if (hasRequiredMemoryAccess(this.runtime.agentId))
+					await resolveRequiredMemoryAccess(this.runtime.agentId);
 				if (
 					streamCallbackResult?.failed === true &&
 					streamCallbackResult.error !== error
