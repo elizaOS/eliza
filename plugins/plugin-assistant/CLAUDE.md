@@ -62,7 +62,7 @@ Planner action callbacks retain genuine tool-owned interaction controls together
 
 Native text-history decisions may use current_request as the source-set identity. Bind only that explicit reference from canonical HANDLE_RESPONSE arguments to the immutable sources captured for that model request. Core source validation still rejects stale/cross-room/unknown/incomplete selections. Legacy JSON and real mismatched hashes are not repaired implicitly; custom field schemas retain their established paths. Provider-owned raw model output is never mutated.
 
-The existing direct-text, noncoding planner model facade may prefer provider-validated tool reasoning. It preserves the planner thinking policy and cache options; the provider must explicitly support the preference. Handler/evaluator calls, group/unknown channels and coding turns receive no preference. This adds no model call or prompt text.
+The message pipeline forwards the planner thinking policy and cache options unchanged. Do not implicitly enable provider reasoning for direct text or voice: it can add substantial hidden output and latency to ordinary tool work. Provider-specific reasoning capabilities remain owned by the provider and explicit callers.
 
 
 Direct-text native Stage 1 may compose replies from text and authorized complete

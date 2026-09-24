@@ -5213,16 +5213,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 
 		it.each([
-			[ChannelType.DM, false, true],
-			[ChannelType.API, false, true],
-			[ChannelType.SELF, false, true],
-			[ChannelType.VOICE_DM, false, true],
-			[ChannelType.GROUP, false, false],
-			[undefined, false, false],
-			[ChannelType.DM, true, false],
+			[ChannelType.DM, false],
+			[ChannelType.API, false],
+			[ChannelType.SELF, false],
+			[ChannelType.VOICE_DM, false],
+			[ChannelType.GROUP, false],
+			[undefined, false],
+			[ChannelType.DM, true],
 		] as const)(
-			"scopes tool reasoning preference to direct text planning (%s, coding=%s)",
-			async (channelType, codingMode, preferred) => {
+			"preserves planner thinking policy without a host override (%s, coding=%s)",
+			async (channelType, codingMode) => {
 				const reply = {
 					text: "",
 					toolCalls: [
@@ -5270,7 +5270,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						};
 					}
 				).providerOptions.eliza;
-				expect(options.preferToolReasoning).toBe(preferred ? true : undefined);
+				expect(options.preferToolReasoning).toBeUndefined();
 				expect(options.thinking).toBe("off");
 				expect(options.modelInputBudget).toBeDefined();
 				for (const call of calls.filter(
