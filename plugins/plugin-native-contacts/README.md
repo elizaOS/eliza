@@ -64,3 +64,8 @@ These are requested by `@elizaos/plugin-native-contacts/bridge` at runtime.
 ## Native bridge
 
 The Android implementation and web fallback ship in this workspace. Import device APIs from `@elizaos/plugin-native-contacts/bridge`; this entry does not load UI registration. The package root exports the application surface, `/plugin` the runtime plugin, and `/register` the app-shell registration. Capacitor discovers the Android implementation through the package manifest. Builds emit ESM and declarations into `dist/`.
+
+The package owns `tsconfig.json` for its React surface and native bridge.
+Typechecking resolves the bridge self-import from `src/bridge.ts` so it works
+before a build. `tsconfig.build.json` remains generated from the shared plugin
+build configuration and owns emitted JavaScript and declarations.
