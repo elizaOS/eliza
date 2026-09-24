@@ -22,7 +22,8 @@ import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { embeddingTable, memoryTable } from "../../schema";
+import { embeddingTable } from "../../schema/embedding";
+import { memoryTable } from "../../schema/memory";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 

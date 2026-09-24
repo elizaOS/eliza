@@ -21,7 +21,7 @@ import {
   MAX_SQL_JSON_SANITIZE_STRING_BYTES,
   SQL_JSON_SANITIZE_UNBOUNDED,
 } from "../../sanitize-json";
-import { logTable } from "../../schema";
+import { logTable } from "../../schema/log";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 

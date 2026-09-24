@@ -24,8 +24,8 @@ import { PgDatabaseAdapter } from "../../pg/adapter";
 import { PostgresConnectionManager } from "../../pg/manager";
 import { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PGliteClientManager } from "../../pglite/manager";
-import * as schema from "../../schema";
-import { memoryTable } from "../../schema";
+import { schema } from "../../schema";
+import { memoryTable } from "../../schema/memory";
 import type { DrizzleDatabase } from "../../types";
 
 const SOURCE_PAGE_BYTES = 64 * 1024;

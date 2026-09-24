@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PGliteClientManager } from "../../pglite/manager";
-import * as schema from "../../schema";
+import { schema } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 
 describe("PGlite message content segments", () => {

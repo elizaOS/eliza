@@ -45,7 +45,7 @@ import {
   type PgliteManagerCache,
   type PgliteSingletonCache,
 } from "./pglite/manager-cache";
-import * as schema from "./schema";
+import { schema } from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { SqlMembershipService } from "./services/sql-membership";
 import { SqlPrincipalService } from "./services/sql-principal";
@@ -78,7 +78,69 @@ export type {
   PgliteSingletonCache,
   PgliteSingletonManager,
 } from "./pglite/manager-cache";
-export * from "./schema";
+export { schema } from "./schema";
+export { agentTable } from "./schema/agent";
+export { approvalDispatchControlTable } from "./schema/approvalDispatchControl";
+export { approvalRequestTable } from "./schema/approvalRequests";
+export type { AuthAuditOutcome } from "./schema/authAuditEvent";
+export { authAuditEventTable } from "./schema/authAuditEvent";
+export { authBootstrapJtiSeenTable } from "./schema/authBootstrapJti";
+export type { AuthIdentityKind } from "./schema/authIdentity";
+export {
+  authIdentityCreatedAtDefault,
+  authIdentityTable,
+} from "./schema/authIdentity";
+export { authOwnerBindingTable } from "./schema/authOwnerBinding";
+export { authOwnerLoginTokenTable } from "./schema/authOwnerLoginToken";
+export type { AuthSessionKind } from "./schema/authSession";
+export { authSessionTable } from "./schema/authSession";
+export { cacheTable } from "./schema/cache";
+export { channelTable } from "./schema/channel";
+export { channelParticipantsTable } from "./schema/channelParticipant";
+export { componentTable } from "./schema/component";
+export {
+  connectorAccountAuditEventsTable,
+  connectorAccountCredentialsTable,
+  connectorAccountsTable,
+  oauthFlowsTable,
+} from "./schema/connectorAccounts";
+export { embeddingTable } from "./schema/embedding";
+export { entityTable } from "./schema/entity";
+export {
+  entityIdentityTable,
+  entityMergeCandidateTable,
+  factCandidateTable,
+} from "./schema/entityIdentity";
+export {
+  identityAuthorityStateTable,
+  identityCanonicalRedirectTable,
+  identityClaimTable,
+  identityMergeConfirmationTable,
+  identityMergeJournalTable,
+  identityPersonLinkAttestationTable,
+} from "./schema/identityAuthority";
+export { logTable } from "./schema/log";
+export { longTermMemories } from "./schema/longTermMemories";
+export {
+  membershipAuthorityJournalTable,
+  membershipAuthorityScopeTable,
+  membershipAuthorityTable,
+} from "./schema/membershipAuthority";
+export { memoryTable } from "./schema/memory";
+export { memoryAccessLogs } from "./schema/memoryAccessLogs";
+export { messageTable } from "./schema/message";
+export { messageServerTable } from "./schema/messageServer";
+export { messageServerAgentsTable } from "./schema/messageServerAgent";
+export { pairingAllowlistTable } from "./schema/pairingAllowlist";
+export { pairingRequestTable } from "./schema/pairingRequest";
+export { participantTable } from "./schema/participant";
+export { relationshipTable } from "./schema/relationship";
+export { roomTable } from "./schema/room";
+export { serverTable } from "./schema/server";
+export { sessionSummaries } from "./schema/sessionSummaries";
+export { taskTable } from "./schema/tasks";
+export { worldTable } from "./schema/world";
+export { worldRoleAuditTable } from "./schema/worldRoleAudit";
 export type { DrizzleDatabase } from "./types";
 
 const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");

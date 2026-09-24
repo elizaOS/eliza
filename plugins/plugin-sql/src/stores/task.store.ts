@@ -1,7 +1,7 @@
 /** CRUD store for the `tasks` table, scoped to the current agent; tag filtering uses a Postgres array-contains (`@>`) query. */
 import type { Task, TaskMetadata, UUID } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
-import { taskTable } from "../schema/index";
+import { taskTable } from "../schema/tasks";
 import type { DrizzleDatabase } from "../types";
 import { readTaskDueAt, serializeTaskDueAt, taskMetadataForWrite } from "./task-timing";
 import type { Store, StoreContext } from "./types";
