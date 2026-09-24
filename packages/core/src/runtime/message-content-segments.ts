@@ -160,9 +160,9 @@ function sourceSegmentId(args: {
 		)
 		.update(name)
 		.digest();
-	const id = digest.slice(0, 16);
-	id[6] = (id[6]! & 0x0f) | 0x50;
-	id[8] = (id[8]! & 0x3f) | 0x80;
+	const id = Buffer.from(digest.subarray(0, 16));
+	id[6] = (id.readUInt8(6) & 0x0f) | 0x50;
+	id[8] = (id.readUInt8(8) & 0x3f) | 0x80;
 	const hex = Buffer.from(id).toString("hex");
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as UUID;
 }
