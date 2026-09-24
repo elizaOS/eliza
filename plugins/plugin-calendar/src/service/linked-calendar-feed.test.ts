@@ -3,7 +3,7 @@
  * deterministic provider DTOs. No provider or persistence is replaced inside
  * the merger; live Google/browser evidence covers the transport separately.
  */
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { mergeAggregatedCalendarFeedEvents } from "./CalendarService.js";
 import type { LinkedCalendarEventRecord } from "./linked-calendar-sync.js";

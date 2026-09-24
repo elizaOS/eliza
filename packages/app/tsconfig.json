@@ -3,6 +3,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/app": ["../app/src/index.ts"],
       "@elizaos/plugin-agent-orchestrator/ui": [
         "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
@@ -48,7 +53,6 @@
         "../../plugins/plugin-telegram/src/index.ts"
       ],
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/plugin-native-inference/host-bridge": [
         "../../plugins/plugin-native-inference/src/bridge.ts"
       ],
@@ -111,7 +115,8 @@
       ],
       "@elizaos/plugin-native-phone/ui": [
         "../../plugins/plugin-native-phone/src/ui.ts"
-      ]
+      ],
+      "@elizaos/core/*": ["../core/src/*"]
     }
   }
 }

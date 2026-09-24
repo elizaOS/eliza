@@ -13,7 +13,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { MeetingEndReason } from "@elizaos/shared";
+import { type MeetingEndReason } from "@elizaos/core/meetings";
 import type { Page } from "playwright-core";
 import type { MeetingBotSession } from "../../types.js";
 import { anySelectorVisible } from "../shared/selectors.js";

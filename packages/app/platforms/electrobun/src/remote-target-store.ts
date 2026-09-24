@@ -19,9 +19,8 @@ import {
 	type RemoteControllerPublicIdentity,
 	type RemoteJsonValue,
 	type SignedRemoteCommand,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import { resolveStateDir } from "./native/auth-bridge";
-
 export type RemoteTargetCommandStatus =
 	| "reserved"
 	| "started"
@@ -29,7 +28,6 @@ export type RemoteTargetCommandStatus =
 	| "rejected"
 	| "cancelled"
 	| "execution_ambiguous";
-
 export interface RemoteTargetStoredSession {
 	grant: RemoteControllerGrant;
 	controller: RemoteControllerPublicIdentity;
@@ -39,7 +37,6 @@ export interface RemoteTargetStoredSession {
 	/** Absent legacy rows are committed; new two-phase rows stage explicitly. */
 	activationState?: "staged" | "active";
 }
-
 export interface RemoteTargetStoredCommand {
 	command: SignedRemoteCommand;
 	commandDigest: string;
@@ -59,13 +56,11 @@ export interface RemoteTargetStoredCommand {
 	resultEnvelope: EncryptedRemoteControlEnvelope | null;
 	resultDelivered: boolean;
 }
-
 export interface RemoteTargetDurableState {
 	version: 1;
 	sessions: Record<string, RemoteTargetStoredSession>;
 	commands: Record<string, RemoteTargetStoredCommand>;
 }
-
 export interface RemoteTargetStateStore {
 	read(): Promise<RemoteTargetDurableState>;
 	clear(): Promise<void>;
@@ -73,15 +68,12 @@ export interface RemoteTargetStateStore {
 		operation: (state: RemoteTargetDurableState) => T | Promise<T>,
 	): Promise<T>;
 }
-
 function emptyState(): RemoteTargetDurableState {
 	return { version: 1, sessions: {}, commands: {} };
 }
-
 function cloneState(state: RemoteTargetDurableState): RemoteTargetDurableState {
 	return structuredClone(state);
 }
-
 function assertState(
 	value: unknown,
 ): asserts value is RemoteTargetDurableState {
@@ -145,7 +137,7 @@ function assertState(
 		}
 	}
 	const commands = state.commands as Record<string, unknown>;
-	if (Object.keys(commands).length > 16_384) {
+	if (Object.keys(commands).length > 16384) {
 		throw new Error("Remote target journal exceeds command capacity.");
 	}
 	const statuses = new Set<RemoteTargetCommandStatus>([
@@ -240,37 +232,30 @@ function assertState(
 		}
 	}
 }
-
 export function resolveRemoteTargetJournalPath(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
 	return path.join(resolveStateDir(env), "remote-target", "journal-v1.json");
 }
-
 export class JsonFileRemoteTargetStateStore implements RemoteTargetStateStore {
 	private transactionTail: Promise<void> = Promise.resolve();
-
 	constructor(private readonly filePath = resolveRemoteTargetJournalPath()) {}
-
 	private async load(): Promise<RemoteTargetDurableState> {
 		const value = await readJsonFile<unknown>(this.filePath);
 		if (value === null) return emptyState();
 		assertState(value);
 		return value;
 	}
-
 	async read(): Promise<RemoteTargetDurableState> {
 		await this.transactionTail;
 		return cloneState(await this.load());
 	}
-
 	async clear(): Promise<void> {
 		await this.transact((state) => {
 			state.sessions = {};
 			state.commands = {};
 		});
 	}
-
 	async transact<T>(
 		operation: (state: RemoteTargetDurableState) => T | Promise<T>,
 	): Promise<T> {
@@ -301,25 +286,20 @@ export class JsonFileRemoteTargetStateStore implements RemoteTargetStateStore {
 		}
 	}
 }
-
 /** Deterministic durable-state double whose backing survives runner recreation. */
 export class MemoryRemoteTargetStateStore implements RemoteTargetStateStore {
 	private transactionTail: Promise<void> = Promise.resolve();
-
 	constructor(private state: RemoteTargetDurableState = emptyState()) {}
-
 	async read(): Promise<RemoteTargetDurableState> {
 		await this.transactionTail;
 		return cloneState(this.state);
 	}
-
 	async clear(): Promise<void> {
 		await this.transact((state) => {
 			state.sessions = {};
 			state.commands = {};
 		});
 	}
-
 	async transact<T>(
 		operation: (state: RemoteTargetDurableState) => T | Promise<T>,
 	): Promise<T> {
@@ -347,5 +327,4 @@ export class MemoryRemoteTargetStateStore implements RemoteTargetStateStore {
 		}
 	}
 }
-
 export const remoteTargetStoreInternals = { assertState };

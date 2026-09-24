@@ -11,7 +11,7 @@
  *   - it does not clobber unrelated config keys.
  */
 
-import { isCloudInferenceSelectedInConfig } from "@elizaos/shared";
+import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
 import { describe, expect, test } from "vitest";
 import { applyCloudProxyTextRouting } from "../../src/routes/cloud-routes";
 
@@ -19,9 +19,7 @@ describe("applyCloudProxyTextRouting", () => {
   test("makes isCloudInferenceSelectedInConfig true on an empty config", () => {
     const config: Record<string, unknown> = {};
     expect(isCloudInferenceSelectedInConfig(config)).toBe(false);
-
     applyCloudProxyTextRouting(config);
-
     expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
     expect(config.serviceRouting).toEqual({
       llmText: {
@@ -31,7 +29,6 @@ describe("applyCloudProxyTextRouting", () => {
       },
     });
   });
-
   test("preserves existing serviceRouting siblings (additive)", () => {
     const config: Record<string, unknown> = {
       serviceRouting: {
@@ -39,9 +36,7 @@ describe("applyCloudProxyTextRouting", () => {
       },
       cloud: { apiKey: "eliza_existing" },
     };
-
     applyCloudProxyTextRouting(config);
-
     const routing = config.serviceRouting as Record<string, unknown>;
     // Existing embeddings route untouched.
     expect(routing.embeddings).toEqual({
@@ -58,7 +53,6 @@ describe("applyCloudProxyTextRouting", () => {
     expect(config.cloud).toEqual({ apiKey: "eliza_existing" });
     expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
   });
-
   test("overwrites a prior non-cloud llmText route (re-credential wins)", () => {
     const config: Record<string, unknown> = {
       serviceRouting: {
@@ -66,9 +60,7 @@ describe("applyCloudProxyTextRouting", () => {
       },
     };
     expect(isCloudInferenceSelectedInConfig(config)).toBe(false);
-
     applyCloudProxyTextRouting(config);
-
     expect(isCloudInferenceSelectedInConfig(config)).toBe(true);
     expect((config.serviceRouting as Record<string, unknown>).llmText).toEqual({
       backend: "elizacloud",

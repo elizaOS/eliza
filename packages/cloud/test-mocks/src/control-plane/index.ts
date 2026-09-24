@@ -3,7 +3,7 @@
 import {
   createSyntheticControlHandler,
   type SyntheticControlAuthority,
-} from "@elizaos/shared/synthetic-control";
+} from "@elizaos/testing/synthetic-control";
 import { startFetchServer } from "../fetch-server";
 import { buildControlPlaneApp, type ControlPlaneMockOptions } from "./server";
 import type { ControlPlaneStore } from "./store";

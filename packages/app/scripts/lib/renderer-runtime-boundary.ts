@@ -1,12 +1,23 @@
-/** Rejects emitted runtime dependencies while allowing unused exports in shared package barrels. */
+/** Rejects backend runtime dependencies; explicit core protocol leaves remain ordinary browser modules. */
+import { builtinModules } from "node:module";
 import type { Plugin } from "vite";
 
+const nodeModules = new Set(builtinModules.flatMap((id) => [id, `node:${id}`]));
+
 function isCoreRuntime(id: string): boolean {
-  return id === "@elizaos/core" || id.startsWith("@elizaos/core/");
+  return (
+    nodeModules.has(id) ||
+    id.startsWith("node:") ||
+    id === "@elizaos/core" ||
+    id === "@elizaos/core/index" ||
+    id === "@elizaos/agent" ||
+    id.startsWith("@elizaos/agent/")
+  );
 }
 
 export function rejectRuntimeInRendererPlugin(): Plugin {
   let serving = false;
+  const importOrigins = new Map<string, Set<string>>();
   return {
     name: "reject-runtime-in-renderer",
     enforce: "pre",
@@ -15,6 +26,11 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
     },
     resolveId(id, importer) {
       if (!isCoreRuntime(id)) return null;
+      if (importer) {
+        const origins = importOrigins.get(id) ?? new Set<string>();
+        origins.add(importer);
+        importOrigins.set(id, origins);
+      }
       if (serving) {
         this.error(
           `Node runtime import ${id} reached renderer from ${importer ?? "entry"}.`,
@@ -31,10 +47,14 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
           isCoreRuntime,
         );
         if (runtime) {
-          const importers =
-            this.getModuleInfo(runtime)?.importers.filter(
-              (id) => id in output.modules,
-            ) ?? [];
+          const importers = [
+            ...new Set([
+              ...(importOrigins.get(runtime) ?? []),
+              ...(this.getModuleInfo(runtime)?.importers.filter(
+                (id) => id in output.modules,
+              ) ?? []),
+            ]),
+          ];
           this.error(
             `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}. Importing modules: ${importers.join(", ") || "dynamic import"}.`,
           );

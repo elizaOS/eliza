@@ -1,7 +1,7 @@
 /**
  * Unit tests for safe NaN handling in gmail-normalize priority sort.
  */
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
+import { type LifeOpsGmailMessageSummary } from "@elizaos/core/contracts/personal-assistant";
 import { describe, expect, it } from "vitest";
 import { compareGmailMessagePriority } from "./gmail-normalize";
 

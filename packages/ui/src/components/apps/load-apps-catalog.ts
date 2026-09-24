@@ -2,16 +2,14 @@
  * Loads and warms the Apps catalog by merging internal tools, server apps,
  * catalog entries, and overlay app registrations.
  */
-
+import { client, type RegistryAppInfo } from "../../api";
 import {
   getAvailableOverlayApps,
   overlayAppToRegistryInfo,
-} from "@elizaos/shared";
-import { client, type RegistryAppInfo } from "../../api";
+} from "../../apps/overlay-app-registry.js";
 import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { writeAppsCache } from "./apps-cache";
 import { getInternalToolApps } from "./internal-tool-apps";
-
 /**
  * Fetch the merged apps catalog used by AppsView. Internal-tool entries are
  * authoritative — server / overlay duplicates are dropped via first-occurrence
@@ -25,9 +23,7 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
   const serverApps =
     serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
   // A server list failure leaves catalog and overlay entries to fill the gap.
-
   const networkViews = await fetchAvailableViews();
-
   let catalogApps: RegistryAppInfo[];
   try {
     catalogApps = [
@@ -37,12 +33,10 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
   } catch {
     catalogApps = getInternalToolApps(networkViews);
   }
-
   const overlayDescriptors = getAvailableOverlayApps()
     .filter((oa) => !serverApps.some((a) => a.name === oa.name))
     .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
     .map(overlayAppToRegistryInfo);
-
   const seen = new Set<string>();
   return [...catalogApps, ...overlayDescriptors, ...serverApps].filter(
     (app) => {
@@ -52,7 +46,6 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
     },
   );
 }
-
 /**
  * Fire-and-forget prefetch used at hydration so the Apps tab opens warm.
  * Errors are ignored here because the UI's own loadApps retries on mount.

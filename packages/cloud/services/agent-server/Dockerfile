@@ -40,14 +40,13 @@ COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY packages/cloud/sdk/package.json packages/cloud/sdk/
 COPY packages/cloud/services/_common/package.json packages/cloud/services/_common/
 COPY packages/core/package.json packages/core/
-COPY packages/shared/package.json packages/shared/
 COPY plugins/plugin-assistant/package.json plugins/plugin-assistant/
 COPY plugins/plugin-elizacloud/package.json plugins/plugin-elizacloud/
 COPY plugins/plugin-openai/package.json plugins/plugin-openai/
 COPY plugins/plugin-sql/package.json plugins/plugin-sql/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
 # The headless host does not install test dependencies or optional UI peers.
-RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/sdk","packages/cloud/services/_common","packages/core","packages/shared","plugins/plugin-assistant","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-workflow"]}\n' > package.json \
+RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/sdk","packages/cloud/services/_common","packages/core","plugins/plugin-assistant","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-workflow"]}\n' > package.json \
     && bun -e 'const root = await Bun.file("package.json").json(); for (const dir of root.workspaces) { const path = `${dir}/package.json`; const manifest = await Bun.file(path).json(); delete manifest.devDependencies; for (const [name, meta] of Object.entries(manifest.peerDependenciesMeta ?? {})) { if (meta.optional) delete manifest.peerDependencies?.[name]; } await Bun.write(path, JSON.stringify(manifest)); }' \
     && bun install --production
 
@@ -67,7 +66,6 @@ COPY --from=deps /app/ ./
 COPY packages/cloud/sdk packages/cloud/sdk
 COPY packages/cloud/services/_common packages/cloud/services/_common
 COPY packages/core packages/core
-COPY packages/shared packages/shared
 COPY plugins/plugin-assistant plugins/plugin-assistant
 COPY plugins/plugin-elizacloud plugins/plugin-elizacloud
 COPY plugins/plugin-openai plugins/plugin-openai

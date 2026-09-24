@@ -6,10 +6,13 @@ const { executeRawSql, ensureOwner } = vi.hoisted(() => ({
   executeRawSql: vi.fn(),
   ensureOwner: vi.fn(async () => true),
 }));
-vi.mock("@elizaos/shared", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  executeRawSql,
-}));
+vi.mock(
+  "@elizaos/plugin-sql/database-utils/sql-compat",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    executeRawSql,
+  }),
+);
 vi.mock("./auth.ts", () => ({ ensureRouteMinRole: ensureOwner }));
 vi.mock("./compat-route-shared", () => ({
   DATABASE_UNAVAILABLE_MESSAGE: "Database unavailable",

@@ -5,11 +5,11 @@ import {
   type ResolvedLifeOpsScheduleSyncConfig,
   resolveLifeOpsScheduleSyncConfig,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import {
-  resolveCloudApiBaseUrl,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export function resolveLifeOpsScheduleSyncConfigFromElizaConfig(): ResolvedLifeOpsScheduleSyncConfig {
   if (resolveDevCloudEnvAuthority()) {

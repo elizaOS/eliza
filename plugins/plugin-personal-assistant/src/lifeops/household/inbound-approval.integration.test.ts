@@ -2,6 +2,7 @@
  * Real-PGlite proof that connector-stamped identities can resolve only their
  * own exact household approval, with durable replay and crash reconciliation.
  */
+
 import { randomUUID } from "node:crypto";
 import {
   type AgentRuntime,
@@ -9,8 +10,8 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -42,7 +43,6 @@ describe("household inbound approval — real PGlite", () => {
     message: string;
     metadata?: Record<string, unknown>;
   }> = [];
-
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
@@ -77,12 +77,10 @@ describe("household inbound approval — real PGlite", () => {
       },
     });
     registerChannelRegistry(runtime, channels);
-  }, 180_000);
-
+  }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
   });
-
   async function person(input: {
     label: string;
     handle?: string;
@@ -114,7 +112,6 @@ describe("household inbound approval — real PGlite", () => {
     });
     return entity.entityId;
   }
-
   async function pendingProposal(partyEntityId: string): Promise<{
     proposalId: string;
     proposalVersion: number;
@@ -167,7 +164,6 @@ describe("household inbound approval — real PGlite", () => {
       approvalRequestId: approval.approvalRequestId,
     };
   }
-
   function telegramMessage(input: {
     handle: string;
     approvalRequestId: string;
@@ -205,7 +201,6 @@ describe("household inbound approval — real PGlite", () => {
     };
     return message;
   }
-
   it("accepts only the exact command and ignores embedded source instructions", () => {
     const requestId = randomUUID();
     expect(
@@ -228,7 +223,6 @@ describe("household inbound approval — real PGlite", () => {
       ),
     ).toBeNull();
   });
-
   it("requires one fresh command-shaped message and rejects reflowed history", () => {
     const requestId = randomUUID();
     const command = householdApprovalCommandText("approve", requestId);
@@ -250,7 +244,6 @@ describe("household inbound approval — real PGlite", () => {
       approvalRequestId: requestId,
       reason: "cannot attend",
     });
-
     expect(parseHouseholdInboundApprovalCommand(`> ${command}`)).toBeNull();
     expect(
       parseHouseholdInboundApprovalCommand(
@@ -300,7 +293,6 @@ describe("household inbound approval — real PGlite", () => {
       ),
     ).toBeNull();
   });
-
   it("resolves a verified co-parent once and deduplicates webhook redelivery", async () => {
     const handle = `tg-${randomUUID()}`;
     const coParentId = await person({ label: "co-parent", handle });
@@ -315,7 +307,6 @@ describe("household inbound approval — real PGlite", () => {
     );
     const identity = authenticatedHouseholdInboundIdentity(message);
     if (!command || !identity) throw new Error("inbound fixture invalid");
-
     const first = await processHouseholdInboundApproval({
       runtime,
       message,
@@ -326,7 +317,6 @@ describe("household inbound approval — real PGlite", () => {
     expect(first.status).toBe("processed");
     expect(first.receipt.partyEntityId).toBe(coParentId);
     expect(first.receipt.approvalRequestId).toBe(pending.approvalRequestId);
-
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
     expect(
       await queue.byId(pending.approvalRequestId, coParentId),
@@ -334,7 +324,6 @@ describe("household inbound approval — real PGlite", () => {
       state: "approved",
       resolvedBy: coParentId,
     });
-
     const duplicate = await processHouseholdInboundApproval({
       runtime,
       message,
@@ -351,12 +340,10 @@ describe("household inbound approval — real PGlite", () => {
     );
     expect(rows).toHaveLength(1);
   });
-
   it("delivers the taught approval command to the party's contact channel end-to-end", async () => {
     const handle = `tg-${randomUUID()}`;
     const coParentId = await person({ label: "delivered-co-parent", handle });
     const pending = await pendingProposal(coParentId);
-
     const delivered = partySends.find((send) => send.target === handle);
     if (!delivered) throw new Error("approval prompt was not delivered");
     const approveCommand = householdApprovalCommandText(
@@ -374,7 +361,6 @@ describe("household inbound approval — real PGlite", () => {
       approvalRequestId: pending.approvalRequestId,
       partyEntityId: coParentId,
     });
-
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
     expect(
       await queue.byId(pending.approvalRequestId, coParentId),
@@ -382,7 +368,6 @@ describe("household inbound approval — real PGlite", () => {
       channel: "telegram",
       state: "pending",
     });
-
     const replyText = `${approveCommand} — confirmed`;
     const command = parseHouseholdInboundApprovalCommand(replyText);
     const message = telegramMessage({
@@ -407,7 +392,6 @@ describe("household inbound approval — real PGlite", () => {
       resolvedBy: coParentId,
     });
   });
-
   it("reconciles an exact decision committed before receipt persistence", async () => {
     const handle = `tg-${randomUUID()}`;
     const coParentId = await person({ label: "restart-co-parent", handle });
@@ -430,7 +414,6 @@ describe("household inbound approval — real PGlite", () => {
     );
     const identity = authenticatedHouseholdInboundIdentity(message);
     if (!command || !identity) throw new Error("inbound fixture invalid");
-
     const result = await processHouseholdInboundApproval({
       runtime,
       message,
@@ -440,7 +423,6 @@ describe("household inbound approval — real PGlite", () => {
     expect(result.status).toBe("reconciled");
     expect(result.receipt.approvalState).toBe("approved");
   });
-
   it("rejects unverified and wrong-party connector identities", async () => {
     const intendedHandle = `tg-${randomUUID()}`;
     const intendedPartyId = await person({
@@ -476,7 +458,6 @@ describe("household inbound approval — real PGlite", () => {
     ).rejects.toMatchObject<Partial<HouseholdInboundApprovalError>>({
       code: "HOUSEHOLD_INBOUND_MISSING_IDENTITY",
     });
-
     const wrongHandle = `tg-${randomUUID()}`;
     await person({ label: "wrong-party", handle: wrongHandle });
     const wrongMessage = telegramMessage({
@@ -497,15 +478,9 @@ describe("household inbound approval — real PGlite", () => {
         command: wrongCommand,
         identity: wrongIdentity,
       }),
-      // The approval read is fenced to the verified sender's party, so a
-      // wrong-party sender never retrieves the row and cannot learn that this
-      // approval exists. HOUSEHOLD_INBOUND_UNAUTHORIZED still guards the case
-      // the fence cannot cover — a row whose target party differs from the
-      // subject it was enqueued under.
     ).rejects.toMatchObject<Partial<HouseholdInboundApprovalError>>({
       code: "HOUSEHOLD_INBOUND_STALE_APPROVAL",
     });
-
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
     expect(
       await queue.byId(pending.approvalRequestId, intendedPartyId),
@@ -514,7 +489,6 @@ describe("household inbound approval — real PGlite", () => {
       resolvedBy: null,
     });
   });
-
   it("does not treat a group message as an affected-party decision", () => {
     const message = telegramMessage({
       handle: `tg-${randomUUID()}`,
@@ -524,7 +498,6 @@ describe("household inbound approval — real PGlite", () => {
     expect(authenticatedHouseholdInboundIdentity(message)).toBeNull();
     expect(message.entityId).toBe(runtime.agentId as UUID);
   });
-
   it("rejects a connector message without authenticated account identity", () => {
     const message = telegramMessage({
       handle: `tg-${randomUUID()}`,
@@ -533,7 +506,6 @@ describe("household inbound approval — real PGlite", () => {
     });
     expect(authenticatedHouseholdInboundIdentity(message)).toBeNull();
   });
-
   it("does not collapse the same provider receipt across connector accounts", async () => {
     const handle = `tg-${randomUUID()}`;
     const coParentId = await person({ label: "account-bound", handle });
@@ -556,7 +528,6 @@ describe("household inbound approval — real PGlite", () => {
       command,
       identity: originalIdentity,
     });
-
     const replay = telegramMessage({
       handle,
       approvalRequestId: pending.approvalRequestId,

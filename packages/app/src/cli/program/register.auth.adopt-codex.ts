@@ -9,9 +9,8 @@
  * would happen and exits non-zero so scripts cannot adopt by accident.
  */
 
-import { theme } from "@elizaos/shared";
-import type { Command } from "commander";
-
+import { type Command } from "commander";
+import { theme } from "../../terminal/theme.js";
 export interface AdoptCodexCliParams {
   accountId?: string;
   codexHome?: string;
@@ -20,7 +19,6 @@ export interface AdoptCodexCliParams {
   yes?: boolean;
   log?: (line: string) => void;
 }
-
 export interface AdoptCodexCliResult {
   ok: boolean;
   /** Set on success. */
@@ -31,7 +29,6 @@ export interface AdoptCodexCliResult {
   reason?: string;
   message?: string;
 }
-
 /**
  * Test-callable entry point; the commander action wraps it. Drives the real
  * adoption in @elizaos/auth/auth — no simulation layer.
@@ -44,7 +41,6 @@ export async function runAuthAdoptCodex(
   const log =
     params.log ?? ((line: string) => process.stdout.write(`${line}\n`));
   const accountId = params.accountId ?? "default";
-
   if (!params.yes) {
     log(theme.heading("Codex login adoption (dry description)"));
     log(
@@ -64,7 +60,6 @@ export async function runAuthAdoptCodex(
       message: "adoption requires explicit --yes",
     };
   }
-
   // Concrete subpath import — the documented consumption pattern for the
   // @elizaos/auth/auth leaf package (see its package guide).
   const { adoptCodexCliLogin } = await import(
@@ -101,14 +96,19 @@ export async function runAuthAdoptCodex(
   } catch (err) {
     const code =
       err && typeof err === "object" && "code" in err
-        ? String((err as { code: unknown }).code)
+        ? String(
+            (
+              err as {
+                code: unknown;
+              }
+            ).code,
+          )
         : "unknown";
     const message = err instanceof Error ? err.message : String(err);
     log(theme.error(`adoption failed (${code}): ${message}`));
     return { ok: false, reason: code, message };
   }
 }
-
 /**
  * Attach `adopt-codex` under the existing `auth` command group (creating the
  * group only if a build ever registers this before `registerAuthCommand`).
@@ -117,7 +117,6 @@ export function registerAuthAdoptCodexSubcommand(program: Command): void {
   const auth =
     program.commands.find((c) => c.name() === "auth") ??
     program.command("auth").description("Manage Eliza auth state");
-
   auth
     .command("adopt-codex")
     .description(

@@ -145,129 +145,46 @@
     },
     "bun_patches_apply_status": "All 21 patches apply cleanly in sequence to oven-sh/bun @ the legacy Zig source via git apply (validate.sh confirms strict --check). Regenerated 2026-05-28 for the legacy Zig release source reorg: src/bun.js/{bindings,modules} -> src/jsc/{bindings,modules}, src/sys.zig -> src/sys/sys.zig, src/compile_target.zig -> src/options_types/CompileTarget.zig, src/crash_handler.zig -> src/crash_handler/crash_handler.zig, src/env.zig -> src/bun_core/env.zig, src/bun.js/bindings/CPUFeatures.zig -> src/crash_handler/CPUFeatures.zig. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards; its 1.3.13 boringssl.ts hunk was dropped because the legacy Zig release's BoringSSL DirectBuild model self-guards per-arch asm (the wrong-target .S files assemble to empty objects via asm_base.h), so no OPENSSL_NO_ASM cmake arg is needed. Patches 0009-0020 disable JSC APIs unavailable in the C_LOOP/local-WebKit riscv64 artifact, fill riscv64 process/CPU feature fallbacks, fix riscv64-exposed source compatibility gaps, provide the WTFTimer fire bridge required by the local WebKit link, and run the riscv64 smoke test through qemu-riscv64-static; patch 0010's 1.3.13 BunInspector.cpp hunk was dropped because that file was removed upstream in the legacy Zig release. Patch 0021 fixes riscv64 Linux open flag constants so JS file entrypoints are not misclassified as missing directories.",
     "bun_patches_target": {
-      "scripts/build/config.ts": [
-        "0001",
-        "0004",
-        "0008"
-      ],
-      "scripts/build/flags.ts": [
-        "0002"
-      ],
-      "scripts/build/zig.ts": [
-        "0003"
-      ],
-      "scripts/build/source.ts": [
-        "0008"
-      ],
-      "scripts/build/deps/webkit.ts": [
-        "0004",
-        "0008"
-      ],
-      "scripts/build/deps/tinycc.ts": [
-        "0005"
-      ],
-      "scripts/build.ts": [
-        "0006"
-      ],
-      "scripts/build/deps/lolhtml.ts": [
-        "0007"
-      ],
-      "scripts/glob-sources.ts": [
-        "0009"
-      ],
-      "scripts/build/bun.ts": [
-        "0020"
-      ],
-      "src/bun_core/env.zig": [
-        "0008"
-      ],
-      "src/crash_handler/CPUFeatures.zig": [
-        "0008"
-      ],
-      "src/crash_handler/crash_handler.zig": [
-        "0008"
-      ],
-      "src/options_types/CompileTarget.zig": [
-        "0008"
-      ],
-      "src/install/npm.zig": [
-        "0008"
-      ],
-      "src/bake/BakeGlobalObject.cpp": [
-        "0009"
-      ],
-      "src/jsc/bindings/ZigGlobalObject.cpp": [
-        "0009"
-      ],
-      "src/jsc/bindings/ZigGlobalObject.h": [
-        "0009"
-      ],
-      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp": [
-        "0009"
-      ],
-      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.h": [
-        "0009"
-      ],
-      "src/jsc/bindings/BunCPUProfiler.cpp": [
-        "0010"
-      ],
-      "src/jsc/bindings/BunDebugger.cpp": [
-        "0010"
-      ],
-      "src/jsc/bindings/BunProcess.cpp": [
-        "0011"
-      ],
-      "src/jsc/bindings/CPUFeatures.cpp": [
-        "0012"
-      ],
-      "src/jsc/bindings/ConsoleObject.cpp": [
-        "0013"
-      ],
-      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.h": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorHTTPServerAgent.cpp": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorHTTPServerAgent.h": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorLifecycleAgent.cpp": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorLifecycleAgent.h": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorTestReporterAgent.cpp": [
-        "0014"
-      ],
-      "src/jsc/bindings/InspectorTestReporterAgent.h": [
-        "0014"
-      ],
-      "src/jsc/modules/BunJSCModule.h": [
-        "0015"
-      ],
-      "src/jsc/bindings/NodeVMScript.cpp": [
-        "0016"
-      ],
-      "src/jsc/bindings/NodeVMSourceTextModule.cpp": [
-        "0016"
-      ],
-      "src/jsc/bindings/webcore/JSPerformance.cpp": [
-        "0017"
-      ],
-      "src/jsc/bindings/webcore/SerializedScriptValue.cpp": [
-        "0018"
-      ],
-      "src/jsc/bindings/wtf-bindings.cpp": [
-        "0019"
-      ],
-      "src/sys/sys.zig": [
-        "0021"
-      ]
+      "scripts/build/config.ts": ["0001", "0004", "0008"],
+      "scripts/build/flags.ts": ["0002"],
+      "scripts/build/zig.ts": ["0003"],
+      "scripts/build/source.ts": ["0008"],
+      "scripts/build/deps/webkit.ts": ["0004", "0008"],
+      "scripts/build/deps/tinycc.ts": ["0005"],
+      "scripts/build.ts": ["0006"],
+      "scripts/build/deps/lolhtml.ts": ["0007"],
+      "scripts/glob-sources.ts": ["0009"],
+      "scripts/build/bun.ts": ["0020"],
+      "src/bun_core/env.zig": ["0008"],
+      "src/crash_handler/CPUFeatures.zig": ["0008"],
+      "src/crash_handler/crash_handler.zig": ["0008"],
+      "src/options_types/CompileTarget.zig": ["0008"],
+      "src/install/npm.zig": ["0008"],
+      "src/bake/BakeGlobalObject.cpp": ["0009"],
+      "src/jsc/bindings/ZigGlobalObject.cpp": ["0009"],
+      "src/jsc/bindings/ZigGlobalObject.h": ["0009"],
+      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp": ["0009"],
+      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.h": ["0009"],
+      "src/jsc/bindings/BunCPUProfiler.cpp": ["0010"],
+      "src/jsc/bindings/BunDebugger.cpp": ["0010"],
+      "src/jsc/bindings/BunProcess.cpp": ["0011"],
+      "src/jsc/bindings/CPUFeatures.cpp": ["0012"],
+      "src/jsc/bindings/ConsoleObject.cpp": ["0013"],
+      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.h": ["0014"],
+      "src/jsc/bindings/InspectorHTTPServerAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorHTTPServerAgent.h": ["0014"],
+      "src/jsc/bindings/InspectorLifecycleAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorLifecycleAgent.h": ["0014"],
+      "src/jsc/bindings/InspectorTestReporterAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorTestReporterAgent.h": ["0014"],
+      "src/jsc/modules/BunJSCModule.h": ["0015"],
+      "src/jsc/bindings/NodeVMScript.cpp": ["0016"],
+      "src/jsc/bindings/NodeVMSourceTextModule.cpp": ["0016"],
+      "src/jsc/bindings/webcore/JSPerformance.cpp": ["0017"],
+      "src/jsc/bindings/webcore/SerializedScriptValue.cpp": ["0018"],
+      "src/jsc/bindings/wtf-bindings.cpp": ["0019"],
+      "src/sys/sys.zig": ["0021"]
     },
     "webkit_patches": {
       "0003-disable-dfg-ftl-on-riscv64.patch": "c00fe21a74ea35c8586cc380af6d03de89fef9d9bc8c4f0186dc7c629f0b9814",

@@ -45,8 +45,7 @@
  * refuse tokens issued before it, so logging out stays logged out across the
  * pair; a marker-store failure fails CLOSED (503 → normal per-origin login).
  */
-
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { Hono } from "hono";
 import {
   mintStewardTokenFromClaims,
@@ -67,7 +66,7 @@ import {
   looksLikeSsoBridgeCode,
 } from "@/lib/services/sso-bridge-codes";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type AppEnv } from "@/types/cloud-worker-env";
 
 /** Public/auth hosts that may MINT codes. Exact hosts only — no suffix match. */
 const MINT_ORIGIN_HOSTS = new Set<string>([
@@ -75,26 +74,22 @@ const MINT_ORIGIN_HOSTS = new Set<string>([
   `www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
   new URL(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin).hostname,
 ]);
-
 /** App hosts that may EXCHANGE codes. Exact hosts only — no suffix match. */
 const EXCHANGE_ORIGIN_HOSTS = new Set<string>([
   new URL(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin).hostname,
   new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname,
 ]);
-
 /** Either trusted leg may destroy a code, but this endpoint never exchanges. */
 const BURN_ORIGIN_HOSTS = new Set<string>([
   ...MINT_ORIGIN_HOSTS,
   ...EXCHANGE_ORIGIN_HOSTS,
 ]);
-
 /** Only honored when the worker is NOT production (local dev / tests). */
 const LOCAL_DEV_ORIGIN_HOSTS = new Set<string>([
   "localhost",
   "127.0.0.1",
   "0.0.0.0",
 ]);
-
 function originHost(rawOrigin: string | undefined): string | null {
   if (!rawOrigin) return null;
   try {
@@ -105,7 +100,6 @@ function originHost(rawOrigin: string | undefined): string | null {
     return null;
   }
 }
-
 /**
  * Strict per-role Origin check. Unlike the general steward-session CSRF check
  * there is deliberately no sibling-domain suffix acceptance, no same-host
@@ -116,7 +110,11 @@ function originHost(rawOrigin: string | undefined): string | null {
  * CORS layer already refuses them.
  */
 function checkBridgeOrigin(
-  c: { req: { header: (name: string) => string | undefined } },
+  c: {
+    req: {
+      header: (name: string) => string | undefined;
+    };
+  },
   allowedHosts: ReadonlySet<string>,
   isProduction: boolean,
 ): boolean {
@@ -126,20 +124,19 @@ function checkBridgeOrigin(
   if (!isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin)) return true;
   return false;
 }
-
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
   return Boolean(env.STEWARD_SESSION_SECRET || env.STEWARD_JWT_SECRET);
 }
-
 function errorBody(
   message: string,
   code: string,
-): { error: string; code: string } {
+): {
+  error: string;
+  code: string;
+} {
   return { error: message, code };
 }
-
 const app = new Hono<AppEnv>();
-
 // Handshake legs are single-shot per login; STRICT (10/min/IP) is generous.
 // Redis loss keeps login available but bounded per-isolate, mirroring the
 // steward-session mint route.
@@ -153,14 +150,12 @@ app.use(
     },
   }),
 );
-
 app.post("/mint", async (c) => {
   try {
     const isProduction = c.env.NODE_ENV === "production";
     if (!checkBridgeOrigin(c, MINT_ORIGIN_HOSTS, isProduction)) {
       return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
     }
-
     if (!stewardSecretConfigured(c.env)) {
       return c.json(
         errorBody(
@@ -170,7 +165,6 @@ app.post("/mint", async (c) => {
         503,
       );
     }
-
     const authHeader = c.req.header("authorization");
     const token = authHeader?.startsWith("Bearer ")
       ? authHeader.slice("Bearer ".length).trim()
@@ -178,7 +172,6 @@ app.post("/mint", async (c) => {
     if (!token) {
       return c.json(errorBody("Authentication required", "missing_token"), 401);
     }
-
     const body = (await c.req.json().catch(() => ({}))) as {
       codeChallenge?: unknown;
     };
@@ -192,7 +185,6 @@ app.post("/mint", async (c) => {
         400,
       );
     }
-
     const claims = await verifyStewardTokenCached(c.env, token);
     if (!claims) {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
@@ -204,13 +196,11 @@ app.post("/mint", async (c) => {
     if (claims.stagingSessionBinding) {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
-
     if (await isBlockedBySsoBridgeLogout(claims.userId, claims.issuedAt)) {
       // The user explicitly logged out after this token was issued: minting
       // would silently undo that logout on the app host.
       return c.json(errorBody("Session was signed out", "session_ended"), 401);
     }
-
     const issued = await issueSsoBridgeCode({ claims, codeChallenge });
     return c.json({ ok: true, code: issued.code, expiresIn: issued.expiresIn });
   } catch (error) {
@@ -224,14 +214,12 @@ app.post("/mint", async (c) => {
     return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
   }
 });
-
 app.post("/burn", async (c) => {
   try {
     const isProduction = c.env.NODE_ENV === "production";
     if (!checkBridgeOrigin(c, BURN_ORIGIN_HOSTS, isProduction)) {
       return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
     }
-
     let body: unknown;
     try {
       body = await c.req.json();
@@ -249,7 +237,6 @@ app.post("/burn", async (c) => {
     if (!looksLikeSsoBridgeCode(code)) {
       return c.json(errorBody("Code required", "missing_code"), 400);
     }
-
     // `consumeSsoBridgeCode` atomically deletes before checking the missing
     // verifier. Always return the same empty response so this destruction-only
     // endpoint cannot reveal whether the code existed or was already spent.
@@ -264,14 +251,12 @@ app.post("/burn", async (c) => {
     return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
   }
 });
-
 app.post("/exchange", async (c) => {
   try {
     const isProduction = c.env.NODE_ENV === "production";
     if (!checkBridgeOrigin(c, EXCHANGE_ORIGIN_HOSTS, isProduction)) {
       return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
     }
-
     const body = (await c.req.json().catch(() => ({}))) as {
       code?: unknown;
       codeVerifier?: unknown;
@@ -282,7 +267,6 @@ app.post("/exchange", async (c) => {
     }
     const codeVerifier =
       typeof body.codeVerifier === "string" ? body.codeVerifier : null;
-
     // Consume BEFORE any further checks — the atomic claim burns the code even
     // when the verifier is wrong or absent, which doubles as the client's
     // burn-an-abandoned-code path ({code} with no verifier).
@@ -292,7 +276,6 @@ app.post("/exchange", async (c) => {
       // outcomes, so a replayed or stolen code cannot probe which it was.
       return c.json(errorBody("Invalid or expired code", "invalid_code"), 401);
     }
-
     // The session could have been logged out inside the 60-second code window —
     // never hand out a token the platform would now reject. Marker ordering
     // uses the ORIGINAL token's iat captured at mint.
@@ -304,7 +287,6 @@ app.post("/exchange", async (c) => {
     ) {
       return c.json(errorBody("Session was signed out", "session_ended"), 401);
     }
-
     // Re-mint from the claims verified at mint, capped to the ORIGINAL exp so
     // the bridge can never extend a session's lifetime. The stored dashboard
     // token was never persisted, so there is nothing to replay out of the DB.
@@ -338,7 +320,6 @@ app.post("/exchange", async (c) => {
         503,
       );
     }
-
     return c.json({ ok: true, token: minted.token });
   } catch (error) {
     // error-policy:J1 route boundary — storage/verification failures become a
@@ -350,5 +331,4 @@ app.post("/exchange", async (c) => {
     return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
   }
 });
-
 export default app;

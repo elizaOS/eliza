@@ -3,27 +3,28 @@
  * handlers). Holds the mutable `CompatRuntimeState` container (live runtime +
  * pending restart reasons) and the helpers those routes lean on: a bounded
  * restart-reason queue, same-machine trust (`isTrustedLocalRequest`, delegating
- * to the canonical `@elizaos/shared` classifier with app's env gates), a
+ * to the canonical `@elizaos/agent/api/loopback-trust` classifier with app's env gates), a
  * size-capped JSON body reader that honours a pre-parsed `req.body`, first-run
  * completion detection from persisted config, and a best-effort grab of the
  * live Drizzle DB handle. `null` from the DB grab means "service unavailable",
  * never authentication.
  */
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "@elizaos/shared";
 import {
   isLoopbackRemoteAddress,
   isTrustedLocalRequest as isTrustedLocalRequestShared,
+} from "@elizaos/agent/api/loopback-trust";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import type { AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/core/config/types";
+import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import { sendJsonError as sendJsonErrorResponse } from "./response.js";
 
-const MAX_BODY_BYTES = 1_048_576;
-
+const MAX_BODY_BYTES = 1048576;
 export interface CompatRuntimeState {
   current: AgentRuntime | null;
   pendingAgentName: string | null;
@@ -33,7 +34,6 @@ export interface CompatRuntimeState {
     ReturnType<typeof import("@elizaos/agent").startApiServer>
   >["runtimeOperations"];
 }
-
 /**
  * Per-request context handed to every ordered compat-route entry. Carries the
  * pre-parsed `method`/`url` so entries do not each re-derive them, matching the
@@ -46,7 +46,6 @@ export interface CompatRouteContext {
   method: string;
   url: URL;
 }
-
 /**
  * One entry in the ordered compat-route registry (#12089 item 5). Replaces the
  * former ~30-branch fixed if-chain in `handleCompatRouteInner`: registration
@@ -60,7 +59,6 @@ export interface CompatRouteChainEntry {
   id: string;
   handler: (ctx: CompatRouteContext) => Promise<boolean> | boolean;
 }
-
 /**
  * Iterate an ordered compat-route chain, short-circuiting on the first entry
  * that reports it handled the request. Pure over the entry list so the
@@ -81,11 +79,9 @@ export async function runCompatRouteChain(
   }
   return false;
 }
-
 export function clearCompatRuntimeRestart(state: CompatRuntimeState): void {
   state.pendingRestartReasons = [];
 }
-
 export function scheduleCompatRuntimeRestart(
   state: CompatRuntimeState,
   reason: string,
@@ -93,29 +89,24 @@ export function scheduleCompatRuntimeRestart(
   if (state.pendingRestartReasons.includes(reason)) {
     return;
   }
-
   if (state.pendingRestartReasons.length >= 50) {
     state.pendingRestartReasons.splice(
       1,
       state.pendingRestartReasons.length - 1,
     );
   }
-
   state.pendingRestartReasons.push(reason);
 }
-
 export const DATABASE_UNAVAILABLE_MESSAGE =
   "Database not available. The agent may not be running or the database adapter is not initialized.";
-
 // `isLoopbackRemoteAddress` is re-exported from the canonical
-// `@elizaos/shared` trust module (this used to be a local duplicate). Other
+// `@elizaos/agent/api/loopback-trust` trust module (this used to be a local duplicate). Other
 // app modules import it from here (e.g. `dev-compat-routes.ts`,
 // `server.ts`), so the name stays available on this subpath.
 export { isLoopbackRemoteAddress };
-
 /**
  * Same-machine dashboard access for the app compat API. Delegates to the
- * canonical `@elizaos/shared` parser with app's exact policy gates:
+ * canonical `@elizaos/agent/api/loopback-trust` parser with app's exact policy gates:
  *  - cloudCheck "env": the raw `ELIZA_CLOUD_PROVISIONED === "1"` flag (NOT the
  *    agent's stricter `isCloudProvisionedContainer()`).
  *  - requireLocalAuthEnv: honour `ELIZA_REQUIRE_LOCAL_AUTH=1`.
@@ -134,7 +125,6 @@ export function isTrustedLocalRequest(
     cloudCheck: "env",
   });
 }
-
 export async function readCompatJsonBody(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -156,10 +146,8 @@ export async function readCompatJsonBody(
     sendJsonErrorResponse(res, 400, "Invalid JSON body");
     return null;
   }
-
   const chunks: Buffer[] = [];
   let totalBytes = 0;
-
   try {
     for await (const chunk of req.iterator({ destroyOnReturn: false })) {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
@@ -178,11 +166,9 @@ export async function readCompatJsonBody(
     sendJsonErrorResponse(res, 400, "Invalid request body");
     return null;
   }
-
   if (chunks.length === 0) {
     return {};
   }
-
   try {
     const parsed = JSON.parse(
       Buffer.concat(chunks).toString("utf8"),
@@ -197,12 +183,10 @@ export async function readCompatJsonBody(
     return null;
   }
 }
-
 export function hasCompatPersistedFirstRunState(config: ElizaConfig): boolean {
   if ((config.meta as Record<string, unknown>)?.firstRunComplete === true) {
     return true;
   }
-
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
@@ -221,21 +205,17 @@ export function hasCompatPersistedFirstRunState(config: ElizaConfig): boolean {
       Boolean(llmText.smallModel?.trim() && llmText.largeModel?.trim())) ||
     (deploymentTarget.runtime === "remote" &&
       Boolean(deploymentTarget.remoteApiBase?.trim()));
-
   if (hasCompleteCanonicalRouting) {
     return true;
   }
-
   if (Array.isArray(config.agents?.list) && config.agents.list.length > 0) {
     return true;
   }
-
   return Boolean(
     config.agents?.defaults?.workspace?.trim() ||
       config.agents?.defaults?.adminEntityId?.trim(),
   );
 }
-
 export function getConfiguredCompatAgentName(): string | null {
   const config = loadElizaConfig();
   const listAgent = config.agents?.list?.[0];
@@ -244,18 +224,15 @@ export function getConfiguredCompatAgentName(): string | null {
   if (listAgentName) {
     return listAgentName;
   }
-
   const assistantName =
     typeof config.ui?.assistant?.name === "string"
       ? config.ui.assistant.name.trim()
       : "";
   return assistantName || null;
 }
-
 interface AdapterWithDb {
   db?: unknown;
 }
-
 /**
  * Best-effort grab of the Drizzle DB handle off the live runtime adapter.
  * Returns null when the runtime is unavailable or the adapter has not

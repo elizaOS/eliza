@@ -5,31 +5,25 @@
  * or from a bundled pack definition. Validates the manifest and resolves
  * asset paths to absolute URLs.
  */
-
 import {
   CONTENT_PACK_MANIFEST_FILENAME,
   type ContentPackManifest,
   type ContentPackSource,
   type ResolvedContentPack,
   validateContentPackManifest,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/content-pack";
 /** Manifest reads are short UI requests and must not stall pack loading. */
-export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
-
+export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15000;
 /** A manifest is metadata, so bound it independently of its asset payloads. */
 export const CONTENT_PACK_MANIFEST_MAX_BYTES = 1024 * 1024;
-
 /** Teardown must not turn an untrusted stream's cancel hook into a new stall. */
 const CONTENT_PACK_READER_CANCEL_TIMEOUT_MS = 250;
-
 class ContentPackManifestTooLargeError extends Error {
   constructor(maxBytes: number) {
     super(`Content pack manifest exceeds ${maxBytes} bytes`);
     this.name = "ContentPackManifestTooLargeError";
   }
 }
-
 function cancelManifestBody(
   body: Pick<ReadableStream<Uint8Array>, "cancel"> | undefined | null,
   reason: unknown,
@@ -39,7 +33,6 @@ function cancelManifestBody(
   // the original transport/validation failure remains the caller-visible one.
   void Promise.allSettled([body.cancel(reason)]);
 }
-
 async function cancelManifestReader(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   reason: unknown,
@@ -56,7 +49,6 @@ async function cancelManifestReader(
   ]);
   if (timeoutId !== undefined) clearTimeout(timeoutId);
 }
-
 async function readBoundedManifestJson<T>(
   response: Response,
   signal: AbortSignal,
@@ -68,7 +60,6 @@ async function readBoundedManifestJson<T>(
       "Content pack manifest byte limit must be a positive safe integer",
     );
   }
-
   const contentLength = response.headers.get("content-length");
   if (contentLength && /^\d+$/.test(contentLength)) {
     const declaredBytes = Number(contentLength);
@@ -79,10 +70,8 @@ async function readBoundedManifestJson<T>(
       throw error;
     }
   }
-
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Content pack manifest response has no body");
-
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let receivedBytes = 0;
   let json = "";
@@ -95,7 +84,6 @@ async function readBoundedManifestJson<T>(
   const onAbort = () => rejectOnAbort?.(signal.reason);
   if (signal.aborted) onAbort();
   else signal.addEventListener("abort", onAbort, { once: true });
-
   try {
     while (true) {
       const { done, value } = await Promise.race([reader.read(), aborted]);
@@ -130,7 +118,6 @@ async function readBoundedManifestJson<T>(
     }
   }
 }
-
 /** Fetch and fully consume one manifest within a single request/body deadline. */
 export async function getContentPackManifestJsonWithFetch<T>(
   url: string,
@@ -162,7 +149,6 @@ export async function getContentPackManifestJsonWithFetch<T>(
     maxBytes,
   );
 }
-
 export class ContentPackLoadError extends Error {
   constructor(
     message: string,
@@ -173,21 +159,20 @@ export class ContentPackLoadError extends Error {
     this.name = "ContentPackLoadError";
   }
 }
-
 const filePackObjectUrls = new WeakMap<ResolvedContentPack, string[]>();
-
 /**
  * Load a content pack from a base URL (directory containing pack.json).
  * The base URL should end with a trailing slash.
  */
 export async function loadContentPackFromUrl(
   baseUrl: string,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    signal?: AbortSignal;
+  } = {},
 ): Promise<ResolvedContentPack> {
   const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const source: ContentPackSource = { kind: "url", url: normalizedBase };
   const manifestUrl = `${normalizedBase}${CONTENT_PACK_MANIFEST_FILENAME}`;
-
   let raw: unknown;
   try {
     raw = await getContentPackManifestJsonWithFetch(
@@ -208,7 +193,6 @@ export async function loadContentPackFromUrl(
       err,
     );
   }
-
   const errors = validateContentPackManifest(raw);
   if (errors.length > 0) {
     throw new ContentPackLoadError(
@@ -216,11 +200,9 @@ export async function loadContentPackFromUrl(
       source,
     );
   }
-
   const manifest = raw as ContentPackManifest;
   return resolvePackAssets(manifest, normalizedBase, source);
 }
-
 /**
  * Load a content pack from an array of local browser File objects (e.g. from an <input webkitdirectory />).
  */
@@ -232,14 +214,12 @@ export async function loadContentPackFromFiles(
       file.webkitRelativePath.endsWith(CONTENT_PACK_MANIFEST_FILENAME) ||
       file.name === CONTENT_PACK_MANIFEST_FILENAME,
   );
-
   if (!packFile) {
     throw new ContentPackLoadError(
       "Could not find pack.json in the selected folder.",
       { kind: "file", path: "local-folder" },
     );
   }
-
   let raw: unknown;
   try {
     raw = JSON.parse(await packFile.text());
@@ -250,7 +230,6 @@ export async function loadContentPackFromFiles(
       err,
     );
   }
-
   const errors = validateContentPackManifest(raw);
   if (errors.length > 0) {
     throw new ContentPackLoadError(
@@ -258,7 +237,6 @@ export async function loadContentPackFromFiles(
       { kind: "file", path: "local-folder" },
     );
   }
-
   const manifest = raw as ContentPackManifest;
   const { assets } = manifest;
   const objectUrls: string[] = [];
@@ -267,7 +245,6 @@ export async function loadContentPackFromFiles(
     "",
   );
   const packRootSegments = packRootPath ? packRootPath.split("/") : [];
-
   const resolveBlobUrl = (path: string | undefined): string | undefined => {
     if (!path) return undefined;
     const normalizedPath = path.replace(/^\.\/|^\//, "");
@@ -286,12 +263,10 @@ export async function loadContentPackFromFiles(
     objectUrls.push(objectUrl);
     return objectUrl;
   };
-
   const folderPath =
     packFile.webkitRelativePath
       .replace(CONTENT_PACK_MANIFEST_FILENAME, "")
       .replace(/\/$/, "") || "local-folder";
-
   const pack: ResolvedContentPack = {
     manifest,
     vrmUrl: resolveBlobUrl(assets.vrm?.file),
@@ -303,14 +278,11 @@ export async function loadContentPackFromFiles(
     personality: assets.personality,
     source: { kind: "file", path: folderPath },
   };
-
   if (objectUrls.length > 0) {
     filePackObjectUrls.set(pack, objectUrls);
   }
-
   return pack;
 }
-
 export function releaseLoadedContentPack(pack: ResolvedContentPack): void {
   const objectUrls = filePackObjectUrls.get(pack);
   if (!objectUrls) return;
@@ -319,7 +291,6 @@ export function releaseLoadedContentPack(pack: ResolvedContentPack): void {
   }
   filePackObjectUrls.delete(pack);
 }
-
 /**
  * Resolve a pack from an already-parsed manifest and a base URL.
  * Useful for bundled packs that ship with the app.
@@ -332,7 +303,6 @@ export function resolveContentPackFromManifest(
   const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   return resolvePackAssets(manifest, normalizedBase, source);
 }
-
 function resolvePackAssets(
   manifest: ContentPackManifest,
   baseUrl: string,
@@ -341,7 +311,6 @@ function resolvePackAssets(
   const { assets } = manifest;
   const resolve = (path: string | undefined) =>
     path ? `${baseUrl}${path}` : undefined;
-
   return {
     manifest,
     vrmUrl: resolve(assets.vrm?.file),
@@ -354,7 +323,6 @@ function resolvePackAssets(
     source,
   };
 }
-
 /**
  * Create a resolved content pack from a bundled pack definition.
  * Bundled packs live in apps/app/public/packs/<id>/.

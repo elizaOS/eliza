@@ -905,3 +905,125 @@ describe("buyer snapshot authority", () => {
     expect(snapshot.trialEligibility.status).toBe("claimed");
   });
 });
+
+test("seller tenant predicates preserve cross-organization buyers and reject foreign accounts", async () => {
+  const { appBillingQueries } = await import("./app-billing-queries");
+  const { appBillingRecordsRepository } = await import("./app-billing-records");
+  const { lockAppBillingOwner } = await import("./app-billing-admin");
+  const { writeTransaction } = await import("../helpers");
+  const seller = randomUUID();
+  const buyerOrg = randomUUID();
+  const buyer = randomUUID();
+  const sellerUser = randomUUID();
+  const outsider = randomUUID();
+  const secondApp = randomUUID();
+  const secondMerchant = randomUUID();
+  await client.exec(
+    "ALTER TABLE users ADD COLUMN organization_id uuid, ADD COLUMN role text NOT NULL DEFAULT 'member'",
+  );
+  await client.query("INSERT INTO organizations(id) VALUES($1),($2)", [seller, buyerOrg]);
+  await client.query(
+    "INSERT INTO users(id,organization_id,role) VALUES($1,$2,'owner'),($3,$4,'member'),($5,$4,'member')",
+    [sellerUser, seller, buyer, buyerOrg, outsider],
+  );
+  await client.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [secondApp, seller]);
+  await client.query(
+    "INSERT INTO billing_merchants(id,organization_id,provider_account_key,livemode,enabled) VALUES($1,$2,$3,false,true)",
+    [secondMerchant, seller, `acct_${randomUUID().replaceAll("-", "")}`],
+  );
+  const catalog = await appBillingQueries.catalog(appA, false);
+  expect(catalog.plans.length).toBeGreaterThan(0);
+  const key = randomUUID();
+  const account = await repository.createAccount({
+    appId: appA,
+    externalAccountKey: key,
+    displayName: "Cross-org buyer",
+    principalUserId: buyer,
+  });
+  const secondAccount = await repository.createAccount({
+    appId: secondApp,
+    externalAccountKey: randomUUID(),
+    displayName: "Second seller",
+    principalUserId: buyer,
+  });
+  const identity = {
+    appId: appA,
+    billingAccountId: account.id,
+    actorUserId: buyer,
+    productFamilyKey: "main",
+    livemode: false,
+  };
+  const scope = await repository.resolveScope({ ...identity, merchantId: merchant });
+  expect(scope.organizationId).toBe(org);
+  expect(scope.organizationId).not.toBe(buyerOrg);
+  expect((await appBillingQueries.snapshot(identity)).account.id).toBe(account.id);
+  expect(await appBillingRecordsRepository.seats(identity, null, 10)).toEqual([]);
+  await expect(
+    repository.createAccount({
+      appId: appA,
+      externalAccountKey: key,
+      displayName: "Collision",
+      principalUserId: outsider,
+    }),
+  ).rejects.toThrow("ownership");
+  for (const invalid of [
+    { ...identity, billingAccountId: secondAccount.id },
+    { ...identity, actorUserId: outsider },
+  ]) {
+    await expect(appBillingQueries.snapshot(invalid)).rejects.toThrow("membership");
+    await expect(appBillingRecordsRepository.seats(invalid, null, 10)).rejects.toThrow(
+      "membership",
+    );
+  }
+  await expect(
+    writeTransaction((tx) =>
+      lockAppBillingOwner(tx, { appId: appA, organizationId: seller, userId: sellerUser }),
+    ),
+  ).rejects.toThrow("administration");
+  expect(
+    (
+      await writeTransaction((tx) =>
+        lockAppBillingOwner(tx, { appId: secondApp, organizationId: seller, userId: sellerUser }),
+      )
+    ).app.id,
+  ).toBe(secondApp);
+  await expect(
+    repository.resolveScope({
+      ...identity,
+      billingAccountId: secondAccount.id,
+      merchantId: secondMerchant,
+    }),
+  ).rejects.toThrow();
+  expect(
+    (
+      await client.query("SELECT id FROM app_billing_scopes WHERE billing_account_id=$1", [
+        secondAccount.id,
+      ])
+    ).rows,
+  ).toHaveLength(0);
+  const command = await repository.prepareCommand({
+    scopeId: scope.scopeId,
+    actorUserId: buyer,
+    kind: "checkout",
+    payload: { version: 1, domain: "buyer", action: "trial", planRevisionId: planA, quantity: 1 },
+    targetPlanRevisionId: planA,
+    quantity: 1,
+    idempotencyKey: randomUUID(),
+    requestDigest: digest,
+    expectedSubscriptionRevision: null,
+  });
+  expect(
+    (
+      await repository.claimTrial({
+        scopeId: scope.scopeId,
+        commandId: command.id,
+        planRevisionId: planA,
+      })
+    ).id,
+  ).toBeDefined();
+  await client.query(
+    "UPDATE app_billing_members SET revoked_at=now() WHERE billing_account_id=$1",
+    [account.id],
+  );
+  await expect(appBillingQueries.snapshot(identity)).rejects.toThrow("membership");
+});

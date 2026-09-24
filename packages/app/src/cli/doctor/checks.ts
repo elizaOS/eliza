@@ -4,7 +4,6 @@
  * All functions are pure / injectable — no top-level side effects — so they
  * can be unit-tested without touching the filesystem or network.
  */
-
 import {
   accessSync,
   constants,
@@ -20,16 +19,14 @@ import process from "node:process";
 import { resolveConfigPath } from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
 import {
-  getCloudSecret,
   resolveApiSecurityConfig,
   resolveDesktopApiPort,
   resolveDesktopUiPort,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/runtime-env";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 export type CheckCategory = "system" | "config" | "network" | "storage";
-
 export interface CheckResult {
   label: string;
   status: CheckStatus;
@@ -40,11 +37,9 @@ export interface CheckResult {
   /** When true, --fix will spawn this command automatically. */
   autoFixable?: boolean;
 }
-
 // ---------------------------------------------------------------------------
 // Model provider API key env vars (order = display preference)
 // ---------------------------------------------------------------------------
-
 export const MODEL_KEY_VARS = [
   {
     key: "ANTHROPIC_API_KEY",
@@ -70,14 +65,11 @@ export const MODEL_KEY_VARS = [
   { key: "ELIZAOS_CLOUD_API_KEY", label: "elizaOS Cloud" },
   { key: "OLLAMA_BASE_URL", label: "Ollama (local)" },
 ] as const;
-
 // ---------------------------------------------------------------------------
 // System checks
 // ---------------------------------------------------------------------------
-
 export function checkRuntime(): CheckResult {
   const isBun = "Bun" in globalThis;
-
   if (isBun) {
     const bun = (globalThis as Record<string, unknown>).Bun as {
       version: string;
@@ -99,7 +91,6 @@ export function checkRuntime(): CheckResult {
       detail: `Bun ${bun.version}`,
     };
   }
-
   const ver = process.version;
   const match = ver.match(/^v(\d+)/);
   const major = match ? Number(match[1]) : 0;
@@ -119,13 +110,11 @@ export function checkRuntime(): CheckResult {
     detail: `Node.js ${ver}`,
   };
 }
-
 export function checkNodeModules(projectRoot?: string): CheckResult {
   const root =
     projectRoot ??
     path.resolve(process.env.ELIZA_PROJECT_ROOT ?? process.cwd());
   const nmDir = path.join(root, "node_modules");
-
   if (!existsSync(nmDir)) {
     return {
       label: "node_modules",
@@ -136,7 +125,6 @@ export function checkNodeModules(projectRoot?: string): CheckResult {
       autoFixable: false,
     };
   }
-
   return {
     label: "node_modules",
     category: "system",
@@ -144,13 +132,11 @@ export function checkNodeModules(projectRoot?: string): CheckResult {
     detail: nmDir,
   };
 }
-
 export function checkBuildArtifacts(projectRoot?: string): CheckResult {
   const root =
     projectRoot ??
     path.resolve(process.env.ELIZA_PROJECT_ROOT ?? process.cwd());
   const distEntry = path.join(root, "dist", "entry.js");
-
   if (!existsSync(distEntry)) {
     return {
       label: "Build artifacts",
@@ -160,7 +146,6 @@ export function checkBuildArtifacts(projectRoot?: string): CheckResult {
       fix: "bun run build",
     };
   }
-
   return {
     label: "Build artifacts",
     category: "system",
@@ -168,17 +153,14 @@ export function checkBuildArtifacts(projectRoot?: string): CheckResult {
     detail: path.join(root, "dist"),
   };
 }
-
 // ---------------------------------------------------------------------------
 // Config checks
 // ---------------------------------------------------------------------------
-
 export function checkConfigFile(
   configPath?: string,
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const resolved = configPath ?? resolveConfigPath(env);
-
   if (!existsSync(resolved)) {
     return {
       label: "Config file",
@@ -189,7 +171,6 @@ export function checkConfigFile(
       autoFixable: true,
     };
   }
-
   try {
     JSON.parse(readFileSync(resolved, "utf-8"));
     return {
@@ -208,7 +189,6 @@ export function checkConfigFile(
     };
   }
 }
-
 export function checkModelKey(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
@@ -249,16 +229,13 @@ export function checkModelKey(
     autoFixable: true,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Storage checks
 // ---------------------------------------------------------------------------
-
 export function checkStateDir(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const dir = resolveStateDir(env as NodeJS.ProcessEnv);
-
   if (!existsSync(dir)) {
     return {
       label: "State directory",
@@ -267,7 +244,6 @@ export function checkStateDir(
       detail: `${dir} (created on first run)`,
     };
   }
-
   try {
     accessSync(dir, constants.W_OK);
     return {
@@ -286,13 +262,11 @@ export function checkStateDir(
     };
   }
 }
-
 export function checkDatabase(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const stateDir = resolveStateDir(env as NodeJS.ProcessEnv);
   const dbDir = path.join(stateDir, "workspace", ".elizadb");
-
   if (!existsSync(dbDir)) {
     return {
       label: "Database",
@@ -301,7 +275,6 @@ export function checkDatabase(
       detail: "Not initialized (created automatically on first start)",
     };
   }
-
   return {
     label: "Database",
     category: "storage",
@@ -309,19 +282,15 @@ export function checkDatabase(
     detail: dbDir,
   };
 }
-
 const MIN_FREE_BYTES = 1 * 1024 * 1024 * 1024; // 1 GiB
-
 export function checkDiskSpace(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const dir = env.ELIZA_STATE_DIR?.trim() || os.homedir();
-
   try {
     const stats = statfsSync(dir);
     const freeBytes = stats.bsize * stats.bavail;
     const freeGB = (freeBytes / 1024 ** 3).toFixed(1);
-
     if (freeBytes < MIN_FREE_BYTES) {
       return {
         label: "Disk space",
@@ -345,16 +314,13 @@ export function checkDiskSpace(
     };
   }
 }
-
 // ---------------------------------------------------------------------------
 // Config checks (continued)
 // ---------------------------------------------------------------------------
-
 /** Wildcard bind addresses — same regex as server.ts. */
 const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/;
 const LOOPBACK_BIND_RE =
   /^(localhost|127\.0\.0\.1|::1|\[::1\]|0:0:0:0:0:0:0:1)$/;
-
 export function checkHostConfig(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
@@ -363,10 +329,8 @@ export function checkHostConfig(
   const bindHost = rawBind.replace(/:\d+$/, "").toLowerCase();
   const token = config.token ?? "";
   const allowedHosts = config.allowedHosts.join(",");
-
   const isWildcard = WILDCARD_BIND_RE.test(bindHost);
   const isLoopback = LOOPBACK_BIND_RE.test(bindHost);
-
   // Wildcard bind: API is reachable from all interfaces — token auto-generated
   // each restart if not explicitly set, which breaks persistent clients.
   if (isWildcard && !token) {
@@ -378,7 +342,6 @@ export function checkHostConfig(
       fix: "Set a stable ELIZA_API_TOKEN=<secret> in your environment",
     };
   }
-
   // Non-loopback, non-wildcard bind without a token — ensureApiTokenForBindHost
   // will auto-generate one, but flag it so the user is aware.
   if (!isLoopback && !isWildcard && !token) {
@@ -390,7 +353,6 @@ export function checkHostConfig(
       fix: "Set a stable ELIZA_API_TOKEN=<secret>",
     };
   }
-
   if (allowedHosts) {
     return {
       label: "Host binding",
@@ -399,7 +361,6 @@ export function checkHostConfig(
       detail: `${rawBind} + ELIZA_ALLOWED_HOSTS=${allowedHosts}`,
     };
   }
-
   if (!isLoopback) {
     return {
       label: "Host binding",
@@ -408,7 +369,6 @@ export function checkHostConfig(
       detail: `${rawBind} (token protected)`,
     };
   }
-
   return {
     label: "Host binding",
     category: "config",
@@ -416,11 +376,9 @@ export function checkHostConfig(
     detail: "Loopback only (default)",
   };
 }
-
 // ---------------------------------------------------------------------------
 // Network checks
 // ---------------------------------------------------------------------------
-
 /** Returns the process name holding a port, or null if unknown / not Unix. */
 export async function getPortOwner(port: number): Promise<string | null> {
   if (process.platform === "win32") return null;
@@ -428,7 +386,6 @@ export async function getPortOwner(port: number): Promise<string | null> {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFile);
-
     // Get the PID(s) listening on the port
     const { stdout: pidOut } = await execFileAsync("lsof", [
       "-ti",
@@ -437,7 +394,6 @@ export async function getPortOwner(port: number): Promise<string | null> {
     ]);
     const pid = pidOut.trim().split("\n")[0];
     if (!pid) return null;
-
     // Get the process name for that PID
     const { stdout: nameOut } = await execFileAsync("ps", [
       "-o",
@@ -451,7 +407,6 @@ export async function getPortOwner(port: number): Promise<string | null> {
     return null;
   }
 }
-
 export async function checkPort(port: number): Promise<CheckResult> {
   const inUse = await new Promise<boolean>((resolve) => {
     const socket = createConnection({ port, host: "127.0.0.1" });
@@ -464,7 +419,6 @@ export async function checkPort(port: number): Promise<CheckResult> {
       resolve(false);
     });
   });
-
   if (!inUse) {
     return {
       label: `Port ${port}`,
@@ -473,7 +427,6 @@ export async function checkPort(port: number): Promise<CheckResult> {
       detail: "Available",
     };
   }
-
   const owner = await getPortOwner(port);
   return {
     label: `Port ${port}`,
@@ -483,11 +436,9 @@ export async function checkPort(port: number): Promise<CheckResult> {
     fix: `ELIZA_PORT=<other> eliza start (current default ${resolveServerOnlyPort(process.env)})`,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Eliza workspace checks
 // ---------------------------------------------------------------------------
-
 export function checkElizaWorkspace(projectRoot?: string): CheckResult {
   const root =
     projectRoot ??
@@ -496,7 +447,6 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
   const pluginsRoot = path.join(elizaRoot, "plugins");
   const hasElizaRoot = existsSync(path.join(elizaRoot, "package.json"));
   const hasPluginsRoot = existsSync(pluginsRoot);
-
   if (!hasElizaRoot && !hasPluginsRoot) {
     return {
       label: "Local upstreams",
@@ -507,7 +457,6 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
       fix: "bun run setup:upstreams",
     };
   }
-
   if (existsSync(elizaRoot) && !hasElizaRoot) {
     return {
       label: "Local upstreams",
@@ -517,7 +466,6 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
       fix: "bun run setup:upstreams",
     };
   }
-
   const coreLink = path.join(root, "node_modules", "@elizaos", "core");
   try {
     const realTarget = realpathSync(coreLink);
@@ -533,14 +481,12 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
   } catch {
     // Not a symlink or can't resolve — that's fine
   }
-
   const foundLocations = [
     hasElizaRoot ? "./eliza" : null,
     hasPluginsRoot ? "./eliza/plugins" : null,
   ]
     .filter((value): value is string => Boolean(value))
     .join(" and ");
-
   return {
     label: "Local upstreams",
     category: "system",
@@ -548,11 +494,9 @@ export function checkElizaWorkspace(projectRoot?: string): CheckResult {
     detail: `Found vendored sources at ${foundLocations} (run setup:upstreams to refresh workspace links)`,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Run all checks
 // ---------------------------------------------------------------------------
-
 export interface DoctorOptions {
   env?: Record<string, string | undefined>;
   configPath?: string;
@@ -561,12 +505,10 @@ export interface DoctorOptions {
   apiPort?: number;
   uiPort?: number;
 }
-
 export async function runAllChecks(
   opts: DoctorOptions = {},
 ): Promise<CheckResult[]> {
   const env = opts.env ?? process.env;
-
   const sync: CheckResult[] = [
     // system
     checkRuntime(),
@@ -582,15 +524,12 @@ export async function runAllChecks(
     checkDatabase(env),
     checkDiskSpace(env),
   ];
-
   if (opts.checkPorts === false) {
     return sync;
   }
-
   const portResults = await Promise.all([
     checkPort(opts.apiPort ?? resolveDesktopApiPort(env)),
     checkPort(opts.uiPort ?? resolveDesktopUiPort(env)),
   ]);
-
   return [...sync, ...portResults];
 }

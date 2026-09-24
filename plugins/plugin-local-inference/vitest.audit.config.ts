@@ -19,9 +19,6 @@ export default defineConfig({
 			"@elizaos/plugin-computeruse": fileURLToPath(
 				new URL("../plugin-computeruse/src/index.ts", import.meta.url),
 			),
-			"@elizaos/shared": fileURLToPath(
-				new URL("../../packages/shared/src/index.ts", import.meta.url),
-			),
 		},
 	},
 	test: {

@@ -4,12 +4,8 @@ export default defineConfig({
   resolve: {
     conditions: ["eliza-source", "node"],
     alias: {
-      "@elizaos/plugin-sqlite": new URL(
-        "../plugin-sqlite/index.ts",
-        import.meta.url,
-      ).pathname,
-      "@elizaos/shared/media": new URL(
-        "../../packages/shared/src/media/index.ts",
+      "@elizaos/core/media": new URL(
+        "../../packages/core/src/media/index.ts",
         import.meta.url,
       ).pathname,
       "@elizaos/core": new URL(

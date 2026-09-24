@@ -8,7 +8,8 @@
  * claims about the world state.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   createHouseholdCoordinationService,
   createParentingSubjectLocationAttribute,
@@ -20,9 +21,7 @@ import {
 } from "@elizaos/plugin-personal-assistant";
 import { resolveOwnerFactStore } from "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
-import type { BenchmarkSession } from "./server-utils.js";
-
+import { type BenchmarkSession } from "./server-utils.js";
 export const TRUSTED_PARENTING_STATE_SCHEMA =
   "lifeops.trusted-parenting-state.v1" as const;
 export const G35_PARENTING_SCENARIO_ID =
@@ -35,7 +34,6 @@ export const G36_PARENTING_COPARENT_ID = "Sam" as const;
 const PARENTING_CURRENT_ADMINISTRATIVE_AREA_ATTRIBUTE =
   "lifeops.parenting.currentAdministrativeArea";
 const PARENTING_AGE_YEARS_ATTRIBUTE = "lifeops.parenting.ageYears";
-
 interface TrustedParentingFixture {
   readonly scenarioId:
     | typeof G35_PARENTING_SCENARIO_ID
@@ -53,7 +51,6 @@ interface TrustedParentingFixture {
     | typeof G36_PARENTING_COPARENT_ID;
   readonly coParentEntityId: typeof G36_PARENTING_COPARENT_ID | null;
 }
-
 const G35_FIXTURE: TrustedParentingFixture = {
   scenarioId: G35_PARENTING_SCENARIO_ID,
   subjectEntityId: G35_PARENTING_SUBJECT_ID,
@@ -66,7 +63,6 @@ const G35_FIXTURE: TrustedParentingFixture = {
   locationVerifierEntityId: SELF_ENTITY_ID,
   coParentEntityId: null,
 };
-
 const G36_FIXTURE: TrustedParentingFixture = {
   scenarioId: G36_PARENTING_SCENARIO_ID,
   subjectEntityId: G36_PARENTING_SUBJECT_ID,
@@ -79,17 +75,14 @@ const G36_FIXTURE: TrustedParentingFixture = {
   locationVerifierEntityId: G36_PARENTING_COPARENT_ID,
   coParentEntityId: G36_PARENTING_COPARENT_ID,
 };
-
 function fixtureForTaskId(taskId: string): TrustedParentingFixture | null {
   if (taskId.startsWith(`${G35_PARENTING_SCENARIO_ID}:`)) return G35_FIXTURE;
   if (taskId.startsWith(`${G36_PARENTING_SCENARIO_ID}:`)) return G36_FIXTURE;
   return null;
 }
-
 function sorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
 }
-
 async function ensureRoleBinding(
   household: HouseholdCoordinationService,
   input: {
@@ -128,7 +121,6 @@ async function ensureRoleBinding(
     evidence: input.evidence,
   });
 }
-
 async function ensureCoParentVisibilityGrant(
   household: HouseholdCoordinationService,
   coParentEntityId: string,
@@ -156,7 +148,6 @@ async function ensureCoParentVisibilityGrant(
     issuedByEntityId: SELF_ENTITY_ID,
   });
 }
-
 export function trustedParentingRequestText(
   taskId: string,
   actionName: string,
@@ -164,7 +155,6 @@ export function trustedParentingRequestText(
   if (actionName !== "PARENTING_GUIDANCE") return null;
   return fixtureForTaskId(taskId)?.requestText ?? null;
 }
-
 export async function prepareTrustedParentingEvidenceSession(
   runtime: AgentRuntime,
   session: BenchmarkSession,
@@ -190,9 +180,8 @@ export async function prepareTrustedParentingEvidenceSession(
     tags: sorted([...owner.tags, "lifeops-parenting-evidence-owner"]),
     visibility: owner.visibility,
   });
-
-  const observedAt = new Date(Date.now() - 60_000).toISOString();
-  const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1_000).toISOString();
+  const observedAt = new Date(Date.now() - 60000).toISOString();
+  const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
   const locationEvidenceId = `trusted-parenting-location:${fixture.scenarioId}:${fixture.subjectEntityId}`;
   await entityStore.upsert({
     entityId: fixture.subjectEntityId,
@@ -254,7 +243,6 @@ export async function prepareTrustedParentingEvidenceSession(
     ],
     visibility: "owner_only",
   });
-
   const household =
     getHouseholdCoordinationService(runtime) ??
     createHouseholdCoordinationService(runtime);
@@ -264,7 +252,6 @@ export async function prepareTrustedParentingEvidenceSession(
     subjectEntityIds: [fixture.subjectEntityId],
     evidence: `Trusted benchmark world binds ${fixture.subjectEntityId} as Maya's child for ${fixture.scenarioId}.`,
   });
-
   if (fixture.coParentEntityId) {
     await entityStore.upsert({
       entityId: fixture.coParentEntityId,
@@ -289,8 +276,8 @@ export async function prepareTrustedParentingEvidenceSession(
     );
     await resolveOwnerFactStore(runtime).setActiveTravel(
       {
-        startIso: new Date(Date.now() - 60 * 60 * 1_000).toISOString(),
-        endIso: new Date(Date.now() + 12 * 60 * 60 * 1_000).toISOString(),
+        startIso: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endIso: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
         destinationTimezone: "Europe/London",
       },
       {
@@ -307,7 +294,6 @@ export async function prepareTrustedParentingEvidenceSession(
     });
   }
 }
-
 export async function captureTrustedParentingFinalState(
   runtime: AgentRuntime,
   taskId: string,

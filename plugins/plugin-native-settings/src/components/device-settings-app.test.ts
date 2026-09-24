@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const registerOverlayApp = vi.hoisted(() => vi.fn());
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/ui/apps/overlay-app-registry", () => ({
   registerOverlayApp,
 }));
 

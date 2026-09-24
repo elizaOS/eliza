@@ -44,8 +44,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@octokit/rest": "^22.0.0",
-    "@elizaos/shared": "workspace:*"
+    "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

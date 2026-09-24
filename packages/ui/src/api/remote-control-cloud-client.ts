@@ -3,20 +3,17 @@
  * command relay envelopes. It validates every untrusted Cloud response before
  * exposing it to Settings or the agent transport.
  */
-import type {
-  EncryptedRemoteControlEnvelope,
-  RemoteControllerPlatform,
-  RemoteControllerPublicIdentity,
-} from "@elizaos/shared";
 import {
+  type EncryptedRemoteControlEnvelope,
   isEncryptedRemoteControlEnvelope,
   isRemoteControlIdentifier,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/shared";
+  type RemoteControllerPlatform,
+  type RemoteControllerPublicIdentity,
+} from "@elizaos/core/contracts/remote-control";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
 import { fetchAgentTransport } from "./transport";
-
 export interface RemoteHostSummary {
   id: string;
   deviceId: string;
@@ -31,12 +28,10 @@ export interface RemoteHostSummary {
   createdAt: string;
   revokedAt: string | null;
 }
-
 export interface RemoteHostDirectory {
   ownerId: string;
   hosts: RemoteHostSummary[];
 }
-
 export interface RemoteSessionSummary {
   id: string;
   ownerId: string;
@@ -52,7 +47,6 @@ export interface RemoteSessionSummary {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface RemotePairingReceipt {
   ownerId: string;
   sessionId: string;
@@ -66,7 +60,6 @@ export interface RemotePairingReceipt {
   ttlSeconds: number;
   status: "pending";
 }
-
 export interface RemotePairingClaimReceipt {
   ownerId: string;
   sessionId: string;
@@ -86,7 +79,6 @@ export interface RemotePairingClaimReceipt {
     | "createdAt"
   >;
 }
-
 export type RemoteRelayCommandStatus =
   | "pending"
   | "claimed"
@@ -96,7 +88,6 @@ export type RemoteRelayCommandStatus =
   | "expired"
   | "cancelled"
   | "execution_ambiguous";
-
 export class RemoteCloudRequestError extends Error {
   constructor(
     message: string,
@@ -107,63 +98,53 @@ export class RemoteCloudRequestError extends Error {
     this.name = "RemoteCloudRequestError";
   }
 }
-
 export class RemoteControlAuthenticationRequiredError extends Error {
   constructor() {
     super("Sign in to Eliza Cloud to manage devices.");
     this.name = "RemoteControlAuthenticationRequiredError";
   }
 }
-
 interface RemoteControlCloudClientOptions {
   baseUrl: string;
   authToken: string;
   request?: (url: string, init: RequestInit) => Promise<Response>;
 }
-
 const MAX_REVOCATION_CLEANUP_PAGES = 256;
-
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
-
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Cloud response is missing ${field}.`);
   }
   return value;
 }
-
 function requiredInteger(value: unknown, field: string): number {
   if (!Number.isSafeInteger(value) || Number(value) < 1) {
     throw new Error(`Cloud response is missing ${field}.`);
   }
   return value as number;
 }
-
 function nonNegativeInteger(value: unknown, field: string): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) {
     throw new Error(`Cloud response has an invalid ${field}.`);
   }
   return value as number;
 }
-
 function requiredBoolean(value: unknown, field: string): boolean {
   if (typeof value !== "boolean") {
     throw new Error(`Cloud response has an invalid ${field}.`);
   }
   return value;
 }
-
 function identifier(value: unknown, field: string): string {
   if (!isRemoteControlIdentifier(value)) {
     throw new Error(`Cloud response has an invalid ${field}.`);
   }
   return value;
 }
-
 function uuid(value: unknown, field: string): string {
   const result = identifier(value, field);
   if (
@@ -175,7 +156,6 @@ function uuid(value: unknown, field: string): string {
   }
   return result;
 }
-
 function exactEnum<const T extends string>(
   value: unknown,
   field: string,
@@ -186,7 +166,6 @@ function exactEnum<const T extends string>(
   }
   return value as T;
 }
-
 function isoDate(value: unknown, field: string): string {
   const result = requiredString(value, field);
   const timestamp = Date.parse(result);
@@ -198,11 +177,9 @@ function isoDate(value: unknown, field: string): string {
   }
   return result;
 }
-
 function optionalIsoDate(value: unknown, field: string): string | null {
   return value === null || value === undefined ? null : isoDate(value, field);
 }
-
 function publicJwk(value: unknown, field: string): JsonWebKey {
   const key = record(value);
   if (
@@ -218,7 +195,6 @@ function publicJwk(value: unknown, field: string): JsonWebKey {
   }
   return key as JsonWebKey;
 }
-
 function parseHost(value: unknown): RemoteHostSummary {
   const item = record(value);
   if (!item) throw new Error("Cloud response contains an invalid remote host.");
@@ -253,7 +229,6 @@ function parseHost(value: unknown): RemoteHostSummary {
     revokedAt: optionalIsoDate(item.revokedAt, "host revocation time"),
   };
 }
-
 function parseSession(
   value: unknown,
   expectedHostId: string,
@@ -300,7 +275,6 @@ function parseSession(
     updatedAt: isoDate(item.updatedAt, "session update time"),
   };
 }
-
 export class RemoteControlCloudClient {
   private readonly baseUrl: string;
   private readonly authToken: string;
@@ -308,7 +282,6 @@ export class RemoteControlCloudClient {
     url: string,
     init: RequestInit,
   ) => Promise<Response>;
-
   constructor(options: RemoteControlCloudClientOptions) {
     this.baseUrl = resolveDirectCloudAuthApiBase(options.baseUrl).replace(
       /\/+$/,
@@ -321,10 +294,9 @@ export class RemoteControlCloudClient {
       (async (url, init) => {
         const transport =
           desktopHttpTransportForUrl(url) ?? fetchAgentTransport;
-        return transport.request(url, init, { timeoutMs: 30_000 });
+        return transport.request(url, init, { timeoutMs: 30000 });
       });
   }
-
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await this.requestImpl(`${this.baseUrl}${path}`, {
       ...init,
@@ -363,11 +335,11 @@ export class RemoteControlCloudClient {
     }
     return (record(envelope?.data) ?? payload) as T;
   }
-
   async listHosts(): Promise<RemoteHostDirectory> {
-    const data = await this.request<{ ownerId?: unknown; hosts?: unknown }>(
-      "/api/v1/remote/hosts",
-    );
+    const data = await this.request<{
+      ownerId?: unknown;
+      hosts?: unknown;
+    }>("/api/v1/remote/hosts");
     if (!Array.isArray(data.hosts)) {
       throw new Error("Cloud response is missing remote hosts.");
     }
@@ -376,16 +348,15 @@ export class RemoteControlCloudClient {
       hosts: data.hosts.map(parseHost),
     };
   }
-
   async listSessions(
     hostId: string,
     ownerId?: string,
   ): Promise<RemoteSessionSummary[]> {
     const expectedHostId = uuid(hostId, "host id");
     const expectedOwnerId = ownerId ? uuid(ownerId, "owner id") : undefined;
-    const data = await this.request<{ sessions?: unknown }>(
-      `/api/v1/remote/sessions?hostId=${encodeURIComponent(hostId)}`,
-    );
+    const data = await this.request<{
+      sessions?: unknown;
+    }>(`/api/v1/remote/sessions?hostId=${encodeURIComponent(hostId)}`);
     if (!Array.isArray(data.sessions)) {
       throw new Error("Cloud response is missing remote sessions.");
     }
@@ -393,7 +364,6 @@ export class RemoteControlCloudClient {
       parseSession(session, expectedHostId, expectedOwnerId),
     );
   }
-
   async createPairing(input: {
     hostId: string;
     controller: RemoteControllerPublicIdentity;
@@ -429,7 +399,7 @@ export class RemoteControlCloudClient {
     }
     const expiresAt = isoDate(data.expiresAt, "pairing expiration");
     const derivedTtlSeconds = Math.ceil(
-      (Date.parse(expiresAt) - Date.now()) / 1_000,
+      (Date.parse(expiresAt) - Date.now()) / 1000,
     );
     const ttlSeconds =
       data.ttlSeconds === undefined
@@ -452,7 +422,6 @@ export class RemoteControlCloudClient {
       status: exactEnum(data.status, "pairing status", ["pending"]),
     };
   }
-
   async claimPairing(input: {
     sessionId?: string;
     hostId?: string;
@@ -525,7 +494,6 @@ export class RemoteControlCloudClient {
       },
     };
   }
-
   async revokeSession(sessionId: string): Promise<void> {
     const expectedSessionId = uuid(sessionId, "session id");
     const path = `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/revoke`;
@@ -565,7 +533,6 @@ export class RemoteControlCloudClient {
       "The session is revoked, but Cloud cleanup exceeded the safe continuation limit. Try revoking again.",
     );
   }
-
   async revokeHost(hostId: string): Promise<void> {
     const expectedHostId = uuid(hostId, "host id");
     const path = `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/revoke`;
@@ -605,7 +572,6 @@ export class RemoteControlCloudClient {
       "The host is revoked, but Cloud cleanup exceeded the safe continuation limit. Try revoking again.",
     );
   }
-
   async enqueueCommand(input: {
     sessionId: string;
     envelope: EncryptedRemoteControlEnvelope;
@@ -615,7 +581,6 @@ export class RemoteControlCloudClient {
       { method: "POST", body: JSON.stringify({ envelope: input.envelope }) },
     );
   }
-
   async readCommand(input: { sessionId: string; commandId: string }): Promise<{
     status: RemoteRelayCommandStatus;
     startReceipt: EncryptedRemoteControlEnvelope | null;

@@ -16,9 +16,8 @@
  * Device push-token mutations follow the same ownership rule: the selected
  * remote target owns its token registry and sender, never the controller.
  */
-
 import type http from "node:http";
-import { sendJsonError } from "@elizaos/shared";
+import { sendJsonError } from "@elizaos/core/api/http-helpers";
 import { fetchWithTimeoutGuard } from "../server-helpers-fetch.ts";
 import {
   getRuntimeModeSnapshot,
@@ -34,16 +33,12 @@ const REMOTE_FORWARDED_MUTATION_PREFIXES = [
   "/api/notifications/push-tokens",
   "/api/notifications/push-tokens/",
 ] as const;
-
 const FORWARDED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
 const LEGACY_PUSH_TOKEN_URL = /(\/api\/notifications\/push-tokens\/)[^/?\s]+/g;
-
 /** Removes legacy device identifiers before the agent boundary can log a URL. */
 export function redactPushTokenRequestUrl(value: string): string {
   return value.replace(LEGACY_PUSH_TOKEN_URL, "$1[redacted]");
 }
-
 export function shouldForwardToRemoteTarget(
   pathname: string,
   method: string,
@@ -53,7 +48,6 @@ export function shouldForwardToRemoteTarget(
     prefix.endsWith("/") ? pathname.startsWith(prefix) : pathname === prefix,
   );
 }
-
 /** Build a target URL without allowing request-controlled text to select its origin. */
 export function buildRemoteTargetUrl(
   requestUrl: string,
@@ -66,7 +60,6 @@ export function buildRemoteTargetUrl(
   target.hash = "";
   return target;
 }
-
 // Per RFC 7230 §6.1, hop-by-hop headers MUST NOT be forwarded by an
 // intermediary. Re-using an upstream `Connection: keep-alive` or stale
 // `Transfer-Encoding` against the target's connection corrupts framing.
@@ -80,7 +73,6 @@ const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set([
   "transfer-encoding",
   "upgrade",
 ]);
-
 /**
  * Build the outbound `Headers` for the target. Visible for testing.
  *
@@ -113,7 +105,6 @@ export function buildForwardHeaders(
   }
   return headers;
 }
-
 async function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -121,7 +112,6 @@ async function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
   }
   return Buffer.concat(chunks);
 }
-
 /**
  * Returns true when the controller forwarded the request to the target
  * (and wrote the response). Returns false when not in remote mode or the
@@ -135,7 +125,6 @@ export async function forwardRemoteCloudMutation(
 ): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const method = (req.method ?? "GET").toUpperCase();
-
   if (snapshot.mode !== "remote") return false;
   if (!shouldForwardToRemoteTarget(url.pathname, method)) return false;
   if (!snapshot.remoteApiBase) {
@@ -146,7 +135,6 @@ export async function forwardRemoteCloudMutation(
     );
     return true;
   }
-
   const targetUrl = buildRemoteTargetUrl(
     req.url ?? "/",
     snapshot.remoteApiBase,
@@ -154,19 +142,16 @@ export async function forwardRemoteCloudMutation(
   // The raw target URL above remains authoritative for compatibility, but any
   // later boundary diagnostic observing this request must not see the token.
   req.url = redactPushTokenRequestUrl(req.url ?? "/");
-
   const rawBody = FORWARDED_METHODS.has(method)
     ? await readRequestBody(req)
     : undefined;
   const body: BodyInit | undefined =
     rawBody && rawBody.length > 0 ? rawBody.toString("utf8") : undefined;
-
   const headers = buildForwardHeaders(
     req.headers,
     targetUrl.host,
     snapshot.remoteAccessToken,
   );
-
   const upstream = await fetchWithTimeoutGuard(
     targetUrl.toString(),
     {
@@ -174,9 +159,8 @@ export async function forwardRemoteCloudMutation(
       headers,
       body,
     },
-    30_000,
+    30000,
   );
-
   const responseBody = await upstream.arrayBuffer();
   res.writeHead(upstream.status, {
     "content-type": upstream.headers.get("content-type") ?? "application/json",

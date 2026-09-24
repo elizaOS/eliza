@@ -7,7 +7,7 @@
 import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { SyntheticControlSession } from "@elizaos/shared/synthetic-control";
+import type { SyntheticControlSession } from "@elizaos/testing/synthetic-control";
 import { afterEach, describe, expect, it } from "vitest";
 import { createScenarioStabilityPlan } from "./stability.ts";
 import { executeScenarioStability } from "./stability-executor.ts";

@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 
 const setApiBase = vi.hoisted(() => vi.fn());
-vi.mock("@elizaos/shared", () => ({ setElizaApiBase: setApiBase }));
+vi.mock("@elizaos/core/utils/eliza-globals", () => ({ setElizaApiBase: setApiBase }));
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false },
 }));

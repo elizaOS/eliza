@@ -5,7 +5,7 @@
  * stays silent for non-TTY output and for `--json` / `--version` invocations so
  * machine-readable output is never polluted.
  */
-import { isRich, theme } from "@elizaos/shared";
+import { isRich, theme } from "../terminal/theme.js";
 import { resolveCommitHash } from "./git-commit";
 
 type BannerOptions = {
@@ -14,9 +14,7 @@ type BannerOptions = {
   commit?: string | null;
   richTty?: boolean;
 };
-
 let bannerEmitted = false;
-
 export function formatCliBannerLine(
   version: string,
   options: BannerOptions = {},
@@ -31,7 +29,6 @@ export function formatCliBannerLine(
   }
   return `${title} ${version} (${commitLabel})`;
 }
-
 export function emitCliBanner(version: string, options: BannerOptions = {}) {
   if (bannerEmitted) {
     return;
@@ -50,7 +47,6 @@ export function emitCliBanner(version: string, options: BannerOptions = {}) {
   process.stdout.write(`${line}\n\n`);
   bannerEmitted = true;
 }
-
 export function hasEmittedCliBanner(): boolean {
   return bannerEmitted;
 }

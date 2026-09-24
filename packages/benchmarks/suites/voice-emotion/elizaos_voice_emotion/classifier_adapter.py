@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 # HF repo + canonical filenames for the production Wav2Small classifier.
 # All voice models live under the consolidated elizaos/eliza-1 repo;
-# matches the elizaOS monorepo `packages/shared/src/local-inference/voice-models.ts` voice-emotion entry.
+# matches the elizaOS monorepo `plugins/plugin-native-inference/src/model-catalog/voice-models.ts` voice-emotion entry.
 _WAV2SMALL_HF_REPO = "elizaos/eliza-1"
 # cls7 head: canonical path is voice/emotion/. msp-dim (vad head) lives
 # under voice/voice-emotion/ since it is a separate ONNX artifact.

@@ -20,7 +20,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
-
 import {
   ElizaError,
   EventType,
@@ -30,18 +29,22 @@ import {
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
-import type { RouteRequestMeta } from "@elizaos/shared";
+import { readJsonBody } from "@elizaos/core/api/http-helpers";
 import {
-  AGENT_SURFACE_CAPABILITY_IDS,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core/api/route-helpers";
+import {
   createShellNavigateViewWsFrame,
   normalizeCompletedActionHandoffId,
-  parseClampedInteger,
-  type RouteHelpers,
-  readJsonBody,
   type ShellNavigateViewPayload,
+} from "@elizaos/core/events";
+import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+import {
+  AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,
-} from "@elizaos/shared";
-import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+} from "@elizaos/core/views/view-interact-protocol";
+import { type AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
@@ -54,7 +57,7 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
-import type { ViewInteractResult } from "./pending-request-map.ts";
+import { type ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
@@ -66,7 +69,7 @@ import {
   type RendererViewInteractResult,
   viewInteractionHost,
 } from "./view-interaction-host.ts";
-import type { ViewRegistryEntry } from "./view-registry-types.ts";
+import { type ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
   generateViewHeroSvg,
@@ -76,7 +79,6 @@ import {
 import { getViewSearchIndex } from "./views-search-index.ts";
 
 const VIEW_TYPE_ERROR = "viewType must be one of: gui, tui, xr";
-
 /**
  * Parse the view-catalog `viewType` query. Omitted/empty keeps the historical
  * GUI default (`listViews` / `getView` treat undefined as gui). A known
@@ -84,23 +86,30 @@ const VIEW_TYPE_ERROR = "viewType must be one of: gui, tui, xr";
  * same GUI catalog, so `viewType=GUI` or `viewType=web` silently served GUI
  * views.
  */
-export function parseViewTypeParam(
-  value: string | null,
-):
-  | { ok: true; viewType: ViewType | undefined }
-  | { ok: false; message: string } {
+export function parseViewTypeParam(value: string | null):
+  | {
+      ok: true;
+      viewType: ViewType | undefined;
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   if (value === null || value === "") return { ok: true, viewType: undefined };
   if (value === "gui" || value === "tui" || value === "xr") {
     return { ok: true, viewType: value };
   }
   return { ok: false, message: VIEW_TYPE_ERROR };
 }
-
-export function parseViewTypeValue(
-  value: unknown,
-):
-  | { ok: true; viewType: ViewType | undefined }
-  | { ok: false; message: string } {
+export function parseViewTypeValue(value: unknown):
+  | {
+      ok: true;
+      viewType: ViewType | undefined;
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   if (value === undefined || value === null || value === "") {
     return { ok: true, viewType: undefined };
   }
@@ -109,12 +118,17 @@ export function parseViewTypeValue(
   }
   return parseViewTypeParam(value);
 }
-
 function resolveViewTypeQuery(
   raw: string | null,
   res: http.ServerResponse,
   error: ViewsRouteContext["error"],
-): { reject: true } | { viewType: ViewType | undefined } {
+):
+  | {
+      reject: true;
+    }
+  | {
+      viewType: ViewType | undefined;
+    } {
   const parsed = parseViewTypeParam(raw);
   if (!parsed.ok) {
     error(res, parsed.message, 400);
@@ -122,13 +136,18 @@ function resolveViewTypeQuery(
   }
   return { viewType: parsed.viewType };
 }
-
 function resolveViewTypePair(
   bodyValue: unknown,
   queryRaw: string | null,
   res: http.ServerResponse,
   error: ViewsRouteContext["error"],
-): { reject: true } | { viewType: ViewType | undefined } {
+):
+  | {
+      reject: true;
+    }
+  | {
+      viewType: ViewType | undefined;
+    } {
   const fromBody = parseViewTypeValue(bodyValue);
   if (!fromBody.ok) {
     error(res, fromBody.message, 400);
@@ -141,7 +160,6 @@ function resolveViewTypePair(
   }
   return { viewType: fromBody.viewType ?? fromQuery.viewType };
 }
-
 function normalizedViewPath(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const withoutQuery = value.trim().split(/[?#]/, 1)[0];
@@ -153,7 +171,6 @@ function normalizedViewPath(value: unknown): string | null {
     ? rooted.slice(0, -1)
     : rooted;
 }
-
 /**
  * Validate + normalize an untrusted element-snapshot body into the strict
  * ActiveViewElement[] shape. Drops malformed entries (no string id) rather than
@@ -179,13 +196,12 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
   }
   return out;
 }
-
 /**
  * Capabilities accepted on any view without a matching declaration in
  * `entry.capabilities` — the protocol's standard caps (get-state / refresh /
  * focus-element / get-text / click-element / fill-input) plus the agent-surface
  * caps the shell registry handles generically (list-elements / agent-click /
- * agent-fill / …). Derived from the single canonical `@elizaos/shared`
+ * agent-fill / …). Derived from the single canonical `@elizaos/core`
  * view-interact protocol source so the route never drifts from what the frontend
  * actually dispatches. (#8798, #12408)
  */
@@ -193,7 +209,6 @@ const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
   ...Object.values(STANDARD_CAPABILITIES),
   ...AGENT_SURFACE_CAPABILITY_IDS,
 ]);
-
 const READ_ONLY_VIEW_CAPABILITIES: ReadonlySet<string> = new Set<string>([
   STANDARD_CAPABILITIES.GET_STATE,
   STANDARD_CAPABILITIES.GET_TEXT,
@@ -202,18 +217,15 @@ const READ_ONLY_VIEW_CAPABILITIES: ReadonlySet<string> = new Set<string>([
   "get-focus",
   "get-agent-state",
 ]);
-
 function isSurfaceBrokeredCapability(capability: string): boolean {
   return (
     STANDARD_CAPABILITY_IDS.has(capability) ||
     AGENT_SURFACE_CAPABILITY_IDS.has(capability)
   );
 }
-
 function isReadOnlyViewCapability(capability: string): boolean {
   return READ_ONLY_VIEW_CAPABILITIES.has(capability);
 }
-
 function viewManifestAllowsCapability(
   entry: ViewRegistryEntry,
   capability: string,
@@ -222,7 +234,6 @@ function viewManifestAllowsCapability(
   if (isReadOnlyViewCapability(capability)) return true;
   return entry.surface?.capabilities?.includes("agent-surface") === true;
 }
-
 function viewManifestAllowsAgentAuthority(
   entry: ViewRegistryEntry,
   capability: string,
@@ -232,14 +243,12 @@ function viewManifestAllowsAgentAuthority(
       ?.authority !== "human"
   );
 }
-
 function capabilityAuthorityDeniedMessage(
   viewId: string,
   capability: string,
 ): string {
   return `Capability "${capability}" on view "${viewId}" requires direct human interaction`;
 }
-
 function capabilityDeniedMessage(viewId: string, capability: string): string {
   return (
     `View "${viewId}" is not granted capability "${capability}" ` +
@@ -252,7 +261,6 @@ export {
   getViewsBroadcastWsToClientId,
   setViewsBroadcastWs,
 } from "./view-interaction-host.ts";
-
 export interface CurrentViewState {
   viewId: string;
   viewPath: string | null;
@@ -279,14 +287,12 @@ export interface CurrentViewState {
   source?: "agent" | "user";
   updatedAt: string;
 }
-
 /**
  * A view switch is treated as "just happened" for this long after navigate, so
  * the acknowledgement provider only references it on the turn(s) immediately
  * following the switch and never re-acknowledges a stale switch forever.
  */
-export const VIEW_SWITCH_FRESH_MS = 15_000;
-
+export const VIEW_SWITCH_FRESH_MS = 15000;
 /** True when `state` reflects a switch within {@link VIEW_SWITCH_FRESH_MS}. */
 export function isViewSwitchFresh(
   state: CurrentViewState | null,
@@ -297,16 +303,13 @@ export function isViewSwitchFresh(
   if (Number.isNaN(t)) return false;
   return now - t <= VIEW_SWITCH_FRESH_MS;
 }
-
 const currentViews = createViewClientStore<CurrentViewState>();
-
 export function getCurrentViewState(
   runtime: IAgentRuntime,
   scope: ViewClientScope | undefined = getViewClientScope(),
 ): CurrentViewState | null {
   return currentViews.get(runtime, scope);
 }
-
 export function clearCurrentViewState(
   runtime: IAgentRuntime,
   scope: ViewClientScope | undefined = getViewClientScope(),
@@ -320,7 +323,6 @@ function clientScope(
 ): ViewClientScope | undefined {
   return clientId ? { hostKey, clientId } : undefined;
 }
-
 /**
  * Resolve a pending interact request from a WS `view:interact:result` message.
  * Called by the WebSocket message handler in server.ts.
@@ -333,7 +335,6 @@ export function resolveViewInteractResult(
 ): void {
   viewInteractionHost(runtime, hostKey).resolve(clientId, result);
 }
-
 export interface ViewsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
@@ -348,20 +349,15 @@ export interface ViewsRouteContext
   runtime?: IAgentRuntime | null;
   callerAuthorization?: AgentHttpRequestAuthorization;
 }
-
 function callerRoles(ctx: ViewsRouteContext): RoleGateRole[] {
   return ctx.callerAuthorization?.ok ? [ctx.callerAuthorization.role] : [];
 }
-
 const PREFIX = "/api/views";
-
 export async function handleViewsRoutes(
   ctx: ViewsRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, url, json, error } = ctx;
-
   if (!pathname.startsWith(PREFIX)) return false;
-
   // ── GET /api/views/platform-info ─────────────────────────────────────────
   if (method === "GET" && pathname === `${PREFIX}/platform-info`) {
     const platform = detectClientPlatform(req);
@@ -373,7 +369,6 @@ export async function handleViewsRoutes(
     });
     return true;
   }
-
   if (!ctx.runtime) {
     error(res, "View operations require an active runtime", 503);
     return true;
@@ -383,7 +378,6 @@ export async function handleViewsRoutes(
     viewRuntime,
     clientScope(ctx.hostKey, resolveViewInteractClientId(req, undefined)),
   );
-
   // ── GET /api/views/search?q=<query>&limit=<n> ─────────────────────────────
   // Hybrid keyword + semantic search over registered views.
   if (method === "GET" && pathname === `${PREFIX}/search`) {
@@ -394,26 +388,22 @@ export async function handleViewsRoutes(
       max: 20,
       fallback: 5,
     });
-
     const parsedSearchViewType = resolveViewTypeQuery(
       url.searchParams.get("viewType"),
       res,
       error,
     );
     if ("reject" in parsedSearchViewType) return true;
-
     if (!query.trim()) {
       json(res, { results: [], query });
       return true;
     }
-
     const viewType = parsedSearchViewType.viewType;
     const allViews = listViews(viewRuntime, {
       developerMode: ctx.developerMode ?? false,
       viewType,
     }).filter((view) => satisfiesRoleGate(callerRoles(ctx), view.roleGate));
     const q = query.trim().toLowerCase();
-
     // Keyword scoring (40% weight).
     const viewScoreKey = (entry: { id: string; viewType?: string }) =>
       `${entry.viewType ?? "gui"}:${entry.id}`;
@@ -427,7 +417,6 @@ export async function handleViewsRoutes(
       else if ((v.description ?? "").toLowerCase().includes(q)) score = 40;
       keywordMap.set(viewScoreKey(v), score);
     }
-
     // Semantic scoring (60% weight) — falls back gracefully when unavailable.
     const semanticMap = new Map<string, number>();
     if (ctx.runtime) {
@@ -450,14 +439,12 @@ export async function handleViewsRoutes(
         );
       }
     }
-
     const combined = allViews.map((v) => {
       const key = viewScoreKey(v);
       const kw = keywordMap.get(key) ?? 0;
       const sem = semanticMap.get(key) ?? 0;
       return { view: v, score: kw * 0.4 + sem * 0.6 };
     });
-
     const results = combined
       .filter((r) => r.score > 5)
       .sort((a, b) => {
@@ -472,11 +459,9 @@ export async function handleViewsRoutes(
       })
       .slice(0, topK)
       .map(({ view, score }) => ({ ...view, _score: Math.round(score) }));
-
     json(res, { results, query, semanticEnabled: semanticMap.size > 0 });
     return true;
   }
-
   // ── GET /api/views ────────────────────────────────────────────────────────
   if (method === "GET" && (pathname === PREFIX || pathname === `${PREFIX}/`)) {
     const platform = detectClientPlatform(req);
@@ -521,7 +506,6 @@ export async function handleViewsRoutes(
     json(res, { views });
     return true;
   }
-
   // ── GET /api/views/current ───────────────────────────────────────────────
   // `justSwitched` is a turn-scoped signal (distinct from the always-present
   // current view): true only briefly after a navigate so the `current_view`
@@ -533,15 +517,19 @@ export async function handleViewsRoutes(
     });
     return true;
   }
-
   // ── POST /api/views/events/broadcast ─────────────────────────────────────
   // Pushes a view event to all connected frontend tabs via WebSocket.
   if (method === "POST" && pathname === `${PREFIX}/events/broadcast`) {
-    if (typeof (req as { on?: unknown }).on !== "function") {
+    if (
+      typeof (
+        req as {
+          on?: unknown;
+        }
+      ).on !== "function"
+    ) {
       error(res, "Missing JSON body for view event broadcast", 400);
       return true;
     }
-
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) {
       return true;
@@ -557,27 +545,21 @@ export async function handleViewsRoutes(
       !Array.isArray(body.payload)
         ? (body.payload as Record<string, unknown>)
         : {};
-
     ctx.broadcastWs?.({ type: "view:event", viewEventType: type, payload });
-
     logger.info(
       { src: "ViewsRoutes", viewEventType: type },
       `[ViewsRoutes] Broadcast view event "${type}"`,
     );
-
     json(res, { ok: true, type, payload });
     return true;
   }
-
   const afterPrefix = pathname.slice(PREFIX.length + 1); // strip /api/views/
   if (!afterPrefix) return false;
-
   const slashIndex = afterPrefix.indexOf("/");
   const rawId =
     slashIndex === -1 ? afterPrefix : afterPrefix.slice(0, slashIndex);
   const subResource =
     slashIndex === -1 ? "" : afterPrefix.slice(slashIndex + 1);
-
   let id: string;
   try {
     id = decodeURIComponent(rawId);
@@ -586,7 +568,6 @@ export async function handleViewsRoutes(
     return true;
   }
   if (!id) return false;
-
   if (method === "GET" && subResource === "") {
     const parsedDetailViewType = resolveViewTypeQuery(
       url.searchParams.get("viewType"),
@@ -607,7 +588,6 @@ export async function handleViewsRoutes(
     json(res, entry);
     return true;
   }
-
   if (
     (method === "GET" || method === "HEAD") &&
     subResource !== "" &&
@@ -619,7 +599,6 @@ export async function handleViewsRoutes(
       satisfiesRoleGate(callerRoles(ctx), entry.roleGate),
     );
   }
-
   // ── GET /api/views/:id/hero ───────────────────────────────────────────────
   if (method === "GET" && subResource === "hero") {
     const parsedHeroViewType = resolveViewTypeQuery(
@@ -634,7 +613,6 @@ export async function handleViewsRoutes(
       error(res, `View "${id}" not found`, 404);
       return true;
     }
-
     if (!satisfiesRoleGate(callerRoles(ctx), entry.roleGate)) {
       error(res, "Insufficient role for this view", 403);
       return true;
@@ -667,7 +645,6 @@ export async function handleViewsRoutes(
       ? streamHeroImage(res, data, resolved.contentType, req)
       : sendGeneratedHero(res, entry.label, entry.icon);
   }
-
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
   // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
   // the caller owns a narrower delivery channel. Realtime voice returns the
@@ -754,12 +731,10 @@ export async function handleViewsRoutes(
       ...(placement ? { placement } : {}),
     };
     const deepLinkPayload = payload !== undefined ? { payload } : {};
-
     logger.info(
       { src: "ViewsRoutes", viewId: id, viewPath, action, subview },
       `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}${subview ? ` (subview=${subview})` : ""}`,
     );
-
     const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
     // Closing a view must NOT stamp it (or the synthetic "__all__" close-all id)
     // as the active view: that left the planner upweighting a dismissed view's
@@ -856,7 +831,6 @@ export async function handleViewsRoutes(
     if (body?.delivery !== "originating-client") {
       commitCurrentViewState(committedViewPath);
     }
-
     // A voice turn may need to interact with this view before its terminal
     // control-channel handoff. When its renderer is known, deliver through the
     // existing targeted channel now. Never broadcast caller-owned navigation.
@@ -933,11 +907,9 @@ export async function handleViewsRoutes(
         ctx.broadcastWs?.(frame);
       }
     }
-
     if (body?.delivery === "originating-client" && originatingClientDelivered) {
       commitCurrentViewState(committedViewPath);
     }
-
     json(res, {
       ok: true,
       viewId: id,
@@ -957,7 +929,6 @@ export async function handleViewsRoutes(
     });
     return true;
   }
-
   // ── POST /api/views/:id/elements ─────────────────────────────────────────
   // The shell's agent-surface registry reports this view's addressable element
   // snapshot (id/role/label/value/focused) so the planner's "# Active View"
@@ -1037,7 +1008,6 @@ export async function handleViewsRoutes(
     json(res, { ok: true, viewId: id, accepted, count: elements.length });
     return true;
   }
-
   // ── POST /api/views/:id/activate ─────────────────────────────────────────
   // Activate one addressable control in a view by its element id (for spatial
   // views, the focused button's agent id). This is the adapter path for
@@ -1057,7 +1027,6 @@ export async function handleViewsRoutes(
   if (method === "POST" && subResource === "activate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-
     const elementId =
       typeof body.elementId === "string" && body.elementId.length > 0
         ? body.elementId
@@ -1066,7 +1035,6 @@ export async function handleViewsRoutes(
       error(res, "Missing elementId in activate body", 400);
       return true;
     }
-
     const parsedActivateViewType = resolveViewTypePair(
       body.viewType,
       url.searchParams.get("viewType"),
@@ -1085,7 +1053,6 @@ export async function handleViewsRoutes(
       error(res, `View "${id}" is not available to this caller`, 403);
       return true;
     }
-
     // Resolve the element from the active-view snapshot for context (the planner
     // reports it via /:id/elements). Only used when this view is the foreground
     // active view; absent otherwise — the click still dispatches by id.
@@ -1099,15 +1066,12 @@ export async function handleViewsRoutes(
       active.installationId === entry.installationId
         ? active.elements?.find((el) => el.id === elementId)
         : undefined;
-
     const capability = STANDARD_CAPABILITIES.CLICK_ELEMENT;
     const params: Record<string, unknown> = { elementId, id: elementId };
-
     logger.info(
       { src: "ViewsRoutes", viewId: id, elementId, capability },
       `[ViewsRoutes] Activate element "${elementId}" on view "${id}"`,
     );
-
     const dispatch = await dispatchViewInteract(entry, id, capability, params, {
       hostKey: ctx.hostKey,
       broadcastWs: ctx.broadcastWs,
@@ -1122,7 +1086,6 @@ export async function handleViewsRoutes(
       runtime: viewRuntime,
       userRoles: boundaryRoles,
     });
-
     json(res, {
       ok: dispatch.success,
       viewId: id,
@@ -1132,7 +1095,6 @@ export async function handleViewsRoutes(
     });
     return true;
   }
-
   // Execution is claimed at the owning host before any renderer effect.
   if (method === "POST" && id === "interact-claim" && subResource === "") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
@@ -1169,7 +1131,6 @@ export async function handleViewsRoutes(
     json(res, { claimId });
     return true;
   }
-
   // ── POST /api/views/interact-result ──────────────────────────────────────
   // Called by the frontend over HTTP (or proxied from WS) when a view has
   // finished handling an interact request.  Resolves the pending promise so
@@ -1177,14 +1138,12 @@ export async function handleViewsRoutes(
   if (method === "POST" && id === "interact-result" && subResource === "") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true; // readJsonBody already sent the error response
-
     const requestId =
       typeof body.requestId === "string" ? body.requestId : null;
     if (!requestId) {
       error(res, "Missing requestId in interact-result body", 400);
       return true;
     }
-
     const result: RendererViewInteractResult = {
       requestId,
       viewId: typeof body.viewId === "string" ? body.viewId : undefined,
@@ -1198,7 +1157,6 @@ export async function handleViewsRoutes(
       result: body.result,
       error: typeof body.error === "string" ? body.error : undefined,
     };
-
     const clientId = resolveViewInteractClientId(req, body);
     if (!clientId) {
       error(res, "Missing client id for view interaction result", 400);
@@ -1208,17 +1166,20 @@ export async function handleViewsRoutes(
     json(res, { ok: true });
     return true;
   }
-
   // ── POST /api/views/:id/interact ──────────────────────────────────────────
   if (method === "POST" && subResource === "interact") {
-    if (typeof (req as { on?: unknown }).on !== "function") {
+    if (
+      typeof (
+        req as {
+          on?: unknown;
+        }
+      ).on !== "function"
+    ) {
       error(res, "Missing JSON body for view interaction", 400);
       return true;
     }
-
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-
     const parsedInteractViewType = resolveViewTypePair(
       body.viewType,
       url.searchParams.get("viewType"),
@@ -1236,14 +1197,12 @@ export async function handleViewsRoutes(
       error(res, `View "${id}" is not available to this caller`, 403);
       return true;
     }
-
     const capability =
       typeof body.capability === "string" ? body.capability : null;
     if (!capability) {
       error(res, "Missing capability in interact body", 400);
       return true;
     }
-
     // Validate capability against the view's declared capabilities.
     // Standard capabilities are always accepted.
     if (
@@ -1260,7 +1219,6 @@ export async function handleViewsRoutes(
         return true;
       }
     }
-
     const params =
       body.params !== undefined &&
       body.params !== null &&
@@ -1268,17 +1226,14 @@ export async function handleViewsRoutes(
       !Array.isArray(body.params)
         ? (body.params as Record<string, unknown>)
         : undefined;
-
     const timeoutMs =
       typeof body.timeoutMs === "number" && body.timeoutMs > 0
         ? body.timeoutMs
-        : 5_000;
-
+        : 5000;
     logger.info(
       { src: "ViewsRoutes", viewId: id, capability },
       `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
     );
-
     if (!viewManifestAllowsCapability(entry, capability)) {
       error(res, capabilityDeniedMessage(id, capability), 403);
       return true;
@@ -1287,7 +1242,6 @@ export async function handleViewsRoutes(
       error(res, capabilityAuthorityDeniedMessage(id, capability), 403);
       return true;
     }
-
     const targetClientId = resolveTargetViewClientId(
       viewRuntime,
       ctx.hostKey,
@@ -1321,14 +1275,11 @@ export async function handleViewsRoutes(
     }
     return true;
   }
-
   return false;
 }
-
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
 /**
  * Result of dispatching a capability to a view — the union of the two interact
  * paths (a `serverInteract` handler, or a frontend `view:interact` round-trip).
@@ -1340,7 +1291,6 @@ export interface ViewInteractDispatchResult {
   error?: string;
   failureKind?: "timeout" | "revoked" | "unavailable" | "unknown";
 }
-
 const VIEW_INTERACTION_FAILURE_CODES: Readonly<
   Record<string, NonNullable<ViewInteractDispatchResult["failureKind"]>>
 > = {
@@ -1356,7 +1306,6 @@ function interactionFailureKind(
     ? (VIEW_INTERACTION_FAILURE_CODES[error.code] ?? "unknown")
     : "unknown";
 }
-
 interface ViewInteractTransport {
   hostKey?: object;
   broadcastWs?: (payload: object) => void;
@@ -1365,7 +1314,6 @@ interface ViewInteractTransport {
   runtime: IAgentRuntime;
   userRoles?: readonly RoleGateRole[];
 }
-
 /**
  * Dispatch a capability to a view, reusing the established interact semantics.
  * Standard and agent-surface capabilities prefer a mounted caller-targeted
@@ -1382,13 +1330,12 @@ export async function dispatchViewInteract(
   capability: string,
   params: Record<string, unknown> | undefined,
   transport: ViewInteractTransport,
-  timeoutMs = 5_000,
+  timeoutMs = 5000,
 ): Promise<ViewInteractDispatchResult> {
   const requestId = randomUUID();
   assertRuntimeViewEntry(transport.runtime, entry);
   if (transport.hostKey)
     viewInteractionHost(transport.runtime, transport.hostKey);
-
   if (!satisfiesRoleGate(transport.userRoles, entry.roleGate)) {
     return {
       requestId,
@@ -1396,7 +1343,6 @@ export async function dispatchViewInteract(
       error: `View "${viewId}" is not available to this caller`,
     };
   }
-
   if (!viewManifestAllowsCapability(entry, capability)) {
     return {
       requestId,
@@ -1404,7 +1350,6 @@ export async function dispatchViewInteract(
       error: capabilityDeniedMessage(viewId, capability),
     };
   }
-
   if (!viewManifestAllowsAgentAuthority(entry, capability)) {
     return {
       requestId,
@@ -1412,7 +1357,6 @@ export async function dispatchViewInteract(
       error: capabilityAuthorityDeniedMessage(viewId, capability),
     };
   }
-
   const hasServerInteract = typeof entry.serverInteract === "function";
   const preferFrontend =
     !hasServerInteract || isSurfaceBrokeredCapability(capability);
@@ -1493,7 +1437,6 @@ export async function dispatchViewInteract(
         };
       }
     }
-
     const unavailable = `No connected view client "${transport.clientId}" is available for "${viewId}".`;
     host.cancel(
       requestId,
@@ -1504,7 +1447,6 @@ export async function dispatchViewInteract(
     if (!hasServerInteract)
       return { requestId, success: false, error: unavailable };
   }
-
   if (typeof entry.serverInteract === "function") {
     let invoked = false;
     try {
@@ -1536,14 +1478,11 @@ export async function dispatchViewInteract(
         error: err instanceof Error ? err.message : String(err),
         result: {
           success: false,
-          text: `${invoked ? "Unknown outcome for" : "Cannot invoke"} capability "${capability}" on view "${viewId}": ${
-            err instanceof Error ? err.message : String(err)
-          }.`,
+          text: `${invoked ? "Unknown outcome for" : "Cannot invoke"} capability "${capability}" on view "${viewId}": ${err instanceof Error ? err.message : String(err)}.`,
         },
       };
     }
   }
-
   if (!transport.clientId) {
     return {
       requestId,
@@ -1558,12 +1497,10 @@ export async function dispatchViewInteract(
     error: "Targeted view interaction delivery is unavailable.",
   };
 }
-
 function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
 }
-
 function resolveViewInteractClientId(
   req: Pick<http.IncomingMessage, "headers">,
   body: Record<string, unknown> | null | undefined,
@@ -1575,7 +1512,6 @@ function resolveViewInteractClientId(
     normalizeWsClientId(body?.clientId)
   );
 }
-
 function resolveTargetViewClientId(
   runtime: IAgentRuntime,
   hostKey: object,
@@ -1590,7 +1526,6 @@ function resolveTargetViewClientId(
   if (!mountedOwner) return explicit;
   return !explicit || explicit === mountedOwner ? mountedOwner : null;
 }
-
 function resultSuccess(result: unknown): boolean {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     return true;
@@ -1598,7 +1533,6 @@ function resultSuccess(result: unknown): boolean {
   const success = (result as Record<string, unknown>).success;
   return typeof success === "boolean" ? success : true;
 }
-
 function streamHeroImage(
   res: http.ServerResponse,
   data: Buffer,
@@ -1606,7 +1540,6 @@ function streamHeroImage(
   req: http.IncomingMessage,
 ): true {
   const etag = `"${createHash("sha256").update(data).digest("hex")}"`;
-
   if (etag && req.headers["if-none-match"] === etag) {
     const raw304 = res as {
       writeHead?: (status: number, headers: Record<string, string>) => void;
@@ -1621,7 +1554,6 @@ function streamHeroImage(
     raw304.end?.();
     return true;
   }
-
   const raw = res as {
     writeHead?: (
       status: number,
@@ -1636,7 +1568,6 @@ function streamHeroImage(
     "Cache-Control": "private, no-cache",
   };
   if (etag) headers.ETag = etag;
-
   if (typeof raw.writeHead === "function") {
     raw.writeHead(200, headers);
   } else if (typeof raw.setHeader === "function") {
@@ -1647,7 +1578,6 @@ function streamHeroImage(
   raw.end?.(data);
   return true;
 }
-
 function sendGeneratedHero(
   res: http.ServerResponse,
   label: string,

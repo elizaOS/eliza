@@ -12,10 +12,9 @@
  * `ModelType.TRANSCRIPTION` contract, without importing another plugin.
  */
 
-import type { Buffer } from "node:buffer";
+import { type Buffer } from "node:buffer";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
-import { validateAsrWordTimings } from "@elizaos/shared";
-
+import { validateAsrWordTimings } from "@elizaos/core/transcripts";
 export interface AsrTranscribeOptions {
   /** BCP-47 language hint; auto-detect when absent. */
   language?: string;
@@ -25,39 +24,37 @@ export interface AsrTranscribeOptions {
   purpose?: "interim" | "final";
   signal?: AbortSignal;
 }
-
 export interface AsrTranscribeResult {
   /** Transcript text; empty string means silence / nothing usable. */
   text: string;
   /** Per-word timings in ms relative to the submitted WAV, when available. */
-  words?: Array<{ text: string; startMs: number; endMs: number }>;
+  words?: Array<{
+    text: string;
+    startMs: number;
+    endMs: number;
+  }>;
   /** Detected language, when the backend reports it. */
   language?: string;
 }
-
 export interface AsrBackend {
   transcribe(
     wav: Buffer,
     opts: AsrTranscribeOptions,
   ): Promise<AsrTranscribeResult>;
 }
-
 export interface RuntimeModelAsrBackendConfig {
   /** Max retry attempts for transient failures. Default: 3 */
   maxRetries?: number;
   /** Base delay between retries in ms (exponential backoff). Default: 1000 */
   retryDelayMs?: number;
 }
-
 /** Whisper-style non-speech markers, e.g. "[BLANK_AUDIO]", "(silence)". */
 const NON_SPEECH_PATTERN =
   /^[\s[(]*(?:blank[\s_]*audio|silence|no[\s_]*speech|inaudible|music)[\s\])]*$/i;
 const LOCAL_INFERENCE_PROVIDER = "eliza-local-inference";
-
 function isNonSpeech(text: string): boolean {
   return text.length === 0 || NON_SPEECH_PATTERN.test(text);
 }
-
 function localTranscriptionProvider(
   runtime: IAgentRuntime,
 ): string | undefined {
@@ -68,7 +65,6 @@ function localTranscriptionProvider(
       registration.metadata?.local === true,
   );
   if (localRegistration) return localRegistration.provider;
-
   return registrations.find(
     (registration) =>
       registration.modelType === ModelType.TRANSCRIPTION &&
@@ -76,7 +72,6 @@ function localTranscriptionProvider(
       registration.metadata?.local !== false,
   )?.provider;
 }
-
 /**
  * Default ASR backend: `runtime.useModel(ModelType.TRANSCRIPTION)` with
  * retry/backoff (ported from Vexa's transcription-client). The params object
@@ -89,7 +84,6 @@ function localTranscriptionProvider(
 export class RuntimeModelAsrBackend implements AsrBackend {
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
-
   constructor(
     private readonly runtime: IAgentRuntime,
     config?: RuntimeModelAsrBackendConfig,
@@ -97,7 +91,6 @@ export class RuntimeModelAsrBackend implements AsrBackend {
     this.maxRetries = config?.maxRetries ?? 3;
     this.retryDelayMs = config?.retryDelayMs ?? 1000;
   }
-
   async transcribe(
     wav: Buffer,
     opts: AsrTranscribeOptions,
@@ -130,14 +123,12 @@ export class RuntimeModelAsrBackend implements AsrBackend {
       ): Promise<AsrTranscribeResult>;
     } | null;
     const useTimedAsr = timedAsr?.isAvailable() === true;
-
     if (opts.purpose === "interim" && !provider && !useTimedAsr) {
       logger.debug(
         "[MeetingPipeline] Skipping interim LocalAgreement ASR window; local inference TRANSCRIPTION provider is unavailable",
       );
       return { text: "" };
     }
-
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       opts.signal?.throwIfAborted();

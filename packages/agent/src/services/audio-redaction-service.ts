@@ -8,16 +8,16 @@
  */
 
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
-import type { TranscriptWord } from "@elizaos/shared";
 import {
   assertCompleteAudioRedactionPlan,
   buildAudioRedactionSpans,
   type PiiTextSpan,
-} from "@elizaos/shared/audio-redaction";
+} from "@elizaos/core/audio-redaction";
 import {
   type RedactionTranscriber,
   verifyAudioRedaction,
-} from "@elizaos/shared/audio-redaction-verify";
+} from "@elizaos/core/audio-redaction-verify";
+import { type TranscriptWord } from "@elizaos/core/transcripts";
 import {
   findRedactedAudioVariant,
   persistVerifiedRedactedAudioVariant,
@@ -45,10 +45,8 @@ export {
   MAX_AUDIO_REDACTION_WORD_CHARS,
   MAX_AUDIO_REDACTION_WORDS,
 } from "./audio-redaction-word-budget.ts";
-
 export const AUDIO_REDACTION_SERVICE_TYPE = "audio-redaction";
 export const AUDIO_REDACTION_RULESET_VERSION = "2026-08-06.1";
-
 export interface VerifiedAudioRedactionRequest {
   originalAudioUrl: string;
   durationMs: number;
@@ -58,7 +56,6 @@ export interface VerifiedAudioRedactionRequest {
   rulesetVersion?: string;
   languageHint?: string;
 }
-
 export interface VerifiedAudioRedactionResult {
   url: string;
   hash: string;
@@ -67,7 +64,6 @@ export interface VerifiedAudioRedactionResult {
   spanCount: number;
   sentinelTexts: string[];
 }
-
 function rethrowAudioRedactionBudget(error: unknown): never {
   if (error instanceof AudioRedactionWordBudgetError) {
     throw new ElizaError(error.message, {
@@ -77,7 +73,6 @@ function rethrowAudioRedactionBudget(error: unknown): never {
   }
   throw error;
 }
-
 export function assertAudioRedactionWordBudget(
   words: readonly TranscriptWord[],
 ): void {
@@ -88,7 +83,6 @@ export function assertAudioRedactionWordBudget(
     rethrowAudioRedactionBudget(error);
   }
 }
-
 export function assertAudioRedactionInputBudget(
   words: readonly TranscriptWord[],
   piiSpans: readonly PiiTextSpan[],
@@ -100,7 +94,6 @@ export function assertAudioRedactionInputBudget(
     rethrowAudioRedactionBudget(error);
   }
 }
-
 /**
  * Pick audible witnesses before, between, and after redaction windows. All
  * selected witnesses must survive re-transcription, catching whole-file and
@@ -108,7 +101,10 @@ export function assertAudioRedactionInputBudget(
  */
 export function selectAudioRedactionSentinels(
   words: readonly TranscriptWord[],
-  spans: readonly { startMs: number; endMs: number }[],
+  spans: readonly {
+    startMs: number;
+    endMs: number;
+  }[],
 ): string[] {
   try {
     return selectAudioRedactionSentinelsLinear(words, spans);
@@ -117,7 +113,6 @@ export function selectAudioRedactionSentinels(
     rethrowAudioRedactionBudget(error);
   }
 }
-
 function independentVerifierFromEnv(): RedactionTranscriber | null {
   const baseUrl = process.env.ELIZA_AUDIO_REDACTION_VERIFY_STT_URL?.trim();
   const model = process.env.ELIZA_AUDIO_REDACTION_VERIFY_STT_MODEL?.trim();
@@ -134,16 +129,13 @@ function independentVerifierFromEnv(): RedactionTranscriber | null {
     apiKey: process.env.ELIZA_AUDIO_REDACTION_VERIFY_STT_API_KEY?.trim(),
   });
 }
-
 export class AudioRedactionService extends Service {
   static serviceType = AUDIO_REDACTION_SERVICE_TYPE;
   capabilityDescription =
     "Creates content-addressed audio PII variants only after fail-closed ASR verification";
-
   static async start(runtime: IAgentRuntime): Promise<AudioRedactionService> {
     return new AudioRedactionService(runtime);
   }
-
   async redactAndVerify(
     request: VerifiedAudioRedactionRequest,
   ): Promise<VerifiedAudioRedactionResult> {
@@ -160,7 +152,6 @@ export class AudioRedactionService extends Service {
       throw error;
     }
   }
-
   private async runRedaction(
     request: VerifiedAudioRedactionRequest,
   ): Promise<VerifiedAudioRedactionResult> {
@@ -201,7 +192,6 @@ export class AudioRedactionService extends Service {
     if (existing) {
       return this.result(existing, [], plan.spans.length, sentinelTexts);
     }
-
     const prepared = await prepareRedactedAudioVariant({
       originalFileName,
       spans: plan.spans,
@@ -233,7 +223,6 @@ export class AudioRedactionService extends Service {
       sentinelTexts,
     );
   }
-
   private result(
     variant: RedactedAudioVariant,
     verifierIds: string[],
@@ -249,6 +238,5 @@ export class AudioRedactionService extends Service {
       sentinelTexts,
     };
   }
-
   async stop(): Promise<void> {}
 }

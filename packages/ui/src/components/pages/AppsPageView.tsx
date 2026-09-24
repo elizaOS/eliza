@@ -6,7 +6,7 @@
  * invisible).
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { useEffect, useState } from "react";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
 import {

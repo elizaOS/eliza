@@ -176,7 +176,7 @@ Publish status:
    `voice/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf`, commit
    `c544bb4c78a601a0da8372b9399dfe668fbadb1e`.
 2. ✅ **DONE** — registered in the voice catalog as `wakeword` v0.3.0 in
-   `packages/shared/src/local-inference/voice-models.ts` (sha256s above +
+   `plugins/plugin-native-inference/src/model-catalog/voice-models.ts` (sha256s above +
    that `hfRevision`), via `append_voice_model_version.py`.
 3. ⏳ **REMAINING (gated)** — assemble the three GGUFs into each tier bundle's
    `wake/` dir through `scripts/publish/publish_all_eliza1.sh` (per

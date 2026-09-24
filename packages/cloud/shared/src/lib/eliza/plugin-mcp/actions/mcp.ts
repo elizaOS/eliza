@@ -13,9 +13,10 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { composePromptFromState, resourceSelectionTemplate } from "@elizaos/shared";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import { resourceSelectionTemplate } from "@elizaos/plugin-mcp/protocol-utils/prompts";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
-import type { McpService } from "../service";
+import { type McpService } from "../service";
 import { MCP_SERVICE_NAME, type McpServerInfo } from "../types";
 import { handleMcpError } from "../utils/error";
 import { checkMcpOAuthAccess } from "../utils/mcp";
@@ -24,18 +25,15 @@ import {
   processResourceResult,
   sendInitialResponse,
 } from "../utils/processing";
-import type { ResourceSelection } from "../utils/validation";
 import {
   createResourceSelectionFeedbackPrompt,
+  type ResourceSelection,
   validateResourceSelection,
 } from "../utils/validation";
 import { withModelRetry } from "../utils/wrapper";
 import { createMcpToolAction } from "./dynamic-tool-actions";
-
 export type CloudMcpOp = "read_resource" | "search_actions" | "list_connections";
-
 const MCP_CONTEXTS = ["connectors", "automation", "documents", "files", "settings"];
-
 function readParams(message: Memory, state?: State): Record<string, unknown> {
   const content = message.content as Record<string, unknown>;
   return (
@@ -45,7 +43,6 @@ function readParams(message: Memory, state?: State): Record<string, unknown> {
     {}
   );
 }
-
 function normalizeOp(value: unknown): CloudMcpOp | null {
   if (typeof value !== "string") return null;
   const v = value.trim().toLowerCase();
@@ -68,7 +65,6 @@ function normalizeOp(value: unknown): CloudMcpOp | null {
     return "list_connections";
   return null;
 }
-
 function inferOpFromText(text: string): CloudMcpOp | null {
   const t = text.toLowerCase();
   if (
@@ -85,28 +81,22 @@ function inferOpFromText(text: string): CloudMcpOp | null {
   }
   return null;
 }
-
 function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
   const mcpData = (composedState.values.mcp || {}) as Record<string, McpServerInfo>;
   const serverNames = Object.keys(mcpData);
-
   let resourcesDescription = "";
   for (const serverName of serverNames) {
     const server = mcpData[serverName];
     if (server.status !== "connected") continue;
-
     const resourceUris = Object.keys(server.resources || {});
     for (const uri of resourceUris) {
       const resource = server.resources[uri];
       resourcesDescription += `Resource: ${uri} (Server: ${serverName})\n`;
       resourcesDescription += `Name: ${resource.name || "No name available"}\n`;
-      resourcesDescription += `Description: ${
-        resource.description || "No description available"
-      }\n`;
+      resourcesDescription += `Description: ${resource.description || "No description available"}\n`;
       resourcesDescription += `MIME Type: ${resource.mimeType || "Not specified"}\n\n`;
     }
   }
-
   const enhancedState: State = {
     ...composedState,
     values: {
@@ -115,13 +105,11 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
       userMessage,
     },
   };
-
   return composePromptFromState({
     state: enhancedState,
     template: resourceSelectionTemplate,
   });
 }
-
 async function handleReadResource(
   runtime: IAgentRuntime,
   message: Memory,
@@ -129,7 +117,6 @@ async function handleReadResource(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const composedState = await runtime.composeState(message, ["RECENT_MESSAGES", "MCP"]);
-
   const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
   if (!mcpService) {
     return {
@@ -139,17 +126,13 @@ async function handleReadResource(
       data: { actionName: "MCP", op: "read_resource" },
     };
   }
-
   const mcpProvider = mcpService.getProviderData();
-
   try {
     await sendInitialResponse(callback);
-
     const resourceSelectionPrompt = createResourceSelectionPrompt(
       composedState,
       message.content.text || "",
     );
-
     const params = readParams(message, state);
     let parsedSelection: ResourceSelection | null;
     if (typeof params.serverName === "string" && typeof params.uri === "string") {
@@ -162,7 +145,6 @@ async function handleReadResource(
       const resourceSelection = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: resourceSelectionPrompt,
       });
-
       parsedSelection = await withModelRetry<ResourceSelection>({
         runtime,
         state: composedState,
@@ -181,13 +163,11 @@ async function handleReadResource(
         retryCount: 0,
       });
     }
-
     if (!parsedSelection || parsedSelection.noResourceAvailable) {
       const responseText =
         "I don't have a specific resource that contains the information you're looking for. Let me try to assist you directly instead.";
       const thoughtText =
         "No appropriate MCP resource available for this request. Falling back to direct assistance.";
-
       if (callback && parsedSelection?.noResourceAvailable) {
         await callback({
           text: responseText,
@@ -211,17 +191,13 @@ async function handleReadResource(
         success: true,
       };
     }
-
     const { serverName, uri, reasoning } = parsedSelection;
     if (!serverName || !uri) {
       return { text: "No resource selected.", success: false };
     }
-
     logger.debug(`Selected resource "${uri}" on server "${serverName}" because: ${reasoning}`);
-
     const result = await mcpService.readResource(serverName, uri);
     logger.debug(`Read resource ${uri} from server ${serverName}`);
-
     const { resourceContent, resourceMeta } = processResourceResult(
       result as {
         contents: Array<{
@@ -233,7 +209,6 @@ async function handleReadResource(
       },
       uri,
     );
-
     await handleResourceAnalysis(
       runtime,
       message,
@@ -243,7 +218,6 @@ async function handleReadResource(
       resourceMeta,
       callback,
     );
-
     return {
       text: `Successfully read resource: ${uri}`,
       values: {
@@ -275,7 +249,6 @@ async function handleReadResource(
     );
   }
 }
-
 async function handleSearchActions(
   runtime: IAgentRuntime,
   message: Memory,
@@ -285,7 +258,6 @@ async function handleSearchActions(
   if (!svc) {
     return { success: false, error: "MCP service not available" };
   }
-
   const params = readParams(message, state);
   const content = message.content as Record<string, unknown>;
   const query = (params.query as string) || (content.text as string) || "";
@@ -293,14 +265,11 @@ async function handleSearchActions(
   const rawLimit = Number(params.limit) || 10;
   const limit = Math.min(Math.max(rawLimit, 1), 20);
   const offset = Math.max(Number(params.offset) || 0, 0);
-
   if (!query.trim()) {
     return { success: false, error: "A search query is required" };
   }
-
   const tier2Index = svc.getTier2Index();
   const results = tier2Index.search(query, platform, limit, offset);
-
   if (results.length === 0) {
     return {
       success: true,
@@ -318,12 +287,10 @@ async function handleSearchActions(
       },
     };
   }
-
   const existingNames = new Set(runtime.actions.map((a) => a.name));
   const newlyRegistered: string[] = [];
   const alreadyRegistered: string[] = [];
   const promotedTier2Names: string[] = [];
-
   for (const entry of results) {
     if (existingNames.has(entry.actionName)) {
       alreadyRegistered.push(entry.actionName);
@@ -340,13 +307,10 @@ async function handleSearchActions(
     newlyRegistered.push(String(action.name));
     promotedTier2Names.push(entry.actionName);
   }
-
   if (promotedTier2Names.length > 0) {
     svc.removeFromTier2(promotedTier2Names);
   }
-
   const text = `Registered ${newlyRegistered.length} new action(s) for "${query}". They are now callable.`;
-
   return {
     success: true,
     text,
@@ -370,7 +334,6 @@ async function handleSearchActions(
     },
   };
 }
-
 async function handleListConnections(
   runtime: IAgentRuntime,
   message: Memory,
@@ -381,10 +344,8 @@ async function handleListConnections(
   if (!orgId) {
     return { success: false, error: "No organization context available" };
   }
-
   const params = readParams(message, state);
   const platform = (params.platform as string) || undefined;
-
   let connections: Array<{
     platform: string;
     status: string;
@@ -392,7 +353,6 @@ async function handleListConnections(
     scopes: string[];
     linkedAt: Date;
   }>;
-
   try {
     const { oauthService } = await import("../../../services/oauth");
     connections = await oauthService.listConnections({
@@ -407,7 +367,6 @@ async function handleListConnections(
     }
     return { success: false, error: "Failed to fetch OAuth connections" };
   }
-
   if (connections.length === 0) {
     const text = platform
       ? `No connections found for platform "${platform}".`
@@ -419,7 +378,6 @@ async function handleListConnections(
       data: { actionName: "MCP", op: "list_connections", connectionCount: 0, platform },
     };
   }
-
   const lines: string[] = [`Found ${connections.length} connection(s):\n`];
   for (const conn of connections) {
     const email = conn.email ? ` (${conn.email})` : "";
@@ -427,10 +385,8 @@ async function handleListConnections(
     lines.push(`- **${conn.platform}**${email} — Status: ${conn.status}`);
     lines.push(`  Connected: ${linked}`);
   }
-
   const text = lines.join("\n");
   if (callback) await callback({ text });
-
   return {
     success: true,
     text,
@@ -444,7 +400,6 @@ async function handleListConnections(
     },
   };
 }
-
 function hasSelectedContext(state: State | undefined): boolean {
   const selected = [
     state?.data?.selectedContexts,
@@ -456,14 +411,12 @@ function hasSelectedContext(state: State | undefined): boolean {
   ].flatMap((value) => (Array.isArray(value) ? value : typeof value === "string" ? [value] : []));
   return selected.some((context) => MCP_CONTEXTS.includes(String(context).toLowerCase()));
 }
-
 function collectText(message: Memory, state?: State): string {
   return [message.content?.text, state?.values?.conversationLog, state?.values?.recentMessages]
     .filter((value): value is string => typeof value === "string")
     .join("\n")
     .toLowerCase();
 }
-
 const MCP_KEYWORDS = [
   "mcp",
   "tool",
@@ -484,7 +437,6 @@ const MCP_KEYWORDS = [
   "fetch",
   "documentation",
 ];
-
 export const mcpAction: ActionWithParams = {
   name: "MCP",
   contexts: MCP_CONTEXTS,
@@ -561,7 +513,6 @@ export const mcpAction: ActionWithParams = {
       default: 0,
     },
   }),
-
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const orgId = runtime.getSetting("ORGANIZATION_ID") as string | undefined;
     if (!orgId) return false;
@@ -571,7 +522,6 @@ export const mcpAction: ActionWithParams = {
     const text = collectText(message, state);
     return hasSelectedContext(state) || MCP_KEYWORDS.some((keyword) => text.includes(keyword));
   },
-
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -583,7 +533,6 @@ export const mcpAction: ActionWithParams = {
     const requested = normalizeOp(params.op ?? params.operation);
     const text = typeof message.content?.text === "string" ? message.content.text : "";
     const op = requested ?? inferOpFromText(text) ?? "search_actions";
-
     if (op === "read_resource") {
       return handleReadResource(runtime, message, state, callback);
     }
@@ -592,7 +541,6 @@ export const mcpAction: ActionWithParams = {
     }
     return handleSearchActions(runtime, message, state);
   },
-
   examples: [
     [
       {

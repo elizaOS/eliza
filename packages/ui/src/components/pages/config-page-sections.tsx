@@ -5,7 +5,7 @@
  * `RpcSectionConfigMap`, translate-fn aliases) are exported for the parent view.
  */
 
-import { normalizeFirstRunProviderId } from "@elizaos/shared";
+import { normalizeFirstRunProviderId } from "@elizaos/core/contracts/first-run-options";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
@@ -16,36 +16,26 @@ import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { SettingsSwitchRow } from "../settings/settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "../settings/settings-layout";
 import { Button } from "../ui/button";
-
 /* ── Types ─────────────────────────────────────────────────────────── */
-
 export type RpcProviderOption<T extends string> = {
   id: T;
   label: string;
 };
-
 export type TranslateOptions = Record<string, unknown>;
-
 export type TranslateFn = AppTranslateFn;
-
 export type RpcFieldDefinition = {
   configKey: string;
   label: string;
   isSet: boolean;
 };
-
 export type RpcFieldGroup = ReadonlyArray<RpcFieldDefinition>;
-
 export type RpcSectionConfigMap = Record<string, RpcFieldGroup>;
-
 /* ── CloudRpcStatus ────────────────────────────────────────────────── */
-
 export type CloudRpcStatusProps = {
   connected: boolean;
   loginBusy: boolean;
   onLogin: () => void;
 };
-
 export function CloudRpcStatus({
   connected,
   loginBusy,
@@ -55,7 +45,6 @@ export function CloudRpcStatus({
   if (connected) {
     return null;
   }
-
   return (
     <div className="flex justify-start">
       <Button
@@ -73,9 +62,7 @@ export function CloudRpcStatus({
     </div>
   );
 }
-
 /* ── buildRpcRendererConfig ────────────────────────────────────────── */
-
 function buildRpcRendererConfig(
   t: TranslateFn,
   selectedProvider: string,
@@ -84,7 +71,6 @@ function buildRpcRendererConfig(
 ) {
   const fields = providerConfigs[selectedProvider];
   if (!fields?.length) return null;
-
   const props: {
     schema: JsonSchemaObject;
     hints: Record<string, ConfigUiHint>;
@@ -100,7 +86,6 @@ function buildRpcRendererConfig(
     values: {},
     setKeys: new Set<string>(),
   };
-
   for (const field of fields) {
     props.schema.properties[field.configKey] = {
       type: "string",
@@ -125,14 +110,10 @@ function buildRpcRendererConfig(
       props.setKeys.add(field.configKey);
     }
   }
-
   return props;
 }
-
 /* ── RpcConfigSection ──────────────────────────────────────────────── */
-
 type RpcSectionCloudProps = CloudRpcStatusProps;
-
 type RpcSectionProps<T extends string> = {
   title: string;
   description: string;
@@ -146,7 +127,6 @@ type RpcSectionProps<T extends string> = {
   containerClassName: string;
   t: TranslateFn;
 };
-
 export function RpcConfigSection<T extends string>({
   title,
   description,
@@ -166,7 +146,6 @@ export function RpcConfigSection<T extends string>({
     providerConfigs,
     rpcFieldValues,
   );
-
   return (
     <div>
       <div className="text-xs font-bold mb-1">{title}</div>
@@ -206,9 +185,7 @@ export function RpcConfigSection<T extends string>({
     </div>
   );
 }
-
 /* ── renderRpcProviderButtons ──────────────────────────────────────── */
-
 function renderRpcProviderButtons<T extends string>(
   options: readonly RpcProviderOption<T>[],
   selectedProvider: T,
@@ -239,11 +216,8 @@ function renderRpcProviderButtons<T extends string>(
     </div>
   );
 }
-
 /* ── Cloud services toggle section ───────────────────────────────────── */
-
 type CloudServiceKey = "rpc" | "media" | "tts" | "embeddings";
-
 const CLOUD_SERVICE_DEFS: {
   key: CloudServiceKey;
   labelKey: string;
@@ -283,7 +257,6 @@ const CLOUD_SERVICE_DEFS: {
       "Cloud-hosted embedding models for knowledge search and memory.",
   },
 ];
-
 function isCloudServiceRouteSelected(route: unknown): boolean {
   if (!route || typeof route !== "object" || Array.isArray(route)) {
     return false;
@@ -294,7 +267,6 @@ function isCloudServiceRouteSelected(route: unknown): boolean {
     normalizeFirstRunProviderId(routeRecord.backend) === "elizacloud"
   );
 }
-
 export function CloudServicesSection() {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
@@ -307,7 +279,6 @@ export function CloudServicesSection() {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
     client
@@ -332,9 +303,7 @@ export function CloudServicesSection() {
         if (cancelled) return;
         setActionNotice(
           t("configpageview.CloudServicesLoadFailed", {
-            defaultValue: `Could not load cloud service routing: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            defaultValue: `Could not load cloud service routing: ${err instanceof Error ? err.message : String(err)}`,
           }),
           "error",
           4000,
@@ -345,7 +314,6 @@ export function CloudServicesSection() {
       cancelled = true;
     };
   }, [setActionNotice, t]);
-
   const handleToggle = useCallback(
     async (key: CloudServiceKey, newValue: boolean) => {
       const updated = { ...services, [key]: newValue };
@@ -376,9 +344,7 @@ export function CloudServicesSection() {
         setServices(services);
         setActionNotice(
           t("configpageview.CloudServicesSaveFailed", {
-            defaultValue: `Could not update cloud service routing: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            defaultValue: `Could not update cloud service routing: ${err instanceof Error ? err.message : String(err)}`,
           }),
           "error",
           4000,
@@ -389,9 +355,7 @@ export function CloudServicesSection() {
     },
     [services, setActionNotice, t],
   );
-
   if (!loaded) return null;
-
   return (
     <SettingsStack className="mt-6">
       <SettingsGroup

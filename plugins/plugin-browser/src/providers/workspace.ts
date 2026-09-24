@@ -8,7 +8,7 @@
  */
 
 import type { Provider } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared";
+import { asRecord } from "@elizaos/core/type-guards";
 import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,

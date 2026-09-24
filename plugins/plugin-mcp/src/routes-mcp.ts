@@ -8,14 +8,12 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";
 import { MCP_SERVICE_NAME } from "./types";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 export interface McpRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -24,7 +22,9 @@ export interface McpRouteContext {
   url: URL;
   state: {
     config: McpRouteConfig;
-    runtime: { getService: (name: string) => unknown } | null;
+    runtime: {
+      getService: (name: string) => unknown;
+    } | null;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void | Promise<void>;
   error: (res: http.ServerResponse, message: string, status?: number) => void | Promise<void>;
@@ -41,11 +41,15 @@ export interface McpRouteContext {
   resolveMcpTerminalAuthorizationRejection: (
     req: http.IncomingMessage,
     servers: Record<string, unknown>,
-    body: { terminalToken?: string }
-  ) => { reason: string; status: number } | null;
+    body: {
+      terminalToken?: string;
+    }
+  ) => {
+    reason: string;
+    status: number;
+  } | null;
   decodePathComponent: (raw: string, res: http.ServerResponse, label: string) => string | null;
 }
-
 type McpConfigServer = Record<string, unknown> & {
   type: string;
   command?: string;
@@ -56,36 +60,30 @@ type McpConfigServer = Record<string, unknown> & {
   cwd?: string;
   timeoutInMillis?: number;
 };
-
 export interface McpRouteConfig {
   mcp?: {
     servers?: Record<string, McpConfigServer>;
   };
 }
-
 interface ParseClampedIntegerOptions {
   min?: number;
   max?: number;
   fallback?: number;
 }
-
 const MCP_MARKETPLACE_QUERY_MAX_LENGTH = 200;
 const MCP_MARKETPLACE_SERVER_NAME_MAX_LENGTH = 200;
 const MCP_MARKETPLACE_DETAILS_PREFIX = "/api/mcp/marketplace/details/";
 const MCP_MARKETPLACE_DIRECT_DETAILS_PREFIX = "/api/mcp/marketplace/";
-
 interface RequestAbortTracker {
   signal: AbortSignal;
   isAborted: () => boolean;
   markCompleted: () => void;
   dispose: () => void;
 }
-
 type AbortEventSource = {
   on?: (event: string, listener: () => void) => unknown;
   off?: (event: string, listener: () => void) => unknown;
 };
-
 function createRequestAbortTracker(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -98,7 +96,6 @@ function createRequestAbortTracker(
     listener: () => void;
   }> = [];
   let completed = false;
-
   const abort = () => {
     if (!completed && !controller.signal.aborted) {
       controller.abort(new Error(`${operation} client disconnected`));
@@ -116,16 +113,13 @@ function createRequestAbortTracker(
   const onResponseClose = () => {
     if (!res.writableEnded) abort();
   };
-
   register(req, "aborted", abort);
   register(req, "error", abort);
   register(res, "close", onResponseClose);
   register(res, "error", abort);
   register(req.socket, "close", abort);
   register(req.socket, "error", abort);
-
   if (req.aborted || req.destroyed || res.destroyed) abort();
-
   return {
     signal: controller.signal,
     isAborted: () => controller.signal.aborted,
@@ -140,28 +134,23 @@ function createRequestAbortTracker(
     },
   };
 }
-
 function parseClampedInteger(
   value: string | null | undefined,
   options: ParseClampedIntegerOptions = {}
 ): number | undefined {
   const raw = value == null ? "" : value.trim();
   if (!raw) return Number.isFinite(options.fallback) ? options.fallback : undefined;
-
   if (!/^[+-]?\d+$/.test(raw)) {
     return Number.isFinite(options.fallback) ? options.fallback : undefined;
   }
-
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) {
     return Number.isFinite(options.fallback) ? options.fallback : undefined;
   }
-
   if (options.min !== undefined && parsed < options.min) return options.min;
   if (options.max !== undefined && parsed > options.max) return options.max;
   return parsed;
 }
-
 function normalizeBoundedString(value: string, maxLength: number, label: string): string {
   const normalized = value.trim();
   if (normalized.length > maxLength) {
@@ -169,22 +158,17 @@ function normalizeBoundedString(value: string, maxLength: number, label: string)
   }
   return normalized;
 }
-
 function canWriteMarketplaceResponse(res: http.ServerResponse): boolean {
   return !res.destroyed && !res.writableEnded;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
   const { req, res, method, pathname, url, state, json, error, readJsonBody } = ctx;
-
   // ═══════════════════════════════════════════════════════════════════════
   // MCP marketplace routes
   // ═══════════════════════════════════════════════════════════════════════
-
   if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
     let query: string;
     // error-policy:J1 route input failures are translated to a 400 response.
@@ -222,7 +206,6 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     }
     return true;
   }
-
   const marketplaceDetailsPrefix = pathname.startsWith(MCP_MARKETPLACE_DETAILS_PREFIX)
     ? MCP_MARKETPLACE_DETAILS_PREFIX
     : pathname.startsWith(MCP_MARKETPLACE_DIRECT_DETAILS_PREFIX)
@@ -278,17 +261,14 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     }
     return true;
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   // MCP config routes
   // ═══════════════════════════════════════════════════════════════════════
-
   if (method === "GET" && pathname === "/api/mcp/config") {
     const servers = state.config.mcp?.servers ?? {};
     json(res, { ok: true, servers: ctx.redactDeep(servers) });
     return true;
   }
-
   if (method === "POST" && pathname === "/api/mcp/config/server") {
     const body = await readJsonBody<{
       name?: string;
@@ -296,7 +276,6 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       terminalToken?: string;
     }>(req, res);
     if (!body) return true;
-
     const serverName = (body.name as string | undefined)?.trim();
     if (!serverName) {
       error(res, "Server name is required", 400);
@@ -310,13 +289,11 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       );
       return true;
     }
-
     const config = body.config as Record<string, unknown> | undefined;
     if (!config || typeof config !== "object" || Array.isArray(config)) {
       error(res, "Server config object is required", 400);
       return true;
     }
-
     const mcpRejection = await ctx.resolveMcpServersRejection({
       [serverName]: config,
     });
@@ -324,7 +301,6 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       error(res, mcpRejection, 400);
       return true;
     }
-
     const mcpTerminalRejection = ctx.resolveMcpTerminalAuthorizationRejection(
       req,
       { [serverName]: config },
@@ -338,25 +314,21 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       );
       return true;
     }
-
     if (!state.config.mcp) state.config.mcp = {};
     if (!state.config.mcp.servers) state.config.mcp.servers = {};
     const sanitized = ctx.cloneWithoutBlockedObjectKeys(config);
     state.config.mcp.servers[serverName] = sanitized as NonNullable<
       NonNullable<typeof state.config.mcp>["servers"]
     >[string];
-
     // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
     }
-
     json(res, { ok: true, name: serverName, requiresRestart: true });
     return true;
   }
-
   if (method === "DELETE" && pathname.startsWith("/api/mcp/config/server/")) {
     const serverName = ctx.decodePathComponent(
       pathname.slice("/api/mcp/config/server/".length),
@@ -372,7 +344,6 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       );
       return true;
     }
-
     if (state.config.mcp?.servers?.[serverName]) {
       delete state.config.mcp.servers[serverName];
       // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
@@ -382,18 +353,15 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
         logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
       }
     }
-
     json(res, { ok: true, requiresRestart: true });
     return true;
   }
-
   if (method === "PUT" && pathname === "/api/mcp/config") {
     const body = await readJsonBody<{
       servers?: Record<string, unknown>;
       terminalToken?: string;
     }>(req, res);
     if (!body) return true;
-
     if (!state.config.mcp) state.config.mcp = {};
     if (body.servers !== undefined) {
       if (!body.servers || typeof body.servers !== "object" || Array.isArray(body.servers)) {
@@ -435,22 +403,18 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
         NonNullable<typeof state.config.mcp>["servers"]
       >;
     }
-
     // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
       logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
     }
-
     json(res, { ok: true });
     return true;
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   // MCP status route
   // ═══════════════════════════════════════════════════════════════════════
-
   if (method === "GET" && pathname === "/api/mcp/status") {
     const servers: Array<{
       name: string;
@@ -458,7 +422,6 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       toolCount: number;
       resourceCount: number;
     }> = [];
-
     if (state.runtime) {
       // error-policy:J4 service lookup failure degrades to an empty status response.
       try {
@@ -484,10 +447,8 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
         logger.debug(`[api] Service not available: ${err instanceof Error ? err.message : err}`);
       }
     }
-
     json(res, { ok: true, servers });
     return true;
   }
-
   return false;
 }

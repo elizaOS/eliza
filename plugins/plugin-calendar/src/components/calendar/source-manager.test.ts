@@ -3,10 +3,10 @@
  * identity while emitting privacy-safe, deterministic action handles.
  */
 
-import type {
-  LifeOpsCalendarSourceHealth,
-  LifeOpsCalendarSummary,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarSourceHealth,
+  type LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import {
   calendarSourceIdentityKey,

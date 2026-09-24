@@ -10,33 +10,10 @@
  * - Plugin creation utilities
  */
 
-import type {
-  ActionEventPayload,
-  ActionLogBody,
-  BaseLogBody,
-  Content,
-  ControlMessagePayload,
-  EntityPayload,
-  EvaluatorEventPayload,
-  EventPayload,
-  IAgentRuntime,
-  IControlTransportService,
-  IMessageBusService,
-  InvokePayload,
-  Media,
-  Memory,
-  MentionContext,
-  MessageMetadata,
-  MessagePayload,
-  PluginEvents,
-  RegisteredEvaluator,
-  Room,
-  RunEventPayload,
-  ServiceClass,
-  UUID,
-  WorldPayload,
-} from "@elizaos/core";
 import {
+  type ActionEventPayload,
+  type ActionLogBody,
+  type BaseLogBody,
   bridgeActionCompletedToStreams,
   bridgeActionStartedToStreams,
   bridgeConnectorMessageReceivedToStreams,
@@ -48,39 +25,70 @@ import {
   ChannelTopicsService,
   ChannelType,
   CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
+  type Content,
   ContentType,
+  type ControlMessagePayload,
   createUniqueUuid,
   EmbeddingGenerationService,
+  type EntityPayload,
+  type EvaluatorEventPayload,
+  type EventPayload,
   EventType,
   fetchWithSsrfGuard,
   getConfiguredOwnerEntityIds,
   getLocalServerUrl,
+  type IAgentRuntime,
+  type IControlTransportService,
+  type IMessageBusService,
+  type InvokePayload,
   type JsonValue,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type Media,
+  type Memory,
   MemoryType,
+  type MentionContext,
+  type MessageMetadata,
+  type MessagePayload,
   ModelType,
   PiiScrubService,
+  type PluginEvents,
+  type RegisteredEvaluator,
   type RolesWorldMetadata,
+  type Room,
+  type RunEventPayload,
+  recentErrorsProvider,
   recordOwnerGrant,
   resolveOptimizedPromptForRuntime,
   SensitiveRequestDispatchRegistryService,
+  type ServiceClass,
   ServiceType,
   TaskService,
   toWellFormedUnicode,
   truncateWellFormed,
+  type UUID,
+  type WorldPayload,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import { composePromptFromState } from "@elizaos/shared";
-import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import {
+  describeImageCached,
+  MediaFetchError,
+  readResponseWithLimit,
+} from "@elizaos/core/media";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
-// Direct leaf imports — see comment in
-// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
+import { composePromptFromState } from "../../text/template-rendering.js";
+import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
+import {
+  advancedActions,
+  advancedEvaluators,
+  advancedProviders,
+  advancedServices,
+} from "../advanced-capabilities/index.ts";
 import {
   disableAutonomousModeAction,
   enableAutonomousModeAction,
@@ -92,33 +100,7 @@ import {
 } from "../autonomy/providers.ts";
 import { autonomyRoutes } from "../autonomy/routes.ts";
 import { AutonomyService } from "../autonomy/service.ts";
-import { imageDescriptionTemplate, postCreationTemplate } from "./prompts.js";
-
-// Re-export action and provider modules
-export * from "./actions/index.ts";
-export * from "./evaluators/index.ts";
-export * from "./providers/index.ts";
-
-import { recentErrorsProvider } from "@elizaos/core";
-import {
-  describeImageCached,
-  MediaFetchError,
-  readResponseWithLimit,
-} from "@elizaos/shared/media";
-import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
-// Import advanced capabilities
-import {
-  advancedActions,
-  advancedEvaluators,
-  advancedProviders,
-  advancedServices,
-} from "../advanced-capabilities/index.ts";
 import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts";
-// Import for local use.
-//
-// Direct leaf imports — see comment in
-// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
 import { calculateAction } from "./actions/calculate.ts";
 import { channelRecapAction } from "./actions/channel-recap.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
@@ -128,6 +110,7 @@ import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
 import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
+import { imageDescriptionTemplate, postCreationTemplate } from "./prompts.js";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
 import { anxietyProvider } from "./providers/anxiety.ts";
@@ -144,13 +127,6 @@ import {
 } from "./providers/platformContext.ts";
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
-
-export {
-  dedupeHygienicDialogueMessages,
-  isHygienicDialogueMessage,
-  recentMessagesProvider,
-} from "./providers/recentMessages.ts";
-
 import { replyContextProvider } from "./providers/replyContext.ts";
 import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts";
 import { uiContextProvider } from "./providers/uiContext.ts";
@@ -176,25 +152,38 @@ export {
   secretsCapability,
   trustCapability,
 } from "../index.ts";
+// Direct leaf imports — see comment in
+// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+// Re-export action and provider modules
+export * from "./actions/index.ts";
+export * from "./evaluators/index.ts";
+export * from "./providers/index.ts";
+// Import advanced capabilities
+// Import for local use.
+//
+// Direct leaf imports — see comment in
+// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+export {
+  dedupeHygienicDialogueMessages,
+  isHygienicDialogueMessage,
+  recentMessagesProvider,
+} from "./providers/recentMessages.ts";
 
 // Re-export plugin-manager security helpers (used by other plugins like
 // plugin-app-control to gate owner/admin-only actions without taking a dep
 // on @elizaos/agent, which would create a layer cycle).
-
 // ============================================================================
 // Structured JSON response interfaces.
 // ============================================================================
-
 interface PostCreationJson {
   post?: string;
   thought?: string;
 }
-
 const MAX_POST_GENERATION_ATTEMPTS = 3;
-
 /** Hard cap for any single media fetch — attacker-supplied URLs can lie about size. */
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
-
 async function readBoundedMediaResponse(
   response: Response,
   label: string,
@@ -212,11 +201,9 @@ async function readBoundedMediaResponse(
   }
   return await readResponseWithLimit(response, MAX_MEDIA_BYTES);
 }
-
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
 function textContainsAgentName(
   text: string | undefined,
   names: Array<string | null | undefined>,
@@ -224,14 +211,12 @@ function textContainsAgentName(
   if (!text) {
     return false;
   }
-
   const safeText = toWellFormedUnicode(text);
   return names.some((name) => {
     const candidate = name?.trim();
     if (!candidate) {
       return false;
     }
-
     const pattern = new RegExp(
       `(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
       "iu",
@@ -239,25 +224,20 @@ function textContainsAgentName(
     return pattern.test(safeText);
   });
 }
-
 function textContainsUserTag(text: string | undefined): boolean {
   if (!text) {
     return false;
   }
-
   const safeText = toWellFormedUnicode(text);
   return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
-
 // ============================================================================
 // Utility Functions
 // ============================================================================
-
 type MediaData = {
   data: Buffer;
   mediaType: string;
 };
-
 export async function fetchMediaData(
   attachments: Media[],
 ): Promise<MediaData[]> {
@@ -268,7 +248,7 @@ export async function fetchMediaData(
         // guard so a crafted URL can't reach internal/metadata endpoints.
         const { response, release } = await fetchWithSsrfGuard({
           url: attachment.url,
-          timeoutMs: 30_000,
+          timeoutMs: 30000,
         });
         try {
           if (!response.ok) {
@@ -291,7 +271,6 @@ export async function fetchMediaData(
     }),
   );
 }
-
 /**
  * Processes attachments by generating descriptions for supported media types.
  * Currently supports image description generation.
@@ -315,12 +294,9 @@ export async function processAttachments(
     },
     "Processing attachments",
   );
-
   const processedAttachments: Media[] = [];
-
   for (const attachment of attachments) {
     const processedAttachment: Media = { ...attachment };
-
     const isRemote = /^(http|https):\/\//.test(attachment.url);
     const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
     if (
@@ -335,25 +311,21 @@ export async function processAttachments(
         },
         "Generating description for image",
       );
-
       let imageUrl = url;
-
       if (!isRemote) {
         // Local media-server hops can hang without a bound — use the same
         // fail-closed timeout as the remote attachment path so a stalled
         // local server rejects instead of leaving the
         // attachment-processing turn pending forever.
-        const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+        const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
         if (!res.ok) {
           throw new Error(`Failed to fetch image: ${res.statusText}`);
         }
-
         const buffer = await readBoundedMediaResponse(res, "Image", url);
         const contentType =
           res.headers.get("content-type") || "application/octet-stream";
         imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
       }
-
       const resolvedImageDescriptionPrompt = resolveOptimizedPromptForRuntime(
         runtime,
         "media_description",
@@ -395,11 +367,10 @@ export async function processAttachments(
     ) {
       // Same fail-closed bound as the image branch: a stalled local
       // media-server hop must not hang the attachment-processing turn.
-      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
       if (!res.ok) {
         throw new Error(`Failed to fetch document: ${res.statusText}`);
       }
-
       const contentType = res.headers.get("content-type") || "";
       // Any text/* document (plain, csv, markdown) and application/json — all
       // on the chat upload allow-list — is readable as text. Previously only
@@ -409,7 +380,6 @@ export async function processAttachments(
         contentType.startsWith("text/") ||
         contentType.startsWith("application/json");
       const isPdf = contentType.startsWith("application/pdf");
-
       if (isText) {
         runtime.logger.debug(
           {
@@ -419,13 +389,11 @@ export async function processAttachments(
           },
           "Processing text document",
         );
-
         const textContent = (
           await readBoundedMediaResponse(res, "Text document", url)
         ).toString("utf8");
         processedAttachment.text = textContent;
         processedAttachment.title = processedAttachment.title || "Text File";
-
         runtime.logger.debug(
           {
             src: "basic-capabilities",
@@ -454,7 +422,6 @@ export async function processAttachments(
         );
         processedAttachment.text = textContent;
         processedAttachment.title = processedAttachment.title || "PDF Document";
-
         runtime.logger.debug(
           {
             src: "basic-capabilities",
@@ -473,19 +440,20 @@ export async function processAttachments(
         );
       }
     }
-
     processedAttachments.push(processedAttachment);
   }
-
   return processedAttachments;
 }
-
 export function shouldRespond(
   runtime: IAgentRuntime,
   message: Memory,
   room?: Room,
   mentionContext?: MentionContext,
-): { shouldRespond: boolean; skipEvaluation: boolean; reason: string } {
+): {
+  shouldRespond: boolean;
+  skipEvaluation: boolean;
+  reason: string;
+} {
   if (!room) {
     return {
       shouldRespond: false,
@@ -493,7 +461,6 @@ export function shouldRespond(
       reason: "no room context",
     };
   }
-
   function normalizeEnvList(value: unknown): string[] {
     if (!value || typeof value !== "string") {
       return [];
@@ -504,16 +471,13 @@ export function shouldRespond(
       .map((v) => v.trim())
       .filter(Boolean);
   }
-
   const alwaysRespondChannels = [
     ChannelType.DM,
     ChannelType.VOICE_DM,
     ChannelType.SELF,
     ChannelType.API,
   ];
-
   const alwaysRespondSources = [MESSAGE_SOURCE_CLIENT_CHAT];
-
   const customChannels = normalizeEnvList(
     runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
       runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
@@ -522,17 +486,14 @@ export function shouldRespond(
     runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
       runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
   );
-
   const respondChannels = new Set(
     [...alwaysRespondChannels.map((t) => t.toString()), ...customChannels].map(
       (s: string) => s.trim().toLowerCase(),
     ),
   );
-
   const respondSources = [...alwaysRespondSources, ...customSources].map(
     (s: string) => s.trim().toLowerCase(),
   );
-
   const roomType = room.type.toString().toLowerCase() || undefined;
   const messageContentSource = message.content.source;
   const sourceStr = messageContentSource?.toLowerCase() || "";
@@ -542,7 +503,6 @@ export function shouldRespond(
       runtime.character.name,
       runtime.character.username,
     ]);
-
   // 1. DM/VOICE_DM/API channels: always respond (private channels)
   if (roomType && respondChannels.has(roomType)) {
     return {
@@ -551,7 +511,6 @@ export function shouldRespond(
       reason: `private channel: ${roomType}`,
     };
   }
-
   // 2. Specific sources (e.g., client_chat): always respond
   if (respondSources.some((pattern) => sourceStr.includes(pattern))) {
     return {
@@ -560,7 +519,6 @@ export function shouldRespond(
       reason: `whitelisted source: ${sourceStr}`,
     };
   }
-
   // 3. Platform mentions and replies: always respond
   // This is the key feature from mentionContext - platform-detected mentions/replies
   const mentionContextIsMention = mentionContext?.isMention;
@@ -576,7 +534,6 @@ export function shouldRespond(
       reason: `platform ${mentionType}`,
     };
   }
-
   // 4. Mixed-address messages should still reach the agent when the text
   // explicitly names it alongside other user tags.
   if (textMentionsAgentByName) {
@@ -586,7 +543,6 @@ export function shouldRespond(
       reason: "text address with tagged participants",
     };
   }
-
   // 5. All other cases: let the LLM decide
   // The LLM will handle: indirect questions, conversation context, etc.
   return {
@@ -595,11 +551,9 @@ export function shouldRespond(
     reason: "needs LLM evaluation",
   };
 }
-
 // ============================================================================
 // Event Handlers
 // ============================================================================
-
 const reactionReceivedHandler = async ({
   runtime,
   message,
@@ -609,14 +563,12 @@ const reactionReceivedHandler = async ({
 }) => {
   await runtime.createMemories([{ memory: message, tableName: "messages" }]);
 };
-
 const postGeneratedHandler = async (
   { runtime, callback, worldId, userId, roomId, source }: InvokePayload,
   attempt = 1,
 ) => {
   const safeSource = source ?? "unknown";
   const safeUserId = (userId ?? runtime.agentId) as UUID;
-
   runtime.logger.info(
     { src: "basic-capabilities", agentId: runtime.agentId },
     "Generating new post",
@@ -628,7 +580,6 @@ const postGeneratedHandler = async (
     agentId: runtime.agentId,
     messageServerId: safeUserId,
   });
-
   await runtime.ensureRoomExists({
     id: roomId,
     name: `${runtime.character.name}'s Feed`,
@@ -638,7 +589,6 @@ const postGeneratedHandler = async (
     messageServerId: safeUserId,
     worldId,
   });
-
   const message: Memory = {
     id: createUniqueUuid(runtime, `post-${Date.now()}`) as UUID,
     entityId: runtime.agentId,
@@ -648,9 +598,10 @@ const postGeneratedHandler = async (
     metadata: {
       entityName: runtime.character.name,
       type: MemoryType.MESSAGE,
-    } as MessageMetadata & { entityName: string },
+    } as MessageMetadata & {
+      entityName: string;
+    },
   };
-
   // Compose state with relevant context for post generation
   const state = await runtime.composeState(message, [
     "PROVIDERS",
@@ -658,7 +609,6 @@ const postGeneratedHandler = async (
     "RECENT_MESSAGES",
     "ENTITIES",
   ]);
-
   const entity = (await runtime.getEntitiesByIds([runtime.agentId]))[0] ?? null;
   interface XMetadata {
     x?: {
@@ -673,21 +623,17 @@ const postGeneratedHandler = async (
     state.values.xUserName =
       metadataX?.userName || metadata?.userName || undefined;
   }
-
   const postPrompt = composePromptFromState({
     state,
     template:
       runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
-
   const structuredResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: postPrompt,
   });
-
   const parsedJsonResponse = parseJSONObjectFromText(
     structuredResponseText,
   ) as PostCreationJson | null;
-
   if (!parsedJsonResponse) {
     runtime.logger.error(
       {
@@ -699,21 +645,27 @@ const postGeneratedHandler = async (
     );
     throw new Error("Failed to parse structured response for post creation");
   }
-
   function cleanupPostText(text: string): string {
     let cleanedText = text.replace(/^['"](.*)['"]$/, "$1");
     cleanedText = cleanedText.replaceAll(/\\n/g, "\n\n");
     cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, "$1\n\n$2");
     return cleanedText;
   }
-
   const cleanedText = cleanupPostText(parsedJsonResponse.post ?? "");
   const stateData = state.data;
   const stateDataProviders = stateData.providers;
   const RM =
     stateDataProviders &&
     (stateDataProviders.RECENT_MESSAGES as
-      | { data?: { recentMessages?: Array<{ content: { text?: string } }> } }
+      | {
+          data?: {
+            recentMessages?: Array<{
+              content: {
+                text?: string;
+              };
+            }>;
+          };
+        }
       | undefined);
   const RMData = RM?.data;
   const RMDataRecentMessages = RMData?.recentMessages;
@@ -750,7 +702,6 @@ const postGeneratedHandler = async (
       }
     }
   }
-
   // GPT 3.5/4: /(i\s+do\s+not|i'?m\s+not)\s+(feel\s+)?comfortable\s+generating\s+that\s+type\s+of\s+content|(inappropriate|explicit|offensive|communicate\s+respectfully|aim\s+to\s+(be\s+)?helpful)/i
   const oaiRefusalRegex =
     /((i\s+do\s+not|i'm\s+not)\s+(feel\s+)?comfortable\s+generating\s+that\s+type\s+of\s+content)|(inappropriate|explicit|respectful|offensive|guidelines|aim\s+to\s+(be\s+)?helpful|communicate\s+respectfully)/i;
@@ -761,7 +712,6 @@ const postGeneratedHandler = async (
   //const cohereRefusalRegex = /(request\s+cannot\s+be\s+processed|violates\s+(our\s+)?content\s+policy|not\s+permitted\s+by\s+usage\s+restrictions)/i
   const generalRefusalRegex =
     /(response\s+was\s+withheld|content\s+was\s+filtered|this\s+request\s+cannot\s+be\s+completed|violates\s+our\s+safety\s+policy|content\s+is\s+not\s+available)/i;
-
   if (
     oaiRefusalRegex.test(cleanedText) ||
     anthropicRefusalRegex.test(cleanedText) ||
@@ -792,7 +742,6 @@ const postGeneratedHandler = async (
     );
     return; // don't call callbacks
   }
-
   // Create the response memory
   const responseMessages = [
     {
@@ -810,14 +759,12 @@ const postGeneratedHandler = async (
       createdAt: Date.now(),
     },
   ];
-
   for (const message of responseMessages) {
     if (callback) {
       await callback(message.content);
     }
   }
 };
-
 /**
  * Syncs a single user into an entity
  */
@@ -847,7 +794,6 @@ export function buildDmWorldMetadata(
   }
   return { settings: {} };
 }
-
 const syncSingleUser = async (
   entityId: UUID,
   runtime: IAgentRuntime,
@@ -866,7 +812,6 @@ const syncSingleUser = async (
     },
     "Syncing user",
   );
-
   // Ensure we're not using WORLD type and that we have a valid channelId
   if (!channelId) {
     runtime.logger.warn(
@@ -879,15 +824,12 @@ const syncSingleUser = async (
     );
     return;
   }
-
   const roomId = createUniqueUuid(runtime, channelId);
   const worldId = createUniqueUuid(runtime, messageServerId);
-
   const worldMetadata =
     type === ChannelType.DM
       ? buildDmWorldMetadata(runtime, entityId)
       : undefined;
-
   runtime.logger.info(
     {
       src: "basic-capabilities",
@@ -898,7 +840,6 @@ const syncSingleUser = async (
     },
     "syncSingleUser",
   );
-
   await runtime.ensureConnection({
     entityId,
     roomId,
@@ -912,7 +853,6 @@ const syncSingleUser = async (
     worldId,
     metadata: worldMetadata,
   });
-
   const createdWorld = (await runtime.getWorldsByIds([worldId]))[0] ?? null;
   runtime.logger.info(
     {
@@ -923,7 +863,6 @@ const syncSingleUser = async (
     },
     "Created world check",
   );
-
   runtime.logger.success(
     {
       src: "basic-capabilities",
@@ -934,7 +873,6 @@ const syncSingleUser = async (
     "Successfully synced user",
   );
 };
-
 /**
  * Handles standardized server data for both WORLD_JOINED and WORLD_CONNECTED events
  */
@@ -968,7 +906,6 @@ const handleServerSync = async ({
     onComplete();
   }
 };
-
 const controlMessageHandler = async ({
   runtime,
   message,
@@ -982,11 +919,9 @@ const controlMessageHandler = async ({
     },
     "Processing control message",
   );
-
   const controlTransport = runtime.getService<IControlTransportService>(
     ServiceType.CONTROL_TRANSPORT,
   );
-
   if (!controlTransport) {
     runtime.logger.error(
       { src: "basic-capabilities", agentId: runtime.agentId },
@@ -994,7 +929,6 @@ const controlMessageHandler = async ({
     );
     return;
   }
-
   await controlTransport.sendMessage({
     type: "controlMessage",
     payload: {
@@ -1003,7 +937,6 @@ const controlMessageHandler = async ({
       roomId: message.roomId,
     },
   });
-
   runtime.logger.debug(
     {
       src: "basic-capabilities",
@@ -1013,11 +946,9 @@ const controlMessageHandler = async ({
     "Control message sent successfully",
   );
 };
-
 // ============================================================================
 // Events Configuration
 // ============================================================================
-
 const connectorMessageReceivedEvents = Object.fromEntries(
   CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES.map((eventType) => [
     eventType,
@@ -1028,10 +959,8 @@ const connectorMessageReceivedEvents = Object.fromEntries(
     ],
   ]),
 ) as PluginEvents;
-
 const events: PluginEvents = {
   ...connectorMessageReceivedEvents,
-
   // Bridge every connector's inbound message onto the AgentEventService
   // `message` stream so the home activity rail shows the agent fielding
   // messages (Discord/Telegram/etc.), not just orchestrator tasks (#9449).
@@ -1045,13 +974,11 @@ const events: PluginEvents = {
       await reactionReceivedHandler(payload);
     },
   ],
-
   [EventType.POST_GENERATED]: [
     async (payload: InvokePayload) => {
       await postGeneratedHandler(payload);
     },
   ],
-
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
       payload.runtime.logger.debug(
@@ -1064,19 +991,16 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.WORLD_JOINED]: [
     async (payload: WorldPayload) => {
       await handleServerSync(payload);
     },
   ],
-
   [EventType.WORLD_CONNECTED]: [
     async (payload: WorldPayload) => {
       await handleServerSync(payload);
     },
   ],
-
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
       payload.runtime.logger.debug(
@@ -1087,7 +1011,6 @@ const events: PluginEvents = {
         },
         "ENTITY_JOINED event received",
       );
-
       if (!payload.worldId) {
         payload.runtime.logger.error(
           { src: "basic-capabilities", agentId: payload.runtime.agentId },
@@ -1110,7 +1033,6 @@ const events: PluginEvents = {
         );
         return;
       }
-
       const channelType = payloadMetadata.type;
       if (typeof channelType !== "string") {
         payload.runtime.logger.warn("Missing channel type in entity payload");
@@ -1131,7 +1053,6 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.ENTITY_LEFT]: [
     async (payload: EntityPayload) => {
       // Update entity to inactive
@@ -1156,7 +1077,6 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
       // Bridge to the AgentEventService action/lifecycle streams so the WS
@@ -1183,7 +1103,6 @@ const events: PluginEvents = {
       const content = payload.content;
       const contentActions = content.actions;
       const actionName = contentActions?.[0] ?? "unknown";
-
       await payload.runtime.createLogs([
         {
           entityId: payload.runtime.agentId,
@@ -1211,7 +1130,6 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
       // Bridge to the AgentEventService action/lifecycle streams (#8813 AC#3).
@@ -1234,7 +1152,6 @@ const events: PluginEvents = {
       }
     },
   ],
-
   [EventType.RUN_STARTED]: [
     async (payload: RunEventPayload) => {
       // Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
@@ -1267,7 +1184,6 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.RUN_ENDED]: [
     async (payload: RunEventPayload) => {
       // Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
@@ -1304,7 +1220,6 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.RUN_TIMEOUT]: [
     async (payload: RunEventPayload) => {
       await payload.runtime.createLogs([
@@ -1336,21 +1251,18 @@ const events: PluginEvents = {
       );
     },
   ],
-
   [EventType.EVALUATOR_STARTED]: [
     async (payload: EvaluatorEventPayload) => {
       // Bridge to the AgentEventService evaluator stream (#8813 AC#3).
       bridgeEvaluatorStartedToStreams(payload);
     },
   ],
-
   [EventType.EVALUATOR_COMPLETED]: [
     async (payload: EvaluatorEventPayload) => {
       // Bridge to the AgentEventService evaluator stream (#8813 AC#3).
       bridgeEvaluatorCompletedToStreams(payload);
     },
   ],
-
   [EventType.CONTROL_MESSAGE]: [
     async (payload: ControlMessagePayload) => {
       if (!payload.message) {
@@ -1364,11 +1276,9 @@ const events: PluginEvents = {
     },
   ],
 };
-
 // ============================================================================
 // Basic Capabilities
 // ============================================================================
-
 /**
  * Basic providers - core functionality for agent operation
  */
@@ -1394,7 +1304,6 @@ export const basicProviders = [
   userEmotionSignalProvider,
   worldProvider,
 ];
-
 /**
  * Basic actions - fundamental response actions
  */
@@ -1409,7 +1318,6 @@ export const basicActions = [
   calculateAction,
   channelRecapAction,
 ];
-
 /**
  * Basic evaluators - inbound auto-capture side-effects.
  *
@@ -1426,7 +1334,6 @@ export const basicActions = [
  * its own model calls in try/catch and logs on failure.
  */
 export const basicEvaluators: RegisteredEvaluator[] = [linkExtractionEvaluator];
-
 /**
  * Basic services - essential infrastructure services
  */
@@ -1448,7 +1355,6 @@ export const basicServices: ServiceClass[] = [
   ChannelTopicsService,
   SensitiveRequestDispatchRegistryService,
 ];
-
 /**
  * Combined basic capabilities object
  */
@@ -1458,11 +1364,9 @@ export const basicCapabilities = {
   evaluators: basicEvaluators,
   services: basicServices,
 };
-
 // ============================================================================
 // Capability Configuration
 // ============================================================================
-
 /**
  * Configuration for basic capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
@@ -1486,7 +1390,6 @@ const autonomyCapabilities = {
 };
 
 export { autonomyCapabilities };
-
 /**
  * Creates the basic-capabilities plugin with the specified capability configuration.
  * This is the main entry point for plugin creation.
@@ -1503,5 +1406,4 @@ export function createAssistantBehavior(): Plugin {
     events,
   };
 }
-
 export default basicCapabilities;

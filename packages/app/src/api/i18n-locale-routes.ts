@@ -8,7 +8,7 @@
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { normalizeLanguage } from "@elizaos/shared";
+import { normalizeLanguage } from "@elizaos/core/i18n/language";
 import { sendJson as sendJsonResponse } from "./response";
 
 type LanguageCandidate = {
@@ -16,7 +16,6 @@ type LanguageCandidate = {
   q: number;
   tag: string;
 };
-
 function parseAcceptLanguage(value: string | string[] | undefined): string[] {
   const raw = Array.isArray(value) ? value.join(",") : (value ?? "");
   return raw
@@ -43,35 +42,29 @@ function parseAcceptLanguage(value: string | string[] | undefined): string[] {
     .sort((left, right) => right.q - left.q || left.index - right.index)
     .map((candidate) => candidate.tag);
 }
-
 export function resolveSuggestedUiLanguage(options: {
   acceptLanguage?: string | string[];
   configuredLanguage?: unknown;
 }): string {
   const configured = normalizeLanguage(options.configuredLanguage);
   if (configured !== "en") return configured;
-
   for (const tag of parseAcceptLanguage(options.acceptLanguage)) {
     const normalized = normalizeLanguage(tag);
     if (normalized !== "en" || tag.toLowerCase().startsWith("en")) {
       return normalized;
     }
   }
-
   return "en";
 }
-
 export function handleI18nLocaleRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): boolean {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
-
   if (method !== "GET" || url.pathname !== "/api/i18n/locale") {
     return false;
   }
-
   let configuredLanguage: unknown;
   try {
     configuredLanguage = (loadElizaConfig() as { ui?: { language?: unknown } })
@@ -80,7 +73,6 @@ export function handleI18nLocaleRoute(
     logger.warn({ error }, "[i18n] Could not load configured UI language");
     configuredLanguage = undefined;
   }
-
   sendJsonResponse(res, 200, {
     language: resolveSuggestedUiLanguage({
       acceptLanguage: req.headers["accept-language"],

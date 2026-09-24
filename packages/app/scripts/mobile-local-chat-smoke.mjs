@@ -2920,7 +2920,6 @@ async function main() {
           "run",
           "--config",
           "vitest.config.ts",
-          "src/api/ios-local-agent-kernel.local-inference.test.ts",
           "src/first-run/auto-download-recommended.test.ts",
         ],
         { cwd: path.join(repoRoot, "packages/ui") },

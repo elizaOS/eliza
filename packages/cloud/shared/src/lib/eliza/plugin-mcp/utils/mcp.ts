@@ -4,9 +4,8 @@
  */
 
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { buildMcpProviderProjection } from "@elizaos/shared";
-import type { McpProvider, McpServer } from "../types";
-
+import { buildMcpProviderProjection } from "@elizaos/plugin-mcp/protocol-utils/provider-projection";
+import { type McpProvider, type McpServer } from "../types";
 /**
  * Checks MCP_ENABLED_SERVERS request-context setting for per-user OAuth gating.
  * Returns true if access is allowed, false if denied.
@@ -15,7 +14,6 @@ import type { McpProvider, McpServer } from "../types";
 export function checkMcpOAuthAccess(runtime: IAgentRuntime, serverName?: string): boolean {
   const raw = runtime.getSetting("MCP_ENABLED_SERVERS");
   if (typeof raw !== "string") return true; // not set → fail-open
-
   let enabled: unknown;
   try {
     enabled = JSON.parse(raw);
@@ -23,17 +21,14 @@ export function checkMcpOAuthAccess(runtime: IAgentRuntime, serverName?: string)
     logger.warn({ serverName, raw }, "[MCP] Malformed MCP_ENABLED_SERVERS JSON, denying access");
     return false;
   }
-
   if (!Array.isArray(enabled)) {
     logger.warn({ serverName, raw }, "[MCP] MCP_ENABLED_SERVERS is not an array, denying access");
     return false;
   }
-
   // When no serverName given, just check the user has any enabled servers
   if (!serverName) {
     return enabled.length > 0;
   }
-
   if (!enabled.includes(serverName)) {
     logger.debug(
       { serverName, enabled },
@@ -41,10 +36,8 @@ export function checkMcpOAuthAccess(runtime: IAgentRuntime, serverName?: string)
     );
     return false;
   }
-
   return true;
 }
-
 export async function createMcpMemory(
   runtime: IAgentRuntime,
   message: Memory,
@@ -64,7 +57,6 @@ export async function createMcpMemory(
   });
   await runtime.createMemory(memory, type === "resource" ? "resources" : "tools", true);
 }
-
 export function buildMcpProviderData(servers: McpServer[]): McpProvider {
   return buildMcpProviderProjection(servers) as McpProvider;
 }

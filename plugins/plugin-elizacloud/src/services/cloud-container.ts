@@ -7,7 +7,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/core/contracts/cloud-coding-containers";
 import type {
   CloudCodingContainerService,
   CloudContainer,

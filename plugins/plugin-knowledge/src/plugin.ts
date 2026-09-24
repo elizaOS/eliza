@@ -6,31 +6,31 @@
  * The route handler uses the new return-shape `routeHandler` contract so the
  * boundary-resolved `AccessContext` is available for per-viewer authorization.
  */
-
 import type http from "node:http";
-import type { AccessContext, AgentRuntime } from "@elizaos/core";
-import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
-import type {
-  HttpPlugin as Plugin,
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/shared";
+import {
+  type AccessContext,
+  type AgentRuntime,
+  resolveOwnerEntityIdOrDefault,
+} from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-helpers";
+import {
+  type HttpPlugin as Plugin,
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
+} from "@elizaos/core/api/http-plugin";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
 }
-
 function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
 }
-
 /**
  * Reconstructs the trusted local principal for document routes. The HTTP
  * boundary intentionally omits `accessContext` for the single-owner local
@@ -47,7 +47,6 @@ export function resolveTrustedLocalDocumentAccessContext(
   if (ctx.accessContext || !ctx.isTrustedLocal || !ctx.runtime?.agentId) {
     return ctx.accessContext as AccessContext | undefined;
   }
-
   return {
     requesterEntityId: resolveOwnerEntityIdOrDefault(ctx.runtime),
     role: "OWNER",
@@ -55,7 +54,6 @@ export function resolveTrustedLocalDocumentAccessContext(
     source: "trusted-local",
   };
 }
-
 /**
  * Captured response for the legacy-shaped `handleDocumentsRoutes` writer.
  * The route handler writes to this synthetic `ServerResponse`; we collect
@@ -68,7 +66,6 @@ interface CapturedResponse {
   chunks: Buffer[];
   ended: boolean;
 }
-
 function buildCapturedResponse(): {
   res: http.ServerResponse;
   captured: CapturedResponse;
@@ -79,7 +76,6 @@ function buildCapturedResponse(): {
     chunks: [],
     ended: false,
   };
-
   const setHeader = (
     name: string,
     value: string | number | readonly string[],
@@ -87,7 +83,6 @@ function buildCapturedResponse(): {
     const text = Array.isArray(value) ? value.join(", ") : String(value);
     captured.headers[name.toLowerCase()] = text;
   };
-
   const writeChunk = (chunk: unknown): void => {
     if (chunk == null) return;
     let buf: Buffer;
@@ -102,7 +97,6 @@ function buildCapturedResponse(): {
     }
     captured.chunks.push(buf);
   };
-
   const res = {
     statusCode: 200,
     get headersSent() {
@@ -157,7 +151,6 @@ function buildCapturedResponse(): {
       return res;
     },
   };
-
   Object.defineProperty(res, "statusCode", {
     get() {
       return captured.statusCode;
@@ -167,10 +160,8 @@ function buildCapturedResponse(): {
     },
     configurable: true,
   });
-
   return { res: res as unknown as http.ServerResponse, captured };
 }
-
 function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   const buffer = Buffer.concat(captured.chunks);
   const contentTypeHeader = captured.headers["content-type"];
@@ -178,14 +169,12 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
     typeof contentTypeHeader === "string" &&
     (contentTypeHeader.includes("application/json") ||
       contentTypeHeader.includes("+json"));
-
   if (buffer.length === 0) {
     return {
       status: captured.statusCode || 200,
       headers: captured.headers,
     };
   }
-
   const text = buffer.toString("utf8");
   if (isJson) {
     try {
@@ -206,7 +195,6 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
     body: text,
   };
 }
-
 function documentRouteHandler(): (
   ctx: RouteHandlerContext,
 ) => Promise<RouteHandlerResult> {
@@ -225,7 +213,6 @@ function documentRouteHandler(): (
         }
       }
     }
-
     await handleDocumentsRoutes({
       req: { headers: ctx.headers } as http.IncomingMessage,
       res: capturedRes,
@@ -259,12 +246,13 @@ function documentRouteHandler(): (
       },
       accessContext: resolveTrustedLocalDocumentAccessContext(ctx),
     });
-
     return capturedToResult(captured);
   };
 }
-
-const DOCUMENT_ROUTES: Array<{ type: string; path: string }> = [
+const DOCUMENT_ROUTES: Array<{
+  type: string;
+  path: string;
+}> = [
   { type: "GET", path: "/api/documents" },
   { type: "GET", path: "/api/documents/stats" },
   { type: "POST", path: "/api/documents" },
@@ -280,7 +268,6 @@ const DOCUMENT_ROUTES: Array<{ type: string; path: string }> = [
   { type: "DELETE", path: "/api/documents/:id" },
   { type: "GET", path: "/api/documents/:id/fragments" },
 ];
-
 export const documentsRoutes: Route[] = DOCUMENT_ROUTES.map(
   (route) =>
     ({
@@ -290,7 +277,6 @@ export const documentsRoutes: Route[] = DOCUMENT_ROUTES.map(
       routeHandler: documentRouteHandler(),
     }) as Route,
 );
-
 export const knowledgePlugin: Plugin = {
   name: "@elizaos/plugin-knowledge",
   description: "Document management, fragment listing, and search routes",
@@ -300,8 +286,6 @@ export const knowledgePlugin: Plugin = {
   // runtime route plugin stays free of React imports.
   actions: [],
 };
-
 /** Compatibility export for document-route consumers of the knowledge package. */
 export const documentsPlugin = knowledgePlugin;
-
 export default knowledgePlugin;

@@ -21,8 +21,8 @@ import {
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
+import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,

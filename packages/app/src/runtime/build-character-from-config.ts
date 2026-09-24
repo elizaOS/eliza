@@ -11,11 +11,11 @@ import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@e
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
-  normalizeCharacterMessageExamples,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/core/character-presets";
+import { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
 
 function resolveAppPreset(
   config: Parameters<typeof upstreamBuildCharacterFromConfig>[0],
@@ -43,13 +43,11 @@ function resolveAppPreset(
     ? undefined
     : getDefaultStylePreset(language);
 }
-
 export function buildCharacterFromConfig(
   ...args: Parameters<typeof upstreamBuildCharacterFromConfig>
 ): ReturnType<typeof upstreamBuildCharacterFromConfig> {
   const [config] = args;
   const character = upstreamBuildCharacterFromConfig(...args);
-
   const agentEntry = config.agents?.list?.[0];
   const bundledPreset = resolveAppPreset(config, character.name);
   if ((character.messageExamples?.length ?? 0) > 0) {
@@ -97,6 +95,5 @@ export function buildCharacterFromConfig(
       );
     }
   }
-
   return character;
 }

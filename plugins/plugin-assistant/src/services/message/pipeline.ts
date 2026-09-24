@@ -100,7 +100,7 @@ import {
   resolveStage1ReplyGateMode,
   resolveStage1SenderRole,
 } from "./addressing.js";
-import { isProgressiveContextChannel } from "./channel-protocol";
+import { isProgressiveContextChannel } from "./channel-protocol.ts";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { filterIntermediateCallbackContent } from "./delivery.js";

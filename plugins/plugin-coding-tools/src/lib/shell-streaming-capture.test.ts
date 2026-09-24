@@ -9,8 +9,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { IAgentRuntime } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { type IAgentRuntime } from "@elizaos/core";
+import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { redactShellText } from "../shell/redaction.js";
 import { runShell } from "./run-shell.js";
@@ -19,11 +19,9 @@ import { ForegroundShellCapture } from "./shell-streaming-capture.js";
 
 const OWNER_AGENT = "00000000-0000-4000-8000-000000000001";
 const OWNER_CONVERSATION = "00000000-0000-4000-8000-000000000002";
-
 describe("bounded foreground shell capture", () => {
   let stateDir: string;
   let previousStateDir: string | undefined;
-
   beforeEach(async () => {
     stateDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "shell-capture-bounded-"),
@@ -31,27 +29,23 @@ describe("bounded foreground shell capture", () => {
     previousStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = stateDir;
   });
-
   afterEach(async () => {
     if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = previousStateDir;
     await fs.rm(stateDir, { recursive: true, force: true });
   });
-
   it("publishes zero-byte streams", async () => {
     const capture = await ForegroundShellCapture.create();
     const result = await capture.finalize(runtime(), outcome());
-
     expect(result.artifact.stdout).toMatchObject({ bytes: 0, characters: 0 });
     expect(result.projection).toMatchObject({ stdout: "", stderr: "" });
   });
-
   it("returns the private artifact through the host runShell boundary", async () => {
     captureHostExecutionBaseline();
     const result = await runShell(runtime(), {
       command: "printf bounded-host",
       cwd: process.cwd(),
-      timeoutMs: 10_000,
+      timeoutMs: 10000,
       captureScope: {
         ownerAgentId: OWNER_AGENT,
         ownerConversationId: OWNER_CONVERSATION,
@@ -61,19 +55,17 @@ describe("bounded foreground shell capture", () => {
     expect(result.projection).toBeDefined();
     expect(result.stdout).toBe("bounded-host");
   });
-
   it("redacts cross-window secrets and PEM while preserving exact Unicode reassembly", async () => {
     const secret = "marigold9-window-boundary-secret";
     const configuredRuntime = runtime(secret);
     const capture = await ForegroundShellCapture.create();
-    const prefix = `${"🙂row\n".repeat(90_000)}configured:`;
+    const prefix = `${"🙂row\n".repeat(90000)}configured:`;
     capture.write("stdout", `${prefix}${secret.slice(0, 13)}`);
     capture.write("stdout", `${secret.slice(13)}\n-----BEGIN PRI`);
     capture.write(
       "stdout",
       "VATE KEY-----\naGVsbG8tc2VjcmV0LWtleQ==\n-----END PRIVATE KEY-----\ntail界\n",
     );
-
     const result = await capture.finalize(configuredRuntime, outcome());
     const observed = await retrieve(result.artifact.handle);
     const source = `${prefix}${secret}\n-----BEGIN PRIVATE KEY-----\naGVsbG8tc2VjcmV0LWtleQ==\n-----END PRIVATE KEY-----\ntail界\n`;
@@ -81,8 +73,7 @@ describe("bounded foreground shell capture", () => {
     expect(observed).toBe(expected);
     expect(result.projection.stdout).toBe(expected);
     expect(result.projection.stdoutComplete).toBe(true);
-  }, 30_000);
-
+  }, 30000);
   it("fails closed on ciphertext tamper and removes every unpublished file", async () => {
     const capture = await ForegroundShellCapture.create();
     capture.write("stdout", "private plaintext that must never publish\n");
@@ -94,7 +85,6 @@ describe("bounded foreground shell capture", () => {
     } finally {
       await file.close();
     }
-
     await expect(capture.finalize(runtime(), outcome())).rejects.toThrow();
     await expect(fs.stat(capture.directory)).rejects.toMatchObject({
       code: "ENOENT",
@@ -102,7 +92,6 @@ describe("bounded foreground shell capture", () => {
     const root = path.join(stateDir, "coding-tools", "shell-output");
     expect(await fs.readdir(root)).toEqual([".artifact-key"]);
   });
-
   it("aborts cleanly and rejects malformed source text", async () => {
     const capture = await ForegroundShellCapture.create();
     expect(() => capture.write("stdout", "\ud800")).toThrow(
@@ -114,22 +103,19 @@ describe("bounded foreground shell capture", () => {
       code: "ENOENT",
     });
   });
-
   it("fails closed instead of buffering an unbounded sensitive record", async () => {
     const capture = await ForegroundShellCapture.create();
     capture.write("stdout", "Authorization: Custom key=");
     for (let index = 0; index < 65; index += 1) {
       capture.write("stdout", "x".repeat(64 * 1024));
     }
-
     await expect(capture.finalize(runtime(), outcome())).rejects.toThrow(
       "cannot be redacted safely",
     );
     await expect(fs.stat(capture.directory)).rejects.toMatchObject({
       code: "ENOENT",
     });
-  }, 30_000);
-
+  }, 30000);
   it("bounds capture overhead while returning complete output from 1 MiB through 32 MiB", async () => {
     const reports = [];
     for (const bytes of [1, 10, 32].map((mib) => mib * 1024 * 1024)) {
@@ -145,7 +131,7 @@ describe("bounded foreground shell capture", () => {
         {
           cwd: path.dirname(child),
           maxBuffer: 1024 * 1024,
-          timeout: 180_000,
+          timeout: 180000,
         },
       );
       reports.push(JSON.parse(stdout.trim()) as MemoryReport);
@@ -170,8 +156,7 @@ describe("bounded foreground shell capture", () => {
           (reports[index]?.baselineHeap ?? 0),
       ).toBeLessThan(160 * 1024 * 1024);
     }
-  }, 600_000);
-
+  }, 600000);
   async function retrieve(handle: string): Promise<string> {
     let text = "";
     let offset = 0;
@@ -180,7 +165,7 @@ describe("bounded foreground shell capture", () => {
         handle,
         stream: "stdout",
         offset,
-        limit: 20_000,
+        limit: 20000,
         requesterAgentId: OWNER_AGENT,
         requesterConversationId: OWNER_CONVERSATION,
       });
@@ -191,7 +176,6 @@ describe("bounded foreground shell capture", () => {
     }
   }
 });
-
 interface MemoryReport {
   storedBytes: number;
   pageBytesRead: number;
@@ -205,7 +189,6 @@ interface MemoryReport {
   modelSha256: string;
   modelCharacters: number;
 }
-
 function runtime(secret?: string): IAgentRuntime {
   return {
     getService: () => null,
@@ -216,7 +199,6 @@ function runtime(secret?: string): IAgentRuntime {
     },
   } as unknown as IAgentRuntime;
 }
-
 function outcome() {
   return {
     exitCode: 0,

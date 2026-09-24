@@ -2,28 +2,26 @@
  * Browser-safe surface of `@elizaos/app`, aliased in by browser bundlers in
  * place of the Node `index.ts`. Re-exports the dashboard React/UI components,
  * registration contracts, and Electrobun desktop runtimes from `@elizaos/ui` and
- * `@elizaos/shared`, and provides explicit failures for the server-only helpers
+ * `@elizaos/core`, and provides explicit failures for the server-only helpers
  * (`sendJson`, `ensureRouteAuthorized`, `sharedVault`, …) so browser code links
  * against the same names without pulling in Node server modules.
  */
-// Registration-surface contracts live in @elizaos/shared (React-free canonical
+// Registration-surface contracts live in @elizaos/core (React-free canonical
 // home); import them from there rather than the React package.
 
-export type {
-  AppDetailExtensionProps,
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/shared";
-export {
-  registerDetailExtension,
-  registerOverlayApp,
-  resolveAppBranding,
-} from "@elizaos/shared";
+export { resolveAppBranding } from "@elizaos/core/config/app-config";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
   client,
 } from "@elizaos/ui/api";
+export { registerDetailExtension } from "@elizaos/ui/apps/detail-extension-registry";
+export type { AppDetailExtensionProps } from "@elizaos/ui/apps/detail-extension-types";
+export type {
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/ui/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
 export {
@@ -70,14 +68,22 @@ export {
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
 
-import { unsupportedServerOperation } from "./platform/empty-node-module";
+import { ElizaError } from "@elizaos/core/errors";
+
+function unsupportedServerOperation(): never {
+  throw new ElizaError(
+    "Server-only operation is unavailable in the browser renderer",
+    {
+      code: "BROWSER_SERVER_OPERATION_UNAVAILABLE",
+    },
+  );
+}
 
 export type CompatRuntimeState = {
   current: unknown;
   pendingAgentName?: string | null;
   pendingRestartReasons?: string[];
 };
-
 export function sendJson(
   _res: unknown,
   _status: number,
@@ -97,15 +103,12 @@ export function sendJsonError(
 export async function ensureRouteAuthorized(): Promise<boolean> {
   return false;
 }
-
 export async function ensureCompatApiAuthorized(): Promise<boolean> {
   return false;
 }
-
 export async function readCompatJsonBody(): Promise<unknown> {
   return unsupportedServerOperation();
 }
-
 export function sharedVault(): never {
   return unsupportedServerOperation();
 }

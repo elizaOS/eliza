@@ -6,12 +6,9 @@
  * on SQLite. Identity decisions and merges share the same domain implementation.
  * SQLite operations are atomic and refuse selection of another agent's graph.
  */
-
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
 import {
-  AUTO_MERGE_CONFIDENCE_THRESHOLD,
-  decideIdentityOutcome,
   type Entity,
   type EntityAttribute,
   type EntityFilter,
@@ -20,12 +17,16 @@ import {
   type EntityResolveCandidate,
   type EntityState,
   type EntityVisibility,
+  normalizeEntityConnectorAccountId,
+  SELF_ENTITY_ID,
+} from "@elizaos/core/knowledge-graph/entity-types";
+import {
+  AUTO_MERGE_CONFIDENCE_THRESHOLD,
+  decideIdentityOutcome,
   findIdentityMatches,
   foldIdentity,
   mergeEntities,
-  normalizeEntityConnectorAccountId,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/core/knowledge-graph/merge";
 import {
   type ConfirmEmailRecipientInput,
   type ConfirmedEmailRecipient,
@@ -52,7 +53,6 @@ import {
 function isoNow(): string {
   return new Date().toISOString();
 }
-
 function entityRowToEntity(args: {
   row: Record<string, unknown>;
   identities: EntityIdentity[];
@@ -72,9 +72,7 @@ function entityRowToEntity(args: {
   if (row.state_last_interaction_platform) {
     state.lastInteractionPlatform = toText(row.state_last_interaction_platform);
   }
-
   const fullName = row.full_name ? toText(row.full_name) : undefined;
-
   return {
     entityId: toText(row.entity_id),
     type: toText(row.type),
@@ -89,7 +87,6 @@ function entityRowToEntity(args: {
     updatedAt: toText(row.updated_at),
   };
 }
-
 function identityRowToIdentity(row: Record<string, unknown>): EntityIdentity {
   const evidence = parseJsonArray<string>(row.evidence_json);
   const displayName = row.display_name ? toText(row.display_name) : undefined;
@@ -110,7 +107,6 @@ function identityRowToIdentity(row: Record<string, unknown>): EntityIdentity {
     evidence,
   };
 }
-
 function attributeRowToAttribute(row: Record<string, unknown>): {
   key: string;
   attribute: EntityAttribute;
@@ -125,10 +121,8 @@ function attributeRowToAttribute(row: Record<string, unknown>): {
     },
   };
 }
-
 export class EntityStore {
   private readonly records: GraphRecordRepository | null;
-
   private operation<T>(work: () => Promise<T>): Promise<T> {
     return this.records ? this.records.transaction(work) : work();
   }
@@ -138,13 +132,11 @@ export class EntityStore {
   ) {
     this.records = graphRecordRepository(runtime, agentId);
   }
-
   confirmEmailRecipient(
     input: ConfirmEmailRecipientInput,
   ): Promise<ConfirmedEmailRecipient> {
     return confirmEmailRecipient(this.runtime, this.agentId, input);
   }
-
   /**
    * Bootstrap the special `self` entity if it does not exist. Idempotent.
    * Called on first store init for an agent.
@@ -152,7 +144,6 @@ export class EntityStore {
   async ensureSelf(): Promise<Entity> {
     return this.operation(() => this.ensureSelfOperation());
   }
-
   private async ensureSelfOperation(): Promise<Entity> {
     const existing = await this.getOperation(SELF_ENTITY_ID);
     if (existing) return existing;
@@ -166,7 +157,6 @@ export class EntityStore {
       state: {},
     });
   }
-
   async upsert(
     input: Omit<Entity, "entityId" | "createdAt" | "updatedAt"> & {
       entityId?: string;
@@ -174,7 +164,6 @@ export class EntityStore {
   ): Promise<Entity> {
     return this.operation(() => this.upsertInternal(input));
   }
-
   private async upsertInternal(
     input: Omit<Entity, "entityId" | "createdAt" | "updatedAt"> & {
       entityId?: string;
@@ -184,7 +173,6 @@ export class EntityStore {
     const entityId = input.entityId ?? `ent_${crypto.randomUUID()}`;
     const existing = await this.getOperation(entityId);
     const createdAt = existing?.createdAt ?? now;
-
     if (this.records) {
       return this.records.putEntity({
         ...input,
@@ -193,7 +181,6 @@ export class EntityStore {
         updatedAt: now,
       });
     }
-
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_entities (
@@ -228,7 +215,6 @@ export class EntityStore {
          state_last_interaction_platform = EXCLUDED.state_last_interaction_platform,
          updated_at = EXCLUDED.updated_at`,
     );
-
     // Replace identity rows wholesale — caller passes the canonical list.
     await executeRawSql(
       this.runtime,
@@ -239,7 +225,6 @@ export class EntityStore {
     for (const identity of input.identities) {
       await this.persistIdentity(entityId, identity);
     }
-
     // Replace attribute rows wholesale.
     await executeRawSql(
       this.runtime,
@@ -250,7 +235,6 @@ export class EntityStore {
     for (const [key, attr] of Object.entries(input.attributes ?? {})) {
       await this.persistAttribute(entityId, key, attr);
     }
-
     const fetched = await this.getOperation(entityId);
     if (!fetched) {
       throw new Error(
@@ -259,7 +243,6 @@ export class EntityStore {
     }
     return fetched;
   }
-
   private async persistIdentity(
     entityId: string,
     identity: EntityIdentity,
@@ -275,9 +258,7 @@ export class EntityStore {
          ${sqlQuote(entityId)},
          ${sqlQuote(identity.platform)},
          ${sqlQuote(identity.handle)},
-         ${sqlQuote(
-           normalizeEntityConnectorAccountId(identity.connectorAccountId),
-         )},
+         ${sqlQuote(normalizeEntityConnectorAccountId(identity.connectorAccountId))},
          ${sqlText(identity.displayName ?? null)},
          ${identity.verified ? "TRUE" : "FALSE"},
          ${sqlNumber(identity.confidence)},
@@ -295,7 +276,6 @@ export class EntityStore {
          evidence_json = EXCLUDED.evidence_json`,
     );
   }
-
   private async persistAttribute(
     entityId: string,
     key: string,
@@ -323,11 +303,9 @@ export class EntityStore {
          updated_at = EXCLUDED.updated_at`,
     );
   }
-
   async get(entityId: string): Promise<Entity | null> {
     return this.operation(() => this.getOperation(entityId));
   }
-
   private async getOperation(entityId: string): Promise<Entity | null> {
     if (this.records) return this.records.getEntity(entityId);
     const rows = await executeRawSql(
@@ -347,11 +325,9 @@ export class EntityStore {
       attributes: attributes.get(entityId) ?? {},
     });
   }
-
   async list(filter?: EntityFilter): Promise<Entity[]> {
     return this.operation(() => this.listOperation(filter));
   }
-
   private async listOperation(filter?: EntityFilter): Promise<Entity[]> {
     if (this.records) return this.records.listEntities(filter);
     const clauses = [`e.agent_id = ${sqlQuote(this.agentId)}`];
@@ -382,22 +358,16 @@ export class EntityStore {
       }
       if (filter.hasConnectorAccountId) {
         identityClauses.push(
-          `i.connector_account_id = ${sqlQuote(
-            normalizeEntityConnectorAccountId(filter.hasConnectorAccountId),
-          )}`,
+          `i.connector_account_id = ${sqlQuote(normalizeEntityConnectorAccountId(filter.hasConnectorAccountId))}`,
         );
       }
-      clauses.push(
-        `EXISTS (SELECT 1 FROM app_lifeops.life_entity_identities i
-                  WHERE ${identityClauses.join("\n                    AND ")})`,
-      );
+      clauses.push(`EXISTS (SELECT 1 FROM app_lifeops.life_entity_identities i
+                  WHERE ${identityClauses.join("\n                    AND ")})`);
     }
-
     const limitClause =
       typeof filter?.limit === "number" && Number.isFinite(filter.limit)
         ? `LIMIT ${sqlInteger(filter.limit)}`
         : "";
-
     const rows = await executeRawSql(
       this.runtime,
       `SELECT e.* FROM app_lifeops.life_entities e
@@ -406,11 +376,9 @@ export class EntityStore {
         ${limitClause}`,
     );
     if (rows.length === 0) return [];
-
     const ids = rows.map((row) => toText(row.entity_id));
     const identities = await this.loadIdentities(ids);
     const attributes = await this.loadAttributes(ids);
-
     return rows.map((row) => {
       const id = toText(row.entity_id);
       return entityRowToEntity({
@@ -420,7 +388,6 @@ export class EntityStore {
       });
     });
   }
-
   private async loadIdentities(
     entityIds: string[],
   ): Promise<Map<string, EntityIdentity[]>> {
@@ -442,7 +409,6 @@ export class EntityStore {
     }
     return grouped;
   }
-
   private async loadAttributes(
     entityIds: string[],
   ): Promise<Map<string, Record<string, EntityAttribute>>> {
@@ -464,7 +430,6 @@ export class EntityStore {
     }
     return grouped;
   }
-
   /**
    * Observe a `(platform, connector account, handle)` claim. Decision tree:
    *   - no candidate: create a new entity with this identity.
@@ -485,10 +450,13 @@ export class EntityStore {
     evidence: string[];
     confidence: number;
     suggestedType?: string;
-  }): Promise<{ entity: Entity; mergedFrom?: string[]; conflict?: boolean }> {
+  }): Promise<{
+    entity: Entity;
+    mergedFrom?: string[];
+    conflict?: boolean;
+  }> {
     return this.operation(() => this.observeIdentityOperation(obs));
   }
-
   private async observeIdentityOperation(obs: {
     platform: string;
     handle: string;
@@ -497,7 +465,11 @@ export class EntityStore {
     evidence: string[];
     confidence: number;
     suggestedType?: string;
-  }): Promise<{ entity: Entity; mergedFrom?: string[]; conflict?: boolean }> {
+  }): Promise<{
+    entity: Entity;
+    mergedFrom?: string[];
+    conflict?: boolean;
+  }> {
     const connectorAccountId = normalizeEntityConnectorAccountId(
       obs.connectorAccountId,
     );
@@ -512,7 +484,6 @@ export class EntityStore {
       candidates,
       newConfidence: obs.confidence,
     });
-
     const now = isoNow();
     const newIdentity: EntityIdentity = {
       platform: obs.platform,
@@ -525,7 +496,6 @@ export class EntityStore {
       addedVia: "platform_observation",
       evidence: [...obs.evidence],
     };
-
     if (outcome.kind === "create") {
       const entity = await this.upsertInternal({
         type: obs.suggestedType ?? "person",
@@ -537,7 +507,6 @@ export class EntityStore {
       });
       return { entity };
     }
-
     if (outcome.kind === "merge") {
       const target = candidates.find(
         (c) => c.entityId === outcome.targetEntityId,
@@ -553,7 +522,6 @@ export class EntityStore {
       });
       return { entity: updated, mergedFrom: [target.entityId] };
     }
-
     // conflict: store on the highest-confidence existing match (first
     // one — list is name-ordered, but for this purpose the runtime treats
     // any candidate as the "best guess" and the approval task surfaces
@@ -568,7 +536,6 @@ export class EntityStore {
       conflict: true,
     };
   }
-
   /**
    * Resolve an entity by name, identity, or type. Returns ranked candidates
    * (highest confidence first). `safeToSend` is `true` when the entity has
@@ -585,7 +552,6 @@ export class EntityStore {
   }): Promise<EntityResolveCandidate[]> {
     return this.operation(() => this.resolveOperation(query));
   }
-
   private async resolveOperation(query: {
     name?: string;
     identity?: {
@@ -604,9 +570,7 @@ export class EntityStore {
         query.identity.connectorAccountId,
       );
     }
-
     let entities = await this.listOperation(filters);
-
     if (query.identity) {
       const platformKey = query.identity.platform.toLowerCase();
       const handleKey = query.identity.handle.toLowerCase();
@@ -623,7 +587,6 @@ export class EntityStore {
         ),
       );
     }
-
     return entities
       .map((entity): EntityResolveCandidate => {
         const evidence: string[] = [];
@@ -666,7 +629,6 @@ export class EntityStore {
         return bConf - aConf;
       });
   }
-
   /**
    * Record an interaction against an entity. Updates `state.lastInboundAt`
    * or `lastOutboundAt`, plus `lastObservedAt` and
@@ -687,7 +649,6 @@ export class EntityStore {
       this.recordInteractionOperation(entityId, interaction),
     );
   }
-
   private async recordInteractionOperation(
     entityId: string,
     interaction: {
@@ -701,7 +662,6 @@ export class EntityStore {
       interaction.direction === "inbound"
         ? "state_last_inbound_at"
         : "state_last_outbound_at";
-
     if (this.records) {
       const existing = await this.getOperation(entityId);
       if (!existing) return;
@@ -719,7 +679,6 @@ export class EntityStore {
       });
       return;
     }
-
     await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_entities
@@ -736,7 +695,6 @@ export class EntityStore {
     // observe call is the canonical home. We keep this method narrow
     // rather than duplicating audit logging.
   }
-
   /**
    * Explicit merge: fold N source entities into a target. Identities,
    * attributes, and tags survive. Source rows are deleted. Returns the
@@ -745,7 +703,6 @@ export class EntityStore {
   async merge(targetId: string, sourceIds: string[]): Promise<Entity> {
     return this.operation(() => this.mergeOperation(targetId, sourceIds));
   }
-
   private async mergeOperation(
     targetId: string,
     sourceIds: string[],
@@ -773,7 +730,6 @@ export class EntityStore {
       ...merged,
       identities: merged.identities,
     });
-
     // Rewrite any relationships that reference sources to point at target,
     // then delete the source rows. The relationships rewrite is part of
     // the merge contract; do it before source deletion so audit events
@@ -788,8 +744,9 @@ export class EntityStore {
         await this.records.deleteEntity(source.entityId);
         continue;
       }
-      const rewriteSql = (column: string) =>
-        `UPDATE app_lifeops.life_relationships_v2
+      const rewriteSql = (
+        column: string,
+      ) => `UPDATE app_lifeops.life_relationships_v2
             SET ${column} = ${sqlQuote(targetId)},
                 updated_at = ${sqlQuote(now)}
           WHERE agent_id = ${sqlQuote(this.agentId)}
@@ -815,10 +772,8 @@ export class EntityStore {
             AND entity_id = ${sqlQuote(source.entityId)}`,
       );
     }
-
     return persisted;
   }
-
   /**
    * Test-only helper for removing an entity. Production callers should use
    * `merge` to consolidate or simply leave entities in place.
@@ -826,7 +781,6 @@ export class EntityStore {
   async deleteForTest(entityId: string): Promise<void> {
     return this.operation(() => this.deleteForTestOperation(entityId));
   }
-
   private async deleteForTestOperation(entityId: string): Promise<void> {
     if (entityId === SELF_ENTITY_ID) {
       throw new Error("[EntityStore] cannot delete self entity");
@@ -852,5 +806,4 @@ export class EntityStore {
     );
   }
 }
-
 export { AUTO_MERGE_CONFIDENCE_THRESHOLD };

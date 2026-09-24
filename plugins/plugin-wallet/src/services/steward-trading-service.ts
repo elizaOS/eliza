@@ -4,6 +4,7 @@
  * keys, while Steward owns policy checks, custody, signing, venue submission,
  * spend accounting, replay, and audit.
  */
+
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
@@ -12,30 +13,27 @@ import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudStewardOperationalTuple,
-} from "@elizaos/shared";
-import type {
-  CancelOrderRequest,
-  CancelResult,
-  OpenOrder,
-  OpenSessionRequest,
-  OrderResult,
-  PolicyDenyReason,
-  Position,
-  SubmitOrderRequest,
-  TradeEnvelope,
-  TradeSession,
-  TradeTokenStatus,
-  TradingAccount,
-  TradingCapability,
-  Venue,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import {
+  type CancelOrderRequest,
+  type CancelResult,
+  type OpenOrder,
+  type OpenSessionRequest,
+  type OrderResult,
+  type PolicyDenyReason,
+  type Position,
+  type SubmitOrderRequest,
+  type TradeEnvelope,
+  type TradeSession,
+  type TradeTokenStatus,
+  type TradingAccount,
+  type TradingCapability,
+  type Venue,
 } from "../types/trade.js";
-
 export const STEWARD_TRADING_SERVICE_TYPE = "steward-trading" as const;
-
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 10000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 25;
-
 interface StewardTradingConfig {
   readonly apiUrl: string;
   readonly agentId: string;
@@ -43,16 +41,13 @@ interface StewardTradingConfig {
   readonly apiKey?: string;
   readonly tenantId?: string;
 }
-
 interface JsonResponse {
   readonly status: number;
   readonly headers: Headers;
   readonly body: unknown;
 }
-
 class StewardTransportError extends ElizaError {
   readonly timedOut: boolean;
-
   constructor(cause: unknown, timedOut: boolean) {
     super(
       timedOut
@@ -67,11 +62,9 @@ class StewardTransportError extends ElizaError {
     this.timedOut = timedOut;
   }
 }
-
 type FetchLike = typeof fetch;
 type SleepFn = (ms: number) => Promise<void>;
 type RandomFn = () => number;
-
 export interface StewardTradingServiceOptions {
   readonly fetch?: FetchLike;
   readonly sleep?: SleepFn;
@@ -79,7 +72,6 @@ export interface StewardTradingServiceOptions {
   readonly timeoutMs?: number;
   readonly maxRetries?: number;
 }
-
 interface PersistedStewardCredentials {
   readonly apiUrl?: string;
   readonly tenantId?: string;
@@ -87,11 +79,9 @@ interface PersistedStewardCredentials {
   readonly apiKey?: string;
   readonly agentToken?: string;
 }
-
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
   const explicit = normalizeOptionalString(env.ELIZA_STATE_DIR);
   if (explicit) return explicit;
@@ -104,7 +94,6 @@ function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
     : path.join(homedir(), ".local", "state");
   return path.join(stateHome, namespace);
 }
-
 function readJsonCredentialsFile(
   credentialsPath: string,
 ): PersistedStewardCredentials | null {
@@ -127,18 +116,15 @@ function readJsonCredentialsFile(
     return null;
   }
 }
-
 function readPersistedStewardCredentials(): PersistedStewardCredentials | null {
   return readJsonCredentialsFile(
     path.join(resolveStateDir(), "steward-credentials.json"),
   );
 }
-
 function joinUrl(base: string, route: string): string {
   const normalizedBase = base.replace(/\/+$/, "");
   return `${normalizedBase}${route}`;
 }
-
 function isSecureStewardApiUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -154,12 +140,10 @@ function isSecureStewardApiUrl(value: string): boolean {
     return false;
   }
 }
-
 function retryDelayMs(attempt: number, random: RandomFn): number {
   const base = RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1);
   return Math.round(base * (0.75 + random() * 0.5));
 }
-
 function detailFromBody(body: unknown, fallback: string): string {
   if (typeof body === "string" && body.trim()) return body;
   if (typeof body !== "object" || body === null) return fallback;
@@ -171,7 +155,6 @@ function detailFromBody(body: unknown, fallback: string): string {
     fallback
   );
 }
-
 function policyReasonFromBody(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const record = body as Record<string, unknown>;
@@ -181,7 +164,6 @@ function policyReasonFromBody(body: unknown): string | undefined {
     normalizeOptionalString(record.error)
   );
 }
-
 function mapPolicyDenyReason(reason: string | undefined): PolicyDenyReason {
   const normalized = (reason ?? "").toLowerCase();
   if (/no trade policy|has no trade policy|policy-missing/.test(normalized)) {
@@ -205,24 +187,20 @@ function mapPolicyDenyReason(reason: string | undefined): PolicyDenyReason {
   }
   return "market-not-allowed";
 }
-
 function bodyCode(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   return normalizeOptionalString((body as Record<string, unknown>).code);
 }
-
 function retryAfterMs(headers: Headers): number | undefined {
   const value = headers.get("Retry-After") ?? headers.get("retry-after");
   if (!value) return undefined;
   const seconds = Number(value);
   return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : undefined;
 }
-
 function bodySaysStatusUnknown(body: unknown): boolean {
   const detail = detailFromBody(body, "");
   return /status unknown|submission status unknown/i.test(detail);
 }
-
 function unknownSubmissionResponse(): JsonResponse {
   return {
     status: 502,
@@ -230,7 +208,6 @@ function unknownSubmissionResponse(): JsonResponse {
     body: { ok: false, error: "Trade submission status unknown" },
   };
 }
-
 function isStewardCredentialFailure(status: number, detail: string): boolean {
   if (status === 401) return true;
   return (
@@ -243,15 +220,14 @@ function isStewardCredentialFailure(status: number, detail: string): boolean {
     )
   );
 }
-
 function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return error.name === "AbortError" || error.name === "TimeoutError";
 }
-
-function isResponseEnvelope(
-  body: unknown,
-): body is { ok: true; data: unknown } {
+function isResponseEnvelope(body: unknown): body is {
+  ok: true;
+  data: unknown;
+} {
   return (
     typeof body === "object" &&
     body !== null &&
@@ -259,11 +235,9 @@ function isResponseEnvelope(
     Object.hasOwn(body, "data")
   );
 }
-
 function sessionIdFromRequest(req: SubmitOrderRequest): string {
   return req.sessionId;
 }
-
 function toSessionData(body: unknown): TradeSession {
   const data = isResponseEnvelope(body) ? body.data : body;
   const record = data as Record<string, unknown>;
@@ -273,12 +247,10 @@ function toSessionData(body: unknown): TradeSession {
     "";
   return { ...(record as Omit<TradeSession, "sessionId">), sessionId };
 }
-
 function toTokenStatus(body: unknown): TradeTokenStatus {
   const data = isResponseEnvelope(body) ? body.data : body;
   return data as TradeTokenStatus;
 }
-
 function toOrderResult(
   venue: Venue,
   body: unknown,
@@ -307,7 +279,6 @@ function toOrderResult(
     idempotencyKey,
   };
 }
-
 function routeNotFound<T>(detail: string): TradeEnvelope<T> {
   return {
     ok: false,
@@ -317,7 +288,6 @@ function routeNotFound<T>(detail: string): TradeEnvelope<T> {
     retryable: false,
   };
 }
-
 function mapFailure<T>(
   response: JsonResponse,
   fallback: string,
@@ -425,13 +395,11 @@ function mapFailure<T>(
     retryable: false,
   };
 }
-
 function buildOrderRoute(req: SubmitOrderRequest): string {
   return req.venue === "hyperliquid"
     ? "/v1/trade/hyperliquid/order"
     : "/v1/trade/polymarket/order";
 }
-
 function buildOrderBody(req: SubmitOrderRequest, idempotencyKey: string) {
   if (req.venue === "hyperliquid") {
     return {
@@ -457,7 +425,6 @@ function buildOrderBody(req: SubmitOrderRequest, idempotencyKey: string) {
     idempotencyKey,
   };
 }
-
 function buildSessionBody(req: OpenSessionRequest, agentId: string) {
   return {
     agentId,
@@ -469,24 +436,19 @@ function buildSessionBody(req: OpenSessionRequest, agentId: string) {
     ttlSeconds: req.ttlSeconds,
   };
 }
-
 export function createTradeIdempotencyKey(): string {
   return randomUUID();
 }
-
 export class StewardTradingService extends Service {
   static override serviceType = STEWARD_TRADING_SERVICE_TYPE;
-
   override capabilityDescription =
     "Governed Steward trading HTTP client for Hyperliquid and Polymarket";
-
   private readonly fetchImpl: FetchLike;
   private readonly sleep: SleepFn;
   private readonly random: RandomFn;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly tradingConfig: StewardTradingConfig | null;
-
   constructor(
     runtime?: IAgentRuntime,
     options: StewardTradingServiceOptions = {},
@@ -507,15 +469,12 @@ export class StewardTradingService extends Service {
     }
     this.tradingConfig = this.resolveConfig();
   }
-
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<StewardTradingService> {
     return new StewardTradingService(runtime);
   }
-
   override async stop(): Promise<void> {}
-
   capability(): TradingCapability {
     if (!this.tradingConfig) {
       return {
@@ -536,7 +495,6 @@ export class StewardTradingService extends Service {
       apiUrl: this.tradingConfig.apiUrl,
     };
   }
-
   async tokenStatus(): Promise<TradeTokenStatus> {
     const config = this.requireConfig();
     const response = await this.request(
@@ -551,7 +509,6 @@ export class StewardTradingService extends Service {
       detailFromBody(response.body, "Steward token status failed"),
     );
   }
-
   async openSession(
     req: OpenSessionRequest,
   ): Promise<TradeEnvelope<TradeSession>> {
@@ -574,7 +531,6 @@ export class StewardTradingService extends Service {
     }
     return mapFailure(response, "Steward session open failed");
   }
-
   async getSession(id: string): Promise<TradeEnvelope<TradeSession>> {
     const response = await this.request(
       `/v1/trade/sessions/${encodeURIComponent(id)}`,
@@ -591,8 +547,11 @@ export class StewardTradingService extends Service {
     }
     return mapFailure(response, "Steward session lookup failed");
   }
-
-  async revokeSession(id: string): Promise<TradeEnvelope<{ revoked: true }>> {
+  async revokeSession(id: string): Promise<
+    TradeEnvelope<{
+      revoked: true;
+    }>
+  > {
     const response = await this.request(
       `/v1/trade/sessions/${encodeURIComponent(id)}/revoke`,
       { method: "POST" },
@@ -603,7 +562,6 @@ export class StewardTradingService extends Service {
     }
     return mapFailure(response, "Steward session revoke failed");
   }
-
   async submitOrder(
     req: SubmitOrderRequest,
   ): Promise<TradeEnvelope<OrderResult>> {
@@ -650,7 +608,6 @@ export class StewardTradingService extends Service {
     }
     return mapFailure(response, "Steward order submission failed");
   }
-
   async cancelOrder(
     req: CancelOrderRequest,
   ): Promise<TradeEnvelope<CancelResult>> {
@@ -658,7 +615,6 @@ export class StewardTradingService extends Service {
       `Steward does not expose a ${req.venue} cancel-order HTTP route yet.`,
     );
   }
-
   async resolveAccount(venue: Venue): Promise<TradeEnvelope<TradingAccount>> {
     const settingName =
       venue === "hyperliquid"
@@ -736,19 +692,16 @@ export class StewardTradingService extends Service {
       audit: { sessionId },
     };
   }
-
   async listOrders(venue: Venue): Promise<TradeEnvelope<OpenOrder[]>> {
     return routeNotFound(
       `Steward does not expose a ${venue} list-orders HTTP route yet.`,
     );
   }
-
   async listPositions(venue: Venue): Promise<TradeEnvelope<Position[]>> {
     return routeNotFound(
       `Steward does not expose a ${venue} positions HTTP route yet.`,
     );
   }
-
   private resolveConfig(): StewardTradingConfig | null {
     const authoritative = resolveDevCloudStewardOperationalTuple();
     if (authoritative) {
@@ -767,7 +720,6 @@ export class StewardTradingService extends Service {
         ...(authoritative.tenantId ? { tenantId: authoritative.tenantId } : {}),
       };
     }
-
     const persisted = readPersistedStewardCredentials();
     const apiUrl =
       normalizeOptionalString(this.runtime.getSetting("STEWARD_API_URL")) ??
@@ -798,7 +750,6 @@ export class StewardTradingService extends Service {
     }
     return { apiUrl, agentId, agentToken, apiKey, tenantId };
   }
-
   private requireConfig(): StewardTradingConfig {
     if (!this.tradingConfig) {
       throw new Error(
@@ -807,7 +758,6 @@ export class StewardTradingService extends Service {
     }
     return this.tradingConfig;
   }
-
   private headers(idempotencyKey?: string): Record<string, string> {
     const config = this.requireConfig();
     const headers: Record<string, string> = {
@@ -824,7 +774,6 @@ export class StewardTradingService extends Service {
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     return headers;
   }
-
   private async requestWithRetry(
     route: string,
     init: {
@@ -867,7 +816,6 @@ export class StewardTradingService extends Service {
       severity: "fatal",
     });
   }
-
   private async request(
     route: string,
     init: {
@@ -876,7 +824,11 @@ export class StewardTradingService extends Service {
       readonly idempotencyKey?: string;
     },
     throwTransportErrors: boolean,
-  ): Promise<JsonResponse & { retryAfterMs?: number }> {
+  ): Promise<
+    JsonResponse & {
+      retryAfterMs?: number;
+    }
+  > {
     const config = this.requireConfig();
     const headers = this.headers(init.idempotencyKey);
     const serializedBody =

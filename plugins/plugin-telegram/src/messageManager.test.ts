@@ -37,8 +37,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@elizaos/shared/media", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/shared/media")>()),
+vi.mock("@elizaos/core/media", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core/media")>()),
   resolveAttachmentBytes: resolveAttachmentBytesMock,
 }));
 

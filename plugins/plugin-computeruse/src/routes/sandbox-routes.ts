@@ -1,8 +1,7 @@
 /** Sandbox capability API routes: status, exec, browser, screen, audio, computer use. */
-
 import { execFileSync, execSync } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { type IncomingMessage, type ServerResponse } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -10,7 +9,7 @@ import {
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-helpers";
 
 interface SandboxExecResult {
   exitCode: number;
@@ -19,7 +18,6 @@ interface SandboxExecResult {
   durationMs: number;
   executedInSandbox: boolean;
 }
-
 interface SandboxManager {
   getStatus(): unknown;
   getEventLog(): unknown[];
@@ -35,7 +33,6 @@ interface SandboxManager {
   getBrowserWsEndpoint(): string | null;
   getBrowserNoVncEndpoint(): string | null;
 }
-
 interface SigningRequest {
   requestId: string;
   chainId: number;
@@ -46,12 +43,10 @@ interface SigningRequest {
   gasLimit?: string;
   createdAt: number;
 }
-
 interface SigningResult {
   success: boolean;
   [key: string]: unknown;
 }
-
 interface RemoteSigningService {
   submitSigningRequest(request: SigningRequest): Promise<SigningResult>;
   approveRequest(requestId: string): Promise<SigningResult>;
@@ -59,21 +54,17 @@ interface RemoteSigningService {
   getPendingApprovals(): unknown[];
   getAddress(): Promise<string>;
 }
-
 interface SandboxRouteState {
   sandboxManager: SandboxManager | null;
   signingService?: RemoteSigningService | null;
 }
-
 const MAX_COMPUTER_INPUT_LENGTH = 4096;
 const MAX_KEYPRESS_LENGTH = 128;
 const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_.,: -]+$/;
 const ALLOWED_AUDIO_FORMATS = new Set(["wav", "mp3", "ogg", "flac", "m4a"]);
 const MIN_AUDIO_RECORD_DURATION_MS = 250;
-const MAX_AUDIO_RECORD_DURATION_MS = 30_000;
-
+const MAX_AUDIO_RECORD_DURATION_MS = 30000;
 // ── Route handler ────────────────────────────────────────────────────────────
-
 /** Returns `true` if handled, `false` to fall through. */
 export async function handleSandboxRoute(
   req: IncomingMessage,
@@ -85,15 +76,12 @@ export async function handleSandboxRoute(
   if (!pathname.startsWith("/api/sandbox")) {
     return false;
   }
-
   const mgr = state.sandboxManager;
-
   // Platform info doesn't require a running manager
   if (method === "GET" && pathname === "/api/sandbox/platform") {
     sendJson(res, 200, getPlatformInfo());
     return true;
   }
-
   // ── POST /api/sandbox/docker/start ────────────────────────────────
   // Attempt to start Docker Desktop (works on macOS/Windows desktop builds)
   if (method === "POST" && pathname === "/api/sandbox/docker/start") {
@@ -108,27 +96,23 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   if (!mgr) {
     sendJson(res, 503, {
       error: "Sandbox manager not initialized",
     });
     return true;
   }
-
   // ── GET /api/sandbox/status ─────────────────────────────────────────
   if (method === "GET" && pathname === "/api/sandbox/status") {
     sendJson(res, 200, mgr.getStatus());
     return true;
   }
-
   // ── GET /api/sandbox/events ─────────────────────────────────────────
   if (method === "GET" && pathname === "/api/sandbox/events") {
     const events = mgr.getEventLog();
     sendJson(res, 200, { events: events.slice(-100) });
     return true;
   }
-
   // ── POST /api/sandbox/start ─────────────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/start") {
     try {
@@ -141,7 +125,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/stop ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/stop") {
     try {
@@ -154,7 +137,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/recover ───────────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/recover") {
     try {
@@ -167,7 +149,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/exec ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/exec") {
     const parsed = await readJsonBody<{
@@ -176,22 +157,18 @@ export async function handleSandboxRoute(
       timeoutMs?: number;
     }>(req, res);
     if (!parsed) return true;
-
     if (!parsed.command || typeof parsed.command !== "string") {
       sendJson(res, 400, { error: "Missing 'command' field" });
       return true;
     }
-
     const result = await mgr.exec({
       command: parsed.command,
       workdir: parsed.workdir,
       timeoutMs: parsed.timeoutMs,
     });
-
     sendJson(res, result.exitCode === 0 ? 200 : 422, result);
     return true;
   }
-
   // ── GET /api/sandbox/browser ────────────────────────────────────────
   if (method === "GET" && pathname === "/api/sandbox/browser") {
     sendJson(res, 200, {
@@ -201,7 +178,6 @@ export async function handleSandboxRoute(
     });
     return true;
   }
-
   // ── Capability bridges ──────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/sandbox/screen/screenshot") {
     try {
@@ -218,7 +194,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/screen/screenshot ─────────────────────────────
   // Returns base64-encoded screenshot for easy consumption by agents
   if (method === "POST" && pathname === "/api/sandbox/screen/screenshot") {
@@ -233,7 +208,6 @@ export async function handleSandboxRoute(
       });
       return true;
     }
-
     let regionInput: unknown;
     try {
       regionInput = JSON.parse(rawBody);
@@ -241,13 +215,11 @@ export async function handleSandboxRoute(
       sendJson(res, 400, { error: "Invalid JSON body" });
       return true;
     }
-
     const region = resolveScreenshotRegion(regionInput);
     if (region.error) {
       sendJson(res, 400, { error: region.error });
       return true;
     }
-
     try {
       const screenshot = captureScreenshot(region.region);
       const base64 = screenshot.toString("base64");
@@ -265,7 +237,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── GET /api/sandbox/screen/windows ─────────────────────────────────
   if (method === "GET" && pathname === "/api/sandbox/screen/windows") {
     try {
@@ -276,7 +247,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/audio/record ──────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/audio/record") {
     const body = await readBody(req);
@@ -291,7 +261,6 @@ export async function handleSandboxRoute(
         });
         return true;
       }
-
       if (
         parsed === null ||
         typeof parsed !== "object" ||
@@ -300,9 +269,7 @@ export async function handleSandboxRoute(
         sendJson(res, 400, { error: "Request body must be a JSON object" });
         return true;
       }
-
       const bodyValues = parsed as Record<string, unknown>;
-
       if (Object.hasOwn(bodyValues, "durationMs")) {
         const durationValue = bodyValues.durationMs;
         if (typeof durationValue !== "number") {
@@ -352,29 +319,27 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/audio/play ────────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/audio/play") {
     const parsed = await readJsonBody(req, res);
     if (!parsed) return true;
-
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       sendJson(res, 400, { error: "Body must be a JSON object" });
       return true;
     }
-
-    const payload = parsed as { data?: unknown; format?: unknown };
+    const payload = parsed as {
+      data?: unknown;
+      format?: unknown;
+    };
     if (typeof payload.data !== "string" || !payload.data.trim()) {
       sendJson(res, 400, { error: "Missing 'data' field (base64 audio)" });
       return true;
     }
-
     const formatResult = resolveAudioFormat(payload.format);
     if (formatResult.error) {
       sendJson(res, 400, { error: formatResult.error });
       return true;
     }
-
     try {
       await playAudio(Buffer.from(payload.data, "base64"), formatResult.format);
       sendJson(res, 200, { success: true });
@@ -385,18 +350,15 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/computer/click ────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/computer/click") {
     const parsed = await readJsonBody(req, res);
     if (!parsed) return true;
-
     const clickPayload = resolveClickPayload(parsed);
     if (clickPayload.error) {
       sendJson(res, 400, { error: clickPayload.error });
       return true;
     }
-
     try {
       const { x, y, button } = clickPayload;
       performClick(x, y, button);
@@ -408,18 +370,15 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/computer/type ─────────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/computer/type") {
     const parsed = await readJsonBody(req, res);
     if (!parsed) return true;
-
     const typePayload = resolveTypePayload(parsed);
     if (typePayload.error) {
       sendJson(res, 400, { error: typePayload.error });
       return true;
     }
-
     try {
       const { text } = typePayload;
       performType(text);
@@ -431,18 +390,15 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── POST /api/sandbox/computer/keypress ─────────────────────────────
   if (method === "POST" && pathname === "/api/sandbox/computer/keypress") {
     const parsed = await readJsonBody(req, res);
     if (!parsed) return true;
-
     const keypressPayload = resolveKeypressPayload(parsed);
     if (keypressPayload.error) {
       sendJson(res, 400, { error: keypressPayload.error });
       return true;
     }
-
     try {
       const { keys } = keypressPayload;
       performKeypress(keys);
@@ -454,9 +410,7 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── Signing routes ─────────────────────────────────────────────────
-
   if (method === "POST" && pathname === "/api/sandbox/sign") {
     const signer = state.signingService;
     if (!signer) {
@@ -480,17 +434,20 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   if (method === "POST" && pathname === "/api/sandbox/sign/approve") {
     const signer = state.signingService;
     if (!signer) {
       sendJson(res, 503, { error: "Signing service not configured" });
       return true;
     }
-    const body = await readJsonBody<{ requestId?: string }>(req, res);
+    const body = await readJsonBody<{
+      requestId?: string;
+    }>(req, res);
     if (!body) return true;
     try {
-      const { requestId } = body as { requestId: string };
+      const { requestId } = body as {
+        requestId: string;
+      };
       const result = await signer.approveRequest(requestId);
       sendJson(res, result.success ? 200 : 403, result);
     } catch (err) {
@@ -498,17 +455,20 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   if (method === "POST" && pathname === "/api/sandbox/sign/reject") {
     const signer = state.signingService;
     if (!signer) {
       sendJson(res, 503, { error: "Signing service not configured" });
       return true;
     }
-    const body = await readJsonBody<{ requestId?: string }>(req, res);
+    const body = await readJsonBody<{
+      requestId?: string;
+    }>(req, res);
     if (!body) return true;
     try {
-      const { requestId } = body as { requestId: string };
+      const { requestId } = body as {
+        requestId: string;
+      };
       const rejected = signer.rejectRequest(requestId);
       sendJson(res, 200, { rejected });
     } catch (err) {
@@ -516,7 +476,6 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   if (method === "GET" && pathname === "/api/sandbox/sign/pending") {
     const signer = state.signingService;
     if (!signer) {
@@ -526,7 +485,6 @@ export async function handleSandboxRoute(
     sendJson(res, 200, { pending: signer.getPendingApprovals() });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/sandbox/sign/address") {
     const signer = state.signingService;
     if (!signer) {
@@ -541,31 +499,30 @@ export async function handleSandboxRoute(
     }
     return true;
   }
-
   // ── GET /api/sandbox/capabilities ───────────────────────────────────
   if (method === "GET" && pathname === "/api/sandbox/capabilities") {
     sendJson(res, 200, detectCapabilities());
     return true;
   }
-
   // ── Fallthrough ─────────────────────────────────────────────────────
   sendJson(res, 404, { error: `Unknown sandbox route: ${method} ${pathname}` });
   return true;
 }
-
 function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
-
-function resolveSigningRequestPayload(
-  input: unknown,
-): { request: SigningRequest } | { error: string } {
+function resolveSigningRequestPayload(input: unknown):
+  | {
+      request: SigningRequest;
+    }
+  | {
+      error: string;
+    } {
   const obj = asObject(input);
   if (!obj) {
     return { error: "Signing payload must be a JSON object" };
   }
-
   const requestId = obj.requestId;
   const chainId = parseFiniteInteger(obj.chainId);
   const to = obj.to;
@@ -575,7 +532,6 @@ function resolveSigningRequestPayload(
     obj.nonce === undefined ? undefined : parseFiniteInteger(obj.nonce);
   const rawGasLimit = obj.gasLimit;
   const createdAt = parseFiniteInteger(obj.createdAt);
-
   if (typeof requestId !== "string" || !requestId.trim()) {
     return { error: "Signing payload requires a non-empty string 'requestId'" };
   }
@@ -605,14 +561,12 @@ function resolveSigningRequestPayload(
       error: "Signing payload 'gasLimit' must be a string when provided",
     };
   }
-
   const gasLimit = (rawGasLimit as string | undefined)?.trim();
   if (gasLimit === "") {
     return {
       error: "Signing payload 'gasLimit' cannot be empty when provided",
     };
   }
-
   return {
     request: {
       requestId: requestId.trim(),
@@ -626,30 +580,30 @@ function resolveSigningRequestPayload(
     },
   };
 }
-
 function parseFiniteInteger(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   if (!Number.isInteger(value)) return null;
   return value;
 }
-
 function resolveScreenshotRegion(input: unknown): {
-  region?: { x: number; y: number; width: number; height: number };
+  region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   error?: string;
 } {
   if (input === undefined || input === null) return {};
   const obj = asObject(input);
   if (!obj) return { error: "Screenshot region payload must be a JSON object" };
-
   const hasRegionField =
     "x" in obj || "y" in obj || "width" in obj || "height" in obj;
   if (!hasRegionField) return {};
-
   const x = parseFiniteInteger(obj.x);
   const y = parseFiniteInteger(obj.y);
   const width = parseFiniteInteger(obj.width);
   const height = parseFiniteInteger(obj.height);
-
   if (x === null || y === null || width === null || height === null) {
     return {
       error: "Region requires integer x, y, width, and height values",
@@ -658,12 +612,10 @@ function resolveScreenshotRegion(input: unknown): {
   if (width <= 0 || height <= 0) {
     return { error: "Region width and height must be greater than 0" };
   }
-
   return {
     region: { x, y, width, height },
   };
 }
-
 function resolveClickPayload(input: unknown): {
   x: number;
   y: number;
@@ -679,7 +631,6 @@ function resolveClickPayload(input: unknown): {
       error: "Click payload must be a JSON object",
     };
   }
-
   const x = parseFiniteInteger(obj.x);
   const y = parseFiniteInteger(obj.y);
   if (x === null || y === null) {
@@ -690,7 +641,6 @@ function resolveClickPayload(input: unknown): {
       error: "Click payload requires integer x and y coordinates",
     };
   }
-
   const rawButton = obj.button;
   let button: "left" | "right" = "left";
   if (rawButton !== undefined) {
@@ -704,11 +654,12 @@ function resolveClickPayload(input: unknown): {
     }
     button = rawButton;
   }
-
   return { x, y, button };
 }
-
-function resolveTypePayload(input: unknown): { text: string; error?: string } {
+function resolveTypePayload(input: unknown): {
+  text: string;
+  error?: string;
+} {
   const obj = asObject(input);
   if (!obj) return { text: "", error: "Type payload must be a JSON object" };
   if (typeof obj.text !== "string") {
@@ -725,7 +676,6 @@ function resolveTypePayload(input: unknown): { text: string; error?: string } {
   }
   return { text: obj.text };
 }
-
 function resolveKeypressPayload(input: unknown): {
   keys: string;
   error?: string;
@@ -740,7 +690,6 @@ function resolveKeypressPayload(input: unknown): {
       error: "Keypress payload requires a string 'keys' field",
     };
   }
-
   const keys = obj.keys.trim();
   if (!keys) return { keys: "", error: "keys cannot be empty" };
   if (keys.length > MAX_KEYPRESS_LENGTH) {
@@ -756,10 +705,8 @@ function resolveKeypressPayload(input: unknown): {
         "keys contains unsupported characters; allowed: letters, numbers, space, +, _, ., ,, :, -",
     };
   }
-
   return { keys };
 }
-
 function resolveAudioFormat(input: unknown): {
   format: string;
   error?: string;
@@ -768,7 +715,6 @@ function resolveAudioFormat(input: unknown): {
   if (typeof input !== "string") {
     return { format: "wav", error: "format must be a string" };
   }
-
   const normalized = input.trim().toLowerCase();
   if (!normalized) return { format: "wav" };
   if (!/^[a-z0-9]+$/.test(normalized)) {
@@ -784,17 +730,14 @@ function resolveAudioFormat(input: unknown): {
       error: "format must be one of: wav, mp3, ogg, flac, m4a",
     };
   }
-
   return { format: normalized };
 }
-
 function runCommand(command: string, args: string[], timeout: number): void {
   execFileSync(command, args, {
     timeout,
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
-
 function captureScreenshot(region?: {
   x: number;
   y: number;
@@ -803,7 +746,6 @@ function captureScreenshot(region?: {
 }): Buffer {
   const os = platform();
   const tmpFile = join(tmpdir(), `sandbox-screenshot-${Date.now()}.png`);
-
   try {
     if (os === "darwin") {
       if (region) {
@@ -865,7 +807,6 @@ function captureScreenshot(region?: {
     } else {
       throw new Error(`Screenshot not supported on platform: ${os}`);
     }
-
     const data = readFileSync(tmpFile);
     try {
       unlinkSync(tmpFile);
@@ -884,10 +825,12 @@ function captureScreenshot(region?: {
     throw err;
   }
 }
-
-function listWindows(): Array<{ id: string; title: string; app: string }> {
+function listWindows(): Array<{
+  id: string;
+  title: string;
+  app: string;
+}> {
   const os = platform();
-
   if (os === "darwin") {
     try {
       const script = `
@@ -923,14 +866,11 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
       // for this diagnostic sandbox route; warned so an Accessibility denial
       // is not read as a desktop with no windows.
       logger.warn(
-        `[sandbox-routes] macOS window enumeration failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[sandbox-routes] macOS window enumeration failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return [];
     }
   }
-
   if (os === "linux") {
     try {
       const output = execSync(
@@ -952,14 +892,11 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
       // error-policy:J4 [] is the explicit "window list unavailable" degrade
       // for this diagnostic sandbox route; the tool failure is warned.
       logger.warn(
-        `[sandbox-routes] X11 window enumeration failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[sandbox-routes] X11 window enumeration failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return [];
     }
   }
-
   if (os === "win32") {
     try {
       const output = execSync(
@@ -977,22 +914,17 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
       // error-policy:J4 [] is the explicit "window list unavailable" degrade
       // for this diagnostic sandbox route; the PowerShell failure is warned.
       logger.warn(
-        `[sandbox-routes] PowerShell window enumeration failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[sandbox-routes] PowerShell window enumeration failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return [];
     }
   }
-
   return [];
 }
-
 async function recordAudio(durationMs: number): Promise<Buffer> {
   const os = platform();
   const durationSec = Math.ceil(durationMs / 1000);
   const tmpFile = join(tmpdir(), `sandbox-audio-${Date.now()}.wav`);
-
   if (os === "darwin") {
     // Use sox (rec) on macOS
     if (commandExists("rec")) {
@@ -1039,7 +971,6 @@ async function recordAudio(durationMs: number): Promise<Buffer> {
   } else {
     throw new Error(`Audio recording not supported on platform: ${os}`);
   }
-
   const data = readFileSync(tmpFile);
   try {
     unlinkSync(tmpFile);
@@ -1049,12 +980,10 @@ async function recordAudio(durationMs: number): Promise<Buffer> {
   }
   return data;
 }
-
 async function playAudio(data: Buffer, format: string): Promise<void> {
   const os = platform();
   const tmpFile = join(tmpdir(), `sandbox-play-${Date.now()}.${format}`);
   writeFileSync(tmpFile, data);
-
   try {
     if (os === "darwin") {
       runCommand("afplay", [tmpFile], 60000);
@@ -1088,14 +1017,11 @@ async function playAudio(data: Buffer, format: string): Promise<void> {
     }
   }
 }
-
 function toAppleScriptStringLiteral(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
-
 function performClick(x: number, y: number, button: "left" | "right"): void {
   const os = platform();
-
   if (os === "darwin") {
     // Use cliclick on macOS (brew install cliclick)
     if (commandExists("cliclick")) {
@@ -1133,10 +1059,8 @@ function performClick(x: number, y: number, button: "left" | "right"): void {
     runCommand("powershell", ["-Command", psScript], 5000);
   }
 }
-
 function performType(text: string): void {
   const os = platform();
-
   if (os === "darwin") {
     if (commandExists("cliclick")) {
       runCommand("cliclick", [`t:${text}`], 10000);
@@ -1168,10 +1092,8 @@ function performType(text: string): void {
     );
   }
 }
-
 function performKeypress(keys: string): void {
   const os = platform();
-
   if (os === "darwin") {
     if (commandExists("cliclick")) {
       runCommand("cliclick", [`kp:${keys}`], 5000);
@@ -1193,7 +1115,6 @@ function performKeypress(keys: string): void {
       const numericCode =
         mappedCode ??
         (Number.isInteger(Number(keys.trim())) ? Number(keys.trim()) : null);
-
       if (numericCode !== null) {
         runCommand(
           "osascript",
@@ -1229,14 +1150,21 @@ function performKeypress(keys: string): void {
     );
   }
 }
-
 function detectCapabilities(): Record<
   string,
-  { available: boolean; tool: string }
+  {
+    available: boolean;
+    tool: string;
+  }
 > {
   const os = platform();
-  const caps: Record<string, { available: boolean; tool: string }> = {};
-
+  const caps: Record<
+    string,
+    {
+      available: boolean;
+      tool: string;
+    }
+  > = {};
   // Screenshot
   if (os === "darwin") {
     caps.screenshot = { available: true, tool: "screencapture (built-in)" };
@@ -1257,7 +1185,6 @@ function detectCapabilities(): Record<
   } else {
     caps.screenshot = { available: false, tool: "unsupported platform" };
   }
-
   // Audio record
   if (os === "darwin") {
     if (commandExists("rec"))
@@ -1286,7 +1213,6 @@ function detectCapabilities(): Record<
   } else {
     caps.audioRecord = { available: false, tool: "unsupported" };
   }
-
   // Audio play
   if (os === "darwin")
     caps.audioPlay = { available: true, tool: "afplay (built-in)" };
@@ -1303,7 +1229,6 @@ function detectCapabilities(): Record<
   } else {
     caps.audioPlay = { available: false, tool: "unsupported" };
   }
-
   // Mouse/keyboard control
   if (os === "darwin") {
     if (commandExists("cliclick"))
@@ -1319,7 +1244,6 @@ function detectCapabilities(): Record<
   } else {
     caps.computerUse = { available: false, tool: "unsupported" };
   }
-
   // Window listing
   if (os === "darwin")
     caps.windowList = { available: true, tool: "AppleScript" };
@@ -1338,22 +1262,17 @@ function detectCapabilities(): Record<
   } else {
     caps.windowList = { available: false, tool: "unsupported" };
   }
-
   // Browser
   caps.browser = { available: true, tool: "CDP via sandbox browser container" };
-
   // Shell
   caps.shell = { available: true, tool: "docker exec" };
-
   return caps;
 }
-
 function getPlatformInfo(): Record<string, string | boolean> {
   const os = platform();
   let dockerInstalled = false;
   let dockerRunning = false;
   let appleContainerAvailable = false;
-
   // Check if docker binary exists (installed)
   try {
     const which = os === "win32" ? "where" : "which";
@@ -1363,7 +1282,6 @@ function getPlatformInfo(): Record<string, string | boolean> {
     // error-policy:J3 existence probe; a `which` miss means docker is not
     // installed — the diagnostic payload reports it explicitly.
   }
-
   // Check if docker daemon is running (docker info succeeds only when daemon is up)
   if (dockerInstalled) {
     try {
@@ -1374,7 +1292,6 @@ function getPlatformInfo(): Record<string, string | boolean> {
       // not running" — the diagnostic payload reports it explicitly.
     }
   }
-
   if (os === "darwin") {
     try {
       execSync("which container", { stdio: "ignore", timeout: 3000 });
@@ -1384,7 +1301,6 @@ function getPlatformInfo(): Record<string, string | boolean> {
       // container CLI is absent — reported explicitly in the payload.
     }
   }
-
   return {
     platform: os,
     arch: require("node:os").arch(),
@@ -1398,7 +1314,6 @@ function getPlatformInfo(): Record<string, string | boolean> {
       os === "darwin" && appleContainerAvailable ? "apple-container" : "docker",
   };
 }
-
 function isWsl2Available(): boolean {
   try {
     execSync("wsl --status", { stdio: "ignore", timeout: 5000 });
@@ -1409,14 +1324,12 @@ function isWsl2Available(): boolean {
     return false;
   }
 }
-
 function attemptDockerStart(): {
   success: boolean;
   message: string;
   waitMs: number;
 } {
   const os = platform();
-
   try {
     if (os === "darwin") {
       execSync('open -a "Docker"', { timeout: 5000, stdio: "ignore" });
@@ -1426,7 +1339,6 @@ function attemptDockerStart(): {
         waitMs: 15000,
       };
     }
-
     if (os === "win32") {
       // Try common install locations
       const paths = [
@@ -1463,7 +1375,6 @@ function attemptDockerStart(): {
         waitMs: 30000,
       };
     }
-
     if (os === "linux") {
       // Try systemctl first (most common)
       try {
@@ -1480,7 +1391,6 @@ function attemptDockerStart(): {
         // error-policy:J4 systemctl tier of the Linux daemon-start chain;
         // the `service` tier below follows.
       }
-
       // Try service command
       try {
         execSync("sudo service docker start", {
@@ -1496,7 +1406,6 @@ function attemptDockerStart(): {
         // error-policy:J4 last Linux tier; the explicit structured failure
         // below tells the caller exactly what to run manually.
       }
-
       return {
         success: false,
         message:
@@ -1504,7 +1413,6 @@ function attemptDockerStart(): {
         waitMs: 0,
       };
     }
-
     return {
       success: false,
       message: `Auto-start not supported on ${os}`,
@@ -1520,9 +1428,7 @@ function attemptDockerStart(): {
     };
   }
 }
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
 function commandExists(cmd: string): boolean {
   try {
     const which = platform() === "win32" ? "where" : "which";
@@ -1534,11 +1440,9 @@ function commandExists(cmd: string): boolean {
     return false;
   }
 }
-
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
   sendJsonResponse(res, data, status);
 }
-
 function readBody(req: IncomingMessage): Promise<string | null> {
   return readRequestBody(req, {
     maxBytes: 10 * 1024 * 1024,
@@ -1547,7 +1451,6 @@ function readBody(req: IncomingMessage): Promise<string | null> {
     destroyOnTooLarge: true,
   });
 }
-
 function readJsonBody<T = unknown>(
   req: IncomingMessage,
   res: ServerResponse,

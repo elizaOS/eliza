@@ -7,10 +7,10 @@
  * approval ScheduledTask before this connector ever sees the dispatch.
  *
  * Capabilities are namespaced — the entries here mirror
- * `LIFEOPS_GOOGLE_CAPABILITIES` from `@elizaos/shared`.
+ * `LIFEOPS_GOOGLE_CAPABILITIES` from `@elizaos/core`.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { formatError } from "@elizaos/core";
+
+import { formatError, type IAgentRuntime } from "@elizaos/core";
 import { INTERNAL_URL } from "../access.js";
 import { LifeOpsService } from "../service.js";
 import {
@@ -21,12 +21,11 @@ import {
   missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
-import type {
-  ConnectorContribution,
-  ConnectorStatus,
-  DispatchResult,
+import {
+  type ConnectorContribution,
+  type ConnectorStatus,
+  type DispatchResult,
 } from "./contract.js";
-
 export interface GoogleSendPayload {
   /** Comma-separated or array of recipients. */
   target: string;
@@ -42,7 +41,6 @@ export interface GoogleSendPayload {
     bcc?: readonly string[];
   };
 }
-
 export function createGoogleConnectorContribution(
   runtime: IAgentRuntime,
 ): ConnectorContribution {

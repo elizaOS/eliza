@@ -15,22 +15,25 @@ import type {
   MeetingJoinRequest,
   MeetingSession,
   MeetingSessionStatus,
+} from "@elizaos/core/meetings";
+import type {
   Transcript,
   TranscriptCaptureSharingState,
-} from "@elizaos/shared";
+} from "@elizaos/core/transcripts";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingStatusEvent } from "../../api/client-meetings";
 import { ViewHeader } from "../shared/ViewHeader";
-import type { MeetingAwareTranscriptSummary } from "./TranscriptsView";
-import { TranscriptsView } from "./TranscriptsView";
+import {
+  type MeetingAwareTranscriptSummary,
+  TranscriptsView,
+} from "./TranscriptsView";
 
 /** Session states after which the transcript is finalized (no longer live). */
 const TERMINAL_MEETING_STATUSES: ReadonlySet<MeetingSessionStatus> = new Set([
   "ended",
   "failed",
 ]);
-
 export function TranscriptsPage(): React.JSX.Element {
   const [transcripts, setTranscripts] = React.useState<
     MeetingAwareTranscriptSummary[]
@@ -48,12 +51,10 @@ export function TranscriptsPage(): React.JSX.Element {
   );
   const [joiningMeeting, setJoiningMeeting] = React.useState(false);
   const [meetingError, setMeetingError] = React.useState<string | null>(null);
-
   // The live-selected id, mirrored into a ref so the WebSocket subscription
   // (which must not re-bind on every selection change) can read it.
   const selectedIdRef = React.useRef<string | null>(null);
   selectedIdRef.current = selectedId;
-
   const loadTranscript = React.useCallback(
     (id: string, showLoading = false) => {
       if (showLoading) setSelectedLoading(true);
@@ -74,7 +75,6 @@ export function TranscriptsPage(): React.JSX.Element {
     },
     [],
   );
-
   const refresh = React.useCallback(async () => {
     const [listResult, meetingsResult] = await Promise.allSettled([
       client.listTranscripts(),
@@ -105,7 +105,6 @@ export function TranscriptsPage(): React.JSX.Element {
       throw listResult.reason;
     }
   }, []);
-
   React.useEffect(() => {
     let cancelled = false;
     refresh()
@@ -123,7 +122,6 @@ export function TranscriptsPage(): React.JSX.Element {
       cancelled = true;
     };
   }, [refresh]);
-
   // Session lifecycle over the agent WebSocket: keep the active strip fresh
   // and re-list transcripts when a live meeting record appears/finalizes.
   // When the finalized session is the transcript currently OPEN in the detail
@@ -148,7 +146,6 @@ export function TranscriptsPage(): React.JSX.Element {
       });
     });
   }, [refresh, loadTranscript]);
-
   const onSelect = React.useCallback(
     (id: string) => {
       setSelectedId(id);
@@ -158,7 +155,6 @@ export function TranscriptsPage(): React.JSX.Element {
     },
     [loadTranscript],
   );
-
   const onUpdatePrivacy = React.useCallback(
     (sharing: Partial<TranscriptCaptureSharingState>) => {
       if (!selectedId) return;
@@ -182,7 +178,6 @@ export function TranscriptsPage(): React.JSX.Element {
     },
     [refresh, selectedId],
   );
-
   const onDeleteSourceAudio = React.useCallback(() => {
     if (!selectedId) return;
     if (
@@ -209,7 +204,6 @@ export function TranscriptsPage(): React.JSX.Element {
       })
       .finally(() => setPrivacySaving(false));
   }, [refresh, selectedId]);
-
   const onJoinMeeting = React.useCallback(
     (input: MeetingJoinRequest) => {
       setJoiningMeeting(true);
@@ -226,7 +220,6 @@ export function TranscriptsPage(): React.JSX.Element {
     },
     [refresh],
   );
-
   const onStopMeeting = React.useCallback(
     (sessionId: string) => {
       setMeetingError(null);
@@ -241,7 +234,6 @@ export function TranscriptsPage(): React.JSX.Element {
     },
     [refresh],
   );
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <ViewHeader title="Transcripts" />

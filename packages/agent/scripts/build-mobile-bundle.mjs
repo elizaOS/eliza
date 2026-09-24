@@ -1,13 +1,4 @@
 #!/usr/bin/env bun
-
-/**
- * Builds self-contained Android and iOS agent bundles with their PGlite assets.
- * Mobile plugin policy determines the inlined plugin set; models are not bundled.
- * PGlite wasm/data files sit beside the bundle, while the device asset pipeline
- * places extension archives at the parent paths expected by PGlite.
- * Android output must pass host-Bun module initialization before publication.
- */
-
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
@@ -22,10 +13,13 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-// Pure data module (no imports) — safe to load in the build script. The
-// manifest's plugin lists are derived from it so they cannot drift from what
-// the runtime actually allow-lists on mobile (the hand-written copy silently
-// under-reported MOBILE_CORE_PLUGINS).
+/**
+ * Builds self-contained Android and iOS agent bundles with their PGlite assets.
+ * Mobile plugin policy determines the inlined plugin set; models are not bundled.
+ * PGlite wasm/data files sit beside the bundle, while the device asset pipeline
+ * places extension archives at the parent paths expected by PGlite.
+ * Android output must pass host-Bun module initialization before publication.
+ */
 import {
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
@@ -38,6 +32,10 @@ import {
   findWorkspaceSourceEntry,
 } from "./mobile-workspace-entry.mjs";
 
+// Pure data module (no imports) — safe to load in the build script. The
+// manifest's plugin lists are derived from it so they cannot drift from what
+// the runtime actually allow-lists on mobile (the hand-written copy silently
+// under-reported MOBILE_CORE_PLUGINS).
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
 // agentRoot = repoRoot/packages/agent → two parents up is the repo root.
@@ -52,7 +50,6 @@ const rmRecursiveScript = path.join(
   "scripts",
   "rm-path-recursive.mjs",
 );
-
 function rmRecursive(targetPath) {
   const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
     stdio: "inherit",
@@ -63,7 +60,6 @@ function rmRecursive(targetPath) {
     );
   }
 }
-
 // Target selection. `--target=android` (default) preserves existing behavior;
 // `--target=ios` swaps in iOS-specific stubs and sets ELIZA_PLATFORM=ios at
 // bundle time. `--target=ios-jsc` produces an ESM bundle for the iOS
@@ -81,7 +77,6 @@ if (TARGET !== "android" && TARGET !== "ios" && TARGET !== "ios-jsc") {
   );
   process.exit(1);
 }
-
 const OUT_DIRS = {
   android: "dist-mobile",
   ios: "dist-mobile-ios",
@@ -91,7 +86,6 @@ const outDir = path.join(agentRoot, OUT_DIRS[TARGET]);
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
 let mobileWorkspacePackageDirCache = null;
-
 function collectMobileWorkspacePackageDirs() {
   if (mobileWorkspacePackageDirCache) return mobileWorkspacePackageDirCache;
   mobileWorkspacePackageDirCache = new Map();
@@ -122,12 +116,10 @@ function collectMobileWorkspacePackageDirs() {
   }
   return mobileWorkspacePackageDirCache;
 }
-
 function resolveMobileWorkspacePackageDir(pkgName) {
   const workspaceDir = collectMobileWorkspacePackageDirs().get(pkgName) ?? null;
   const pkgPath = path.resolve(repoRoot, "node_modules", ...pkgName.split("/"));
   if (!existsSync(pkgPath)) return workspaceDir;
-
   const linkedDir = realpathSync(pkgPath);
   if (!workspaceDir) return linkedDir;
   // Fresh/light installs can leave @elizaos workspace symlinks pointing at an
@@ -141,11 +133,9 @@ function resolveMobileWorkspacePackageDir(pkgName) {
   }
   return workspaceDir;
 }
-
 console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
-
 if (process.argv.includes("--verify-workspace-resolution")) {
   const requiredPackages = [
     "@elizaos/plugin-vision",
@@ -171,10 +161,8 @@ if (process.argv.includes("--verify-workspace-resolution")) {
   );
   process.exit(0);
 }
-
 rmRecursive(outDir);
 await mkdir(outDir, { recursive: true });
-
 function findPgliteDist() {
   // pglite.wasm + pglite.data MUST match the @electric-sql/pglite version
   // that the bundled agent JS resolves at runtime — they're a triple
@@ -240,7 +228,6 @@ function findPgliteDist() {
   }
   return null;
 }
-
 function readdirSyncSafe(p) {
   try {
     return readdirSync(p);
@@ -248,7 +235,6 @@ function readdirSyncSafe(p) {
     return [];
   }
 }
-
 const pgliteDist = findPgliteDist();
 if (!pgliteDist) {
   console.error(
@@ -258,7 +244,6 @@ if (!pgliteDist) {
   process.exit(1);
 }
 console.log("[build-mobile] pglite dist:", pgliteDist);
-
 // Native deps without an Android prebuild — replace at bundle time with
 // throw-on-call shims. Bun.build's `--external` would leave bare-name imports
 // in the output; `ELIZA_PLATFORM=android` would then fail at runtime when
@@ -372,7 +357,6 @@ const nativeStubs = {
   "react/jsx-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
   "react/jsx-dev-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
 };
-
 // iOS-specific overrides. The iOS Bun port (see native/ios-bun-port/) forbids
 // `child_process` / `Bun.spawn` (kernel sandbox), restricts `bun:ffi` to
 // statically-linked symbols, and routes `os.homedir()` through env vars set by
@@ -390,7 +374,6 @@ if (TARGET === "ios" || TARGET === "ios-jsc") {
   // is being run outside the iOS port. We do NOT remap `bun:ffi` here so
   // the native implementation wins on iOS device builds.
 }
-
 // ios-jsc adds throw-on-use stubs for Node built-ins not exposed by the
 // JSContext bridge v1 surface, plus a passthrough DNS shim (URLSession
 // resolves DNS for us, so dns.lookup just returns the input). bun:ffi is
@@ -415,7 +398,6 @@ if (TARGET === "ios-jsc") {
   nativeStubs["dns/promises"] = dnsStub;
   nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
 }
-
 // Optional @elizaos plugins that the agent runtime statically references but
 // transitively pull in old/incompatible `@elizaos/core` versions. Stubbing
 // them keeps the bundle from carrying multiple AgentRuntime classes (the
@@ -473,9 +455,7 @@ const optionalPluginStubs = {
   // routes instead, so stub the whole package like WhatsApp above.
   "@elizaos/plugin-meetings": path.join(stubsDir, "null-plugin.cjs"),
 };
-
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
-
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
   setup(build) {
@@ -503,7 +483,6 @@ const stubResolverPlugin = {
     });
   },
 };
-
 const exactMobileStubPlugin = {
   name: "eliza-mobile-exact-stubs",
   setup(build) {
@@ -528,7 +507,6 @@ const exactMobileStubPlugin = {
     );
   },
 };
-
 const capabilityRouterStubPlugin = {
   name: "eliza-mobile-capability-router-stubs",
   setup(build) {
@@ -539,7 +517,6 @@ const capabilityRouterStubPlugin = {
     }));
   },
 };
-
 const iosFsSandboxPlugin = {
   name: "eliza-ios-fs-sandbox-proxy",
   setup(build) {
@@ -568,8 +545,7 @@ const iosFsSandboxPlugin = {
     );
   },
 };
-
-// Force a single resolution for `@elizaos/core` and `@elizaos/shared`.
+// Force a single resolution for workspace runtime entries.
 //
 // `eliza/packages/agent/tsconfig.json` maps `@elizaos/core` to the source
 // at `../core/src/index.ts`, but `@elizaos/plugin-sql` (and other
@@ -577,22 +553,19 @@ const iosFsSandboxPlugin = {
 // then bundles BOTH copies, ending up with two distinct AgentRuntime classes
 // — the runtime instance receives an adapter from one copy and tries to
 // call methods that only exist on the other (`getAgentsByIds is not a
-// function`). Pin every `@elizaos/core` (and `@elizaos/shared`) import to
+// function`). Pin every runtime and core leaf import to
 // the same workspace `src/` entry so the bundle ships exactly one identity.
 const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
-  "@elizaos/shared",
-  "@elizaos/shared/brand",
-  "@elizaos/shared/voice/aec",
-  "@elizaos/shared-brand",
+  "@elizaos/ui/brand",
+  "@elizaos/core/voice/aec",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-wallet",
 ];
-
 // Inside the eliza repo the source trees live directly under the repo
-// root: `packages/core/`, `packages/shared/`, and
+// root: `packages/core/`, `packages/ui/`, and
 // `plugins/plugin-sql/`. The earlier `eliza/` prefix here was a leftover
 // from eliza's outer-repo layout where this whole tree was nested under
 // `eliza/`.
@@ -611,17 +584,10 @@ const dedupeTargets = {
     "src",
     "index.ts",
   ),
-  "@elizaos/shared": path.resolve(
+  "@elizaos/ui/brand": path.resolve(
     repoRoot,
     "packages",
-    "shared",
-    "src",
-    "index.ts",
-  ),
-  "@elizaos/shared/brand": path.resolve(
-    repoRoot,
-    "packages",
-    "shared",
+    "ui",
     "src",
     "brand",
     "index.ts",
@@ -632,21 +598,13 @@ const dedupeTargets = {
   // keeping its consumers — on device the live-diarization status route then
   // dies with `EchoReferenceBuffer is not defined` at session construction
   // (invisible to the module-load smoke, which never constructs the session).
-  "@elizaos/shared/voice/aec": path.resolve(
+  "@elizaos/core/voice/aec": path.resolve(
     repoRoot,
     "packages",
-    "shared",
+    "core",
     "src",
     "voice",
     "aec",
-    "index.ts",
-  ),
-  "@elizaos/shared-brand": path.resolve(
-    repoRoot,
-    "packages",
-    "shared",
-    "src",
-    "brand",
     "index.ts",
   ),
   "@elizaos/ui": path.resolve(repoRoot, "packages", "ui", "src", "index.ts"),
@@ -672,7 +630,6 @@ const dedupeTargets = {
     "index.ts",
   ),
 };
-
 for (const [pkg, target] of Object.entries(dedupeTargets)) {
   if (!existsSync(target)) {
     console.error(
@@ -681,7 +638,20 @@ for (const [pkg, target] of Object.entries(dedupeTargets)) {
     process.exit(1);
   }
 }
-
+// Every explicit core leaf must share the root runtime's source identities.
+const coreManifest = JSON.parse(
+  readFileSync(path.join(repoRoot, "packages/core/package.json"), "utf8"),
+);
+for (const [subpath, entry] of Object.entries(coreManifest.exports)) {
+  if (subpath === "." || typeof entry !== "object" || !entry["eliza-source"])
+    continue;
+  const specifier = `@elizaos/core/${subpath.slice(2)}`;
+  const target = path.resolve(repoRoot, "packages/core", entry["eliza-source"]);
+  if (!existsSync(target))
+    throw new Error(`Missing core source export: ${specifier}`);
+  dedupeTargets[specifier] = target;
+  if (!corePackages.includes(specifier)) corePackages.push(specifier);
+}
 const dedupePlugin = {
   name: "eliza-mobile-core-dedupe",
   setup(build) {
@@ -699,7 +669,6 @@ const dedupePlugin = {
     });
   },
 };
-
 const nativeCapacitorPlugin = {
   name: "eliza-mobile-native-capacitor-workspaces",
   setup(build) {
@@ -719,7 +688,6 @@ const nativeCapacitorPlugin = {
     });
   },
 };
-
 // Force Bun.build to load Zod from its CJS files instead of the ESM ones.
 //
 // Zod 4's classic ESM source uses re-export aliases like
@@ -758,7 +726,6 @@ const zodCjsResolverPlugin = {
     });
   },
 };
-
 function findEthersCommonJsIndex() {
   const candidates = [];
   const directPackageRoots = [
@@ -768,7 +735,6 @@ function findEthersCommonJsIndex() {
   for (const pkgRoot of directPackageRoots) {
     candidates.push(path.join(pkgRoot, "lib.commonjs", "index.js"));
   }
-
   const bunDirs = [
     path.resolve(repoRoot, "node_modules", ".bun"),
     path.resolve(agentRoot, "node_modules", ".bun"),
@@ -788,11 +754,9 @@ function findEthersCommonJsIndex() {
       );
     }
   }
-
   const found = candidates.find((candidate) => existsSync(candidate));
   return found ? realpathSync(found) : null;
 }
-
 const ethersCommonJsIndex = findEthersCommonJsIndex();
 if (!ethersCommonJsIndex) {
   console.error(
@@ -801,7 +765,6 @@ if (!ethersCommonJsIndex) {
   );
   process.exit(1);
 }
-
 // Bun.build's large mobile ESM graph can lower `import { ethers }` or
 // `import * as ethers` to bare identifiers like `id2`, `keccak256`, and
 // `JsonRpcProvider` without emitting the corresponding bindings. Resolve
@@ -816,7 +779,6 @@ const ethersCjsResolverPlugin = {
     }));
   },
 };
-
 function findViemPackageRoot() {
   const candidates = [
     path.resolve(repoRoot, "node_modules", "viem"),
@@ -836,7 +798,6 @@ function findViemPackageRoot() {
     existsSync(path.join(candidate, "_cjs", "chains", "index.js")),
   );
 }
-
 const viemPackageRoot = findViemPackageRoot();
 if (!viemPackageRoot) {
   console.error(
@@ -844,7 +805,6 @@ if (!viemPackageRoot) {
   );
   process.exit(1);
 }
-
 function readJsonFile(filePath) {
   try {
     return JSON.parse(readFileSync(filePath, "utf8"));
@@ -852,13 +812,11 @@ function readJsonFile(filePath) {
     return null;
   }
 }
-
 function encodeBunPackageName(packageName) {
   return packageName.startsWith("@")
     ? packageName.replace("/", "+")
     : packageName;
 }
-
 function versionSatisfiesRange(version, range) {
   if (!range || range === "*" || range === "latest") {
     return true;
@@ -893,7 +851,6 @@ function versionSatisfiesRange(version, range) {
   }
   return true;
 }
-
 function findInstalledPackageRoot(packageName, versionRange) {
   const pathSegments = packageName.split("/");
   const candidates = [
@@ -905,7 +862,6 @@ function findInstalledPackageRoot(packageName, versionRange) {
     path.resolve(repoRoot, "node_modules", ".bun"),
     path.resolve(agentRoot, "node_modules", ".bun"),
   ];
-
   for (const bunDir of bunDirs) {
     for (const entry of readdirSyncSafe(bunDir)) {
       if (!entry.startsWith(`${encodedName}@`)) continue;
@@ -914,7 +870,6 @@ function findInstalledPackageRoot(packageName, versionRange) {
       );
     }
   }
-
   const found = candidates.find((candidate) => {
     const packageJson = readJsonFile(path.join(candidate, "package.json"));
     return (
@@ -925,7 +880,6 @@ function findInstalledPackageRoot(packageName, versionRange) {
   });
   return found ? realpathSync(found) : null;
 }
-
 function resolveConditionalExport(exportValue) {
   if (typeof exportValue === "string") {
     return exportValue;
@@ -940,7 +894,6 @@ function resolveConditionalExport(exportValue) {
     null
   );
 }
-
 function resolveInstalledPackageEntry(packageName, subpath, versionRange) {
   const packageRoot = findInstalledPackageRoot(packageName, versionRange);
   if (!packageRoot) {
@@ -957,7 +910,6 @@ function resolveInstalledPackageEntry(packageName, subpath, versionRange) {
   const exportedPath =
     resolveConditionalExport(exportValue) ??
     (!cleanedSubpath ? packageJson?.main : null);
-
   const candidates = exportedPath
     ? [exportedPath]
     : cleanedSubpath
@@ -967,7 +919,6 @@ function resolveInstalledPackageEntry(packageName, subpath, versionRange) {
           cleanedSubpath,
         ]
       : ["index.js"];
-
   for (const candidate of candidates) {
     const resolved = path.join(packageRoot, candidate);
     if (existsSync(resolved)) {
@@ -976,7 +927,6 @@ function resolveInstalledPackageEntry(packageName, subpath, versionRange) {
   }
   return null;
 }
-
 const viemPackageJson = readJsonFile(
   path.join(viemPackageRoot, "package.json"),
 );
@@ -997,7 +947,6 @@ for (const viemDependency of ["@scure/bip32", "@scure/bip39"]) {
     }
   }
 }
-
 // Bun.build can lower named ESM re-exports from viem/chains to undeclared
 // identifiers (`base2` in AerodromeLpService). Use viem's CJS entrypoints so
 // chain constants stay behind normal namespace properties in the mobile bundle.
@@ -1044,7 +993,6 @@ const viemCjsResolverPlugin = {
     );
   },
 };
-
 // host-specific UI modules and any other workspace UI module that
 // pulls in CSS would otherwise be included in the bundle. Bun.build emits
 // a `.css` artifact in addition to the `.js`, and our `naming` template
@@ -1060,7 +1008,6 @@ const stubCssPlugin = {
     }));
   },
 };
-
 // Workspace plugins like `@elizaos/plugin-wallet` ship both a `.tsx` source
 // file and a stale `.js` artifact (committed by accident from an earlier
 // build) at the same path inside `src/`. Bun's default resolver picks the
@@ -1109,7 +1056,6 @@ const stripStaleJsArtifactsPlugin = {
     });
   },
 };
-
 // `@elizaos/*` workspace packages whose `package.json#main` points at
 // `dist/index.js` are unbuilt in this checkout. Bun.build's default resolver
 // reads `main`, hits a missing file, and aborts the bundle. For workspace
@@ -1133,14 +1079,12 @@ const workspaceSrcFallbackPlugin = {
       // plugins. Order matters: those plugins run earlier in the array.
       if (corePackages.includes(args.path)) return undefined;
       if (/^@elizaos\/capacitor-[^/]+$/.test(args.path)) return undefined;
-
       const segments = args.path.split("/");
       // `@elizaos/foo` => 2 segments; `@elizaos/foo/bar` => 3+
       const pkgName = `${segments[0]}/${segments[1]}`;
       const subpath = segments.slice(2).join("/");
       const pkgDir = resolvePackageDir(pkgName);
       if (!pkgDir) return undefined;
-
       // Identity-pinned packages (see dedupePlugin) must resolve their
       // SUBPATH imports from the same src tree as the bare-name import.
       // Letting a subpath like `@elizaos/core/node` fall through to the
@@ -1172,7 +1116,6 @@ const workspaceSrcFallbackPlugin = {
         }
         // No src match — fall through to the generic handling below.
       }
-
       // Skip if dist exists and contains the requested entry — let the
       // default resolver handle it normally. Some workspace packages build a
       // root dist/index.js while package.json exports additional subpaths
@@ -1211,7 +1154,6 @@ const workspaceSrcFallbackPlugin = {
       ) {
         return undefined;
       }
-
       const source = findWorkspaceSourceEntry(
         pkgDir,
         subpath,
@@ -1222,7 +1164,6 @@ const workspaceSrcFallbackPlugin = {
     });
   },
 };
-
 // Point Bun.build at a paths-free tsconfig so it doesn't try to resolve
 // `react` / `react-dom` to the `.d.ts` files the agent's main tsconfig
 // aliases for `tsc --noEmit` typechecking. Those `.d.ts` files contain
@@ -1236,7 +1177,6 @@ if (!existsSync(bundlerTsconfig)) {
   );
   process.exit(1);
 }
-
 // ios-jsc uses target=browser so Bun.build does NOT inline Bun's
 // CJS-on-V8 shims; the polyfill prefix from
 // native/ios-bun-port/polyfill/ supplies Bun + Node module shims at
@@ -1246,7 +1186,6 @@ if (!existsSync(bundlerTsconfig)) {
 // distinguish the JSContext + bridge environment from a real Bun runtime.
 const bunBuildTarget = TARGET === "ios-jsc" ? "browser" : "bun";
 const platformDefineValue = TARGET === "ios-jsc" ? "ios" : TARGET;
-
 // Browser-targeted Bun.build refuses Node built-ins outright; the polyfill
 // resolves these at runtime via __ELIZA_BRIDGE__, so we mark them external
 // and let the imports survive into the output. The list mirrors the modules
@@ -1344,7 +1283,6 @@ const iosJscExternals =
         // ios-ffi.cjs via stubResolverPlugin and inlined for ios-jsc.
       ]
     : undefined;
-
 // Pin every `@elizaos/plugin-local-inference/<subpath>` import to the WORKSPACE
 // `/plugin-local-inference/...` tree. Without this, subpath imports
 // resolve through `node_modules/@elizaos/plugin-local-inference` (a symlink Bun
@@ -1391,7 +1329,6 @@ const localInferenceDedupePlugin = {
     );
   },
 };
-
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -1475,7 +1412,6 @@ const buildResult = await Bun.build({
       : []),
   ],
 });
-
 if (!buildResult.success) {
   console.error("[build-mobile] Bun.build failed:");
   for (const log of buildResult.logs) {
@@ -1483,7 +1419,6 @@ if (!buildResult.success) {
   }
   process.exit(1);
 }
-
 // ios-jsc ships the bundle as `agent-bundle-ios.js` (matches the iOS
 // app's loader expectation); android + ios-bun stay on `agent-bundle.js`.
 const bundleFilename =
@@ -1548,7 +1483,6 @@ if (__shebangStripped !== bundleSrc) {
   console.log("[build-mobile] stripped embedded shebang (ESM-incompatible)");
   bundleSrc = __shebangStripped;
 }
-
 function initSourceComment(src, initName, searchOffset) {
   const initOffset = src.indexOf(`var ${initName} = __esm`, searchOffset);
   if (initOffset === -1) return "(definition not found)";
@@ -1560,7 +1494,6 @@ function initSourceComment(src, initName, searchOffset) {
     endOffset === -1 ? initOffset : endOffset,
   );
 }
-
 function reportInitElizaShape(src) {
   const source = String(src);
   const match =
@@ -1590,9 +1523,7 @@ function reportInitElizaShape(src) {
     );
   }
 }
-
 reportInitElizaShape(bundleSrc);
-
 // `AutonomyService2` is the dedup'd consumer-side alias for the
 // autonomy Service class. The class itself (`class AutonomyService
 // extends Service { static async start(runtime) {...} }`) lives in a
@@ -1633,7 +1564,6 @@ function scanUndeclaredRenames(src) {
   }
   return { undeclaredDefaults, undeclaredApplies, undeclaredServices };
 }
-
 const renames = scanUndeclaredRenames(bundleSrc);
 const polyfillLines = [
   "// auto-injected polyfills for Bun.build identifier-resolution gaps",
@@ -1672,7 +1602,6 @@ console.log(
 );
 const polyfillHeader = `${polyfillLines.join("\n")}\n`;
 const polyfillFooter = "";
-
 // ios-jsc: prepend the JSContext polyfill from
 // native/ios-bun-port/polyfill/dist/polyfill-prefix.js (built in parallel
 // by the polyfill agent). The prefix installs Bun + Node module shims
@@ -1727,7 +1656,6 @@ if (TARGET === "ios-jsc") {
     );
   }
 }
-
 // The bridge-version guard is appended after the polyfill so the polyfill
 // itself defines __ELIZA_BRIDGE__ usage; the guard runs before the agent
 // bundle and aborts fast on a version mismatch.
@@ -1740,7 +1668,6 @@ const iosJscBridgeCheck =
       "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ version mismatch: bundle requires v1, host provided ' + globalThis.__ELIZA_BRIDGE__.version);\n" +
       "}\n"
     : "";
-
 let prefixed;
 if (bundleSrc.startsWith("#!")) {
   const nlIndex = bundleSrc.indexOf("\n");
@@ -1760,7 +1687,6 @@ if (bundleSrc.startsWith("#!")) {
     polyfillFooter;
 }
 await Bun.write(bundlePath, prefixed);
-
 const nativeNodeOutputs = (await readdir(outDir)).filter((file) =>
   file.endsWith(".node"),
 );
@@ -1774,12 +1700,10 @@ if (nativeNodeOutputs.length > 0) {
   );
   process.exit(1);
 }
-
 const bundleSize = (await stat(bundlePath)).size;
 console.log(
   `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB (with polyfill prefix)`,
 );
-
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
 // lands here.
@@ -1806,7 +1730,6 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
     `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
   );
 }
-
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
@@ -1824,7 +1747,6 @@ for (const asset of [
   const sz = (await stat(src)).size;
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
-
 const generatedUtc = new Date().toISOString();
 const manifest = {
   generatedAt: generatedUtc,
@@ -1883,7 +1805,6 @@ await writeFile(
   JSON.stringify(manifest, null, 2),
 );
 console.log("[build-mobile] wrote plugins-manifest.json");
-
 // ios-jsc gets an additional `manifest.json` next to the bundle for the
 // Swift Capacitor loader: it lists the bridge version the bundle needs
 // and a sha256 fingerprint so the host can verify the asset on launch.
@@ -1909,7 +1830,6 @@ if (TARGET === "ios-jsc") {
     `[build-mobile] wrote manifest.json (sha256=${sha256.slice(0, 16)}..., polyfill_bundled=${iosJscPolyfillBundled})`,
   );
 }
-
 // Load smoke — fail closed on load-time eval errors.
 //
 // Bun.build's lazy CJS-interop lowering of the (cyclic) @elizaos/core barrel
@@ -1936,7 +1856,7 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
     'console.log("BUNDLE_LOAD_SMOKE_OK"); process.exit(0);';
   const smoke = spawnSync("bun", ["-e", smokeEval], {
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: 180_000,
+    timeout: 180000,
     maxBuffer: 64 * 1024 * 1024,
     encoding: "utf8",
     env: {
@@ -1958,7 +1878,6 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
   }
   console.log("[build-mobile] load smoke passed: module init OK");
 }
-
 console.log("[build-mobile] done.");
 console.log("[build-mobile] outputs:");
 for (const file of (await readdir(outDir)).sort()) {

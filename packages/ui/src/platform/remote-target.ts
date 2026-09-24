@@ -1,7 +1,7 @@
 /** Public-only renderer adapter for this desktop's native remote-target lifecycle. */
-import type { RemoteTargetPublicIdentity } from "@elizaos/shared";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
+import type { RemoteTargetPublicIdentity } from "@elizaos/core/contracts/remote-control";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 export interface RemoteTargetStatus {
   running: boolean;
   enrolled: boolean;
@@ -10,7 +10,6 @@ export interface RemoteTargetStatus {
   lastPollAt: number | null;
   lastErrorCode: string | null;
 }
-
 export interface RemoteTargetPairingChallenge {
   sessionId: string;
   code: string;
@@ -18,7 +17,6 @@ export interface RemoteTargetPairingChallenge {
   capabilities: string[];
   status: "pending";
 }
-
 export interface RemoteTargetPairingChallengeStatus {
   sessionId: string;
   status: "pending" | "claimed" | "denied" | "expired";
@@ -31,7 +29,6 @@ export interface RemoteTargetPairingChallengeStatus {
     platform: "ios" | "macos" | "windows" | "linux" | "android" | "web";
   };
 }
-
 export async function enrollRemoteTarget(input: {
   apiBaseUrl: string;
   ownerId: string;
@@ -39,7 +36,10 @@ export async function enrollRemoteTarget(input: {
   displayName: string;
   platform: "macos" | "windows" | "linux";
   managedNetwork?: boolean;
-}): Promise<{ hostId: string; identity: RemoteTargetPublicIdentity }> {
+}): Promise<{
+  hostId: string;
+  identity: RemoteTargetPublicIdentity;
+}> {
   const result = await invokeDesktopBridgeRequest<{
     hostId: string;
     status: "active";
@@ -53,7 +53,6 @@ export async function enrollRemoteTarget(input: {
     throw new Error("Desktop remote-target enrollment is unavailable.");
   return result;
 }
-
 export async function getRemoteTargetIdentity(): Promise<{
   enrolled: boolean;
   identity?: RemoteTargetPublicIdentity;
@@ -69,7 +68,6 @@ export async function getRemoteTargetIdentity(): Promise<{
     })) ?? { enrolled: false }
   );
 }
-
 export async function createRemoteTargetPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
   const result = await invokeDesktopBridgeRequest<RemoteTargetPairingChallenge>(
     {
@@ -81,7 +79,6 @@ export async function createRemoteTargetPairingChallenge(): Promise<RemoteTarget
   if (!result) throw new Error("Remote pairing challenge is unavailable.");
   return result;
 }
-
 export async function readRemoteTargetPairingChallenge(
   sessionId: string,
 ): Promise<RemoteTargetPairingChallengeStatus> {
@@ -94,7 +91,6 @@ export async function readRemoteTargetPairingChallenge(
   if (!result) throw new Error("Remote pairing status is unavailable.");
   return result;
 }
-
 export async function confirmRemoteTargetPairing(
   sessionId: string,
 ): ReturnType<typeof activateRemoteTarget> {
@@ -108,7 +104,6 @@ export async function confirmRemoteTargetPairing(
   if (!result) throw new Error("Remote pairing confirmation is unavailable.");
   return result;
 }
-
 export async function activateRemoteTarget(input: {
   sessionId?: string;
   code: string;
@@ -155,7 +150,6 @@ export async function activateRemoteTarget(input: {
   if (!result) throw new Error("Remote-target activation is unavailable.");
   return result;
 }
-
 export async function compensateRemoteTargetActivation(
   sessionId: string,
 ): Promise<{
@@ -175,10 +169,10 @@ export async function compensateRemoteTargetActivation(
     throw new Error("Remote-target activation compensation is unavailable.");
   return result;
 }
-
-export async function commitRemoteTargetActivation(
-  sessionId: string,
-): Promise<{ status: "active"; alreadyCommitted: boolean }> {
+export async function commitRemoteTargetActivation(sessionId: string): Promise<{
+  status: "active";
+  alreadyCommitted: boolean;
+}> {
   const result = await invokeDesktopBridgeRequest<{
     sessionId: string;
     status: "active";
@@ -192,7 +186,6 @@ export async function commitRemoteTargetActivation(
     throw new Error("Remote-target activation commit is unavailable.");
   return result;
 }
-
 export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
   return (
     (await invokeDesktopBridgeRequest<RemoteTargetStatus>({
@@ -209,40 +202,44 @@ export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
     }
   );
 }
-
 export async function startRemoteTarget(): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ running: true }>({
+  const result = await invokeDesktopBridgeRequest<{
+    running: true;
+  }>({
     rpcMethod: "remoteTargetStart",
     ipcChannel: "remoteTarget:start",
     params: {},
   });
   return result?.running ?? false;
 }
-
 export async function stopRemoteTarget(): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ running: false }>({
+  const result = await invokeDesktopBridgeRequest<{
+    running: false;
+  }>({
     rpcMethod: "remoteTargetStop",
     ipcChannel: "remoteTarget:stop",
     params: {},
   });
   return result ? !result.running : false;
 }
-
 export async function revokeRemoteTargetSession(
   sessionId: string,
 ): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ revoked: true }>({
+  const result = await invokeDesktopBridgeRequest<{
+    revoked: true;
+  }>({
     rpcMethod: "remoteTargetRevoke",
     ipcChannel: "remoteTarget:revoke",
     params: { sessionId },
   });
   return result?.revoked ?? false;
 }
-
 export async function finalizeRemoteTargetHostRevoke(
   hostId: string,
 ): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ cleaned: true }>({
+  const result = await invokeDesktopBridgeRequest<{
+    cleaned: true;
+  }>({
     rpcMethod: "remoteTargetFinalizeHostRevoke",
     ipcChannel: "remoteTarget:finalizeHostRevoke",
     params: { hostId },

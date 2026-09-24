@@ -5,7 +5,7 @@
  * second calendar store or write boundary.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   Button,
   Grid,

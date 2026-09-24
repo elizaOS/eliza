@@ -20,14 +20,14 @@ import {
   recentConversationTextsFromState,
   type State,
 } from "@elizaos/core";
+import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 import {
   collectKeywordTermMatches,
   hasPreparedKeywordTermMatch,
-  normalizeCharacterLanguage,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
   textIncludesKeywordTerm,
-} from "@elizaos/shared";
+} from "@elizaos/core/i18n/keyword-matching";
 import {
   type ContextSignalKey,
   resolveContextSignalSpec,

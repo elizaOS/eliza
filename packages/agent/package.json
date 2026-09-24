@@ -98,21 +98,6 @@
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
-    "./testing/*": {
-      "types": "./dist/testing/*.d.ts",
-      "eliza-source": {
-        "types": "./src/testing/*.ts",
-        "import": "./src/testing/*.ts",
-        "default": "./src/testing/*.ts"
-      },
-      "bun": {
-        "types": "./src/testing/*.ts",
-        "import": "./src/testing/*.ts",
-        "default": "./src/testing/*.ts"
-      },
-      "import": "./dist/testing/*.js",
-      "default": "./dist/testing/*.js"
-    },
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {
@@ -322,6 +307,57 @@
       },
       "import": "./dist/api/wallet-keygen.js",
       "default": "./dist/api/wallet-keygen.js"
+    },
+    "./testing/*": {
+      "types": "./dist/testing/*.d.ts",
+      "eliza-source": {
+        "types": "./src/testing/*.ts",
+        "import": "./src/testing/*.ts",
+        "default": "./src/testing/*.ts"
+      },
+      "bun": {
+        "types": "./src/testing/*.ts",
+        "import": "./src/testing/*.ts",
+        "default": "./src/testing/*.ts"
+      },
+      "import": "./dist/testing/*.js",
+      "default": "./dist/testing/*.js"
+    },
+    "./first-run-config": {
+      "types": "./dist/first-run-config.d.ts",
+      "eliza-source": "./src/first-run-config.ts",
+      "import": "./dist/first-run-config.js",
+      "default": "./dist/first-run-config.js"
+    },
+    "./host-use-cases": {
+      "types": "./dist/host-use-cases.d.ts",
+      "eliza-source": "./src/host-use-cases.ts",
+      "import": "./dist/host-use-cases.js",
+      "default": "./dist/host-use-cases.js"
+    },
+    "./sandbox-registry": {
+      "types": "./dist/sandbox-registry.d.ts",
+      "eliza-source": "./src/sandbox-registry.ts",
+      "import": "./dist/sandbox-registry.js",
+      "default": "./dist/sandbox-registry.js"
+    },
+    "./host-manifests/app-manifest": {
+      "types": "./dist/host-manifests/app-manifest.d.ts",
+      "eliza-source": "./src/host-manifests/app-manifest.ts",
+      "import": "./dist/host-manifests/app-manifest.js",
+      "default": "./dist/host-manifests/app-manifest.js"
+    },
+    "./host-manifests/plugin-manifest": {
+      "types": "./dist/host-manifests/plugin-manifest.d.ts",
+      "eliza-source": "./src/host-manifests/plugin-manifest.ts",
+      "import": "./dist/host-manifests/plugin-manifest.js",
+      "default": "./dist/host-manifests/plugin-manifest.js"
+    },
+    "./api/loopback-trust": {
+      "types": "./dist/api/loopback-trust.d.ts",
+      "eliza-source": "./src/api/loopback-trust.ts",
+      "import": "./dist/api/loopback-trust.js",
+      "default": "./dist/api/loopback-trust.js"
     }
   },
   "publishConfig": {
@@ -363,7 +399,6 @@
     "@elizaos/plugin-vision": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",
     "drizzle-orm": "0.45.2",

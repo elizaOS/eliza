@@ -33,7 +33,7 @@ import {
   readStoredStewardToken,
   StewardSessionError,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {

@@ -17,7 +17,8 @@
 		"declaration": false,
 		"declarationMap": false,
 		"paths": {
-			"@elizaos/core": ["./src/index.ts"]
+			"@elizaos/core": ["./src/index.ts"],
+			"@elizaos/core/*": ["./src/*"]
 		},
 		"incremental": false
 	},

@@ -3,10 +3,13 @@
  * `import { CONNECTOR_PLUGINS } from "@elizaos/agent/config/plugin-auto-enable"`
  * resolve.
  *
- * The auto-enable surface lives in `@elizaos/shared`. The published
+ * The auto-enable surface lives in `@elizaos/core`. The published
  * `@elizaos/app@2.0.0-alpha.537` bundle has a frozen reference to the
  * old `@elizaos/agent` subpath; until that bundle is republished against
- * `@elizaos/shared`, this file is the bridge that keeps Linux Electrobun
+ * `@elizaos/core`, this file is the bridge that keeps Linux Electrobun
  * (and any other consumer of the packaged eliza-dist) booting.
  */
-export { CONNECTOR_PLUGINS, isConnectorConfigured } from "@elizaos/shared";
+export {
+  CONNECTOR_PLUGINS,
+  isConnectorConfigured,
+} from "@elizaos/core/config/plugin-auto-enable-engine";

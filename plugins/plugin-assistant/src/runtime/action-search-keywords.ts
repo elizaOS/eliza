@@ -1,31 +1,27 @@
 /**
  * Action search keywords for tool retrieval.
  *
- * The backing data is authored in @elizaos/shared/i18n/keywords.
+ * The backing data is authored in @elizaos/core/i18n/keywords.
  * These helpers deliberately support retrieval/ranking only. They must not be
  * used as hard action availability checks.
  */
-
 import {
   collectKeywordTermMatches,
   splitKeywordDoc,
   VALIDATION_KEYWORD_DOCS,
-} from "@elizaos/shared";
+} from "@elizaos/core/i18n/keyword-matching";
 
 type KeywordDoc = {
   base?: string;
   locales?: Partial<Record<string, string>>;
 };
-
 type KeywordTree = {
   [key: string]: KeywordTree | KeywordDoc;
 };
-
 export type ActionSearchKeywordSource = {
   key: string;
   terms: string[];
 };
-
 const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
   admin: ["contextSignal.admin"],
   agent_internal: ["contextSignal.agent_internal"],
@@ -93,7 +89,6 @@ const CONTEXT_KEYWORD_STEMS: Record<string, readonly string[]> = {
   web: ["contextSignal.web", "contextSignal.web_search"],
   world: ["contextSignal.world"],
 };
-
 export function actionNameToKeywordStem(actionName: string): string {
   const words = String(actionName)
     .trim()
@@ -106,7 +101,6 @@ export function actionNameToKeywordStem(actionName: string): string {
   }
   return [words[0], ...words.slice(1).map(capitalizeAscii)].join("");
 }
-
 export function getActionSearchKeywordSources(input: {
   name: string;
   contexts?: unknown;
@@ -117,13 +111,11 @@ export function getActionSearchKeywordSources(input: {
   if (actionStem) {
     stems.add(`action.${actionStem}`);
   }
-
   for (const context of normalizeStringArray(input.contexts)) {
     for (const stem of CONTEXT_KEYWORD_STEMS[context] ?? []) {
       stems.add(stem);
     }
   }
-
   const sources: ActionSearchKeywordSource[] = [];
   for (const stem of stems) {
     for (const source of collectKeywordSourcesUnderStem(stem, {
@@ -134,7 +126,6 @@ export function getActionSearchKeywordSources(input: {
   }
   return dedupeKeywordSources(sources);
 }
-
 export function getActionSearchKeywordTerms(input: {
   name: string;
   contexts?: unknown;
@@ -144,33 +135,33 @@ export function getActionSearchKeywordTerms(input: {
     getActionSearchKeywordSources(input).flatMap((source) => source.terms),
   );
 }
-
 export function countActionSearchKeywordMatches(
   texts: readonly string[],
   terms: readonly string[],
 ): number {
   return collectKeywordTermMatches(texts, terms).size;
 }
-
 function collectKeywordSourcesUnderStem(
   stem: string,
-  options: { includeAllLocales: boolean },
+  options: {
+    includeAllLocales: boolean;
+  },
 ): ActionSearchKeywordSource[] {
   const node = lookupKeywordNode(stem);
   if (!node) {
     return [];
   }
-
   const sources: ActionSearchKeywordSource[] = [];
   collectKeywordDocs(node, stem, sources, options);
   return sources;
 }
-
 function collectKeywordDocs(
   node: KeywordTree | KeywordDoc,
   key: string,
   sources: ActionSearchKeywordSource[],
-  options: { includeAllLocales: boolean },
+  options: {
+    includeAllLocales: boolean;
+  },
 ): void {
   if (isKeywordDoc(node)) {
     const terms = options.includeAllLocales
@@ -185,12 +176,10 @@ function collectKeywordDocs(
     }
     return;
   }
-
   for (const [childKey, childNode] of Object.entries(node)) {
     collectKeywordDocs(childNode, `${key}.${childKey}`, sources, options);
   }
 }
-
 function lookupKeywordNode(path: string): KeywordTree | KeywordDoc | undefined {
   let current: unknown = VALIDATION_KEYWORD_DOCS as KeywordTree;
   for (const segment of path.split(".")) {
@@ -204,11 +193,9 @@ function lookupKeywordNode(path: string): KeywordTree | KeywordDoc | undefined {
   }
   return current as KeywordTree | KeywordDoc;
 }
-
 function isKeywordDoc(value: KeywordTree | KeywordDoc): value is KeywordDoc {
   return "base" in value || "locales" in value;
 }
-
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -218,11 +205,9 @@ function normalizeStringArray(value: unknown): string[] {
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
 }
-
 function capitalizeAscii(value: string): string {
   return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 }
-
 function dedupeTerms(terms: readonly string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -236,7 +221,6 @@ function dedupeTerms(terms: readonly string[]): string[] {
   }
   return result;
 }
-
 function dedupeKeywordSources(
   sources: readonly ActionSearchKeywordSource[],
 ): ActionSearchKeywordSource[] {

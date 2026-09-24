@@ -5,7 +5,7 @@
  * Cloud panel signs the user in rather than pretending the route is live.
  */
 
-import type { ModelOption } from "@elizaos/shared";
+import type { ModelOption } from "@elizaos/core/contracts/first-run-options";
 import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import { type ComponentType, type ReactNode, useState } from "react";
 import type {
@@ -27,9 +27,7 @@ import type { PluginInfo } from "./useProviderEntries";
 
 type SubscriptionProviderSelection =
   (typeof SUBSCRIPTION_PROVIDER_SELECTIONS)[number];
-
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
-
 /**
  * Unsigned Cloud is an account fact, not a serving-source fact. Keep its copy
  * aligned with the same live serving axes used by the Intelligence summary so
@@ -53,7 +51,6 @@ export function describeUnsignedCloudChat(
           provider,
         });
   }
-
   if (axes.inference === "local") {
     return surface === "tile"
       ? t("providerswitcher.cloudTileUnsignedDescription", {
@@ -65,7 +62,6 @@ export function describeUnsignedCloudChat(
             "Eliza Cloud isn't signed in. Chat replies are using Local.",
         });
   }
-
   return surface === "tile"
     ? t("providerswitcher.cloudTileUnsignedCurrentDescription", {
         defaultValue:
@@ -76,13 +72,15 @@ export function describeUnsignedCloudChat(
           "Eliza Cloud isn't signed in. Your current chat provider stays unchanged.",
       });
 }
-
 function ProviderPanelHeader({
   icon: Icon,
   title,
   children,
 }: {
-  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: ComponentType<{
+    className?: string;
+    "aria-hidden"?: boolean;
+  }>;
   title: string;
   children?: ReactNode;
 }) {
@@ -98,7 +96,6 @@ function ProviderPanelHeader({
     </header>
   );
 }
-
 export function LocalProviderPanel({
   cloudCallsDisabled,
   routingModeSaving,
@@ -171,7 +168,6 @@ export function LocalProviderPanel({
     </div>
   );
 }
-
 export interface CloudPanelProps {
   cloudCallsDisabled: boolean;
   isCloudSelected: boolean;
@@ -182,14 +178,16 @@ export interface CloudPanelProps {
   elizaCloudConnected: boolean;
   largeModelOptions: ModelOption[];
   cloudModelSchema: CloudModelSchema | null;
-  modelValues: { values: Record<string, unknown>; setKeys: Set<string> };
+  modelValues: {
+    values: Record<string, unknown>;
+    setKeys: Set<string>;
+  };
   currentLargeModel: string;
   modelSaving: boolean;
   modelSaveSuccess: boolean;
   onModelFieldChange: (key: string, value: unknown) => void;
   servingAxes: ServingAxes;
 }
-
 export function CloudPanel({
   cloudCallsDisabled,
   isCloudSelected,
@@ -334,7 +332,6 @@ export function CloudPanel({
     </div>
   );
 }
-
 export interface SubscriptionPanelProps {
   selection: SubscriptionProviderSelection;
   visibleProviderPanelId: string;
@@ -345,7 +342,6 @@ export interface SubscriptionPanelProps {
     activate?: boolean,
   ) => Promise<void>;
 }
-
 export function SubscriptionPanel({
   selection,
   visibleProviderPanelId,
@@ -393,7 +389,6 @@ export function SubscriptionPanel({
     </div>
   );
 }
-
 export interface ApiKeyPanelProps {
   selectedProvider: PluginInfo;
   panelLabel: string;
@@ -409,7 +404,6 @@ export interface ApiKeyPanelProps {
   ) => void;
   loadPlugins: () => Promise<void>;
 }
-
 export function ApiKeyPanel({
   selectedProvider,
   panelLabel,

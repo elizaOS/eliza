@@ -18,7 +18,7 @@ import {
   ServiceType,
   stableStringify,
 } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/shared";
+import { isValidTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 import type {
   ApprovalPayload,
   CalendarCardApprovalCorrelation,

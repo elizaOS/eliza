@@ -2,19 +2,22 @@
  * Vitest configuration for the orchestrator package. Workspace source aliases
  * keep clean-checkout tests independent of prebuilt peer-package artifacts.
  */
+
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-
 export default defineConfig({
   resolve: {
     alias: [
       ...Object.entries({
-        "@elizaos/shared/db/raw-sql": fileURLToPath(
-          new URL("../../packages/shared/src/db/raw-sql.ts", import.meta.url),
-        ),
-        "@elizaos/shared/host-execution-env": fileURLToPath(
+        "@elizaos/plugin-sql/database-utils/raw-sql": fileURLToPath(
           new URL(
-            "../../packages/shared/src/host-execution-env.ts",
+            "../plugin-sql/src/database-utils/raw-sql.ts",
+            import.meta.url,
+          ),
+        ),
+        "@elizaos/core/host-execution-env": fileURLToPath(
+          new URL(
+            "../../packages/core/src/host-execution-env.ts",
             import.meta.url,
           ),
         ),
@@ -36,20 +39,10 @@ export default defineConfig({
         "@elizaos/plugin-sql": fileURLToPath(
           new URL("../plugin-sql/src/index.ts", import.meta.url),
         ),
-        "@elizaos/shared": fileURLToPath(
-          new URL("./__tests__/shared-runtime-env.ts", import.meta.url),
-        ),
       }).map(([find, replacement]) => ({
-        find: find === "@elizaos/shared" ? /^@elizaos\/shared$/ : find,
+        find,
         replacement,
       })),
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement:
-          fileURLToPath(
-            new URL("../../packages/shared/src/", import.meta.url),
-          ) + "$1",
-      },
     ],
   },
   test: {

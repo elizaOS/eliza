@@ -4,8 +4,7 @@
  * date-times use Temporal-compatible disambiguation so repeated and skipped
  * wall times remain deterministic across DST and date-line transitions.
  */
-import { normalizeTimeZone } from "@elizaos/shared";
-
+import { normalizeTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 export interface ZonedDateParts {
   year: number;
   month: number;
@@ -14,13 +13,11 @@ export interface ZonedDateParts {
   minute: number;
   second: number;
 }
-
 const zonedFormatterCache = new Map<string, Intl.DateTimeFormat>();
 const offsetFormatterCache = new Map<string, Intl.DateTimeFormat>();
-const MINUTE_MS = 60_000;
+const MINUTE_MS = 60000;
 const HOUR_MS = 60 * MINUTE_MS;
 const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
-
 function getZonedFormatter(rawTimeZone: string): Intl.DateTimeFormat {
   // The canonical normalizer maps model-authored UTC spellings ("Z", "+00:00")
   // to UTC and falls back to the deployment default for unknown names —
@@ -43,7 +40,6 @@ function getZonedFormatter(rawTimeZone: string): Intl.DateTimeFormat {
   zonedFormatterCache.set(cacheKey, formatter);
   return formatter;
 }
-
 function getOffsetFormatter(rawTimeZone: string): Intl.DateTimeFormat {
   const timeZone = normalizeTimeZone(rawTimeZone);
   const cacheKey = `offset:${timeZone}`;
@@ -60,7 +56,6 @@ function getOffsetFormatter(rawTimeZone: string): Intl.DateTimeFormat {
   offsetFormatterCache.set(cacheKey, formatter);
   return formatter;
 }
-
 export function getZonedDateParts(
   date: Date,
   timeZone: string,
@@ -82,7 +77,6 @@ export function getZonedDateParts(
     second: read("second"),
   };
 }
-
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   const parts = getOffsetFormatter(timeZone).formatToParts(date);
   const token =
@@ -97,7 +91,6 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   const minutes = Number(match[3] ?? "0");
   return sign * (hours * 60 + minutes);
 }
-
 function formatOffsetToken(offsetMinutes: number): string {
   const sign = offsetMinutes >= 0 ? "+" : "-";
   const absolute = Math.abs(offsetMinutes);
@@ -109,7 +102,6 @@ function formatOffsetToken(offsetMinutes: number): string {
     .padStart(2, "0");
   return `${sign}${hours}:${minutes}`;
 }
-
 function localPartsToEpochMs(parts: ZonedDateParts): number {
   return Date.UTC(
     parts.year,
@@ -120,7 +112,6 @@ function localPartsToEpochMs(parts: ZonedDateParts): number {
     parts.second,
   );
 }
-
 function sameZonedParts(left: ZonedDateParts, right: ZonedDateParts): boolean {
   return (
     left.year === right.year &&
@@ -131,7 +122,6 @@ function sameZonedParts(left: ZonedDateParts, right: ZonedDateParts): boolean {
     left.second === right.second
   );
 }
-
 export function buildUtcDateFromLocalParts(
   timeZone: string,
   parts: ZonedDateParts,
@@ -163,7 +153,6 @@ export function buildUtcDateFromLocalParts(
     // Compatible disambiguation selects the earlier instant during a repeat.
     return exact[0];
   }
-
   const shiftedForward = candidates
     .map((candidate) => {
       let wallDeltaMs: number;
@@ -192,12 +181,10 @@ export function buildUtcDateFromLocalParts(
     // including jurisdictions that skip an entire local calendar date.
     return shiftedForward[0].candidate;
   }
-
   throw new RangeError(
     `Local date-time cannot be resolved in timezone ${timeZone}`,
   );
 }
-
 export function formatInstantAsRfc3339InTimeZone(
   value: Date | string,
   timeZone: string,
@@ -221,7 +208,6 @@ export function formatInstantAsRfc3339InTimeZone(
     ].join("T") + formatOffsetToken(offset)
   );
 }
-
 export function addDaysToLocalDate(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
   dayDelta: number,
@@ -242,7 +228,6 @@ export function addDaysToLocalDate(
     day: utcDate.getUTCDate(),
   };
 }
-
 export function getWeekdayForLocalDate(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
 ): number {
@@ -250,7 +235,6 @@ export function getWeekdayForLocalDate(
     Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day, 12, 0, 0),
   ).getUTCDay();
 }
-
 export function getLocalDateKey(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
 ): string {
@@ -258,7 +242,6 @@ export function getLocalDateKey(
     .toString()
     .padStart(2, "0")}-${dateOnly.day.toString().padStart(2, "0")}`;
 }
-
 export function addMinutes(date: Date, minutes: number): Date {
-  return new Date(date.getTime() + minutes * 60_000);
+  return new Date(date.getTime() + minutes * 60000);
 }

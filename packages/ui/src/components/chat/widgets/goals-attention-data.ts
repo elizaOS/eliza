@@ -14,26 +14,22 @@
  * Wire shape mirrors the JSON served by the PA goals route and parsed in
  * plugins/plugin-goals/src/components/goals/GoalsView.tsx (GoalsWire /
  * GoalRecordWire / GoalDefinitionWire). The canonical record type is
- * LifeOpsGoalRecord (@elizaos/shared); the field literals below mirror
+ * LifeOpsGoalRecord (@elizaos/core); the field literals below mirror
  * GoalStatus / GoalReviewState in plugins/plugin-goals/src/types.ts. We only
  * read the fields a glanceable surface needs.
  */
-
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../../../api/csrf-client";
-
 /** How often a home surface refreshes goals - matches GoalsView's 20s poll. */
-export const GOALS_REFRESH_INTERVAL_MS = 20_000;
-const GOALS_REQUEST_TIMEOUT_MS = 15_000;
-
+export const GOALS_REFRESH_INTERVAL_MS = 20000;
+const GOALS_REQUEST_TIMEOUT_MS = 15000;
 export type GoalStatus = "active" | "paused" | "archived" | "satisfied";
 export type GoalReviewState =
   | "idle"
   | "needs_attention"
   | "on_track"
   | "at_risk";
-
 const KNOWN_STATUSES: ReadonlySet<string> = new Set<GoalStatus>([
   "active",
   "paused",
@@ -46,7 +42,6 @@ const KNOWN_REVIEW_STATES: ReadonlySet<string> = new Set<GoalReviewState>([
   "on_track",
   "at_risk",
 ]);
-
 /** A goal flattened for a glanceable surface. Mapped from a wire record. */
 export interface AttentionGoal {
   id: string;
@@ -54,32 +49,36 @@ export interface AttentionGoal {
   status: GoalStatus;
   reviewState: GoalReviewState;
 }
-
 function toStatus(value: unknown): GoalStatus {
   return typeof value === "string" && KNOWN_STATUSES.has(value)
     ? (value as GoalStatus)
     : "active";
 }
-
 function toReviewState(value: unknown): GoalReviewState {
   return typeof value === "string" && KNOWN_REVIEW_STATES.has(value)
     ? (value as GoalReviewState)
     : "idle";
 }
-
 /**
  * Validate + flatten the untrusted `{ goals: [{ goal, links }] }` payload at
  * the network boundary, dropping any record missing the fields we render.
  */
 export function parseGoals(payload: unknown): AttentionGoal[] {
   if (typeof payload !== "object" || payload === null) return [];
-  const records = (payload as { goals?: unknown }).goals;
+  const records = (
+    payload as {
+      goals?: unknown;
+    }
+  ).goals;
   if (!Array.isArray(records)) return [];
-
   const goals: AttentionGoal[] = [];
   for (const record of records) {
     if (typeof record !== "object" || record === null) continue;
-    const goal = (record as { goal?: unknown }).goal;
+    const goal = (
+      record as {
+        goal?: unknown;
+      }
+    ).goal;
     if (typeof goal !== "object" || goal === null) continue;
     const { id, title, status, reviewState } = goal as {
       id?: unknown;
@@ -97,7 +96,6 @@ export function parseGoals(payload: unknown): AttentionGoal[] {
   }
   return goals;
 }
-
 export async function fetchGoals(
   callerSignal?: AbortSignal,
 ): Promise<AttentionGoal[]> {
@@ -116,14 +114,12 @@ export async function fetchGoals(
   }
   return parseGoals(await response.json());
 }
-
 /** Goals that belong on a glance surface: live (non-archived, non-satisfied). */
 export function liveGoals(goals: AttentionGoal[]): AttentionGoal[] {
   return goals.filter(
     (goal) => goal.status !== "archived" && goal.status !== "satisfied",
   );
 }
-
 /**
  * The single most-urgent goal: the first at_risk goal, otherwise the first
  * needs_attention goal, otherwise null. Ties broken by title so the surfaced
@@ -143,7 +139,6 @@ export function mostUrgentGoal(goals: AttentionGoal[]): AttentionGoal | null {
   if (needsAttention.length > 0) return needsAttention[0];
   return null;
 }
-
 /** Count of live goals that need attention (at_risk or needs_attention). */
 export function attentionCount(goals: AttentionGoal[]): number {
   return liveGoals(goals).filter(
@@ -151,7 +146,6 @@ export function attentionCount(goals: AttentionGoal[]): number {
       goal.reviewState === "at_risk" || goal.reviewState === "needs_attention",
   ).length;
 }
-
 /** Shallow content equality so an unchanged 20s poll doesn't re-render. */
 export function goalsEqual(
   a: AttentionGoal[] | null,
@@ -168,7 +162,6 @@ export function goalsEqual(
     );
   });
 }
-
 /**
  * Best-effort goals fetch for a glance surface: honors the auth gate and the
  * limited-cloud-base guard, and swallows fetch errors (returns `null` so the

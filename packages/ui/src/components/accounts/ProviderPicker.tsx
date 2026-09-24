@@ -11,8 +11,8 @@
  * keyboard never gets trapped in a group.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { codingProviderDescriptorForProvider } from "@elizaos/shared";
+import { codingProviderDescriptorForProvider } from "@elizaos/core/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { Search } from "lucide-react";
 import {
   type KeyboardEvent,
@@ -35,16 +35,13 @@ import { ProviderMark } from "./provider-icons";
 interface ProviderPickerProps {
   onPick: (providerId: LinkedAccountProviderId) => void;
 }
-
 const CATEGORY_ORDER: AccountProviderCategory[] = ["coding", "chat"];
-
 const CATEGORY_LABEL: Record<AccountProviderCategory, string> = {
   coding: "Subscriptions",
   chat: "API keys",
   local: "Local",
   cloud: "Cloud",
 };
-
 /** One short capability line, not a pill row (kills the tag maze). */
 export function capabilityLine(option: AccountProviderOption): string {
   if (option.unavailable) return "Not available to link here";
@@ -71,18 +68,15 @@ export function capabilityLine(option: AccountProviderOption): string {
   }
   return "No model inference or coding-agent spawn support";
 }
-
 export function ProviderPicker({ onPick }: ProviderPickerProps) {
   const t = useAppSelector((s) => s.t);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-
   // Flattened, filtered, category-ordered list. Search matches name +
   // description so "claude", "key", "gpt" all resolve.
   const flat = useMemo(() => {
@@ -103,19 +97,16 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
     }
     return items;
   }, [query]);
-
   // Keep the highlight in range as the filter narrows.
   useEffect(() => {
     setActiveIndex((i) => Math.min(i, Math.max(0, flat.length - 1)));
   }, [flat.length]);
-
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(
       `[data-index="${activeIndex}"]`,
     );
     el?.scrollIntoView?.({ block: "nearest" });
   }, [activeIndex]);
-
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -129,10 +120,8 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
       if (option) onPick(option.id);
     }
   };
-
   // Group boundaries for section headers, computed from the flat order.
   let lastCategory: AccountProviderCategory | null = null;
-
   return (
     <div className="grid gap-2">
       <div className="relative">

@@ -49,6 +49,66 @@
       },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./cloud-config/base-url": {
+      "types": "./dist/cloud-config/base-url.d.ts",
+      "eliza-source": "./src/cloud-config/base-url.ts",
+      "import": "./dist/cloud-config/base-url.js",
+      "default": "./dist/cloud-config/base-url.js"
+    },
+    "./cloud-config/cloud-provisioning": {
+      "types": "./dist/cloud-config/cloud-provisioning.d.ts",
+      "eliza-source": "./src/cloud-config/cloud-provisioning.ts",
+      "import": "./dist/cloud-config/cloud-provisioning.js",
+      "default": "./dist/cloud-config/cloud-provisioning.js"
+    },
+    "./cloud-config/cloud-secrets": {
+      "types": "./dist/cloud-config/cloud-secrets.d.ts",
+      "eliza-source": "./src/cloud-config/cloud-secrets.ts",
+      "import": "./dist/cloud-config/cloud-secrets.js",
+      "default": "./dist/cloud-config/cloud-secrets.js"
+    },
+    "./cloud-config/dev-cloud-env-authority": {
+      "types": "./dist/cloud-config/dev-cloud-env-authority.d.ts",
+      "eliza-source": "./src/cloud-config/dev-cloud-env-authority.ts",
+      "import": "./dist/cloud-config/dev-cloud-env-authority.js",
+      "default": "./dist/cloud-config/dev-cloud-env-authority.js"
+    },
+    "./cloud-config/domain-contract": {
+      "types": "./dist/cloud-config/domain-contract.d.ts",
+      "eliza-source": "./src/cloud-config/domain-contract.ts",
+      "import": "./dist/cloud-config/domain-contract.js",
+      "default": "./dist/cloud-config/domain-contract.js"
+    },
+    "./cloud-config": {
+      "types": "./dist/cloud-config/index.d.ts",
+      "eliza-source": "./src/cloud-config/index.ts",
+      "import": "./dist/cloud-config/index.js",
+      "default": "./dist/cloud-config/index.js"
+    },
+    "./cloud-config/is-cloud-reachable": {
+      "types": "./dist/cloud-config/is-cloud-reachable.d.ts",
+      "eliza-source": "./src/cloud-config/is-cloud-reachable.ts",
+      "import": "./dist/cloud-config/is-cloud-reachable.js",
+      "default": "./dist/cloud-config/is-cloud-reachable.js"
+    },
+    "./cloud-config/server-cloud-tts": {
+      "types": "./dist/cloud-config/server-cloud-tts.d.ts",
+      "eliza-source": "./src/cloud-config/server-cloud-tts.ts",
+      "import": "./dist/cloud-config/server-cloud-tts.js",
+      "default": "./dist/cloud-config/server-cloud-tts.js"
+    },
+    "./steward-session-client": {
+      "types": "./dist/steward-session-client/index.d.ts",
+      "eliza-source": "./src/steward-session-client/index.ts",
+      "import": "./dist/steward-session-client/index.js",
+      "default": "./dist/steward-session-client/index.js"
+    },
+    "./steward-session-client/steward-oauth-pkce": {
+      "types": "./dist/steward-session-client/steward-oauth-pkce.d.ts",
+      "eliza-source": "./src/steward-session-client/steward-oauth-pkce.ts",
+      "import": "./dist/steward-session-client/steward-oauth-pkce.js",
+      "default": "./dist/steward-session-client/steward-oauth-pkce.js"
     }
   },
   "files": [
@@ -81,7 +141,6 @@
     "@ai-sdk/provider-utils": "5.0.5",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "1.8.0",
     "@opentelemetry/api": "1.9.1",

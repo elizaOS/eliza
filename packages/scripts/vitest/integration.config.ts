@@ -5,7 +5,6 @@ import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
   getElizaCoreEntry,
-  getSharedSourceRoot,
   getUiSourceRoot,
 } from "@elizaos/testing/package-paths";
 import { repoRoot } from "./repo-root";
@@ -16,7 +15,6 @@ import {
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
-  getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
   type ModuleAlias,
@@ -126,7 +124,6 @@ const elizaGlob = (pattern: string): string =>
   relativeElizaRoot === "" ? pattern : `${relativeElizaRoot}/${pattern}`;
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const workspaceUiSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages",
@@ -179,7 +176,6 @@ const integrationResolveAlias: ModuleAlias[] = [
     "app-task-coordinator",
     "plugin-workflow",
   ]),
-  ...getSharedSourceAliases(sharedSourceRoot),
   // Vite's SSR resolver does not consistently select custom export
   // conditions, so source-alias the remaining workspace leaves after the
   // specialized entry points above. This keeps clean CI independent of dist.

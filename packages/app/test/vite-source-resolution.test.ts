@@ -224,7 +224,7 @@ describe("workspace package resolution", () => {
     try {
       const resolved =
         await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/shared/terminal/palette",
+          "@elizaos/ui/terminal/palette",
           path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
         );
       expect(resolved?.id).toBe(

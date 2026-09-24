@@ -5,7 +5,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { conversationClientUserMemoryId } from "@elizaos/shared/conversation-chat-marker";
+import { conversationClientUserMemoryId } from "@elizaos/core/conversation-chat-marker";
 import { describe, expect, it } from "vitest";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import {

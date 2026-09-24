@@ -12,7 +12,7 @@ import {
 } from "@elizaos/auth/auth/account-storage";
 import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountConfig } from "@elizaos/shared";
+import { type LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 interface FirstRunAccountPool {

@@ -30,19 +30,19 @@ import {
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared";
+import {
+  type CreateLifeOpsCalendarEventAttendee,
+  type CreateLifeOpsCalendarEventRequest,
+  type GetLifeOpsCalendarFeedRequest,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarRecurrenceScope,
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
-} from "@elizaos/shared";
+} from "@elizaos/core/i18n/recurrence-markers";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import {
   CALENDAR_DETAIL_ALIASES,

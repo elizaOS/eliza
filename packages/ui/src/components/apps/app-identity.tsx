@@ -6,18 +6,17 @@
  * available, so an app without art still gets a stable, themed placeholder.
  */
 
+import { type CSSProperties, useState } from "react";
 import {
   createGeneratedAppHeroDataUrl,
   getAppHeroMonogram,
-} from "@elizaos/shared";
-import { type CSSProperties, useState } from "react";
+} from "../../app-hero-art.js";
 import { Card } from "../ui/card";
 import {
   getAppCategoryIcon,
   iconImageSource,
   resolveRuntimeImageUrl,
 } from "./app-identity.helpers";
-
 export interface AppIdentitySource {
   name: string;
   displayName?: string | null;
@@ -26,7 +25,6 @@ export interface AppIdentitySource {
   heroImage?: string | null;
   description?: string | null;
 }
-
 const APP_TILE_PALETTES = [
   ["#f97316", "#e11d48"],
   ["#10b981", "#84cc16"],
@@ -37,7 +35,6 @@ const APP_TILE_PALETTES = [
   ["#e11d48", "#fb7185"],
   ["#57534e", "#78716c"],
 ] as const;
-
 function hashString(value: string): number {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -45,15 +42,12 @@ function hashString(value: string): number {
   }
   return Math.abs(hash);
 }
-
 function getAppMonogram(app: AppIdentitySource): string {
   return getAppHeroMonogram(app);
 }
-
 function getAppPalette(name: string): readonly [string, string] {
   return APP_TILE_PALETTES[hashString(name) % APP_TILE_PALETTES.length];
 }
-
 function useResolvedAppImageSource(app: AppIdentitySource): {
   imageSrc: string | null;
   handleImageError: () => void;
@@ -85,7 +79,6 @@ function useResolvedAppImageSource(app: AppIdentitySource): {
           failedIconSrc: null,
           generatedFailed: false,
         };
-
   const imageSrc =
     heroSrc && heroSrc !== currentFailureState.failedHeroSrc
       ? heroSrc
@@ -94,7 +87,6 @@ function useResolvedAppImageSource(app: AppIdentitySource): {
         : !currentFailureState.generatedFailed
           ? generatedSrc
           : null;
-
   const handleImageError = () => {
     if (imageSrc === heroSrc && heroSrc) {
       setFailureState({
@@ -117,10 +109,8 @@ function useResolvedAppImageSource(app: AppIdentitySource): {
       });
     }
   };
-
   return { imageSrc, handleImageError };
 }
-
 export function AppIdentityTile({
   app,
   active = false,
@@ -152,7 +142,6 @@ export function AppIdentityTile({
   const iconSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const monoSize = size === "sm" ? "text-[0.64rem]" : "text-[0.68rem]";
   const badgeSize = size === "sm" ? "text-[0.56rem]" : "text-[0.58rem]";
-
   return (
     <div
       className={`relative shrink-0 overflow-hidden border border-white/10   ${outerSize} ${className}`}
@@ -204,14 +193,12 @@ export function AppIdentityTile({
     </div>
   );
 }
-
 interface HeroBlob {
   cx: number;
   cy: number;
   r: number;
   opacity: number;
 }
-
 function getHeroBlobs(seed: number): HeroBlob[] {
   const pick = (shift: number, mod: number) => (seed >> shift) % mod;
   return [
@@ -235,7 +222,6 @@ function getHeroBlobs(seed: number): HeroBlob[] {
     },
   ];
 }
-
 export function AppHero({
   app,
   className = "",
@@ -250,9 +236,7 @@ export function AppHero({
   const Icon = getAppCategoryIcon(app);
   const blobs = getHeroBlobs(hashString(app.name));
   const iconRotation = hashString(app.name) % 24;
-
   const useImage = Boolean(imageSrc);
-
   return (
     <div
       className={`relative w-full overflow-hidden ${className}`}

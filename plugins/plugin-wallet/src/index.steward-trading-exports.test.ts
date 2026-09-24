@@ -3,15 +3,15 @@
  * The service and plugin are real; unrelated wallet backends and runtime
  * collaborators are mocked, so this does not submit live trades.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+
+import { type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
   return await import("./__tests__/core-vitest-mock.js");
 });
-
 // Keep package-barrel evaluation hermetic: these unrelated registration and
-// backend-selection modules depend on the built @elizaos/shared package, which
+// backend-selection modules depend on the built @elizaos/core package, which
 // is intentionally unavailable in the changed-file test lane.
 vi.mock("./api/wallet-routes.js", () => ({}));
 vi.mock("./analytics/lpinfo/index.js", () => ({
@@ -101,23 +101,19 @@ function runtimeWithService(service?: StewardTradingService): IAgentRuntime {
     },
   } as unknown as IAgentRuntime;
 }
-
 describe("wallet entrypoint Steward trading lifecycle", () => {
   beforeEach(() => {
     vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "0");
   });
-
   afterEach(() => {
     vi.unstubAllEnvs();
   });
-
   it("registers StewardTradingService as a startable wallet service", async () => {
     expect(walletPluginDefault).toBe(walletPlugin);
     expect(StewardTradingService.serviceType).toBe(
       STEWARD_TRADING_SERVICE_TYPE,
     );
     const serviceClasses = walletPlugin.services ?? [];
-
     expect(serviceClasses).toContain(StewardTradingService);
     expect(
       serviceClasses.filter(
@@ -125,12 +121,10 @@ describe("wallet entrypoint Steward trading lifecycle", () => {
           serviceClass.serviceType === StewardTradingService.serviceType,
       ),
     ).toHaveLength(1);
-
     const serviceClass = serviceClasses.find(
       (candidate) => candidate === StewardTradingService,
     ) as typeof StewardTradingService | undefined;
     const service = await serviceClass?.start?.(runtimeWithService());
-
     expect(service).toBeInstanceOf(StewardTradingService);
     expect(service?.capability()).toMatchObject({
       kind: "steward-self",
@@ -139,16 +133,12 @@ describe("wallet entrypoint Steward trading lifecycle", () => {
       apiUrl: "https://steward.local",
     });
   });
-
   it("tears down the registered Steward trading service during wallet plugin disposal", async () => {
     const service = new StewardTradingService(runtimeWithService());
     const stop = vi.spyOn(service, "stop").mockResolvedValue(undefined);
-
     await walletPlugin.dispose?.(runtimeWithService(service));
-
     expect(stop).toHaveBeenCalledTimes(1);
   });
-
   it("creates distinct idempotency keys through the entrypoint", () => {
     const firstKey = createTradeIdempotencyKey();
     expect(firstKey).toMatch(

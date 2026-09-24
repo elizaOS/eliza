@@ -16,7 +16,7 @@ import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { UUID } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 const INSTALLATION_ID_FILENAME = "runtime-installation-id";
 const UUID_PATTERN =

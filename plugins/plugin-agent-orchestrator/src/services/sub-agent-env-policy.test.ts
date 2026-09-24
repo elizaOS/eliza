@@ -5,7 +5,7 @@
 import {
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyDevCloudAuthorityToSubAgentEnv,

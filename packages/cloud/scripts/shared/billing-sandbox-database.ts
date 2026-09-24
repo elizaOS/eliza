@@ -57,6 +57,7 @@ export async function initializeBillingSandboxDatabase(db: Client) {
       "utf8",
     );
     for (const statement of migration.split("--> statement-breakpoint"))
-      if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
+      if (statement.trim())
+        await db.query(statement.replaceAll('"public".', ""));
   }
 }

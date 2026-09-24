@@ -6,6 +6,7 @@
  * and remote targets remain runtime-less. Launcher-owned Cloud credentials stay
  * ephemeral and are excluded from durable topology synchronization.
  */
+
 import { createHash, randomUUID } from "node:crypto";
 import type http from "node:http";
 import {
@@ -14,23 +15,27 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
-import type { FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
+import { type FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
+import { prepareFirstRunConnectors } from "@elizaos/agent/first-run-config";
 import { ElizaError, logger } from "@elizaos/core";
-import type { DeploymentTargetRuntime } from "@elizaos/shared";
+import { readRequestBody } from "@elizaos/core/api/http-helpers";
 import {
-  getCloudSecret,
   getDirectAccountProviderForFirstRunProvider,
   migrateLegacyRuntimeConfig,
-  normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
   normalizeFirstRunProviderId,
+} from "@elizaos/core/contracts/first-run-options";
+import {
+  type DeploymentTargetRuntime,
+  normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-  readRequestBody,
+} from "@elizaos/core/contracts/service-routing";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
-import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -50,22 +55,31 @@ import {
 } from "./server-first-run-helpers";
 
 const FIRST_RUN_ACTIVATION_REASON = "First-run local provider activation";
-
 type FirstRunCommitResult =
-  | { ok: true }
-  | { ok: false; status: number; error: string };
-
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
 class FirstRunCommitError extends ElizaError {
-  constructor(readonly result: Extract<FirstRunCommitResult, { ok: false }>) {
+  constructor(
+    readonly result: Extract<
+      FirstRunCommitResult,
+      {
+        ok: false;
+      }
+    >,
+  ) {
     super(result.error, {
       code: "FIRST_RUN_COMMIT_FAILED",
       context: { status: result.status },
     });
   }
 }
-
-export const MAX_FIRST_RUN_BODY_BYTES = 1_048_576;
-
+export const MAX_FIRST_RUN_BODY_BYTES = 1048576;
 async function syncFirstRunConfigState(
   req: http.IncomingMessage,
   config: Record<string, unknown>,
@@ -75,7 +89,6 @@ async function syncFirstRunConfigState(
   if (!loopbackPort) {
     return;
   }
-
   const syncPatch: Record<string, unknown> = {};
   const syncKeys = [
     "meta",
@@ -94,11 +107,9 @@ async function syncFirstRunConfigState(
       syncPatch[key] = config[key];
     }
   }
-
   if (Object.keys(syncPatch).length === 0) {
     return;
   }
-
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
@@ -106,7 +117,6 @@ async function syncFirstRunConfigState(
   if (typeof authorization === "string" && authorization.trim()) {
     headers.authorization = authorization;
   }
-
   const response = await fetch(`http://127.0.0.1:${loopbackPort}/api/config`, {
     method: "PUT",
     headers,
@@ -118,7 +128,6 @@ async function syncFirstRunConfigState(
     );
   }
 }
-
 /**
  * Defensive resave delay (ms). Long enough that the in-flight loopback PUT
  * /api/config triggered by `syncFirstRunConfigState` plus any
@@ -127,7 +136,6 @@ async function syncFirstRunConfigState(
  * `scheduleCloudApiKeyResave` below).
  */
 const CLOUD_API_KEY_RESAVE_DELAY_MS = 3000;
-
 /**
  * Defensive: re-write `cloud.apiKey` to disk after a delay if some concurrent
  * config write between now and `CLOUD_API_KEY_RESAVE_DELAY_MS` clobbered it.
@@ -151,7 +159,6 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
   // key from any first-run fallback would turn temporary staging credentials
   // (or a later-mutated ambient env value) into durable account state.
   if (resolveDevCloudEnvAuthority()) return;
-
   setTimeout(() => {
     try {
       const freshConfig = loadElizaConfig();
@@ -174,7 +181,6 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
     }
   }, CLOUD_API_KEY_RESAVE_DELAY_MS);
 }
-
 /**
  * Resolve the cloud apiKey from the accepted sources. Under a launcher-owned
  * development authority, only the frozen launch value is visible and the
@@ -191,30 +197,24 @@ function resolveCloudApiKeyForFirstRun(
     )?.trim();
     return launchValue || undefined;
   }
-
   if (!config.cloud || typeof config.cloud !== "object") {
     config.cloud = {};
   }
   const cloudSlot = config.cloud as Record<string, unknown>;
-
   const fromConfig = cloudSlot.apiKey;
   if (fromConfig) return String(fromConfig);
-
   const fromSealedSecret = getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? undefined;
   if (fromSealedSecret) {
     cloudSlot.apiKey = fromSealedSecret;
     return fromSealedSecret;
   }
-
   const fromEnv = process.env.ELIZAOS_CLOUD_API_KEY;
   if (fromEnv) {
     cloudSlot.apiKey = fromEnv;
     return fromEnv;
   }
-
   return undefined;
 }
-
 /** Keep direct-provider setup writable while launcher authority owns Cloud. */
 function withoutAuthorityOwnedCloudCredential(
   body: Record<string, unknown>,
@@ -239,7 +239,6 @@ function withoutAuthorityOwnedCloudCredential(
     credentialInputs: sanitizedCredentialInputs,
   };
 }
-
 export async function handleFirstRunRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -257,11 +256,9 @@ export async function handleFirstRunRoute(
   ) {
     return false;
   }
-
   if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
-
   if (activationMatch) {
     const operation = await state.runtimeOperations?.get(activationMatch[1]);
     if (
@@ -281,7 +278,6 @@ export async function handleFirstRunRoute(
     });
     return true;
   }
-
   let rawBody: string;
   try {
     const body = await readRequestBody(req, {
@@ -318,10 +314,8 @@ export async function handleFirstRunRoute(
   // Freeze and retain the launcher tuple before any credential helper can
   // mutate process.env from the request body.
   const devCloudAuthority = resolveDevCloudEnvAuthority();
-
   let capturedCloudApiKey: string | undefined;
   let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
-
   const configRollback = new FirstRunConfigRollback();
   const persist = async (
     commitBody: Record<string, unknown>,
@@ -351,7 +345,6 @@ export async function handleFirstRunRoute(
       if (typeof commitBody.name === "string" && commitBody.name.trim()) {
         state.pendingAgentName = commitBody.name.trim();
       }
-
       const { replayBody: replayBodyRecord } =
         deriveFirstRunReplayBody(commitBody);
       const replayDeploymentTarget = normalizeDeploymentTargetConfig(
@@ -373,13 +366,11 @@ export async function handleFirstRunRoute(
         replayDeploymentTarget?.runtime === "cloud" ||
         cloudInferenceSelected ||
         replayLinkedAccounts?.elizacloud?.status === "linked";
-
       // Resolve the cloud API key so the upstream handler can write it
       // into state.config before saving. Without this, the upstream uses
       // its stale in-memory config (loaded at startup, before OAuth) and
       // clobbers the apiKey that persistCloudLoginStatus wrote to disk.
       let resolvedCloudApiKey: string | undefined;
-
       try {
         const config = loadElizaConfig();
         const before = structuredClone(config);
@@ -392,13 +383,11 @@ export async function handleFirstRunRoute(
           linkedAccounts: replayLinkedAccounts,
           serviceRouting: replayServiceRouting,
         });
-
         if (shouldResolveCloudApiKey) {
           resolvedCloudApiKey = resolveCloudApiKeyForFirstRun(
             config as Record<string, unknown>,
             devCloudAuthority,
           );
-
           if (!resolvedCloudApiKey) {
             logger.warn(
               devCloudAuthority
@@ -411,7 +400,6 @@ export async function handleFirstRunRoute(
               "[api] Cloud-linked first-run: resolved API key, injecting into replay body",
             );
           }
-
           capturedCloudApiKey = resolvedCloudApiKey;
         }
         const currentConnectorPreparation = prepareFirstRunConnectors(
@@ -478,10 +466,8 @@ export async function handleFirstRunRoute(
         error: "Failed to complete first-run setup",
       };
     }
-
     return { ok: true };
   };
-
   const target = normalizeDeploymentTargetConfig(body.deploymentTarget);
   const routing = normalizeServiceRoutingConfig(body.serviceRouting);
   const commit = async (): Promise<FirstRunCommitResult> => {
@@ -702,9 +688,7 @@ export async function handleFirstRunRoute(
     sendJsonResponse(res, result.status, { error: result.error });
     return true;
   }
-
   sendJsonResponse(res, 200, { ok: true });
-
   // Fresh-install deferred boot (see deferred-runtime-boot.ts): a committed
   // LOCAL-target onboarding is THE signal to boot the agent runtime this
   // process skipped at startup. Cloud/remote targets stay runtime-less on
@@ -732,6 +716,5 @@ export async function handleFirstRunRoute(
       },
     );
   }
-
   return true;
 }

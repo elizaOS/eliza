@@ -16,15 +16,17 @@
  * GITHUB_NOTIFICATION_TRIAGE default to `"user"`; the other ops default to
  * `"agent"`.
  */
-
 import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   getConnectorAccountManager,
+  type IAgentRuntime,
   logger,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin, Route } from "@elizaos/shared";
+import {
+  type HttpPlugin as Plugin,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
 import { githubAction } from "./actions/github.js";
 import { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 import { handleGitHubRoutes } from "./routes/github-routes.js";
@@ -55,7 +57,6 @@ function clearRuntimeGitHubToken(runtime: IAgentRuntime): void {
     delete nestedSecrets.GITHUB_TOKEN;
   }
 }
-
 function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   return async (
     req: unknown,
@@ -137,7 +138,6 @@ const githubRoutes: Route[] = [
     handler: createGitHubRouteHandler("POST"),
   },
 ];
-
 export const githubPlugin: Plugin = {
   name: "github",
   description:
@@ -165,5 +165,4 @@ export const githubPlugin: Plugin = {
     await svc?.stop();
   },
 };
-
 export default githubPlugin;

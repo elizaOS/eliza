@@ -7,9 +7,9 @@ release_apk="${GITHUB_WORKSPACE:?}/packages/app/platforms/android/app/build/outp
 package_id="ai.elizaos.app"
 
 mkdir -p "$artifact_root/inline" "$artifact_root/logs"
-# The production Vite graph resolves @elizaos/shared through its dist export.
+# The production Vite graph resolves @elizaos/core through its dist export.
 # A clean workflow checkout has no dist until this package boundary is built.
-bun run --cwd packages/shared build
+bun run --cwd packages/core build
 bun run --cwd packages/app build:android:host-e2e
 
 # The release signing contract reads these variables. Generate a disposable

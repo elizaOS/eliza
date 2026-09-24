@@ -16,13 +16,11 @@
  * Registered with `rawPath: true` so they mount at their canonical paths
  * without the plugin-name prefix.
  */
-
 import { buildSetupError, type IAgentRuntime } from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
 import { type ParsedContactId, parseIMessageContactId } from "./contact-path.js";
 
 const IMESSAGE_SERVICE_NAME = "imessage";
-
 /**
  * Narrow structural type for the IMessageService methods we call from
  * this route file. Declared here rather than imported from the service
@@ -75,7 +73,10 @@ interface IMessageServiceLike {
       chatId: string;
       chatType: string;
       displayName?: string;
-      participants: Array<{ handle: string; isPhoneNumber: boolean }>;
+      participants: Array<{
+        handle: string;
+        isPhoneNumber: boolean;
+      }>;
     }>
   >;
   listAllContacts(): Promise<
@@ -84,35 +85,51 @@ interface IMessageServiceLike {
       name: string;
       firstName: string | null;
       lastName: string | null;
-      phones: Array<{ label: string | null; value: string }>;
-      emails: Array<{ label: string | null; value: string }>;
+      phones: Array<{
+        label: string | null;
+        value: string;
+      }>;
+      emails: Array<{
+        label: string | null;
+        value: string;
+      }>;
     }>
   >;
   addContact(input: {
     firstName?: string;
     lastName?: string;
-    phones?: Array<{ label?: string; value: string }>;
-    emails?: Array<{ label?: string; value: string }>;
+    phones?: Array<{
+      label?: string;
+      value: string;
+    }>;
+    emails?: Array<{
+      label?: string;
+      value: string;
+    }>;
   }): Promise<string | null>;
   updateContact(
     personId: string,
     patch: {
       firstName?: string;
       lastName?: string;
-      addPhones?: Array<{ label?: string; value: string }>;
+      addPhones?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removePhones?: string[];
-      addEmails?: Array<{ label?: string; value: string }>;
+      addEmails?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removeEmails?: string[];
     }
   ): Promise<boolean>;
   deleteContact(personId: string): Promise<boolean>;
 }
-
 function readHeader(req: RouteRequest, name: string): string | undefined {
   const value = req.headers?.[name.toLowerCase()] ?? req.headers?.[name];
   return Array.isArray(value) ? value[0] : value;
 }
-
 async function handleBlooioWebhook(
   req: RouteRequest,
   res: RouteResponse,
@@ -139,7 +156,6 @@ async function handleBlooioWebhook(
   }
   res.status(200).json({ received: true, dispatched: result === "accepted" });
 }
-
 function isIMessageServiceLike(service: unknown): service is IMessageServiceLike {
   if (!service || typeof service !== "object") return false;
   const candidate = service as Partial<IMessageServiceLike>;
@@ -154,16 +170,17 @@ function isIMessageServiceLike(service: unknown): service is IMessageServiceLike
     typeof candidate.deleteContact === "function"
   );
 }
-
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
   const service = runtime.getService(IMESSAGE_SERVICE_NAME);
   return isIMessageServiceLike(service) ? service : null;
 }
-
 function rejectContactId(
   res: RouteResponse,
   parsed: ParsedContactId
-): parsed is { ok: true; id: string } {
+): parsed is {
+  ok: true;
+  id: string;
+} {
   if (parsed.ok) return true;
   if (parsed.reason === "malformed") {
     res
@@ -174,10 +191,8 @@ function rejectContactId(
   res.status(400).json(buildSetupError("bad_request", "contact id is required in the path"));
   return false;
 }
-
 const DEFAULT_MESSAGES_LIMIT = 50;
 const MAX_MESSAGES_LIMIT = 500;
-
 /**
  * Canonical positive page size. `Number.parseInt("1e2", 10) === 1` used to
  * silently return one iMessage instead of rejecting the token.
@@ -191,7 +206,6 @@ function parseMessagesLimit(raw: string | null): number | null {
   }
   return Math.min(Number.parseInt(raw, 10), MAX_MESSAGES_LIMIT);
 }
-
 // ── GET /api/imessage/messages?limit=N ──────────────────────────────
 async function handleMessages(
   req: RouteRequest,
@@ -227,7 +241,6 @@ async function handleMessages(
       );
   }
 }
-
 // ── POST /api/imessage/messages ────────────────────────────────────
 async function handleSendMessage(
   req: RouteRequest,
@@ -239,7 +252,6 @@ async function handleSendMessage(
     res.status(503).json(buildSetupError("service_unavailable", "imessage service not registered"));
     return;
   }
-
   const body =
     (req.body as {
       to?: string;
@@ -248,22 +260,18 @@ async function handleSendMessage(
       mediaUrl?: string;
       maxBytes?: number;
     }) ?? {};
-
   const to = body.to?.trim() || "";
   const chatId = body.chatId?.trim() || "";
   const text = body.text?.trim() || "";
   const mediaUrl = body.mediaUrl?.trim() || undefined;
-
   if (!to && !chatId) {
     res.status(400).json(buildSetupError("bad_request", "either to or chatId is required"));
     return;
   }
-
   if (!text && !mediaUrl) {
     res.status(400).json(buildSetupError("bad_request", "either text or mediaUrl is required"));
     return;
   }
-
   try {
     const result = await service.sendMessage(chatId ? `chat_id:${chatId}` : to, text, {
       ...(mediaUrl ? { mediaUrl } : {}),
@@ -287,7 +295,6 @@ async function handleSendMessage(
       );
   }
 }
-
 // ── GET /api/imessage/chats ─────────────────────────────────────────
 async function handleChats(
   _req: RouteRequest,
@@ -313,7 +320,6 @@ async function handleChats(
       );
   }
 }
-
 // ── GET /api/imessage/contacts ──────────────────────────────────────
 async function handleListContacts(
   _req: RouteRequest,
@@ -339,7 +345,6 @@ async function handleListContacts(
       );
   }
 }
-
 // ── POST /api/imessage/contacts ─────────────────────────────────────
 async function handleCreateContact(
   req: RouteRequest,
@@ -355,10 +360,15 @@ async function handleCreateContact(
     (req.body as {
       firstName?: string;
       lastName?: string;
-      phones?: Array<{ label?: string; value: string }>;
-      emails?: Array<{ label?: string; value: string }>;
+      phones?: Array<{
+        label?: string;
+        value: string;
+      }>;
+      emails?: Array<{
+        label?: string;
+        value: string;
+      }>;
     }) ?? {};
-
   if (!body.firstName && !body.lastName && !body.phones?.length && !body.emails?.length) {
     res
       .status(400)
@@ -370,7 +380,6 @@ async function handleCreateContact(
       );
     return;
   }
-
   try {
     const id = await service.addContact({
       firstName: body.firstName,
@@ -401,7 +410,6 @@ async function handleCreateContact(
       );
   }
 }
-
 // ── PATCH /api/imessage/contacts/:id ────────────────────────────────
 async function handleUpdateContact(
   req: RouteRequest,
@@ -423,12 +431,17 @@ async function handleUpdateContact(
     (req.body as {
       firstName?: string;
       lastName?: string;
-      addPhones?: Array<{ label?: string; value: string }>;
+      addPhones?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removePhones?: string[];
-      addEmails?: Array<{ label?: string; value: string }>;
+      addEmails?: Array<{
+        label?: string;
+        value: string;
+      }>;
       removeEmails?: string[];
     }) ?? {};
-
   try {
     const ok = await service.updateContact(id, {
       firstName: body.firstName,
@@ -461,7 +474,6 @@ async function handleUpdateContact(
       );
   }
 }
-
 // ── DELETE /api/imessage/contacts/:id ───────────────────────────────
 async function handleDeleteContact(
   req: RouteRequest,
@@ -504,7 +516,6 @@ async function handleDeleteContact(
       );
   }
 }
-
 export const imessageDataRoutes: Route[] = [
   {
     name: "imessage-blooio-webhook",

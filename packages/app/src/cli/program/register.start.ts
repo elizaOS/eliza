@@ -9,20 +9,19 @@
  */
 import crypto from "node:crypto";
 import {
-  formatDocsLink,
   isLoopbackBindHost,
   resolveApiBindHost,
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-  theme,
-} from "@elizaos/shared";
-import type { Command } from "commander";
+} from "@elizaos/core/runtime-env";
+import { type Command } from "commander";
 import { bootLap } from "../../boot-profile";
+import { formatDocsLink } from "../../terminal/links.js";
+import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
-
 /**
  * Generate a random connection key for remote access.
  * Only called when explicitly requested via --connection-key flag
@@ -33,7 +32,6 @@ function generateConnectionKey(): string {
   setApiToken(process.env, generated);
   return generated;
 }
-
 /**
  * Check if the server is binding to a network-accessible address
  * (not localhost), which requires a connection key for security.
@@ -41,23 +39,18 @@ function generateConnectionKey(): string {
 function isNetworkBind(): boolean {
   return !isLoopbackBindHost(resolveApiBindHost(process.env));
 }
-
 function shouldDisableAutoConnectionKey(): boolean {
   return resolveApiSecurityConfig(process.env).disableAutoApiToken;
 }
-
 async function startAction() {
   bootLap("start:startAction entry");
   // Auto-generate a connection key only when binding to a network address
   // and no token is already configured. Localhost access stays open.
   const existingToken = resolveApiToken(process.env);
-
   if (!existingToken && isNetworkBind() && !shouldDisableAutoConnectionKey()) {
     generateConnectionKey();
   }
-
   const connectionKey = resolveApiToken(process.env);
-
   await runCommandWithRuntime(defaultRuntime, async () => {
     const { startEliza } = await import("../../runtime/eliza");
     const { installServerOnlyProcessOwner } = await import(
@@ -104,7 +97,6 @@ async function startAction() {
     console.log("");
   });
 }
-
 export function registerStartCommand(program: Command) {
   const registerCommand = (name: string, description: string): void => {
     const command = program
@@ -114,7 +106,6 @@ export function registerStartCommand(program: Command) {
         "--connection-key [key]",
         "Set or auto-generate a connection key for remote access",
       );
-
     if (name === "start") {
       command.addHelpText(
         "after",
@@ -122,7 +113,6 @@ export function registerStartCommand(program: Command) {
           `\n${theme.muted("Docs:")} ${formatDocsLink("/getting-started", "docs.eliza.ai/getting-started")}\n`,
       );
     }
-
     command.action(async (opts: { connectionKey?: string | boolean }) => {
       if (typeof opts.connectionKey === "string" && opts.connectionKey) {
         setApiToken(process.env, opts.connectionKey);
@@ -132,7 +122,6 @@ export function registerStartCommand(program: Command) {
       await startAction();
     });
   };
-
   registerCommand("start", "Start the elizaOS agent runtime");
   registerCommand("run", "Alias for start");
 }

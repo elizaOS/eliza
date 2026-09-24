@@ -1,24 +1,22 @@
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
 import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
   hasActionContext,
+  type IAgentRuntime,
   logger,
+  type Memory,
   ModelType,
   mergeEffectReceipts,
   resolveUserFacingEffectReceipts,
+  type State,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared";
-import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
+import { composePromptFromState } from "../../../text/template-rendering.js";
 import { replyTemplate } from "../prompts.js";
 
 const MIN_QUESTIONS = 1;

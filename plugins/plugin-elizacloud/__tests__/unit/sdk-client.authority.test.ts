@@ -6,7 +6,7 @@
  * unauthenticated staging-default/offline process.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getApiKey, resolveCloudSdkAuthorityTuple } from "../../src/utils/config";
 import { createCloudApiClient, createElizaCloudClient } from "../../src/utils/sdk-client";

@@ -1,30 +1,27 @@
 /** Renders complete message-handler instructions and model input with stable prompt-prefix boundaries. */
-
-import type {
-  ChatMessage,
-  ContextDefinition,
-  ContextObject,
-  IAgentRuntime,
-  Memory,
-  PromptSegment,
-  UUID,
-} from "@elizaos/core";
 import {
   asUUID,
   ChannelType,
+  type ChatMessage,
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
+  type ContextDefinition,
+  type ContextObject,
   completionContextSources,
   HANDLE_RESPONSE_TOOL_NAME,
+  type IAgentRuntime,
+  type Memory,
   normalizePromptSegments,
   type OptimizedPromptRuntimeLike,
+  type PromptSegment,
   renderContextObject,
   resolveOptimizedPromptForRuntime,
   segmentBlock,
   selectHistoricalNavigation,
+  type UUID,
 } from "@elizaos/core";
-import { composePrompt } from "@elizaos/shared";
 import { v4 } from "uuid";
-import type { OptimizedPromptTask } from "../optimized-prompt.ts";
+import { composePrompt } from "../../text/template-rendering.js";
+import { type OptimizedPromptTask } from "../optimized-prompt.ts";
 import {
   listAvailableContextsForRole,
   resolveStage1SenderRole,
@@ -52,21 +49,17 @@ import {
   ambientTurnProviderExclusions,
   composeResponseState,
 } from "./provider-state.js";
-
 export const CODE_SNIPPET_VALIDITY_INSTRUCTION =
   "For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
-
 export {
   CONTEXT_CATALOG_REFERENCE,
   formatAvailableContextsForPrompt,
 } from "./context-catalog.js";
-
 export interface ContextCatalogReference {
   text: string;
   notice: string;
   loaded: boolean;
 }
-
 /** Default direct-text routing can read the complete authorized catalog through
  * the same pre-effect context-request boundary as provider references. */
 export function createContextCatalogReference(
@@ -91,7 +84,6 @@ export function createContextCatalogReference(
     ? { text, notice, loaded: false }
     : undefined;
 }
-
 export function formatRoleGateForPrompt(
   roleGate: ContextDefinition["roleGate"],
 ): string | undefined {
@@ -110,7 +102,6 @@ export function formatRoleGateForPrompt(
   }
   return undefined;
 }
-
 /**
  * The Stage-1 `messageHandlerTemplate` covers two optimized-prompt tasks:
  *
@@ -130,7 +121,6 @@ export function selectMessageHandlerTask(
   // callers.
   return "should_respond";
 }
-
 export function renderMessageHandlerInstructions(
   runtime: OptimizedPromptRuntimeLike & Pick<IAgentRuntime, "character">,
   availableContexts: readonly ContextDefinition[],
@@ -173,7 +163,6 @@ export function renderMessageHandlerInstructions(
     options.responseHandlerFields.trim(),
   ].join("\n");
 }
-
 export function renderMessageHandlerModelInput(
   runtime: OptimizedPromptRuntimeLike & Pick<IAgentRuntime, "character">,
   context: ContextObject,
@@ -357,7 +346,6 @@ export function renderMessageHandlerModelInput(
     promptSegments,
   };
 }
-
 /**
  * Render only the *stable* part of the Stage-1 (`HANDLE_RESPONSE`) model
  * input for a given room — the system prompt + tool/action schema block +

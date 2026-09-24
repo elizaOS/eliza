@@ -12,7 +12,7 @@ import {
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";

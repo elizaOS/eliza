@@ -3,16 +3,17 @@
  * transcripts-reader logic), finalize edges, throttling, and content-addressed
  * WAV retention. Deterministic: real fs in a temp dir.
  */
+
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Memory, UUID } from "@elizaos/core";
+import { type Memory, type UUID } from "@elizaos/core";
 import {
   summarizeTranscript,
   type Transcript,
   transcriptCapturePrivacyState,
   transcriptPreview,
-} from "@elizaos/shared";
+} from "@elizaos/core/transcripts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeFakeRuntime, segment } from "../test-support.js";
 import {
@@ -30,7 +31,11 @@ import {
  * routes and the Transcripts view will load them.
  */
 function transcriptsViewReader(row: Memory): Transcript | null {
-  const raw = (row.content as { transcript?: unknown }).transcript;
+  const raw = (
+    row.content as {
+      transcript?: unknown;
+    }
+  ).transcript;
   if (typeof raw !== "string") return null;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -39,7 +44,6 @@ function transcriptsViewReader(row: Memory): Transcript | null {
     return null;
   }
 }
-
 const START_INPUT = {
   sessionId: "11111111-1111-1111-1111-111111111111" as UUID,
   worldId: "22222222-2222-2222-2222-222222222222" as UUID,
@@ -51,13 +55,11 @@ const START_INPUT = {
   nativeMeetingId: "abc-defg-hij",
   consentState: "not_required" as const,
 };
-
 describe("MeetingTranscriptWriter — record shape golden", () => {
   it("persists a row the transcripts-routes reader parses at every lifecycle stage", async () => {
     const fake = makeFakeRuntime();
     const writer = new MeetingTranscriptWriter(fake.runtime, 0);
     await writer.start(START_INPUT);
-
     // Partition + row identity.
     expect(fake.tables.get(writer.transcriptId)).toBe(TRANSCRIPTS_TABLE);
     const recordingRow = fake.memories.get(writer.transcriptId);
@@ -68,7 +70,6 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
       transcriptId: writer.transcriptId,
       status: "recording",
     });
-
     // The recording row parses through the EXACT view reader.
     const recording = transcriptsViewReader(recordingRow as Memory);
     expect(recording).not.toBeNull();
@@ -93,11 +94,10 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
       sourceAudioDeleted: false,
       hasExplicitState: true,
     });
-
     // Incremental update: preview text + timing metadata stay consistent.
     const segments = [
-      segment("s1", "Jill", "hello there", 0, 1_500),
-      segment("s2", "Bob", "hi jill", 1_500, 3_000),
+      segment("s1", "Jill", "hello there", 0, 1500),
+      segment("s2", "Bob", "hi jill", 1500, 3000),
     ];
     writer.updateSegments(segments);
     await new Promise((r) => setTimeout(r, 5));
@@ -105,13 +105,12 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
     const live = transcriptsViewReader(liveRow);
     expect(live?.segments).toHaveLength(2);
     expect(live?.speakerCount).toBe(2);
-    expect(live?.durationMs).toBe(3_000);
+    expect(live?.durationMs).toBe(3000);
     expect(liveRow.content.text).toBe(transcriptPreview(segments));
     expect(liveRow.metadata).toMatchObject({
-      durationMs: 3_000,
+      durationMs: 3000,
       speakerCount: 2,
     });
-
     // Finalize: ready + endedAt + participants + knowledge mirror.
     const final = await writer.finalize({
       segments,
@@ -167,19 +166,20 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
         metadata: expect.objectContaining({
           segmentIds: ["s1", "s2"],
           startMs: 0,
-          endMs: 3_000,
+          endMs: 3000,
         }),
       }),
     ]);
     expect(readBack?.knowledgeDocumentId).toBeTypeOf("string");
   });
-
   it("survives a missing documents service (record persists without mirror)", async () => {
     const fake = makeFakeRuntime();
     const base = fake.runtime.getService.bind(fake.runtime);
-    (fake.runtime as { getService: (n: string) => unknown }).getService = (
-      name: string,
-    ) => (name === "documents" ? null : base(name));
+    (
+      fake.runtime as {
+        getService: (n: string) => unknown;
+      }
+    ).getService = (name: string) => (name === "documents" ? null : base(name));
     const writer = new MeetingTranscriptWriter(fake.runtime, 0);
     await writer.start(START_INPUT);
     const final = await writer.finalize({
@@ -193,7 +193,6 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
     expect(fake.documents).toHaveLength(0);
   });
 });
-
 describe("MeetingTranscriptWriter — finalize edges", () => {
   it("finalizes an empty meeting to status ready with 0 speakers and no segments", async () => {
     const fake = makeFakeRuntime();
@@ -216,14 +215,12 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
     const row = fake.memories.get(writer.transcriptId) as Memory;
     expect(transcriptsViewReader(row)?.status).toBe("ready");
   });
-
   it("skips the media write when audioWav is null but writes it when present", async () => {
     const dir = mkdtempSync(join(tmpdir(), "meetings-audiowav-"));
     const prev = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = dir;
     try {
       const segs = [segment("s1", "Jill", "hi there", 0, 800)];
-
       // audioWav null → no audioUrl, media dir stays empty.
       const fakeA = makeFakeRuntime();
       const writerA = new MeetingTranscriptWriter(fakeA.runtime, 0);
@@ -236,7 +233,6 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
       });
       expect(finalA.audioUrl).toBeUndefined();
       expect(finalA.audioContentType).toBeUndefined();
-
       // audioWav present → audioUrl set + content-addressed file on disk.
       const fakeB = makeFakeRuntime();
       const writerB = new MeetingTranscriptWriter(fakeB.runtime, 0);
@@ -261,7 +257,6 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
       });
       const hash = finalB.audioUrl?.slice("/api/media/".length) as string;
       expect(existsSync(join(dir, "media", hash))).toBe(true);
-
       // BL-3: the knowledge-mirror document must reference the WAV via
       // `metadata.mediaUrl` (the key the daily media GC scans on document rows).
       // Without it the retained audio is unreferenced and gets swept. `audioUrl`
@@ -274,7 +269,9 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
       expect(mirrorMeta.audioUrl).toBe(finalB.audioUrl);
       // The audio-less mirror (writerA) carries neither key.
       const mirrorMetaA = fakeA.documents[0]?.metadata as
-        | { mediaUrl?: string }
+        | {
+            mediaUrl?: string;
+          }
         | undefined;
       expect(mirrorMetaA?.mediaUrl).toBeUndefined();
     } finally {
@@ -283,7 +280,6 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-
   it("treats a zero-length audioWav buffer as no audio", async () => {
     const fake = makeFakeRuntime();
     const writer = new MeetingTranscriptWriter(fake.runtime, 0);
@@ -297,7 +293,6 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
     expect(final.audioUrl).toBeUndefined();
   });
 });
-
 describe("MeetingTranscriptWriter — throttling", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -305,20 +300,20 @@ describe("MeetingTranscriptWriter — throttling", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-
   it("coalesces rapid segment updates to ~one write per throttle window", async () => {
     const fake = makeFakeRuntime();
     let writes = 0;
     const baseUpdate = fake.runtime.updateMemory.bind(fake.runtime);
     (
-      fake.runtime as { updateMemory: typeof fake.runtime.updateMemory }
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
     ).updateMemory = async (patch) => {
       writes += 1;
       return baseUpdate(patch);
     };
-    const writer = new MeetingTranscriptWriter(fake.runtime, 5_000, Date.now);
+    const writer = new MeetingTranscriptWriter(fake.runtime, 5000, Date.now);
     await writer.start(START_INPUT);
-
     // 20 updates in one second — none should write before the window elapses.
     for (let i = 0; i < 20; i++) {
       writer.updateSegments([
@@ -327,7 +322,7 @@ describe("MeetingTranscriptWriter — throttling", () => {
       await vi.advanceTimersByTimeAsync(50);
     }
     expect(writes).toBe(0);
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(writes).toBe(1);
     const live = transcriptsViewReader(
       fake.memories.get(writer.transcriptId) as Memory,
@@ -335,7 +330,6 @@ describe("MeetingTranscriptWriter — throttling", () => {
     expect(live?.segments[0].text).toBe("t19"); // latest state won
   });
 });
-
 describe("persistMeetingAudioWav", () => {
   it("writes content-addressed WAV bytes under the served media dir", () => {
     const dir = mkdtempSync(join(tmpdir(), "meetings-audio-"));

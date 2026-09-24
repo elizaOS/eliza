@@ -11,7 +11,7 @@
  * the routing unit tests (`useVoiceChat.forced-cloud-tts`, `shared-runtime-voice`).
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import {
   act,
   cleanup,

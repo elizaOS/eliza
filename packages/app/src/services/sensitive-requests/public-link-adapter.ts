@@ -11,16 +11,13 @@
  */
 
 import { toRuntimeSettings } from "@elizaos/cloud-routing";
-import type {
-  DeliveryResult,
-  SensitiveRequestDeliveryAdapter,
-  SensitiveRequestWithPaymentContext,
-} from "@elizaos/core";
 import {
-  captureDevCloudEnvAuthoritySnapshot,
-  readAliasedEnv,
-} from "@elizaos/shared";
-
+  type DeliveryResult,
+  type SensitiveRequestDeliveryAdapter,
+  type SensitiveRequestWithPaymentContext,
+} from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 /**
  * Cloud API base used when neither a runtime setting nor an env override
  * supplies one. Exported so the contract test asserts the fallback against this
@@ -28,7 +25,6 @@ import {
  * eliza.app consolidation.
  */
 export const CLOUD_BASE_FALLBACK = "https://api.eliza.app/api/v1";
-
 /**
  * Structural subset of `IAgentRuntime` we touch for cloud base resolution.
  * Mirrors `cloud-routing.ts`'s public surface so we don't depend on the
@@ -39,23 +35,23 @@ interface CloudBaseRuntime {
     key: string,
   ): string | boolean | number | bigint | null | undefined;
 }
-
 function isCloudBaseRuntime(value: unknown): value is CloudBaseRuntime {
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as { getSetting?: unknown }).getSetting === "function"
+    typeof (
+      value as {
+        getSetting?: unknown;
+      }
+    ).getSetting === "function"
   );
 }
-
 function stripTrailingSlashes(url: string): string {
   return url.replace(/\/+$/, "");
 }
-
 function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function resolveCloudBaseUrl(runtime: unknown): string {
   const authoritySnapshot = captureDevCloudEnvAuthoritySnapshot();
   if (authoritySnapshot) {
@@ -64,7 +60,6 @@ function resolveCloudBaseUrl(runtime: unknown): string {
     );
     return stripTrailingSlashes(fromAuthority ?? CLOUD_BASE_FALLBACK);
   }
-
   if (isCloudBaseRuntime(runtime)) {
     const settings = toRuntimeSettings(runtime);
     const fromSetting = settings.getSetting("ELIZAOS_CLOUD_BASE_URL");
@@ -76,7 +71,6 @@ function resolveCloudBaseUrl(runtime: unknown): string {
   if (fromEnv) return stripTrailingSlashes(fromEnv);
   return stripTrailingSlashes(CLOUD_BASE_FALLBACK);
 }
-
 function readAppId(
   request: SensitiveRequestWithPaymentContext,
 ): string | undefined {
@@ -92,7 +86,6 @@ function readAppId(
   }
   return undefined;
 }
-
 export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
   {
     target: "public_link",
@@ -109,7 +102,6 @@ export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter 
           error: "public_link only allowed for any_payer payment",
         };
       }
-
       const appId = readAppId(typed);
       if (!appId) {
         return {
@@ -118,12 +110,8 @@ export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter 
           error: "public_link payment request is missing appId",
         };
       }
-
       const cloudBase = resolveCloudBaseUrl(runtime);
-      const url = `${cloudBase}/payment/app-charge/${encodeURIComponent(
-        appId,
-      )}/${encodeURIComponent(typed.id)}/public`;
-
+      const url = `${cloudBase}/payment/app-charge/${encodeURIComponent(appId)}/${encodeURIComponent(typed.id)}/public`;
       return {
         delivered: true,
         target: "public_link",

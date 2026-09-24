@@ -8,45 +8,38 @@
  * React context lives in `boot-config-react.hooks.ts` so Bun/Node can import
  * this module without loading `react` runtime (avoids Bun parsing @types/react).
  */
-
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { BrandingConfig } from "./branding";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 /** A bundled VRM avatar asset descriptor. */
 export interface BundledVrmAsset {
   title: string;
   slug: string;
 }
-
 /** Lightweight character catalog data passed from the host app. */
 export interface CharacterCatalogData {
   assets: CharacterAssetEntry[];
   injectedCharacters: InjectedCharacterEntry[];
 }
-
 export interface CharacterAssetEntry {
   id: number;
   slug: string;
   title: string;
   sourceName: string;
 }
-
 export interface InjectedCharacterEntry {
   catchphrase: string;
   name: string;
   avatarAssetId: number;
   voicePresetId?: string;
 }
-
 /** Resolved character asset with computed paths. */
 export interface ResolvedCharacterAsset extends CharacterAssetEntry {
   compressedVrmPath: string;
@@ -55,12 +48,10 @@ export interface ResolvedCharacterAsset extends CharacterAssetEntry {
   backgroundPath: string;
   sourceVrmFilename: string;
 }
-
 /** Resolved injected character with its avatar asset. */
 export interface ResolvedInjectedCharacter extends InjectedCharacterEntry {
   avatarAsset: ResolvedCharacterAsset;
 }
-
 /** Client middleware flags — replaces the 4 monkey-patches. */
 export interface ClientMiddleware {
   /** Force fresh first-run setup (e.g. on ?reset). */
@@ -70,12 +61,16 @@ export interface ClientMiddleware {
   /** Bridge permissions to native desktop layer. */
   desktopPermissions?: boolean;
 }
-
 /** Where a home tile sends you. Mirrors HomeTileTarget in shell/HomeScreen. */
 export type HomeScreenNavTarget =
-  | { kind: "tab"; tab: string }
-  | { kind: "view"; path: string };
-
+  | {
+      kind: "tab";
+      tab: string;
+    }
+  | {
+      kind: "view";
+      path: string;
+    };
 /** Props the shell passes to a host-provided home screen (boot-config slot). */
 export interface HomeScreenComponentProps {
   /** Open a pinned tab/view from a home tile. */
@@ -83,11 +78,6 @@ export interface HomeScreenComponentProps {
   /** Render the AOSP-only native-OS tiles (phone/contacts/messages). */
   showNativeOsTiles?: boolean;
 }
-
-export interface CodingAgentTasksPanelProps {
-  fullPage?: boolean;
-}
-
 export interface PtyConsoleDrawerProps {
   activeSessionId: string | null;
   sessions: CodingAgentSession[];
@@ -95,7 +85,6 @@ export interface PtyConsoleDrawerProps {
   onNewSession: () => void;
   onClose: () => void;
 }
-
 export interface AppBootConfig {
   /** Branding overrides (product name, URLs, etc.). */
   branding: Partial<BrandingConfig>;
@@ -166,43 +155,34 @@ export interface AppBootConfig {
   /** Client middleware flags — replaces the post-construction patches. */
   clientMiddleware?: ClientMiddleware;
 }
-
 // ---------------------------------------------------------------------------
 // Defaults (brand-agnostic — no product-specific references)
 // ---------------------------------------------------------------------------
-
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://eliza.app",
   preferSharedCloudTier: false,
   autoUpgradeSharedToDedicated: false,
 };
-
 // ---------------------------------------------------------------------------
 // Process-global config ref (for non-React code like client.ts, asset-url.ts)
 // Use a Symbol-backed slot on globalThis so duplicated module instances
 // still read/write the same live boot config.
 // ---------------------------------------------------------------------------
-
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
 const BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
-
 interface BootConfigStore {
   current: AppBootConfig;
 }
-
 type GlobalConfigSlot = Record<PropertyKey, unknown> & {
   [K in typeof BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
 };
-
 /** Resolve the global object (browser or Node) with symbol-key access. */
 function getGlobalSlot(): GlobalConfigSlot {
   return globalThis as GlobalConfigSlot;
 }
-
 function getBootConfigStore(): BootConfigStore {
   const globalObject = getGlobalSlot();
-
   // An established store always wins. The window-key mirror is only a pre-boot
   // seed and must never replace a store that already exists. Shared and UI
   // hosts initialize the same slot; core only reads the installed store.
@@ -214,7 +194,6 @@ function getBootConfigStore(): BootConfigStore {
   ) {
     return existing as BootConfigStore;
   }
-
   // No store yet: seed it once from a cross-bundle window mirror if a bootstrap
   // set it, otherwise from defaults.
   const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
@@ -225,23 +204,19 @@ function getBootConfigStore(): BootConfigStore {
   globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
   return store;
 }
-
 /** Set the boot config. Called by AppBootProvider on mount. */
 export function setBootConfig(config: AppBootConfig): void {
   const store = getBootConfigStore();
   store.current = config;
   getGlobalSlot()[BOOT_CONFIG_WINDOW_KEY] = config;
 }
-
 /** Read the boot config from non-React code. */
 export function getBootConfig(): AppBootConfig {
   return getBootConfigStore().current;
 }
-
 // ---------------------------------------------------------------------------
 // Character catalog helpers
 // ---------------------------------------------------------------------------
-
 function resolveAssets(
   catalog: CharacterCatalogData,
 ): ResolvedCharacterAsset[] {
@@ -254,7 +229,6 @@ function resolveAssets(
     sourceVrmFilename: `${asset.sourceName}.vrm`,
   }));
 }
-
 /** Resolve a character catalog into ready-to-use assets and characters. */
 export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
   assets: ResolvedCharacterAsset[];
@@ -270,7 +244,6 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
   const assets = resolveAssets(catalog);
   const assetById = new Map(assets.map((a) => [a.id, a]));
   const defaultAsset = assets[0] ?? null;
-
   const injectedCharacters = catalog.injectedCharacters.map((character) => {
     const avatarAsset = assetById.get(character.avatarAssetId) ?? defaultAsset;
     if (!avatarAsset) {
@@ -280,11 +253,9 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
     }
     return { ...character, avatarAsset };
   });
-
   const byCatchphrase = new Map(
     injectedCharacters.map((c) => [c.catchphrase, c]),
   );
-
   return {
     assets,
     assetCount: assets.length,

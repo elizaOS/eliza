@@ -30,15 +30,13 @@
  * WebView) and on a Node desktop runtime (no Capacitor — falls through
  * to "all four available").
  */
-
-import type { IAgentRuntime } from "@elizaos/core";
-import type { TaskExecutionProfile } from "@elizaos/shared";
+import { type IAgentRuntime } from "@elizaos/core";
+import { type TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
 
 interface CapacitorPluginsLike {
   BackgroundRunner?: unknown;
   ElizaTasks?: unknown;
 }
-
 interface CapacitorGlobalLike {
   Plugins?: CapacitorPluginsLike;
   isNativePlatform?: () => boolean;

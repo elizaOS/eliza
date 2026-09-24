@@ -11,11 +11,10 @@
  * SpeechRecognition fallback.
  */
 
-import type { PluginListenerHandle } from "@capacitor/core";
-import { Capacitor } from "@capacitor/core";
-import { getElizaApiToken } from "@elizaos/shared";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { ElizaError } from "@elizaos/core/errors";
+import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { logger } from "@elizaos/ui/logger";
 import {
   useCallback,
   useEffect,
@@ -140,33 +139,40 @@ interface QueuedSpeechTask extends SpeakTask {
   evidence?: BufferedVoiceEvidence;
   voiceConfig: VoiceConfig | null;
 }
-
 interface PreparedSpeech {
   bufferId?: number;
   context: AudioContext;
   data:
-    | { kind: "decoded"; audioBuffer: AudioBuffer }
-    | { kind: "encoded"; audioBytes: Uint8Array };
+    | {
+        kind: "decoded";
+        audioBuffer: AudioBuffer;
+      }
+    | {
+        kind: "encoded";
+        audioBytes: Uint8Array;
+      };
   provider: "elevenlabs" | "local-inference" | "eliza-cloud";
   cached: boolean;
 }
-
 type SpeechPreparation =
-  | { ok: true; audio: PreparedSpeech }
-  | { ok: false; error: unknown };
-
+  | {
+      ok: true;
+      audio: PreparedSpeech;
+    }
+  | {
+      ok: false;
+      error: unknown;
+    };
 interface PrefetchedSpeech {
   task: QueuedSpeechTask;
   generation: number;
   result: Promise<SpeechPreparation>;
 }
-
 /** Lookahead retains one clip. These thresholds select preparation strategy, never discard speech. */
-const MAX_PREFETCH_TEXT_CHARACTERS = 1_000;
+const MAX_PREFETCH_TEXT_CHARACTERS = 1000;
 const MAX_PREFETCH_DECODED_BYTES = 32 * 1024 * 1024;
 
 // ── Re-exports (public API) ──────────────────────────────────────────
-
 export { nextIdleMouthOpen } from "../voice/voice-chat-playback";
 export type {
   QueueAssistantSpeechOptions,
@@ -193,12 +199,10 @@ declare global {
     __voicePlaybackStarted?: boolean;
   }
 }
-
 // ── Shared mutable state ─────────────────────────────────────────────
-
 let sharedAudioCtx: AudioContext | null = null;
-const CLOUD_TTS_TIMEOUT_MS = 60_000;
-const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
+const CLOUD_TTS_TIMEOUT_MS = 60000;
+const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60000;
 /** How long the transient `micReconnected` pulse stays set after an auto-restart. */
 const MIC_RECONNECT_PULSE_MS = 1500;
 /**
@@ -212,9 +216,7 @@ const MIC_RECONNECT_PULSE_MS = 1500;
  * round-trip without lingering long enough to strand a real suspend.
  */
 const CAPTURE_PAUSE_GRACE_MS = 1500;
-
 // ── Internal helpers ─────────────────────────────────────────────────
-
 /**
  * Direct-cloud targets whose failure has already been logged at warn. Streamed
  * replies fire one TTS request per clip segment, so an unreachable worker
@@ -222,12 +224,10 @@ const CAPTURE_PAUSE_GRACE_MS = 1500;
  * the rest trace through ELIZA_TTS_DEBUG only.
  */
 const warnedDirectCloudTtsTargets = new Set<string>();
-
 /** Test hook: reset the warn-once dedupe between cases. */
 export function __resetDirectCloudTtsFallbackWarnings(): void {
   warnedDirectCloudTtsTargets.clear();
 }
-
 function warnDirectCloudTtsFallback(target: string, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   ttsDebug("useVoiceChat:eliza-cloud-direct-fallback", {
@@ -240,12 +240,10 @@ function warnDirectCloudTtsFallback(target: string, error: unknown): void {
     `[useVoiceChat] Direct cloud TTS to ${target} failed (${message}); falling back to the on-device /api/tts/cloud proxy`,
   );
 }
-
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
   return Capacitor.isNativePlatform() || !!getElectrobunRendererRpc();
 }
-
 function isWindowsElectrobunRenderer(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -254,7 +252,6 @@ function isWindowsElectrobunRenderer(): boolean {
     process.platform === "win32"
   );
 }
-
 function shouldAutoRestartBrowserRecognition(): boolean {
   if (typeof window === "undefined") return false;
   if (isWindowsElectrobunRenderer()) {
@@ -262,11 +259,9 @@ function shouldAutoRestartBrowserRecognition(): boolean {
   }
   return true;
 }
-
 function shouldUseLocalInferenceAsr(config: VoiceConfig | null): boolean {
   return config?.asr?.provider === "local-inference";
 }
-
 /**
  * True when the config selects a cloud STT provider (`eliza-cloud` / `openai`).
  * These capture the same WAV as the local path and POST it to `/api/asr/cloud`
@@ -279,7 +274,6 @@ function shouldUseCloudAsr(config: VoiceConfig | null): boolean {
   const provider = config?.asr?.provider;
   return provider === "eliza-cloud" || provider === "openai";
 }
-
 /**
  * The resolved cloud-STT POST target (`/api/asr/cloud`) for the on-screen
  * voice HUD's `post:req` breadcrumb. Best-effort: `resolveApiUrl` can throw in
@@ -292,7 +286,6 @@ function cloudAsrPostUrl(): string {
     return "/api/asr/cloud";
   }
 }
-
 /**
  * The HTTP status carried by a {@link CloudSttError}, when the cloud STT
  * failure was an HTTP response (403/413/5xx). `null` for a transport/timeout
@@ -304,14 +297,12 @@ function cloudSttErrorStatus(error: unknown): number | null {
     ? error.status
     : null;
 }
-
 const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
   "compose",
   "push-to-talk",
   "hands-free",
   "passive",
 ]);
-
 function normalizeActiveVoiceSessionMode(
   mode: unknown,
 ): Exclude<VoiceSessionMode, "idle"> | null {
@@ -320,7 +311,6 @@ function normalizeActiveVoiceSessionMode(
     ? (mode as Exclude<VoiceSessionMode, "idle">)
     : null;
 }
-
 interface VoiceTranscriptUpdateMetadata {
   mode?: Exclude<VoiceSessionMode, "idle">;
   speaker?: VoiceSpeakerMetadata;
@@ -329,9 +319,7 @@ interface VoiceTranscriptUpdateMetadata {
   turn?: Partial<VoiceTurn>;
   metadata?: Record<string, unknown>;
 }
-
 // ── Test-visible internals ───────────────────────────────────────────
-
 export const __voiceChatInternals = {
   CAPTURE_PAUSE_GRACE_MS,
   isWindowsElectrobunRenderer,
@@ -352,9 +340,7 @@ export const __voiceChatInternals = {
   ASSISTANT_TTS_FIRST_FLUSH_CHARS,
   ASSISTANT_TTS_MIN_CHUNK_CHARS,
 };
-
 // ── Hook ──────────────────────────────────────────────────────────────
-
 export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const [isListening, setIsListening] = useState(false);
   const [captureMode, setCaptureMode] = useState<VoiceCaptureMode>("idle");
@@ -385,7 +371,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // substituting a different voice (#12253). The voice UI renders this as a
   // toast/banner; cleared on the next enqueue/stop.
   const [ttsError, setTtsError] = useState<VoiceTtsError | null>(null);
-
   // Refs — stable across renders, read from animation loop & callbacks
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const localAsrRecorderRef = useRef<LocalAsrRecorder | null>(null);
@@ -434,7 +419,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       window.__voicePlaybackStarted = true;
     }
   });
-
   const effectiveVoiceConfig = useMemo(
     () =>
       resolveEffectiveVoiceConfig(options.voiceConfig, {
@@ -442,13 +426,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }),
     [options.cloudConnected, options.voiceConfig],
   );
-
   const assistantTtsQuality = useMemo((): "enhanced" | "standard" => {
     return effectiveVoiceConfig?.provider === "elevenlabs"
       ? "enhanced"
       : "standard";
   }, [effectiveVoiceConfig?.provider]);
-
   const ttsDebugConfigKeyRef = useRef("");
   useEffect(() => {
     const key = JSON.stringify({
@@ -475,7 +457,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     effectiveVoiceConfig?.provider,
     options.cloudConnected,
   ]);
-
   // Voice config ref (latest value always available to callbacks)
   const voiceConfigRef = useRef<VoiceConfig | null>(effectiveVoiceConfig);
   voiceConfigRef.current = effectiveVoiceConfig;
@@ -491,14 +472,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   onUserSpeechInterruptRef.current = options.onUserSpeechInterrupt;
   const interruptSpeechRef = useRef<() => void>(() => {});
   const playbackFramePumpRef = useRef<PlaybackFramePump | null>(null);
-
   const getPlaybackFramePump = useCallback(() => {
     if (!playbackFramePumpRef.current) {
       playbackFramePumpRef.current = new PlaybackFramePump();
     }
     return playbackFramePumpRef.current;
   }, []);
-
   const stopPlaybackFrameTap = useCallback(
     (options: { reset?: boolean; drain?: boolean } = {}) => {
       const tap = playbackFrameTapRef.current;
@@ -510,7 +489,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   // ── ElevenLabs Web Audio refs ──────────────────────────────────────
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -518,7 +496,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const usingAudioAnalysisRef = useRef(false);
   const mouthOpenRef = useRef(0);
   mouthOpenRef.current = mouthOpen;
-
   // ── Progressive speech queue state ────────────────────────────────
   const queueRef = useRef<QueuedSpeechTask[]>([]);
   const observedTasksRef = useRef(new Map<BufferedVoiceEvidence, number>());
@@ -532,14 +509,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const assistantTtsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-
   const clearSpeechTimers = useCallback(() => {
     if (speechTimeoutRef.current) {
       clearTimeout(speechTimeoutRef.current);
       speechTimeoutRef.current = null;
     }
   }, []);
-
   // Playback was rejected because the AudioContext is still suspended (autoplay
   // policy). Raise the unlock hint so a caller can prompt for a user gesture.
   const markAudioBlocked = useCallback(() => {
@@ -604,14 +579,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         });
       });
   }, []);
-
   const rememberCachedSegment = useCallback(
     (key: string, bytes: Uint8Array) => {
       rememberCachedAudio(key, bytes);
     },
     [],
   );
-
   const makeElevenCacheKey = useCallback(
     (text: string, config: NonNullable<VoiceConfig["elevenlabs"]>) => {
       const voiceId = config.voiceId ?? DEFAULT_ELEVEN_VOICE;
@@ -638,17 +611,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   const makeLocalInferenceCacheKey = useCallback(
     (text: string) => ["local-inference", normalizeCacheText(text)].join("|"),
     [],
   );
-
   const makeElizaCloudCacheKey = useCallback(
     (text: string) => ["eliza-cloud", normalizeCacheText(text)].join("|"),
     [],
   );
-
   const updateMouthOpen = useCallback(
     (value: number | ((previousValue: number) => number)) => {
       const previousValue = mouthOpenRef.current;
@@ -663,12 +633,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   // ── Init ──────────────────────────────────────────────────────────
-
   useEffect(() => {
     let cancelled = false;
-
     const syncVoiceSupport = async () => {
       const browserSpeechSupported = !!getSpeechRecognitionCtor();
       const localAsrSupported =
@@ -698,7 +665,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
         return;
       }
-
       try {
         const permissions = await getTalkModePlugin().checkPermissions();
         if (cancelled) {
@@ -714,20 +680,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
     };
-
     void syncVoiceSupport();
     synthRef.current = window.speechSynthesis ?? null;
-
     return () => {
       cancelled = true;
     };
   }, []);
-
   // ── Mouth animation loop ──────────────────────────────────────────
-
   useEffect(() => {
     let frameId = 0;
-
     const animate = () => {
       if (!isSpeaking) {
         const nextMouth = nextIdleMouthOpen(mouthOpenRef.current);
@@ -740,7 +701,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
         return;
       }
-
       // ── ElevenLabs: real audio volume analysis ────────────────────
       if (usingAudioAnalysisRef.current) {
         const analyser = analyserRef.current;
@@ -763,7 +723,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         animFrameRef.current = frameId;
         return;
       }
-
       // ── Browser TTS: sine-wave mouth + safety check ──────────────
       const sinceStart = Date.now() - speakingStartRef.current;
       const elapsed = sinceStart / 1000;
@@ -774,14 +733,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       frameId = requestAnimationFrame(animate);
       animFrameRef.current = frameId;
     };
-
     if (isSpeaking || mouthOpenRef.current > 0) {
       frameId = requestAnimationFrame(animate);
       animFrameRef.current = frameId;
     } else {
       animFrameRef.current = 0;
     }
-
     return () => {
       cancelAnimationFrame(frameId);
       if (animFrameRef.current === frameId) {
@@ -789,9 +746,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
     };
   }, [isSpeaking, updateMouthOpen]);
-
   // ── STT (Speech Recognition) ──────────────────────────────────────
-
   const applyTranscriptUpdate = useCallback(
     (
       transcript: string,
@@ -800,16 +755,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     ) => {
       const mode = metadata.mode ?? listeningModeRef.current;
       if (mode === "idle") return;
-
       const normalized = collapseWhitespace(transcript);
       if (!normalized) return;
-
       const nextText = mergeTranscriptWindows(
         transcriptBufferRef.current,
         normalized,
       );
       if (nextText === transcriptBufferRef.current) return;
-
       transcriptBufferRef.current = nextText;
       setInterimTranscript(nextText);
       const turn: VoiceTurn = {
@@ -834,7 +786,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         turn,
         speaker: turn.speaker,
       });
-
       if (interruptOnSpeechRef.current) {
         // Was the assistant actually speaking when this speech arrived? Capture
         // it BEFORE the local interrupt flips `isSpeaking` off, so the
@@ -849,7 +800,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           onUserSpeechInterruptRef.current?.();
         }
       }
-
       if (isFinal && mode === "passive") {
         emitTranscript(nextText, {
           text: nextText,
@@ -865,7 +815,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   const removeTalkModeListeners = useCallback(async () => {
     const handles = talkModeHandlesRef.current;
     talkModeHandlesRef.current = [];
@@ -877,7 +826,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       ),
     );
   }, []);
-
   const resetListeningState = useCallback(() => {
     transcriptBufferRef.current = "";
     latestTranscriptTurnRef.current = null;
@@ -890,7 +838,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     setCaptureMode("idle");
     setInterimTranscript("");
   }, []);
-
   // Discard the composer's in-flight capture on app suspend WITHOUT transcribing
   // (#voice-V1). iOS suspends the WebAudio graph when the PWA backgrounds: the
   // WAV recorder's `ScriptProcessorNode` stalls, so `stop()` would POST a
@@ -955,17 +902,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     }
     resetListeningState();
   }, [resetListeningState]);
-
   const ensureTalkModeListeners = useCallback(async () => {
     if (talkModeHandlesRef.current.length > 0) return;
     // A registration pass is already in flight — await it instead of starting
     // a second one (which would double-register every listener).
     const pending = talkModeListenersRegistrationRef.current;
     if (pending) return pending;
-
     const registration = (async () => {
       const talkMode = getTalkModePlugin();
-
       const transcriptHandle = await talkMode.addListener(
         "transcript",
         (event: TalkModeTranscriptEvent) => {
@@ -1032,7 +976,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       talkModeListenersRegistrationRef.current = null;
     }
   }, [applyTranscriptUpdate, resetListeningState]);
-
   const transcribeLocalInferenceAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
       const { text } = await transcribeLocalInferenceWav(audio, { signal });
@@ -1040,7 +983,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   const transcribeCloudAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
       return transcribeCloudWav(audio, {
@@ -1051,7 +993,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   // Arms the local-inference WAV recorder. Route eligibility (provider choice,
   // capture support, server readiness) is resolved ONCE by `startListening`
   // via the shared `resolveWavAsrRoute` rule — this only owns the recorder.
@@ -1087,7 +1028,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   // Cloud STT: capture the SAME mono PCM16 WAV as the local-inference path and
   // POST it to `/api/asr/cloud` on stop (see stopListening). This is the real
   // transcriber for the `eliza-cloud` / `openai` config default — the browser
@@ -1126,21 +1066,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [],
   );
-
   const startBrowserRecognition = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle">) => {
       const SpeechRecognitionAPI = getSpeechRecognitionCtor();
       if (!SpeechRecognitionAPI) return false;
-
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = options.lang ?? "en-US";
-
       recognition.onresult = (event: SpeechRecognitionResultEvent) => {
         let transcript = "";
         let isFinal = false;
-
         for (let index = 0; index < event.results.length; index += 1) {
           const result = event.results[index];
           const chunk = result?.[0]?.transcript ?? "";
@@ -1151,10 +1087,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             isFinal = true;
           }
         }
-
         applyTranscriptUpdate(transcript, isFinal);
       };
-
       recognition.onerror = (event: { error: string }) => {
         if (
           event.error === "not-allowed" ||
@@ -1167,7 +1101,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           setIsListening(false);
         }
       };
-
       recognition.onend = () => {
         if (
           shouldAutoRestartBrowserRecognition() &&
@@ -1191,7 +1124,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           }
         }
       };
-
       recognitionRef.current = recognition;
       try {
         recognition.start();
@@ -1208,13 +1140,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [applyTranscriptUpdate, options.lang],
   );
-
   const startTalkModeRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
       if (!shouldPreferNativeTalkMode()) {
         return false;
       }
-
       try {
         await ensureTalkModeListeners();
         const talkMode = getTalkModePlugin();
@@ -1229,7 +1159,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           setSupported(false);
           return false;
         }
-
         if (permissions?.microphone === "prompt" && nativeSpeechSupported) {
           await talkMode.requestPermissions().catch(() => {
             /* ignore */
@@ -1238,7 +1167,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             .checkPermissions()
             .catch(() => permissions);
         }
-
         const directRpc = getElectrobunRendererRpc();
         const result = await talkMode.start({
           config: {
@@ -1258,7 +1186,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           }
           return false;
         }
-
         setSupported(true);
         enabledRef.current = true;
         listeningModeRef.current = mode;
@@ -1272,7 +1199,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [ensureTalkModeListeners, options.lang],
   );
-
   const finalizeRecognition = useCallback(
     (submit: boolean) => {
       const mode =
@@ -1295,25 +1221,21 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           speaker: turn.speaker,
         });
       }
-
       resetListeningState();
     },
     [resetListeningState],
   );
-
   const startListening = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (enabledRef.current) {
         voiceCaptureDebug("start:noop", { reason: "already-enabled", mode });
         return;
       }
-
       transcriptBufferRef.current = "";
       setInterimTranscript("");
       if (interruptOnSpeechRef.current) {
         interruptSpeechRef.current();
       }
-
       // Which STT backend does the config resolve to, and why? This is the
       // first fork the on-screen HUD needs: a cloud-STT config that silently
       // fell through to the browser recognizer (absent on iOS PWA) is a classic
@@ -1326,7 +1248,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         captureSupported,
         preferNative: shouldPreferNativeTalkMode(),
       });
-
       // Resolve the WAV route ONCE via the rule shared with the hook-free
       // capture factory (#16524): explicit local-inference stays local while
       // the server reports ready; selected-but-unready degrades to the cloud
@@ -1344,7 +1265,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         captureSupported,
         localInferenceReady,
       });
-
       if (wavRoute === "local-inference") {
         const localStarted = await startLocalInferenceRecognition(mode);
         if (localStarted) {
@@ -1369,7 +1289,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           return;
         }
       }
-
       if (shouldPreferNativeTalkMode()) {
         const started = await startTalkModeRecognition(mode);
         if (started) {
@@ -1377,7 +1296,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           return;
         }
       }
-
       // Last resort: browser SpeechRecognition. On iOS PWA this engine is
       // absent, so landing here after a cloud config is the silent-crickets
       // regression the cloud path was added to avoid — mark it loudly.
@@ -1396,15 +1314,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       startTalkModeRecognition,
     ],
   );
-
   const stopListening = useCallback(
     async (options?: { submit?: boolean }) => {
       const mode = listeningModeRef.current;
       if (mode === "idle") return;
-
       const submit = options?.submit === true;
       enabledRef.current = false;
-
       if (sttBackendRef.current === "talkmode") {
         await getTalkModePlugin()
           .stop()
@@ -1508,7 +1423,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
         );
       }
-
       finalizeRecognition(submit);
     },
     [
@@ -1518,7 +1432,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       transcribeLocalInferenceAudio,
     ],
   );
-
   const toggleListening = useCallback(() => {
     if (enabledRef.current && listeningModeRef.current === "compose") {
       void stopListening();
@@ -1527,9 +1440,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     if (enabledRef.current) return;
     void startListening("compose");
   }, [startListening, stopListening]);
-
   // ── Cancel helpers ────────────────────────────────────────────────
-
   /** Stop all in-progress speech playback/requests but keep assistant queue state. */
   const cancelPlayback = useCallback(() => {
     generationRef.current += 1;
@@ -1538,18 +1449,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     queueRef.current = [];
     prefetchedSpeechRef.current = null;
     bufferedPlaybackActiveRef.current = false;
-
     activeFetchAbortRef.current?.abort();
     activeFetchAbortRef.current = null;
-
     activeTaskFinishRef.current?.();
     activeTaskFinishRef.current = null;
     stopPlaybackFrameTap({ reset: true, drain: false });
-
     // Browser TTS
     synthRef.current?.cancel();
     utteranceRef.current = null;
-
     // ElevenLabs audio
     if (audioSourceRef.current) {
       try {
@@ -1564,7 +1471,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
       audioSourceRef.current = null;
     }
-
     // Interrupt the native engine that owns the in-flight speak so barge-in
     // actually silences the agent. Remote-only Android builds omit TalkMode
     // and use the Play-safe system TTS bridge instead.
@@ -1583,12 +1489,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         );
       });
     }
-
     clearSpeechTimers();
     usingAudioAnalysisRef.current = false;
     setUsingAudioAnalysis(false);
   }, [clearSpeechTimers, stopPlaybackFrameTap]);
-
   const stopSpeaking = useCallback(() => {
     if (assistantTtsDebounceRef.current != null) {
       clearTimeout(assistantTtsDebounceRef.current);
@@ -1601,9 +1505,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     setTtsError(null);
   }, [cancelPlayback]);
   interruptSpeechRef.current = stopSpeaking;
-
   // ── ElevenLabs TTS ────────────────────────────────────────────────
-
   const prepareElevenLabs = useCallback(
     async (
       text: string,
@@ -1613,7 +1515,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     ) => {
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
       const modelId = elConfig.modelId ?? DEFAULT_ELEVEN_MODEL;
-
       const cacheKey =
         task.cacheKey ??
         (shouldCacheGeneratedSpeech(text, task.segment)
@@ -1623,12 +1524,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let audioBytes: Uint8Array | null = null;
       let cached = false;
       let selectedResponse: Response | null = null;
-
       if (cacheKey && cachedBytes) {
         audioBytes = cachedBytes.slice();
         cached = true;
       }
-
       if (!audioBytes) {
         const requestBody = {
           text,
@@ -1647,7 +1546,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           modelId,
           outputFormat: "mp3_44100_128",
         });
-
         /**
          * Server-side TTS when the browser has no `xi-api-key`.
          * Always try Eliza Cloud (`/api/tts/cloud`) first — that is where a
@@ -1690,7 +1588,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             signal: controller.signal,
           };
         };
-
         const shouldFallbackFromCloudProxy = (status: number): boolean =>
           status === 400 ||
           status === 401 ||
@@ -1698,7 +1595,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           status === 404 ||
           status === 405 ||
           status === 501;
-
         const fetchViaBestAvailableProxy = async (): Promise<Response> => {
           const cloudTarget = resolveApiUrl("/api/tts/cloud");
           try {
@@ -1715,7 +1611,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
             }
-
             // Same-engine transport fallback (cloud proxy → direct ElevenLabs
             // proxy): still ElevenLabs, same voice — NOT a voice swap (#12253).
             // Log at warn (not debug-only) so the retry is visible in the
@@ -1744,7 +1639,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               error: error instanceof Error ? error.message : String(error),
             });
           }
-
           return observeVoiceRequest(
             task.evidence,
             "elevenlabs-proxy",
@@ -1760,11 +1654,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ),
           );
         };
-
         const trimmedApiKey =
           typeof elConfig.apiKey === "string" ? elConfig.apiKey.trim() : "";
         const hasDirectKey = hasConfiguredApiKey(trimmedApiKey);
-
         let res: Response;
         if (hasDirectKey) {
           try {
@@ -1793,7 +1685,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             if (controller.signal.aborted) throw error;
             res = await fetchViaBestAvailableProxy();
           }
-
           // If the locally-available key is stale, fall back to server-side key.
           if (!res.ok && (res.status === 401 || res.status === 403)) {
             const proxyRes = await fetchViaBestAvailableProxy();
@@ -1804,7 +1695,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         } else {
           res = await fetchViaBestAvailableProxy();
         }
-
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           ttsDebug("useVoiceChat:elevenlabs-http-error", {
@@ -1817,7 +1707,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             `ElevenLabs ${res.status}: ${formatVoiceErrorPreview(body, 200)}`,
           );
         }
-
         selectedResponse = res;
         const audioData = await res.arrayBuffer();
         audioBytes = new Uint8Array(audioData);
@@ -1825,15 +1714,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
       }
-
       task.evidence?.encoded(audioBytes, selectedResponse);
       return { audioBytes, cached };
     },
     [makeElevenCacheKey, rememberCachedSegment],
   );
-
   // ── Eliza Cloud Kokoro TTS ─────────────────────────────────────────────
-
   const prepareElizaCloud = useCallback(
     async (
       text: string,
@@ -1849,12 +1735,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let audioBytes: Uint8Array | null = null;
       let cached = false;
       let selectedResponse: Response | null = null;
-
       if (cacheKey && cachedBytes) {
         audioBytes = cachedBytes.slice();
         cached = true;
       }
-
       if (!audioBytes) {
         const timeoutId = setTimeout(() => {
           controller.abort(
@@ -2024,7 +1908,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         } finally {
           clearTimeout(timeoutId);
         }
-
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           ttsDebug("useVoiceChat:eliza-cloud-http-error", {
@@ -2037,22 +1920,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             `Eliza Cloud TTS ${res.status}: ${formatVoiceErrorPreview(body, 200)}`,
           );
         }
-
         selectedResponse = res;
         audioBytes = new Uint8Array(await res.arrayBuffer());
         if (cacheKey) {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
       }
-
       task.evidence?.encoded(audioBytes, selectedResponse);
       return { audioBytes, cached };
     },
     [makeElizaCloudCacheKey, rememberCachedSegment],
   );
-
   // ── Local inference TTS ───────────────────────────────────────────────
-
   const prepareLocalInference = useCallback(
     async (
       text: string,
@@ -2068,12 +1947,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let audioBytes: Uint8Array | null = null;
       let cached = false;
       let selectedResponse: Response | null = null;
-
       if (cacheKey && cachedBytes) {
         audioBytes = cachedBytes.slice();
         cached = true;
       }
-
       if (!audioBytes) {
         const timeoutId = setTimeout(() => {
           controller.abort(
@@ -2100,29 +1977,24 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         } finally {
           clearTimeout(timeoutId);
         }
-
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           throw new Error(
             `Local inference TTS ${res.status}: ${formatVoiceErrorPreview(body, 200)}`,
           );
         }
-
         selectedResponse = res;
         audioBytes = new Uint8Array(await res.arrayBuffer());
         if (cacheKey) {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
       }
-
       task.evidence?.encoded(audioBytes, selectedResponse);
       return { audioBytes, cached };
     },
     [makeLocalInferenceCacheKey, rememberCachedSegment],
   );
-
   // ── Browser SpeechSynthesis TTS ───────────────────────────────────
-
   const speakBrowser = useCallback(
     (text: string, task: SpeakTask, generation: number) => {
       const config = voiceConfigRef.current;
@@ -2131,7 +2003,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const words = text.trim().split(/\s+/).length;
       const estimatedMs = Math.max(1200, (words / 3) * 1000);
       const useTalkModeTts = !synth && Boolean(getElectrobunRendererRpc());
-
       ttsDebug("speakBrowser:enter", {
         path: synth
           ? "speechSynthesis"
@@ -2147,7 +2018,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           ? { edgeVoiceSetting: config.edge.voice }
           : {}),
       });
-
       return new Promise<void>((resolve) => {
         let finished = false;
         const finish = () => {
@@ -2160,9 +2030,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           utteranceRef.current = null;
           resolve();
         };
-
         activeTaskFinishRef.current = finish;
-
         if (!synth) {
           if (!getElectrobunRendererRpc()) {
             ttsDebug("play:browser:no-synth", {
@@ -2175,7 +2043,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             finish();
             return;
           }
-
           ttsDebug("play:talkmode:dispatch", {
             segment: task.segment,
             append: task.append,
@@ -2206,21 +2073,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           speechTimeoutRef.current = setTimeout(finish, estimatedMs);
           return;
         }
-
         const utterance = new SpeechSynthesisUtterance(text.trim());
         utterance.lang = requestedLocale;
         utteranceRef.current = utterance;
-
         let selectedVoice: SpeechSynthesisVoice | undefined;
         if (synth?.getVoices) {
           const voices = synth.getVoices();
-
           if (config?.provider === "edge" && config.edge?.voice) {
             const edgeVoiceName = config.edge.voice;
             selectedVoice = voices.find(
               (v) => v.voiceURI === edgeVoiceName || v.name === edgeVoiceName,
             );
-
             if (!selectedVoice) {
               const isMale =
                 edgeVoiceName.toLowerCase().includes("guy") ||
@@ -2247,7 +2110,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               });
             }
           }
-
           if (!selectedVoice) {
             if (localePrefix(requestedLocale) === "en") {
               selectedVoice =
@@ -2263,16 +2125,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               );
             }
           }
-
           if (selectedVoice) {
             utterance.voice = selectedVoice;
             utterance.lang = selectedVoice.lang || requestedLocale;
           }
         }
-
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
-
         ttsDebug("play:browser:web-speech:enqueued", {
           segment: task.segment,
           append: task.append,
@@ -2282,7 +2141,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           engine: "speechSynthesis",
           ...webSpeechVoiceDebugFields(selectedVoice),
         });
-
         const browserPlayStartMsRef = { value: 0 };
         utterance.onstart = () => {
           if (generation !== generationRef.current) return;
@@ -2329,13 +2187,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           endBrowserUtterance();
         };
         synth.speak(utterance);
-
         speechTimeoutRef.current = setTimeout(finish, estimatedMs + 5000);
       });
     },
     [clearSpeechTimers, options.lang],
   );
-
   const prepareBufferedSpeech = useCallback(
     async (
       task: QueuedSpeechTask,
@@ -2426,7 +2282,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [prepareElevenLabs, prepareElizaCloud, prepareLocalInference],
   );
-
   const prepareNextBufferedSpeech = useCallback(() => {
     if (
       !bufferedPlaybackActiveRef.current ||
@@ -2457,7 +2312,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     );
     prefetchedSpeechRef.current = { task, generation, result };
   }, [prepareBufferedSpeech]);
-
   const playBufferedSpeech = useCallback(
     async (task: QueuedSpeechTask, generation: number) => {
       const prefetched = prefetchedSpeechRef.current;
@@ -2528,12 +2382,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       clearSpeechTimers,
     ],
   );
-
   const processQueue = useCallback(() => {
     if (queueWorkerRunningRef.current) return;
     queueWorkerRunningRef.current = true;
     const workerGeneration = generationRef.current;
-
     void (async () => {
       let workerError: unknown = null;
       // Set alongside `workerError` at a fail-closed site so the tail can raise
@@ -2567,13 +2419,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           if (workerGeneration !== generationRef.current) break;
           const task = queueRef.current.shift();
           if (!task) break;
-
           const config = task.voiceConfig;
           const elConfig = config?.elevenlabs;
           const useElizaCloud = config?.provider === "eliza-cloud";
           const useElevenLabs = config?.provider === "elevenlabs";
           const useLocalInference = config?.provider === "local-inference";
-
           ttsDebug("processQueue:task", {
             useElizaCloud,
             useElevenLabs,
@@ -2590,7 +2440,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 }
               : {}),
           });
-
           // Native mobile (Android/iOS Capacitor): route the reply through the
           // native TalkMode engine (Kotlin AudioTrack / on-device local-inference
           // TTS) per the Android TTS-owner decision, instead of the WebView
@@ -2645,7 +2494,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               break;
             }
           }
-
           if (useElizaCloud) {
             usingAudioAnalysisRef.current = true;
             setUsingAudioAnalysis(true);
@@ -2674,7 +2522,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               break;
             }
           }
-
           if (useLocalInference) {
             usingAudioAnalysisRef.current = true;
             setUsingAudioAnalysis(true);
@@ -2701,7 +2548,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               break;
             }
           }
-
           if (useElevenLabs && elConfig) {
             usingAudioAnalysisRef.current = true;
             setUsingAudioAnalysis(true);
@@ -2743,7 +2589,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 "speakBrowser — OS Web Speech (often msedge/Microsoft) or Electrobun talkmode",
             });
           }
-
           await speakBrowser(task.text, task, workerGeneration);
         }
       } catch (error) {
@@ -2789,19 +2634,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       setIsSpeaking(false);
     })();
   }, [speakBrowser, playBufferedSpeech]);
-
   const enqueueSpeech = useCallback(
     (task: SpeakTask) => {
       const speakable = toSpeakableText(task.text);
       if (!speakable) return;
-
       // A new utterance clears any prior fail-closed TTS error banner (#12253).
       setTtsError(null);
-
       if (!task.append) {
         cancelPlayback();
       }
-
       const queuedTask: QueuedSpeechTask = {
         ...task,
         text: speakable,
@@ -2865,9 +2706,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       processQueue,
     ],
   );
-
   // ── Public speak APIs ─────────────────────────────────────────────
-
   const speak = useCallback(
     (text: string, speakOptions?: Parameters<VoiceChatState["speak"]>[1]) => {
       if (assistantTtsDebounceRef.current != null) {
@@ -2884,27 +2723,22 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [enqueueSpeech],
   );
-
   const clearAssistantTtsDebounce = useCallback(() => {
     if (assistantTtsDebounceRef.current != null) {
       clearTimeout(assistantTtsDebounceRef.current);
       assistantTtsDebounceRef.current = null;
     }
   }, []);
-
   const flushPendingAssistantTts = useCallback(() => {
     assistantTtsDebounceRef.current = null;
     const state = assistantSpeechRef.current;
     if (!state || state.finalQueued || state.revisionRejected) return;
-
     const latest = state.latestSpeakable;
     if (!latest) return;
-
     const stable = stableSpeechPrefix(latest);
     if (stable.length <= state.queuedSpeakablePrefix.length) return;
     const unsent = remainderAfter(stable, state.queuedSpeakablePrefix);
     if (!unsent) return;
-
     const elConfig = voiceConfigRef.current?.elevenlabs;
     const isFirstClip = state.queuedSpeakablePrefix.length === 0;
     const segment = isFirstClip ? "full" : "remainder";
@@ -2914,14 +2748,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       shouldCacheGeneratedSpeech(unsent, segment)
         ? makeElevenCacheKey(unsent, elConfig)
         : undefined;
-
     const dbgUtterance = isTtsDebugEnabled()
       ? {
           messageId: state.messageId,
           fullAssistTextPreview: ttsDebugTextPreview(latest, 220),
         }
       : undefined;
-
     enqueueSpeech({
       text: unsent,
       append: !isFirstClip || !state.replacePlaybackOnFirstClip,
@@ -2930,10 +2762,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       debugUtteranceContext: dbgUtterance,
       telemetry: state.telemetry,
     });
-
     state.queuedSpeakablePrefix = stable;
   }, [enqueueSpeech, makeElevenCacheKey]);
-
   const queueAssistantSpeech = useCallback(
     (
       messageId: string,
@@ -2942,7 +2772,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       queueOptions?: QueueAssistantSpeechOptions,
     ) => {
       if (!messageId) return;
-
       const speakable = toSpeakableText(text);
       if (!speakable) {
         ttsDebug("queueAssistantSpeech:skip-empty", { messageId });
@@ -2954,7 +2783,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         speakableChars: speakable.length,
         preview: ttsDebugTextPreview(speakable),
       });
-
       const current = assistantSpeechRef.current;
       const promotesActiveMessage =
         current != null &&
@@ -2976,7 +2804,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           telemetry: queueOptions?.telemetry,
         };
       }
-
       const promotedOrCurrent = assistantSpeechRef.current;
       if (queueOptions?.telemetry && promotedOrCurrent) {
         promotedOrCurrent.telemetry = {
@@ -2984,10 +2811,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           ...queueOptions.telemetry,
         };
       }
-
       const state = assistantSpeechRef.current;
       if (!state || state.revisionRejected) return;
-
       if (
         state.queuedSpeakablePrefix &&
         !isCommittedSpeechPrefix(speakable, state.queuedSpeakablePrefix)
@@ -3010,16 +2835,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return;
       }
       state.latestSpeakable = speakable;
-
       if (ASSISTANT_TTS_FINAL_ONLY && !isFinal) {
         // Band-aid mode: never speak partial stream chunks.
         return;
       }
-
       if (ASSISTANT_TTS_FINAL_ONLY) {
         if (state.finalQueued) return;
         clearAssistantTtsDebounce();
-
         const elConfig = voiceConfigRef.current?.elevenlabs;
         const cacheKey =
           voiceConfigRef.current?.provider === "elevenlabs" &&
@@ -3033,7 +2855,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               fullAssistTextPreview: ttsDebugTextPreview(speakable, 220),
             }
           : undefined;
-
         // Final-only means one utterance per assistant message.
         enqueueSpeech({
           text: speakable,
@@ -3047,20 +2868,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         state.finalQueued = true;
         return;
       }
-
       if (
         speakable === state.queuedSpeakablePrefix &&
         (!isFinal || state.finalQueued)
       ) {
         return;
       }
-
       if (speakable === state.queuedSpeakablePrefix && isFinal) {
         clearAssistantTtsDebounce();
         state.finalQueued = true;
         return;
       }
-
       const boundaryPrefix = queueableSpeechPrefix(speakable, isFinal);
       const boundaryUnsent =
         boundaryPrefix.length > state.queuedSpeakablePrefix.length
@@ -3074,7 +2892,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
         return;
       }
-
       const isFirstClip = state.queuedSpeakablePrefix.length === 0;
       const thresholdFlush =
         isFinal ||
@@ -3090,7 +2907,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           ? remainderAfter(targetPrefix, state.queuedSpeakablePrefix)
           : "";
       const flushNow = Boolean(unsent);
-
       if (flushNow) {
         clearAssistantTtsDebounce();
         const elConfig = voiceConfigRef.current?.elevenlabs;
@@ -3119,7 +2935,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         if (isFinal) state.finalQueued = true;
         return;
       }
-
       clearAssistantTtsDebounce();
       assistantTtsDebounceRef.current = setTimeout(() => {
         flushPendingAssistantTts();
@@ -3133,16 +2948,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       makeElevenCacheKey,
     ],
   );
-
   // ── Unlock audio on first user gesture ─────────────────────────────
   // Browsers block AudioContext and SpeechSynthesis until a user gesture.
   // On the first interaction we warm AudioContext (for ElevenLabs) and
   // bump voiceUnlockedGeneration so the auto-speak effect retries any
   // greeting that was silently dropped by autoplay policy.
-
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const handleUserGesture = () => {
       window.removeEventListener("pointerdown", handleUserGesture, true);
       window.removeEventListener("keydown", handleUserGesture, true);
@@ -3150,16 +2962,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // explicit `unlockAudio` action so both paths behave identically.
       unlockAudio();
     };
-
     window.addEventListener("pointerdown", handleUserGesture, true);
     window.addEventListener("keydown", handleUserGesture, true);
-
     return () => {
       window.removeEventListener("pointerdown", handleUserGesture, true);
       window.removeEventListener("keydown", handleUserGesture, true);
     };
   }, [unlockAudio]);
-
   // ── App suspend: release the mic mid-capture (#voice-V1) ───────────
   // On the installed iOS PWA, backgrounding suspends the WebAudio graph and
   // leaves the composer capture stuck (phantom "listening", orphaned mic). Tie
@@ -3177,9 +2986,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       document.removeEventListener(APP_PAUSE_EVENT, onPause);
     };
   }, [discardCaptureForSuspend]);
-
   // ── Cleanup on unmount ────────────────────────────────────────────
-
   useEffect(() => {
     return () => {
       void stopListening();
@@ -3191,7 +2998,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
     };
   }, [removeTalkModeListeners, stopListening, stopSpeaking]);
-
   return {
     isListening,
     captureMode,

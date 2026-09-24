@@ -3,6 +3,7 @@
  * app startup. This module owns optional package resolution and contributor
  * ordering; the runtime host only invokes the three lifecycle drains.
  */
+
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -10,13 +11,13 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { resolvePackageEntry } from "@elizaos/agent/runtime/plugin-types";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import { formatErrorWithStack } from "@elizaos/shared";
 import {
   isOptionalAppRoutePluginUnavailableError,
   OptionalAppRoutePluginUnavailableError,
-} from "@elizaos/shared/api/app-route-plugin-registry";
-import { getApps, loadRegistry } from "@elizaos/shared/catalog";
+} from "@elizaos/core/api/app-route-plugin-registry";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { getApps, loadRegistry } from "@elizaos/core/catalog";
+import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
 import {
   type AppRoutePluginRegistryEntry,
   drainAppRoutePluginLoaders,
@@ -24,13 +25,10 @@ import {
 } from "../app-route-plugin-registry.js";
 
 const _require = createRequire(import.meta.url);
-
 // ---------------------------------------------------------------------------
 // App route plugins
 // ---------------------------------------------------------------------------
-
 type AppRoutePluginModule = Record<string, unknown>;
-
 function splitPackageSpecifier(specifier: string): {
   packageName: string;
   exportSubpath: string;
@@ -49,13 +47,11 @@ function splitPackageSpecifier(specifier: string): {
     exportSubpath: parts.length > 1 ? `./${parts.slice(1).join("/")}` : ".",
   };
 }
-
 async function resolveLocalAppRoutePluginEntry(
   specifier: string,
 ): Promise<string | null> {
   const parsed = splitPackageSpecifier(specifier);
   if (!parsed) return null;
-
   let packageJsonPath: string;
   try {
     packageJsonPath = _require.resolve(`${parsed.packageName}/package.json`);
@@ -64,23 +60,24 @@ async function resolveLocalAppRoutePluginEntry(
     // represented as unavailable and handled distinctly by the plugin loader.
     return null;
   }
-
   const entry = await resolvePackageEntry(
     path.dirname(packageJsonPath),
     parsed.exportSubpath,
   );
   return existsSync(entry) ? entry : null;
 }
-
 function isPlugin(value: unknown): value is Plugin {
   return (
     typeof value === "object" &&
     value !== null &&
     "name" in value &&
-    typeof (value as { name?: unknown }).name === "string"
+    typeof (
+      value as {
+        name?: unknown;
+      }
+    ).name === "string"
   );
 }
-
 function resolvePluginExport(
   module: AppRoutePluginModule,
   exportName: string | undefined,
@@ -90,17 +87,13 @@ function resolvePluginExport(
     if (isPlugin(plugin)) return plugin;
     throw new Error(`Missing plugin export "${exportName}"`);
   }
-
   const defaultExport = module.default;
   if (isPlugin(defaultExport)) return defaultExport;
-
   for (const value of Object.values(module)) {
     if (isPlugin(value)) return value;
   }
-
   throw new Error("No plugin export found");
 }
-
 /**
  * Import an app module by package specifier, with a workspace-source fallback
  * for local/source mode. Throws {@link OptionalAppRoutePluginUnavailableError}
@@ -132,7 +125,6 @@ async function importAppModuleFromSpecifier(
     )) as AppRoutePluginModule;
   }
 }
-
 async function loadAppRoutePluginFromSpecifier(
   specifier: string,
   exportName: string | undefined,
@@ -140,11 +132,9 @@ async function loadAppRoutePluginFromSpecifier(
   const module = await importAppModuleFromSpecifier(specifier);
   return resolvePluginExport(module, exportName);
 }
-
 /** @internal Exported for focused loader regression tests. */
 export const __loadAppRoutePluginFromSpecifierForTest =
   loadAppRoutePluginFromSpecifier;
-
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
     const routePlugin = app.launch.routePlugin;
@@ -161,7 +151,6 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
     ];
   });
 }
-
 /**
  * Opt-in dev knob: comma-separated app-route-plugin ids to skip on boot.
  * Empty / unset => no filtering (default behavior unchanged: every app-route
@@ -183,7 +172,6 @@ export function getSkippedAppRoutePluginIds(): Set<string> {
       .filter(Boolean),
   );
 }
-
 /**
  * Whether the post-ready boot tail (app-route plugins, training hooks,
  * sensitive-request adapters, telegram polling, trigger bridge, connector
@@ -209,7 +197,6 @@ export function getDeferAppRoutesEnabled(
   const raw = env.ELIZA_DEFER_APP_ROUTES?.trim().toLowerCase();
   return !(raw === "0" || raw === "false" || raw === "no" || raw === "off");
 }
-
 /**
  * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
@@ -224,7 +211,6 @@ export function normalizeAppRoutePluginId(id: string): string {
     .replace(/:(routes|ui)$/, "")
     .replace(/-(app|ui|routes)$/, "");
 }
-
 function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   const byId = new Map<string, AppRoutePluginRegistryEntry>();
   for (const entry of getRegistryAppRoutePluginLoaders()) {
@@ -233,12 +219,10 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
-
   const skip = getSkippedAppRoutePluginIds();
   if (skip.size === 0) {
     return [...byId.values()];
   }
-
   // Match a loader against the skip tokens by full id OR normalized short alias
   // (so both `@elizaos/plugin-wallet:ui` and `wallet` skip the same loader).
   const skipNormalized = new Set(
@@ -263,7 +247,6 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
   return kept;
 }
-
 export async function registerAppRoutePlugins(
   runtime: AgentRuntime,
 ): Promise<void> {
@@ -280,7 +263,6 @@ export async function registerAppRoutePlugins(
   // app boot run against the same runtime.routes without double-mounting.
   await drainAppRoutePluginLoaders(runtime, getAppRoutePluginLoaders());
 }
-
 /**
  * Returns true only for genuine "module is not installed" import failures.
  * Bun raises `ResolveMessage` with `code === "ERR_MODULE_NOT_FOUND"` when a
@@ -291,12 +273,16 @@ export async function registerAppRoutePlugins(
  */
 function isModuleNotFoundError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
-  const errObj = err as { code?: unknown; constructor?: { name?: string } };
+  const errObj = err as {
+    code?: unknown;
+    constructor?: {
+      name?: string;
+    };
+  };
   if (errObj.code === "ERR_MODULE_NOT_FOUND") return true;
   if (errObj.constructor?.name === "ResolveMessage") return true;
   return false;
 }
-
 /**
  * A runtime-hook contributor: an app's optional post-ready wiring step. `invoke`
  * loads the app's declared hook module and calls it with the runtime. Resolved
@@ -307,9 +293,7 @@ interface RuntimeHookContributor {
   id: string;
   invoke: (runtime: AgentRuntime) => Promise<void>;
 }
-
 type RuntimeHookFn = (runtime: AgentRuntime) => void | Promise<void>;
-
 /**
  * Load an app's runtime-hook export by specifier and invoke it. Uses the shared
  * {@link importAppModuleFromSpecifier}, so an absent optional plugin surfaces as
@@ -330,7 +314,6 @@ async function loadAndInvokeRuntimeHook(
   }
   await (hook as RuntimeHookFn)(runtime);
 }
-
 /**
  * Resolve every app that declares a `runtimeHook` in the registry into a
  * contributor. Data-driven and generic: the registry owns the package bindings
@@ -354,7 +337,6 @@ function getRuntimeHookContributors(): RuntimeHookContributor[] {
     ];
   });
 }
-
 /**
  * Drain runtime-hook contributors in order, invoking each against the runtime.
  * An optional plugin that is not installed is skipped gracefully (debug-logged);
@@ -384,7 +366,6 @@ export async function drainRuntimeHookContributors(
     }
   }
 }
-
 export async function registerRuntimeHooks(
   runtime: AgentRuntime,
 ): Promise<void> {

@@ -25,12 +25,12 @@
 
 import crypto from "node:crypto";
 import { fetchWithSsrfGuard, type IAgentRuntime, logger } from "@elizaos/core";
+import { type LifeOpsGmailMessageSummary } from "@elizaos/core/contracts/personal-assistant";
 import {
   fail,
-  type LifeOpsGmailMessageSummary,
   normalizeOptionalString,
   requireNonEmptyString,
-} from "@elizaos/shared";
+} from "@elizaos/core/lifeops-normalize/service-normalize";
 import type {
   EmailSubscriptionScanResult,
   EmailSubscriptionSender,

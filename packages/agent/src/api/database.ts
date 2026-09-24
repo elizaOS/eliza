@@ -12,7 +12,6 @@
  * All data endpoints use the active runtime's database adapter (Drizzle ORM)
  * so they work identically for both PGLite and Postgres.
  */
-
 import dns from "node:dns";
 import type http from "node:http";
 import net from "node:net";
@@ -28,20 +27,23 @@ import {
   type ColumnInfo,
   type ConnectionTestResult,
   type DatabaseStatus,
-  parseClampedInteger,
-  readJsonBody as parseJsonBody,
   type QueryResult,
-  resolveApiBindHost,
+  type TableInfo,
+} from "@elizaos/core/api/agent-api-types";
+import {
+  readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-  type TableInfo,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-helpers";
+import { resolveApiBindHost } from "@elizaos/core/runtime-env";
+import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import type {
-  DatabaseConfig,
-  DatabaseProviderType,
-  PostgresCredentials,
+import {
+  type DatabaseConfig,
+  type DatabaseProviderType,
+  type PostgresCredentials,
 } from "../config/types.eliza.ts";
+import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 
 export {
@@ -50,12 +52,9 @@ export {
   stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
-import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 async function readJsonBody<T = Record<string, unknown>>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -64,7 +63,6 @@ async function readJsonBody<T = Record<string, unknown>>(
     maxBytes: 2 * 1024 * 1024,
   });
 }
-
 /**
  * Safely quote a SQL identifier (table or column name).
  * Postgres uses double-quote escaping: embedded " becomes "".
@@ -72,7 +70,6 @@ async function readJsonBody<T = Record<string, unknown>>(
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
-
 /**
  * Build a Postgres connection string from individual credential fields.
  */
@@ -87,7 +84,6 @@ function buildConnectionString(creds: PostgresCredentials): string {
   const sslParam = creds.ssl ? "?sslmode=verify-full" : "";
   return `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
 }
-
 /**
  * Return a copy of credentials with host pinned to a validated IP address.
  * For connection strings, rewrites URL hostname to avoid re-resolution later.
@@ -115,13 +111,10 @@ function withPinnedHost(
   }
   return next;
 }
-
 // ---------------------------------------------------------------------------
 // Host validation — prevent SSRF via database connection endpoints
 // ---------------------------------------------------------------------------
-
 const dnsLookupAll = promisify(dns.lookup);
-
 /**
  * IP ranges that are ALWAYS blocked regardless of bind address.
  * Cloud metadata and "this" network are never legitimate Postgres targets.
@@ -131,7 +124,6 @@ const ALWAYS_BLOCKED_IP_PATTERNS: RegExp[] = [
   /^0\./, // "This" network
   /^fe[89ab][0-9a-f]:/i, // IPv6 link-local fe80::/10
 ];
-
 /**
  * Private/internal IP ranges — blocked only when the API is bound to a
  * non-loopback address (i.e. remotely reachable).  When bound to 127.0.0.1
@@ -147,7 +139,6 @@ const PRIVATE_IP_PATTERNS: RegExp[] = [
   /^::1$/, // IPv6 loopback
   /^f[cd][0-9a-f]{2}:/i, // IPv6 ULA (fc00::/7 includes fc00::–fdff::)
 ];
-
 /**
  * Returns true when the API server is bound to a loopback-only address.
  * In that case, private/internal IP ranges are allowed for DB connections
@@ -156,7 +147,6 @@ const PRIVATE_IP_PATTERNS: RegExp[] = [
 function isApiLoopbackOnly(): boolean {
   let bind = resolveApiBindHost(process.env).trim().toLowerCase();
   if (!bind) bind = "127.0.0.1";
-
   // Accept accidental URL-shaped bind values.
   if (bind.startsWith("http://") || bind.startsWith("https://")) {
     try {
@@ -166,7 +156,6 @@ function isApiLoopbackOnly(): boolean {
       // Fall through and treat as raw host value.
     }
   }
-
   // [::1]:2138 -> ::1
   const bracketedIpv6 = /^\[([^\]]+)\](?::\d+)?$/.exec(bind);
   if (bracketedIpv6?.[1]) {
@@ -178,14 +167,11 @@ function isApiLoopbackOnly(): boolean {
       bind = singleColonHostPort[1];
     }
   }
-
   bind = bind.replace(/^\[|\]$/g, "");
-
   // Reuse the strict loopback classifier to avoid hostname prefix bypasses
   // such as "127.evil.com" that are not literal 127.0.0.0/8 IPs.
   return isLoopbackHost(bind);
 }
-
 /**
  * Extract all potential hosts from a Postgres connection string or credentials object.
  * Includes query params like ?host= and ?hostaddr= which Postgres clients honor.
@@ -196,7 +182,6 @@ function extractHosts(creds: PostgresCredentials): string[] {
     try {
       const url = new URL(creds.connectionString);
       const hosts: string[] = [];
-
       // PostgreSQL connection strings can have ?host= param that overrides URI hostname
       const hostParam = url.searchParams.get("host");
       if (hostParam) {
@@ -207,7 +192,6 @@ function extractHosts(creds: PostgresCredentials): string[] {
             .filter(Boolean),
         );
       }
-
       // Also check hostaddr param
       const hostAddrParam = url.searchParams.get("hostaddr");
       if (hostAddrParam) {
@@ -218,12 +202,10 @@ function extractHosts(creds: PostgresCredentials): string[] {
             .filter(Boolean),
         );
       }
-
       // Include URI hostname
       if (url.hostname) {
         hosts.push(normalizeHostLike(url.hostname));
       }
-
       return [...new Set(hosts)];
     } catch {
       return []; // Unparseable — will be rejected
@@ -235,7 +217,6 @@ function extractHosts(creds: PostgresCredentials): string[] {
   }
   return [];
 }
-
 /**
  * Check whether an IP address falls in a blocked range.
  * When the API is remotely reachable, private ranges are also blocked.
@@ -250,7 +231,6 @@ function isBlockedIp(ip: string): boolean {
     return true;
   return false;
 }
-
 /**
  * Validate that all target hosts do not resolve to blocked addresses.
  *
@@ -262,8 +242,13 @@ function isBlockedIp(ip: string): boolean {
  */
 async function validateDbHost(
   creds: PostgresCredentials,
-  opts: { allowUnresolvedHostnames?: boolean } = {},
-): Promise<{ error: string | null; pinnedHost: string | null }> {
+  opts: {
+    allowUnresolvedHostnames?: boolean;
+  } = {},
+): Promise<{
+  error: string | null;
+  pinnedHost: string | null;
+}> {
   const hosts = extractHosts(creds);
   if (hosts.length === 0) {
     return {
@@ -271,12 +256,9 @@ async function validateDbHost(
       pinnedHost: null,
     };
   }
-
   let pinnedHost: string | null = null;
-
   for (const host of hosts) {
     const literalNormalized = normalizeIpForPolicy(host);
-
     // First check the literal host string (catches raw IPs without DNS lookup)
     if (isBlockedIp(literalNormalized)) {
       return {
@@ -284,13 +266,11 @@ async function validateDbHost(
         pinnedHost: null,
       };
     }
-
     // Literal IPs are already pinned and do not require DNS.
     if (net.isIP(literalNormalized)) {
       if (!pinnedHost) pinnedHost = literalNormalized;
       continue;
     }
-
     // Resolve DNS and check all resulting IPs
     try {
       const results = await dnsLookupAll(host, { all: true });
@@ -299,7 +279,11 @@ async function validateDbHost(
         const ip =
           typeof entry === "string"
             ? entry
-            : (entry as { address: string }).address;
+            : (
+                entry as {
+                  address: string;
+                }
+              ).address;
         const normalized = normalizeIpForPolicy(ip);
         if (isBlockedIp(normalized)) {
           return {
@@ -325,7 +309,6 @@ async function validateDbHost(
       }
     }
   }
-
   if (!pinnedHost) {
     if (opts.allowUnresolvedHostnames) {
       return { error: null, pinnedHost: null };
@@ -337,7 +320,6 @@ async function validateDbHost(
   }
   return { error: null, pinnedHost };
 }
-
 /** Convert a JS value to a SQL literal for use in raw queries. */
 function sqlLiteral(v: unknown): string {
   if (v === null || v === undefined) return "NULL";
@@ -347,22 +329,22 @@ function sqlLiteral(v: unknown): string {
     return `'${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`;
   return `'${String(v).replace(/'/g, "''")}'`;
 }
-
 /** Build a "col = val" SQL assignment clause. */
 function sqlAssign(col: string, val: unknown): string {
   if (val === null || val === undefined) return `${quoteIdent(col)} = NULL`;
   return `${quoteIdent(col)} = ${sqlLiteral(val)}`;
 }
-
 /** Build a "col = val" or "col IS NULL" SQL WHERE predicate. */
 function sqlPredicate(col: string, val: unknown): string {
   if (val === null || val === undefined) return `${quoteIdent(col)} IS NULL`;
   return `${quoteIdent(col)} = ${sqlLiteral(val)}`;
 }
-
 // Cached drizzle-orm sql helper; resolved once on first call.
-let _sqlHelper: { raw: (query: string) => { queryChunks: unknown[] } } | null =
-  null;
+let _sqlHelper: {
+  raw: (query: string) => {
+    queryChunks: unknown[];
+  };
+} | null = null;
 async function getDrizzleSql(): Promise<typeof _sqlHelper> {
   if (!_sqlHelper) {
     const drizzle = await import("drizzle-orm");
@@ -370,52 +352,50 @@ async function getDrizzleSql(): Promise<typeof _sqlHelper> {
   }
   return _sqlHelper;
 }
-
 function isQueryRow(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function normalizeQueryRows(value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value.filter(isQueryRow);
 }
-
 /** Execute raw SQL via the runtime's Drizzle adapter. */
 async function executeRawSql(
   runtime: AgentRuntime,
   sqlText: string,
-): Promise<{ rows: Record<string, unknown>[]; columns: string[] }> {
+): Promise<{
+  rows: Record<string, unknown>[];
+  columns: string[];
+}> {
   const drizzleSql = await getDrizzleSql();
   const db = runtime.adapter.db as {
     execute(query: { queryChunks: unknown[] }): Promise<{
       rows: Record<string, unknown>[];
-      fields?: Array<{ name: string }>;
+      fields?: Array<{
+        name: string;
+      }>;
     }>;
   };
   const rawQuery = drizzleSql?.raw(sqlText);
   if (!rawQuery) throw new Error("SQL module not available");
   const result = await db.execute(rawQuery);
   const rows = normalizeQueryRows(result.rows);
-
   let columns: string[] = [];
   if (result.fields && Array.isArray(result.fields)) {
     columns = result.fields.map((f: { name: string }) => f.name);
   } else if (rows.length > 0) {
     columns = Object.keys(rows[0]);
   }
-
   return { rows, columns };
 }
-
 /**
  * Detect the current database provider from environment / runtime state.
  */
 function detectCurrentProvider(): DatabaseProviderType {
   return process.env.POSTGRES_URL ? "postgres" : "pglite";
 }
-
 /** Verify a table name refers to a real user table. */
 async function assertTableExists(
   runtime: AgentRuntime,
@@ -432,11 +412,9 @@ async function assertTableExists(
   );
   return rows.length > 0;
 }
-
 // ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
-
 /**
  * GET /api/database/status
  * Returns current connection status, provider, table count, version.
@@ -458,13 +436,11 @@ async function handleGetStatus(
     } satisfies DatabaseStatus);
     return;
   }
-
   const { rows } = await executeRawSql(runtime, "SELECT version()");
   const serverVersion =
     rows.length > 0
       ? String((rows[0] as Record<string, unknown>).version ?? "")
       : null;
-
   const tableResult = await executeRawSql(
     runtime,
     `SELECT count(*) AS cnt
@@ -476,7 +452,6 @@ async function handleGetStatus(
     tableResult.rows.length > 0
       ? Number((tableResult.rows[0] as Record<string, unknown>).cnt ?? 0)
       : 0;
-
   const status: DatabaseStatus = {
     provider,
     connected: true,
@@ -492,10 +467,8 @@ async function handleGetStatus(
           ).replace(/\/.*$/, "") ?? null)
         : null,
   };
-
   sendJson(res, status);
 }
-
 /**
  * GET /api/database/config
  * Returns the persisted database configuration from eliza.json.
@@ -530,7 +503,6 @@ function handleGetConfig(
     needsRestart: (dbConfig.provider ?? "pglite") !== detectCurrentProvider(),
   });
 }
-
 /**
  * PUT /api/database/config
  * Saves new database configuration. Does NOT restart the agent automatically;
@@ -542,7 +514,6 @@ async function handlePutConfig(
 ): Promise<void> {
   const body = await readJsonBody<DatabaseConfig>(req, res);
   if (!body) return;
-
   // Validate
   if (
     body.provider &&
@@ -555,14 +526,12 @@ async function handlePutConfig(
     );
     return;
   }
-
   // Load current config so validation can account for unchanged provider.
   const config = loadElizaConfig();
   const existingDb = config.database ?? {};
   const effectiveProvider =
     body.provider ?? existingDb.provider ?? ("pglite" as DatabaseProviderType);
   let validatedPostgres: PostgresCredentials | null = null;
-
   if (body.postgres) {
     const pg = body.postgres;
     if (effectiveProvider === "postgres" && !pg.connectionString && !pg.host) {
@@ -572,7 +541,6 @@ async function handlePutConfig(
       );
       return;
     }
-
     const validation = await validateDbHost(pg, {
       allowUnresolvedHostnames: Boolean(pg.connectionString),
     });
@@ -584,13 +552,11 @@ async function handlePutConfig(
       ? withPinnedHost(pg, validation.pinnedHost)
       : pg;
   }
-
   // Merge: keep existing postgres/pglite sub-configs unless explicitly provided
   const merged: DatabaseConfig = {
     ...existingDb,
     ...body,
   };
-
   // If switching to postgres, ensure postgres config is present
   if (merged.provider === "postgres" && body.postgres) {
     merged.postgres = {
@@ -602,22 +568,18 @@ async function handlePutConfig(
   if (merged.provider === "pglite" && body.pglite) {
     merged.pglite = { ...existingDb.pglite, ...body.pglite };
   }
-
   config.database = merged;
   saveElizaConfig(config);
-
   logger.info(
     { src: "database-api", provider: merged.provider },
     "Database configuration saved",
   );
-
   sendJson(res, {
     saved: true,
     config: merged,
     needsRestart: (merged.provider ?? "pglite") !== detectCurrentProvider(),
   });
 }
-
 /**
  * POST /api/database/test
  * Tests a Postgres connection without persisting anything.
@@ -629,19 +591,16 @@ async function handleTestConnection(
 ): Promise<void> {
   const body = await readJsonBody<PostgresCredentials>(req, res);
   if (!body) return;
-
   const validation = await validateDbHost(body);
   if (validation.error) {
     sendJsonError(res, validation.error);
     return;
   }
-
   const pinnedCreds = validation.pinnedHost
     ? withPinnedHost(body, validation.pinnedHost)
     : body;
   const connectionString = buildConnectionString(pinnedCreds);
   const start = Date.now();
-
   // Dynamically import pg to avoid hard-coupling (it is a peer dep via plugin-sql)
   let Pool: typeof import("pg").Pool;
   try {
@@ -657,21 +616,18 @@ async function handleTestConnection(
     } satisfies ConnectionTestResult);
     return;
   }
-
   const pool = new Pool({
     connectionString,
     max: 1,
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 5000,
   });
-
   let client: import("pg").PoolClient | null = null;
   try {
     client = await pool.connect();
     const versionResult = await client.query("SELECT version()");
     const serverVersion = String(versionResult.rows[0]?.version ?? "");
     const durationMs = Date.now() - start;
-
     sendJson(res, {
       success: true,
       serverVersion,
@@ -694,7 +650,6 @@ async function handleTestConnection(
     await pool.end();
   }
 }
-
 /**
  * GET /api/database/tables
  * Lists all user tables with column metadata and approximate row counts.
@@ -719,7 +674,6 @@ async function handleGetTables(
        AND t.table_type = 'BASE TABLE'
      ORDER BY t.table_schema, t.table_name`,
   );
-
   // Get columns for all tables in one query
   const columnsResult = await executeRawSql(
     runtime,
@@ -746,7 +700,6 @@ async function handleGetTables(
      WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
      ORDER BY c.table_schema, c.table_name, c.ordinal_position`,
   );
-
   // Group columns by table
   const columnsByTable = new Map<string, ColumnInfo[]>();
   for (const row of columnsResult.rows) {
@@ -762,7 +715,6 @@ async function handleGetTables(
     });
     columnsByTable.set(key, cols);
   }
-
   const tables: TableInfo[] = tablesResult.rows.map((row) => {
     const key = `${String(row.schema)}.${String(row.name)}`;
     return {
@@ -772,13 +724,10 @@ async function handleGetTables(
       columns: columnsByTable.get(key) ?? [],
     };
   });
-
   sendJson(res, { tables });
 }
-
 const ROWS_DEFAULT_LIMIT = 50;
 const ROWS_MAX_LIMIT = 500;
-
 /**
  * Parse + clamp the `offset`/`limit` query params for row pagination. The
  * values are interpolated into the SQL `LIMIT ... OFFSET ...` clause, so they
@@ -791,7 +740,10 @@ const ROWS_MAX_LIMIT = 500;
 export function parseRowsPagination(
   offsetRaw: string | null,
   limitRaw: string | null,
-): { offset: number; limit: number } {
+): {
+  offset: number;
+  limit: number;
+} {
   return {
     offset: parseClampedInteger(offsetRaw, { fallback: 0, min: 0 }),
     limit: parseClampedInteger(limitRaw, {
@@ -801,22 +753,25 @@ export function parseRowsPagination(
     }),
   };
 }
-
 /**
  * Parse the `order` query for row retrieval. The token is interpolated into
  * `ORDER BY ... ASC|DESC`, so only the Control UI's exact `asc`/`desc`
  * identities are legal. `order=DESC` used to become ASC because only the
  * lowercase `desc` token flipped the direction.
  */
-export function parseRowsSortOrder(
-  raw: string | null,
-): { ok: true; order: "ASC" | "DESC" } | { ok: false } {
+export function parseRowsSortOrder(raw: string | null):
+  | {
+      ok: true;
+      order: "ASC" | "DESC";
+    }
+  | {
+      ok: false;
+    } {
   if (raw === null || raw === "") return { ok: true, order: "ASC" };
   if (raw === "asc") return { ok: true, order: "ASC" };
   if (raw === "desc") return { ok: true, order: "DESC" };
   return { ok: false };
 }
-
 /**
  * GET /api/database/tables/:table/rows?offset=0&limit=50&sort=col&order=asc&search=term
  * Paginated row retrieval for a specific table.
@@ -843,12 +798,10 @@ async function handleGetRows(
   const sortCol = url.searchParams.get("sort") ?? "";
   const sortOrder = parsedOrder.order;
   const search = url.searchParams.get("search") ?? "";
-
   if (!(await assertTableExists(runtime, tableName))) {
     sendJsonError(res, `Table "${tableName}" not found`, 404);
     return;
   }
-
   // Get column names for this table (for search and sort validation)
   const safeTableName = tableName.replace(/'/g, "''");
   const colResult = await executeRawSql(
@@ -863,10 +816,8 @@ async function handleGetRows(
   const columnTypes = new Map(
     colResult.rows.map((r) => [String(r.column_name), String(r.data_type)]),
   );
-
   // Validate sort column
   const validSort = sortCol && columnNames.includes(sortCol) ? sortCol : "";
-
   // Build search clause: search across all text-castable columns
   let whereClause = "";
   if (search.trim()) {
@@ -900,7 +851,6 @@ async function handleGetRows(
       whereClause = `WHERE (${conditions.join(" OR ")})`;
     }
   }
-
   // Count total (with search filter)
   const countResult = await executeRawSql(
     runtime,
@@ -909,15 +859,12 @@ async function handleGetRows(
   const total = Number(
     (countResult.rows[0] as Record<string, unknown>)?.total ?? 0,
   );
-
   // Fetch rows
   const orderClause = validSort
     ? `ORDER BY ${quoteIdent(validSort)} ${sortOrder}`
     : "";
   const query = `SELECT * FROM ${quoteIdent(tableName)} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
-
   const result = await executeRawSql(runtime, query);
-
   sendJson(res, {
     table: tableName,
     rows: result.rows,
@@ -927,7 +874,6 @@ async function handleGetRows(
     limit,
   });
 }
-
 /**
  * POST /api/database/tables/:table/rows
  * Insert a new row. Body: { data: Record<string, unknown> }
@@ -942,7 +888,6 @@ async function handleInsertRow(
     data: Record<string, unknown>;
   }>(req, res);
   if (!body) return;
-
   if (
     !body.data ||
     typeof body.data !== "object" ||
@@ -951,25 +896,20 @@ async function handleInsertRow(
     sendJsonError(res, "Request body must include a non-empty 'data' object.");
     return;
   }
-
   if (!(await assertTableExists(runtime, tableName))) {
     sendJsonError(res, `Table "${tableName}" not found`, 404);
     return;
   }
-
   const columns = Object.keys(body.data);
   const values = Object.values(body.data);
   const colList = columns.map((c) => quoteIdent(c)).join(", ");
   const valList = values.map(sqlLiteral).join(", ");
-
   const result = await executeRawSql(
     runtime,
     `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES (${valList}) RETURNING *`,
   );
-
   sendJson(res, { inserted: true, row: result.rows[0] ?? null }, 201);
 }
-
 /**
  * PUT /api/database/tables/:table/rows
  * Update a row. Body: { where: Record<string, unknown>, data: Record<string, unknown> }
@@ -985,7 +925,6 @@ async function handleUpdateRow(
     data: Record<string, unknown>;
   }>(req, res);
   if (!body) return;
-
   if (!body.where || Object.keys(body.where).length === 0) {
     sendJsonError(
       res,
@@ -1000,14 +939,12 @@ async function handleUpdateRow(
     );
     return;
   }
-
   const setClauses = Object.entries(body.data).map(([col, val]) =>
     sqlAssign(col, val),
   );
   const whereClauses = Object.entries(body.where).map(([col, val]) =>
     sqlPredicate(col, val),
   );
-
   const result = await executeRawSql(
     runtime,
     `UPDATE ${quoteIdent(tableName)}
@@ -1015,15 +952,12 @@ async function handleUpdateRow(
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
   );
-
   if (result.rows.length === 0) {
     sendJsonError(res, "No matching row found to update.", 404);
     return;
   }
-
   sendJson(res, { updated: true, row: result.rows[0] });
 }
-
 /**
  * DELETE /api/database/tables/:table/rows
  * Delete a row. Body: { where: Record<string, unknown> }
@@ -1038,7 +972,6 @@ async function handleDeleteRow(
     where: Record<string, unknown>;
   }>(req, res);
   if (!body) return;
-
   if (!body.where || Object.keys(body.where).length === 0) {
     sendJsonError(
       res,
@@ -1046,26 +979,21 @@ async function handleDeleteRow(
     );
     return;
   }
-
   const whereClauses = Object.entries(body.where).map(([col, val]) =>
     sqlPredicate(col, val),
   );
-
   const result = await executeRawSql(
     runtime,
     `DELETE FROM ${quoteIdent(tableName)}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
   );
-
   if (result.rows.length === 0) {
     sendJsonError(res, "No matching row found to delete.", 404);
     return;
   }
-
   sendJson(res, { deleted: true, row: result.rows[0] });
 }
-
 /**
  * POST /api/database/query
  * Execute a raw SQL query. Body: { sql: string, readOnly?: boolean }
@@ -1080,7 +1008,6 @@ async function handleQuery(
     readOnly?: boolean;
   }>(req, res);
   if (!body) return;
-
   if (
     !body.sql ||
     typeof body.sql !== "string" ||
@@ -1089,9 +1016,7 @@ async function handleQuery(
     sendJsonError(res, "Request body must include a non-empty 'sql' string.");
     return;
   }
-
   const sqlText = body.sql.trim();
-
   // If readOnly mode, reject mutation statements.
   // Strip SQL comments, then scan for mutation keywords *anywhere* in the
   // query — not just the leading keyword. This prevents bypass via CTEs
@@ -1105,7 +1030,6 @@ async function handleQuery(
     const stripped = scan.structuralText.trim();
     const noLiterals = scan.callableText;
     const noStrings = scan.keywordText;
-
     // Reject PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`)
     // in read-only mode: they decode to the real name only at parse time, so
     // the literal-name dangerous-function scan below is bypassable (a mutating
@@ -1118,7 +1042,6 @@ async function handleQuery(
       );
       return;
     }
-
     const mutationKeywords = [
       // ── DML ────────────────────────────────────────────────────────────
       "INSERT",
@@ -1173,7 +1096,6 @@ async function handleQuery(
       );
       return;
     }
-
     // PostgreSQL built-in functions that can read/write server files, mutate
     // server state, or cause denial of service.  These appear inside otherwise
     // valid SELECT expressions, so keyword checks alone won't catch them.
@@ -1264,7 +1186,6 @@ async function handleQuery(
       );
       return;
     }
-
     // Reject multi-statement queries (naive: any semicolon not at the very end)
     const trimmedForSemicolon = stripped.replace(/;\s*$/, "");
     if (trimmedForSemicolon.includes(";")) {
@@ -1275,25 +1196,20 @@ async function handleQuery(
       return;
     }
   }
-
   const start = Date.now();
   const result = await executeRawSql(runtime, sqlText);
   const durationMs = Date.now() - start;
-
   const queryResult: QueryResult = {
     columns: result.columns,
     rows: result.rows,
     rowCount: result.rows.length,
     durationMs,
   };
-
   sendJson(res, queryResult);
 }
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
-
 /**
  * Route a database API request. Returns true if handled, false if not matched.
  *
@@ -1316,31 +1232,26 @@ export async function handleDatabaseRoute(
   pathname: string,
 ): Promise<boolean> {
   const method = req.method ?? "GET";
-
   // ── GET /api/database/status ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/database/status") {
     await handleGetStatus(req, res, runtime);
     return true;
   }
-
   // ── GET /api/database/config ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/database/config") {
     handleGetConfig(req, res);
     return true;
   }
-
   // ── PUT /api/database/config ──────────────────────────────────────────
   if (method === "PUT" && pathname === "/api/database/config") {
     await handlePutConfig(req, res);
     return true;
   }
-
   // ── POST /api/database/test ───────────────────────────────────────────
   if (method === "POST" && pathname === "/api/database/test") {
     await handleTestConnection(req, res);
     return true;
   }
-
   // Routes below require a live runtime with a database adapter
   if (!runtime?.adapter) {
     sendJsonError(
@@ -1350,19 +1261,16 @@ export async function handleDatabaseRoute(
     );
     return true;
   }
-
   // ── GET /api/database/tables ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/database/tables") {
     await handleGetTables(req, res, runtime);
     return true;
   }
-
   // ── POST /api/database/query ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/database/query") {
     await handleQuery(req, res, runtime);
     return true;
   }
-
   // ── Table row operations: /api/database/tables/:table/rows ────────────
   const rowsMatch = pathname.match(/^\/api\/database\/tables\/([^/]+)\/rows$/);
   if (rowsMatch) {
@@ -1372,7 +1280,6 @@ export async function handleDatabaseRoute(
       "database table name",
     );
     if (tableNameDecoded === null) return true;
-
     if (method === "GET") {
       await handleGetRows(req, res, runtime, tableNameDecoded);
       return true;
@@ -1390,6 +1297,5 @@ export async function handleDatabaseRoute(
       return true;
     }
   }
-
   return false;
 }

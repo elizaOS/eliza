@@ -3,7 +3,7 @@
  * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
 
-import { hasConfiguredApiKey } from "@elizaos/shared";
+import { hasConfiguredApiKey } from "@elizaos/core/voice";
 import * as React from "react";
 import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";
@@ -16,7 +16,6 @@ import {
   resolveCharacterVoiceConfigFromAppConfig,
 } from "./character-voice-config";
 import { isCloudVoiceRunnable } from "./voice-provider-defaults";
-
 export interface UseVoiceConfigResult {
   /** Saved voice config with platform/runtime provider defaults applied. Never null. */
   voiceConfig: VoiceConfig;
@@ -25,7 +24,6 @@ export interface UseVoiceConfigResult {
   /** Re-fetch the saved voice config (e.g. after cloud status changes). */
   reloadVoiceConfig: () => void;
 }
-
 /**
  * Loads the saved character/TTS voice config from the server, derives preset
  * voices without implicit settings writes, applies runtime provider defaults,
@@ -62,7 +60,6 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const isMountedRef = React.useRef(false);
   const loadGenerationRef = React.useRef(0);
   const hasLoadedConfigRef = React.useRef(false);
-
   const loadVoiceConfig = React.useCallback(async () => {
     const generation = ++loadGenerationRef.current;
     const isCurrent = () =>
@@ -94,7 +91,6 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
       }
     }
   }, [setActionNotice, uiLanguage]);
-
   React.useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -102,11 +98,9 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
       loadGenerationRef.current += 1;
     };
   }, []);
-
   React.useEffect(() => {
     void loadVoiceConfig();
   }, [loadVoiceConfig]);
-
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
@@ -124,7 +118,6 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
     return () =>
       window.removeEventListener(VOICE_CONFIG_UPDATED_EVENT, handler);
   }, [loadVoiceConfig]);
-
   React.useEffect(() => {
     // Detached Settings has its own window-local update event. Returning to a
     // voice surface must read the saved selection through the authenticated API.
@@ -139,7 +132,6 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [loadVoiceConfig]);
-
   const voiceConfigWithDefaults = React.useMemo(
     () =>
       applyVoiceProviderDefaults(
@@ -149,11 +141,9 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
       ),
     [voiceConfig, voiceProviderDefaults, resolvedTtsProvider],
   );
-
   const reloadVoiceConfig = React.useCallback(() => {
     void loadVoiceConfig();
   }, [loadVoiceConfig]);
-
   return {
     voiceConfig: voiceConfigWithDefaults,
     voiceBootstrapTick,

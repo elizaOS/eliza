@@ -1,7 +1,7 @@
 /** Seeds personal-assistant X projections for executable owner scenarios. */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsXFeedType } from "@elizaos/shared";
+import { type LifeOpsXFeedType } from "@elizaos/core/contracts/personal-assistant";
 import type { ScenarioCheckResult, ScenarioContext } from "@elizaos/testing";
 import { LifeOpsRepository } from "../../src/lifeops/repository.ts";
 import { seedXConnectorGrant } from "../support/helpers/seed-grants.ts";

@@ -119,6 +119,7 @@ describe.skipIf(!databaseUrl)("trusted external billing imports", () => {
       "0373_subscription_authority",
       "0374_subscription_funding_transaction_uniqueness",
       "0379_subscription_account_authority",
+      "0397_subscription_checkout_contract",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${tag}.sql`, import.meta.url),

@@ -1,6 +1,6 @@
 /**
  * Re-export of the shared routing-preferences module. The canonical
- * implementation lives in `@elizaos/shared/local-inference` because both
+ * implementation lives in `@elizaos/plugin-native-inference/model-catalog` because both
  * the server (`@elizaos/app`) and the UI client (`@elizaos/ui`)
  * read/write the same routing.json with identical semantics.
  */
@@ -16,4 +16,4 @@ export {
 	setTextRouting,
 	updateRoutingPreferences,
 	writeRoutingPreferences,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";

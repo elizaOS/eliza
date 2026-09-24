@@ -16,7 +16,8 @@
     "./types": "./src/types/index.ts",
     "./types/*.ts": "./src/types/*.ts",
     "./types/*": "./src/types/*.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./hardware-catalog": "./src/hardware-catalog/index.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",
@@ -62,7 +63,6 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-web-search": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@huggingface/tokenizers": "0.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -107,7 +107,9 @@
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
-    "@elizaos/plugin-sqlite": "workspace:*"
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "@elizaos/plugin-native-inference": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

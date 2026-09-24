@@ -13,17 +13,13 @@
  * service combines them with the runtime UUIDs (world/room/entity/client ids)
  * and `addedFrom` to call `DocumentService.addDocument`.
  */
-
-import type {
-	Transcript,
-	TranscriptKnowledgeFragment,
-	TranscriptScope,
-} from "@elizaos/shared";
 import {
+	type Transcript,
+	type TranscriptKnowledgeFragment,
+	type TranscriptScope,
 	transcriptKnowledgeFragments,
 	transcriptPlainText,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/transcripts";
 /** The documents-store fields derived from a transcript (sans runtime UUIDs). */
 export interface TranscriptKnowledgePayload {
 	/** Plain, speaker-labeled transcript text — the searchable + chunked body. */
@@ -37,10 +33,8 @@ export interface TranscriptKnowledgePayload {
 	/** Verbatim segment-boundary chunks with audio seek anchors. */
 	fragments: TranscriptKnowledgeFragment[];
 }
-
 /** Tag every mirrored transcript carries so it's filterable as a transcript. */
 export const TRANSCRIPT_DOCUMENT_TAG = "transcript";
-
 /** Lowercase ascii slug for a filename (fallback "transcript"). */
 function slugify(title: string): string {
 	const slug = title
@@ -50,7 +44,6 @@ function slugify(title: string): string {
 		.slice(0, 64);
 	return slug || "transcript";
 }
-
 /**
  * Build the documents-store fields for mirroring a transcript into knowledge.
  * The body is the speaker-labeled plain text (what gets embedded + searched);
@@ -80,7 +73,6 @@ export function transcriptKnowledgePayload(
 		metadata.mediaUrl = transcript.audioUrl;
 		metadata.audioUrl = transcript.audioUrl;
 	}
-
 	return {
 		content: transcriptPlainText(transcript.segments),
 		filename: `${slugify(transcript.title)}.txt`,

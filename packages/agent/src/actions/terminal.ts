@@ -24,11 +24,12 @@ import {
   redactSensitiveText,
   stringToUuid,
 } from "@elizaos/core";
-import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/shared/platform/sandbox-policy";
+} from "@elizaos/core/platform/sandbox-policy";
+import { resolveServerOnlyPort } from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { capturedTerminalOutputIsSafe } from "../api/terminal-output-contract.ts";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";

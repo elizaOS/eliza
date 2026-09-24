@@ -10,10 +10,12 @@ import {
   collectPreparedKeywordTermMatches,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
-} from "@elizaos/shared";
-import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
-import { normalizeActionName } from "./action-catalog";
-
+} from "@elizaos/core/i18n/keyword-matching";
+import {
+  type ActionCatalog,
+  type ActionCatalogParent,
+  normalizeActionName,
+} from "./action-catalog";
 export type RetrievalStageName =
   | "exact"
   | "regex"
@@ -21,12 +23,10 @@ export type RetrievalStageName =
   | "bm25"
   | "embedding"
   | "contextMatch";
-
 export type ActionEmbeddingTieBreaker = {
   enabled?: boolean;
   scoresByParentName?: Record<string, number>;
 };
-
 export type RetrieveActionsInput = {
   catalog: ActionCatalog;
   messageText?: string;
@@ -52,13 +52,11 @@ export type RetrieveActionsInput = {
   /** Explicit ranking weights; never change which actions are available. */
   stageWeights?: Partial<Record<RetrievalStageName, number>>;
 };
-
 export type RetrievalStageEntry = {
   actionName: string;
   score: number;
   rank: number;
 };
-
 export type RetrievalPerStageScores = {
   exact: RetrievalStageEntry[];
   regex: RetrievalStageEntry[];
@@ -67,12 +65,14 @@ export type RetrievalPerStageScores = {
   embedding: RetrievalStageEntry[];
   contextMatch: RetrievalStageEntry[];
 };
-
 export type RetrievalMeasurement = {
   perStageScores: RetrievalPerStageScores;
-  fusedTopK: Array<{ actionName: string; rrfScore: number; rank: number }>;
+  fusedTopK: Array<{
+    actionName: string;
+    rrfScore: number;
+    rank: number;
+  }>;
 };
-
 export type ActionRetrievalResult = {
   parent: ActionCatalogParent;
   name: string;
@@ -83,7 +83,6 @@ export type ActionRetrievalResult = {
   stageScores: Partial<Record<RetrievalStageName, number>>;
   matchedBy: RetrievalStageName[];
 };
-
 export type ActionRetrievalResponse = {
   results: ActionRetrievalResult[];
   warnings: ActionCatalog["warnings"];
@@ -100,11 +99,9 @@ export type ActionRetrievalResponse = {
    */
   measurement?: RetrievalMeasurement;
 };
-
 const BM25_K1 = 0.9;
 const BM25_B = 0.4;
 const RRF_K = 60;
-
 // A candidate name can hint MORE than one parent when the phrasing is genuinely
 // ambiguous between surfaces. "OPEN_APP" can mean the apps *page* (VIEWS) or
 // launching the application itself (APP) — hint both and let the planner
@@ -416,7 +413,6 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   TILE_VIEWS: ["VIEWS"],
   VIEW_MANAGER: ["VIEWS"],
 };
-
 const VIEW_SURFACE_TOKENS = new Set([
   "VIEW",
   "VIEWS",
@@ -431,7 +427,6 @@ const VIEW_SURFACE_TOKENS = new Set([
   "PLUGIN",
   "PLUGINS",
 ]);
-
 const VIEW_OPERATION_TOKENS = new Set([
   "ADD",
   "ARRANGE",
@@ -458,7 +453,6 @@ const VIEW_OPERATION_TOKENS = new Set([
   "TILE",
   "UPDATE",
 ]);
-
 export function retrieveActions(
   input: RetrieveActionsInput,
 ): ActionRetrievalResponse {
@@ -550,7 +544,6 @@ export function retrieveActions(
     parentActionHints.length === 0 &&
     candidateActions.length === 0 &&
     queryTokens.length <= 1;
-
   const stageRankings: Partial<
     Record<RetrievalStageName, Map<string, number>>
   > = {
@@ -565,7 +558,6 @@ export function retrieveActions(
   const maxKeyword = Math.max(0, ...keywordScores.values());
   const maxBm25 = Math.max(0, ...bm25Scores.values());
   const maxEmbedding = Math.max(0, ...embeddingScores.values());
-
   const selectedContextSet = new Set(
     (input.selectedContexts ?? []).map((c) => c.toLowerCase()),
   );
@@ -582,7 +574,6 @@ export function retrieveActions(
     const rrfRaw = rrfScores.get(normalizedName) ?? 0;
     const rrf = maxRrf > 0 ? rrfRaw / maxRrf : 0;
     const stageScores: ActionRetrievalResult["stageScores"] = {};
-
     if (exact > 0) {
       stageScores.exact = exact;
     }
@@ -598,7 +589,6 @@ export function retrieveActions(
     if (embedding > 0) {
       stageScores.embedding = roundScore(embedding);
     }
-
     const baseScore = Math.max(
       exact,
       regex,
@@ -607,7 +597,6 @@ export function retrieveActions(
       embedding > 0 ? 0.25 + embedding * 0.45 : 0,
       rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
     );
-
     // Context-match boost: when the messageHandler picked contexts that
     // intersect this parent's declared `contexts`, give it a meaningful
     // additive bump. The boost is large enough to reorder tier-A when a
@@ -633,9 +622,7 @@ export function retrieveActions(
         stageScores.contextMatch = contextBoost;
       }
     }
-
     const score = clampScore(baseScore + contextBoost);
-
     return {
       parent,
       name: parent.name,
@@ -647,7 +634,6 @@ export function retrieveActions(
       matchedBy: Object.keys(stageScores) as RetrievalStageName[],
     };
   });
-
   const saturatedResults = results.filter((result) => result.score === 1);
   const needsMessageOnlyTieBreak =
     saturatedResults.length > 1 &&
@@ -703,7 +689,6 @@ export function retrieveActions(
       );
     }
   }
-
   results.sort((left, right) => {
     // Use one key for the whole saturated cohort once an exact hint contests
     // it. A pair-specific "one side is exact" key can make a three-result
@@ -721,11 +706,9 @@ export function retrieveActions(
       left.normalizedName.localeCompare(right.normalizedName)
     );
   });
-
   for (let index = 0; index < results.length; index += 1) {
     results[index].rank = index + 1;
   }
-
   let measurement: RetrievalMeasurement | undefined;
   if (input.measurementMode === true) {
     // Capture each stage's pre-fusion ranking so the analyzer can compute
@@ -749,7 +732,6 @@ export function retrieveActions(
         contextMatchScores.set(parent.normalizedName, 1);
       }
     }
-
     measurement = {
       perStageScores: {
         exact: mapToStageEntries(exactScores),
@@ -770,7 +752,6 @@ export function retrieveActions(
         })),
     };
   }
-
   return {
     results,
     warnings: input.catalog.warnings,
@@ -783,7 +764,6 @@ export function retrieveActions(
     ...(measurement ? { measurement } : {}),
   };
 }
-
 function mapToStageEntries(scores: Map<string, number>): RetrievalStageEntry[] {
   return Array.from(scores.entries())
     .filter(([, score]) => score > 0)
@@ -796,7 +776,6 @@ function mapToStageEntries(scores: Map<string, number>): RetrievalStageEntry[] {
       rank: index + 1,
     }));
 }
-
 export function tokenizeActionSearchText(text: string): string[] {
   return String(text)
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -806,7 +785,6 @@ export function tokenizeActionSearchText(text: string): string[] {
     .map((token) => token.trim())
     .filter((token) => token.length > 1);
 }
-
 function scoreExactHints(
   parents: ActionCatalogParent[],
   parentActionHints: string[],
@@ -815,29 +793,24 @@ function scoreExactHints(
     parentActionHints.map(normalizeActionName).filter(Boolean),
   );
   const scores = new Map<string, number>();
-
   for (const parent of parents) {
     if (hints.has(parent.normalizedName)) {
       scores.set(parent.normalizedName, 1);
     }
   }
-
   return scores;
 }
-
 function scoreCandidateRegex(
   parents: ActionCatalogParent[],
   candidateActions: string[],
 ): Map<string, number> {
   const patterns = buildCandidatePatterns(candidateActions);
   const scores = new Map<string, number>();
-
   for (const parent of parents) {
     const searchableNames = [
       parent.normalizedName,
       ...parent.childNormalizedNames,
     ];
-
     for (const pattern of patterns) {
       const namespaceHit =
         pattern.namespace && pattern.namespace === parent.normalizedName;
@@ -850,17 +823,14 @@ function scoreCandidateRegex(
       }
     }
   }
-
   return scores;
 }
-
 interface ParentScoringTokens {
   tokens: string[];
   length: number;
   set: Set<string>;
   termFrequency: Map<string, number>;
 }
-
 // Per-catalog-parent scoring tokens, memoized by the parent object. The parent's
 // searchText is static, so tokenization + the term-frequency map are pure
 // functions of it. Keyed by object identity in a WeakMap so it's recomputed only
@@ -871,7 +841,6 @@ const parentScoringCache = new WeakMap<
   ActionCatalogParent,
   ParentScoringTokens
 >();
-
 function getParentScoringTokens(
   parent: ActionCatalogParent,
 ): ParentScoringTokens {
@@ -893,7 +862,6 @@ function getParentScoringTokens(
   parentScoringCache.set(parent, computed);
   return computed;
 }
-
 function scoreBm25(
   parents: ActionCatalogParent[],
   queryTokens: string[],
@@ -902,7 +870,6 @@ function scoreBm25(
   if (parents.length === 0 || queryTokens.length === 0) {
     return scores;
   }
-
   const documents = parents.map((parent) => ({
     parent,
     scoring: getParentScoringTokens(parent),
@@ -912,7 +879,6 @@ function scoreBm25(
     Math.max(1, documents.length);
   const documentFrequency = new Map<string, number>();
   const queryVocabulary = Array.from(new Set(queryTokens));
-
   for (const token of queryVocabulary) {
     let count = 0;
     for (const document of documents) {
@@ -922,17 +888,14 @@ function scoreBm25(
     }
     documentFrequency.set(token, count);
   }
-
   for (const document of documents) {
     const { termFrequency, length: documentLength } = document.scoring;
-
     let score = 0;
     for (const token of queryTokens) {
       const frequency = termFrequency.get(token) ?? 0;
       if (frequency === 0) {
         continue;
       }
-
       const documentsWithTerm = documentFrequency.get(token) ?? 0;
       const idf = Math.log(
         1 +
@@ -947,15 +910,12 @@ function scoreBm25(
             BM25_B * (documentLength / Math.max(1, averageDocumentLength)));
       score += idf * ((frequency * (BM25_K1 + 1)) / denominator);
     }
-
     if (score > 0) {
       scores.set(document.parent.normalizedName, score);
     }
   }
-
   return scores;
 }
-
 // Per-parent prepared keyword terms, memoized by parent object identity like
 // parentScoringCache: keywordText is static for a catalog build, and the
 // prepared form (deduped raw terms with compiled patterns) is a pure function
@@ -964,7 +924,6 @@ const preparedKeywordTermsCache = new WeakMap<
   ActionCatalogParent,
   PreparedKeywordTerm[]
 >();
-
 function getPreparedKeywordTerms(
   parent: ActionCatalogParent,
 ): PreparedKeywordTerm[] {
@@ -981,7 +940,6 @@ function getPreparedKeywordTerms(
   preparedKeywordTermsCache.set(parent, prepared);
   return prepared;
 }
-
 function scoreKeywordMatches(
   parents: ActionCatalogParent[],
   queryTexts: readonly string[],
@@ -994,7 +952,6 @@ function scoreKeywordMatches(
   // query (continuation turns fold the whole recent conversation in, with
   // identical lines) cannot change it and is matched once.
   const distinctTexts = [...new Set(queryTexts)];
-
   for (const parent of parents) {
     const prepared = getPreparedKeywordTerms(parent);
     if (prepared.length === 0) {
@@ -1008,10 +965,8 @@ function scoreKeywordMatches(
       scores.set(parent.normalizedName, score);
     }
   }
-
   return scores;
 }
-
 function scoreEmbeddingTieBreaker(
   parents: ActionCatalogParent[],
   embedding?: ActionEmbeddingTieBreaker,
@@ -1020,7 +975,6 @@ function scoreEmbeddingTieBreaker(
   if (!embedding?.enabled || !embedding.scoresByParentName) {
     return scores;
   }
-
   for (const parent of parents) {
     const score =
       embedding.scoresByParentName[parent.name] ??
@@ -1030,27 +984,24 @@ function scoreEmbeddingTieBreaker(
       scores.set(parent.normalizedName, score);
     }
   }
-
   return scores;
 }
-
 type CandidatePattern = {
-  regex: { test: (value: string) => boolean };
+  regex: {
+    test: (value: string) => boolean;
+  };
   namespace?: string;
   score: number;
 };
-
 function buildCandidatePatterns(
   candidateActions: string[],
 ): CandidatePattern[] {
   const patterns: CandidatePattern[] = [];
-
   for (const candidateAction of candidateActions) {
     const normalized = normalizeActionName(candidateAction);
     if (!normalized) {
       continue;
     }
-
     if (candidateAction.includes("*")) {
       const wildcardRegex = wildcardCandidateRegex(candidateAction);
       if (wildcardRegex) {
@@ -1062,12 +1013,10 @@ function buildCandidatePatterns(
       }
       continue;
     }
-
     patterns.push({
       regex: new RegExp(`^${escapeRegex(normalized)}$`),
       score: 0.95,
     });
-
     const [namespace] = normalized.split("_");
     if (namespace && namespace === normalized) {
       patterns.push({
@@ -1077,10 +1026,8 @@ function buildCandidatePatterns(
       });
     }
   }
-
   return patterns;
 }
-
 function rankScores(scores: Map<string, number>): Map<string, number> {
   const ranked = new Map<string, number>();
   Array.from(scores.entries())
@@ -1093,13 +1040,11 @@ function rankScores(scores: Map<string, number>): Map<string, number> {
     });
   return ranked;
 }
-
 function reciprocalRankFusion(
   stageRankings: Partial<Record<RetrievalStageName, Map<string, number>>>,
   stageWeights?: Partial<Record<RetrievalStageName, number>>,
 ): Map<string, number> {
   const scores = new Map<string, number>();
-
   for (const [stageName, ranking] of Object.entries(stageRankings) as Array<
     [RetrievalStageName, Map<string, number> | undefined]
   >) {
@@ -1107,37 +1052,29 @@ function reciprocalRankFusion(
       continue;
     }
     const weight = stageWeights?.[stageName] ?? 1;
-
     for (const [name, rank] of ranking.entries()) {
       scores.set(name, (scores.get(name) ?? 0) + weight / (RRF_K + rank));
     }
   }
-
   return scores;
 }
-
 function dedupeNormalizedStrings(values: string[] | undefined): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
-
   for (const value of values ?? []) {
     if (typeof value !== "string") {
       continue;
     }
-
     const trimmed = value.trim();
     const normalized = normalizeActionName(trimmed);
     if (!trimmed || !normalized || seen.has(normalized)) {
       continue;
     }
-
     seen.add(normalized);
     result.push(trimmed);
   }
-
   return result;
 }
-
 export function parentAliasesForCandidateAction(actionName: string): string[] {
   const normalized = normalizeActionName(actionName);
   const explicit = explicitParentAliasesForCandidateAction(actionName);
@@ -1166,7 +1103,6 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
   }
   return aliases;
 }
-
 function explicitParentAliasesForCandidateAction(actionName: string): string[] {
   const normalized = normalizeActionName(actionName);
   const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
@@ -1193,14 +1129,12 @@ function explicitParentAliasesForCandidateAction(actionName: string): string[] {
   }
   return [];
 }
-
 const APP_SURFACE_TOKENS = new Set([
   "APP",
   "APPS",
   "APPLICATION",
   "APPLICATIONS",
 ]);
-
 const APP_OPERATION_TOKENS = new Set([
   "BUILD",
   "CREATE",
@@ -1220,7 +1154,6 @@ const APP_OPERATION_TOKENS = new Set([
   "START",
   "STOP",
 ]);
-
 function looksLikeAppCandidateAction(normalizedActionName: string): boolean {
   if (!normalizedActionName) return false;
   const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
@@ -1229,7 +1162,6 @@ function looksLikeAppCandidateAction(normalizedActionName: string): boolean {
     hasAnyToken(tokens, APP_OPERATION_TOKENS)
   );
 }
-
 // A permission namespace/surface must accompany a bare ACCESS token before it
 // counts as a settings-permission ask: this keeps "REVOKE_NETWORK_ACCESS" /
 // "GRANT_FILESYSTEM_ACCESS" / "REVOKE_SHELL_ACCESS" (permission writes SETTINGS
@@ -1251,7 +1183,6 @@ const SETTINGS_PERMISSION_NAMESPACE_TOKENS = new Set([
   "SCREEN",
   "SHELL",
 ]);
-
 const SETTINGS_PERMISSION_OPERATION_TOKENS = new Set([
   "ALLOW",
   "CHANGE",
@@ -1266,7 +1197,6 @@ const SETTINGS_PERMISSION_OPERATION_TOKENS = new Set([
   "TURN",
   "UPDATE",
 ]);
-
 function looksLikeSettingsPermissionCandidateAction(
   normalizedActionName: string,
 ): boolean {
@@ -1280,7 +1210,6 @@ function looksLikeSettingsPermissionCandidateAction(
     hasAnyToken(tokens, SETTINGS_PERMISSION_NAMESPACE_TOKENS);
   return namesAPermission || namesAScopedAccess;
 }
-
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
   if (!normalizedActionName) return false;
   const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
@@ -1290,25 +1219,21 @@ function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
     hasViewOperation && tokens.size >= 2 && !hasOnlyOperationTokens(tokens);
   return hasViewOperation && (hasViewSurface || hasGeneratedCapabilityShape);
 }
-
 function hasAnyToken(tokens: Set<string>, expected: Set<string>): boolean {
   for (const token of tokens) {
     if (expected.has(token)) return true;
   }
   return false;
 }
-
 function hasOnlyOperationTokens(tokens: Set<string>): boolean {
   for (const token of tokens) {
     if (!VIEW_OPERATION_TOKENS.has(token)) return false;
   }
   return true;
 }
-
 /** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
  *  on every retrieval and the catalog is stable within a process. */
 const warnedAmbiguousSimiles = new Set<string>();
-
 /** Normalized similes claimed by MORE than one catalog parent — routing on
  * one of these steals the intent from the other parent (#16561), so both the
  * simile resolver and the shape-heuristic alias fallback must refuse them. */
@@ -1339,7 +1264,6 @@ function collectAmbiguousSimiles(
   }
   return ambiguous;
 }
-
 function resolveSimileParentHints(
   parents: readonly ActionCatalogParent[],
   candidateActions: readonly string[],
@@ -1398,7 +1322,6 @@ function resolveSimileParentHints(
     return parent ? [parent] : [];
   });
 }
-
 export function candidateNamespaceParentExists(
   parents: readonly Pick<ActionCatalogParent, "normalizedName">[],
   actionName: string,
@@ -1419,7 +1342,6 @@ export function candidateNamespaceParentExists(
     domainTokens.some((token) => actionTokenMatchesParent(token, parent)),
   );
 }
-
 function actionTokenMatchesParent(
   token: string,
   parent: Pick<ActionCatalogParent, "normalizedName">,
@@ -1431,7 +1353,6 @@ function actionTokenMatchesParent(
     (parentName.endsWith("S") && parentName.slice(0, -1) === token)
   );
 }
-
 function shouldUseRecentConversationForActionSearch(
   messageText: string,
 ): boolean {
@@ -1446,7 +1367,6 @@ function shouldUseRecentConversationForActionSearch(
     )
   );
 }
-
 // App-surface control blocks ([FORM]/[CHOICE]/[FOLLOWUPS]/[TASK]/[CHECKLIST]
 // and single-line [CONFIG:…] markers) travel inline in delivered message text.
 // When a prior turn's reply carried one, its wire vocabulary ("navigate",
@@ -1458,11 +1378,9 @@ function shouldUseRecentConversationForActionSearch(
 // message is never stripped.
 const CONTROL_BLOCK_MARKER_RE =
   /\[[ \t]*(?:FORM|CHOICE[^\]]*|FOLLOWUPS[^\]]*|TASK:[^\]]*|CHECKLIST)[ \t]*\][\s\S]*?\[[ \t]*\/[ \t]*(?:FORM|CHOICE|FOLLOWUPS|TASK|CHECKLIST)[ \t]*\]|\[CONFIG:[^\]]*\]/g;
-
 export function stripControlBlockMarkers(text: string): string {
   return text.replace(CONTROL_BLOCK_MARKER_RE, " ");
 }
-
 function normalizeTextList(
   value: string | readonly string[] | undefined,
 ): string[] {
@@ -1477,11 +1395,9 @@ function normalizeTextList(
     .map((entry) => stripControlBlockMarkers(entry).trim())
     .filter(Boolean);
 }
-
 function escapeRegex(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
 }
-
 /**
  * Translates a wildcard candidate hint ("GMAIL_*", "GMAIL_SEND*", "*_DRAFT")
  * into a matcher over catalog-normalized action names. normalizeActionName
@@ -1493,9 +1409,9 @@ function escapeRegex(value: string): string {
  * anchored to (#20467). Matching is a linear scan, not `^lit.*lit.*$` regex —
  * a model hint of many stars used to hang retrieve-actions.
  */
-function wildcardCandidateRegex(
-  candidateAction: string,
-): { test: (value: string) => boolean } | null {
+function wildcardCandidateRegex(candidateAction: string): {
+  test: (value: string) => boolean;
+} | null {
   const rawSegments = String(candidateAction)
     .trim()
     .replace(/\*+/g, "*")
@@ -1521,11 +1437,9 @@ function wildcardCandidateRegex(
     test: (value: string) => matchActionWildcardParts(parts, value),
   };
 }
-
 function clampScore(value: number): number {
   return roundScore(Math.max(0, Math.min(1, value)));
 }
-
 function roundScore(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
+  return Math.round(value * 1000000) / 1000000;
 }

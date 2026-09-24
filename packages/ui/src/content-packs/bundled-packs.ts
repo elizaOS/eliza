@@ -7,16 +7,17 @@
  * cannot drift; this module only shapes those presets into ResolvedContentPacks
  * that reference the existing /vrms assets by avatarIndex.
  */
-
+import {
+  getDefaultStylePreset,
+  getStylePresets,
+} from "@elizaos/core/character-presets";
 import type {
   ContentPackManifest,
   ResolvedContentPack,
-  StylePreset,
-} from "@elizaos/shared";
-import { getDefaultStylePreset, getStylePresets } from "@elizaos/shared";
+} from "@elizaos/core/contracts/content-pack";
+import type { StylePreset } from "@elizaos/core/contracts/first-run-options";
 
 const PACK_VERSION = "1.0.0";
-
 function presetToResolvedPack(preset: StylePreset): ResolvedContentPack {
   const slug = `bundled-${preset.avatarIndex}`;
   const manifest: ContentPackManifest = {
@@ -45,9 +46,7 @@ function presetToResolvedPack(preset: StylePreset): ResolvedContentPack {
     source: { kind: "bundled", id: preset.id },
   };
 }
-
 let _cached: ResolvedContentPack[] | null = null;
-
 /**
  * Get all bundled content packs (the named built-in characters — one per style
  * preset, excluding the default agent). Bundled packs use avatarIndex (1-8) to

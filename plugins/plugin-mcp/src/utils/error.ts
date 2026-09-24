@@ -4,7 +4,6 @@
  * failed ActionResult. McpError is a coded error type with named constructors for
  * the common MCP failure modes.
  */
-import type { State } from "@elizaos/core";
 import {
   type ActionResult,
   type HandlerCallback,
@@ -12,13 +11,11 @@ import {
   logger,
   type Memory,
   ModelType,
+  type State,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  errorAnalysisTemplate as errorAnalysisPrompt,
-} from "@elizaos/shared";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import { errorAnalysisTemplate as errorAnalysisPrompt } from "../protocol-utils/prompts.js";
 import type { McpProvider } from "../types";
-
 export async function handleMcpError(
   state: State,
   mcpProvider: McpProvider,
@@ -29,11 +26,8 @@ export async function handleMcpError(
   callback?: HandlerCallback
 ): Promise<ActionResult> {
   const errorMessage = error instanceof Error ? error.message : String(error);
-
   logger.error({ error, mcpType: type }, `Error executing MCP ${type}: ${errorMessage}`);
-
   let responseText = `I'm sorry, I wasn't able to get the information you requested. There seems to be an issue with the ${type} right now. Is there something else I can help you with?`;
-
   if (callback) {
     const enhancedState: State = {
       ...state,
@@ -44,24 +38,19 @@ export async function handleMcpError(
         error: errorMessage,
       },
     };
-
     const prompt = composePromptFromState({
       state: enhancedState,
       template: errorAnalysisPrompt,
     });
-
     const errorResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     })) as string;
-
     responseText = errorResponse;
-
     await callback({
       text: responseText,
       actions: ["REPLY"],
     });
   }
-
   return {
     text: `Failed to execute MCP ${type}`,
     values: {
@@ -79,38 +68,31 @@ export async function handleMcpError(
     error: error instanceof Error ? error : new Error(errorMessage),
   };
 }
-
 export class McpError extends Error {
   readonly code: string;
-
   constructor(message: string, code: string = "UNKNOWN") {
     super(message);
     this.name = "McpError";
     this.code = code;
   }
-
   static connectionError(serverName: string, details?: string): McpError {
     return new McpError(
       `Failed to connect to server '${serverName}'${details ? `: ${details}` : ""}`,
       "CONNECTION_ERROR"
     );
   }
-
   static toolNotFound(toolName: string, serverName: string): McpError {
     return new McpError(`Tool '${toolName}' not found on server '${serverName}'`, "TOOL_NOT_FOUND");
   }
-
   static resourceNotFound(uri: string, serverName: string): McpError {
     return new McpError(
       `Resource '${uri}' not found on server '${serverName}'`,
       "RESOURCE_NOT_FOUND"
     );
   }
-
   static validationError(details: string): McpError {
     return new McpError(`Validation error: ${details}`, "VALIDATION_ERROR");
   }
-
   static serverError(serverName: string, details?: string): McpError {
     return new McpError(
       `Server error from '${serverName}'${details ? `: ${details}` : ""}`,

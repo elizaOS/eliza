@@ -147,3 +147,36 @@ it("loads package-path helpers without runtime packages or build outputs", () =>
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it("loads progressive target contracts without database fixture adapters", () => {
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+    import assert from "node:assert/strict";
+    import { registerHooks } from "node:module";
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier === "@elizaos/testing" || /^@elizaos\\/plugin-sql(?:ite)?(?:\\/|$)/.test(specifier)) {
+        throw new Error("Unexpected runtime fixture import: " + specifier);
+      }
+      return nextResolve(specifier, context);
+    }});
+    const target = await import("@elizaos/testing/progressive-content-target");
+    assert.equal(target.PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION,
+      "elizaos.progressive-content.target-factory.v1");
+  `,
+    ],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env,
+      encoding: "utf8",
+      timeout: 30_000,
+    },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+});

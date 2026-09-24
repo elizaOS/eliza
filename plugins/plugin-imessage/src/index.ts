@@ -6,13 +6,10 @@
 
 import { platform } from "node:os";
 import { getConnectorAccountManager, type IAgentRuntime, logger } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
 import { imessageDataRoutes } from "./data-routes.js";
 import { registerIMessageDmSensitiveRequestAdapter } from "./sensitive-request-adapter.js";
-// No send action is registered here: outbound delivery is the MessageConnector
-// registered by IMessageService.registerSendHandlers, driven via MESSAGE
-// operation=send.
 import {
   chatDbMessageToPublicShape,
   IMessageService,
@@ -22,6 +19,9 @@ import {
 import { imessageSetupRoutes } from "./setup-routes.js";
 import { registerIMessageTriageAdapter } from "./triage-adapter.js";
 
+// No send action is registered here: outbound delivery is the MessageConnector
+// registered by IMessageService.registerSendHandlers, driven via MESSAGE
+// operation=send.
 // Account management exports
 export {
   DEFAULT_ACCOUNT_ID,
@@ -93,23 +93,19 @@ const imessagePlugin: Plugin = {
       isPassive: true,
     },
   ],
-
   services: [IMessageService],
   actions: [],
   providers: [],
   routes: [...imessageSetupRoutes, ...imessageDataRoutes],
   tests: [],
-
   // The integrated plugin owns both connector identities: native Messages uses
   // `imessage`, while hosted installations are commonly authored as `blooio`.
   autoEnable: {
     envKeys: ["IMESSAGE_TRANSPORT", "IMESSAGE_ENABLED"],
     connectorKeys: ["imessage", "blooio"],
   },
-
   init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     logger.info("Initializing iMessage plugin...");
-
     // Register the iMessage provider with the ConnectorAccountManager so the
     // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
     // can list, create, patch, and delete iMessage accounts.
@@ -125,18 +121,15 @@ const imessagePlugin: Plugin = {
         "Failed to register iMessage provider with ConnectorAccountManager"
       );
     }
-
     // Register the cross-connector triage adapter for the "imessage" source.
     registerIMessageTriageAdapter();
     registerIMessageDmSensitiveRequestAdapter(runtime);
-
     const isMacOS = platform() === "darwin";
     const transport = (
       config.IMESSAGE_TRANSPORT ||
       process.env.IMESSAGE_TRANSPORT ||
       "native"
     ).toLowerCase();
-
     logger.info("iMessage plugin configuration:");
     logger.info(`  - Platform: ${platform()}`);
     logger.info(`  - macOS: ${isMacOS ? "Yes" : "No"}`);
@@ -146,13 +139,11 @@ const imessagePlugin: Plugin = {
     logger.info(
       `  - DM policy: ${config.IMESSAGE_DM_POLICY || process.env.IMESSAGE_DM_POLICY || "pairing"}`
     );
-
     if (!isMacOS && transport !== "blooio") {
       logger.warn(
         "iMessage plugin is only supported on macOS. The plugin will be inactive on this platform."
       );
     }
-
     logger.info("iMessage plugin initialized");
   },
   async dispose(runtime: IAgentRuntime) {
@@ -160,13 +151,11 @@ const imessagePlugin: Plugin = {
     await svc?.stop();
   },
 };
-
 export default imessagePlugin;
-
 export type {
   RouteHelpers as IMessageRouteHelpers,
   RouteRequestMeta as IMessageRouteRequestMeta,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/route-helpers";
 // Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
 // BlueBubbles is deliberately not aliased or re-exported here; its separate
 // plugin owns that legacy/remote transport.
@@ -176,7 +165,4 @@ export {
   type ReadJsonBodyOptions as IMessageRouteReadJsonBodyOptions,
 } from "./api/imessage-routes.js";
 // Channel configuration types
-export type {
-  IMessageConfig,
-  IMessageReactionNotificationMode,
-} from "./config.js";
+export type { IMessageConfig, IMessageReactionNotificationMode } from "./config.js";

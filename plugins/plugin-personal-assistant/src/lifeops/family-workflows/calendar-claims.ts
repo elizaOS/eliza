@@ -5,11 +5,11 @@
  */
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsLinkedCalendarLink,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsLinkedCalendarLink,
+} from "@elizaos/core/contracts/calendar";
 import type { FamilyPacketClaim } from "../family-coordination/index.js";
 import type { SchoolCalendarImportedEvent } from "../school/calendar-workflow.js";
 

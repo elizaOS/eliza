@@ -17,9 +17,12 @@
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type MeetingJoinRequest,
+  type MeetingSession,
+  parseMeetingUrl,
+} from "@elizaos/core/meetings";
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
-import type { MeetingJoinRequest, MeetingSession } from "@elizaos/shared";
-import { parseMeetingUrl } from "@elizaos/shared";
 import { CalendarRepository } from "../service/CalendarRepository.js";
 import { readMeetingAutoJoinSettings } from "./auto-join-settings.js";
 

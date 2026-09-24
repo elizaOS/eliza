@@ -21,7 +21,7 @@
  * via `subscribe`. Slots are passive (provide context + hidden/inert).
  */
 
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/ui/logger";
 import { emitModuleCacheTelemetry } from "../cache-telemetry";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import {

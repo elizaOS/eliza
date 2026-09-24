@@ -5,12 +5,12 @@
  * was programmed to echo.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
 import {
   type EntityAttribute,
   type EntityIdentity,
   SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/core/knowledge-graph/entity-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,
@@ -22,11 +22,11 @@ const AGENT_B = "agent-b";
 const T0 = "2026-08-23T12:00:00.000Z";
 const T1 = "2026-08-23T12:00:05.000Z";
 const T2 = "2026-08-23T12:00:10.000Z";
-
 type QueryChunks = {
-  queryChunks: Array<{ value?: unknown }>;
+  queryChunks: Array<{
+    value?: unknown;
+  }>;
 };
-
 function extractSql(query: QueryChunks): string {
   return query.queryChunks
     .flatMap((chunk) =>
@@ -35,7 +35,6 @@ function extractSql(query: QueryChunks): string {
     .filter((value): value is string => typeof value === "string")
     .join("");
 }
-
 function findMatchingParen(sql: string, openIdx: number): number {
   let depth = 0;
   let inString = false;
@@ -61,7 +60,6 @@ function findMatchingParen(sql: string, openIdx: number): number {
   }
   return -1;
 }
-
 function splitSqlList(inner: string): string[] {
   const out: string[] = [];
   let current = "";
@@ -97,7 +95,6 @@ function splitSqlList(inner: string): string[] {
   if (trimmed) out.push(trimmed);
   return out;
 }
-
 function decodeSqlLiteral(raw: string): unknown {
   const value = raw.trim();
   if (value === "NULL") return null;
@@ -110,13 +107,11 @@ function decodeSqlLiteral(raw: string): unknown {
   if (value !== "" && Number.isFinite(asNumber)) return asNumber;
   return value;
 }
-
 function quotedEquals(sql: string, column: string): string | undefined {
   const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = sql.match(new RegExp(`${escaped}\\s*=\\s*'((?:[^']|'')*)'`));
   return match?.[1]?.replace(/''/g, "'");
 }
-
 function likePattern(sql: string, column: string): string | undefined {
   const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = sql.match(
@@ -124,7 +119,6 @@ function likePattern(sql: string, column: string): string | undefined {
   );
   return match?.[1]?.replace(/''/g, "'");
 }
-
 function sqlLike(value: string, pattern: string): boolean {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -132,7 +126,6 @@ function sqlLike(value: string, pattern: string): boolean {
     .replace(/_/g, ".");
   return new RegExp(`^${escaped}$`).test(value);
 }
-
 function parseInsert(sql: string): {
   table: string;
   row: Record<string, unknown>;
@@ -167,7 +160,6 @@ function parseInsert(sql: string): {
   ].map((match) => match[1] ?? "");
   return { table, row, conflictUpdateColumns };
 }
-
 function parseAssignments(sql: string): Record<string, unknown> {
   const setMatch = sql.match(/SET\s+([\s\S]+?)\s+WHERE/i);
   if (!setMatch?.[1]) return {};
@@ -180,7 +172,6 @@ function parseAssignments(sql: string): Record<string, unknown> {
   }
   return assignments;
 }
-
 function parseWhereEquals(sql: string): Record<string, string> {
   const whereMatch = sql.match(/WHERE\s+([\s\S]+)$/i);
   if (!whereMatch?.[1]) return {};
@@ -194,7 +185,6 @@ function parseWhereEquals(sql: string): Record<string, string> {
   }
   return where;
 }
-
 function inList(sql: string): string[] | undefined {
   const match = sql.match(/entity_id IN\s*\(/i);
   if (!match || match.index === undefined) return undefined;
@@ -204,20 +194,19 @@ function inList(sql: string): string[] | undefined {
     String(decodeSqlLiteral(item)),
   );
 }
-
 class MemoryKnowledgeGraph {
   entities: Array<Record<string, unknown>> = [];
   identities: Array<Record<string, unknown>> = [];
   attributes: Array<Record<string, unknown>> = [];
   relationships: Array<Record<string, unknown>> = [];
   omitExistingEntityRows = false;
-
   execute = async (
     query: QueryChunks,
-  ): Promise<{ rows: Array<Record<string, unknown>> }> => {
+  ): Promise<{
+    rows: Array<Record<string, unknown>>;
+  }> => {
     return { rows: this.dispatch(extractSql(query)) };
   };
-
   private upsert(
     table: Array<Record<string, unknown>>,
     incoming: Record<string, unknown>,
@@ -235,7 +224,6 @@ class MemoryKnowledgeGraph {
       existing[col] = incoming[col];
     }
   }
-
   private dispatch(sql: string): Array<Record<string, unknown>> {
     if (/INSERT INTO app_lifeops\.life_entities\b/i.test(sql)) {
       const parsed = parseInsert(sql);
@@ -367,7 +355,6 @@ class MemoryKnowledgeGraph {
     }
     throw new Error(`unsupported SQL in EntityStore test harness: ${sql}`);
   }
-
   private selectEntities(sql: string): Array<Record<string, unknown>> {
     const agentId =
       quotedEquals(sql, "e.agent_id") ?? quotedEquals(sql, "agent_id");
@@ -379,7 +366,6 @@ class MemoryKnowledgeGraph {
     const hasIdentityExists = /EXISTS\s*\(/i.test(sql);
     const limitMatch = sql.match(/LIMIT\s+(\d+)\s*$/i);
     const limit = limitMatch?.[1] ? Number(limitMatch[1]) : undefined;
-
     let rows = this.entities.filter((row) => row.agent_id === agentId);
     if (type !== undefined) {
       rows = rows.filter((row) => row.type === type);
@@ -430,7 +416,6 @@ class MemoryKnowledgeGraph {
     return rows;
   }
 }
-
 function createHarness(opts?: {
   agentId?: string;
   kg?: MemoryKnowledgeGraph;
@@ -447,7 +432,6 @@ function createHarness(opts?: {
     kg,
   };
 }
-
 function identity(
   overrides: Partial<EntityIdentity> &
     Pick<EntityIdentity, "platform" | "handle">,
@@ -462,7 +446,6 @@ function identity(
     ...overrides,
   };
 }
-
 function attribute(overrides: Partial<EntityAttribute> = {}): EntityAttribute {
   return {
     value: "engineer",
@@ -472,33 +455,27 @@ function attribute(overrides: Partial<EntityAttribute> = {}): EntityAttribute {
     ...overrides,
   };
 }
-
 describe("EntityStore", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(T0));
   });
-
   afterEach(() => {
     vi.useRealTimers();
   });
-
   it("re-exports the shared auto-merge confidence threshold", () => {
     expect(AUTO_MERGE_CONFIDENCE_THRESHOLD).toBe(0.85);
   });
-
   it("throws when the runtime has no database adapter", async () => {
     const store = new EntityStore({ adapter: {} } as IAgentRuntime, AGENT_A);
     await expect(store.get("missing")).rejects.toThrow(
       "runtime database adapter unavailable",
     );
   });
-
   it("returns null for a missing entity id", async () => {
     const { store } = createHarness();
     await expect(store.get("no-such-entity")).resolves.toBeNull();
   });
-
   it("creates the self entity once and returns the same row on later calls", async () => {
     const { store } = createHarness();
     const first = await store.ensureSelf();
@@ -515,14 +492,12 @@ describe("EntityStore", () => {
     });
     expect(first.fullName).toBeUndefined();
     expect(first.attributes).toBeUndefined();
-
     vi.setSystemTime(new Date(T1));
     const second = await store.ensureSelf();
     expect(second.createdAt).toBe(T0);
     expect(second.updatedAt).toBe(T0);
     expect(second.entityId).toBe(SELF_ENTITY_ID);
   });
-
   it("generates an ent_ uuid when upsert is not given an entity id", async () => {
     const { store } = createHarness();
     const created = await store.upsert({
@@ -536,7 +511,6 @@ describe("EntityStore", () => {
     expect(created.entityId).toMatch(/^ent_[0-9a-f-]{36}$/i);
     await expect(store.get(created.entityId)).resolves.toEqual(created);
   });
-
   it("round-trips identities, attributes, tags, full name, and state", async () => {
     const { store } = createHarness();
     const created = await store.upsert({
@@ -571,7 +545,6 @@ describe("EntityStore", () => {
         lastInteractionPlatform: "slack",
       },
     });
-
     expect(created.fullName).toBe("Alice O'Brien");
     expect(created.identities).toHaveLength(2);
     expect(created.identities[0]).toMatchObject({
@@ -599,7 +572,6 @@ describe("EntityStore", () => {
       lastInteractionPlatform: "slack",
     });
   });
-
   it("preserves createdAt on upsert conflict and replaces identities wholesale", async () => {
     const { store } = createHarness();
     const first = await store.upsert({
@@ -629,7 +601,6 @@ describe("EntityStore", () => {
     expect(updated.identities[0]?.handle).toBe("a@x.com");
     expect(updated.tags).toEqual(["new"]);
   });
-
   it("throws when an upsert cannot be read back", async () => {
     const { store, kg } = createHarness();
     kg.omitExistingEntityRows = true;
@@ -647,12 +618,10 @@ describe("EntityStore", () => {
       "[EntityStore] failed to read back upserted entity ent-ghost",
     );
   });
-
   it("lists an empty graph as an empty array", async () => {
     const { store } = createHarness();
     await expect(store.list()).resolves.toEqual([]);
   });
-
   it("lists entities ordered by preferred name and applies type, tag, name, identity, and limit filters", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -695,52 +664,40 @@ describe("EntityStore", () => {
       visibility: "owner_agent_admin",
       state: {},
     });
-
     const all = await store.list();
     expect(all.map((entity) => entity.entityId)).toEqual([
       "ent-a",
       "ent-org",
       "ent-c",
     ]);
-
     const people = await store.list({ type: "person" });
     expect(people.map((entity) => entity.entityId)).toEqual(["ent-a", "ent-c"]);
-
     const tagged = await store.list({ tag: "friend" });
     expect(tagged.map((entity) => entity.entityId)).toEqual(["ent-c"]);
-
     const byPreferred = await store.list({ nameContains: "ALI" });
     expect(byPreferred.map((entity) => entity.entityId)).toEqual(["ent-a"]);
-
     const byFull = await store.list({ nameContains: "smith" });
     expect(byFull.map((entity) => entity.entityId)).toEqual(["ent-a"]);
-
     const byPlatform = await store.list({ hasPlatform: "SLACK" });
     expect(byPlatform.map((entity) => entity.entityId)).toEqual(["ent-c"]);
-
     const byAccount = await store.list({ hasConnectorAccountId: "acct-a" });
     expect(byAccount.map((entity) => entity.entityId)).toEqual(["ent-a"]);
-
     const byBoth = await store.list({
       hasPlatform: "slack",
       hasConnectorAccountId: "acct-c",
     });
     expect(byBoth.map((entity) => entity.entityId)).toEqual(["ent-c"]);
-
     const limited = await store.list({ limit: 2 });
     expect(limited).toHaveLength(2);
     expect(limited.map((entity) => entity.entityId)).toEqual([
       "ent-a",
       "ent-org",
     ]);
-
     const unbounded = await store.list({ limit: Number.NaN });
     expect(unbounded).toHaveLength(3);
-
     const none = await store.list({ type: "place" });
     expect(none).toEqual([]);
   });
-
   it("isolates rows by agent id", async () => {
     const { store: storeA, kg } = createHarness({ agentId: AGENT_A });
     const { store: storeB } = createHarness({ agentId: AGENT_B, kg });
@@ -756,7 +713,6 @@ describe("EntityStore", () => {
     await expect(storeB.get("ent-a")).resolves.toBeNull();
     await expect(storeB.list()).resolves.toEqual([]);
   });
-
   it("creates a new entity when observeIdentity finds no candidate", async () => {
     const { store } = createHarness();
     const result = await store.observeIdentity({
@@ -782,7 +738,6 @@ describe("EntityStore", () => {
     });
     expect(result.entity.identities[0]?.displayName).toBeUndefined();
   });
-
   it("uses displayName and suggestedType on create observations", async () => {
     const { store } = createHarness();
     const result = await store.observeIdentity({
@@ -799,7 +754,6 @@ describe("EntityStore", () => {
     expect(result.entity.identities[0]?.displayName).toBe("Alice");
     expect(result.entity.identities[0]?.connectorAccountId).toBe("acct-1");
   });
-
   it("auto-merges a single candidate at the confidence threshold", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -834,7 +788,6 @@ describe("EntityStore", () => {
     );
     expect(result.entity.state.lastObservedAt).toBe(T1);
   });
-
   it("returns a conflict for a single low-confidence candidate without writing the observation", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -858,7 +811,6 @@ describe("EntityStore", () => {
     const persisted = await store.get("ent-alice");
     expect(persisted?.identities[0]?.evidence).toEqual(["obs-1"]);
   });
-
   it("returns a conflict listing every matching candidate, preferring the name-ordered first row", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -889,7 +841,6 @@ describe("EntityStore", () => {
     expect(result.entity.entityId).toBe("ent-a");
     expect(result.mergedFrom).toEqual(["ent-a", "ent-b"]);
   });
-
   it("resolves by name with exact, partial, and non-matching confidence and verified-send safety", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -921,7 +872,6 @@ describe("EntityStore", () => {
       visibility: "owner_agent_admin",
       state: {},
     });
-
     const candidates = await store.resolve({ name: "Alice" });
     expect(candidates.map((row) => row.entity.entityId)).toEqual([
       "ent-1",
@@ -938,7 +888,6 @@ describe("EntityStore", () => {
       evidence: [],
     });
   });
-
   it("resolves identity matches case-insensitively, ranks by identity confidence, and uses the matched verified flag for safeToSend", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -989,7 +938,6 @@ describe("EntityStore", () => {
       visibility: "owner_agent_admin",
       state: {},
     });
-
     const candidates = await store.resolve({
       identity: { platform: "SLACK", handle: "@ALICE" },
       type: "person",
@@ -1009,7 +957,6 @@ describe("EntityStore", () => {
       evidence: ["id-high"],
     });
   });
-
   it("takes the max of identity and exact-name confidence when both query fields are present", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -1036,12 +983,10 @@ describe("EntityStore", () => {
     expect(candidates[0]?.confidence).toBe(0.9);
     expect(candidates[0]?.evidence).toEqual(["weak"]);
   });
-
   it("returns no resolve candidates when the graph is empty", async () => {
     const { store } = createHarness();
     await expect(store.resolve({ name: "Alice" })).resolves.toEqual([]);
   });
-
   it("records inbound and outbound interaction timestamps without clearing the other direction", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -1075,7 +1020,6 @@ describe("EntityStore", () => {
     });
     expect(entity?.updatedAt).toBe(T2);
   });
-
   it("silently no-ops recordInteraction for a missing entity", async () => {
     const { store } = createHarness();
     await expect(
@@ -1087,7 +1031,6 @@ describe("EntityStore", () => {
       }),
     ).resolves.toBeUndefined();
   });
-
   it("returns the existing target when merge is given an empty source list", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -1102,7 +1045,6 @@ describe("EntityStore", () => {
     const merged = await store.merge("ent-t", []);
     expect(merged.entityId).toBe("ent-t");
   });
-
   it("throws when merge target is missing, including the empty-source path", async () => {
     const { store } = createHarness();
     await expect(store.merge("missing", [])).rejects.toThrow(
@@ -1112,7 +1054,6 @@ describe("EntityStore", () => {
       "[EntityStore.merge] target missing not found",
     );
   });
-
   it("folds identities, tags, and attributes then deletes sources and rewrites relationship endpoints", async () => {
     const { store, kg } = createHarness();
     await store.upsert({
@@ -1173,14 +1114,12 @@ describe("EntityStore", () => {
         updated_at: T0,
       },
     );
-
     vi.setSystemTime(new Date(T2));
     const merged = await store.merge("ent-t", [
       "ent-t",
       "ent-missing",
       "ent-s",
     ]);
-
     expect(merged.entityId).toBe("ent-t");
     expect(merged.tags).toEqual(["alpha", "beta", "keep"]);
     expect(merged.identities.map((row) => row.handle).sort()).toEqual([
@@ -1195,7 +1134,6 @@ describe("EntityStore", () => {
     expect(merged.state.lastObservedAt).toBe(T1);
     expect(merged.state.lastInboundAt).toBe(T0);
     expect(merged.state.lastOutboundAt).toBe(T1);
-
     await expect(store.get("ent-s")).resolves.toBeNull();
     expect(kg.identities.some((row) => row.entity_id === "ent-s")).toBe(false);
     expect(kg.attributes.some((row) => row.entity_id === "ent-s")).toBe(false);
@@ -1223,7 +1161,6 @@ describe("EntityStore", () => {
       },
     ]);
   });
-
   it("refuses to delete the self entity and no-ops delete of a missing id", async () => {
     const { store } = createHarness();
     await store.ensureSelf();
@@ -1233,7 +1170,6 @@ describe("EntityStore", () => {
     await expect(store.get(SELF_ENTITY_ID)).resolves.not.toBeNull();
     await expect(store.deleteForTest("missing")).resolves.toBeUndefined();
   });
-
   it("deleteForTest removes identities, attributes, and the entity row", async () => {
     const { store, kg } = createHarness();
     await store.upsert({

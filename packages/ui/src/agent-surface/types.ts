@@ -8,7 +8,6 @@
  * so the floating pill can drive any view from voice or text without the view
  * shipping its own chat surface.
  */
-
 /** Semantic role of an addressable element — drives icons, affordances, search. */
 export type AgentElementRole =
   | "button"
@@ -30,7 +29,6 @@ export type AgentElementRole =
   | "region"
   | "heading"
   | "custom";
-
 /** Roles the agent can type into. */
 export const FILLABLE_ROLES: ReadonlySet<AgentElementRole> =
   new Set<AgentElementRole>([
@@ -40,7 +38,6 @@ export const FILLABLE_ROLES: ReadonlySet<AgentElementRole> =
     "select",
     "slider",
   ]);
-
 /** Roles the agent can activate (click). */
 export const CLICKABLE_ROLES: ReadonlySet<AgentElementRole> =
   new Set<AgentElementRole>([
@@ -52,7 +49,6 @@ export const CLICKABLE_ROLES: ReadonlySet<AgentElementRole> =
     "list-item",
     "card",
   ]);
-
 /**
  * Descriptor supplied by a view through `useAgentElement`. The registry keeps a
  * live reference to the DOM node plus these hints so it can act on the element
@@ -94,7 +90,6 @@ export interface AgentElementDescriptor {
    *  dispatching a DOM click. */
   onActivate?: () => void;
 }
-
 /** Serialisable snapshot of one element, returned to the agent. */
 export interface AgentElementSnapshot {
   id: string;
@@ -112,9 +107,13 @@ export interface AgentElementSnapshot {
   visible: boolean;
   options?: readonly string[];
   /** Viewport-relative bounds — lets the agent reason about layout/anchoring. */
-  bounds?: { x: number; y: number; width: number; height: number };
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
-
 /** Full snapshot of a view's agent surface. */
 export interface AgentSurfaceSnapshot {
   viewId: string;
@@ -124,9 +123,7 @@ export interface AgentSurfaceSnapshot {
   elements: AgentElementSnapshot[];
   updatedAt: number;
 }
-
 export type AgentViewType = "gui" | "tui" | "xr";
-
 /** Result of an agent action on an element. */
 export interface AgentActionResult {
   ok: boolean;
@@ -134,9 +131,8 @@ export interface AgentActionResult {
   reason?: string;
   value?: unknown;
 }
-
 // Capability ids handled generically by the agent-surface registry. The
-// canonical definition lives in @elizaos/shared so the agent server can dispatch
+// canonical definition lives in @elizaos/core so the agent server can dispatch
 // against it without importing UI internals (#12408); re-exported here for the
 // UI's agent-surface consumers.
-export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared";
+export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/core/views/view-interact-protocol";

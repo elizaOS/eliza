@@ -3,12 +3,12 @@
  * how to read/edit config values and the common provider API-key environment
  * variables — plus a docs link. Guidance only; it does not mutate any config.
  */
-
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { formatDocsLink, theme } from "@elizaos/shared";
-import type { Command } from "commander";
 
+import type { Command } from "commander";
+import { formatDocsLink } from "../../terminal/links.js";
+import { theme } from "../../terminal/theme.js";
 export function registerConfigureCommand(program: Command) {
   program
     .command("configure")

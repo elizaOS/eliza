@@ -5,8 +5,8 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/types/message-source";
+import { logger } from "@elizaos/ui/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,

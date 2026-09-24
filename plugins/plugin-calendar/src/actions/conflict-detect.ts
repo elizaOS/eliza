@@ -21,8 +21,8 @@ import {
   type LifeOpsCalendarEvent,
   type LifeOpsCalendarFeed,
   type LifeOpsCalendarSourceHealth,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/calendar";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { calendarAvailabilityKindFromMetadata } from "../internal/availability-metadata.js";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import { CalendarServiceError } from "../internal/errors.js";

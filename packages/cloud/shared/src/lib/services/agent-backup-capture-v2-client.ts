@@ -12,7 +12,7 @@ import {
   type AgentBackupCaptureV2Request,
   parseAgentBackupCaptureV2Frames,
   parseAgentBackupCaptureV2Request,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/agent-backup-capture-v2";
 
 const MAX_ERROR_BODY_BYTES = 4 * 1024;
 const REMOTE_CAPTURE_FAILURE_STATUS = Object.freeze({

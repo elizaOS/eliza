@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { canonicalJsonString } from "@elizaos/shared/canonical-json";
+import { canonicalJsonString } from "@elizaos/core/canonical-json";
 import {
   createScenarioStabilityPlan,
   executeScenarioStability,

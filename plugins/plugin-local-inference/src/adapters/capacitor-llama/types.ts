@@ -17,16 +17,12 @@
  * path would force every desktop tsc run to pull the mobile binding's d.ts. We
  * keep the interface free-standing so any backend can implement it.
  */
-
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
-
+import { BGE_EMBEDDING_MODEL } from "@elizaos/plugin-native-inference/model-catalog/bge-embedding-model";
 export interface TokenizerConfig {
 	name: string;
 	type: string;
 }
-
 // === Context / completion params ===========================================
-
 export interface CapacitorLlamaContextParams {
 	/** GGUF model path (absolute or Capacitor-asset URI). */
 	model: string;
@@ -70,7 +66,10 @@ export interface CapacitorLlamaContextParams {
 	vocab_only?: boolean;
 	lora?: string;
 	lora_scaled?: number;
-	lora_list?: Array<{ path: string; scaled?: number }>;
+	lora_list?: Array<{
+		path: string;
+		scaled?: number;
+	}>;
 	rope_freq_base?: number;
 	rope_freq_scale?: number;
 	pooling_type?: "none" | "mean" | "cls" | "last" | "rank";
@@ -81,25 +80,30 @@ export interface CapacitorLlamaContextParams {
 	embedding?: boolean;
 	embd_normalize?: number;
 }
-
 export interface CapacitorLlamaMessagePart {
 	type: string;
 	text?: string;
-	image_url?: { url?: string };
-	input_audio?: { format: string; data?: string; url?: string };
+	image_url?: {
+		url?: string;
+	};
+	input_audio?: {
+		format: string;
+		data?: string;
+		url?: string;
+	};
 }
-
 export interface CapacitorLlamaChatMessage {
 	role: string;
 	content?: string | CapacitorLlamaMessagePart[];
 }
-
 export interface CapacitorLlamaResponseFormat {
 	type: "text" | "json_object" | "json_schema";
-	json_schema?: { strict?: boolean; schema: object };
+	json_schema?: {
+		strict?: boolean;
+		schema: object;
+	};
 	schema?: object;
 }
-
 export interface CapacitorLlamaCompletionParams {
 	/** Raw prompt string. Mutually exclusive with `messages`. */
 	prompt?: string;
@@ -111,7 +115,11 @@ export interface CapacitorLlamaCompletionParams {
 	/** GBNF grammar source. */
 	grammar?: string;
 	grammar_lazy?: boolean;
-	grammar_triggers?: Array<{ type: number; value: string; token: number }>;
+	grammar_triggers?: Array<{
+		type: number;
+		value: string;
+		token: number;
+	}>;
 	enable_thinking?: boolean;
 	thinking_forced_open?: boolean;
 	preserved_tokens?: string[];
@@ -153,25 +161,28 @@ export interface CapacitorLlamaCompletionParams {
 	chat_template_kwargs?: Record<string, string>;
 	prefill_text?: string;
 }
-
 export interface CapacitorLlamaToolCall {
 	type: "function";
 	id?: string;
-	function: { name: string; arguments: string };
+	function: {
+		name: string;
+		arguments: string;
+	};
 }
-
 export interface CapacitorLlamaTokenData {
 	token: string;
 	completion_probabilities?: Array<{
 		content: string;
-		probs: Array<{ tok_str: string; prob: number }>;
+		probs: Array<{
+			tok_str: string;
+			prob: number;
+		}>;
 	}>;
 	content?: string;
 	reasoning_content?: string;
 	tool_calls?: CapacitorLlamaToolCall[];
 	accumulated_text?: string;
 }
-
 export interface CapacitorLlamaCompletionResult {
 	text: string;
 	reasoning_content: string;
@@ -200,11 +211,13 @@ export interface CapacitorLlamaCompletionResult {
 	};
 	completion_probabilities?: Array<{
 		content: string;
-		probs: Array<{ tok_str: string; prob: number }>;
+		probs: Array<{
+			tok_str: string;
+			prob: number;
+		}>;
 	}>;
 	audio_tokens?: number[];
 }
-
 export interface CapacitorLlamaTokenizeResult {
 	tokens: number[];
 	has_images: boolean;
@@ -212,14 +225,14 @@ export interface CapacitorLlamaTokenizeResult {
 	chunk_pos: number[];
 	chunk_pos_images: number[];
 }
-
 export interface CapacitorLlamaEmbeddingResult {
 	embedding: number[];
 }
-
 /** Encoder-only native contexts do not claim chat-model metadata or GPU capabilities. */
 export interface CapacitorEmbeddingContext {
-	tokenize(text: string): Promise<{ tokens: number[] }>;
+	tokenize(text: string): Promise<{
+		tokens: number[];
+	}>;
 	embedding(
 		text: string,
 		params?: {
@@ -235,7 +248,6 @@ export interface CapacitorEmbeddingContext {
 	}>;
 	release(): Promise<void>;
 }
-
 export interface CapacitorLlamaBenchResult {
 	modelDesc: string;
 	modelSize: number;
@@ -245,9 +257,7 @@ export interface CapacitorLlamaBenchResult {
 	tgAvg: number;
 	tgStd: number;
 }
-
 // === Model description (mirrors NativeLlamaContext['model'])  ==============
-
 export interface CapacitorLlamaModelDescriptor {
 	desc: string;
 	size: number;
@@ -279,9 +289,7 @@ export interface CapacitorLlamaModelDescriptor {
 	metadata: object;
 	isChatTemplateSupported: boolean;
 }
-
 // === Canonical context interface ===========================================
-
 /**
  * The canonical context handle every backend implements. Designed so a single
  * caller can switch between `llama-cpp-capacitor`'s `LlamaContext` and the
@@ -298,21 +306,18 @@ export interface CapacitorLlamaContext {
 	readonly gpu: boolean;
 	readonly reasonNoGPU: string;
 	readonly model: CapacitorLlamaModelDescriptor;
-
 	completion(
 		params: CapacitorLlamaCompletionParams,
 		callback?: (data: CapacitorLlamaTokenData) => void,
 	): Promise<CapacitorLlamaCompletionResult>;
-
 	stopCompletion(): Promise<void>;
-
 	tokenize(
 		text: string,
-		options?: { media_paths?: string[] },
+		options?: {
+			media_paths?: string[];
+		},
 	): Promise<CapacitorLlamaTokenizeResult>;
-
 	detokenize(tokens: number[]): Promise<string>;
-
 	embedding(
 		text: string,
 		params?: {
@@ -321,17 +326,14 @@ export interface CapacitorLlamaContext {
 			embeddingSpace?: string;
 		},
 	): Promise<CapacitorLlamaEmbeddingResult>;
-
 	bench(
 		pp: number,
 		tg: number,
 		pl: number,
 		nr: number,
 	): Promise<CapacitorLlamaBenchResult>;
-
 	release(): Promise<void>;
 }
-
 /** Thrown by adapter methods that aren't implemented for a given backend. */
 export class CapacitorLlamaUnsupportedError extends Error {
 	constructor(
@@ -346,9 +348,7 @@ export class CapacitorLlamaUnsupportedError extends Error {
 		this.name = "CapacitorLlamaUnsupportedError";
 	}
 }
-
 // === Model registry =======================================================
-
 export interface ModelSpec {
 	name: string;
 	repo: string;
@@ -357,11 +357,9 @@ export interface ModelSpec {
 	contextSize: number;
 	tokenizer: TokenizerConfig;
 }
-
 export interface EmbeddingModelSpec extends ModelSpec {
 	dimensions: number;
 }
-
 /**
  * Default model bundle. Vision and TTS are owned by `plugin-local-inference`'s
  * voice and vision subsystems — they don't live on this adapter.
