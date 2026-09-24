@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Base64
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
@@ -45,6 +46,7 @@ class CameraTestActivity : BridgeActivity() {
     override fun onCreate(state: Bundle?) {
         registerPlugin(CameraPlugin::class.java)
         super.onCreate(state)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }
 
@@ -339,7 +341,7 @@ class CameraRecordingInstrumentedTest {
                     if (!denied) SystemClock.sleep(50)
                 }
                 assertTrue("Android microphone permission dialog did not offer Deny", denied)
-                assertTrue(starting.done.await(10, TimeUnit.SECONDS))
+                assertTrue("Microphone denial did not settle the recording call", starting.done.await(10, TimeUnit.SECONDS))
                 assertTrue(starting.failure?.startsWith("MICROPHONE_DENIED:") == true)
                 assertEquals(1, starting.settlements.get())
                 assertFalse(call(scenario, "getRecordingState").await().getBoolean("isRecording"))

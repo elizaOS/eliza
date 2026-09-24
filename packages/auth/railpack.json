@@ -44,7 +44,6 @@
           "node_modules",
           "package.json",
           "packages/auth",
-          "packages/core",
           "packages/core"
         ]
       }

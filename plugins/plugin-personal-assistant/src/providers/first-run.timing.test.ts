@@ -72,7 +72,10 @@ function harness(record?: Partial<FirstRunRecord>) {
     agentId,
     entityId: ownerId,
     roomId: ownerId,
-    content: { text: "private incoming words", channelType: ChannelType.DM },
+    content: {
+      text: "Start first-run setup with my private preferences",
+      channelType: ChannelType.DM,
+    },
   } as Memory;
   const timer = new InferenceTurnTimer({
     turnId: "first-run-test",

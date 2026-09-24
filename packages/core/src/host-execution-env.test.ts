@@ -273,8 +273,8 @@ describe("host execution baseline env mirror", () => {
 		expect(JSON.parse(stdout)).toEqual({
 			path: "/usr/bin:/bin",
 			goPath: "/home/coder/go",
-			goModCache: "/home/coder/go/pkg/mod",
-			goCache: "/home/coder/.cache/go-build",
+			goModCache: path.normalize("/home/coder/go/pkg/mod"),
+			goCache: path.normalize("/home/coder/.cache/go-build"),
 		});
 	});
 

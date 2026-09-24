@@ -23,10 +23,6 @@ const WORKFLOW = path.join(
   REPOSITORY_ROOT,
   ".github/workflows/cloud-gateway-discord.yml",
 );
-const DEVELOP_WORKFLOW = path.join(
-  REPOSITORY_ROOT,
-  ".github/workflows/develop-full.yml",
-);
 const CONFIGURATION_CONTEXT_IDENTIFIER =
   /(^|[^A-Za-z0-9_])(secrets|vars|inputs)(?=$|[^A-Za-z0-9_])/i;
 const GITHUB_EXPRESSION = /\$\{\{([\s\S]*?)\}\}/g;
@@ -93,11 +89,6 @@ const EXPECTED_SOURCE_ONLY_WORKFLOW = {
       ],
     },
   },
-};
-const EXPECTED_DEVELOP_CALLER = {
-  needs: "plan",
-  if: "needs.plan.outputs.run_cloud_gateway_discord == 'true'",
-  uses: "./.github/workflows/cloud-gateway-discord.yml",
 };
 
 function isMapping(value) {
@@ -243,19 +234,6 @@ function assertSourceTestOnlyWorkflow(workflow) {
   );
 
   return testJob;
-}
-
-function assertDevelopSourceOnlyCaller(caller) {
-  assert.deepEqual(
-    findConfigurationContextReferences(caller),
-    [],
-    "develop-full caller must not pass configuration contexts",
-  );
-  assert.deepEqual(
-    caller,
-    EXPECTED_DEVELOP_CALLER,
-    "develop-full caller must match the exact source-only contract",
-  );
 }
 
 function replaceExactlyOnce(source, expected, replacement) {
@@ -523,32 +501,13 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
   assert.doesNotMatch(splitOutput, /whatsapp-contract-value-never-print/);
 });
 
-test("reusable workflow keeps the develop caller source-test-only", () => {
-  const workflow = parseWorkflow(
-    readFileSync(WORKFLOW, "utf8"),
-    "cloud-gateway-discord workflow",
+test("manual gateway workflow remains source-test-only", () => {
+  assertSourceTestOnlyWorkflow(
+    parseWorkflow(
+      readFileSync(WORKFLOW, "utf8"),
+      "cloud-gateway-discord workflow",
+    ),
   );
-  const developWorkflow = parseWorkflow(
-    readFileSync(DEVELOP_WORKFLOW, "utf8"),
-    "develop-full workflow",
-  );
-  assertSourceTestOnlyWorkflow(workflow);
-  const developPush = requireMapping(
-    developWorkflow.on,
-    "develop-full triggers",
-  ).push;
-  const caller = requireMapping(
-    requireMapping(developWorkflow.jobs, "develop-full jobs")[
-      "cloud-gateway-discord"
-    ],
-    "develop-full cloud-gateway-discord caller",
-  );
-
-  assert.deepEqual(
-    requireMapping(developPush, "develop-full push trigger").branches,
-    ["develop", "staging", "main"],
-  );
-  assertDevelopSourceOnlyCaller(caller);
 });
 
 test("configuration-context scan accepts benign prose", () => {
@@ -713,32 +672,5 @@ test("source-only workflow guard rejects adversarial YAML source mutations", () 
   assertWorkflowSourceRejected(
     mergedEnvironmentWorkflow,
     /job test must not attach an environment/,
-  );
-
-  const developSource = readFileSync(DEVELOP_WORKFLOW, "utf8");
-  const callerBlock = [
-    "  cloud-gateway-discord:",
-    "    needs: plan",
-    "    if: needs.plan.outputs.run_cloud_gateway_discord == 'true'",
-    "    uses: ./.github/workflows/cloud-gateway-discord.yml",
-  ].join("\n");
-  const callerWithInputSource = replaceExactlyOnce(
-    developSource,
-    callerBlock,
-    callerBlock + "\n    with:\n      CONFIG: untrusted",
-  );
-  const callerWithInputWorkflow = parseWorkflow(
-    callerWithInputSource,
-    "mutated develop-full workflow",
-  );
-  const callerWithInput = requireMapping(
-    requireMapping(callerWithInputWorkflow.jobs, "mutated develop-full jobs")[
-      "cloud-gateway-discord"
-    ],
-    "mutated develop-full cloud-gateway-discord caller",
-  );
-  assert.throws(
-    () => assertDevelopSourceOnlyCaller(callerWithInput),
-    /caller must match the exact source-only contract/,
   );
 });

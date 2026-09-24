@@ -538,4 +538,4 @@ runs:
       # Run it explicitly when an earlier postinstall step could have failed.
       shell: bash
       run: |
-        node packages/scripts/ensure-workspace-symlinks.ts || echo "::warning::ensure-workspace-symlinks failed"
+        node packages/scripts/ensure-workspace-symlinks.ts

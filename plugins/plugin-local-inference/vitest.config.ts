@@ -5,13 +5,25 @@
  * (`TEST_LANE=post-merge`).
  */
 
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases";
 
 export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
-		alias: buildWorkspaceSourceAliases(),
+		alias: [
+			{
+				find: /^@elizaos\/core\/utils\/tts-debug$/,
+				replacement: fileURLToPath(
+					new URL(
+						"../../packages/core/src/utils/tts-debug.ts",
+						import.meta.url,
+					),
+				),
+			},
+			...buildWorkspaceSourceAliases(),
+		],
 	},
 	test: {
 		globals: true,

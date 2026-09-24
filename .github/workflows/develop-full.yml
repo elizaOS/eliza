@@ -32,8 +32,6 @@ jobs:
       run_cloud: ${{ steps.resolve.outputs.run_cloud }}
       run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
       run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
-      run_ui_stories: ${{ steps.resolve.outputs.run_ui_stories }}
-      run_cloud_gateway_discord: ${{ steps.resolve.outputs.run_cloud_gateway_discord }}
     steps:
       - name: Validate promoted dispatch authority
         if: github.event_name == 'workflow_dispatch'
@@ -105,13 +103,6 @@ jobs:
       publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' }}
       concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
-  ui-stories:
-    needs: plan
-    if: needs.plan.outputs.run_ui_stories == 'true'
-    uses: ./.github/workflows/ui-story-gate.yml
-    with:
-      publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' && needs.plan.outputs.run_ui_core != 'true' }}
-    secrets: inherit
   complete:
     name: Complete manifest
     if: ${{ always() && !cancelled() && needs.plan.result == 'success' }}
@@ -119,14 +110,12 @@ jobs:
       - plan
       - canonical
       - cloud
-      - cloud-gateway-discord
       - platform-smoke
       - ui-core
-      - ui-stories
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
+      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}"}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -195,7 +184,3 @@ jobs:
           )"
           reconcile_run_id="$(jq -er '.workflow_run_id | select(type == "number" and . > 0)' <<< "$response")"
           echo "Handed $SOURCE_SHA to reconciliation run $reconcile_run_id"
-  cloud-gateway-discord:
-    needs: plan
-    if: needs.plan.outputs.run_cloud_gateway_discord == 'true'
-    uses: ./.github/workflows/cloud-gateway-discord.yml

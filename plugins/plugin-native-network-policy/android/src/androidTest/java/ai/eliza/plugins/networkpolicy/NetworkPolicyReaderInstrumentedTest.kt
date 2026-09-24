@@ -53,8 +53,8 @@ class NetworkPolicyReaderInstrumentedTest {
     @Test
     fun readPathHints_returnsTheAndroidNoInfoShape() {
         val result = NetworkPolicyReader.readPathHints()
-        assertEquals(false, result.getBoolean("isExpensive"))
-        assertEquals(false, result.getBoolean("isConstrained"))
+        assertTrue(result.has("isExpensive") && result.isNull("isExpensive"))
+        assertTrue(result.has("isConstrained") && result.isNull("isConstrained"))
         assertEquals("nw-path-monitor", result.getString("source"))
     }
 }

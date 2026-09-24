@@ -297,6 +297,7 @@ async function main() {
             "shell",
             "appops",
             "set",
+            "--uid",
             applicationId,
             "android:get_usage_stats",
             "allow",
