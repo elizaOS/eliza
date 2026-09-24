@@ -40,6 +40,7 @@ describe("ENTITIES provider content", () => {
           id: "00000000-0000-0000-0000-0000000000e1" as UUID,
           agentId: "00000000-0000-0000-0000-000000000001" as UUID,
           names: ["Vega"],
+          metadata: { client_chat: { userName: "Vega" } },
           components: [],
         },
       ]) as IAgentRuntime["getEntitiesForRoom"],
@@ -58,7 +59,12 @@ describe("ENTITIES provider content", () => {
     });
     expect(result.text).toContain("People in the Room");
     expect(result.text).toContain("Vega");
-    expect(result.discoveryText).toContain('["Vega"]');
+    expect(result.discoveryText).toContain("registered names: Vega");
+    expect(result.text).not.toContain("Data:");
+    expect(result.text).not.toContain("client_chat");
+    expect(result.data).toMatchObject({
+      entitiesData: [{ metadata: { client_chat: { userName: "Vega" } } }],
+    });
     expect(result.discoveryText).not.toContain("People in the Room");
     expect(result.discoveryText).toContain("not proof of a legal name");
   });

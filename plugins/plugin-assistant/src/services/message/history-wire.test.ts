@@ -1,4 +1,6 @@
 /** Proves exact history reassembly, occurrence order and identity isolation using the real wire encoder. */
+
+import { completionContextSources } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type {
   ContextObject,
@@ -6,6 +8,7 @@ import type {
 } from "../../../../../packages/core/src/types/context-object.ts";
 import {
   labelHistorySources,
+  plainHistoryTranscript,
   referenceRepeatedHistory,
   shortenHistoryRoleLabels,
 } from "./history-wire.ts";
@@ -160,6 +163,16 @@ describe("lossless history references", () => {
           },
         },
         {
+          id: "provider-canary",
+          type: "segment",
+          segment: {
+            id: "provider-canary",
+            label: "provider:FACTS",
+            content: "provider-order-canary",
+            stable: false,
+          },
+        },
+        {
           id: "available-actions",
           type: "segment",
           segment: {
@@ -187,22 +200,46 @@ describe("lossless history references", () => {
     const text = renderMessageHandlerModelInput(runtime, context, [], {
       directMessage: true,
     });
-    expect(text.messages[1].content).toContain("History:");
+    expect(text.messages[1].content).toContain("# Conversation");
     for (let index = 0; index < history.length; index++) {
-      expect(text.messages[1].content).toContain(
-        `[h${index + 1} user]\nsource ${index}`,
-      );
+      expect(text.messages[1].content).toContain(`source ${index}`);
     }
     const userText = String(text.messages[1].content);
     expect(userText).not.toContain("available_actions");
     expect(userText).not.toContain("READ_ORIGINAL_Ω");
     expect(text.messages[0].content).not.toContain("READ_ORIGINAL_Ω");
-    expect(userText.indexOf("[h40 user]\nsource 39")).toBeLessThan(
-      userText.indexOf("current_turn_boundary:"),
+    expect(userText.indexOf("current_turn_boundary:")).toBeLessThan(
+      userText.indexOf("# Conversation"),
     );
+    expect(userText).not.toContain("[h40 user]");
     expect(userText.indexOf("current_turn_boundary:")).toBeLessThan(
       userText.indexOf("# Current message\nRecall"),
     );
+    const native = renderMessageHandlerModelInput(runtime, context, [], {
+      directMessage: true,
+      nativeTools: true,
+    });
+    const nativeText = String(native.messages[1].content);
+    expect(native.messages).toHaveLength(2);
+    expect(nativeText.indexOf("provider-order-canary")).toBeLessThan(
+      nativeText.indexOf("# Task"),
+    );
+    expect(nativeText.indexOf("# Task")).toBeLessThan(
+      nativeText.indexOf("# Conversation"),
+    );
+    expect(nativeText.indexOf("# Conversation")).toBeLessThan(
+      nativeText.indexOf("# Current message"),
+    );
+    expect(
+      nativeText.endsWith(
+        "# Current message\nRecall the original source, without navigating.",
+      ),
+    ).toBe(true);
+    expect(nativeText).toContain("current_request");
+    expect(nativeText).toContain(completionContextSources(context).sourceSetId);
+    expect(nativeText).not.toContain("JSON response envelope");
+    expect(nativeText).toContain("h1: characters 0–8");
+    expect(String(native.messages[0].content)).not.toContain("# Task");
     const voice = renderMessageHandlerModelInput(runtime, context, [], {
       directMessage: true,
       voiceDirectMessage: true,
@@ -417,5 +454,33 @@ describe("lossless history references", () => {
     const body = "[h999; same_text_as=h1]\n".repeat(40);
     const segments = [source(body, 1), source(body, 2)];
     expect(decode(encode(segments))).toEqual(segments);
+  });
+});
+
+describe("plain original dialogue source mapping", () => {
+  it("maps repeated multiline originals to exact transcript ranges without injecting IDs", () => {
+    const originals = [
+      source("user: x\n[h2] literal 🦊", 0),
+      source("user: x\n[h2] literal 🦊", 1),
+      source("assistant: correction\n\nuser: quoted".repeat(1000), 2),
+    ];
+    const ids = new Map(
+      originals.map((segment, index) => [
+        segment.id ?? "missing",
+        `h${index + 7}`,
+      ]),
+    );
+    const rendered = plainHistoryTranscript(originals, ids);
+    expect(rendered.text).toBe(
+      originals.map((segment) => segment.content).join("\n\n"),
+    );
+    for (const [id, start, end] of rendered.sourceMap) {
+      const original = originals.find(
+        (segment) => ids.get(segment.id ?? "missing") === id,
+      );
+      if (!original) throw new Error("Source mapping lost an original");
+      expect(rendered.text.slice(start, end)).toBe(original.content);
+    }
+    expect(rendered.sourceMap.map(([id]) => id)).toEqual(["h7", "h8", "h9"]);
   });
 });

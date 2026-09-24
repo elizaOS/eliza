@@ -141,6 +141,7 @@ const DIALOGUE_CONTENT_FIELDS = new Set([
 	"channelType",
 	"metadata",
 	"attachments",
+	"chatIdempotency",
 ]);
 const DIALOGUE_METADATA_FIELDS = new Set([
 	"selectedValue",
@@ -160,6 +161,21 @@ const DIALOGUE_METADATA_FIELDS = new Set([
 function isStringArray(value: unknown): boolean {
 	return (
 		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
+}
+
+/** Host retry bookkeeping is not dialogue; extended payloads remain evidence. */
+function isChatIdempotencyMarker(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const fields = Object.entries(value);
+	return (
+		fields.length === 4 &&
+		fields.every(([key, item]) =>
+			key === "version"
+				? item === 1
+				: ["scope", "clientMessageId", "fingerprint"].includes(key) &&
+					typeof item === "string",
+		)
 	);
 }
 
@@ -225,6 +241,11 @@ function renderMessageContent(event: ContextMessageEvent): string {
 		("channelType" in content &&
 			content.channelType !== undefined &&
 			typeof content.channelType !== "string")
+	)
+		return textFromUnknown(content);
+	if (
+		"chatIdempotency" in content &&
+		!isChatIdempotencyMarker(content.chatIdempotency)
 	)
 		return textFromUnknown(content);
 	if ("metadata" in content && content.metadata !== undefined) {

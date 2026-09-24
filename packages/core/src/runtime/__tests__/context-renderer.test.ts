@@ -40,6 +40,53 @@ describe("context renderer", () => {
 		expect(messages[1]?.content).toBe("  dynamic  ");
 	});
 
+	it("renders retry-protected chat as dialogue while retaining extended marker evidence", () => {
+		const marker = {
+			version: 1,
+			scope: "agent:room:user",
+			clientMessageId: "voice:utterance",
+			fingerprint: "digest",
+		};
+		for (const bookkeeping of [
+			marker,
+			{ ...marker, additionalEvidence: "keep this" },
+			{ ...marker, version: 2 },
+			null,
+		]) {
+			const content = {
+				text: "  Yeah, that's true.\n",
+				source: "client_chat",
+				channelType: "VOICE_DM",
+				chatIdempotency: bookkeeping,
+			};
+			const context = {
+				id: "ctx",
+				version: "v5",
+				events: [
+					{
+						id: "message",
+						type: "message",
+						message: {
+							role: "user",
+							content,
+							metadata: { renderAsDialogue: true, speakerName: "User" },
+						},
+					},
+				],
+			} as unknown as ContextObject;
+			const output = renderContextObject(context)
+				.promptSegments.map(segmentBlock)
+				.join("\n");
+			if (bookkeeping === marker) {
+				expect(output).toContain("User:   Yeah, that's true.\n");
+				expect(output).not.toContain("chatIdempotency");
+			} else {
+				expect(output).toContain(JSON.stringify(content));
+			}
+			expect(context.events[0]).toMatchObject({ message: { content } });
+		}
+	});
+
 	it("retains unknown message metadata in model context as well as recordings", () => {
 		const context = {
 			id: "ctx-complete",
