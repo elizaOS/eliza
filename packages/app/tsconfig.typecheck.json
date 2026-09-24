@@ -17,9 +17,6 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-blocker": [
-        "../../plugins/plugin-blocker/src/register.ts"
-      ],
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],

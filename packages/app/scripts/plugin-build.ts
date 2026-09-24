@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Runs the shared native builder with the app development entrypoint's full-build and legacy manifest policy. */
+/** Runs cached native builds with the app development entrypoint's legacy manifest policy. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -25,7 +25,6 @@ if (
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   await buildNativePlugins({
-    force: true,
     sourceRuntime: process.env.ELIZA_DEV_SOURCE === "1",
     hostFilter: shouldBuildPluginForHost,
   });

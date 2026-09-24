@@ -27,6 +27,45 @@ test("shared builder preserves freshness, forced development builds, and depende
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.copyFileSync(path.join(scripts, file), target);
     }
+    const repoRoot = path.resolve(scripts, "../../..");
+    const runner = path.join(root, "packages/scripts/run-turbo.ts");
+    fs.mkdirSync(path.dirname(runner), { recursive: true });
+    fs.copyFileSync(
+      path.join(repoRoot, "packages/scripts/run-turbo.ts"),
+      runner,
+    );
+    fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
+    fs.symlinkSync(
+      fs.realpathSync(path.join(repoRoot, "node_modules/turbo")),
+      path.join(root, "node_modules/turbo"),
+      "junction",
+    );
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({
+        name: "native-build-fixture",
+        type: "module",
+        private: true,
+        packageManager: "bun@1.3.14",
+        workspaces: ["packages/core", "plugins/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(root, ".gitignore"),
+      "node_modules\n.turbo\ndist\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "turbo.json"),
+      JSON.stringify({
+        tasks: {
+          build: {
+            dependsOn: ["^build"],
+            outputs: ["dist/**"],
+            inputs: ["$TURBO_DEFAULT$", "!dist/**"],
+          },
+        },
+      }),
+    );
     for (const [directory, name] of [
       [core, "core"],
       [plugin, "plugin"],
@@ -37,6 +76,7 @@ test("shared builder preserves freshness, forced development builds, and depende
         path.join(directory, "package.json"),
         JSON.stringify({
           name: name === "core" ? "@elizaos/core" : "@fixture/native",
+          version: "1.0.0",
           scripts: { build: "node build.ts" },
           dependencies:
             name === "plugin" ? { "@elizaos/core": "workspace:*" } : {},
@@ -52,6 +92,37 @@ test("shared builder preserves freshness, forced development builds, and depende
       `,
       );
     }
+    assert.equal(
+      spawnSync("git", ["init", "--quiet"], { cwd: root }).status,
+      0,
+    );
+    const install = spawnSync(
+      "bun",
+      ["install", "--lockfile-only", "--ignore-scripts"],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    );
+    assert.equal(install.status, 0, install.stderr);
+    assert.equal(spawnSync("git", ["add", "."], { cwd: root }).status, 0);
+    assert.equal(
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.test",
+          "commit",
+          "--quiet",
+          "-m",
+          "Fixture",
+        ],
+        { cwd: root },
+      ).status,
+      0,
+    );
     const run = (entry, extraEnv = {}) =>
       spawnSync(process.execPath, [path.join(appScripts, entry)], {
         cwd: root,
@@ -61,19 +132,34 @@ test("shared builder preserves freshness, forced development builds, and depende
           SKIP_NATIVE_PLUGINS: "0",
           ELIZA_FORCE_PLUGIN_BUILD: "0",
           ELIZA_DEV_SOURCE: "0",
+          TURBO_FORCE: undefined,
+          TURBO_CACHE: "local:rw",
+          TURBO_TELEMETRY_DISABLED: "1",
           ...extraEnv,
         },
         encoding: "utf8",
       });
-    const success = (result) => assert.equal(result.status, 0, result.stderr);
+    const success = (result) =>
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const history = () => fs.readFileSync(events, "utf8").trim().split("\n");
     success(run("build-native-plugins.ts"));
     assert.deepEqual(history(), ["core", "plugin"]);
     success(run("build-native-plugins.ts"));
     assert.deepEqual(history(), ["core", "plugin"]);
-    success(run("plugin-build.ts", { ELIZA_DEV_SOURCE: "1" }));
-    assert.deepEqual(history(), ["core", "plugin", "plugin"]);
+    fs.rmSync(path.join(plugin, "dist"), { recursive: true });
+    success(run("build-native-plugins.ts"));
+    assert.ok(fs.existsSync(path.join(plugin, "dist/index.js")));
+    assert.deepEqual(history(), ["core", "plugin"]);
     success(run("plugin-build.ts"));
+    assert.deepEqual(history(), ["core", "plugin"]);
+    success(
+      run("plugin-build.ts", {
+        ELIZA_DEV_SOURCE: "1",
+        ELIZA_FORCE_PLUGIN_BUILD: "1",
+      }),
+    );
+    assert.deepEqual(history(), ["core", "plugin", "plugin"]);
+    success(run("plugin-build.ts", { ELIZA_FORCE_PLUGIN_BUILD: "1" }));
     assert.deepEqual(history(), ["core", "plugin", "plugin", "core", "plugin"]);
     const pluginManifestPath = path.join(plugin, "package.json");
     const manifest = JSON.parse(fs.readFileSync(pluginManifestPath, "utf8"));
@@ -85,10 +171,25 @@ test("shared builder preserves freshness, forced development builds, and depende
     assert.deepEqual(history(), ["core", "plugin", "plugin", "core", "plugin"]);
     delete manifest.eliza;
     fs.writeFileSync(pluginManifestPath, JSON.stringify(manifest));
+    // Dependency contents must invalidate consumers even with older mtimes.
+    const coreSource = path.join(core, "src/index.ts");
+    fs.writeFileSync(coreSource, "export const changed = true;\n");
+    fs.utimesSync(coreSource, new Date(0), new Date(0));
+    success(run("build-native-plugins.ts"));
+    const refreshed = [
+      "core",
+      "plugin",
+      "plugin",
+      "core",
+      "plugin",
+      "core",
+      "plugin",
+    ];
+    assert.deepEqual(history(), refreshed);
     fs.writeFileSync(path.join(core, "build.ts"), "process.exit(7);\n");
     const failure = run("plugin-build.ts");
     assert.notEqual(failure.status, 0);
-    assert.deepEqual(history(), ["core", "plugin", "plugin", "core", "plugin"]);
+    assert.deepEqual(history(), refreshed);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
