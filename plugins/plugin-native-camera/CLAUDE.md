@@ -40,7 +40,7 @@ This is a Capacitor plugin, not an elizaOS action/provider/evaluator plugin. The
 
 | Event name | Payload type | Fired when |
 |---|---|---|
-| `"frame"` | `CameraFrameEvent` | Each video frame (timestamp, width, height) |
+| `"frame"` | `CameraFrameEvent` | Native sampled capture metadata (timestamp, width, height) |
 | `"error"` | `CameraErrorEvent` | Recording or stream error (code + message) |
 | `"recordingState"` | `VideoRecordingState` | Recording started, periodic update, or stopped |
 
@@ -58,7 +58,7 @@ plugins/plugin-native-camera/
       CameraPlugin.swift   — AVFoundation-based native iOS implementation
   android/
     src/main/java/ai/eliza/plugins/camera/
-      CameraPlugin.kt      — Camera2 API-based native Android implementation
+      CameraPlugin.kt      — CameraX native Android implementation
     src/main/AndroidManifest.xml
   ElizaosCapacitorCamera.podspec  — CocoaPods spec for iOS distribution
   rollup.config.mjs               — Bundles dist/plugin.js (IIFE) and dist/plugin.cjs.js
@@ -114,6 +114,8 @@ Capacitor plugin registration name: `"ElizaCamera"` (used internally by `@capaci
 - **Manual focus/exposure on web.** `setFocusPoint` and `setExposurePoint` throw if the device does not report `"manual"` in its `focusMode`/`exposureMode` capabilities — which is the case for most desktop webcams.
 - **Build output.** `tsc` compiles to `dist/esm/`; rollup then bundles into `dist/plugin.js` (IIFE for browser script tag) and `dist/plugin.cjs.js` (CJS). The `exports` field in `package.json` selects source-mode builds via the explicit `eliza-source` condition at `src/index.ts`.
 - **iOS deployment target:** iOS 15.0+, Swift 5.9. Depends on `AVFoundation`, `Photos`, and `UIKit`.
+- **Android frame events:** Sample completed Camera2 captures at the existing ~2 Hz notification rate, with negotiated preview dimensions and wall-clock completion time. Do not synthesize frames from a timer. Queued callbacks are fenced by preview ownership across stop/restart. Device coverage checks that events cease while Android reports the camera closed and resume with actual capture. The permission-dialog test requires a fresh isolated test-package install; it grants only camera permission and denies microphone through the real Android dialog.
+- **Android recording:** CameraX 1.5.3 or a compatible newer override is required for Android 17 dynamic-range profiles. Start settles on CameraX Start; stop settles only after Finalize and readable output metadata. Gallery output is a content URI on Android 10+; duration/file-size limits retain the completed result for a subsequent stop call. Requested audio permission denial is a failure, never a silent downgrade. Recording state belongs to one main-thread session until finalization. Preview admission is also main-thread-owned: stop, replacement and destruction settle the pending call, and late provider/permission callbacks cannot reopen it. Quality, bitrate and frame-rate targets configure a fresh recorder for each recording; malformed options reject before native effects. Stop a recording before switching cameras.
 - **Android:** Kotlin implementation under `ai.eliza.plugins.camera`. Camera enumeration is read via `CameraDeviceReader` and covered by an **instrumented test** (`android/src/androidTest/.../CameraDeviceReaderInstrumentedTest.kt`) run on a real device/emulator via `./gradlew :elizaos-capacitor-camera:connectedDebugAndroidTest` from `packages/app-core/platforms/android` (issue #9967); `getDevices` delegates to the reader (JS shape unchanged).
 - See root `CLAUDE.md` for repo-wide conventions (logger, ESM, naming, architecture rules).
 

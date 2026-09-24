@@ -1,6 +1,6 @@
 # @elizaos/capacitor-camera
 
-Capacitor plugin for camera preview, photo capture, and video recording. Works across web (via the `MediaDevices` API), iOS (via AVFoundation), and Android (via Camera2).
+Capacitor plugin for camera preview, photo capture, and video recording. Works across web (via the `MediaDevices` API), iOS (via AVFoundation), and Android (via CameraX).
 
 ## What it does
 
@@ -140,3 +140,42 @@ Full TypeScript definitions are in `src/definitions.ts`. Key types:
 - **Android:** Camera2 API-backed.
 - **Node (Electrobun desktop):** Supported via Electrobun native modules.
 
+
+## Android recording completion
+
+Android uses CameraX 1.5.3 for compatibility with Android 17 camera profiles.
+`startRecording` resolves when CameraX starts recording. `stopRecording` waits
+for finalization and returns the actual video's dimensions, recorded duration,
+byte count, and path. Cache output is a file path; `saveToGallery` output is a
+`content://` URI and requires Android 10 or newer. A denied microphone request
+rejects an audio recording instead of silently producing a silent video.
+
+`maxDuration` and `maxFileSize` are native recording limits. After an automatic
+limit stop, `stopRecording` retrieves the finalized result. Calls made while a
+recording is finalizing cannot start a competing recording. Device regression
+tests exercise the real CameraX/codec/MediaStore path, including concurrent stop
+calls and immediately readable media; run `:elizaos-capacitor-camera:connectedDebugAndroidTest`
+from the Android host with the intended emulator selected.
+
+Android recording quality selects an available SD/HD/FHD/highest profile (with
+CameraX's supported-quality fallback). Bitrate and frame rate are encoder/camera
+targets; device capabilities still determine the actual output. Each recording
+starts from its own options, so prior overrides do not change later defaults.
+Malformed numeric options and unknown quality values reject before recording.
+Camera switching requires stopping the current recording first.
+
+Stopping preview cancels pending startup as well as an active preview. A late
+camera-provider or permission callback cannot reopen a stopped preview. Device
+regression tests also cover cancellation followed by reuse and quality changes
+verified against encoded media rather than configuration values.
+
+Android `frame` events are sampled notifications of completed camera captures,
+not image buffers or proof that a frame was displayed. They preserve the existing
+~2 Hz notification rate, report the negotiated preview resolution, and timestamp
+capture completion in wall-clock milliseconds. Events stop with camera inactivity
+and preview teardown; no timer fabricates frame delivery. The web fallback does
+not currently emit these native frame notifications.
+
+Run device acceptance with a fresh `ai.eliza.plugins.camera.test` installation.
+The isolated harness grants camera permission and tests the real microphone-denial
+dialog without changing the installed Eliza app's permissions or credentials.
