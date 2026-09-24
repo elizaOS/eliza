@@ -12,6 +12,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadEnv } from "vite";
 import {
+  fileMtime,
+  maxMtimeUnder as sourceMaxMtimeUnder,
+} from "./artifact-staleness.ts";
+import {
   readRendererBuildManifest,
   rendererBuildManifestMatchesDist,
 } from "./renderer-build-manifest.mjs";
@@ -26,45 +30,16 @@ const TEXT_EXT = new Set([
   ".mjs",
 ]);
 
-function maxMtimeUnder(dir, { maxDepth = 20 } = {}) {
-  let max = 0;
-  const walk = (d, depth) => {
-    if (depth > maxDepth) return;
-    let entries;
-    try {
-      entries = fs.readdirSync(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const ent of entries) {
-      if (ent.name === "node_modules" || ent.name === "dist") continue;
-      const p = path.join(d, ent.name);
-      if (ent.isDirectory()) {
-        walk(p, depth + 1);
-        continue;
-      }
-      const ext = path.extname(ent.name);
-      if (!TEXT_EXT.has(ext)) continue;
-      try {
-        max = Math.max(max, fs.statSync(p).mtimeMs);
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-  walk(dir, 0);
-  return max;
+const SOURCE_EXCLUDES = new Set(["node_modules", "dist"]);
+function maxMtimeUnder(dir: string) {
+  return sourceMaxMtimeUnder(dir, {
+    exclude: SOURCE_EXCLUDES,
+    exts: TEXT_EXT,
+    maxDepth: 20,
+  });
 }
 
-function fileMtime(p) {
-  try {
-    return fs.statSync(p).mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
-function maxMtimeAcrossDirs(dirs) {
+function maxMtimeAcrossDirs(dirs: string[]) {
   let max = 0;
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) continue;
@@ -78,8 +53,8 @@ function maxMtimeAcrossDirs(dirs) {
  * matches the current invocation. Missing legacy metadata fails closed.
  */
 export function rendererDistMatchesPlaywrightTestAuth(
-  appDir,
-  expectedPlaywrightTestAuth,
+  appDir: string,
+  expectedPlaywrightTestAuth: boolean,
   distDir = path.join(appDir, "web-dist"),
 ) {
   const manifest = readRendererBuildManifest(distDir);
@@ -90,7 +65,7 @@ export function rendererDistMatchesPlaywrightTestAuth(
 }
 
 /** Resolve the UI-smoke auth variant with Vite's production env precedence. */
-export function resolvePlaywrightTestAuth(appDir) {
+export function resolvePlaywrightTestAuth(appDir: string) {
   return (
     loadEnv("production", appDir, "VITE_").VITE_PLAYWRIGHT_TEST_AUTH === "true"
   );
@@ -101,7 +76,11 @@ export function resolvePlaywrightTestAuth(appDir) {
  * @param {string} repoRoot absolute path to repo root
  * @param {{ expectedPlaywrightTestAuth?: boolean, distDir?: string }} [options]
  */
-export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
+export function viteRendererBuildNeeded(
+  appDir: string,
+  repoRoot: string,
+  options: { expectedPlaywrightTestAuth?: boolean; distDir?: string } = {},
+) {
   const distDir = options.distDir ?? path.join(appDir, "web-dist");
   const distIndex = path.join(distDir, "index.html");
   if (!fs.existsSync(distIndex)) {
@@ -118,8 +97,8 @@ export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
     return true;
   }
   const manifest = readRendererBuildManifest(path.dirname(distIndex));
-  const startedAt = Date.parse(manifest?.startedAt);
-  const builtAt = Date.parse(manifest?.builtAt);
+  const startedAt = Date.parse(manifest?.startedAt ?? "");
+  const builtAt = Date.parse(manifest?.builtAt ?? "");
   // Legacy stamps record completion only; rebuild once to establish the input
   // boundary instead of accepting code changed after Vite already read it.
   if (
@@ -184,7 +163,7 @@ export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
   ];
   for (const pluginsRoot of pluginRootCandidates) {
     if (!fs.existsSync(pluginsRoot)) continue;
-    let pluginDirs;
+    let pluginDirs: fs.Dirent[];
     try {
       pluginDirs = fs.readdirSync(pluginsRoot, { withFileTypes: true });
     } catch {

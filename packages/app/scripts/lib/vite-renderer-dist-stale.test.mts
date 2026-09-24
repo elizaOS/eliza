@@ -16,7 +16,7 @@ import {
   rendererDistMatchesPlaywrightTestAuth,
   resolvePlaywrightTestAuth,
   viteRendererBuildNeeded,
-} from "./vite-renderer-dist-stale.mjs";
+} from "./vite-renderer-dist-stale.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(
