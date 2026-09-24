@@ -71,10 +71,9 @@ jobs:
       ELIZA_WEBVIEW_DEBUG: "1"
       ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
-      # The embedded on-device agent (bun + llama) SIGSEGVs on a stock x86_64
-      # emulator, so this lane proves build + install + WebView attach + route
-      # coverage against the host-run agent; the LOCAL arm64 route stays on
-      # self-hosted device runners.
+      # Renderer probes use a host backend. The preceding native-agent lane
+      # separately boots the real embedded Bun bundle on the clean emulator;
+      # model inference and the LOCAL arm64 route retain their own coverage.
       ELIZA_ANDROID_BACKEND: "host"
       ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
       ELIZA_ANDROID_RELEASE_MINIFY_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.android_release_minify_smoke && '1' || '0' }}
@@ -126,14 +125,19 @@ jobs:
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
           # The runner invokes each physical line separately, so keep the
           # branch on one line and delegate the focused proof to a script.
-          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 && node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
+          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 && node packages/app/scripts/android-native-agent.mjs --serial emulator-5554 && node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
 
       - name: Upload Android native plugin results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-native-plugins-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/android-native-plugins/**
+          path: |
+            test-results/android-native-plugins/**
+            test-results/android-native-agent/**/report.json
+            test-results/android-native-agent/**/*.log
+            test-results/android-native-agent/**/agent-lifecycle.json
+            test-results/android-native-agent/**/agent-runtime.txt
           if-no-files-found: warn
           retention-days: 14
 

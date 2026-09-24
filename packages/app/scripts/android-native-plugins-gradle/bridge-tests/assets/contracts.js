@@ -39,6 +39,11 @@
         status.engine === "bun" && status.ready === false,
         "runtime must report unavailable without host service",
       );
+      assert(
+        (await call("start")).ok === false,
+        "missing host must fail startup explicitly",
+      );
+      await rejects("stop");
       break;
     }
     case "plugin-native-camera": {

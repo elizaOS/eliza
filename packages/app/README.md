@@ -46,3 +46,12 @@ only and labels the report as not built from the checkout.
 Bridge contracts cover registration, native result shapes, selected round trips,
 and error paths; they do not certify cellular delivery, cloud speech services,
 VPN enforcement, embedded agent startup, or all physical camera/audio hardware.
+
+The embedded-agent lifecycle lane needs a fresh x86_64 emulator with at least 4 GB
+RAM and no installed `ai.elizaos.app`. Run
+`node packages/app/scripts/android-native-agent.mjs --serial emulator-5580` with
+`JAVA_HOME` and `ANDROID_HOME` set. It builds the real mobile Bun bundle and host
+service, selects the first-party Agent plugin in a minimal test WebView, verifies
+startup, authenticated requests and shutdown, then removes its APKs. Reports and
+complete runtime logs go to `test-results/android-native-agent/`. This lane does
+not claim model inference, the full renderer flow, or physical-device coverage.
