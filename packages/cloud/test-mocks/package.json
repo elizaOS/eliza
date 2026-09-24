@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check package.json src test bin",
     "format": "bunx @biomejs/biome format --write package.json src test bin",
-    "format:check": "bunx @biomejs/biome format package.json src test bin"
+    "format:check": "bunx @biomejs/biome format package.json src test bin",
+    "test": "bun test ./test"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
