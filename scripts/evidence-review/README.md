@@ -71,3 +71,9 @@ those contracts, wrote only to `/tmp`, and had no package or workflow entrypoint
 
 The evidence reviewer’s implicit 12-directory scan list was also deleted. The
 named package ingestors above now define the normal producer inventory.
+
+Use `bun run evidence:review:no-open -- --bundle=<exact-bundle-dir>` to inspect
+an existing run without rerunning tests. Generic browsing defaults to no OCR;
+`--ocr=on` requires OCR, while `--ocr=auto` records tool unavailability. The
+matrix accepts the same choices through `--review-ocr=off|auto|on`. Assertions
+in the owning test and required certification evidence are unaffected.

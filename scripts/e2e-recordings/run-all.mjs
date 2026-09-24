@@ -16,7 +16,7 @@
  *   --skip-viewer             Skip generating the viewer index
  *   --review                  Generate evidence/index.html for manual review
  *   --open-review             Open the generated evidence review dashboard
- *   --review-ocr=on           OCR mode for --review. Packaged OCR is required.
+ *   --review-ocr=off|auto|on  Optional OCR for --review. Default: off.
  */
 
 import { spawnSync } from "node:child_process";
@@ -61,11 +61,9 @@ export function parseRunAllArgs(argv) {
 
   const reviewOcr = flagMap.has("review-ocr")
     ? String(flagMap.get("review-ocr"))
-    : "on";
-  if (reviewOcr !== "on") {
-    throw new Error(
-      "--review-ocr must be on; OCR is required for evidence review and uses the packaged tesseract.js dependency",
-    );
+    : "off";
+  if (!["off", "auto", "on"].includes(reviewOcr)) {
+    throw new Error("--review-ocr must be off, auto, or on");
   }
 
   return {

@@ -219,25 +219,14 @@ describe("askAboutImage against a stub server", () => {
       first.server.close();
     }
 
-    // Second call points at a server that would 500 if reached; a cache hit
-    // means it is never contacted.
-    const dead = createServer((_req, res) => {
-      res.statusCode = 500;
-      res.end();
-    });
-    await new Promise<void>((resolve) =>
-      dead.listen(0, "127.0.0.1", () => resolve()),
+    // The same endpoint is now stopped: a hit must succeed without a request.
+    const hit = await askAboutImage(
+      imagePath,
+      QUESTIONS,
+      baseOptions(first.url),
     );
-    const { port } = dead.address() as AddressInfo;
-    try {
-      const hit = await askAboutImage(imagePath, QUESTIONS, {
-        ...baseOptions(`http://127.0.0.1:${port}/v1`),
-      });
-      expect(hit.provenance.cached).toBe(true);
-      expect(hit.answers[0].answer).toBe("Send");
-    } finally {
-      dead.close();
-    }
+    expect(hit.provenance.cached).toBe(true);
+    expect(hit.answers[0].answer).toBe("Send");
   });
 
   it("rejects an inaccessible cache entry before requesting the provider again", async () => {

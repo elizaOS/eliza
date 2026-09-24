@@ -12,12 +12,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBundle, verifyBundle } from "./bundle.ts";
-import { resolveSigningKey } from "./certify/keys.ts";
-import {
-  orchestrateCertify,
-  parseReviewerVerdicts,
-} from "./certify/orchestrate.ts";
-import { parseRequirements } from "./certify/rollup.ts";
 import { REVIEWER_KINDS, type ReviewerKind } from "./certify/schema.ts";
 import { EvidenceError } from "./errors.ts";
 import {
@@ -40,7 +34,7 @@ const USAGE = `Usage:
   bundle:snapshot -- --repo-root <dir> --out <snapshot-json>
   bundle:verify -- <bundle-dir>
   certify       -- --tier <cpu|gpu|full> --reviewer-id <id> --reviewer-kind <agent|human>
-                   [--reviewer-model <m>] [--reviewer-verdicts <file>] [--skip-matrix]
+                   [--reviewer-model <m>] [--reviewer-verdicts <file>] [--skip-matrix] [--vision-qa]
                    [--matrix-arg <argv>]...
                    [--bundle <existing-dir>] [--requirements <file>] [--base-ref <ref>]
                    [--expires-hours <n>] [--key-file <pem>] [--cert-out <path>]
@@ -52,7 +46,7 @@ create   Open a new evidence bundle, ingest every known silo plus explicit
 snapshot Hash the current producer inventory for exact-run delta ingestion.
 verify   Re-hash every artifact in an existing bundle and report integrity.
 certify  One command: matrix → ingest → analyze → vision-qa → rollup →
-         reviewer merge → sign → self-verify. Writes a signed certification.json
+         reviewer merge → sign → self-verify. VLM review requires --vision-qa. Writes a signed certification.json
          and exits 0 only when it self-verifies (green), 1 when red.
          At --tier gpu/full, --gpu-queue <dir> offloads gpu analyzers to a
          resident worker draining that queue (evidence:gpu-queue worker --root
@@ -346,6 +340,7 @@ interface CertifyArgs {
   requirementsPath?: string;
   existingBundleDir?: string;
   skipMatrix: boolean;
+  visionQa: boolean;
   matrixArgs: string[];
   baseRef?: string;
   expiresHours?: number;
@@ -380,7 +375,7 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--skip-matrix") {
+    if (arg === "--skip-matrix" || arg === "--vision-qa") {
       flags.add(arg);
       continue;
     }
@@ -478,6 +473,7 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
     requirementsPath: value.get("--requirements"),
     existingBundleDir: value.get("--bundle"),
     skipMatrix: flags.has("--skip-matrix"),
+    visionQa: flags.has("--vision-qa"),
     matrixArgs,
     baseRef: value.get("--base-ref"),
     expiresHours,
@@ -492,6 +488,12 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
 
 async function runCertify(argv: string[], io: CliIo): Promise<number> {
   const args = parseCertifyArgs(argv);
+  // Capture and verification need only the bundle spine, not image/video/model tooling.
+  const { resolveSigningKey } = await import("./certify/keys.ts");
+  const { orchestrateCertify, parseReviewerVerdicts } = await import(
+    "./certify/orchestrate.ts"
+  );
+  const { parseRequirements } = await import("./certify/rollup.ts");
   const repoRoot = path.resolve(args.repoRoot ?? defaultRepoRoot());
   const signingKey = resolveSigningKey({
     env: process.env,
@@ -528,6 +530,7 @@ async function runCertify(argv: string[], io: CliIo): Promise<number> {
         }
       : {}),
     skipMatrix: args.skipMatrix,
+    visionQa: args.visionQa,
     matrixArgs: args.matrixArgs,
     ...(reviewerVerdicts !== undefined ? { reviewerVerdicts } : {}),
     ...(requirements !== undefined ? { requirements } : {}),

@@ -47,6 +47,7 @@
         "@capacitor/core": "8.4.0",
         "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/evidence": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/shared": "workspace:*",

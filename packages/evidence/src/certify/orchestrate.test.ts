@@ -385,10 +385,19 @@ describe("resolveGpuQueueExecutor", () => {
 describe("orchestrateCertify — gpu queue wiring (#14543 acceptance)", () => {
   // A passing lane so the rollup has a signable verdict; the screenshot is what
   // the gpu analyzer (routed through the queue) actually analyzes.
-  const passingMatrix: MatrixRunner = async () => ({
-    command: "fake-matrix",
-    lanes: [{ lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" }],
-  });
+  const passingMatrix: MatrixRunner = async ({ repoRoot }) => {
+    // Produce the screenshot during this run, after the pre-run inventory.
+    fs.writeFileSync(
+      path.join(repoRoot, "e2e-recordings", "login", "desktop", "shot.png"),
+      PNG_1X1,
+    );
+    return {
+      command: "fake-matrix",
+      lanes: [
+        { lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" },
+      ],
+    };
+  };
 
   it("routes gpu analyzers through a resident queue worker at --tier gpu", async () => {
     const stub = startVisionStub("# Login\nSign in to Eliza");

@@ -169,7 +169,8 @@
     "vitest": "^5.0.1",
     "verdaccio": "6.10.4",
     "yaml": "2.9.0",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/evidence": "workspace:*"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
