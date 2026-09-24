@@ -42,6 +42,7 @@ import {
   SHOULD_RESPOND_SCHEMA_DESCRIPTION,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
 
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with
@@ -212,7 +213,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
     "Prefer exact available children. Sticky notes: NOTES_CREATE; NOTES_GET reads by known ID; NOTES_LIST searches/lists; NOTES_PATCH edits title/body or exact text while preserving other fields; NOTES_UPDATE replaces a complete note; NOTES_DELETE. Stored messages/saved facts: MEMORY_SEARCH for source contents; MEMORY_COUNT for fresh inventory totals, categories and newest timestamps (do not reuse old dialogue counts); writes: MEMORY_CREATE/MEMORY_UPDATE/MEMORY_DELETE. Calendar: CALENDAR_NEXT_EVENT=next event; CALENDAR_FEED=check/list/count the calendar for a day or range; CALENDAR_SEARCH_EVENTS=only a user-supplied title/attendee/location/topic filter, with optional date bounds. A date or generic event/calendar wording is not a content filter; do not invent a search query; writes: CALENDAR_CREATE_EVENT/CALENDAR_UPDATE_EVENT/CALENDAR_DELETE_EVENT. One known app view: VIEWS_SHOW; other view/layout/native-device work: VIEWS. Navigation needs data actions only for requested data work. Clarification answers and accepted alternative Calendar slots resume the original Calendar create/update; do not switch to OWNER_REMINDERS unless the user changes the requested resource. Life management: matching available OWNER_* or TRIGGER. Umbrellas only for unresolved operations or unknown suitable children; further tools remain discoverable. " +
     "Name known domain actions directly. For unfamiliar capabilities or schema inspection, use DISCOVER_TOOLS with a non-simple context; do not invent domain candidates just to permit discovery. Clarification without useful lookup/independent work uses [] and simple context. Examples and unlisted hints never prove availability, execution or permission.",
   descriptionCompressed:
-    "Likely UPPER_SNAKE_CASE actions needed before this reply. Notes fields/text edits -> NOTES_PATCH; other Notes data -> matching NOTES_* child; single view -> VIEWS_SHOW when registered; other navigation/native device -> VIEWS; calendar agenda/date-only counts -> CALENDAR_FEED; keyword-filtered events -> CALENDAR_SEARCH_EVENTS; next event -> CALENDAR_NEXT_EVENT. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
+    "Likely UPPER_SNAKE_CASE actions needed before this reply. Notes field replacements -> NOTES_PATCH; literal word/substrings -> NOTES_UPDATE with textEdit; other Notes data -> matching NOTES_* child; single view -> VIEWS_SHOW when registered; other navigation/native device -> VIEWS; calendar agenda/date-only counts -> CALENDAR_FEED; keyword-filtered events -> CALENDAR_SEARCH_EVENTS; next event -> CALENDAR_NEXT_EVENT. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
   priority: 50,
   schema: {
     type: "array",
@@ -252,14 +253,17 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
   description:
     NAVIGATION_REPLY_RULE +
-    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment before its grounded result. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
+    ACKNOWLEDGMENT_RULE +
+    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
     EXACT_REPLY_TEXT_RULE,
   descriptionCompressed:
+    ACKNOWLEDGMENT_RULE +
     "User-facing reply. simple=whole answer; navigationOnly=completed-state destination confirmation spoken after successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
   priority: 20,
   schema: {
     type: "string",
     description:
+      ACKNOWLEDGMENT_RULE +
       "User-facing reply. Simple=whole answer. navigationOnly=completed-state destination confirmation spoken only after navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
       EXACT_REPLY_TEXT_RULE,
   },

@@ -123,7 +123,7 @@ export function createPlannerToolDiscoveryAction(
   const catalog = catalogFor(authorizedActions);
   const inlineDescription =
     "Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-    "Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+    "Pass exact child names to load those operations, or parent names to load their complete authorized families. To perform work, use mode=load directly: complete schemas appear in the next tool surface. Use mode=describe only to answer capability or parameter questions without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
     (resolveAdditionalActions
       ? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
       : "") +
@@ -131,7 +131,7 @@ export function createPlannerToolDiscoveryAction(
     renderDiscoveryNameIndex(catalog.parents);
   const referenceDescription =
     "Load complete tool schemas when an exposed tool does not cover an intent. " +
-    "Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+    "Pass exact known child names to load those operations, or parent names to load their complete authorized families. To perform work, use mode=load directly: complete schemas appear in the next tool surface. Use mode=describe only to answer capability or parameter questions without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
     "No name index is preloaded here. " +
     (resolveAdditionalActions
       ? "If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
@@ -321,7 +321,7 @@ export function createPlannerToolDiscoveryAction(
         success: true,
         transcriptVisibility: "internal",
         modelReplyRequired: true,
-        text: "Named tools enabled for execution. This receipt contains no parameter definitions; use mode=describe with exact names to inspect them. No domain work or data mutation ran. Continue with requested work.",
+        text: "Named tools enabled for execution with complete schemas in the current tool surface. No domain work or data mutation ran. Use those tools to continue the requested work.",
         data: {
           readOnlyOperation: true,
           // Operations may share a canonical parent on the native tool wire.

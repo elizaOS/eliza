@@ -723,7 +723,7 @@ export function historyReferenceNotice(
   projection?: HistoryDiscovery,
 ): string {
   if (!projection) return "";
-  return `\nComplete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
+  return `\nHistorical navigation receipts are restored with their original request; read that request before judging its navigation outcome. Complete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
 }
 
 /** Carry completed conversation lookups into planning only while their sources remain identical. */
