@@ -84,7 +84,9 @@ const nativeContacts = vi.hoisted(() => ({
   createContact: vi.fn(),
   importVCard: vi.fn(),
 }));
-vi.mock("@elizaos/capacitor-contacts", () => ({ Contacts: nativeContacts }));
+vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({
+  Contacts: nativeContacts,
+}));
 
 const appState = vi.hoisted(() => ({
   backendConnectionState: "connected",
@@ -1646,7 +1648,7 @@ describe("App navigate-view event wiring", () => {
     const platform = vi
       .spyOn(Capacitor, "getPlatform")
       .mockReturnValue("android");
-    await import("../../../plugins/plugin-contacts/src/register");
+    await import("../../../plugins/plugin-native-contacts/src/register");
     const registration = listAppShellPages().find(
       (entry) => entry.id === "contacts",
     );

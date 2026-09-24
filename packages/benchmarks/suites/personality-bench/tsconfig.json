@@ -20,10 +20,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": [
-    "src/**/*.ts",
-    "tests/**/*.ts",
-    "../../scenario-runner/src/cerebras-judge.ts"
-  ],
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
