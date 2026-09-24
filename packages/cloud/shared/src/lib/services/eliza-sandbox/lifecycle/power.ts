@@ -854,7 +854,9 @@ export class SandboxPower {
               fundedAt,
               "billing_recovery",
             );
-          if (settlement.status === "funded_until") {
+          // A verified absent runtime must finish stop publication even when
+          // credit has recovered. Keep settlement, but never revive its intent.
+          if (!recoverAbsent && settlement.status === "funded_until") {
             if (
               !(await deferFundedAgentStopInTransaction(tx, {
                 agentId,
@@ -872,7 +874,7 @@ export class SandboxPower {
               reason: "billing_recovered",
             } as const;
           }
-          if (settlement.status !== "insufficient_credits") {
+          if (!recoverAbsent && settlement.status !== "insufficient_credits") {
             await tx
               .update(agentComputeStopIntents)
               .set({
