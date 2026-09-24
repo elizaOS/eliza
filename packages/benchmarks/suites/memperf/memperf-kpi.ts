@@ -37,15 +37,13 @@
  */
 
 import { join } from "node:path";
-import {
-  type BackendGenerateArgs as GenerateArgs,
-  type InstalledModel,
-} from "@elizaos/plugin-local-inference/services";
-import {
-  type ArbiterCapability,
-  type ArbiterEvent,
-} from "@elizaos/plugin-local-inference/services/memory-arbiter";
+import type { InstalledModel } from "@elizaos/core/contracts/local-inference";
 import { type Eliza1TierId } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import type { GenerateArgs } from "../../../../plugins/plugin-local-inference/src/services/backend.ts";
+import type {
+  ArbiterCapability,
+  ArbiterEvent,
+} from "../../../../plugins/plugin-local-inference/src/services/memory-arbiter.ts";
 import { loadBudgets, ms, REPO_ROOT, recordResult, rssMb } from "./lib.mjs";
 import {
   METRIC_SCHEMA,
