@@ -416,7 +416,6 @@ describe("Android Play manifest policy", () => {
         "@capacitor/background-runner",
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
-        "@elizaos/capacitor-screencapture",
         "@elizaos/capacitor-talkmode",
         "llama-cpp-capacitor",
       ]),
