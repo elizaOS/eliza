@@ -4222,7 +4222,6 @@ async function handleReadWithContact(
   try {
     const snapshot = await relationships.getGraphSnapshot({
       search: (entityId ?? contact ?? "").trim(),
-      limit: 5,
     });
     const candidates = snapshot.people;
     if (entityId) {
@@ -4231,9 +4230,7 @@ async function handleReadWithContact(
           (p) =>
             p.primaryEntityId === entityId ||
             p.memberEntityIds.includes(entityId as UUID),
-        ) ??
-        candidates[0] ??
-        null;
+        ) ?? null;
     } else {
       person = candidates[0] ?? null;
     }
@@ -5790,7 +5787,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "edit",
       "delete",
       "pin",
-      "manage_server",
     ],
     schema: { type: "string" },
   },
@@ -5841,6 +5837,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
       "edit",
       "delete",
       "pin",
+      "manage_server",
     ],
     schema: { type: "string" },
   },
