@@ -33,6 +33,7 @@ incomplete runs fail. It leases the selected emulator, installs isolated test
 packages, and removes them afterward. Physical phones are rejected because the
 suite seeds SMS, contacts, location, and credential fixtures. Results are under
 repository-root `test-results/android-native-plugins/` and collected by Device E2E.
+The app-blocker lane also installs and removes a separate tap-counter fixture APK.
 Tests can export captured PNG/MP4 artifacts; the report records their paths, sizes,
 and SHA-256 checksums.
 Use `--plugin plugin-native-location` for a focused run. `--no-build` is diagnostic
