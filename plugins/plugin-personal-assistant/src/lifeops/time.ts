@@ -259,6 +259,33 @@ export function getLocalDateKey(
     .padStart(2, "0")}-${dateOnly.day.toString().padStart(2, "0")}`;
 }
 
+const CALENDAR_DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Parse a `YYYY-MM-DD` key into calendar parts, or return `null` when the
+ * string is not a real calendar day. `Date.parse` and `Date.UTC` roll an
+ * out-of-range day such as `2026-02-30` into the following month, so a shape
+ * check alone lets an impossible date reach SQL literals that Postgres rejects.
+ */
+export function parseLocalDateKey(
+  value: string,
+): Pick<ZonedDateParts, "year" | "month" | "day"> | null {
+  const match = CALENDAR_DATE_KEY_PATTERN.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const roundTrip = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (
+    roundTrip.getUTCFullYear() !== year ||
+    roundTrip.getUTCMonth() !== month - 1 ||
+    roundTrip.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
+}
+
 export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }

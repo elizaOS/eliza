@@ -523,6 +523,31 @@ describe("HealthDomain connector lifecycle and summaries", () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
+  it("rejects a rolled-over calendar date before any repository query runs", async () => {
+    const listHealthMetricSamples = vi.fn(async () => {
+      throw new Error("repository must not run for an impossible date");
+    });
+    const domain = makeDomain({
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+      listHealthMetricSamples,
+      listHealthWorkouts: vi.fn(async () => []),
+      listHealthSleepEpisodes: vi.fn(async () => []),
+    });
+    for (const request of [
+      { startDate: "2026-02-30" },
+      { endDate: "2026-04-31" },
+      { startDate: "2026-02-29", endDate: "2026-03-01" },
+    ]) {
+      await expect(domain.getHealthSummary(request)).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringContaining("calendar date"),
+      });
+    }
+    expect(listHealthMetricSamples).not.toHaveBeenCalled();
+  });
+
   it("skips disconnected providers on sync and returns the stored summary", async () => {
     makeOAuthDir();
     const repository = {
