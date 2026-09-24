@@ -55,10 +55,10 @@ export class LocalVoiceRuntimeIdentityError extends Error {
   }
 }
 
-/** A healthy new local runtime has no conversation until the UI creates it. */
-export class LocalVoiceConversationPendingError extends LocalVoiceRuntimeIdentityError {}
+/** Startup is pending while the runtime or its first UI conversation is not ready. */
+export class LocalVoiceRuntimePendingError extends LocalVoiceRuntimeIdentityError {}
 
-/** Wait only for normal first-conversation creation; invalid identities still fail. */
+/** Wait for normal startup; invalid identities and malformed responses still fail. */
 export async function waitForLocalVoiceRuntimeIdentity(
   options: ResolveLocalVoiceRuntimeIdentityOptions,
 ): Promise<LocalVoiceRuntimeIdentity> {
@@ -66,7 +66,7 @@ export async function waitForLocalVoiceRuntimeIdentity(
     try {
       return await resolveLocalVoiceRuntimeIdentity(options);
     } catch (error) {
-      if (!(error instanceof LocalVoiceConversationPendingError)) throw error;
+      if (!(error instanceof LocalVoiceRuntimePendingError)) throw error;
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
@@ -131,8 +131,16 @@ export async function resolveLocalVoiceRuntimeIdentity(
       fetchImpl,
     ),
   );
-  if (health.ready !== true || health.canRespond !== true) {
+  if (
+    typeof health.ready !== "boolean" ||
+    typeof health.canRespond !== "boolean"
+  ) {
     throw new LocalVoiceRuntimeIdentityError(
+      "local runtime health must declare boolean readiness",
+    );
+  }
+  if (health.ready !== true || health.canRespond !== true) {
+    throw new LocalVoiceRuntimePendingError(
       "local runtime is not ready to respond",
     );
   }
@@ -352,7 +360,7 @@ function selectConversationId(
     (left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs,
   );
   if (candidates.length === 0) {
-    throw new LocalVoiceConversationPendingError(
+    throw new LocalVoiceRuntimePendingError(
       "local runtime has no conversation for the running agent",
     );
   }

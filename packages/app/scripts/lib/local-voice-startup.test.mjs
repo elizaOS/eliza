@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import {
-  LocalVoiceConversationPendingError,
+  LocalVoiceRuntimePendingError,
   resolveLocalVoiceRuntimeIdentity,
   waitForLocalVoiceRuntimeIdentity,
 } from "../../../cloud/scripts/api/local-voice-runtime-identity.ts";
@@ -13,13 +13,14 @@ const conversationId = "20000000-0000-4000-8000-000000000002";
 
 test("voice waits for the UI-owned conversation without creating one", async () => {
   let conversations = [];
+  let canRespond = true;
   const methods = [];
   const server = createServer((req, res) => {
     methods.push(req.method);
     res.setHeader("content-type", "application/json");
     const body =
       req.url === "/api/health"
-        ? { ready: true, canRespond: true }
+        ? { ready: true, canRespond }
         : req.url === "/api/agents"
           ? { agents: [{ id: agentId, status: "running" }] }
           : { conversations };
@@ -31,7 +32,7 @@ test("voice waits for the UI-owned conversation without creating one", async () 
   try {
     await assert.rejects(
       resolveLocalVoiceRuntimeIdentity({ runtimeOrigin }),
-      LocalVoiceConversationPendingError,
+      LocalVoiceRuntimePendingError,
     );
     const waiting = waitForLocalVoiceRuntimeIdentity({ runtimeOrigin });
     const creation = setTimeout(() => {
@@ -49,6 +50,25 @@ test("voice waits for the UI-owned conversation without creating one", async () 
       clearTimeout(creation);
     }
     assert.ok(methods.every((method) => method === "GET"));
+    canRespond = false;
+    await assert.rejects(
+      resolveLocalVoiceRuntimeIdentity({ runtimeOrigin }),
+      LocalVoiceRuntimePendingError,
+    );
+    const booting = waitForLocalVoiceRuntimeIdentity({ runtimeOrigin });
+    const ready = setTimeout(() => {
+      canRespond = true;
+    }, 50);
+    try {
+      assert.deepEqual(await booting, {
+        runtimeOrigin,
+        agentId,
+        conversationId,
+      });
+    } finally {
+      clearTimeout(ready);
+    }
+
     await assert.rejects(
       waitForLocalVoiceRuntimeIdentity({
         runtimeOrigin,
