@@ -37,6 +37,13 @@ mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
     );
   },
 }));
+mock.module("@/lib/services/subscription-checkout", () => ({
+  reconcileSubscriptionCheckout: async () => {
+    throw new Error(
+      "Subscription checkout authority unavailable in purchased-credit fixture",
+    );
+  },
+}));
 mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
   reconcileStripeTerminalLifecycle: async () => {
     throw new Error("Subscription lifecycle unavailable in legacy fixture");
@@ -124,6 +131,7 @@ function checkoutDelivery(metadata: Record<string, string>) {
           object: {
             id: "cs_authoritative",
             client_reference_id: metadata.checkout_order_id ?? null,
+            mode: "payment",
             payment_status: "paid",
             amount_total: 500,
             currency: "usd",
@@ -146,6 +154,18 @@ beforeEach(() => {
 });
 
 describe("Stripe Checkout queue authority", () => {
+  test("subscription Checkout cannot settle one-time credits even when marked paid", async () => {
+    const item = checkoutDelivery({
+      checkout_order_id: "30000000-0000-4000-8000-000000000001",
+    });
+    const session = item.body.event.data
+      .object as import("stripe").default.Checkout.Session;
+    session.mode = "subscription";
+    expect(await processStripeEvent(item)).toBe("retry");
+    expect(settle).not.toHaveBeenCalled();
+    expect(settleLegacy).not.toHaveBeenCalled();
+    expect(addCredits).not.toHaveBeenCalled();
+  });
   test("ignores hostile amount and tenant metadata after durable lookup", async () => {
     const delivery = checkoutDelivery({
       checkout_order_id: "30000000-0000-4000-8000-000000000001",

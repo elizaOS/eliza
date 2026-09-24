@@ -20,6 +20,7 @@ import {
 import { readStewardAccessCookieFromHeader } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
 import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
+import { nativeApplicationSelectionSurfaceError } from "@elizaos/cloud-shared/lib/http/native-application-selection";
 import {
   canonicalCloudPathForLegacyDashboard,
   canonicalElizaServiceHostname,
@@ -1062,6 +1063,9 @@ export default {
     env: AppEnv["Bindings"],
     ctx: ExecutionContext,
   ) => {
+    const nativeSelectionError =
+      nativeApplicationSelectionSurfaceError(request);
+    if (nativeSelectionError) return nativeSelectionError;
     const url = new URL(request.url);
     // Capability tokens are bearer credentials. Reserve their opaque namespace
     // before any host redirect or proxy can forward it to another origin.

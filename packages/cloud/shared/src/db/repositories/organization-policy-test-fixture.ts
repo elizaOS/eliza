@@ -1,5 +1,6 @@
 /** Adds real subscription authority migrations to isolated legacy resource fixtures without replacing the resource under test. */
 import { readFile } from "node:fs/promises";
+import { installOrganizationBillingScopeTestColumns } from "./organization-billing-scope-test-fixture";
 export async function installOrganizationPolicyTestSchema(
   execute: (query: string) => Promise<unknown>,
 ): Promise<void> {
@@ -37,6 +38,7 @@ export async function installOrganizationPolicyTestSchema(
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await execute(statement);
   }
+  await installOrganizationBillingScopeTestColumns(execute);
   await execute(
     "CREATE UNIQUE INDEX IF NOT EXISTS policy_fixture_agent_identity ON agent_sandboxes(id,organization_id)",
   );

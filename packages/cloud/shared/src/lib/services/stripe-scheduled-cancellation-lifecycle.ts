@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/common";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
@@ -60,6 +60,7 @@ export async function reconcileStripeScheduledCancellationLifecycle(
     .from(billingSubscriptions)
     .where(
       and(
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.provider_environment, event.livemode ? "live" : "test"),
         eq(billingSubscriptions.stripe_subscription_id, event.data.object.id),
@@ -113,6 +114,8 @@ export async function reconcileStripeScheduledCancellationLifecycle(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, source.organization_id),
           eq(billingSubscriptionCommands.subscription_id, source.id),
           inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),

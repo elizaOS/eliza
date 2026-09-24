@@ -128,6 +128,7 @@ describe("fake Stripe", () => {
     );
     const before = running.state.sessions.get(session.id);
     expect(before).toMatchObject({
+      mode: "payment",
       payment_status: "unpaid",
       status: "open",
       payment_intent: null,
@@ -135,6 +136,7 @@ describe("fake Stripe", () => {
 
     const completed = running.completeCheckoutSession(session.id);
     expect(completed).toMatchObject({
+      mode: "payment",
       payment_status: "paid",
       status: "complete",
       payment_intent: "pi_fake_000001",
@@ -143,6 +145,28 @@ describe("fake Stripe", () => {
     expect(running.state.sessions.size).toBe(1);
     expect(running.state.effects).toHaveLength(1);
   });
+
+  test.each(["subscription", "setup", "", "invalid"])(
+    "rejects unsupported checkout mode %s without a provider effect",
+    async (mode) => {
+      running = await startFakeStripe();
+      const customer = await createCustomer(running, "mode-customer-key");
+      const body = checkoutBody(customer.id, "mode-order");
+      if (mode) body.set("mode", mode);
+      else body.delete("mode");
+      const response = await fetch(`${running.url}/v1/checkout/sessions`, {
+        method: "POST",
+        headers: AUTH_HEADERS,
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { type: "invalid_request_error", param: "mode" },
+      });
+      expect(running.state.sessions.size).toBe(0);
+      expect(running.state.effects).toHaveLength(0);
+    },
+  );
 
   test("retrieves the exact customer and reports Stripe resource_missing", async () => {
     running = await startFakeStripe();
