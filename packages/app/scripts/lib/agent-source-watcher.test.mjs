@@ -55,7 +55,7 @@ describe("collectAgentSourceDirs", () => {
     mk("packages", "ui", "src"); // frontend → excluded
     mk("packages", "app", "src"); // frontend → excluded
     mk("packages", "no-src"); // has no src → excluded
-    mk("plugins", "plugin-app-control", "src");
+    mk("plugins", "plugin-browser", "src");
     mk("plugins", "plugin-x", "src");
 
     const dirs = collectAgentSourceDirs(root)
@@ -64,7 +64,7 @@ describe("collectAgentSourceDirs", () => {
     expect(dirs).toEqual([
       "packages/agent/src",
       "packages/core/src",
-      "plugins/plugin-app-control/src",
+      "plugins/plugin-browser/src",
       "plugins/plugin-x/src",
     ]);
   });
@@ -78,7 +78,7 @@ describe("collectAgentSourceDirs", () => {
 describe("isReloadableChangePath", () => {
   it("reloads for hand-written TS source + json the agent loads", () => {
     for (const p of [
-      "/r/plugins/plugin-app-control/src/actions/views.ts",
+      "/r/plugins/plugin-browser/src/actions/views.ts",
       "/r/packages/agent/src/api/server.ts",
       "/r/packages/core/src/runtime/x.tsx",
       "/r/packages/core/src/runtime/y.mts",
@@ -144,7 +144,7 @@ describe("startAgentSourceWatcher (integration)", () => {
   it("fires onChange (debounced) for a real backend src edit", async () => {
     root = mkdtempSync(path.join(tmpdir(), "agent-watch-int-"));
     const mk = (...p) => mkdirSync(path.join(root, ...p), { recursive: true });
-    mk("plugins", "plugin-app-control", "src", "actions");
+    mk("plugins", "plugin-browser", "src", "actions");
     mk("packages", "ui", "src"); // frontend → not among watched dirs
 
     const calls = [];
@@ -158,7 +158,7 @@ describe("startAgentSourceWatcher (integration)", () => {
 
     await delay(200); // let the OS watcher arm before the first write
     writeFileSync(
-      path.join(root, "plugins/plugin-app-control/src/actions/views.ts"),
+      path.join(root, "plugins/plugin-browser/src/actions/views.ts"),
       "export const x = 1;\n",
     );
 

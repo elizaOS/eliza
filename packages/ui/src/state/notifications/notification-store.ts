@@ -13,14 +13,16 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import type {
+  AgentNotification,
+  NotificationCategory,
+  NotificationPriority,
+  UUID,
+} from "@elizaos/core";
 import {
-  type AgentNotification,
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
-  type NotificationCategory,
-  type NotificationPriority,
-  type UUID,
-} from "@elizaos/core";
+} from "@elizaos/shared/browser-contracts";
 import { logger } from "@elizaos/shared/logger";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";

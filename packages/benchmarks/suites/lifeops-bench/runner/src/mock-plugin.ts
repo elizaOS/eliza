@@ -1,9 +1,11 @@
+/** Produce deterministic structured model responses for explicitly nonpublishable smoke runs. */
 import {
   type GenerateTextParams,
   type IAgentRuntime,
   ModelType,
   type Plugin,
   type TextEmbeddingParams,
+  type TextStreamResult,
 } from "@elizaos/core";
 
 function extractPrompt(
@@ -39,11 +41,7 @@ function extractPrompt(
       .join("\n");
   }
   if (input && typeof input === "object") {
-    try {
-      return JSON.stringify(input);
-    } catch {
-      return "";
-    }
+    return JSON.stringify(input);
   }
   return "";
 }
@@ -56,39 +54,6 @@ function extractCommand(prompt: string): string {
   return "CLICK(10,10)";
 }
 
-function extractRlmAnswer(prompt: string): string | null {
-  const pairs = [
-    /authorization code is ([A-Z0-9]{8})/i,
-    /encrypted key sequence is ([A-Z0-9]{8})/i,
-    /vault combination is ([A-Z0-9]{8})/i,
-    /project identifier is ([A-Z0-9]{8})/i,
-    /access token is ([A-Z0-9]{8})/i,
-    /critical finding reference number is ([A-Z0-9]{8})/i,
-  ];
-  for (const regex of pairs) {
-    const match = regex.exec(prompt);
-    if (match?.[1]) return match[1];
-  }
-
-  const shared = /shared protocol version is ([A-Z0-9]{8})/i.exec(prompt)?.[1];
-  const docA = /document A identifier is ([A-Z0-9]{8})/i.exec(prompt)?.[1];
-  const docB = /document B identifier is ([A-Z0-9]{8})/i.exec(prompt)?.[1];
-  if (shared && docA && docB) {
-    return `Shared: ${shared}, A: ${docA}, B: ${docB}`;
-  }
-
-  const allNeedles = Array.from(
-    prompt.matchAll(
-      /(?:authorization code|encrypted key sequence|vault combination|project identifier|access token) is ([A-Z0-9]{8})/gi,
-    ),
-    (match) => match[1],
-  );
-  if (allNeedles.length > 0) {
-    return Array.from(new Set(allNeedles)).join(", ");
-  }
-  return null;
-}
-
 function buildReplyJson(answer: string): string {
   return buildJsonResponse("", {
     thought: "Answering the benchmark question directly.",
@@ -96,39 +61,6 @@ function buildReplyJson(answer: string): string {
     providers: "",
     text: answer,
   });
-}
-
-function buildHyperliquidPlanJson(): string {
-  const plan = {
-    steps: [
-      {
-        perp_orders: {
-          orders: [
-            {
-              coin: "ETH",
-              side: "buy",
-              tif: "ALO",
-              sz: 0.01,
-              reduceOnly: false,
-              px: "mid-1%",
-            },
-            {
-              coin: "BTC",
-              side: "sell",
-              tif: "IOC",
-              sz: 0.01,
-              reduceOnly: true,
-              px: "mid+1%",
-            },
-          ],
-        },
-      },
-      { usd_class_transfer: { toPerp: true, usdc: 5 } },
-      { set_leverage: { coin: "ETH", leverage: 3, cross: false } },
-      { cancel_all: { coin: "BTC" } },
-    ],
-  };
-  return buildReplyJson(JSON.stringify(plan));
 }
 
 function buildVendingActionJson(prompt: string): string {
@@ -182,7 +114,7 @@ function buildExperienceJson(prompt: string): string {
       actions: "BENCHMARK_ACTION",
       providers: "ELIZA_BENCHMARK",
       text: "RECORD_EXPERIENCE recorded the learning.",
-      params: "BENCHMARK_ACTION:\n  command: RECORD_EXPERIENCE",
+      params: { BENCHMARK_ACTION: { command: "RECORD_EXPERIENCE" } },
     });
   }
 
@@ -252,7 +184,7 @@ function buildAdhdBenchJson(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "RECENT_MESSAGES,ENTITIES,KNOWLEDGE,ROLES",
     text,
-    params: `BENCHMARK_ACTION:\n  command: ${action}`,
+    params: { BENCHMARK_ACTION: { command: action } },
   });
 }
 
@@ -270,7 +202,13 @@ function buildMind2WebActionJson(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "",
     text: "Selected a web element.",
-    params: `BENCHMARK_ACTION:\n  operation: CLICK\n  element_id: ${extractMind2WebElementId(prompt)}\n  value:`,
+    params: {
+      BENCHMARK_ACTION: {
+        operation: "CLICK",
+        element_id: extractMind2WebElementId(prompt),
+        value: "",
+      },
+    },
   });
 }
 
@@ -280,7 +218,7 @@ function buildTerminalCommandJson(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "",
     text: "Running terminal command.",
-    params: "BENCHMARK_ACTION:\n  command: echo terminal-bench-smoke",
+    params: { BENCHMARK_ACTION: { command: "echo terminal-bench-smoke" } },
   });
 }
 
@@ -290,7 +228,7 @@ function buildOSWorldActionJson(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "",
     text: "Running pyautogui action.",
-    params: "BENCHMARK_ACTION:\n  command: pyautogui.click(10, 10)",
+    params: { BENCHMARK_ACTION: { command: "pyautogui.click(10, 10)" } },
   });
 }
 
@@ -300,8 +238,9 @@ function buildWebShopActionJson(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "",
     text: "Searching WebShop.",
-    params:
-      "BENCHMARK_ACTION:\n  command: search[wireless bluetooth headphones]",
+    params: {
+      BENCHMARK_ACTION: { command: "search[wireless bluetooth headphones]" },
+    },
   });
 }
 
@@ -385,24 +324,12 @@ function extractValidationFields(prompt: string): Record<string, string> {
 
 function buildJsonResponse(
   prompt: string,
-  fields: Record<string, string | undefined>,
+  fields: Record<
+    string,
+    string | Record<string, Record<string, string>> | undefined
+  >,
 ): string {
-  const withValidation = { ...fields, ...extractValidationFields(prompt) };
-  const entries = Object.entries(withValidation).filter(
-    (entry): entry is [string, string] =>
-      typeof entry[1] === "string" && entry[1].length > 0,
-  );
-  return entries.map(([key, value]) => renderJsonField(key, value)).join("\n");
-}
-
-function renderJsonField(key: string, value: string): string {
-  if (value.includes("\n")) {
-    return `${key}:\n${value
-      .split(/\r?\n/)
-      .map((line) => `  ${line}`)
-      .join("\n")}`;
-  }
-  return `${key}: ${value}`;
+  return JSON.stringify({ ...fields, ...extractValidationFields(prompt) });
 }
 
 function buildCompletion(prompt: string): string {
@@ -436,22 +363,6 @@ function buildCompletion(prompt: string): string {
       thought: "Summarizing completed benchmark execution.",
       text: `Executed ${command}`,
     });
-  }
-
-  if (
-    /Benchmark:\*{0,2}\s*(rlm-bench|rlm_bench)/i.test(prompt) ||
-    /RLM benchmark task/i.test(prompt)
-  ) {
-    return buildReplyJson(extractRlmAnswer(prompt) ?? "UNKNOWN");
-  }
-
-  if (
-    /Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(
-      prompt,
-    ) ||
-    /Hyperliquid DEX|HyperliquidBench/i.test(prompt)
-  ) {
-    return buildHyperliquidPlanJson();
   }
 
   if (
@@ -547,15 +458,66 @@ function buildCompletion(prompt: string): string {
     actions: "BENCHMARK_ACTION",
     providers: "",
     text: `Executed ${command}`,
-    params: `BENCHMARK_ACTION:\n  command: ${command}`,
+    params: { BENCHMARK_ACTION: { command } },
   });
 }
 
 function mockTextModel(
   _runtime: IAgentRuntime,
   params: GenerateTextParams | string | null,
-): string {
-  return buildCompletion(extractPrompt(params));
+): string | TextStreamResult {
+  const prompt = extractPrompt(params);
+  const completion = buildCompletion(prompt);
+  const tools =
+    typeof params === "object" && params !== null ? params.tools : undefined;
+  if (!tools?.length) return completion;
+  const result = JSON.parse(completion) as {
+    text?: string;
+    actions?: string;
+    params?: Record<string, Record<string, string>>;
+  };
+  const action =
+    result.actions === "BENCHMARK_ACTION" ? "BENCHMARK_ACTION" : "REPLY";
+  if (tools.some((tool) => tool.name === "HANDLE_RESPONSE")) {
+    return JSON.stringify({
+      shouldRespond: "RESPOND",
+      contexts: [action === "REPLY" ? "simple" : "general"],
+      intents: action === "REPLY" ? [] : ["execute benchmark action"],
+      candidateActionNames: action === "REPLY" ? [] : [action],
+      replyText:
+        action === "REPLY"
+          ? (result.text ?? "Benchmark reply.")
+          : "Executing benchmark action.",
+      replyEffectStatus: action === "REPLY" ? "none" : "pending",
+      facts: [],
+      relationships: [],
+      addressedTo: [],
+      topics: [],
+    });
+  }
+  if (tools.some((tool) => tool.name === action)) {
+    return {
+      textStream: (async function* () {
+        yield "";
+      })(),
+      text: Promise.resolve(""),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve("tool_calls"),
+      toolCalls: [
+        {
+          id: "mock-action",
+          name: action,
+          arguments: {
+            ...(action === "REPLY"
+              ? { text: result.text ?? "Benchmark reply." }
+              : result.params?.[action]),
+            eliza_turn_scope: "final",
+          },
+        },
+      ],
+    };
+  }
+  return completion;
 }
 
 function mockEmbeddingModel(

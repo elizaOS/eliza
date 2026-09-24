@@ -1,22 +1,8 @@
-/**
- * App boot configuration plus the non-mutating brand<->ELIZA env-alias reader,
- * shared across every bundled copy of `@elizaos/core`. The boot-config store is
- * a write-once singleton kept on the shared global slot through core's
- * ambient-context accessor so core/shared/ui bundles observe one instance; an
- * established store always wins over the pre-boot `__ELIZAOS_APP_BOOT_CONFIG__`
- * window mirror that the HTML bootstrap / Electrobun preload seeds before any
- * bundle loads.
- *
- * `resolveAliasedEnvValue` resolves a value for either name in a brand<->ELIZA
- * alias pair WITHOUT writing to `process.env`: it consults the immutable
- * BootConfig alias table so a white-label distribution's `<PREFIX>_*` variable
- * surfaces without materializing the `ELIZA_*` mirror. This replaced the old
- * `process.env` alias-sync mutation entirely (#12251 / #13423).
+/** Resolves runtime environment aliases from explicit input or host-installed process configuration.
+ * Browser bootstrap mirrors belong to the host; reads here never initialize or
+ * overwrite its configuration store.
  */
-import {
-	peekAmbientSingleton,
-	setAmbientSingleton,
-} from "./ambient-context.js";
+import { peekAmbientSingleton } from "./ambient-context.js";
 import { resolveEnvAlias } from "./utils/env-alias.js";
 
 interface AppBootConfig {
@@ -30,49 +16,9 @@ interface BootConfigStore {
 
 const DEFAULT_BOOT_CONFIG: AppBootConfig = {};
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
-const BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
-
-type GlobalConfigSlot = Record<PropertyKey, unknown> & {
-	[K in typeof BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
-};
-
-function getGlobalSlot(): GlobalConfigSlot {
-	return globalThis as GlobalConfigSlot;
-}
-
-function getBootConfigStore(): BootConfigStore {
-	// The store singleton lives on the shared global slot so every bundled copy
-	// of `@elizaos/core` observes the same instance. Read/write it through the
-	// core-owned ambient-context accessor rather than hand-rolling the
-	// `globalThis[Symbol.for(...)]` access (matches the trajectory/action/app
-	// registries consolidated in #12164).
-	//
-	// An established store always wins. The window-key mirror is only a
-	// pre-boot seed (set by the HTML bootstrap / Electrobun preload before any
-	// bundle loads) and must never replace a store that already exists —
-	// otherwise a stale or partial window value silently clobbers config that
-	// setBootConfig already committed, and the store's object identity churns
-	// on every read (dropping any store-only state).
-	const existing = peekAmbientSingleton<BootConfigStore>(BOOT_CONFIG_STORE_KEY);
-	if (existing && typeof existing === "object" && "current" in existing) {
-		return existing;
-	}
-
-	// No store yet: seed it once. Prefer a cross-bundle window mirror when a
-	// bootstrap set it, otherwise fall back to defaults. The slot is written
-	// once here and thereafter returned as-is by the branch above.
-	const globalObject = getGlobalSlot();
-	const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
-	const store: BootConfigStore = {
-		current: mirroredWindowConfig ?? DEFAULT_BOOT_CONFIG,
-	};
-	setAmbientSingleton(BOOT_CONFIG_STORE_KEY, store);
-	globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
-	return store;
-}
-
 function getBootConfig(): AppBootConfig {
-	return getBootConfigStore().current;
+	const store = peekAmbientSingleton<BootConfigStore>(BOOT_CONFIG_STORE_KEY);
+	return store ? store.current : DEFAULT_BOOT_CONFIG;
 }
 
 export function getBootConfigEnvAliases():

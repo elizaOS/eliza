@@ -40,7 +40,6 @@ import type {
   ConversationScope as SharedConversationScope,
 } from "@elizaos/shared/contracts/conversation-routes";
 import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/shared/contracts/wallet-types";
-import type { BrowserBridgeCompanionReleaseManifest } from "./browser-contracts";
 
 export type {
   CustomActionDef,
@@ -665,17 +664,6 @@ export interface AgentEventsResponse {
   replayed: boolean;
 }
 
-export interface ExtensionStatus {
-  relayReachable: boolean;
-  relayPort: number;
-  extensionPath: string | null;
-  chromeBuildPath?: string | null;
-  chromePackagePath?: string | null;
-  safariWebExtensionPath?: string | null;
-  safariAppPath?: string | null;
-  safariPackagePath?: string | null;
-  releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
-}
 
 // WebSocket
 export type WsEventHandler = (data: Record<string, unknown>) => void;

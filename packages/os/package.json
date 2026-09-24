@@ -13,6 +13,13 @@
     "setup",
     "usb-installer"
   ],
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
   "scripts": {
     "build": "bun run --cwd setup build && bun run --cwd usb-installer build",
     "typecheck": "tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json",

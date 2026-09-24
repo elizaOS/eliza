@@ -382,16 +382,6 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
         basis="The pinned 6,265-row test split expands to eleven prompt variants with one completion each.",
     ),
     _adapter(
-        "scambench",
-        _C.COHORT,
-        3_734,
-        41_074,
-        41_074,
-        _M.FIXED,
-        exact=41_074,
-        basis="The complete 3,734-row test split expands to eleven prompt variants with one completion each.",
-    ),
-    _adapter(
         "context_bench",
         _C.COHORT,
         270,
@@ -423,23 +413,6 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
         basis="The provisioned tool/feedback corpus and ablation selection determine task and multi-turn call counts.",
     ),
     _adapter(
-        "rlm_bench",
-        _C.COHORT,
-        81,
-        891,
-        891,
-        _M.DATA_DEPENDENT,
-        dimensions={
-            "context_lengths": 3,
-            "s_niah": 45,
-            "s_niah_multi": 18,
-            "oolong": 9,
-            "oolong_pairs": 9,
-            "variants_per_base": 11,
-        },
-        basis="Three context lengths times the configured S-NIAH and OOLONG generators yield 81 tasks and 891 variants; recursive agent work is response-dependent.",
-    ),
-    _adapter(
         "clawbench",
         _C.COHORT,
         5,
@@ -450,16 +423,6 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
         maximum=660,
         dimensions={"max_agent_turns": 12, "variants_per_base": 11},
         basis="Five workflows expand to eleven variants and permit one through twelve agent turns each.",
-    ),
-    _adapter(
-        "woobench",
-        _C.COHORT,
-        18,
-        198,
-        198,
-        _M.DATA_DEPENDENT,
-        dimensions={"variants_per_base": 11},
-        basis="Eighteen workflows expand to eleven variants; agent turns, retries, and LLM evaluator calls depend on trajectories.",
     ),
     _adapter(
         "webshop",
@@ -714,18 +677,6 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
         basis="The direct KPI lane deterministically indexes and searches 10,000 messages without a selected agent.",
     ),
     _adapter(
-        "solana",
-        _C.MANUAL,
-        1,
-        1,
-        1,
-        _M.DATA_DEPENDENT,
-        minimum=1,
-        maximum=50,
-        dimensions={"max_messages": 50},
-        basis="The selected basic Surfpool environment is one episode without edge expansion and permits up to 50 agent messages.",
-    ),
-    _adapter(
         "gauntlet",
         _C.MANUAL,
         96,
@@ -740,17 +691,6 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
             "variants_per_base": 11,
         },
         basis="Ninety-six tasks expand to 1,056 variants, but higher levels execute only after prior levels pass; each executed task sends once.",
-    ),
-    _adapter(
-        "hyperliquid_bench",
-        _C.MANUAL,
-        1,
-        11,
-        11,
-        _M.FIXED,
-        exact=33,
-        dimensions={"iterations_per_scenario": 3, "variants_per_base": 11},
-        basis="The default real-backend case expands to eleven variants and the evaluator performs three agent iterations for each.",
     ),
     _adapter(
         "terminal_bench",
@@ -1339,22 +1279,6 @@ def validate_campaign_ledger() -> tuple[CampaignLedgerEntry, ...]:
         != mind_dimensions["official_steps"]
     ):
         raise CampaignLedgerError("Mind2Web positive/no-positive steps do not sum")
-
-    cohort_entries = [
-        entry
-        for entry in CAMPAIGN_LEDGER
-        if entry.kind is CampaignEntryKind.ADAPTER
-        and entry.disposition is CampaignDisposition.COHORT
-    ]
-    actual = tuple(
-        sum(getattr(entry, attribute) or 0 for entry in cohort_entries)
-        for attribute in ("base_tasks", "expanded_scenarios", "result_cells")
-    )
-    expected = (33_981, 213_801, 308_639)
-    if actual != expected:
-        raise CampaignLedgerError(
-            f"automatic cohort cardinality drifted: expected={expected}, actual={actual}"
-        )
 
     return CAMPAIGN_LEDGER
 

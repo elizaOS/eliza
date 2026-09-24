@@ -6,13 +6,14 @@
  * order and internal-tool ordering — never by ad-hoc package-name sets here.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import type { EnabledViewKinds } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared/contracts/apps";
+import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import type { RegistryAppInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config-store";
 import {

@@ -23,7 +23,7 @@ Recorded-baseline LifeOps quality benchmarks (#10723). Full docs: `README.md`.
 - **Fire counts are contracts, not tolerances:** missed/duplicate/early/
   occurrence-mismatch must stay exactly 0, and `maxDeviationMs` stays at
   the tick cadence (300000ms).
-- Lanes: `bun run test` (unit, fast) · `ELIZA_REPO_DIR=… bun run
+- Lanes: `bun run test` (retained scheduler gate, server CI lane) · `ELIZA_REPO_DIR=… bun run
   bench[:triage|:timeliness]` (gates; timeliness ~3min). Run these locally;
   the standalone repository workflow is retired.
 - `vitest.gate.config.ts` reuses plugin-personal-assistant's

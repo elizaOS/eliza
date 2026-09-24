@@ -6,18 +6,20 @@
  * the floating chat-overlay surface or the full tabbed shell.
  */
 
-import {
-  type AppShellBackgroundPolicy,
-  type EnabledViewKinds,
-  isViewVisible,
-  type PageLayoutManifest,
-  type ResolvedSurfaceManifest,
-  resolveSurfaceBackgroundPolicy,
-  resolveSurfaceManifest,
-  type SurfaceManifestBearer,
-  type ViewKind,
+import type {
+  AppShellBackgroundPolicy,
+  EnabledViewKinds,
+  PageLayoutManifest,
+  ResolvedSurfaceManifest,
+  SurfaceManifestBearer,
+  ViewKind,
 } from "@elizaos/core";
 import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
+import {
+  resolveSurfaceBackgroundPolicy,
+  resolveSurfaceManifest,
+} from "@elizaos/shared/views/surface-manifest";
+import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import { X } from "lucide-react";
 import { registerDeviceControlInteractHandler } from "./components/views/device-control-interact";
 import "./components/chat/chat-source-registration";

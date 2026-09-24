@@ -368,9 +368,19 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     silo: "aesthetic-audit",
     source: "aesthetic-audit",
     producedBy: "packages/app audit:app",
-    roots: [{ label: "app", dir: "packages/app/aesthetic-audit-output" }],
+    roots: [{ label: "app", dir: "test-results/aesthetic-audit" }],
     // Manual-review markdown is a per-page reviewer verdict, not a generated
     // report; downstream certification treats it as analysis input.
+    classify: (relPath, defaultKind) =>
+      relPath.startsWith("manual-review/") && relPath.endsWith(".md")
+        ? "analysis"
+        : defaultKind,
+  },
+  {
+    silo: "aesthetic-audit-cloud",
+    source: "aesthetic-audit-cloud",
+    producedBy: "packages/app audit:cloud",
+    roots: [{ label: "cloud", dir: "test-results/aesthetic-audit-cloud" }],
     classify: (relPath, defaultKind) =>
       relPath.startsWith("manual-review/") && relPath.endsWith(".md")
         ? "analysis"
@@ -381,14 +391,28 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     source: "device-e2e",
     producedBy: "packages/app/scripts/lib/device-e2e-bundle.mjs",
     lane: "native",
-    roots: [{ label: "app", dir: "packages/app/device-e2e-output" }],
+    roots: [{ label: "app", dir: "test-results/device-e2e" }],
   },
   {
     silo: "playwright-test-results",
     source: "app-test-results",
     producedBy: "packages/app Playwright and native test lanes",
     lane: "e2e",
-    roots: [{ label: "app", dir: "packages/app/test-results" }],
+    roots: [{ label: "app", dir: "test-results/app" }],
+  },
+  {
+    silo: "cloud-playwright",
+    source: "cloud-test-results",
+    producedBy: "packages/cloud/e2e Playwright",
+    lane: "cloud-e2e",
+    roots: [{ label: "cloud", dir: "test-results/cloud-e2e" }],
+  },
+  {
+    silo: "core-playwright",
+    source: "core-test-results",
+    producedBy: "packages/core Playwright",
+    lane: "core-e2e",
+    roots: [{ label: "core", dir: "test-results/core" }],
   },
   {
     silo: "ios-device-capture",

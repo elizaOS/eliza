@@ -14,7 +14,7 @@
       "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
       "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"],
       "@elizaos/testing/scenario-runner/schema": [
-        "./scenario-runner/schema/index.js"
+        "./scenario-runner/schema/index.d.ts"
       ]
     },
     "composite": false,

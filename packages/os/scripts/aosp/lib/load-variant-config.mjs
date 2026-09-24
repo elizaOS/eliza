@@ -70,7 +70,7 @@ export function loadAospVariantConfig({ appConfigPath }) {
   if (missing.length > 0) {
     throw new Error(
       `[aosp] app.config.ts > aosp: block is missing required field(s): ` +
-        `${missing.join(", ")}. See AospVariantConfig in @elizaos/app-core.`,
+        `${missing.join(", ")}. See AospVariantConfig in @elizaos/app.`,
     );
   }
 

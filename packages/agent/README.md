@@ -76,25 +76,21 @@ recall. Literal queries cannot be empty, and invalid modes fail explicitly.
 
 ## Tests
 
-Place module-owned tests beside the source as `<module>[.<behavior>].test.ts`.
-Keep package-wide lifecycle scenarios, shared setup, support code, and child
-process fixtures in `test/`. Script tests live beside their scripts. Do not add
-`__tests__` directories or a second `test/api` or `test/runtime` hierarchy.
-Tests of the same module may use separate files when they need different mock
-boundaries; name them for the behavior they protect.
+Keep only end-to-end scenarios that exercise real host, transport, and persistence
+behavior. Do not add unit tests, mocks, smoke probes, source-inspection tests, or
+assertions that duplicate implementation constants. A module may have at most
+one colocated `<module>.test.ts`; package-wide process scenarios live in `test/`.
 
-The default test command runs isolated Vitest batches using the same include
-and exclude patterns as direct Vitest. Integration, real-provider, live, and
-end-to-end suites run in their explicit lanes. To run selected default suites:
+`bun run test`, `bun run test:e2e`, and `bun run test:integration` run the same
+end-to-end suite in isolated Vitest processes. Select a scenario with:
 
 ```bash
-node scripts/run-vitest-batches.mjs src/api/auth-routes.test.ts
+node scripts/run-vitest-batches.mjs test/document-pins-http.test.ts
 ```
 
 `AGENT_TEST_CONCURRENCY` controls concurrent processes (default four, capped by
 available CPUs); `AGENT_TEST_BATCH_SIZE` controls files per process (default one).
-Keep process isolation for suites that alter environment, mocks, or global
-registries. `AGENT_TEST_VERBOSE=1` prints passing child logs as well as failures.
+`AGENT_TEST_VERBOSE=1` prints passing child logs as well as failures.
 
 The repository runner
 requests `--reporter=default --reporter=junit --outputFile.junit=<path>` and the
@@ -107,9 +103,7 @@ restore staging, durable records, and verified materialization. They are
 unfinished restore-v3 integration tracked in
 [#20726](https://github.com/elizaOS/eliza/issues/20726) and
 [#20732](https://github.com/elizaOS/eliza/issues/20732), with no production caller
-in this package yet. Their filesystem and materializer tests protect that
-implementation; the current backup routes still use the existing snapshot
-restore path.
+in this package yet. The current backup routes still use the existing snapshot restore path.
 
 ## Backup restore generations
 
@@ -647,10 +641,9 @@ Dstack returns the private key to this process, so this is not non-exportable
 HSM storage. The listener's measured handler must independently enforce any
 second inference hop; a valid CPU quote does not establish GPU confidentiality.
 
-Tests use actual TLS connections, certificates, exporters, Unix sockets and
-subprocesses, with explicitly synthetic platform quote responses. Captured
-platform cryptography tests and these transport tests do not replace a live
-hardware run with current collateral and approved measurements.
+Hardware acceptance requires a live run with current collateral and approved
+measurements. The package's retained end-to-end suite does not verify this
+confidential transport.
 
 A local timeout or disconnect closes the session and cancels any late response
 stream. It cannot undo a remote handler effect already accepted before abort;

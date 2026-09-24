@@ -330,16 +330,13 @@ bun run --cwd packages/app test:e2e
 
 ## Package completion evidence
 
-Follow the repository-wide definition of done in the root guide. For UI work in
-this package, also:
-
-- run `bun run --cwd packages/app audit:app` and manually inspect every affected
-  full-page desktop and mobile capture, including rest and hover states;
-- record the complete interaction as MP4 with console, network, and backend
-  logs;
-- inspect loading, designed-empty, error, and permission-denied states; and
-- include the backend trajectory and domain artifacts for actions triggered by
-  the UI.
+Follow the root guide and validate the behavior changed. For rendered UI changes,
+inspect affected desktop and mobile views and their relevant interaction,
+loading, empty, error, and permission states. Use `audit:app` for broad surface
+changes and focused browser tests for a narrow flow. Record interactions and
+backend trajectories when they are needed to demonstrate the changed behavior.
+Tooling and documentation changes without rendered effects do not require a
+visual audit. Repeat checks after relevant fixes, without a minimum cycle count.
 
 ## Application host
 

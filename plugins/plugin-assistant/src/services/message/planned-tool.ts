@@ -1283,7 +1283,7 @@ export function collectPreviousActionResults(
 
 /**
  * Streaming status parity for tool executions that bypass the planner loop —
- * the pre-LLM shortcut gate and response-handler deterministic tool calls.
+ * response-handler deterministic tool calls.
  * The planner loop announces every tool through the streaming `onToolCall`
  * hook, which the chat SSE surface projects onto its existing
  * `{type:"status",kind:"running_tool"}` frame and inline tool row; without

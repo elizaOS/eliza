@@ -9,3 +9,12 @@ tasks/**/.DS_Store
 tasks/**/__pycache__/
 tasks/**/*.pyc
 test_output/
+
+# Large immutable inputs restored by scripts/fetch-corpus-assets.py.
+/tasks/fmri-encoding-r/fMRIdata.RData
+/tasks/train-fasttext/tests/private_test.txt
+/tasks/sqlite-with-gcov/vendor/sqlite-fossil-release.tar.gz
+/tasks/weighted-max-sat-solver/test_instance.wcnf
+/tasks/pytorch-model-recovery/tests/weights_gtruth.pt
+/tasks/pytorch-model-recovery/weights.pt
+/tasks/causal-inference-r/task-deps/data.csv

@@ -1,4 +1,5 @@
 /** Unicode-safe string boundaries, shared by runtime and client diagnostics. */
+/// <reference lib="es2024.string" />
 const HIGH_SURROGATE_START = 0xd800;
 const HIGH_SURROGATE_END = 0xdbff;
 const LOW_SURROGATE_START = 0xdc00;

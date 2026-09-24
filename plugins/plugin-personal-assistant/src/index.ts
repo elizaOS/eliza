@@ -72,8 +72,6 @@ export type {
   WebsiteBlockerRouteContext,
 } from "./plugin.js";
 export {
-  BrowserBridgePluginService,
-  browserBridgeProvider,
   delegationContractsProvider,
   ensureLifeOpsSchedulerTask,
   executeLifeOpsSchedulerTask,

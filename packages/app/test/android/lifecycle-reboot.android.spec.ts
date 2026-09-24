@@ -12,10 +12,12 @@
 // blocks the bun runtime. The spec re-applies root+permissive right after
 // boot, mirroring ensureEmulatorPermissive — branded AOSP devices run the
 // agent privileged and skip this.
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
@@ -31,15 +33,7 @@ import {
 
 const ARTIFACT_DIR = path.resolve(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(
-      process.cwd(),
-      "..",
-      "..",
-      "test-results",
-      "android-artifacts",
-      "12185-device-lifecycle",
-      "android",
-    ),
+    testOutputPath("android-artifacts", "12185-device-lifecycle", "android"),
   "lifecycle-reboot",
 );
 

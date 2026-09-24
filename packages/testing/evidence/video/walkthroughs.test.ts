@@ -1,10 +1,12 @@
 /** Runs shipped walkthroughs through real Chromium and ffmpeg into verified bundles; tool availability gates execution. */
+
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createBundle, verifyBundle } from "../bundle.ts";
 import { videoToolsAvailable } from "./normalize.ts";
+import { hasChromium } from "./test-browser.ts";
 import {
   loadAllWalkthroughDefs,
   loadWalkthroughDef,
@@ -15,21 +17,8 @@ import {
 const dir = mkdtempSync(join(os.tmpdir(), "evidence-walkthroughs-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-async function chromiumLaunchable(): Promise<boolean> {
-  try {
-    const { chromium } = (await import("@playwright/test")) as {
-      chromium: { launch(o?: unknown): Promise<{ close(): Promise<void> }> };
-    };
-    const browser = await chromium.launch({ headless: true });
-    await browser.close();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const tools = await videoToolsAvailable();
-const hasChromium = await chromiumLaunchable();
+
 const canRun = tools.available && hasChromium;
 
 function newBundle(runId: string) {

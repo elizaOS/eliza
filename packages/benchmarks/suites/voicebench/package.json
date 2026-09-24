@@ -13,7 +13,9 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elevenlabs": "beta",
     "@elizaos/plugin-groq": "beta",
-    "@elizaos/plugin-local-inference": "workspace:*"
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "engines": {
     "node": ">=24"

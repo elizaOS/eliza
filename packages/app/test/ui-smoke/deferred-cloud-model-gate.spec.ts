@@ -6,6 +6,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -142,9 +143,8 @@ test.describe("deferred Eliza Cloud model registration", () => {
       await page.getByRole("button", { name: "drag up to open chat" }).click();
       await expect(composer).toBeEnabled();
 
-      const captureDir = path.join(
-        process.cwd(),
-        "aesthetic-audit-output",
+      const captureDir = testOutputPath(
+        "aesthetic-audit",
         "deferred-cloud-model-gate",
       );
       mkdirSync(captureDir, { recursive: true });

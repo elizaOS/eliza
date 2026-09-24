@@ -1,7 +1,7 @@
-# ElizaOS Benchmark Orchestrator
+# elizaOS Benchmark Orchestrator
 
 > **Not a benchmark itself.** This suite is the meta-runner that executes the
-> registered benchmarks across the Eliza / Hermes / OpenClaw / Smithers
+> registered benchmarks across the Eliza / Hermes / OpenClaw
 > harnesses and stores normalized results. The similarly named
 > [`orchestrator_lifecycle`](../orchestrator_lifecycle/) suite is an actual
 > benchmark: it scores an agent's multi-turn task-orchestration behavior
@@ -319,7 +319,7 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
 - requested trajectory output under each cell's `trajectories/` directory.
 - top-level `summary.json` and `summary.md` with failure buckets, normalized
   right/wrong/total/accuracy, input/output/cached token metrics, LLM call
-  counts, run configuration metadata, an ElizaOS-vs-OpenCode head-to-head
+  counts, run configuration metadata, an elizaOS-vs-OpenCode head-to-head
   status per benchmark with target/baseline input, output, total, cached
   percentage, and LLM-call counts, and an explicit token-evidence section that
   flags cells where no usable LLM/token telemetry was captured. Reports also
@@ -345,7 +345,7 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
   fields per benchmark. The same rows are written as
   `report-rows.jsonl` and `report-rows.csv` beside the summary.
 
-Add `--publish-latest-dir` to materialize the ElizaOS-vs-OpenCode report rows
+Add `--publish-latest-dir` to materialize the elizaOS-vs-OpenCode report rows
 as latest-style JSON artifacts:
 
 ```bash
@@ -383,7 +383,7 @@ LLM-call counts, accuracy/input/output/total-token/call/cache deltas, and a
 also require that trajectory telemetry backs the reported token, cache, and
 LLM-call fields; that deltas equal target minus baseline; that `score`,
 accuracy, and right/wrong/total fields agree; that `comparison_status` matches
-the measured accuracy relationship; and that ElizaOS has no token/call/cache
+the measured accuracy relationship; and that elizaOS has no token/call/cache
 efficiency regression versus OpenCode. Rows that fail that contract are still
 written for review, but their `status` is `failed`, their row and `index.json`
 cell include `failure_reason`/`failure_reasons`, and the code-agent
@@ -393,7 +393,7 @@ Related benchmarks that are not yet release-comparable in this matrix are
 tracked as deferred coverage rather than ignored. Current deferred entries
 include `swe_bench_pro`, `qwen_web_bench`, and `vision_language`.
 `swe_bench_pro` has an explicit patch-generation wrapper for the vendored
-public split, matched ElizaOS/OpenCode command templates, patch normalization,
+public split, matched elizaOS/OpenCode command templates, patch normalization,
 and token/call aggregation, but it remains deferred until non-mock public-split
 patch generation is validated against local Docker or Modal scoring.
 `qwen_web_bench` remains deferred until the public upstream runner and dataset
@@ -403,13 +403,13 @@ tool execution and deterministic rubric scoring. `clawbench` is included
 through its deterministic scenario fixtures and non-LLM rubric scorer, with
 both adapters routed through the same Eliza benchmark bridge. `agentbench` is
 included as an OS/WebShop/Mind2Web-related fixture slice over AgentBench's
-environment adapters, again using the same ElizaOS/OpenCode bridge for live
+environment adapters, again using the same elizaOS/OpenCode bridge for live
 agent turns. `qwen_claw_bench` is included as the deterministic automated
 workspace task from QwenClawBench, using the benchmark's embedded Python
 grader while leaving hybrid and LLM-judge tasks deferred until judge
 dependencies are stable. `vision_language` tracks the eliza-1
 vision-CUA/plugin-computeruse harness and now has explicit
-ElizaOS/OpenCode harness labels in the vision-language runner, but remains
+elizaOS/OpenCode harness labels in the vision-language runner, but remains
 deferred until those labels have non-stub right/wrong/token telemetry. These
 entries are tracked so front-end code-generation, workspace, terminal,
 browser, and computer-use coverage is not silently omitted from the code-agent
@@ -455,7 +455,7 @@ The matrix runs the setup, implementation, and testing scenarios in dependency
 order with one shared sandbox so downstream tasks can use prerequisite files,
 then normalizes rubric scores into right/wrong/total fields. Smoke mode uses a
 deterministic offline setup fixture; live mode routes each LLM turn through the
-ElizaOS/OpenCode bridge and writes trajectory/token telemetry beside the cell
+elizaOS/OpenCode bridge and writes trajectory/token telemetry beside the cell
 artifacts.
 
 `claw_eval` is included as a deterministic coding slice over Claw-Eval tasks
@@ -497,7 +497,7 @@ python3 -m benchmarks.orchestrator.code_agent_matrix \
 ```
 
 To rerun only queued comparisons from a previous report, point at its
-`summary.json`. This is useful after fixing ElizaOS behavior on one inferior
+`summary.json`. This is useful after fixing elizaOS behavior on one inferior
 benchmark because it avoids rebuilding the full matrix:
 
 ```bash
@@ -510,17 +510,17 @@ python3 -m benchmarks.orchestrator.code_agent_matrix \
 ```
 
 Use `--compare-summary` on any full or queued rerun to add a previous-summary
-comparison table showing ElizaOS accuracy, token, cached-token, and LLM-call
+comparison table showing elizaOS accuracy, token, cached-token, and LLM-call
 deltas by benchmark.
 
-When ElizaOS is accuracy-comparable but less efficient, `summary.json` includes
+When elizaOS is accuracy-comparable but less efficient, `summary.json` includes
 an `efficiency_queue` and the markdown includes an Efficiency Queue section.
 This flags higher total-token use, extra LLM calls, and lower cached-token
 percentage versus OpenCode so optimization work is not hidden by a passing
 accuracy gate.
 
 Use `--enforce-comparable` in CI or release gates to exit nonzero unless every
-selected benchmark is `superior` or `comparable` for ElizaOS against OpenCode.
+selected benchmark is `superior` or `comparable` for elizaOS against OpenCode.
 Inferior, weak, and missing comparisons block the gate. The generated
 `summary.json` always includes `benchmark_gate` with the same blocking
 benchmark list.
@@ -542,13 +542,13 @@ right/wrong/total outcome evidence for every selected benchmark and requires
 token evidence for live runs. Smoke, dry-run, and summarize reports do not
 require token evidence unless `--enforce-token-evidence` is also set.
 
-Use `--enforce-efficiency` when a run should fail if ElizaOS is less efficient
+Use `--enforce-efficiency` when a run should fail if elizaOS is less efficient
 than OpenCode on total tokens, LLM-call count, or cached-token percentage.
 When combined with `--enforce-report`, the combined report gate includes the
 efficiency gate.
 
 Use `--enforce-no-regression` with `--compare-summary` when a follow-up report
-must not reduce ElizaOS target accuracy versus the previous report. When
+must not reduce elizaOS target accuracy versus the previous report. When
 combined with `--enforce-report`, the combined report gate includes the
 no-regression gate.
 
@@ -565,7 +565,7 @@ Preflight reports include selected-scope
 `live_evidence`, runnable-deferred `deferred_live_evidence`, full-scope
 `release_preflight`, and full-scope `release_comparable` commands. The live and
 release-comparable commands carry `--enforce-token-evidence`; the release and
-deferred-live commands always use the ElizaOS/OpenCode adapter pair so a
+deferred-live commands always use the elizaOS/OpenCode adapter pair so a
 single-adapter preflight cannot accidentally become release evidence. The
 release commands also carry
 `--quality-guardrail-summary /path/to/non-code-quality-guardrail.json` as an
@@ -605,13 +605,13 @@ current exit-code contract is:
 | --- | --- | --- |
 | 0 | `ok` | run completed without an enforced gate failure |
 | 2 | `preflight_failed` | preflight checks failed |
-| 3 | `comparable_gate_failed` | ElizaOS was not comparable-or-better than OpenCode on every selected benchmark |
+| 3 | `comparable_gate_failed` | elizaOS was not comparable-or-better than OpenCode on every selected benchmark |
 | 4 | `token_evidence_failed` | one or more selected cells lacked usable LLM token telemetry |
 | 5 | `required_stats_failed` | one or more selected benchmarks lacked required outcome or token stats |
 | 6 | `coverage_gate_failed` | the run did not cover every included code-agent benchmark |
 | 7 | `report_gate_failed` | the combined release-readiness report gate failed |
-| 8 | `efficiency_gate_failed` | ElizaOS used more tokens, made more LLM calls, or had lower cached-token percentage than OpenCode |
-| 9 | `no_regression_failed` | ElizaOS regressed against the previous comparison summary |
+| 8 | `efficiency_gate_failed` | elizaOS used more tokens, made more LLM calls, or had lower cached-token percentage than OpenCode |
+| 9 | `no_regression_failed` | elizaOS regressed against the previous comparison summary |
 | 10 | `quality_guardrail_failed` | the broader non-code benchmark readiness guardrail failed |
 | 11 | `trajectory_review_failed` | one or more selected cells lacked reviewable trajectory telemetry |
 | 12 | `live_report_failed` | the report was not generated from live benchmark execution |
@@ -707,7 +707,7 @@ Eliza/Hermes/OpenClaw cell required by the latest matrix is present,
 successful, scored, publishable, and comparable. Unsupported cells include
 their reason in `latest/index.json` under `matrix_contract.benchmarks`.
 For code-agent latest directories produced by `--publish-latest-dir`, the same
-publishability/readiness validators also enforce the ElizaOS-vs-OpenCode
+publishability/readiness validators also enforce the elizaOS-vs-OpenCode
 contract: complete provenance, right/wrong stats, token/cache/call stats,
 efficiency deltas, comparable-or-better status, no token/call/cache regression,
 and a complete code-agent `matrix_contract`.

@@ -100,7 +100,7 @@ benchmarks/framework/
 │   └── harness_runner.py   # Cross-harness runner (eliza/hermes/openclaw adapters)
 ├── shared/
 │   ├── character.json      # Shared agent character definition
-│   └── scenarios.json      # 21 test scenarios
+│   └── scenarios.json      # 20 test scenarios
 ├── typescript/
 │   ├── package.json
 │   └── src/
@@ -115,12 +115,12 @@ benchmarks/framework/
 The harness uses a mock LLM plugin that:
 
 1. Registers handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_COMPLETION`
-2. Returns **deterministic, pre-computed XML responses** that pass the framework's validation pipeline
+2. Returns **deterministic, structured JSON responses** that pass the framework's validation pipeline
 3. Detects which template is being evaluated (shouldRespond vs message handler vs reply action) by inspecting the prompt
 4. Returns zero-latency responses (no artificial delay)
 5. shouldRespond returns `RESPOND` for all messages (agent name is always included in benchmark messages)
 
-## Scenarios (21 total)
+## Scenarios (20 total)
 
 | ID | Description | Messages | Notes |
 |----|-------------|----------|-------|
@@ -139,4 +139,3 @@ The harness uses a mock LLM plugin that:
 | `db-read-throughput` | DB reads | 10K ops | In-memory adapter |
 | `startup-cold` | Initialization | 0 | 20 fresh inits |
 | `multi-step` | Multi-step mode | 1 | Mock completes immediately |
-| `minimal-bootstrap` | Minimal providers | 1 | CHARACTER only |

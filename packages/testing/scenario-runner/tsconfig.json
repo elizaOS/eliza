@@ -12,7 +12,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "lib": ["ES2024", "DOM"],
-    "types": ["node"],
+    "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/ui": ["../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../ui/src/*"],
@@ -63,6 +63,9 @@
       ],
       "@elizaos/plugin-personal-assistant": [
         "../../../plugins/plugin-personal-assistant/src/index.ts"
+      ],
+      "@elizaos/plugin-personal-assistant/*": [
+        "../../../plugins/plugin-personal-assistant/src/*"
       ],
       "@elizaos/plugin-mcp": ["../../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-native-messages": [
@@ -216,7 +219,7 @@
       "@elizaos/testing/scenario-runner": ["./src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./src/*"],
       "@elizaos/testing/synthetic-world": ["../synthetic-world/src/index.ts"],
-      "@elizaos/testing/scenario-runner/schema": ["./schema/index.js"],
+      "@elizaos/testing/scenario-runner/schema": ["./schema/index.d.ts"],
       "@elizaos/plugin-assistant": [
         "../../../plugins/plugin-assistant/src/index.ts"
       ],
@@ -291,6 +294,9 @@
       ],
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
+      ],
+      "@elizaos/plugin-x/lifeops-message-adapter": [
+        "../../../plugins/plugin-x/src/lifeops-message-adapter.ts"
       ]
     }
   },

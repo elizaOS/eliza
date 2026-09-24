@@ -48,12 +48,12 @@
  */
 
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import { surfaceGrants } from "@elizaos/core";
 import {
   THEME_CSS_VAR_MAP,
   THEME_FONT_CSS_VARS,
 } from "@elizaos/shared/contracts/theme";
 import { logger } from "@elizaos/shared/logger";
+import { surfaceGrants } from "@elizaos/shared/views/surface-manifest";
 import { isPrivilegedShellActive } from "./surface-realm-channel";
 
 // Re-export the shell-privileged channel so existing importers of the broker

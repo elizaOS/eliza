@@ -605,11 +605,9 @@ action-based benchmarks: call BENCHMARK_ACTION with one of:
 - Mind2Web: { "operation": "CLICK|TYPE|SELECT", "element_id": "...", "value": "..." }
 
 reply-based benchmarks: use REPLY with text payload:
-- Q&A (context-bench, rlm-bench): the answer
-- hyperliquid_bench: {"steps":[...]}
+- Q&A (context-bench): the answer
 - vending-bench: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
 - swe_bench: a single unified diff
-- woobench payments: BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT
 
 experience-learning turns: BENCHMARK_ACTION with command RECORD_EXPERIENCE.
 
@@ -753,13 +751,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isQuestionAnswerBenchmark = new Set([
     "context-bench",
     "context_bench",
-    "rlm-bench",
-    "rlm_bench",
-  ]).has(benchmark);
-  const isJsonPlanBenchmark = new Set([
-    "hyperliquid_bench",
-    "hyperliquid-bench",
-    "hyperliquidbench",
   ]).has(benchmark);
   const isJsonActionBenchmark = new Set(["vending-bench", "vending_bench"]).has(
     benchmark,
@@ -774,14 +765,11 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     benchmark === "webshop" || benchmark === "web-shop";
   const isTauBenchmark = benchmark === "tau_bench" || benchmark === "tau-bench";
   const isConversationalBenchmark = new Set([
-    "woobench",
-    "woo-bench",
     "orchestrator_lifecycle",
     "orchestrator-lifecycle",
     "personality_bench",
     "personality-bench",
   ]).has(benchmark);
-  const isWooBench = benchmark === "woobench" || benchmark === "woo-bench";
   const isOrchestratorLifecycle =
     benchmark === "orchestrator_lifecycle" ||
     benchmark === "orchestrator-lifecycle";
@@ -823,16 +811,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     if (lifeopsContext) sections.push(lifeopsContext);
   }
 
-  if (isWooBench && ctx.payment_actions) {
-    sections.push(
-      `\n## Payment Actions\nUse BENCHMARK_ACTION for every money movement. Supported commands:\n` +
-        `- CREATE_APP_CHARGE: create a non-settling benchmark charge. Params: amount_usd, provider ("oxapay" or "stripe"), description.\n` +
-        `- CHECK_PAYMENT: check the latest benchmark charge status before delivering paid content.\n` +
-        `These mirror Eliza Cloud app charge flows but execute against the WooBench mock provider during tests.\n` +
-        `Tool availability does not mean you should charge immediately. Build trust first; if you ask for a dollar amount, the response must include BENCHMARK_ACTION with CREATE_APP_CHARGE; do not only mention payment in prose.`,
-    );
-  }
-
   // Tau-bench: tools
   if (isQuestionAnswerBenchmark) {
     sections.push(
@@ -840,10 +818,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
     sections.push(
       `Put only the final answer in the response text. Do not include commentary unless the task explicitly asks for it.`,
-    );
-  } else if (isJsonPlanBenchmark) {
-    sections.push(
-      `Return only the requested JSON plan in the response text. Use REPLY, not BENCHMARK_ACTION.`,
     );
   } else if (isJsonActionBenchmark) {
     sections.push(
@@ -1058,13 +1032,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       );
       sections.push(
         `Use REPLY for ordinary conversational responses. Use PERSONALITY when the user sets, changes, or releases a personality directive.`,
-      );
-    } else if (isWooBench && ctx.payment_actions) {
-      sections.push(
-        `For ordinary conversation, respond with actions: REPLY and put only the next conversational message in text.`,
-      );
-      sections.push(
-        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone, and never check payment before the user says they paid or an active charge exists.`,
       );
     } else {
       sections.push(

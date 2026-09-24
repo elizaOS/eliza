@@ -138,8 +138,8 @@ jobs:
           java-version: "21"
           cache: gradle
           cache-dependency-path: |
-            .eliza-source/packages/app-core/platforms/android/**/*.gradle*
-            .eliza-source/packages/app-core/platforms/android/gradle/wrapper/gradle-wrapper.properties
+            .eliza-source/packages/app/platforms/android/**/*.gradle*
+            .eliza-source/packages/app/platforms/android/gradle/wrapper/gradle-wrapper.properties
 
       # The brand validator shells out to `aapt` to inspect the staged APK,
       # and the brand `build:android:system` runs Gradle which needs a full SDK.
@@ -194,7 +194,7 @@ jobs:
               "$ANDROID_NDK_VERSION" "$GITHUB_WORKFLOW_SHA"
             git -C .eliza-source submodule status --recursive
             git -C .eliza-source ls-files -s \
-              packages/app-core/scripts \
+              packages/app/scripts \
               packages/native/plugins
           } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
 
@@ -206,9 +206,9 @@ jobs:
         with:
           path: |
             ~/.cache/eliza-android-agent
-            .eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/arm64-v8a
-            .eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/x86_64
-            .eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/riscv64
+            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
+            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/x86_64
+            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
           key: cuttlefish-native-${{ runner.os }}-${{ steps.native-inference-fingerprint.outputs.hash }}
 
       - name: Build fused Android inference libraries
@@ -221,8 +221,8 @@ jobs:
           for target in "${targets[@]}"; do
             args+=(--target "$target")
           done
-          node packages/app-core/scripts/aosp/compile-libllama.mjs \
-            --assets-dir packages/app-core/platforms/android/app/src/main/assets/agent \
+          node packages/app/scripts/aosp/compile-libllama.mjs \
+            --assets-dir packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}"
 
       - name: Verify fused Android inference artifacts
@@ -236,7 +236,7 @@ jobs:
           done
           mkdir -p reports/cuttlefish
           node scripts/aosp/verify-native-runtime.mjs \
-            --asset-root .eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent \
+            --asset-root .eliza-source/packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}" | tee reports/cuttlefish/native-runtime.json
 
       - name: Build privileged APK (${{ steps.brand.outputs.distro-name }})
@@ -245,9 +245,9 @@ jobs:
           ELIZAOS_OS_REPO_ROOT: ${{ github.workspace }}
           ELIZA_BUN_RISCV64_URL: ${{ inputs.bun-riscv64-url }}
           ELIZA_BUN_RISCV64_SHA256: ${{ inputs.bun-riscv64-sha256 }}
-          ELIZA_MTP_ANDROID_LIBDIR: ${{ github.workspace }}/.eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/arm64-v8a
-          ELIZA_MTP_ANDROID_LIBDIR_X86_64: ${{ github.workspace }}/.eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/x86_64
-          ELIZA_MTP_ANDROID_LIBDIR_RISCV64: ${{ github.workspace }}/.eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/riscv64
+          ELIZA_MTP_ANDROID_LIBDIR: ${{ github.workspace }}/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
+          ELIZA_MTP_ANDROID_LIBDIR_X86_64: ${{ github.workspace }}/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/x86_64
+          ELIZA_MTP_ANDROID_LIBDIR_RISCV64: ${{ github.workspace }}/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
         run: |
           if [ "${{ steps.brand.outputs.requires-riscv64 }}" = "true" ]; then
             if [ -z "$ELIZA_BUN_RISCV64_URL" ] || [ -z "$ELIZA_BUN_RISCV64_SHA256" ]; then
@@ -328,7 +328,7 @@ jobs:
 
       - name: Exercise privileged Android instrumentation on Cuttlefish
         if: ${{ !cancelled() && inputs.launch == true }}
-        working-directory: .eliza-source/packages/app-core/platforms/android
+        working-directory: .eliza-source/packages/app/platforms/android
         shell: bash
         run: |
           set -euo pipefail
@@ -427,14 +427,14 @@ jobs:
           disable-animations: true
           script: |
             set -euo pipefail
-            cd .eliza-source/packages/app-core/platforms/android
+            cd .eliza-source/packages/app/platforms/android
             ./gradlew :app:connectedDebugAndroidTest --stacktrace
             cd "${GITHUB_WORKSPACE}"
             node scripts/aosp/verify-android-instrumentation-results.mjs \
-              --results .eliza-source/packages/app-core/platforms/android/app/build/outputs/androidTest-results/connected \
+              --results .eliza-source/packages/app/platforms/android/app/build/outputs/androidTest-results/connected \
               --required-class ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest \
               --min-tests 6
-            retail_apk=$(find .eliza-source/packages/app-core/platforms/android/app/build/outputs/apk/debug \
+            retail_apk=$(find .eliza-source/packages/app/platforms/android/app/build/outputs/apk/debug \
               -type f -name '*debug*.apk' -print -quit)
             test -n "$retail_apk"
             adb install -r -g "$retail_apk"
@@ -457,8 +457,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p reports/cuttlefish/retail-instrumentation
-          if [ -d .eliza-source/packages/app-core/platforms/android/app/build/outputs/androidTest-results ]; then
-            cp -a .eliza-source/packages/app-core/platforms/android/app/build/outputs/androidTest-results/. \
+          if [ -d .eliza-source/packages/app/platforms/android/app/build/outputs/androidTest-results ]; then
+            cp -a .eliza-source/packages/app/platforms/android/app/build/outputs/androidTest-results/. \
               reports/cuttlefish/retail-instrumentation/
           fi
           if [ -d .eliza-source/packages/app/test-results ]; then

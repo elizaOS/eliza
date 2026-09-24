@@ -13,9 +13,10 @@
  * Cloud login + provisioning are mocked at the network boundary, same as the
  * chooser-mode cloud lane.
  */
+
 import { rm } from "node:fs/promises";
-import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.mjs";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   expectNoPageDiagnostics,
@@ -36,9 +37,8 @@ import {
   settleHomeEntrance,
 } from "./onboarding-to-home.shared";
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
+const SCREENSHOT_DIR = testOutputPath(
+  "aesthetic-audit",
   "onboarding-cloud-only",
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);

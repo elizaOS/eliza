@@ -3,8 +3,7 @@
  * plus the public prompt/util helpers, forming the `@elizaos/core` type surface
  * that `@elizaos/agent`, `@elizaos/app`, and every plugin import.
  *
- * Most modules are re-exported via `export *`, but a few whose runtime values
- * must survive tree-shaking (e.g. view-kind) are re-exported explicitly — see
+ * Runtime values are re-exported explicitly where required — see
  * the inline note before converting one back to a star export.
  */
 
@@ -83,17 +82,6 @@ export type {
 	SurfaceManifest,
 	SurfaceManifestBearer,
 } from "./surface-manifest";
-// Explicit value re-exports: `plugin.ts` imports this module via `import type`,
-// so a bare `export *` gets tree-shaken to type-only — the same reason view-kind
-// below re-exports its runtime values explicitly.
-export {
-	IMMERSIVE_WALLPAPER_SURFACE,
-	resolveSurfaceBackgroundPolicy,
-	resolveSurfaceManifest,
-	SURFACE_CAPABILITIES,
-	SURFACE_ISOLATION_LEVELS,
-	surfaceGrants,
-} from "./surface-manifest";
 export * from "./swarm-coordinator";
 export * from "./task";
 export * from "./tee";
@@ -104,17 +92,5 @@ export type {
 	EnabledViewKinds,
 	ViewKind,
 	ViewKindBearer,
-} from "./view-kind";
-// Explicit value + type re-exports: a bare `export *` here gets tree-shaken to
-// nothing because `plugin.ts` imports this module via `import type`, which leads
-// esbuild/vite to treat the whole module as type-only and drop its runtime
-// exports from the star re-export.
-export {
-	isAlwaysOnViewKind,
-	isViewKindEnabled,
-	isViewVisible,
-	resolveViewKind,
-	VIEW_KIND_META,
-	VIEW_KINDS,
 } from "./view-kind";
 export * from "./workspace-delta";

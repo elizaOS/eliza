@@ -64,12 +64,6 @@ vi.mock("../../../api", () => ({
   },
 }));
 
-// Isolate the navigation rail — assert the CustomEvent without the slash-command
-// controller side effects.
-vi.mock("../../../chat/shortcut-report", () => ({
-  reportUserViewSwitch: vi.fn(),
-}));
-
 // EventSource cannot open in jsdom; the widget already tolerates a null
 // EventSource (native-IPC fallback). Force the null path so the test drives off
 // the single initial hub fetch.

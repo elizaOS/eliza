@@ -71,7 +71,7 @@ src/
   contracts/awareness.ts  Re-exports awareness contracts from @elizaos/shared
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
-scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness
+scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, and the hardware-free TEE policy harness
 ```
 
 ## Key exports / surface
@@ -92,8 +92,8 @@ Run from repo root targeting this package:
 bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to `serve`)
 bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
-bun run --cwd packages/agent test             # deterministic Vitest batches
-bun run --cwd packages/agent test:integration # *.integration.test.ts suites (excluded from the default lane)
+bun run --cwd packages/agent test             # end-to-end Vitest batches
+bun run --cwd packages/agent test:integration # same end-to-end suite
 bun run --cwd packages/agent lint             # biome check --write across source and test tooling
 bun run --cwd packages/agent lint:check       # biome check read-only
 bun run --cwd packages/agent format           # biome format --write
@@ -101,8 +101,6 @@ bun run --cwd packages/agent format:check     # biome format read-only
 bun run --cwd packages/agent build            # build:dist (tsc --noCheck → prepare-package-dist → rewrite imports)
 bun run --cwd packages/agent build:mobile     # bun scripts/build-mobile-bundle.mjs
 bun run --cwd packages/agent build:ios-bun    # mobile bundle, --target=ios
-bun run --cwd packages/agent test:remote-capabilities
-bun run --cwd packages/agent test:sandbox-live
 ```
 
 The package test runner keeps one file per isolated Vitest process and runs up
@@ -110,13 +108,14 @@ to four processes concurrently by default. Set `AGENT_TEST_CONCURRENCY` to a
 positive integer to tune process parallelism, `AGENT_TEST_BATCH_SIZE` to group
 files deliberately, or `AGENT_TEST_VERBOSE=1` to print every passing child log.
 
-Colocate module-owned tests beside their source and script tests beside their
-scripts. Reserve `test/` for package-wide scenarios, fixtures, support code,
+Keep only real end-to-end scenarios; remove unit tests, mocks, smoke probes, and
+source-inspection tests. Colocate at most one `<module>.test.ts` beside a module.
+Reserve `test/` for package-wide scenarios, fixtures, support code,
 and setup. Do not create `__tests__`, `test/api`, or `test/runtime` trees.
 The default runner and Vitest share the discovery patterns exported by
 `scripts/run-vitest-batches.mjs`.
 
-`build:docker-dist`, `build:ios-jsc`, `clean`, `pack:dry-run`, `test:remote-capabilities:{docker,cloud-live,provider-live,source-build}` also exist in `package.json`.
+`build:docker-dist`, `build:ios-jsc`, `clean`, and `pack:dry-run` also exist in `package.json`.
 
 ## Config / env vars
 
@@ -182,8 +181,7 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
   both JSON and SSE routes reconcile the final assistant text, reply correlation,
   and action callback history before extraction snapshots are frozen. Failed
   reconciliation cancels extraction; it must not deadlock the route or advance a
-  memory checkpoint. Keep the paired transport cases in
-  `api/conversation-idempotency.test.ts` when changing this boundary.
+  memory checkpoint. Exercise both transports through the real host when changing this boundary.
 - Standalone grounded action replies pass complete conversation memories, action results,
   trajectories, character context, and model output without trimming, deduping,
   summarizing, or silently falling back from a partial prompt. Missing or invalid

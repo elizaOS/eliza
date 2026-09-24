@@ -5,7 +5,7 @@
   "description": "Android Contacts overlay app — wraps the @elizaos/plugin-native-contacts/bridge native plugin.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-contacts -- bun run build:unlocked",

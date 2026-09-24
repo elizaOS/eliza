@@ -37,7 +37,10 @@
  */
 
 import { join } from "node:path";
-import type { BackendGenerateArgs as GenerateArgs } from "@elizaos/plugin-local-inference/services";
+import type {
+  BackendGenerateArgs as GenerateArgs,
+  InstalledModel,
+} from "@elizaos/plugin-local-inference/services";
 import type {
   ArbiterCapability,
   ArbiterEvent,
@@ -164,7 +167,7 @@ async function measureText(
 ): Promise<ModalityMetric> {
   const catalog = findCatalogModel(tier);
   const installed = (await listInstalledModels()).find(
-    (m) => m.path === installedPath,
+    (m: InstalledModel) => m.path === installedPath,
   );
   let estimatedMb: number | null = null;
   if (catalog && installed) {
@@ -261,7 +264,7 @@ async function runCoResidency(): Promise<CoResidencyMetric> {
     budgetMb: () => SELF_CHECK_BUDGET_MB,
     now: () => Date.now(),
   });
-  const off = arbiter.onEvent((e) => events.push(e));
+  const off = arbiter.onEvent((e: ArbiterEvent) => events.push(e));
   arbiter.start();
 
   for (const cap of Object.keys(SELF_CHECK_SIZES) as ArbiterCapability[]) {

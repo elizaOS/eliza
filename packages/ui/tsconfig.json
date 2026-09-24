@@ -96,7 +96,8 @@
       ],
       "@elizaos/capacitor-system": [
         "../../plugins/plugin-native-system/src/index.ts"
-      ]
+      ],
+      "@elizaos/auth": ["../auth/src/sdk/index.ts"]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],

@@ -99,7 +99,7 @@ jobs:
             git -C .eliza-source submodule status --recursive
             git -C .eliza-source ls-files -s \
               packages/native/plugins \
-              packages/app-core/scripts/aosp/compile-libllama.mjs
+              packages/app/scripts/aosp/compile-libllama.mjs
             git ls-files -s \
               scripts/build-riscv64-artifacts.sh \
               toolchains/cmake
@@ -117,7 +117,7 @@ jobs:
         with:
           path: |
             .eliza-source/packages/native/plugins/*/build/riscv64
-            .eliza-source/packages/app-core/platforms/android/app/src/main/assets/agent/riscv64
+            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
             ~/.cache/eliza-android-agent/seccomp-shim/riscv64
           key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
 

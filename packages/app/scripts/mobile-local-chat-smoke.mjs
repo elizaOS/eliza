@@ -53,11 +53,11 @@ const repoRoot = path.resolve(
 const appConfigPath = path.join(repoRoot, "packages/app/app.config.ts");
 const iosLocalChatResultDir = path.join(
   repoRoot,
-  "packages/app/test-results/ios-local-chat",
+  "test-results/app/ios-local-chat",
 );
 const relaunchPersistenceResultDir = path.join(
   repoRoot,
-  "packages/app/test-results/relaunch-persistence",
+  "test-results/app/relaunch-persistence",
 );
 
 function argValue(name) {
