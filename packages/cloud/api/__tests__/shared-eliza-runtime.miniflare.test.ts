@@ -591,20 +591,23 @@ describe("Shared Eliza runtime in Workerd", () => {
                 message: {
                   role: "assistant",
                   content: null,
-                  tool_calls: [{
-                    id: `workerd-image-${probe}-refusal`,
-                    type: "function",
-                    function: {
-                      name: "HANDLE_RESPONSE",
-                      arguments: JSON.stringify({
-                        contexts: ["media"],
-                        intents: [],
-                        candidateActionNames: [],
-                        replyEffectStatus: "none",
-                        replyText: "Image generation requires an authenticated Personal Shared user.",
-                      }),
+                  tool_calls: [
+                    {
+                      id: `workerd-image-${probe}-refusal`,
+                      type: "function",
+                      function: {
+                        name: "HANDLE_RESPONSE",
+                        arguments: JSON.stringify({
+                          contexts: ["media"],
+                          intents: [],
+                          candidateActionNames: [],
+                          replyEffectStatus: "none",
+                          replyText:
+                            "Image generation requires an authenticated Personal Shared user.",
+                        }),
+                      },
                     },
-                  }],
+                  ],
                 },
                 finish_reason: "tool_calls",
               },

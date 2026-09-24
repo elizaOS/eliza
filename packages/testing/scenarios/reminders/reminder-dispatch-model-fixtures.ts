@@ -1,7 +1,10 @@
 /** Supplies strict deterministic model fixtures for direct reminder API scenarios. */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { ScenarioContext, ScenarioModelFixtureDeclaration } from "@elizaos/testing";
+import type {
+  ScenarioContext,
+  ScenarioModelFixtureDeclaration,
+} from "@elizaos/testing";
 
 export function reminderDispatchModelFixtures(
   maximumModelCalls: number,
@@ -49,7 +52,8 @@ export function cleanupReminderDefinitions(title: string) {
       );
       const service = new LifeOpsService(runtime as IAgentRuntime);
       for (const { definition } of await service.listDefinitions()) {
-        if (definition.title === title) await service.deleteDefinition(definition.id);
+        if (definition.title === title)
+          await service.deleteDefinition(definition.id);
       }
     },
   };
