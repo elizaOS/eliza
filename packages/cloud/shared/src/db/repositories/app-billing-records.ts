@@ -30,6 +30,8 @@ import {
 } from "./app-subscription-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
+/* global-scope: Resolve seller organization before scope locks; buyer organization is distinct.
+ * Exact app/account/environment membership is checked before any billing records are returned. */
 async function recordScope(tx: DbTransaction, input: AppBillingReadIdentity) {
   const [app] = await tx
     .select({ organizationId: apps.organization_id })

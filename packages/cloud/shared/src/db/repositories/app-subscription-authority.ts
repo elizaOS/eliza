@@ -115,7 +115,7 @@ export async function lockAppBillingScope(
       reviewStatus: apps.review_status,
     })
     .from(apps)
-    .where(eq(apps.id, scope.app_id));
+    .where(and(eq(apps.id, scope.app_id), eq(apps.organization_id, scope.organization_id)));
   const [merchant] = await tx
     .select()
     .from(billingMerchants)
@@ -232,6 +232,8 @@ export async function planForScope(
 }
 
 export class AppSubscriptionAuthorityRepository {
+  /* global-scope: Consumers may purchase another organization's app. The authenticated actor
+   * owns the immutable account principal; app-scoped keys cannot claim another purchaser. */
   async createAccount(input: {
     appId: string;
     externalAccountKey: string;
@@ -299,6 +301,9 @@ export class AppSubscriptionAuthorityRepository {
     });
   }
 
+  /* global-scope: Cross-organization purchasers resolve seller identity here. Database scope
+   * guards bind app/account/merchant ownership; current purchaser administration is required
+   * under the scope lock before this transaction commits. */
   async resolveScope(input: {
     appId: string;
     billingAccountId: string;
