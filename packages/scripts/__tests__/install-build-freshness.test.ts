@@ -20,23 +20,35 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 
-test("root tooling does not add application sources to every task's cache hash", () => {
+test("build graph isolates root tooling and app output producers", () => {
   const result = spawnSync(
     process.execPath,
     [
       "packages/scripts/run-turbo.ts",
       "run",
       "build",
-      "--filter=@elizaos/core",
+      "--filter=@elizaos/app",
       "--dry=json",
     ],
-    { cwd: root, encoding: "utf8", timeout: 30_000 },
+    {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 16 * 1024 * 1024,
+    },
   );
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(
-    JSON.parse(result.stdout).globalCacheInputs.hashOfInternalDependencies,
-    "",
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  const graph = JSON.parse(result.stdout);
+  assert.equal(graph.globalCacheInputs.hashOfInternalDependencies, "");
+  const renderer = graph.tasks.find(
+    (task) => task.taskId === "@elizaos/app#build",
   );
+  const host = graph.tasks.find(
+    (task) => task.taskId === "@elizaos/app#build:dist",
+  );
+  assert.deepEqual(renderer.outputs, ["web-dist/**"]);
+  assert.deepEqual(host.outputs, ["dist/**"]);
+  assert.ok(renderer.dependencies.includes(host.taskId));
 });
 
 for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
