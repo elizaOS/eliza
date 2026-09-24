@@ -172,7 +172,11 @@ test.skipIf(!enabled).each([false, true])(
     } finally {
       await rm(workspace, { recursive: true, force: true });
       // Retain transcripts and tool receipts, not per-run model/DB caches.
-      for (const disposable of ["workspace/.elizadb", "models"]) {
+      for (const disposable of [
+        "workspace/.elizadb",
+        "models",
+        "cache/node-compile",
+      ]) {
         await rm(path.join(output, "state", disposable), {
           recursive: true,
           force: true,
