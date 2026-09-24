@@ -15,8 +15,7 @@ import {
   isTrustedLocalRequest as isTrustedLocalRequestShared,
 } from "@elizaos/agent/api/loopback-trust";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "@elizaos/core/config/types";
+import type { AgentRuntime, ElizaConfig } from "@elizaos/core";
 import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,

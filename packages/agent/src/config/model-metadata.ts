@@ -9,7 +9,7 @@ import type {
   ElizaConfig,
   ModelDefinitionConfig,
   ModelProviderConfig,
-} from "./types.ts";
+} from "@elizaos/core";
 
 export const DEFAULT_MODEL_CONTEXT_WINDOW = 1_000_000;
 

@@ -482,7 +482,7 @@ export function describeTtsFetchTargetForDebug(target: string): string {
   const origin =
     typeof window !== "undefined" ? window.location.origin : "(no-window)";
   const path = target.startsWith("/") ? target : `/${target}`;
-  return `${origin}${path} — relative URL (TTS fetch goes to the UI host, not the app API). Set __ELIZAOS_API_BASE__ / session elizaos_api_base / boot apiBase to http://127.0.0.1:<apiPort>`;
+  return `${origin}${path} — relative URL (TTS fetch goes to the UI host, not the app API). Set boot-config apiBase to http://127.0.0.1:<apiPort>`;
 }
 
 /** For ELIZA_TTS_DEBUG: shows whether cloud TTS hits the API or the wrong (page) origin. */

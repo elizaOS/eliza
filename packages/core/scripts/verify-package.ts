@@ -249,7 +249,7 @@ try {
   for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
-  for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'awareness', 'contracts/health', 'contracts', 'i18n/validation-keywords', 'knowledge-graph', 'lifeops-constants', 'lifeops-normalize', 'markdown', 'validation-keywords', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
+  for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'config', 'config/types', 'config/boot-config', 'config/plugin-auto-enable', 'awareness', 'contracts/health', 'contracts', 'i18n/validation-keywords', 'knowledge-graph', 'lifeops-constants', 'lifeops-normalize', 'markdown', 'validation-keywords', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
     await assert.rejects(import('@elizaos/core/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
   }
 } finally { await runtime.stop(); }
@@ -259,13 +259,17 @@ console.log('Packed kernel host JSON loading, parseCharacter, persisted settings
 	writeFileSync(
 		path.join(consumer, "consumer.ts"),
 		`
-import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID, type Entity, type KnowledgeGraphEntity, type MessageExample, type FirstRunMessageExample } from '@elizaos/core';
+import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID, type Entity, type KnowledgeGraphEntity, type MessageExample, type FirstRunMessageExample, type AppMemoryConfig, type MemoryConfig } from '@elizaos/core';
 const graphName: KnowledgeGraphEntity['preferredName'] = 'fixture';
 const firstRunSender: FirstRunMessageExample['user'] = 'fixture';
 // @ts-expect-error Runtime entities retain their separate account shape.
 type InvalidRuntimeGraphName = Entity['preferredName'];
 // @ts-expect-error Runtime message examples use name, not the first-run user field.
 type InvalidRuntimeExampleUser = MessageExample['user'];
+const appMemoryBackend: AppMemoryConfig['backend'] = 'builtin';
+// @ts-expect-error Runtime memory settings retain their separate shape.
+type InvalidRuntimeMemoryBackend = MemoryConfig['backend'];
+void appMemoryBackend;
 void graphName;
 void firstRunSender;
 import type { CatalogModel, RuntimeClass } from '@elizaos/core/contracts/local-inference';
