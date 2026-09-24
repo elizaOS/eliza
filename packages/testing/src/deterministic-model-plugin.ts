@@ -342,7 +342,7 @@ export function createDeterministicModelPlugin(
   }
 
   return {
-    name: "perfect-result-provider",
+    name: "deterministic-model-provider",
     description: "Fixture-driven model provider for real-runtime tests.",
     priority: options.priority ?? 1_000,
     models,
