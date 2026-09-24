@@ -3,14 +3,6 @@
   "compilerOptions": {
     "composite": false,
     "types": ["node"],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
-    ],
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,

@@ -9,7 +9,6 @@
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
-    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
