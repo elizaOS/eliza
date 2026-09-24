@@ -23,6 +23,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { jobsRepository } from "../../db/repositories/jobs";
 import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 import type { Job } from "../../db/schemas/jobs";
@@ -40,6 +41,7 @@ import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-int
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { agentBillingRecords } from "../../db/schemas/compute-billing";
 import { computeBillingRateSegments } from "../../db/schemas/compute-billing-rate-segments";
+import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
@@ -54,6 +56,7 @@ import {
   rearmRecoverableAgentComputeStopIntentOnce,
   resolveAgentSuspendAuthorization,
 } from "./provisioning-jobs";
+import type { SandboxProvider } from "./sandbox-provider-types";
 
 const PGLITE_TIMEOUT = 300_000;
 let pgliteReady = true;
@@ -136,11 +139,19 @@ beforeAll(async () => {
     for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
       await dbWrite.execute(sql.raw(ddl));
     }
+    await dbWrite.execute(
+      sql.raw(
+        `CREATE TABLE docker_nodes (${getTableConfig(dockerNodes)
+          .columns.map((column) => `"${column.name}" ${column.getSQLType()}`)
+          .join(",")})`,
+      ),
+    );
     const { getPgliteClientForTests } = await import("../../db/client");
     await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
     for (const name of [
       "0388_agent_compute_funded_receipts.sql",
       "0394_agent_billing_activation_minimum.sql",
+      "0399_prepared_stop_backup.sql",
     ]) {
       const migration = await readFile(
         new URL(`../../db/migrations/${name}`, import.meta.url),
@@ -1022,6 +1033,8 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       .update(agentSandboxes)
       .set({
         sandbox_id: `sandbox-${agentId}`,
+        node_id: "sentinel-owned-node",
+        container_name: "sentinel-owned-container",
         billing_status: "active",
         last_billed_at: periodStart,
       })
@@ -1047,6 +1060,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       expectedLifecycleRevision: current.lifecycleRevision,
     });
     type UserSuspendService = {
+      getProvider(): Promise<SandboxProvider>;
       executeSuspend(
         targetAgentId: string,
         targetOrganizationId: string,
@@ -1057,6 +1071,30 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
     };
     const service = elizaSandboxService as unknown as UserSuspendService;
+    const provider = await service.getProvider();
+    const providerSpy = spyOn(service, "getProvider").mockResolvedValue({
+      ...provider,
+      async observeRuntime(input) {
+        return {
+          kind: "present",
+          running: true,
+          identity: input.expected ?? {
+            organizationId: orgId,
+            agentId,
+            nodeId: "sentinel-owned-node",
+            nodeRecordId: "10000000-0000-4000-8000-000000000001",
+            nodeIncarnation: "10000000-0000-4000-8000-000000000002",
+            nodeHistoryId: "10000000-0000-4000-8000-000000000003",
+            hostname: "127.0.0.1",
+            sshPort: 22,
+            sshUser: "root",
+            hostKeyFingerprint: "SHA256:controlledfixture",
+            containerName: "sentinel-owned-container",
+            containerId: "a".repeat(64),
+          },
+        };
+      },
+    });
     const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
       null,
     );
@@ -1067,15 +1105,14 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     try {
       // The stale job hint deliberately says billing; the locked intent must
       // dominate it and preserve the unconditional user request.
-      await expect(
-        service.executeSuspend(
-          agentId,
-          orgId,
-          enqueued.job.id,
-          "billing_request",
-          current.lifecycleRevision,
-        ),
-      ).resolves.toMatchObject({ success: true, containerStopped: true });
+      const stoppedResult = await service.executeSuspend(
+        agentId,
+        orgId,
+        enqueued.job.id,
+        "billing_request",
+        current.lifecycleRevision,
+      );
+      expect(stoppedResult).toMatchObject({ success: true, containerStopped: true });
       expect(providerStop).toHaveBeenCalledTimes(1);
       const [stopped] = await dbWrite
         .select()
@@ -1089,6 +1126,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       expect(intent.status).toBe("provider_confirmed");
     } finally {
       providerStop.mockRestore();
+      providerSpy.mockRestore();
       gateSpy.mockRestore();
     }
   });

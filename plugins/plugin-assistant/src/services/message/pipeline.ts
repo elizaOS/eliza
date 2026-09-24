@@ -1251,7 +1251,7 @@ export async function runV5MessageRuntimeStage1(
     // runtime.actions. An explicit request must keep it even when no domain
     // hint resolved, or when every admitted domain action was selected.
     const requestsToolDiscovery = stageOneCandidates.some((name) =>
-      isDiscoveryActionName(normalizeActionIdentifier(name)),
+      isDiscoveryActionName(name),
     );
     const discoverWithoutActionHints = stageOneCandidates.length === 0;
     const canUseProgressiveActions =
@@ -1358,7 +1358,7 @@ export async function runV5MessageRuntimeStage1(
       // it out of the tier-A parent summary rendered into the planner context.
       actionSurface.summary.tierAParents =
         actionSurface.summary.tierAParents.filter(
-          (name) => !isDiscoveryActionName(normalizeActionIdentifier(name)),
+          (name) => !isDiscoveryActionName(name),
         );
     }
     if (progressiveActions) {
