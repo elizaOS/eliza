@@ -3448,6 +3448,26 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // The keyless fixture disables interactive PTYs. Match the production
+  // policy denial without claiming a CLI or websocket session was started.
+  await page.route("**/api/pty/sessions", async (route) => {
+    if (
+      route.request().method() !== "POST" ||
+      new URL(route.request().url()).pathname !== "/api/pty/sessions"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error:
+          "Interactive PTY sessions are disabled (PTY_INTERACTIVE_ENABLED=false or store build).",
+      }),
+    });
+  });
+
   // Coding-project registry read by the tasks/cockpit surfaces; the keyless
   // stub 501s it, which trips the issue guards on any route that mounts them.
   await page.route("**/api/projects", async (route) => {
