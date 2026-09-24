@@ -16,3 +16,8 @@ bun run --cwd packages/cloud/e2e test   # tests
 ```
 
 No standalone build script is defined; this package is consumed or executed from source.
+
+The exact-three synthetic agent lane uses `stability:keyless`; `stability:real`
+selects an explicitly credentialed model over the same mock services. Linux
+containment is checked by `test:containment`. Reports and verified receipts
+live under root `test-results/cloud-stability`.

@@ -2,24 +2,23 @@
  * Unit tests for AgentRuntime.useModel provider fallback: rotation to a
  * lower-priority provider on retryable (429 / 5xx / 529 / fetch-failed) errors,
  * failing closed for non-retryable errors and TTS slots, and honoring a pinned
- * provider. Drives a real AgentRuntime + InMemoryDatabaseAdapter with vi.fn
+ * provider. Drives a real AgentRuntime + SQLiteDatabaseAdapter with vi.fn
  * model handlers — no live model calls.
  */
 
 import { ElizaError } from "@elizaos/core";
-import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../runtime";
+import type { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(): AgentRuntime {
-	return new AgentRuntime({
+	return createSQLiteTestRuntime({
 		character: {
 			name: "ProviderFallbackAgent",
 			bio: "test",
 			settings: {},
 		} as Character,
-		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
 	});
 }

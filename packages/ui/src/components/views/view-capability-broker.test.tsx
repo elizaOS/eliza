@@ -17,9 +17,9 @@ import {
 } from "@elizaos/shared/views/surface-manifest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-contacts/src/view-capabilities";
-import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-messages/src/view-capabilities";
-import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-phone/src/view-capabilities";
+import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-contacts/src/view-capabilities";
+import { MESSAGES_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-messages/src/view-capabilities";
+import { PHONE_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-phone/src/view-capabilities";
 import {
   brokerViewInteract,
   isReadOnlyViewCapability,
@@ -302,6 +302,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
           read,
           undefined,
           `${viewId}-semantic-read`,
+          "fixture-installation",
         );
       });
       expect(sendWsMessage).toHaveBeenLastCalledWith(
@@ -326,6 +327,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
             capability,
             { name: "field", value: "changed", id: "field" },
             `${viewId}-denied-${capability}`,
+            "fixture-installation",
           );
         });
         expect(sendWsMessage).toHaveBeenLastCalledWith(

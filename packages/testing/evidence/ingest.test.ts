@@ -359,6 +359,7 @@ describe("ingestAllSilos", () => {
       ["walkthrough-reports", "ingested", 1],
       ["live-test-runs", "ingested", 1],
       ["scenario-runner", "ingested", 1],
+      ["cloud-stability", "absent", 0],
       ["group-chat-timing", "ingested", 1],
       ["content-context", "ingested", 23],
     ]);

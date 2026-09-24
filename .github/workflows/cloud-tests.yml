@@ -245,3 +245,9 @@ jobs:
           retention-days: 7
           include-hidden-files: true
           if-no-files-found: warn
+
+  agent-stability:
+    needs: [lint-and-types]
+    uses: ./.github/workflows/cloud-stability.yml
+    with:
+      real_model: false
