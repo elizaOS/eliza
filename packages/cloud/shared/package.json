@@ -83,10 +83,8 @@
     "drizzle-orm": "0.45.2",
     "exceljs": "^4.4.0",
     "expletives": "^0.1.5",
-    "gray-matter": "^4.0.3",
     "hono": "4.13.8",
     "jose": "^6.0.0",
-    "json-schema": "^0.4.0",
     "json5": "^2.2.3",
     "libphonenumber-js": "^1.12.42",
     "nanoid": "^6.0.0",
@@ -124,7 +122,8 @@
     "ioredis-mock": "^8.13.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "@types/json-schema": "^7.0.15"
   },
   "elizaos": {
     "managedIntegration": {

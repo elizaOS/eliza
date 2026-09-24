@@ -13,7 +13,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/testing": ["../testing/src/index.ts"],
       "@elizaos/plugin-assistant": [
         "../../plugins/plugin-assistant/src/index.ts"
       ],
@@ -91,8 +90,6 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/agent/api": ["./src/api/index.ts"],
-      "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
@@ -140,9 +137,6 @@
       ],
       "@elizaos/plugin-native-phone/bridge": [
         "../../plugins/plugin-native-phone/src/bridge.ts"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
       ],
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"

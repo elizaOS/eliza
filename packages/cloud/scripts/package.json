@@ -1,0 +1,14 @@
+{
+  "name": "@elizaos/cloud-tools",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@elizaos/auth": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/testing": "workspace:*"
+  }
+}

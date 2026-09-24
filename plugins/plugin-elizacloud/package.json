@@ -17,21 +17,13 @@
     "./package.json": "./package.json",
     "./endpoint-config": {
       "types": "./dist/utils/config.d.ts",
-      "eliza-source": {
-        "types": "./src/utils/config.ts",
-        "import": "./src/utils/config.ts",
-        "default": "./src/utils/config.ts"
-      },
+      "eliza-source": "./src/utils/config.ts",
       "import": "./dist/utils/config.js",
       "default": "./dist/utils/config.js"
     },
     ".": {
       "types": "./dist/index.node.d.ts",
-      "eliza-source": {
-        "types": "./src/index.node.ts",
-        "import": "./src/index.node.ts",
-        "default": "./src/index.node.ts"
-      },
+      "eliza-source": "./src/index.node.ts",
       "node": {
         "types": "./dist/index.node.d.ts",
         "import": "./dist/node/index.node.js",
@@ -42,11 +34,7 @@
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
+      "eliza-source": "./src/*.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },

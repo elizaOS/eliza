@@ -10,7 +10,6 @@
       "@/lib/*": ["../../shared/src/lib/*"],
       "@/db/*": ["../../shared/src/db/*"],
       "@/types/*": ["../../shared/src/types/*"],
-      "@elizaos/cloud-shared": ["../../shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../../shared/src/*"],
       "@elizaos/core": ["../../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../../packages/core/src/*"],
