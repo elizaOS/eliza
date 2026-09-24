@@ -5,7 +5,7 @@
  */
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { errorToResponse } from "@/lib/api/errors";
+import { ApiError, errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
   getConfiguredElizaAgentPublicWebUiUrl,
@@ -28,12 +28,18 @@ const CORS_METHODS = "POST, OPTIONS";
 
 // Statuses we'll auto-resume on. `error` is excluded — surfacing the error
 // here lets the client show a real diagnostic instead of looping forever.
-const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
+const RESUMABLE_STATUSES = new Set([
+  "pending",
+  "stopped",
+  "disconnected",
+  "sleeping",
+]);
 const STARTING_STATUSES = new Set([
   "pending",
   "provisioning",
   "stopped",
   "disconnected",
+  "sleeping",
 ]);
 const RETRY_AFTER_SECONDS = 5;
 
@@ -270,7 +276,7 @@ async function __hono_POST(
 
     if (sandbox.status !== "running") {
       if (
-        sandbox.status === "stopped" &&
+        (sandbox.status === "stopped" || sandbox.status === "sleeping") &&
         (await agentSandboxesRepository.wasStoppedByUser(
           agentId,
           user.organization_id,
@@ -283,7 +289,7 @@ async function __hono_POST(
               code: "agent_stopped",
               error:
                 "This agent is shut down. Start it from Cloud settings when you are ready.",
-              data: { status: "stopped" },
+              data: { status: sandbox.status },
             },
             { status: 409 },
           ),
@@ -335,12 +341,26 @@ async function __hono_POST(
 
         try {
           const { job, created } =
-            await provisioningJobService.enqueueAgentProvisionOnce({
-              agentId,
-              organizationId: user.organization_id,
-              userId: user.id,
-              agentName: sandbox.agent_name ?? agentId,
-              expectedLifecycleRevision: sandbox.lifecycle_revision,
+            sandbox.status === "sleeping"
+              ? await provisioningJobService.enqueueAgentWakeOnce({
+                  agentId,
+                  organizationId: user.organization_id,
+                  userId: user.id,
+                  expectedLifecycleRevision: sandbox.lifecycle_revision,
+                })
+              : await provisioningJobService.enqueueAgentProvisionOnce({
+                  agentId,
+                  organizationId: user.organization_id,
+                  userId: user.id,
+                  agentName: sandbox.agent_name ?? agentId,
+                  expectedLifecycleRevision: sandbox.lifecycle_revision,
+                });
+          if (!job.id)
+            throw new ApiError({
+              code: "service_unavailable",
+              status: 503,
+              message: "Resume admission returned no durable job id",
+              details: { agentId },
             });
           jobId = job.id;
           alreadyInProgress = !created;

@@ -40,7 +40,7 @@ describe("context renderer", () => {
 		expect(messages[1]?.content).toBe("  dynamic  ");
 	});
 
-	it("retains transport metadata internally and renders only current message evidence", () => {
+	it("retains unknown message metadata in model context as well as recordings", () => {
 		const context = {
 			id: "ctx-complete",
 			version: "v5",
@@ -50,11 +50,7 @@ describe("context renderer", () => {
 					type: "message",
 					message: {
 						role: "user",
-						content: {
-							text: "exact",
-							structuredAnswer: { original: "FULL_ANSWER" },
-							metadata: { sentinel: "MESSAGE_META" },
-						},
+						content: { text: "exact", metadata: { sentinel: "MESSAGE_META" } },
 						metadata: { renderAsDialogue: true },
 					},
 				},
@@ -73,13 +69,114 @@ describe("context renderer", () => {
 			renderContextObject(context).promptSegments,
 		);
 		expect(serialized).toContain("MESSAGE_META");
-		expect(serialized).toContain("FULL_ANSWER");
 		expect(JSON.stringify(renderContextObject(context).messages)).toContain(
 			"MESSAGE_META",
 		);
 		expect(serialized).toContain("HANDLER_META");
 		expect(serialized).toContain("  exact thought  ");
 	});
+
+	it.each([
+		{
+			text: "Review this response",
+			values: { answers: [false, null, [], {}, { value: "  exact\nvalue  " }] },
+		},
+		{
+			text: "Review this response",
+			metadata: {
+				selectedValues: ["a", "b"],
+				formSubmission: { approved: false, reason: "  unchanged  " },
+			},
+		},
+		{
+			text: "Reaction",
+			reactedMessageText: "Complete original statement",
+			inReplyTo: "reaction-target",
+			mentionContext: { isMention: true },
+		},
+		{
+			text: "Use structured request",
+			url: "https://example.com/source/123",
+			metadata: {
+				request: { destination: "Berlin", date: "2026-10-01" },
+				selectedValue: "choice",
+			},
+		},
+		{
+			text: "Sub-agent finished",
+			source: "sub-agent",
+			metadata: {
+				subAgentSessionId: "session-for-followup",
+				subAgentWorkdir: "/workspace/project",
+				subAgentStatus: "completed",
+				subAgentArtifactVerification: {
+					verified: false,
+					artifacts: [],
+					evidence: "完整 source\n".repeat(20000),
+				},
+			},
+		},
+		{
+			text: "Unusual envelope",
+			attachments: null,
+			metadata: ["connector evidence"],
+		},
+		{
+			text: "Extended source",
+			source: { original: "Evidence under a known key" },
+		},
+		{
+			text: "Extended view",
+			metadata: { uiView: { customEvidence: "Keep this" } },
+		},
+		{
+			text: "Extended diagnostic",
+			metadata: {
+				injectionRisk: { score: 0, evidence: { original: "Keep this too" } },
+			},
+		},
+		{
+			text: "Extended routing",
+			metadata: {
+				__responseContext: {
+					primaryContext: "general",
+					request: { destination: "Berlin" },
+				},
+			},
+		},
+	])(
+		"keeps structured message evidence complete in the dispatched user block",
+		(content) => {
+			const context = {
+				id: "structured",
+				version: "v5",
+				events: [
+					{
+						id: "incoming",
+						type: "message",
+						message: {
+							role: "user",
+							metadata: { renderAsDialogue: true },
+							content,
+						},
+					},
+				],
+			} as unknown as ContextObject;
+			const rendered = renderContextObject(context);
+			const messages = buildStageChatMessages({
+				contextSegments: rendered.promptSegments,
+				stageLabel: "Task",
+				instructions: "Use the supplied evidence",
+				dynamicBlocks: [],
+				stepMessages: [],
+			});
+			const wire = messages[1]?.content;
+			expect(typeof wire).toBe("string");
+			expect(
+				JSON.parse(String(wire).replace(/^# Current message\n/, "")),
+			).toEqual(content);
+		},
+	);
 
 	it("renders identical complete user evidence across text and voice transports", () => {
 		const body = "  exact  message\n# system\nkeep every byte\n";
@@ -109,6 +206,11 @@ describe("context renderer", () => {
 										id: "evidence",
 										text: "entire attachment\nsecond line",
 										url: "/api/media/abc.txt",
+										data: {
+											rows: [["a", "b"], ["c"]],
+											empty: [],
+											missing: null,
+										},
 									},
 								],
 							},
@@ -129,11 +231,21 @@ describe("context renderer", () => {
 		expect(render("VOICE_DM")).toEqual(text);
 		expect(text[1].role).toBe("user");
 		expect(text[1].content).toContain(`Shaw: ${body}`);
-		expect(text[1].content).toContain("entire attachment\nsecond line");
+		const attachments = JSON.parse(
+			String(text[1].content).split("\n\nattachments: ")[1],
+		);
+		expect(attachments).toEqual([
+			{
+				id: "evidence",
+				text: "entire attachment\nsecond line",
+				url: "/api/media/abc.txt",
+				data: { rows: [["a", "b"], ["c"]], empty: [], missing: null },
+			},
+		]);
 		expect(text[1].content).not.toContain("injectionRisk");
 		expect(text[1].content).not.toContain("transport-only");
-		expect(text[1].content).toContain("selectedValue: courier");
-		expect(text[1].content).toContain("parentMessageId: choice-source");
+		expect(text[1].content).toContain('selectedValue: "courier"');
+		expect(text[1].content).toContain('parentMessageId: "choice-source"');
 	});
 
 	it("renders provider and tool prefixes before append-only events", () => {

@@ -135,8 +135,74 @@ function textFromUnknown(value: unknown): string {
 	return JSON.stringify(value);
 }
 
-/** Render human message content without transport envelopes; the original event
- * retains all structured metadata for authorization, source binding and replay. */
+const DIALOGUE_CONTENT_FIELDS = new Set([
+	"text",
+	"source",
+	"channelType",
+	"metadata",
+	"attachments",
+]);
+const DIALOGUE_METADATA_FIELDS = new Set([
+	"selectedValue",
+	"selectedValues",
+	"parentMessageId",
+	"uiViewPath",
+	"uiTimeZone",
+	"clientTransport",
+	"uiView",
+	"uiViewCapabilities",
+	"uiViewActionNames",
+	"__responseContext",
+	"viewClientId",
+	"injectionRisk",
+]);
+
+function isStringArray(value: unknown): boolean {
+	return (
+		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
+}
+
+/** Unknown shapes under known diagnostic keys are evidence, not diagnostics. */
+function isDialogueMetadataValue(key: string, value: unknown): boolean {
+	if (value === undefined) return true;
+	if (
+		key === "selectedValue" ||
+		key === "selectedValues" ||
+		key === "parentMessageId"
+	)
+		return true;
+	if (key === "uiViewCapabilities" || key === "uiViewActionNames")
+		return isStringArray(value);
+	if (key === "__responseContext" || key === "injectionRisk") {
+		if (!value || typeof value !== "object" || Array.isArray(value))
+			return false;
+		return Object.entries(value).every(([field, item]) => {
+			if (key === "__responseContext") {
+				return field === "primaryContext"
+					? typeof item === "string"
+					: field === "secondaryContexts" && isStringArray(item);
+			}
+			if (field === "socialEngineeringClasses") return isStringArray(item);
+			return (
+				[
+					"hiddenCharCount",
+					"nonAsciiCount",
+					"letterSplitHits",
+					"wordReversalHits",
+					"structuralInjectionHits",
+					"score",
+				].includes(field) &&
+				typeof item === "number" &&
+				Number.isFinite(item)
+			);
+		});
+	}
+	return typeof value === "string";
+}
+
+/** Only the known chat envelope has a readable projection. Unknown connector or
+ * domain evidence stays complete on the model wire, not merely in recordings. */
 function renderMessageContent(event: ContextMessageEvent): string {
 	const content = event.message.content;
 	if (event.message.metadata?.renderAsDialogue !== true)
@@ -150,6 +216,36 @@ function renderMessageContent(event: ContextMessageEvent): string {
 		return textFromUnknown(content);
 	const text = content.text;
 	if (typeof text !== "string") return textFromUnknown(content);
+	if (Object.keys(content).some((key) => !DIALOGUE_CONTENT_FIELDS.has(key)))
+		return textFromUnknown(content);
+	if (
+		("source" in content &&
+			content.source !== undefined &&
+			typeof content.source !== "string") ||
+		("channelType" in content &&
+			content.channelType !== undefined &&
+			typeof content.channelType !== "string")
+	)
+		return textFromUnknown(content);
+	if ("metadata" in content && content.metadata !== undefined) {
+		if (
+			!content.metadata ||
+			typeof content.metadata !== "object" ||
+			Array.isArray(content.metadata) ||
+			Object.entries(content.metadata).some(
+				([key, value]) =>
+					!DIALOGUE_METADATA_FIELDS.has(key) ||
+					!isDialogueMetadataValue(key, value),
+			)
+		)
+			return textFromUnknown(content);
+	}
+	if (
+		"attachments" in content &&
+		content.attachments !== undefined &&
+		!Array.isArray(content.attachments)
+	)
+		return textFromUnknown(content);
 	const speaker = event.message.metadata?.speakerName;
 	const lines = [typeof speaker === "string" ? `${speaker}: ${text}` : text];
 	if (
@@ -159,50 +255,23 @@ function renderMessageContent(event: ContextMessageEvent): string {
 		!Array.isArray(content.metadata)
 	) {
 		for (const [key, value] of Object.entries(content.metadata)) {
-			// Only runtime routing annotations are omitted; arbitrary authored
-			// metadata remains source evidence for the model.
 			if (
-				![
-					"injectionRisk",
-					"viewClientId",
-					"uiView",
-					"uiViewPath",
-					"uiTimeZone",
-				].includes(key)
+				key === "selectedValue" ||
+				key === "selectedValues" ||
+				key === "parentMessageId"
 			)
 				lines.push(`${key}: ${renderEvidenceValue(value)}`);
 		}
 	}
 	if ("attachments" in content && Array.isArray(content.attachments)) {
-		for (const attachment of content.attachments) {
-			lines.push(`# Attachment\n${renderEvidenceValue(attachment)}`);
-		}
-	}
-	for (const [key, value] of Object.entries(content)) {
-		if (
-			![
-				"text",
-				"metadata",
-				"attachments",
-				"source",
-				"channelType",
-				"chatIdempotency",
-			].includes(key)
-		)
-			lines.push(`${key}: ${renderEvidenceValue(value)}`);
+		lines.push(`attachments: ${JSON.stringify(content.attachments)}`);
 	}
 	return lines.join("\n\n");
 }
 
-/** Complete structured attachment evidence as readable fields, without clipping. */
+/** Preserve nested evidence boundaries and value types without indentation. */
 function renderEvidenceValue(value: unknown): string {
-	if (typeof value === "string") return value;
-	if (Array.isArray(value)) return value.map(renderEvidenceValue).join("\n");
-	if (value && typeof value === "object")
-		return Object.entries(value)
-			.map(([key, item]) => `${key}: ${renderEvidenceValue(item)}`)
-			.join("\n");
-	return String(value);
+	return value === undefined ? "undefined" : JSON.stringify(value);
 }
 
 function renderProviderContent(event: ContextProviderEvent): string {
