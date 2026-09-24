@@ -17,7 +17,7 @@ function isCoreRuntime(id: string): boolean {
 
 export function rejectRuntimeInRendererPlugin(): Plugin {
   let serving = false;
-  const importers = new Map<string, Set<string>>();
+  const importOrigins = new Map<string, Set<string>>();
   return {
     name: "reject-runtime-in-renderer",
     enforce: "pre",
@@ -27,9 +27,9 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
     resolveId(id, importer) {
       if (!isCoreRuntime(id)) return null;
       if (importer) {
-        const origins = importers.get(id) ?? new Set<string>();
+        const origins = importOrigins.get(id) ?? new Set<string>();
         origins.add(importer);
-        importers.set(id, origins);
+        importOrigins.set(id, origins);
       }
       if (serving) {
         this.error(
@@ -47,10 +47,14 @@ export function rejectRuntimeInRendererPlugin(): Plugin {
           isCoreRuntime,
         );
         if (runtime) {
-          const importers =
-            this.getModuleInfo(runtime)?.importers.filter(
-              (id) => id in output.modules,
-            ) ?? [];
+          const importers = [
+            ...new Set([
+              ...(importOrigins.get(runtime) ?? []),
+              ...(this.getModuleInfo(runtime)?.importers.filter(
+                (id) => id in output.modules,
+              ) ?? []),
+            ]),
+          ];
           this.error(
             `Node runtime import ${runtime} survived in renderer chunk ${output.fileName}. Importing modules: ${importers.join(", ") || "dynamic import"}.`,
           );

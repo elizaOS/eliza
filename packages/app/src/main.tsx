@@ -66,7 +66,6 @@ import {
   type AppBlockerSettingsCardProps,
   type WebsiteBlockerSettingsCardProps,
 } from "@elizaos/core/contracts/personal-assistant";
-import { logger } from "@elizaos/core/logger";
 import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
@@ -127,6 +126,7 @@ import {
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
 import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
 import { createTranslator } from "@elizaos/ui/i18n";
+import { logger } from "@elizaos/ui/logger";
 import {
   getWindowNavigationPath,
   isAppWindowRoute,

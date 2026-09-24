@@ -36,9 +36,6 @@ const appCoreTaskHostCapabilities = path.join(
   "task-host-capabilities.ts",
 );
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
-const corePackageRequire = createRequire(
-  path.join(elizaRoot, "packages", "core", "package.json"),
-);
 const assistantPackageRequire = createRequire(
   path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
 );
