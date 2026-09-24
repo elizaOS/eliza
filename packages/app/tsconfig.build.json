@@ -61,6 +61,7 @@
     "src/config",
     "src/security",
     "src/entry.ts",
+    "src/dev-settings-figlet-heading.ts",
     "src/platform",
     "src/runtime",
     "src/utils",
