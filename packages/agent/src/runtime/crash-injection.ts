@@ -23,7 +23,7 @@
  * @module crash-injection
  */
 import process from "node:process";
-import { RESTART_EXIT_CODE } from "@elizaos/shared/restart";
+import { RESTART_EXIT_CODE } from "@elizaos/shared";
 
 export { RESTART_EXIT_CODE };
 

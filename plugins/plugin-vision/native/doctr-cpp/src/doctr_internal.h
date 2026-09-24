@@ -11,7 +11,7 @@
  * (channel-major within an HxW plane), OIhw for conv weights, where O is
  * the output channel and I the input channel. This matches PyTorch's
  * default and also matches the layout in the GGUF that
- * scripts/doctr_to_gguf.py emits — the converter writes the state_dict
+ * packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py emits — the converter writes the state_dict
  * tensors as-is, so our C kernels can consume them without transposing.
  */
 
@@ -35,7 +35,7 @@ typedef struct doctr_gguf doctr_gguf;
 /* Open and mmap (or read into a heap buffer; implementation detail) the
  * GGUF at `path`. Returns NULL on failure and sets *err to a negative
  * errno. The reader supports F32 tensors only — that's all
- * scripts/doctr_to_gguf.py emits. */
+ * packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py emits. */
 doctr_gguf *doctr_gguf_open(const char *path, int *err);
 void        doctr_gguf_close(doctr_gguf *g);
 
@@ -185,7 +185,7 @@ size_t doctr_dbnet_postprocess(
 /* Greedy CTC decode of a (timesteps, vocab+1) fp32 logits matrix.
  * Position 0 of vocab+1 is the blank symbol; the remaining `vocab_len`
  * symbols are ordered to match the vocab string emitted by
- * scripts/doctr_to_gguf.py.
+ * packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py.
  *
  * Writes UTF-8 into `text` (NUL-terminated, capped at
  * `text_capacity-1` bytes) and the per-character mean confidence into

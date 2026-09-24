@@ -13,7 +13,7 @@
     "./stubs/ocr": "./src/stubs/stub-ocr.ts"
   },
   "scripts": {
-    "fixtures:generate": "bun run scripts/generate-fixtures.mjs",
+    "fixtures:generate": "bun run ../../../scripts/eliza-1/vision-cua-e2e/generate-fixtures.mjs",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit"

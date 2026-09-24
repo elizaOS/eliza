@@ -8,7 +8,7 @@ export {
   formatShortDate,
   formatTime,
   formatUptime,
-} from "@elizaos/shared/utils/format";
+} from "@elizaos/shared";
 
 type RelativeTimeTranslator = (
   key: string,

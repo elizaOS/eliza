@@ -9,14 +9,16 @@
 // Registration-surface contracts live in @elizaos/shared (React-free canonical
 // home); import them from there rather than the React package.
 
-export { registerDetailExtension } from "@elizaos/shared/apps/detail-extension-registry";
-export type { AppDetailExtensionProps } from "@elizaos/shared/apps/detail-extension-types";
 export type {
+  AppDetailExtensionProps,
   OverlayApp,
   OverlayAppContext,
-} from "@elizaos/shared/apps/overlay-app-api";
-export { registerOverlayApp } from "@elizaos/shared/apps/overlay-app-registry";
-export { resolveAppBranding } from "@elizaos/shared/config/app-config";
+} from "@elizaos/shared";
+export {
+  registerDetailExtension,
+  registerOverlayApp,
+  resolveAppBranding,
+} from "@elizaos/shared";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,

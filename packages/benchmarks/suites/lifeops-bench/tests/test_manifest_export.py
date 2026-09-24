@@ -19,7 +19,7 @@ def _manifest() -> dict[str, object]:
 def test_manifest_has_in_tree_generator_metadata() -> None:
     manifest = _manifest()
     assert manifest["schemaVersion"] == 1
-    assert manifest["generator"] == "suites/lifeops-bench/scripts/export-action-manifest.ts"
+    assert manifest["generator"] == "scripts/lifeops-bench/export-action-manifest.ts"
     assert manifest["sourcePlugins"] == [
         "@elizaos/plugin-contacts",
         "@elizaos/plugin-calendar",

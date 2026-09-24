@@ -33,12 +33,12 @@ import {
 } from "@elizaos/plugin-assistant";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
+  composePrompt,
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
   parseCanonicalInteger,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import { composePrompt } from "@elizaos/shared/text/template-rendering";
 import { memoryContextQaTemplate } from "./memory-context-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
 

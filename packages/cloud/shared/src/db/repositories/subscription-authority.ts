@@ -4,7 +4,7 @@
  * subscription so callers can compose it with allowance and credit work.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -28,7 +28,7 @@ export const SUBSCRIPTION_AUTHORITY_CONFLICT = "SUBSCRIPTION_AUTHORITY_CONFLICT"
 export const SUBSCRIPTION_AUTHORITY_NOT_FOUND = "SUBSCRIPTION_AUTHORITY_NOT_FOUND";
 export const SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND = "SUBSCRIPTION_AUTHORITY_TENANT_NOT_FOUND";
 
-type SubscriptionRevisionValues = Required<
+export type SubscriptionRevisionValues = Required<
   Pick<
     NewBillingSubscription,
     | "provider"
@@ -51,7 +51,14 @@ type SubscriptionRevisionValues = Required<
     | "last_provider_event_created_at"
     | "provider_object_digest"
   >
->;
+> & {
+  billing_scope_id?: string | null;
+  merchant_key?: string;
+  plan_revision_id?: string | null;
+  trial_start?: Date | null;
+  trial_end?: Date | null;
+  quantity?: number;
+};
 
 type SubscriptionCreateValues = SubscriptionRevisionValues & {
   id?: string;
@@ -66,6 +73,8 @@ export interface AdvanceSubscriptionInput {
   /** Confirms values came from a fresh provider-object retrieval, never the webhook payload. */
   observation: "authoritative_provider_retrieval";
   values: SubscriptionRevisionValues;
+  /** Records an app policy transition such as expiry even if provider fields are unchanged. */
+  forceRevision?: boolean;
 }
 
 export interface AdvanceSubscriptionCommandInput {
@@ -103,6 +112,12 @@ function revisionInsert(
 ) {
   return {
     organization_id: subscription.organization_id,
+    billing_scope_id: subscription.billing_scope_id,
+    merchant_key: subscription.merchant_key,
+    plan_revision_id: subscription.plan_revision_id,
+    trial_start: subscription.trial_start,
+    trial_end: subscription.trial_end,
+    quantity: subscription.quantity,
     subscription_id: subscription.id,
     revision: subscription.lifecycle_revision,
     source,
@@ -162,7 +177,11 @@ function requireActivationAllowed(
   >,
   values: SubscriptionRevisionValues,
 ): void {
-  if (values.status !== "active" && values.status !== "grace") return;
+  if (
+    values.billing_scope_id ||
+    (values.status !== "active" && values.status !== "grace" && values.status !== "trialing")
+  )
+    return;
   if (organization.account_lifecycle_state !== "active" || organization.paid_work_fenced_at) {
     conflict("Subscription activation is blocked by the account deletion fence", {
       accountLifecycleState: organization.account_lifecycle_state,
@@ -170,6 +189,7 @@ function requireActivationAllowed(
     });
   }
   if (
+    !values.billing_scope_id &&
     organization.stripe_customer_id !== null &&
     organization.stripe_customer_id !== values.stripe_customer_id
   ) {
@@ -231,7 +251,10 @@ export class SubscriptionAuthorityRepository {
       .where(
         and(
           eq(billingSubscriptions.organization_id, organizationId),
+          isNull(billingSubscriptions.billing_scope_id),
           inArray(billingSubscriptions.status, [
+            "trialing",
+            "paused",
             "pending",
             "incomplete",
             "active",
@@ -256,6 +279,7 @@ export class SubscriptionAuthorityRepository {
       .where(
         and(
           eq(billingSubscriptions.organization_id, organizationId),
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.id, subscriptionId),
         ),
       )
@@ -273,6 +297,7 @@ export class SubscriptionAuthorityRepository {
       .where(
         and(
           eq(billingSubscriptionRevisions.organization_id, organizationId),
+          isNull(billingSubscriptionRevisions.billing_scope_id),
           eq(billingSubscriptionRevisions.subscription_id, subscriptionId),
         ),
       )
@@ -284,7 +309,10 @@ export class SubscriptionAuthorityRepository {
     values: SubscriptionCreateValues,
     source: BillingSubscriptionRevisionSource,
     expectedAccountSubscriptionId: string | null,
+    transaction?: DbTransaction,
   ): Promise<SubscriptionMutationResult> {
+    if (transaction)
+      return this.createInTransaction(transaction, values, source, expectedAccountSubscriptionId);
     return writeTransaction((tx) =>
       this.createInTransaction(tx, values, source, expectedAccountSubscriptionId),
     );
@@ -314,7 +342,13 @@ export class SubscriptionAuthorityRepository {
         context: { organizationId: values.organization_id },
       });
     }
-    const accountAuthority = await readAccountAuthority(tx, values.organization_id);
+    const accountAuthority = values.billing_scope_id
+      ? null
+      : await readAccountAuthority(tx, values.organization_id);
+    if (values.billing_scope_id && expectedAccountSubscriptionId !== null)
+      conflict("App subscription creation cannot select an account subscription identity", {
+        billingScopeId: values.billing_scope_id,
+      });
     requireActivationAllowed(organization, values);
 
     const [currentForOrganization] = await tx
@@ -323,7 +357,12 @@ export class SubscriptionAuthorityRepository {
       .where(
         and(
           eq(billingSubscriptions.organization_id, values.organization_id),
+          values.billing_scope_id
+            ? eq(billingSubscriptions.billing_scope_id, values.billing_scope_id)
+            : isNull(billingSubscriptions.billing_scope_id),
           inArray(billingSubscriptions.status, [
+            "trialing",
+            "paused",
             "pending",
             "incomplete",
             "active",
@@ -364,7 +403,7 @@ export class SubscriptionAuthorityRepository {
           revision: existing.lifecycle_revision,
         });
       }
-      requireCurrentAccountAuthority(accountAuthority, existing.id);
+      if (accountAuthority) requireCurrentAccountAuthority(accountAuthority, existing.id);
       return { subscription: existing, revision, replayed: true };
     }
 
@@ -381,6 +420,7 @@ export class SubscriptionAuthorityRepository {
         .where(
           and(
             eq(billingSubscriptions.provider, values.provider),
+            eq(billingSubscriptions.merchant_key, values.merchant_key ?? "platform"),
             eq(billingSubscriptions.provider_environment, values.provider_environment),
             eq(billingSubscriptions.stripe_subscription_id, values.stripe_subscription_id),
           ),
@@ -413,13 +453,14 @@ export class SubscriptionAuthorityRepository {
           revision: subscription.lifecycle_revision,
         });
       }
-      requireCurrentAccountAuthority(accountAuthority, subscription.id);
+      if (accountAuthority) requireCurrentAccountAuthority(accountAuthority, subscription.id);
       return { subscription, revision, replayed: true };
     }
 
     if (
-      accountAuthority.state === "unavailable" ||
-      accountAuthority.subscription_id !== expectedAccountSubscriptionId
+      accountAuthority &&
+      (accountAuthority.state === "unavailable" ||
+        accountAuthority.subscription_id !== expectedAccountSubscriptionId)
     ) {
       conflict("Subscription creation account authority changed since the command was accepted", {
         organizationId: values.organization_id,
@@ -439,10 +480,11 @@ export class SubscriptionAuthorityRepository {
         revision: 1,
       });
     }
-    await tx
-      .update(organizationSubscriptionAuthorities)
-      .set({ subscription_id: subscription.id, state: "current" })
-      .where(eq(organizationSubscriptionAuthorities.organization_id, values.organization_id));
+    if (accountAuthority)
+      await tx
+        .update(organizationSubscriptionAuthorities)
+        .set({ subscription_id: subscription.id, state: "current" })
+        .where(eq(organizationSubscriptionAuthorities.organization_id, values.organization_id));
     return { subscription, revision, replayed: false };
   }
 
@@ -472,7 +514,11 @@ export class SubscriptionAuthorityRepository {
       conflict("Account subscription authority is unavailable during erasure", { organizationId });
   }
 
-  async advance(input: AdvanceSubscriptionInput): Promise<SubscriptionMutationResult> {
+  async advance(
+    input: AdvanceSubscriptionInput,
+    transaction?: DbTransaction,
+  ): Promise<SubscriptionMutationResult> {
+    if (transaction) return this.advanceInTransaction(transaction, input);
     return writeTransaction((tx) => this.advanceInTransaction(tx, input));
   }
 
@@ -555,8 +601,10 @@ export class SubscriptionAuthorityRepository {
         context: { organizationId: input.organizationId },
       });
     }
-    const accountAuthority = await readAccountAuthority(tx, input.organizationId);
-    requireCurrentAccountAuthority(accountAuthority, input.subscriptionId);
+    if (!input.values.billing_scope_id) {
+      const accountAuthority = await readAccountAuthority(tx, input.organizationId);
+      requireCurrentAccountAuthority(accountAuthority, input.subscriptionId);
+    }
     requireActivationAllowed(organization, input.values);
     if (provenance.kind === "reconciliation")
       await requireLiveReconciliationLease(tx, provenance.identity);
@@ -595,6 +643,9 @@ export class SubscriptionAuthorityRepository {
         and(
           eq(billingSubscriptions.id, input.subscriptionId),
           eq(billingSubscriptions.organization_id, input.organizationId),
+          input.values.billing_scope_id
+            ? eq(billingSubscriptions.billing_scope_id, input.values.billing_scope_id)
+            : isNull(billingSubscriptions.billing_scope_id),
         ),
       )
       .limit(1)
@@ -632,6 +683,10 @@ export class SubscriptionAuthorityRepository {
           and(
             eq(billingSubscriptionRevisions.provider, requestedValues.provider),
             eq(
+              billingSubscriptionRevisions.merchant_key,
+              requestedValues.merchant_key ?? "platform",
+            ),
+            eq(
               billingSubscriptionRevisions.provider_environment,
               requestedValues.provider_environment,
             ),
@@ -655,7 +710,7 @@ export class SubscriptionAuthorityRepository {
     // Provider event timestamps are deduplication metadata, not object versions. The
     // caller contract requires a fresh authoritative retrieval, so reordered events
     // converge on provider state without inventing a monotonic Stripe version.
-    if (isExactProviderReplay(current, requestedValues)) {
+    if (!input.forceRevision && isExactProviderReplay(current, requestedValues)) {
       const [revision] = await tx
         .select()
         .from(billingSubscriptionRevisions)
@@ -682,6 +737,8 @@ export class SubscriptionAuthorityRepository {
       });
     }
     if (
+      current.billing_scope_id !== (requestedValues.billing_scope_id ?? null) ||
+      current.merchant_key !== (requestedValues.merchant_key ?? "platform") ||
       current.provider !== requestedValues.provider ||
       current.provider_environment !== requestedValues.provider_environment ||
       current.stripe_customer_id !== requestedValues.stripe_customer_id ||

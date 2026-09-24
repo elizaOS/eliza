@@ -25,7 +25,7 @@
  * to `/api/auth/steward-session` continue to work during the rollout window.
  */
 
-import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
+import type { StewardSessionErrorCode } from "@elizaos/shared";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import {

@@ -39,7 +39,7 @@
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "react": "^19.0.0",
+    "react": "19.2.7",
     "react-dom": "^19.0.0"
   },
   "publishConfig": {
@@ -54,10 +54,10 @@
     "@biomejs/biome": "2.5.14",
     "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.0.0",
     "fast-check": "^4.10.2",
-    "react": "^19.0.0",
+    "react": "19.2.7",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",

@@ -11,7 +11,7 @@
 import { createServer, type Server } from "node:http";
 import { type ElizaError, type IAgentRuntime, logger, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleTextSmall } from "../models";
+import { handleTextSmall } from "../models/text";
 
 /** JSON.stringify only escapes surrogate code units when they are lone; a
  * well-formed body therefore contains no \ud800-\udfff escape at all. */

@@ -10,7 +10,7 @@
  */
 
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import type {
   ScenarioDefinition,
   ScenarioExecutionProfile,

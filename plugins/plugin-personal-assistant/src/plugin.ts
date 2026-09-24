@@ -58,13 +58,13 @@ import type {
   MeetingTranscriptFinalizedPayload,
   PermissionState,
   Platform,
+  HttpPlugin as Plugin,
   Prober,
 } from "@elizaos/shared";
 import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   registerCalendarTimeZoneResolver,
 } from "@elizaos/shared";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -237,6 +237,7 @@ import {
 } from "./lifeops/scheduled-task/message-draft-dispatch.js";
 import {
   installLifeOpsScheduledTaskEventBridge,
+  registerDossierActivityAnchor,
   registerLifeOpsScheduledTaskRunnerDeps,
 } from "./lifeops/scheduled-task/runtime-wiring.js";
 import { handleScheduledTaskInboundMessage } from "./lifeops/scheduled-task/scheduler.js";
@@ -1067,6 +1068,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const anchorRegistry = createAnchorRegistry();
     registerAppLifeOpsAnchors(anchorRegistry);
+    registerDossierActivityAnchor(runtime, anchorRegistry);
     registerAnchorRegistry(runtime, anchorRegistry);
     (
       runtime as IAgentRuntime & { anchorRegistry?: typeof anchorRegistry }
@@ -1508,6 +1510,7 @@ export {
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
+  executeLifeOpsReminderTask,
   executeLifeOpsSchedulerTask,
   LIFEOPS_TASK_INTERVAL_MS,
   LIFEOPS_TASK_JITTER_MS,

@@ -28,11 +28,43 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
+export type {
+  AllPermissionsState,
+  PermissionCheckResult,
+  PermissionManagerConfig,
+  PermissionState,
+  PermissionStatus,
+  Platform,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/shared";
+export {
+  type AndroidUserAgentMarker,
+  type AospVariantConfig,
+  type AppAndroidConfig,
+  type AppConfig,
+  type AppDesktopConfig,
+  type AppPackagingConfig,
+  type AppWebConfig,
+  DEFAULT_APP_CONFIG,
+  resolveAppBranding,
+} from "@elizaos/shared";
 export * from "@elizaos/shared/catalog";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
 // app registry versions explicitly so the Node barrel stays authoritative
 // and avoids ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "@elizaos/shared/catalog";
+export * from "@elizaos/shared/integration-observability";
+export {
+  _resetBuildVariantForTests,
+  BUILD_VARIANTS,
+  type BuildVariant,
+  DEFAULT_BUILD_VARIANT,
+  getBuildVariant,
+  getDirectDownloadUrl,
+  isDirectBuild,
+  isStoreBuild,
+} from "@elizaos/shared/platform/build-variant";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -45,10 +77,7 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
-export * from "./config/app-config";
-export * from "./diagnostics/integration-observability";
 export * from "./first-run/first-run-config";
-export * from "./permissions/types";
 // `./platform/empty-node-module` is intentionally NOT re-exported here.
 // It exists as a tsconfig-paths target for browser builds — re-exporting it
 // would shadow the real api/server, runtime/eliza, etc. exports above with
@@ -64,7 +93,6 @@ export {
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
-export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";

@@ -2,4 +2,3 @@
 // rather than through the manifest-driven loader list: task-coordinator's chat
 // inline-widget registration must run before first render.
 declare module "@elizaos/plugin-agent-orchestrator/ui/register";
-declare module "@elizaos/plugin-relationships/register";

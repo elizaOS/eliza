@@ -19,7 +19,7 @@
  * the cadence-overdue filter even though it also appears inside `metadata_json`.
  */
 
-import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/shared/knowledge-graph";
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/shared";
 import {
   boolean,
   index,

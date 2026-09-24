@@ -9,7 +9,7 @@
  *
  * Tensor layout: NCHW for activations (channel-major within an HxW
  * plane). Conv weights are OIhw. This matches both PyTorch's default
- * and the GGUF emitted by scripts/doctr_to_gguf.py.
+ * and the GGUF emitted by packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py.
  */
 
 #include "doctr_internal.h"

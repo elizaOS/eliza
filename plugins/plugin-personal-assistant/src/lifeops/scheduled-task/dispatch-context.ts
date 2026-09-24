@@ -11,7 +11,7 @@ import {
   type Memory,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   normalizeScheduledEventPayload,
   type OwnerFactsView,

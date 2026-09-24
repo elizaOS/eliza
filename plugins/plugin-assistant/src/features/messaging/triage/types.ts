@@ -1,3 +1,4 @@
+import type { IAgentRuntime, ReadRangeUnit, ReadView } from "@elizaos/core";
 /**
  * Cross-platform message triage — shared type contract.
  *
@@ -6,8 +7,6 @@
  * payloads into MessageRefs; the triage engine scores them; actions expose
  * them to agents.
  */
-
-import type { IAgentRuntime, ReadRangeUnit, ReadView } from "@elizaos/core";
 
 export type MessageSource =
   | "gmail"
@@ -162,6 +161,10 @@ export interface ReadMessageRequest {
   messageId?: string;
   reference?: string;
   worldId?: string;
+  /** Verified requester carried by the MESSAGE boundary, never model-authored continuation state. */
+  requesterEntityId?: string;
+  /** Current authorized room carried by the MESSAGE boundary. */
+  requesterRoomId?: string;
   offset?: number;
   limit?: number;
   unit?: ReadRangeUnit;
@@ -183,6 +186,13 @@ export interface ReadMessageResult {
   text: string;
   readView: ReadView;
   control?: ReadMessageControl;
+  /** Measured source work for bounded-read regression and operations telemetry. */
+  sourceWork?: {
+    headReads: number;
+    segmentRows: number;
+    providerRevisionReads: number;
+    providerBodyFetches: number;
+  };
 }
 
 export type ManageOperationKind =

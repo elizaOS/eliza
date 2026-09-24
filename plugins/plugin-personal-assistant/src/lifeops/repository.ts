@@ -39,7 +39,7 @@ import {
   type EntityStore,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,

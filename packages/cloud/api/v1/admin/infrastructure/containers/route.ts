@@ -9,7 +9,7 @@
  * Requires admin role.
  */
 
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { containersRepository } from "@/db/repositories/containers";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

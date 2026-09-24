@@ -1,5 +1,5 @@
 /** Public-only renderer adapter for this desktop's native remote-target lifecycle. */
-import type { RemoteTargetPublicIdentity } from "@elizaos/shared/contracts/remote-control";
+import type { RemoteTargetPublicIdentity } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
 export interface RemoteTargetStatus {

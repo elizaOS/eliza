@@ -19,7 +19,7 @@ import {
 	type RemoteControllerPublicIdentity,
 	type RemoteJsonValue,
 	type SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import { resolveStateDir } from "./native/auth-bridge";
 
 export type RemoteTargetCommandStatus =

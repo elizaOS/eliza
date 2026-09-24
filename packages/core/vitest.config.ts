@@ -15,6 +15,15 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
+				find: /^@elizaos\/plugin-sqlite$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"plugins",
+					"plugin-sqlite",
+					"index.ts",
+				),
+			},
+			{
 				find: /^@elizaos\/core$/,
 				replacement: new URL("./src/index.ts", import.meta.url).pathname,
 			},

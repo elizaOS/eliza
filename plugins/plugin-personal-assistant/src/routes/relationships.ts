@@ -13,7 +13,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import type {
   Relationship,
   RelationshipFilter,

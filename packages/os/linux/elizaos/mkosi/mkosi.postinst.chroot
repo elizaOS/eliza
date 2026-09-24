@@ -31,12 +31,12 @@ case "$build_mode" in
         exit 1
         ;;
 esac
-brand_source="${source_root}/elizaos/assets/logo_white_bluebg.svg"
+brand_source="${source_root}/linux/elizaos/assets/logo_white_bluebg.svg"
 if [ ! -f "$brand_source" ]; then
     echo "[mkosi.postinst] required branding input is missing: $brand_source" >&2
     exit 1
 fi
-brand_icon_source="${source_root}/elizaos/assets/logo_blue_nobg.svg"
+brand_icon_source="${source_root}/linux/elizaos/assets/logo_blue_nobg.svg"
 if [ ! -f "$brand_icon_source" ]; then
     echo "[mkosi.postinst] required branding icon is missing: $brand_icon_source" >&2
     exit 1
@@ -44,14 +44,14 @@ fi
 install -D -m 0644 "$brand_source" /usr/share/backgrounds/elizaos/elizaos-blue.svg
 install -D -m 0644 "$brand_icon_source" /usr/share/icons/elizaOS/scalable/places/start-here-symbolic.svg
 
-grow_definition="${source_root}/elizaos/mkosi/mkosi.repart/30-home.conf"
+grow_definition="${source_root}/linux/elizaos/mkosi/mkosi.repart/30-home.conf"
 if [ ! -f "$grow_definition" ] || [ -L "$grow_definition" ]; then
     echo "[mkosi.postinst] persistent grow definition is missing or a symlink" >&2
     exit 1
 fi
 install -D -m 0644 "$grow_definition" /usr/lib/elizaos/repart-grow/30-home.conf
 
-control_source="${source_root}/control"
+control_source="${source_root}/linux/control"
 control_inputs=(
     THREAT_MODEL.md
     eliza_control/__init__.py
@@ -143,7 +143,7 @@ case "$build_mode" in
             echo "[mkosi.postinst] release signing public key and pinned SPKI digest are required" >&2
             exit 1
         fi
-        verifier="${source_root}/elizaos/scripts/verify-desktop-artifact.py"
+        verifier="${source_root}/scripts/linux/verify-desktop-artifact.py"
         if [ ! -f "$verifier" ] || [ -L "$verifier" ]; then
             echo "[mkosi.postinst] desktop artifact verifier is missing or is a symlink" >&2
             exit 1

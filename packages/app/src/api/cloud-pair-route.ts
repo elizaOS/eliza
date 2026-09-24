@@ -21,23 +21,17 @@ import type http from "node:http";
 import { logger } from "@elizaos/core";
 import {
   type CloudPairRelaySession,
-  parseCloudPairRelaySession,
-  renderCloudPairHandoffHtml,
-  resolveCloudPairAgentIdFromEnv,
-} from "@elizaos/shared/contracts";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/shared/elizacloud/base-url";
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
-import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud/domain-contract";
-import {
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
-} from "@elizaos/shared/loopback-trust";
+  parseCloudPairRelaySession,
+  renderCloudPairHandoffHtml,
+  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+  resolveCloudPairAgentIdFromEnv,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
 
 const RELAY_TIMEOUT_MS = 15_000;

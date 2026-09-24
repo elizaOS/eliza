@@ -9,8 +9,8 @@
  * Mounted from a transcript attachment via `createPortal` at the shell-overlay
  * z-layer.
  */
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
-import { transcriptPlainText } from "@elizaos/shared/transcripts";
+import type { TranscriptSegment } from "@elizaos/shared";
+import { resolveApiUrl, transcriptPlainText } from "@elizaos/shared";
 import {
   Check,
   Copy,
@@ -34,7 +34,6 @@ import { client } from "../../api";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import { useRole } from "../../hooks/useRole";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { resolveApiUrl } from "../../utils/asset-url";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { RoleGate } from "../RoleGate";
 import { Badge } from "../ui/badge";

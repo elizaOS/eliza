@@ -16,3 +16,7 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-scheduling build  # build
 bun run --cwd plugins/plugin-scheduling test   # tests
 ```
+
+Hosts can use `consumption: "host_claim"` anchors and the runner admission,
+mutation, and execution hooks to enforce persisted owner controls. Automatic
+claims commit admission metadata atomically; stale writers return `raced`.

@@ -9,10 +9,10 @@
  * an arbitrary public host into a Steward-token target.
  */
 import {
+  classifyElizaHostname,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared/contracts";
-import { classifyElizaHostname } from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
 import {
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,

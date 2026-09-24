@@ -8,7 +8,7 @@ import type http from "node:http";
 import { resolveAuthorizedRouteRole } from "@elizaos/app/api/auth";
 import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
 export const AUTH_SESSION_ENTITY_PLATFORM = "eliza_auth_session";

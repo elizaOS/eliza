@@ -74,7 +74,11 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ChatFailureKind, ChatTerminalFailure } from "@elizaos/shared";
+import type {
+  ChatFailureKind,
+  ChatTerminalFailure,
+  RouteRequestContext,
+} from "@elizaos/shared";
 import {
   isChatFailureKind,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
@@ -88,7 +92,6 @@ import {
   parseChatTerminalFailure,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import {
   conversationClientUserMemoryId,
   type DurableConversationChatMarker,

@@ -7,8 +7,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { isLoopbackRemoteAddress } from "@elizaos/shared/loopback-trust";
-import { parseCanonicalInteger } from "@elizaos/shared/utils/number-parsing";
+import {
+  isLoopbackRemoteAddress,
+  parseCanonicalInteger,
+} from "@elizaos/shared";
 import {
   AccountPoolBroker,
   parseBrokerLeaseRequest,

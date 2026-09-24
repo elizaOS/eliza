@@ -50,7 +50,7 @@
  *   --concurrency=<n>   (env: TEST_CONCURRENCY)
  *     Run the parallel-safe `test` tasks through an n-worker pool instead of
  *     strictly serially. Only the secret-free pr lane is parallelised (minus
- *     the shared-database packages in test-task-pool.mjs); the e2e/integration
+ *     the shared-database packages in test-task-pool.ts); the e2e/integration
  *     lanes and any post-merge lane always serialize. Default 1 preserves the
  *     historical fully-serial behaviour, so existing callers are unaffected.
  *
@@ -91,7 +91,7 @@ import {
   formatCapturedTestOutput,
   retainedCapturedTestOutput,
 } from "./lib/captured-test-output.mjs";
-import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.mjs";
+import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.ts";
 import {
   computeRealLiveAccounting,
   diffRealLiveManifest,
@@ -109,7 +109,7 @@ import {
   resolveConcurrency,
   runPool,
   taskBelongsToShard,
-} from "./lib/test-task-pool.mjs";
+} from "./lib/test-task-pool.ts";
 import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -813,7 +813,7 @@ function isSingleVitestWrapperCommand(command) {
 function isSingleVitestBatchWrapperCommand(command) {
   // The agent's mobile-entry preflight must succeed before its final batch
   // runner receives the JUnit arguments appended to the package command.
-  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.mjs$/.test(
+  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.ts$/.test(
     stripLeadingEnvAssignments(command),
   );
 }

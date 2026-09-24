@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { detectMcpModelProvider, transformMcpToolSchema } from "@elizaos/shared/mcp";
+import { detectMcpModelProvider, transformMcpToolSchema } from "@elizaos/shared";
 import type { JSONSchema7 } from "json-schema";
 
 export interface StringConstraints {

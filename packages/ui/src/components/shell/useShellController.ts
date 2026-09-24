@@ -13,11 +13,12 @@
  * state of their own. ShellControllerContext provides one instance so the pill
  * and the overlay stay in lock-step without double-mounting this hook.
  */
+
+import type { TranscriptSegment } from "@elizaos/shared";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/shared/events";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+} from "@elizaos/shared";
 import * as React from "react";
 import type {
   ChatTurnStatus,

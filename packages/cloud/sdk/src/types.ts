@@ -67,6 +67,8 @@ export interface CloudRequestOptions {
 }
 
 export interface ElizaCloudClientOptions {
+  /** Explicit configured product for native model requests; requires a stable Idempotency-Key per operation. */
+  nativeApplicationSlot?: string;
   baseUrl?: string;
   apiBaseUrl?: string;
   apiKey?: string;

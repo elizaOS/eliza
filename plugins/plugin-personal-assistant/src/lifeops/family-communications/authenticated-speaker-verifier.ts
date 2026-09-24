@@ -15,7 +15,7 @@ import {
   type Memory,
   stableStringify,
 } from "@elizaos/core";
-import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships/knowledge-graph";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { resolveAuthenticatedFamilyPrincipal } from "./production-wiring.js";
 import {

@@ -6,16 +6,12 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "sideEffects": [
-    "./src/register.ts",
-    "./dist/register.js"
-  ],
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza.git"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {
@@ -26,27 +22,7 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    },
-    "./knowledge-graph": {
-      "types": "./dist/knowledge-graph/index.d.ts",
-      "eliza-source": {
-        "types": "./src/knowledge-graph/index.ts",
-        "import": "./src/knowledge-graph/index.ts",
-        "default": "./src/knowledge-graph/index.ts"
-      },
-      "import": "./dist/knowledge-graph/index.js",
-      "default": "./dist/knowledge-graph/index.js"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "assets",
@@ -71,15 +47,15 @@
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
-    "react": "^19.0.0",
+    "react": "19.2.7",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.3",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.0.0",
-    "react": "^19.0.0",
+    "react": "19.2.7",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
@@ -108,7 +84,9 @@
     "access": "public"
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "export": "registerRelationshipsApp"
+    },
     "app": {
       "displayName": "Relationships",
       "category": "personal"

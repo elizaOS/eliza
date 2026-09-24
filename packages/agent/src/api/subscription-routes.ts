@@ -25,13 +25,13 @@ import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
   LinkedAccountUsage,
+  RouteRequestContext,
 } from "@elizaos/shared";
 import {
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
 } from "@elizaos/shared";
-import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

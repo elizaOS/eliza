@@ -30,6 +30,9 @@ from hermes_adapter.env_runner import (
 
 @pytest.fixture
 def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # This fixture exercises command construction and result parsing only.
+    # Docker availability has its own negative control below.
+    monkeypatch.setattr(env_runner, "_docker_daemon_available", lambda: True)
     repo = tmp_path / "hermes-agent-src"
     repo.mkdir()
     venv_python = repo / ".venv" / "bin" / "python"

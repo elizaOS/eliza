@@ -17,11 +17,11 @@
  */
 
 import { isInferenceTraceId } from "@elizaos/core";
-import { renderCloudPairHandoffHtml } from "@elizaos/shared/contracts";
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
-} from "@elizaos/shared/elizacloud";
+  renderCloudPairHandoffHtml,
+} from "@elizaos/shared";
 import { runWithDbCacheAsync } from "@/db/client";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";

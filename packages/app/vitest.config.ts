@@ -142,6 +142,8 @@ export default defineConfig({
       "src/types/**/*.test.{ts,tsx,mjs}",
       "src/native/**/*.test.{ts,tsx,mjs}",
       "src/public-web-entry.test.tsx",
+      "src/public-web-boot-config.test.ts",
+      "src/web-entry-policy.test.ts",
       "src/__tests__/**/*.test.{ts,tsx,mjs}",
       "src/shims/**/*.test.{ts,tsx,mjs}",
       "src/renderer-build-manifest-plugin.test.ts",

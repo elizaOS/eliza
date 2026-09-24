@@ -1,9 +1,3 @@
-/**
- * Exercises DOCUMENT action paging through its production handler with a
- * deterministic service boundary. It proves exact line/fragment pages,
- * continuation revisions, stale-source rejection, and absence of source-body
- * duplication in structured action projections.
- */
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -15,6 +9,13 @@ import type {
 import { isReadView } from "../../../../../../packages/core/src/types/index.ts";
 import { documentAction } from "../actions.ts";
 import { DocumentService } from "../service.ts";
+
+/**
+ * Exercises DOCUMENT action paging through its production handler with a
+ * deterministic service boundary. It proves exact line/fragment pages,
+ * continuation revisions, stale-source rejection, and absence of source-body
+ * duplication in structured action projections.
+ */
 
 const AGENT_ID = "10000000-0000-4000-8000-000000000001" as UUID;
 const USER_ID = "10000000-0000-4000-8000-000000000002" as UUID;
@@ -45,8 +46,37 @@ function harness(text: string) {
     readDocumentRange: vi.fn(
       async (
         _documentId: UUID,
-        params: { unit: "line" | "fragment"; offset: number; limit?: number },
+        params: {
+          unit: "line" | "fragment" | "byte";
+          offset: number;
+          limit?: number;
+        },
       ) => {
+        if (params.unit === "byte") {
+          const bytes = Buffer.from(currentText, "utf8");
+          const pageText = bytes
+            .subarray(
+              params.offset,
+              params.limit === undefined
+                ? undefined
+                : params.offset + params.limit,
+            )
+            .toString("utf8");
+          return {
+            unit: "byte" as const,
+            text: pageText,
+            start: params.offset,
+            end: params.offset + Buffer.byteLength(pageText, "utf8"),
+            total: bytes.length,
+            documentRevision: currentRevision,
+            revisionAttemptId: `native-secret-${currentRevision}`,
+            sourceFingerprint: `sha256:${createHash("sha256").update(currentText).digest("hex")}`,
+            examinedSourceSegments: 1,
+            sourceQueryCount: 2,
+            returnedSourceSegments: 1,
+            returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
+          };
+        }
         const lines =
           currentText.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
         const units =
@@ -63,23 +93,34 @@ function harness(text: string) {
                   return fragments;
                 }, [])
                 .filter(Boolean);
-        const selected =
-          params.limit === undefined
-            ? units.slice(params.offset)
-            : units.slice(params.offset, params.offset + params.limit);
+        const pageText = units
+          .slice(
+            params.offset,
+            params.limit === undefined
+              ? undefined
+              : params.offset + params.limit,
+          )
+          .join("");
         return {
-          text: selected.join(""),
+          unit: params.unit,
+          text: pageText,
           start: params.offset,
-          end:
+          end: Math.min(
             params.limit === undefined
               ? units.length
-              : Math.min(params.offset + params.limit, units.length),
+              : params.offset + params.limit,
+            units.length,
+          ),
           total: units.length,
           documentRevision: currentRevision,
           revisionAttemptId: `native-secret-${currentRevision}`,
           sourceFingerprint: `sha256:${createHash("sha256")
             .update(currentText)
             .digest("hex")}`,
+          examinedSourceSegments: 1,
+          sourceQueryCount: 2,
+          returnedSourceSegments: 1,
+          returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
         };
       },
     ),

@@ -19,8 +19,8 @@ import type {
   MeetingParticipant,
   MeetingPlatform,
   MeetingSessionStatus,
+  TranscriptSegment,
 } from "@elizaos/shared";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import {
   type MeetingPipelineInstance,
   MeetingService,

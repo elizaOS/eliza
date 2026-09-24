@@ -13,8 +13,8 @@ import {
   OPTIMIZED_PROMPT_SERVICE,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,

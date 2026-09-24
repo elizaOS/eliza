@@ -11,6 +11,7 @@ import {
 } from "@elizaos/capacitor-system";
 import type { SmsMessageSummary } from "@elizaos/plugin-native-messages/bridge";
 import { Messages } from "@elizaos/plugin-native-messages/bridge";
+import { ElizaError } from "@elizaos/shared/browser-contracts";
 
 export type ThreadSummary = {
   id: string;
@@ -80,7 +81,14 @@ export function normalizeMessagesLimit(value: unknown, fallback = 200): number {
 export async function loadMessagesState(limit = 200) {
   const [messageResult, statusResult] = await Promise.all([
     Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
-    System.getStatus().catch(() => null),
+    System.getStatus().catch((cause) => {
+      // error-policy:J2 role status is part of the complete read contract; a
+      // failed native status call cannot be represented as an unheld role.
+      throw new ElizaError("Android SMS role status is unavailable", {
+        code: "NATIVE_MESSAGES_STATUS_UNAVAILABLE",
+        cause,
+      });
+    }),
   ]);
   const threads = buildThreads(messageResult.messages);
   const currentSmsRole = smsRole(statusResult);

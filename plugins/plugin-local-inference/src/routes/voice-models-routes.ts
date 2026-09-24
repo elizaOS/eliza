@@ -51,11 +51,12 @@ import { logger, resolveStateDir } from "@elizaos/core";
 import {
 	DEFAULT_NETWORK_POLICY_PREFERENCES,
 	type NetworkPolicyPreferences,
+	sendJson,
+	sendJsonError,
 	VOICE_MODEL_VERSIONS,
 	type VoiceModelId,
 	type VoiceModelVersion,
 } from "@elizaos/shared";
-import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { evaluateRuntimePolicy } from "../services/network-policy";
 import { stageWakeWordModel } from "../services/voice/wake-word-staging";
 import {

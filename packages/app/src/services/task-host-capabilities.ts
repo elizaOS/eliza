@@ -32,7 +32,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { TaskExecutionProfile } from "@elizaos/shared/contracts/scheduled-task-execution";
+import type { TaskExecutionProfile } from "@elizaos/shared";
 
 interface CapacitorPluginsLike {
   BackgroundRunner?: unknown;

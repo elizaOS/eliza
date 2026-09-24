@@ -26,7 +26,7 @@
  * this hook only owns the local-inference-specific init.
  */
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared/runtime-env";
+import { isMobilePlatform } from "@elizaos/shared";
 
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import {

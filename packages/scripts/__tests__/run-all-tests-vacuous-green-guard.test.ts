@@ -369,7 +369,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
             private: true,
             type: "module",
             scripts: {
-              test: "bun run test:mobile-workspace-entry && node scripts/run-vitest-batches.mjs",
+              test: "bun run test:mobile-workspace-entry && node scripts/run-vitest-batches.ts",
               "test:mobile-workspace-entry": "node scripts/preflight.mjs",
             },
           }),
@@ -379,7 +379,7 @@ describe("run-all-tests --require-work vacuous-green guard", () => {
           'import { writeFileSync } from "node:fs"; if (process.env.REJECT_PREFLIGHT === "1") process.exit(7); writeFileSync("admitted", "yes");',
         );
         writeFileSync(
-          join(directory, "scripts", "run-vitest-batches.mjs"),
+          join(directory, "scripts", "run-vitest-batches.ts"),
           [
             'import { readFileSync, writeFileSync } from "node:fs";',
             'if (readFileSync("admitted", "utf8") !== "yes") throw new Error("preflight missing");',

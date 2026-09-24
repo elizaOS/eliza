@@ -13,13 +13,11 @@ import type {
   MeetingJoinRequest,
   MeetingPlatform,
   MeetingSession,
-} from "@elizaos/shared";
-import { parseMeetingUrl } from "@elizaos/shared";
-import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
+import { parseMeetingUrl } from "@elizaos/shared";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 import { selectSessionForViewer } from "../session-disclosure.js";

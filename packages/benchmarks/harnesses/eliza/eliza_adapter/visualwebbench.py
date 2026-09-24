@@ -170,8 +170,8 @@ def _load_vision_harness_runtime():
         repo_root
         / "packages"
         / "benchmarks"
-        / "vision-language"
         / "scripts"
+        / "vision-language"
         / "vision_harness_runtime.py"
     )
     spec = importlib.util.spec_from_file_location("vision_harness_runtime", script)
@@ -516,27 +516,23 @@ def _read_json(path: Path) -> object:
 
 
 def _repo_root() -> Path:
-    """Locate the eliza app checkout that carries the browser harness script.
+    """Resolve the checkout independently of optional browser-harness scripts."""
+    from benchmarks.lib.repository import monorepo_root
 
-    The script lives in the elizaOS monorepo, not this benchmarks repo:
-    resolve via ELIZA_MONOREPO_ROOT, falling back to an ancestor scan for
-    in-monorepo runs.
-    """
     override = os.environ.get("ELIZA_MONOREPO_ROOT", "")
     if override:
         return Path(override).resolve()
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "scripts" / "eliza-browser-app-harness.mjs").exists():
-            return parent
-    raise FileNotFoundError(
-        "eliza-browser-app-harness.mjs not found in any ancestor; set "
-        "ELIZA_MONOREPO_ROOT to an eliza checkout or pass app_harness_script"
-    )
+    return monorepo_root(Path(__file__).resolve().parents[3])
 
 
 def _default_harness_script() -> Path:
-    return _repo_root() / "scripts" / "eliza-browser-app-harness.mjs"
+    script = _repo_root() / "scripts" / "eliza-browser-app-harness.mjs"
+    if not script.is_file():
+        raise FileNotFoundError(
+            "No bundled browser app harness is available; supply app_harness_script "
+            "for a real browser runner. This route cannot publish without execution evidence."
+        )
+    return script
 
 
 def _make_harness_run_id(task_id: str) -> str:

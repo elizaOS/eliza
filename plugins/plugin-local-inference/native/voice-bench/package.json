@@ -23,11 +23,11 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "bench": "bun run bin/voice-bench",
-    "generate-fixtures": "bun run scripts/generate-fixtures.ts"
+    "generate-fixtures": "bun run ../../../../packages/scripts/plugins/plugin-local-inference/native/voice-bench/generate-fixtures.ts"
   },
   "dependencies": {},
   "devDependencies": {
-    "@types/bun": "^1.1.13",
+    "@types/bun": "1.3.14",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"

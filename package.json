@@ -41,6 +41,12 @@
     "publish:eliza1": "cd packages/training && node ../scripts/run-python.mjs -m scripts.publish.publish_eliza1_all",
     "dev:agent": "bun run --cwd packages/agent dev",
     "build": "node packages/scripts/run-turbo.mjs run build --concurrency=8 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.mjs",
+    "content-context:produce": "bun packages/scripts/produce-content-context.mjs",
+    "content-context:benchmark": "bun packages/scripts/run-progressive-content-benchmark.mjs",
+    "content-context:e2e": "bun packages/scripts/produce-content-context-e2e.mjs",
+    "content-context:live-trajectories": "bun packages/scripts/produce-content-context-live-trajectories.mjs",
+    "content-context:postgres": "bun packages/scripts/produce-content-context-postgres.mjs",
+    "content-context:soak": "bun packages/scripts/run-content-context-soak.mjs",
     "build:client": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app",
     "build:views": "node packages/scripts/build-views.mjs",
     "format": "node packages/scripts/check-biome-version-consistency.mjs && node packages/scripts/run-turbo.mjs run format",
@@ -55,14 +61,11 @@
     "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8",
     "verify": "node packages/scripts/check-biome-version-consistency.mjs && node packages/app/scripts/check-i18n.mjs && node packages/scripts/check-generated-system-files.mjs && node packages/cloud/scripts/shared/check-migration-prefix-order.mjs && node packages/scripts/ci-bun-version-contract.mjs && node packages/scripts/ci-turbo-cache-contract.mjs && bun packages/scripts/fix-workspace-deps.mjs --check && bun packages/scripts/ensure-plugin-test-conventions.mjs --check && node packages/scripts/alias-read-guard.mjs && node packages/scripts/audit-tsconfig-workspace-resolution.mjs && node packages/scripts/verify-publish-graph.mjs && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint:check --concurrency=8 && node packages/core/scripts/verify-package.mjs && node packages/scripts/audit-build-typecheck.mjs && node packages/scripts/audit-turbo-build-deps.mjs && node packages/scripts/audit-tee-secret-leak.mjs && node packages/scripts/hetzner-fleet-routing-contract.mjs && node packages/scripts/workflow-trigger-policy.mjs && node packages/scripts/audit-scripts.mjs && node packages/scripts/audit-test-lane-membership.mjs && node packages/scripts/audit-view-bundle-inventory.mjs && node packages/scripts/audit-plugin-view-inventory.mjs && node packages/scripts/audit-focused-skipped-tests.mjs",
     "check:comment-only": "node packages/scripts/assert-comment-only-diff.mjs",
-    "check:pr-evidence": "node packages/scripts/check-pr-evidence.mjs",
+    "check:pr-evidence": "node packages/scripts/check-pr-evidence.ts",
     "pre-commit": "bun run packages/scripts/pre-commit-lint.ts",
-    "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access --no-sort",
     "release:candidate": "node packages/scripts/release-candidate.mjs",
     "release:candidate:verify": "node packages/scripts/release-candidate.mjs verify",
     "release:check": "node packages/app/scripts/run-release-check.mjs",
-    "release:next": "bunx lerna publish from-package --dist-tag next --force-publish --yes --no-verify-access --no-sort",
-    "release:beta": "bunx lerna publish from-package --dist-tag beta --force-publish --yes --no-verify-access --no-sort",
     "version:beta": "bunx lerna version prerelease --preid beta --force-publish --yes --no-push --no-git-tag-version",
     "version:patch": "bunx lerna version patch --force-publish --yes --no-push --no-git-tag-version",
     "version:minor": "bunx lerna version minor --force-publish --yes --no-push --no-git-tag-version",
@@ -123,6 +126,7 @@
     "packages/benchmarks/suites/*",
     "packages/benchmarks/suites/eliza-1/vision-cua-e2e",
     "packages/benchmarks/suites/lifeops-bench/runner",
+    "packages/benchmarks/suites/lifeops-bench/quality",
     "packages/benchmarks/scripts/eliza-benchmark-scripts"
   ],
   "devDependencies": {
@@ -174,7 +178,8 @@
     "vitest": "^5.0.1",
     "verdaccio": "6.10.4",
     "yaml": "2.9.0",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "stripe": "^22.0.0"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",

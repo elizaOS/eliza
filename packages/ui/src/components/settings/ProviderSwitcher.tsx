@@ -4,7 +4,8 @@
  * runtime state; this surface keeps the provider panels presentational.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
+import type { LinkedAccountProviderId } from "@elizaos/shared";
+import { VOICE_PROVIDERS } from "@elizaos/shared";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import {
@@ -18,7 +19,6 @@ import {
   isRealtimeVoiceForceEnabled,
   isRealtimeVoiceSelfHostedEnabled,
 } from "../../voice/realtime-voice-build-flags";
-import { VOICE_PROVIDERS } from "../../voice/types";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
@@ -298,7 +298,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           })
         : t("providerswitcher.localTileDescription", {
             defaultValue:
-              "Runs entirely on this device with the bundled local model. Private and works offline.",
+              "Use an installed model to process chat on this device.",
           });
 
   return (
@@ -308,8 +308,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           defaultValue: "Intelligence",
         })}
         description={t("providerswitcher.intelligenceGroupDescription", {
-          defaultValue:
-            "Agent runtime and chat inference are separate. The tiles below pick inference — the Active source is answering chat. Open a tile to inspect or switch.",
+          defaultValue: "Choose where chat replies are processed.",
         })}
         bare
       >

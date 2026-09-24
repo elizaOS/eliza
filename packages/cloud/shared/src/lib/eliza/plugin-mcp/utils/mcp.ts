@@ -4,7 +4,7 @@
  */
 
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { buildMcpProviderProjection } from "@elizaos/shared/mcp";
+import { buildMcpProviderProjection } from "@elizaos/shared";
 import type { McpProvider, McpServer } from "../types";
 
 /**

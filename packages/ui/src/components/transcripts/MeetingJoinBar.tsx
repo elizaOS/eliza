@@ -12,7 +12,7 @@ import {
   type MeetingJoinRequest,
   type MeetingSession,
   parseMeetingUrl,
-} from "@elizaos/shared/meetings";
+} from "@elizaos/shared";
 import { Video } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";

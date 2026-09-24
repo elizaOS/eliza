@@ -23,7 +23,7 @@ import {
   type ToolDefinition,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
+import { readAliasedEnv } from "@elizaos/shared";
 import dotenv from "dotenv";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {

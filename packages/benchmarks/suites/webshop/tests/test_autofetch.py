@@ -589,7 +589,7 @@ def test_ensure_profile_downloaded_opt_out_raises(monkeypatch, tmp_path: Path):
 
     msg = str(ei.value)
     assert "WEBSHOP_NO_AUTOFETCH" in msg
-    assert "scripts/fetch_data.py" in msg
+    assert "elizaos_webshop_tools.fetch_data" in msg
     assert "--profile small" in msg
 
 

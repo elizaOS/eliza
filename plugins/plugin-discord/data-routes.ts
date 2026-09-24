@@ -14,11 +14,7 @@
  */
 
 import { buildSetupError, type IAgentRuntime } from "@elizaos/core";
-import type {
-	Route,
-	RouteRequest,
-	RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
 import { isValidSnowflake } from "./types";
 

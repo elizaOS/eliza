@@ -34,7 +34,7 @@ FORCE_CLOOP="1"
 JOBS=""
 IMAGE_ONLY=0
 SHELL_MODE=0
-RUST_CORE=0
+RUST_CORE=1
 
 while [ $# -gt 0 ]; do
     case "$1" in

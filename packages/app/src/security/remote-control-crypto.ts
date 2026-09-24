@@ -42,7 +42,7 @@ import {
   type SignedRemoteCommand,
   type SignedRemoteCommandResult,
   type SignedRemoteCommandStartReceipt,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 
 export type RemoteCommandRejection =
   | "malformed"

@@ -1,10 +1,7 @@
 /** Captures, persists, and transfers complete sandbox backup state under the caller’s existing lifecycle transaction. Transport and lifecycle locks remain explicit host boundaries; no replacement provider or database connection is created. */
 
 import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import {
-  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
-  SnapshotPayloadTooLargeError,
-} from "@elizaos/shared/agent-backup-limits";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES, SnapshotPayloadTooLargeError } from "@elizaos/shared";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import {

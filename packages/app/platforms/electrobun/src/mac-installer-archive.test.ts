@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { zstdDecompressSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { prepareMacInstallerArchive } from "../scripts/postwrap-diagnostics";
+import { prepareMacInstallerArchive } from "../../../scripts/electrobun/postwrap-diagnostics";
 
 const compressor = fileURLToPath(
 	new URL(

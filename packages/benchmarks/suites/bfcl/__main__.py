@@ -332,15 +332,15 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             arg_provider = getattr(args, 'provider', None)
             display_provider = (
                 harness
-                if harness in {"hermes", "smithers"} and arg_provider == "eliza"
+                if harness in {"hermes", "openclaw"} and arg_provider == "eliza"
                 else arg_provider
             )
             if display_provider == "hermes":
                 print(f"\n🤖 Model: {args.model or 'gemma-4-31b'}")
                 print("   Provider: hermes (harnesses/hermes)")
-            elif display_provider == "smithers":
+            elif display_provider == "openclaw":
                 print(f"\n🤖 Model: {args.model or 'gemma-4-31b'}")
-                print("   Provider: smithers (harnesses/smithers)")
+                print("   Provider: openclaw (harnesses/openclaw)")
             elif display_provider == "eliza":
                 print(f"\n🤖 Model: {args.model or 'eliza-ts-bridge'}")
                 print("   Provider: eliza (elizaOS TypeScript benchmark bridge)")

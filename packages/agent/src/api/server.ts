@@ -50,29 +50,26 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
-import { formatError, readAliasedEnv } from "@elizaos/shared";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+import type { Route } from "@elizaos/shared";
 import {
+  formatError,
+  getStylePresets,
+  isMobilePlatform,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  normalizeCharacterLanguage,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
+  readAliasedEnv,
   readRequestBody,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveServerOnlyPort,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/shared/api/http-helpers";
-import type { Route } from "@elizaos/shared/api/http-plugin";
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared/character-presets";
-import {
-  isMobilePlatform,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
-import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
+} from "@elizaos/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { handleAppPackageRoutes } from "./app-package-routes.ts";
@@ -84,6 +81,7 @@ import {
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
+import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 import { resolveBoundaryRole } from "./server-helpers-auth.ts";
 import { resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
@@ -3350,6 +3348,41 @@ async function handleRequestForViewClient(
 
   if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
     return;
+  }
+
+  // The context inspector owns a stricter boundary than the general trajectory
+  // viewer: resolve the host principal again for this request and project only
+  // allowlisted content metadata. Direct API-token callers are the standalone
+  // owner's equivalent authority; scoped boundary-role tokens are deliberately
+  // not promoted to inspector access.
+  if (pathname === "/api/context-inspector") {
+    const hostAuthorization = await resolveHostSessionAuthorization();
+    const inspectorAuthorization = hostAuthorization.ok
+      ? hostAuthorization
+      : isAuthorized(req)
+        ? ({ ok: true, role: "OWNER" } as const)
+        : ({ ok: false, role: "NONE" } as const);
+    if (
+      await handleContextInspectorRoute({
+        req,
+        res,
+        pathname,
+        method,
+        url,
+        runtime: state.runtime,
+        authorization: inspectorAuthorization,
+        resolveConversationRoomId: async (conversationId) => {
+          let conversation = state.conversations.get(conversationId);
+          if (!conversation && state.conversationRestorePromise) {
+            await state.conversationRestorePromise;
+            conversation = state.conversations.get(conversationId);
+          }
+          return conversation?.roomId ?? null;
+        },
+      })
+    ) {
+      return;
+    }
   }
 
   // ── LifeOps inbox compatibility fallback ────────────────────────────────

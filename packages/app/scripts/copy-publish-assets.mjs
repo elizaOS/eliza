@@ -3,7 +3,7 @@
  * package. Keeping the manifest here makes payload additions reviewable and
  * gives tests one canonical contract instead of parsing a package script.
  */
-import { copyFileSync } from "node:fs";
+import { copyFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { copyPackageAssets } from "../../scripts/copy-package-assets.mjs";
@@ -19,18 +19,18 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   // Consumer entrypoints and their shared dependencies are explicit: adding a
   // repository script must not silently expand the installed package.
   "scripts/README.md",
+  "scripts/electrobun",
   "scripts/align-electrobun-version.mjs",
   "scripts/aosp/compile-libllama-paths.mjs",
   "scripts/aosp/compile-libllama.mjs",
   "scripts/aosp/compile-shim.mjs",
-  "scripts/aosp/lib/load-variant-config.mjs",
+  "scripts/aosp/lib/load-variant-config.ts",
   "scripts/aosp/seccomp-shim/loader-wrap.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-arm64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler.c",
   "scripts/aosp/stage-default-models.mjs",
   "scripts/aosp/stage-models-dfm.mjs",
-  "scripts/aosp/variant-config-schema.ts",
   "scripts/audit-apple-store-sandbox.mjs",
   "scripts/audit-ios-cloud-artifact.mjs",
   "scripts/benchmark-preflight.mjs",
@@ -45,27 +45,19 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/build-llama-cpp-mtp.mjs",
   "scripts/build-native-plugins.mjs",
   "scripts/build-patched-electrobun-cli.mjs",
-  "scripts/check-homepage-public-readiness.mjs",
   "scripts/check-i18n.mjs",
-  "scripts/check-sms-gateway-completion-audit.mjs",
-  "scripts/check-sms-gateway-readiness.mjs",
-  "scripts/check-upstream-drift.mjs",
   "scripts/clean-repo.mjs",
   "scripts/codesign-mas.mjs",
   "scripts/container-entrypoint.mjs",
-  "scripts/continue-sms-gateway-work.mjs",
   "scripts/copy-runtime-node-modules.ts",
   "scripts/coverage-policy.ts",
-  "scripts/deploy-cloud-api-production-gateway.mjs",
   "scripts/deploy-image.sh",
   "scripts/desktop-build.mjs",
   "scripts/desktop-stack-status.mjs",
   "scripts/dev-platform.mjs",
   "scripts/dev-ui.mjs",
   "scripts/disable-local-eliza-workspace.mjs",
-  "scripts/verify-agent-image.sh",
   "scripts/docker-entrypoint.sh",
-  "scripts/docker-runtime-review.mjs",
   "scripts/ensure-avatars.mjs",
   "scripts/ensure-capacitor-platform.mjs",
   "scripts/ensure-electrobun-core.mjs",
@@ -84,8 +76,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/generate-static-asset-manifest.mjs",
   "scripts/i18n-dynamic-keys.json",
   "scripts/init-submodules.mjs",
-  "scripts/install-android-sms-gateway.md",
-  "scripts/install-android-sms-gateway.mjs",
   "scripts/ios-xcframework/README.md",
   "scripts/ios-xcframework/build-xcframework.mjs",
   "scripts/ios-xcframework/run-physical-device-smoke.mjs",
@@ -167,7 +157,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/link-browser-server.mjs",
   "scripts/link-external-plugins.mjs",
   "scripts/linux-distribution-contract.mjs",
-  "scripts/maintain-cloud-api-production-gateway.mjs",
   "scripts/mas-smoke.mjs",
   "scripts/mobile-auth-simulator-smoke.mjs",
   "scripts/mobile/agent-bundle.mjs",
@@ -246,19 +235,13 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/setup-upstreams.mjs",
   "scripts/smoke-lifeops.mjs",
   "scripts/smoke-view-declarations.mjs",
-  "scripts/sms-gateway-status.mjs",
   "scripts/stability-suite.mjs",
   "scripts/stage-desktop-fused-lib.mjs",
   "scripts/stage-elizavoice-lib.mjs",
   "scripts/streaming-pipeline-bench.ts",
   "scripts/sync-desktop-renderer.mjs",
-  "scripts/sync-homepage-porkbun-dns.mjs",
-  "scripts/test-sms-gateway-software.mjs",
   "scripts/validate-cdn-assets.mjs",
   "scripts/verify-android-native-plugins.mjs",
-  "scripts/verify-android-sms-gateway-e2e.mjs",
-  "scripts/verify-cloud-api-production-deploy.mjs",
-  "scripts/verify-cloud-sms-onboarding-flow.mjs",
   "scripts/verify-fused-embedding.mjs",
   "scripts/verify-ondevice-artifact.mjs",
   "scripts/voice-create-profile.mjs",
@@ -281,7 +264,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/voice/voice-models-publish-all.mjs",
   "scripts/voice/voice-openwakeword-eval.mjs",
   "scripts/voice/voice-stage-b-eval.mjs",
-  "scripts/watch-sms-gateway-readiness.mjs",
   "scripts/workspace-prepare.mjs",
   "scripts/worktree-env.sh",
   "scripts/write-build-info.ts",
@@ -306,10 +288,10 @@ export async function copyPublishAssets({
   // separate implementations for installed consumers.
   for (const [source, destination] of [
     [
-      "plugins/plugin-native-bun-runtime/engine/scripts/ios-app-store-runtime-policy.mjs",
+      "packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
       "ios-app-store-runtime-policy.mjs",
     ],
-    ["packages/scripts/lib/workspaces.ts", "workspace-discovery.mjs"],
+    ["packages/scripts/lib/workspaces.ts", "workspaces.ts"],
     [
       "packages/scripts/lib/repository-file-integrity.ts",
       "repository-file-integrity.ts",
@@ -320,6 +302,10 @@ export async function copyPublishAssets({
       path.join(destinationPackage, "dist/scripts/lib", destination),
     );
   }
+  writeFileSync(
+    path.join(destinationPackage, "dist/scripts/lib/workspace-discovery.mjs"),
+    'export { collectWorkspaceMaps } from "./workspaces.ts";\n',
+  );
 }
 
 if (

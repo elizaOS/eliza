@@ -12,7 +12,7 @@ import {
 	isRemoteControllerPublicIdentity,
 	REMOTE_TARGET_PAIRING_CAPABILITIES,
 	type RemoteControllerPublicIdentity,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import type { RemoteTargetManagedNetworkEnrollment } from "./remote-target-managed-network";
 import type { EnrolledRemoteTargetVaultRecord } from "./remote-target-vault";
 

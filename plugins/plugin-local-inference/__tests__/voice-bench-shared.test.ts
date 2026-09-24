@@ -21,7 +21,7 @@ import {
 	mean,
 	median,
 	writeBenchReport,
-} from "../scripts/voice-bench-shared";
+} from "../../../packages/scripts/plugins/plugin-local-inference/voice-bench-shared";
 import type { BenchCorpusEntry } from "../src/services/voice/bench-utils";
 import { encodeMonoPcm16Wav } from "../src/services/voice/wav-codec";
 

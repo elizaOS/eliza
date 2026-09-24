@@ -3,8 +3,7 @@
  * against saved values and reports pass/fail with the upstream status line.
  *
  * Probes are read-only by design (models lists, whoami endpoints, token
- * refreshes) so verifying never mutates a connected account; the one paid
- * exception (Tavily search) burns a single credit. Private keys use
+ * refreshes). Verification endpoints may consume provider credits. Private keys use
  * `kind: "format"` — they must never leave the machine. Network failures are
  * reported as `error` (distinct from `invalid`) so the operator can tell "bad
  * key" from "no internet".

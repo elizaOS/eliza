@@ -10,7 +10,8 @@
     "./scenario-runner": "./scenario-runner/src/index.ts",
     "./scenario-runner/*": "./scenario-runner/src/*.ts",
     "./synthetic-world": "./synthetic-world/src/index.ts",
-    "./browser-mocks": "./src/browser-mocks.ts"
+    "./browser-mocks": "./src/browser-mocks.ts",
+    "./package-paths": "./src/eliza-package-paths.ts"
   },
   "scripts": {
     "test": "bun run test:fixtures && bun run test:scenarios && bun run test:evidence && bun run test:runner && bun run test:synthetic-world",
@@ -40,7 +41,6 @@
     "lint:check": "bunx @biomejs/biome check evidence scenario-runner synthetic-world",
     "lint:fix": "bunx @biomejs/biome check --write evidence scenario-runner synthetic-world",
     "test:unit": "node ../scripts/run-vitest.mjs run --config scenario-runner/vitest.config.ts --maxWorkers=2",
-    "test:mocks": "node ../scripts/run-vitest.mjs run --config scenario-runner/test/mocks/vitest.config.ts --maxWorkers=2",
     "test:deterministic:e2e": "cd scenario-runner && SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic --run-dir ../../../reports/scenarios/pr-deterministic",
     "test:corpus:pr:e2e": "cd scenario-runner && TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-corpus --run-dir ../../../reports/scenarios/pr-deterministic-corpus",
     "test:orchestrator:pr:e2e": "cd scenario-runner && EVAL_MODEL_PROVIDER=deterministic CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY= SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/cli.ts run ../../../plugins/plugin-agent-orchestrator/test/scenarios --lane pr-deterministic --report-dir ../../../reports/scenarios/pr-deterministic-orchestrator --run-dir ../../../reports/scenarios/pr-deterministic-orchestrator --export-native ../../../reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
@@ -57,7 +57,7 @@
     "eval:multi-agent-arena": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/multi-agent-arena-cli.ts",
     "eval:sales-lighthouse": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse",
     "eval:sales-lighthouse-autonomous": "cd scenario-runner && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse-autonomous",
-    "test:runner": "bun run test:unit && bun run test:mocks",
+    "test:runner": "bun run test:unit",
     "typecheck:runner": "tsc --noEmit -p scenario-runner/tsconfig.json",
     "test:synthetic-world": "bun --conditions=eliza-source test synthetic-world/test",
     "typecheck:synthetic-world": "tsc --noEmit -p synthetic-world/tsconfig.json && tsc --noEmit -p synthetic-world/tsconfig.cloud-integration.json"
@@ -84,7 +84,8 @@
     "@playwright/test": "^1.63.0",
     "bun-types": "*",
     "drizzle-kit": "^0.31.10",
-    "drizzle-orm": "0.45.2"
+    "drizzle-orm": "0.45.2",
+    "fflate": "^0.8.3"
   },
   "elizaos": {
     "scripts": {

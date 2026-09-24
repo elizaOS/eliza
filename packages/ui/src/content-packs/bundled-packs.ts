@@ -8,15 +8,12 @@
  * that reference the existing /vrms assets by avatarIndex.
  */
 
-import {
-  getDefaultStylePreset,
-  getStylePresets,
-} from "@elizaos/shared/character-presets";
 import type {
   ContentPackManifest,
   ResolvedContentPack,
-} from "@elizaos/shared/contracts/content-pack";
-import type { StylePreset } from "@elizaos/shared/contracts/first-run-options";
+  StylePreset,
+} from "@elizaos/shared";
+import { getDefaultStylePreset, getStylePresets } from "@elizaos/shared";
 
 const PACK_VERSION = "1.0.0";
 

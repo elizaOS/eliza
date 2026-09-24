@@ -2,39 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Single source of truth for the Bun riscv64-linux-musl cross-build. Read by build.sh + Dockerfile build args + any downstream artifact-hosting publish step. Bump these together with the matching webkit-patches/ and bun-patches/ series.",
   "bun": {
-    "tag": "bun-v1.3.14",
-    "channel": "canary",
-    "rationale": "bun-v1.3.14 is the LAST Zig release of Bun. It is the last-validated riscv64 build (bun-patches/ series) and the safe fallback. Bun's core was rewritten Zig->Rust (oven-sh/bun PR #30412, merged 2026-05-14); see rust_core_port below for the in-progress migration of the riscv64 cross-build onto the Rust core. Keep this pinned to match stage-android-agent.mjs:BUN_VERSION until the Rust-core riscv64 cross-build is green."
+    "tag": "bun-v1.4.2",
+    "channel": "stable",
+    "rationale": "Repository stable pin. The Rust-core cross-build must be revalidated against this release; no legacy Zig fallback is selected."
   },
   "rust_core_port": {
-    "status": "GREEN (2026-05-31). `./run-build.sh --rust-core` builds end-to-end with patch series 0001-0010: WebKit JSC C_LOOP, full libbun_rust.a (build-std + ~200 crates), all C++ bindings, final link, package. QEMU smoke PASSES: the artifact is a UCB RISC-V double-float-ABI musl ELF; `bun --version` -> 1.4.0 (Rust core, not the Zig 1.3.14 fallback), `bun -e` and `bun <script.js>` both run and report process.arch === 'riscv64'. Artifact dist/bun-linux-riscv64-musl.zip sha256 010ea2a3c7b0b197d0b226ee408d78c359590561e9864314bb6af0cc409694cb (~19MB, C_LOOP no-JIT). This Rust-core build is now the validated riscv64 bun; the Zig v1.3.14 build remains the documented fallback.",
-    "target_commit": "9d000561c937b8e00569519ba1c7973e4b967fb5",
-    "target_ref": "main (Rust-core; language=Rust, no build.zig)",
-    "rust_channel": "nightly-2026-05-06",
-    "rust_channel_source": "rust-toolchain.toml on oven-sh/bun@main (verified 2026-05-29)",
+    "status": "Bun 1.4.2 target configured; RISC-V patch rebasing and cross-build validation remain required before publishing an artifact.",
+    "target_commit": "744846f844374847c902b5e7fd59b4342a51ef99",
+    "target_ref": "bun-v1.4.2",
+    "rust_channel": "nightly-2026-07-20",
+    "rust_channel_source": "rust-toolchain.toml at oven-sh/bun@bun-v1.4.2",
     "rust_target": "riscv64gc-unknown-linux-musl",
-    "webkit_commit": "963f8758c29e965471c191668d5776a1a1b014b6",
-    "webkit_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@9d000561 (verified 2026-05-30) — distinct from the Zig-era 5488984d; webkit-patches/ must be refreshed against it.",
+    "webkit_commit": "2e2aa2290fac856d6f451ceacb58f7f5b44dd057",
+    "webkit_commit_source": "scripts/build/deps/webkit.ts at oven-sh/bun@bun-v1.4.2",
     "patch_series": [
       "rust-core/0001-riscv64-rust-core-port.patch (31 files: build-system Arch/target + C++ C_LOOP guards; applies clean + tsc-clean)",
-      "rust-core/0002-second-wave-riscv64-source-gaps.patch (4 files: env.rs Architecture::Riscv64/process.arch, Global.rs arch_name, CPUFeatures.rs riscv64 Flags, hw_timer.rs rdtime CSR — fixes the compile_error! hard-stops; rdtime asm validated via rustc)",
-      "rust-core/0003-third-wave-riscv64-crash-handler-gaps.patch (1 file, src/crash_handler/lib.rs: Platform::CURRENT riscv64 arm b'r' — the HARD compile error, a cfg-matrix const with no catch-all; fault_context_from_ucontext riscv64 ucontext arm reading __gregs[0]/[8] (pc/fp) + not(any) exclusion; ARCH_DISPLAY_STRING -> riscv64; applies clean on top of 0001+0002)",
-      "rust-core/0004-rust-target-cpu-riscv64.patch (1 file, scripts/build/rust.ts: -Ctarget-cpu=generic-rv64 for riscv64 — it was falling through to the aarch64 'cortex-a72' default, aborting the cargo build of core/compiler_builtins with 'rustc-LLVM ERROR: RV64 target requires an RV64 CPU')",
-      "rust-core/0005-fifth-wave-riscv64-source-gaps.patch (2 files: install_types/resolver_hooks.rs npm cpu-field Architecture bitflag — RISCV64 bit + ALL_VALUE + name parser + CURRENT/CURRENT_NAME arms (hard E0308); windows_sys/externs.rs teb()/peb() not(any(x86_64,aarch64)) unreachable!() arm so the workspace crate typechecks on riscv64)",
-      "rust-core/0006-cpp-wasm-and-inspector-guards-riscv64.patch (2 files: runtime/bake/BakeGlobalObject.cpp #if ENABLE(WEBASSEMBLY) guard on compile/instantiateStreaming method-table slots — the Zig bun-patches/0009 hunk didn't rebase because bake moved src/bake/->src/runtime/bake/; jsc/bindings/BunDebugger.cpp whole-TU #if __riscv stub of the 9 extern-C debugger entry points since JSGlobalObjectDebuggable/inspectorController are REMOTE_INSPECTOR-only)",
-      "rust-core/0007-bun-alloc-max-align-t-riscv64.patch (1 file, src/bun_alloc/lib.rs: hardcode MAX_ALIGN_T=16 for riscv64 — the libc crate has no max_align_t for riscv64gc-unknown-linux-musl (E0425); riscv64 LP64D long double is binary128/16-aligned, same as the existing freebsd-aarch64 hardcode)",
-      "rust-core/0008-workspace-lints-warn-not-deny-riscv64.patch (1 file, root Cargo.toml [workspace.lints.rust]: demote the `warnings` group AND the dead_code/unused_*/unreachable_* family from deny->warn — arch-gated code leaves items unused on riscv64 (e.g. bun_core::debug::PC_OFFSET, used only by return_address()'s x86_64/aarch64 arm). The `warnings` group at deny re-escalated the per-lint warn, so the group itself must be demoted. riscv64 build tree only)",
-      "rust-core/0009-zigglobalobject-wasm-streaming-guards-riscv64.patch (2 files, jsc/bindings/ZigGlobalObject.{cpp,h}: ENABLE(WEBASSEMBLY) guards on the JSWasmStreamingCompiler.h include, both GlobalObjectMethodTable compile/instantiateStreaming slots, the m_wasmStreamingConsumeStreamFunction initializer, the extern-C streaming block (JSC::Wasm::StreamingCompiler/CompilerMode), and the two .h decls — the Zig bun-patches/0009 ZigGlobalObject hunks didn't rebase into 0001)",
-      "rust-core/0010-tcc-externs-stub-on-riscv64.patch (2 files, tcc_sys/tcc.rs + runtime/ffi/mod.rs: add riscv64 to the not(any(android,freebsd,win-aarch64)) gate so the tcc_* externs are unreachable!() STUBS on riscv64 — config.ts disables tinycc for riscv64 so libtcc isn't linked; without this the externs were referenced -> undefined symbols at the final link)",
-      "rust-core/0011-clippy-ptr-cast-lints-warn-riscv64.patch (1 file, root Cargo.toml [workspace.lints.clippy]: demote ptr_cast_constness/ptr_as_ptr/ref_as_ptr/borrow_as_ptr + large_types_passed_by_value deny->warn — the only two deny-level clippy lints that fire on riscv64, both from c_char-unsigned / target-layout ABI divergence on upstream code that upstream's x86_64-only clippy CI never sees. `cargo clippy --workspace --target riscv64gc-unknown-linux-musl` is then ERROR-FREE (exit 0); soundness clippy lints stay at deny)"
+      "rust-core/0002-second-wave-riscv64-source-gaps.patch (4 files: env.rs Architecture::Riscv64/process.arch, Global.rs arch_name, CPUFeatures.rs riscv64 Flags, hw_timer.rs rdtime CSR \u2014 fixes the compile_error! hard-stops; rdtime asm validated via rustc)",
+      "rust-core/0003-third-wave-riscv64-crash-handler-gaps.patch (1 file, src/crash_handler/lib.rs: Platform::CURRENT riscv64 arm b'r' \u2014 the HARD compile error, a cfg-matrix const with no catch-all; fault_context_from_ucontext riscv64 ucontext arm reading __gregs[0]/[8] (pc/fp) + not(any) exclusion; ARCH_DISPLAY_STRING -> riscv64; applies clean on top of 0001+0002)",
+      "rust-core/0004-rust-target-cpu-riscv64.patch (1 file, scripts/build/rust.ts: -Ctarget-cpu=generic-rv64 for riscv64 \u2014 it was falling through to the aarch64 'cortex-a72' default, aborting the cargo build of core/compiler_builtins with 'rustc-LLVM ERROR: RV64 target requires an RV64 CPU')",
+      "rust-core/0005-fifth-wave-riscv64-source-gaps.patch (2 files: install_types/resolver_hooks.rs npm cpu-field Architecture bitflag \u2014 RISCV64 bit + ALL_VALUE + name parser + CURRENT/CURRENT_NAME arms (hard E0308); windows_sys/externs.rs teb()/peb() not(any(x86_64,aarch64)) unreachable!() arm so the workspace crate typechecks on riscv64)",
+      "rust-core/0006-cpp-wasm-and-inspector-guards-riscv64.patch (2 files: runtime/bake/BakeGlobalObject.cpp #if ENABLE(WEBASSEMBLY) guard on compile/instantiateStreaming method-table slots \u2014 the Zig bun-patches/0009 hunk didn't rebase because bake moved src/bake/->src/runtime/bake/; jsc/bindings/BunDebugger.cpp whole-TU #if __riscv stub of the 9 extern-C debugger entry points since JSGlobalObjectDebuggable/inspectorController are REMOTE_INSPECTOR-only)",
+      "rust-core/0007-bun-alloc-max-align-t-riscv64.patch (1 file, src/bun_alloc/lib.rs: hardcode MAX_ALIGN_T=16 for riscv64 \u2014 the libc crate has no max_align_t for riscv64gc-unknown-linux-musl (E0425); riscv64 LP64D long double is binary128/16-aligned, same as the existing freebsd-aarch64 hardcode)",
+      "rust-core/0008-workspace-lints-warn-not-deny-riscv64.patch (1 file, root Cargo.toml [workspace.lints.rust]: demote the `warnings` group AND the dead_code/unused_*/unreachable_* family from deny->warn \u2014 arch-gated code leaves items unused on riscv64 (e.g. bun_core::debug::PC_OFFSET, used only by return_address()'s x86_64/aarch64 arm). The `warnings` group at deny re-escalated the per-lint warn, so the group itself must be demoted. riscv64 build tree only)",
+      "rust-core/0009-zigglobalobject-wasm-streaming-guards-riscv64.patch (2 files, jsc/bindings/ZigGlobalObject.{cpp,h}: ENABLE(WEBASSEMBLY) guards on the JSWasmStreamingCompiler.h include, both GlobalObjectMethodTable compile/instantiateStreaming slots, the m_wasmStreamingConsumeStreamFunction initializer, the extern-C streaming block (JSC::Wasm::StreamingCompiler/CompilerMode), and the two .h decls \u2014 the Zig bun-patches/0009 ZigGlobalObject hunks didn't rebase into 0001)",
+      "rust-core/0010-tcc-externs-stub-on-riscv64.patch (2 files, tcc_sys/tcc.rs + runtime/ffi/mod.rs: add riscv64 to the not(any(android,freebsd,win-aarch64)) gate so the tcc_* externs are unreachable!() STUBS on riscv64 \u2014 config.ts disables tinycc for riscv64 so libtcc isn't linked; without this the externs were referenced -> undefined symbols at the final link)",
+      "rust-core/0011-clippy-ptr-cast-lints-warn-riscv64.patch (1 file, root Cargo.toml [workspace.lints.clippy]: demote ptr_cast_constness/ptr_as_ptr/ref_as_ptr/borrow_as_ptr + large_types_passed_by_value deny->warn \u2014 the only two deny-level clippy lints that fire on riscv64, both from c_char-unsigned / target-layout ABI divergence on upstream code that upstream's x86_64-only clippy CI never sees. `cargo clippy --workspace --target riscv64gc-unknown-linux-musl` is then ERROR-FREE (exit 0); soundness clippy lints stay at deny)"
     ],
     "remaining": "GREEN end-to-end (see status). Clippy --workspace for riscv64 is error-free with 0001-0011. Optional follow-ups: realize the WebKit LLInt/Baseline JIT cherry-pick recipes (currently C_LOOP-only); ICU icudt74l.dat packaging if NFKC/NFKD normalization is exercised.",
-    "rationale": "Upstream scoped the Rust rewrite to linux-x64-glibc; this port teaches bun's Rust build system (config.ts/rust.ts) the riscv64gc-unknown-linux-musl target, rebases the riscv64 C_LOOP/source guards onto main (0001), and fixes the compile-stop source gaps (0002). Activate with `./run-build.sh --rust-core` (sets BUN_RISCV64_RUST_CORE=1 → build.sh uses target_commit + rust_channel + webkit_commit and mounts rust-core/ as the patch series)."
+    "rationale": "Upstream scoped the Rust rewrite to linux-x64-glibc; this port teaches bun's Rust build system (config.ts/rust.ts) the riscv64gc-unknown-linux-musl target, rebases the riscv64 C_LOOP/source guards onto main (0001), and fixes the compile-stop source gaps (0002). Activate with `./run-build.sh --rust-core` (sets BUN_RISCV64_RUST_CORE=1 \u2192 build.sh uses target_commit + rust_channel + webkit_commit and mounts rust-core/ as the patch series)."
   },
   "webkit": {
     "fork": "oven-sh/WebKit",
     "fork_commit": "5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b",
-    "fork_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@bun-v1.3.14 (verified 2026-05-28)",
+    "fork_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@the legacy Zig source (verified 2026-05-28)",
     "rationale": "Bun's WebKit fork has zero riscv64 patches. We checkout this commit, apply the checked WebKit-side patch files, and build the production artifact with the portable C_LOOP interpreter until the LLInt/Baseline cherry-pick recipes are realized as actual patch files.",
     "jit_tier": "c_loop",
     "jit_rationale": "The production riscv64-linux-musl artifact is C_LOOP-only: build.sh defaults to ENABLE_C_LOOP=ON, ENABLE_JIT=OFF, ENABLE_DFG_JIT=OFF, and ENABLE_FTL_JIT=OFF. Upstream WebKit has LLInt + Baseline support for riscv64, but the local cherry-pick chain is still represented by recipe files rather than checked patch files. Operators may set BUN_RISCV64_FORCE_CLOOP=0 to test the experimental Baseline path after realizing those recipes; that is not the publishable artifact contract.",
@@ -63,7 +63,7 @@
     },
     "rust": {
       "channel": "nightly-2025-12-10",
-      "channel_source": "rust-toolchain.toml on oven-sh/bun@bun-v1.3.14 (verified 2026-05-28)",
+      "channel_source": "rust-toolchain.toml on oven-sh/bun@the legacy Zig source (verified 2026-05-28)",
       "target": "riscv64gc-unknown-linux-musl",
       "tier": 2,
       "rationale": "Bun pins this exact nightly via rust-toolchain.toml. riscv64gc-unknown-linux-musl is a Tier-2 target with prebuilt std, so we get it via `rustup target add` rather than -Zbuild-std."
@@ -141,57 +141,140 @@
       "0019-add-wtf-timer-fire-bridge-for-c-loop.patch": "e812c00feac0561de35fb4ca7aa37ce38280f47c84f0d8b246b4a62e6802f10b",
       "0020-run-riscv64-smoke-test-under-qemu.patch": "26997fbd4d7fd6025565733df8ee61d982244b61be3bce7666ed9df35a0e86ce",
       "0021-fix-riscv64-linux-open-flags.patch": "71613fdce702893ce2375d728b112fa32cb526f44277e516ae88a6c73fdb15e7",
-      "0022-zlib-riscv64-generic-kernels.patch": "0c39097e8f4513684ea25cb9eb83d4c48021b8e632c85c85faedf27ae9125f44"
+      "0022-zlib-riscv64-generic-kernels.patch": "df666b8f802a534c613d7da3f87e9042c0780aa69b96c088cb9e2420a129a9f0"
     },
-    "bun_patches_apply_status": "All 21 patches apply cleanly in sequence to oven-sh/bun @ bun-v1.3.14 via git apply (validate.sh confirms strict --check). Regenerated 2026-05-28 for the 1.3.14 source reorg: src/bun.js/{bindings,modules} -> src/jsc/{bindings,modules}, src/sys.zig -> src/sys/sys.zig, src/compile_target.zig -> src/options_types/CompileTarget.zig, src/crash_handler.zig -> src/crash_handler/crash_handler.zig, src/env.zig -> src/bun_core/env.zig, src/bun.js/bindings/CPUFeatures.zig -> src/crash_handler/CPUFeatures.zig. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards; its 1.3.13 boringssl.ts hunk was dropped because 1.3.14's BoringSSL DirectBuild model self-guards per-arch asm (the wrong-target .S files assemble to empty objects via asm_base.h), so no OPENSSL_NO_ASM cmake arg is needed. Patches 0009-0020 disable JSC APIs unavailable in the C_LOOP/local-WebKit riscv64 artifact, fill riscv64 process/CPU feature fallbacks, fix riscv64-exposed source compatibility gaps, provide the WTFTimer fire bridge required by the local WebKit link, and run the riscv64 smoke test through qemu-riscv64-static; patch 0010's 1.3.13 BunInspector.cpp hunk was dropped because that file was removed upstream in 1.3.14. Patch 0021 fixes riscv64 Linux open flag constants so JS file entrypoints are not misclassified as missing directories.",
+    "bun_patches_apply_status": "All 21 patches apply cleanly in sequence to oven-sh/bun @ the legacy Zig source via git apply (validate.sh confirms strict --check). Regenerated 2026-05-28 for the legacy Zig release source reorg: src/bun.js/{bindings,modules} -> src/jsc/{bindings,modules}, src/sys.zig -> src/sys/sys.zig, src/compile_target.zig -> src/options_types/CompileTarget.zig, src/crash_handler.zig -> src/crash_handler/crash_handler.zig, src/env.zig -> src/bun_core/env.zig, src/bun.js/bindings/CPUFeatures.zig -> src/crash_handler/CPUFeatures.zig. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards; its 1.3.13 boringssl.ts hunk was dropped because the legacy Zig release's BoringSSL DirectBuild model self-guards per-arch asm (the wrong-target .S files assemble to empty objects via asm_base.h), so no OPENSSL_NO_ASM cmake arg is needed. Patches 0009-0020 disable JSC APIs unavailable in the C_LOOP/local-WebKit riscv64 artifact, fill riscv64 process/CPU feature fallbacks, fix riscv64-exposed source compatibility gaps, provide the WTFTimer fire bridge required by the local WebKit link, and run the riscv64 smoke test through qemu-riscv64-static; patch 0010's 1.3.13 BunInspector.cpp hunk was dropped because that file was removed upstream in the legacy Zig release. Patch 0021 fixes riscv64 Linux open flag constants so JS file entrypoints are not misclassified as missing directories.",
     "bun_patches_target": {
-      "scripts/build/config.ts": ["0001", "0004", "0008"],
-      "scripts/build/flags.ts": ["0002"],
-      "scripts/build/zig.ts": ["0003"],
-      "scripts/build/source.ts": ["0008"],
-      "scripts/build/deps/webkit.ts": ["0004", "0008"],
-      "scripts/build/deps/tinycc.ts": ["0005"],
-      "scripts/build.ts": ["0006"],
-      "scripts/build/deps/lolhtml.ts": ["0007"],
-      "scripts/glob-sources.ts": ["0009"],
-      "scripts/build/bun.ts": ["0020"],
-      "src/bun_core/env.zig": ["0008"],
-      "src/crash_handler/CPUFeatures.zig": ["0008"],
-      "src/crash_handler/crash_handler.zig": ["0008"],
-      "src/options_types/CompileTarget.zig": ["0008"],
-      "src/install/npm.zig": ["0008"],
-      "src/bake/BakeGlobalObject.cpp": ["0009"],
-      "src/jsc/bindings/ZigGlobalObject.cpp": ["0009"],
-      "src/jsc/bindings/ZigGlobalObject.h": ["0009"],
-      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp": ["0009"],
-      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.h": ["0009"],
-      "src/jsc/bindings/BunCPUProfiler.cpp": ["0010"],
-      "src/jsc/bindings/BunDebugger.cpp": ["0010"],
-      "src/jsc/bindings/BunProcess.cpp": ["0011"],
-      "src/jsc/bindings/CPUFeatures.cpp": ["0012"],
-      "src/jsc/bindings/ConsoleObject.cpp": ["0013"],
-      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp": ["0014"],
-      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.h": ["0014"],
-      "src/jsc/bindings/InspectorHTTPServerAgent.cpp": ["0014"],
-      "src/jsc/bindings/InspectorHTTPServerAgent.h": ["0014"],
-      "src/jsc/bindings/InspectorLifecycleAgent.cpp": ["0014"],
-      "src/jsc/bindings/InspectorLifecycleAgent.h": ["0014"],
-      "src/jsc/bindings/InspectorTestReporterAgent.cpp": ["0014"],
-      "src/jsc/bindings/InspectorTestReporterAgent.h": ["0014"],
-      "src/jsc/modules/BunJSCModule.h": ["0015"],
-      "src/jsc/bindings/NodeVMScript.cpp": ["0016"],
-      "src/jsc/bindings/NodeVMSourceTextModule.cpp": ["0016"],
-      "src/jsc/bindings/webcore/JSPerformance.cpp": ["0017"],
-      "src/jsc/bindings/webcore/SerializedScriptValue.cpp": ["0018"],
-      "src/jsc/bindings/wtf-bindings.cpp": ["0019"],
-      "src/sys/sys.zig": ["0021"]
+      "scripts/build/config.ts": [
+        "0001",
+        "0004",
+        "0008"
+      ],
+      "scripts/build/flags.ts": [
+        "0002"
+      ],
+      "scripts/build/zig.ts": [
+        "0003"
+      ],
+      "scripts/build/source.ts": [
+        "0008"
+      ],
+      "scripts/build/deps/webkit.ts": [
+        "0004",
+        "0008"
+      ],
+      "scripts/build/deps/tinycc.ts": [
+        "0005"
+      ],
+      "scripts/build.ts": [
+        "0006"
+      ],
+      "scripts/build/deps/lolhtml.ts": [
+        "0007"
+      ],
+      "scripts/glob-sources.ts": [
+        "0009"
+      ],
+      "scripts/build/bun.ts": [
+        "0020"
+      ],
+      "src/bun_core/env.zig": [
+        "0008"
+      ],
+      "src/crash_handler/CPUFeatures.zig": [
+        "0008"
+      ],
+      "src/crash_handler/crash_handler.zig": [
+        "0008"
+      ],
+      "src/options_types/CompileTarget.zig": [
+        "0008"
+      ],
+      "src/install/npm.zig": [
+        "0008"
+      ],
+      "src/bake/BakeGlobalObject.cpp": [
+        "0009"
+      ],
+      "src/jsc/bindings/ZigGlobalObject.cpp": [
+        "0009"
+      ],
+      "src/jsc/bindings/ZigGlobalObject.h": [
+        "0009"
+      ],
+      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp": [
+        "0009"
+      ],
+      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.h": [
+        "0009"
+      ],
+      "src/jsc/bindings/BunCPUProfiler.cpp": [
+        "0010"
+      ],
+      "src/jsc/bindings/BunDebugger.cpp": [
+        "0010"
+      ],
+      "src/jsc/bindings/BunProcess.cpp": [
+        "0011"
+      ],
+      "src/jsc/bindings/CPUFeatures.cpp": [
+        "0012"
+      ],
+      "src/jsc/bindings/ConsoleObject.cpp": [
+        "0013"
+      ],
+      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.h": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorHTTPServerAgent.cpp": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorHTTPServerAgent.h": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorLifecycleAgent.cpp": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorLifecycleAgent.h": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorTestReporterAgent.cpp": [
+        "0014"
+      ],
+      "src/jsc/bindings/InspectorTestReporterAgent.h": [
+        "0014"
+      ],
+      "src/jsc/modules/BunJSCModule.h": [
+        "0015"
+      ],
+      "src/jsc/bindings/NodeVMScript.cpp": [
+        "0016"
+      ],
+      "src/jsc/bindings/NodeVMSourceTextModule.cpp": [
+        "0016"
+      ],
+      "src/jsc/bindings/webcore/JSPerformance.cpp": [
+        "0017"
+      ],
+      "src/jsc/bindings/webcore/SerializedScriptValue.cpp": [
+        "0018"
+      ],
+      "src/jsc/bindings/wtf-bindings.cpp": [
+        "0019"
+      ],
+      "src/sys/sys.zig": [
+        "0021"
+      ]
     },
     "webkit_patches": {
       "0003-disable-dfg-ftl-on-riscv64.patch": "c00fe21a74ea35c8586cc380af6d03de89fef9d9bc8c4f0186dc7c629f0b9814",
       "0004-riscv64-do-not-force-wasm-in-c-loop.patch": "031c9d4df85ecd313730d13a36a68bd4b222cc7e461d11b8e50ad0ff9bdec2cf",
       "0005-domjit-effect-allow-no-dfg-c-loop.patch": "70da4f1f4a1b61ef8626cb07ad8899971efb9eea2f29bc7576881e54d42083e3",
       "0006-disable-usewasm-when-webassembly-compiled-out.patch": "2e7a763abd922ce698cfc56ca916b6db262907115d0e250ad1b1aec4f845f918",
-      "0007-restore-dropped-includes-and-llint-fwd-decl.patch": "aebd3bcb6a7938dec40cdb9c4b4fd1abfe4170850abdf9e2e9edf268142714b1"
+      "0007-restore-dropped-includes-and-llint-fwd-decl.patch": "b0113fd1a978d058101d8148708dd2f9b6af65ffb0caf688542a7455f8d851b3"
     },
     "webkit_recipes": {
       "0001-cherry-pick-llint-riscv64.recipe": "8017bed5bf3f6fc22585b802c0016734ab48f0f70ddc675613c9b6930b8ea6b6",

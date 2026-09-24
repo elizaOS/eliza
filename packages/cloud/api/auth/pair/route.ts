@@ -10,7 +10,7 @@
 import {
   type CloudPairExchangeResponse,
   isCloudPairAgentId,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import { Hono } from "hono";
 import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";

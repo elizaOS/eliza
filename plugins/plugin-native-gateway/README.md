@@ -13,3 +13,9 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-gateway build  # build
 bun run --cwd plugins/plugin-native-gateway test   # tests
 ```
+
+Android bridge verification:
+
+```bash
+node packages/app/scripts/android-native-plugins.mjs --serial emulator-5554 --plugin plugin-native-gateway
+```

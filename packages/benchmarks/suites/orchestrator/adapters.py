@@ -86,7 +86,6 @@ IGNORED_BENCHMARK_DIRS = {
     "memperf",
     "mobile-resource",
     # Non-agent KPI harnesses run directly by the full-campaign manifest.
-    "lifeops-quality",
     "searchbench",
     "view-bundle-size",
     "voice-rtt",
@@ -112,7 +111,7 @@ IGNORED_BENCHMARK_DIRS = {
 # tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
-AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {"framework": ("eliza",)}
 
 # Historical result readers retain this diagnostic; no live adapter registers it.
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
@@ -1009,7 +1008,7 @@ def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
         )
     args = [
         sys.executable,
-        "scripts/run_benchmark.py",
+        "../../scripts/adhdbench/run_benchmark.py",
         "run",
         "--provider",
         effective_provider,
@@ -1205,36 +1204,15 @@ def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
 
 
 def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    mode = str(ctx.request.extra_config.get("mode", "harness")).strip().lower()
+    mode = str(ctx.request.extra_config.get("mode", "typescript")).strip().lower()
+    if mode != "typescript" or ctx.request.agent != "eliza":
+        raise ValueError("framework measures Eliza runtime overhead only; cross-harness response scoring was removed")
     flags = shlex.split(str(ctx.request.extra_config.get("flags", "")))
-    output_path = ctx.output_root / "framework-results.json"
-    if mode != "typescript":
-        scenarios = str(ctx.request.extra_config.get("scenarios", "single-message"))
-        iterations = int(ctx.request.extra_config.get("iterations", 1) or 1)
-        generated_limit = int(ctx.request.extra_config.get("generated_limit", 3) or 3)
-        return [
-            sys.executable,
-            "framework/scripts/harness_runner.py",
-            "--harness",
-            ctx.request.agent.strip().lower(),
-            "--provider",
-            ctx.request.provider,
-            "--model",
-            ctx.request.model,
-            "--scenarios",
-            scenarios,
-            "--iterations",
-            str(max(1, iterations)),
-            "--generated-limit",
-            str(max(1, generated_limit)),
-            "--output",
-            str(output_path),
-        ]
     return [
-        "bun",
-        "run",
-        "framework/typescript/src/bench.ts",
-        f"--output={output_path}",
+        "bun", "run", "framework/typescript/src/bench.ts",
+        f"--output={ctx.output_root / 'framework-results.json'}",
+        f"--scenarios={ctx.request.extra_config.get('scenarios', 'single-message')}",
+        f"--iterations={int(ctx.request.extra_config.get('iterations', 1))}",
         *flags,
     ]
 
@@ -1417,7 +1395,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         osworld_python = str(conda_python) if conda_python.exists() else sys.executable
     args = [
         osworld_python,
-        "scripts/python/run_multienv_eliza.py",
+        "../../scripts/osworld/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
         "--model",
@@ -1537,7 +1515,7 @@ def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     if task in {"should_respond", "should-respond"}:
         args = [
             sys.executable,
-            "scripts/harness_runner.py",
+            "../../scripts/eliza-1/harness_runner.py",
             "--harness",
             str(harness).strip().lower(),
             "--model",
@@ -1926,20 +1904,8 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     import json
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    overall_score = data.get("overall_score") if isinstance(data, dict) else None
-    if isinstance(overall_score, (int, float)):
-        return ScoreSummary(
-            score=float(overall_score),
-            unit="ratio",
-            higher_is_better=True,
-            metrics={
-                "runtime": data.get("runtime"),
-                "scenario_count": len(data.get("scenarios", {}))
-                if isinstance(data.get("scenarios"), dict)
-                else 0,
-                "primary_score_note": "Normalized correctness/SLO score; throughput metrics are secondary diagnostics.",
-            },
-        )
+    if isinstance(data, dict) and "overall_score" in data:
+        raise ValueError("Legacy framework response-presence scores are not runtime measurements")
     scenarios = data.get("scenarios", {}) if isinstance(data, dict) else {}
     if not isinstance(scenarios, dict) or not scenarios:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
@@ -1967,16 +1933,8 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     )
     if has_throughput_observation:
         raw_throughput = (total_messages / total_time_ms) * 1000.0
-        # Treat 50 messages/sec as the smoke SLO. The raw throughput remains
-        # in metrics; the primary score must stay a bounded 0..1 ratio so
-        # calibration and cross-benchmark comparisons are meaningful.
-        score = max(0.0, min(1.0, raw_throughput / 50.0))
-        unit = "ratio"
-    elif latency_values:
-        mean_latency = sum(latency_values) / len(latency_values)
-        raw_throughput = 1000.0 / mean_latency if mean_latency > 0 else 0.0
-        score = max(0.0, min(1.0, raw_throughput / 50.0))
-        unit = "ratio"
+        score = raw_throughput
+        unit = "messages/second"
     else:
         score = None
         raw_throughput = None
@@ -1995,7 +1953,7 @@ def _score_from_framework(path: Path) -> ScoreSummary:
             "mean_latency_ms": sum(latency_values) / len(latency_values)
             if latency_values
             else None,
-            "primary_score_note": "Normalized smoke SLO score capped at 1.0; raw throughput is tracked separately.",
+            "primary_score_note": "Measured Eliza runtime throughput, not agent correctness or cross-framework parity.",
         },
     )
 
@@ -2424,7 +2382,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "multitask_bench": "multitask-bench",
-        "voicebench_quality": "voicebench-quality",
+        "voicebench_quality": "voicebench/quality",
         "vision_language": "vision-language",
         "recall_bench": "recall-bench",
         "trajectory_replay": "standard",
@@ -2472,7 +2430,13 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             )
             continue
         if directory not in benchmark_dirs:
-            if entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
+            if (
+                entry.id == "voicebench_quality"
+                and "voicebench" in benchmark_dirs
+                and (benchmarks_root / directory).is_dir()
+            ):
+                pass
+            elif entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
                 directory = "OSWorld"
             elif entry.id == "gauntlet" and "gauntlet" in benchmark_dirs:
                 directory = "gauntlet"
@@ -2612,7 +2576,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             ],
             score_extractor=_score_from_framework,
             default_extra_config={
-                "mode": "harness",
+                "mode": "typescript",
                 "scenarios": "single-message",
                 "iterations": 1,
             },

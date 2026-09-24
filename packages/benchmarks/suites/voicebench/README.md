@@ -2,6 +2,10 @@
 
 End-to-end voice latency benchmark for the elizaOS TypeScript runtime.
 
+The [quality sub-suite](quality/README.md) implements the published VoiceBench
+spoken-instruction evaluation. Its `voicebench_quality` ID and quality score
+remain separate from this package's latency measurements.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

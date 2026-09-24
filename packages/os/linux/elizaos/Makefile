@@ -16,7 +16,7 @@ ARCH    ?= amd64
 PROFILE ?= default
 DEBIAN_MIRROR ?= https://mirrors.kernel.org/debian
 HERE    := $(shell pwd)
-LINUX_ROOT := $(abspath $(HERE)/..)
+OS_ROOT := $(abspath $(HERE)/../..)
 OUT     := $(HERE)/out
 CONTAINER_BUILD_DIR := /work/elizaos-linux
 AGENT_ARTIFACTS ?= $(HERE)/artifacts/$(ARCH)
@@ -81,27 +81,27 @@ build:
 stage-agent-artifacts: check-arch
 ifeq ($(ARCH),riscv64)
 ifeq ($(RISCV64_RUNTIME),node)
-	scripts/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --skip-build
+	../../scripts/linux/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --skip-build
 else
-	scripts/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --riscv64-bun-zip "$(BUN_RISCV64_ZIP)" --riscv64-musl-runtime "$(RISCV64_MUSL_RUNTIME)" $(if $(RISCV64_ICU_DATA),--riscv64-icu-data "$(RISCV64_ICU_DATA)",)
+	../../scripts/linux/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --riscv64-bun-zip "$(BUN_RISCV64_ZIP)" --riscv64-musl-runtime "$(RISCV64_MUSL_RUNTIME)" $(if $(RISCV64_ICU_DATA),--riscv64-icu-data "$(RISCV64_ICU_DATA)",)
 endif
 else
-	scripts/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" $(if $(BUN_SOURCE),--bun-source "$(BUN_SOURCE)",)
+	../../scripts/linux/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" $(if $(BUN_SOURCE),--bun-source "$(BUN_SOURCE)",)
 endif
 
 riscv64-agent-runtime-smoke:
-	RISCV64_AGENT_RUNTIME_REPORT="$(RISCV64_AGENT_RUNTIME_REPORT)" RISCV64_AGENT_RUNTIME_TRANSCRIPT="$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)" scripts/check-riscv64-agent-runtime-artifact.sh "$(HERE)/artifacts/riscv64"
+	RISCV64_AGENT_RUNTIME_REPORT="$(RISCV64_AGENT_RUNTIME_REPORT)" RISCV64_AGENT_RUNTIME_TRANSCRIPT="$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)" ../../scripts/linux/check-riscv64-agent-runtime-artifact.sh "$(HERE)/artifacts/riscv64"
 
 release-check:
-	python3 scripts/check_release_manifest.py
+	python3 ../../scripts/linux/check_release_manifest.py
 
 release-check-strict:
-	python3 scripts/check_release_manifest.py --strict
+	python3 ../../scripts/linux/check_release_manifest.py --strict
 
 lint:
-	scripts/static-smoke.sh
-	python3 -m py_compile scripts/check-multiarch-boot-contract.py
-	python3 scripts/test_check_multiarch_boot_contract.py
+	../../scripts/linux/static-smoke.sh
+	python3 -m py_compile ../../scripts/linux/check-multiarch-boot-contract.py
+	python3 ../../scripts/linux/test_check_multiarch_boot_contract.py
 
 clean:
 	$(REMOVE_PATH_RECURSIVE) "$(OUT)" cache chroot binary*.iso config/binary config/bootstrap config/chroot config/source
@@ -142,7 +142,7 @@ mkosi-build: builder check-arch
 	    docker run --rm --privileged \
 	        --network host \
 	        -e MKOSI_EMIT_ISO=$(MKOSI_EMIT_ISO) \
-	        -v "$(LINUX_ROOT):/src:ro" \
+	        -v "$(OS_ROOT):/src:ro" \
 	        -v "$(MKOSI_OUT):/out" \
 	        --entrypoint bash \
 	        elizaos-linux-builder -lc "\
@@ -157,8 +157,8 @@ mkosi-build: builder check-arch
 	            rsync -a /src/ /work/src/ \
 	                --exclude .build --exclude .build.lock --exclude cache \
 	                --exclude chroot --exclude binary --exclude out && \
-	            ELIZAOS_ARCH=$(ARCH) /work/src/elizaos/scripts/ensure-foreign-binfmt.sh && \
-	            cd /work/src/elizaos/mkosi && \
+	            ELIZAOS_ARCH=$(ARCH) /work/src/scripts/linux/ensure-foreign-binfmt.sh && \
+	            cd /work/src/linux/elizaos/mkosi && \
 	            mkosi --force \
 	                --architecture $(MKOSI_ARCH) \
 	                $(MKOSI_PROFILE_FLAG) \
@@ -170,16 +170,16 @@ mkosi-build: builder check-arch
 # composed) without building. Fast feedback for config edits.
 mkosi-summary: builder check-arch
 	docker run --rm \
-	    -v "$(LINUX_ROOT):/work/src:ro" \
+	    -v "$(OS_ROOT):/work/src:ro" \
 	    --entrypoint bash \
 	    elizaos-linux-builder -lc "\
-	        cd /work/src/elizaos/mkosi && \
+	        cd /work/src/linux/elizaos/mkosi && \
 	        mkosi --architecture $(MKOSI_ARCH) $(MKOSI_PROFILE_FLAG) summary"
 
 # Static lint: validates the mkosi tree shape (configs parse, postinst is
 # executable, skeleton symlinks resolve) without running mkosi.
 mkosi-lint:
-	scripts/mkosi-lint.sh
+	../../scripts/linux/mkosi-lint.sh
 
 mkosi-clean:
 	$(REMOVE_PATH_RECURSIVE) "$(MKOSI_OUT)"

@@ -27,7 +27,7 @@ import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
   resolveKnowledgeGraphService,
-} from "../src/knowledge-graph/index.ts";
+} from "../src/index.ts";
 import { relationshipsPlugin } from "../src/plugin.ts";
 
 // Registering the KG service + schema makes runtime.initialize() start the

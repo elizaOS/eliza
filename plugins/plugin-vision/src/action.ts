@@ -16,7 +16,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared/runtime-env";
+import { isMobilePlatform } from "@elizaos/shared";
 import sharp from "sharp";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";

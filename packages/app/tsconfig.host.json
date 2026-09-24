@@ -46,7 +46,6 @@
         "../../plugins/plugin-coding-tools/src/*"
       ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
-      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-agent-orchestrator/ui": [

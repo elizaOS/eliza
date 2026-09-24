@@ -1,4 +1,4 @@
-// Coordinates cloud service fal behavior behind route handlers.
+/** Loads Fal model prices and maps published rates to authoritative billing dimensions. */
 import { aiPricingRepository } from "../../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../../db/schemas/ai-pricing";
 import { logger } from "../../../utils/logger";
@@ -187,7 +187,7 @@ export function parseFalPricingEntries(
     }
     case "h3_max": {
       const match = paragraph.match(
-        /Video costs\s+\$([\d.]+)\s+per second at 480p,\s+\$([\d.]+)\s+per second at 768p/i,
+        /Video costs\s+\$([\d.]+)\s+per second at 480p\s*,\s+\$([\d.]+)\s+per second at 768p/i,
       );
       if (!match) {
         throw new Error(`Unable to parse MiniMax H3 Max pricing paragraph: ${paragraph}`);
@@ -203,6 +203,14 @@ export function parseFalPricingEntries(
           resolution: "768P",
         }),
       );
+      const refinedResolution = paragraph.match(/\$([\d.]+)\s+per second at 1080p/i);
+      if (refinedResolution) {
+        entries.push(
+          buildFalEntry(model, "second", Number(refinedResolution[1]), {
+            resolution: "1080P",
+          }),
+        );
+      }
       break;
     }
     case "kling": {

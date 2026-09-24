@@ -22,7 +22,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
-} from "@elizaos/shared/elizacloud/domain-contract";
+} from "@elizaos/shared";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   type ComponentType,
@@ -136,6 +136,17 @@ const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
   billing: "/cloud/billing",
   organization: "/cloud/organization",
   agents: "/cloud/agents",
+};
+
+/** Settings sections whose bodies already have a standalone Cloud route. */
+const CLOUD_SETTINGS_SECTION_TARGETS: Readonly<Record<string, string>> = {
+  "#cloud-account": "/cloud/account",
+  "#cloud-billing": "/cloud/billing",
+  "#cloud-api-keys": "/cloud/api-keys",
+  "#cloud-applications": "/cloud/apps",
+  "#cloud-monetization": "/cloud/monetization",
+  "#cloud-organization": "/cloud/organization",
+  "#cloud-plugin-grants": "/cloud/security/permissions",
 };
 
 function LegacySettingsTabRedirect(): React.JSX.Element {
@@ -268,13 +279,18 @@ function EnsurePrivateCloudSurfacesOnMount({
  */
 function PrivateCloudAppRoute({
   appElement,
+  cloudManagementElement,
 }: {
   appElement: ReactNode;
+  cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
   return (
     <StewardAuthProvider>
       <CloudManagementSessionGate>
-        <PrivateCloudRegistrationRoute appElement={appElement} />
+        <PrivateCloudRegistrationRoute
+          appElement={appElement}
+          cloudManagementElement={cloudManagementElement}
+        />
       </CloudManagementSessionGate>
     </StewardAuthProvider>
   );
@@ -282,8 +298,10 @@ function PrivateCloudAppRoute({
 
 function PrivateCloudRegistrationRoute({
   appElement,
+  cloudManagementElement,
 }: {
   appElement: ReactNode;
+  cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     subscribePrivateCloudRegistration,
@@ -309,7 +327,11 @@ function PrivateCloudRegistrationRoute({
       />
     );
   }
-  return <AppCatchAllRoute appElement={appElement} />;
+  return (
+    <>
+      {cloudManagementElement ?? <AppCatchAllRoute appElement={appElement} />}
+    </>
+  );
 }
 
 /**
@@ -394,9 +416,11 @@ function CanonicalCloudAppRedirect(): React.JSX.Element {
 function CloudRouteElement({
   route,
   appElement,
+  cloudManagementElement,
 }: {
   route: CloudRouteDef;
   appElement: ReactNode;
+  cloudManagementElement?: ReactNode;
 }): React.JSX.Element {
   if (route.public) {
     return <>{applyRouteGate(route.gate, renderRouteElement(route))}</>;
@@ -406,7 +430,9 @@ function CloudRouteElement({
     return (
       <StewardAuthProvider>
         <CloudManagementSessionGate>
-          <AppCatchAllRoute appElement={appElement} />
+          {cloudManagementElement ?? (
+            <AppCatchAllRoute appElement={appElement} />
+          )}
         </CloudManagementSessionGate>
       </StewardAuthProvider>
     );
@@ -426,6 +452,8 @@ export interface CloudRouterShellProps {
    * under the catch-all `/*` route. The host owns its `AppProvider`.
    */
   appElement: ReactNode;
+  /** Hosted account management that needs a Cloud session but no agent runtime. */
+  cloudManagementElement?: ReactNode;
   /** Approved public homepage rendered only on the canonical/legacy marketing hosts. */
   marketingHomeElement?: ReactNode;
   /** Public downloads page rendered only on the canonical/legacy marketing hosts. */
@@ -491,6 +519,15 @@ export function AppCatchAllRoute({
 }): React.JSX.Element {
   const { ready, authenticated } = useSessionAuth();
   const location = useLocation();
+  // Consume only known Cloud section anchors before any agent entry gate.
+  // Native settings never mount this web router and keep their embedded bodies.
+  const managementTarget =
+    location.pathname === "/settings"
+      ? CLOUD_SETTINGS_SECTION_TARGETS[location.hash]
+      : undefined;
+  if (managementTarget) {
+    return <Navigate to={`${managementTarget}${location.search}`} replace />;
+  }
   if (isApexControlPlaneHost()) {
     if (!ready) {
       return <RouteChunkFallback />;
@@ -535,6 +572,7 @@ const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
  */
 export function CloudRouterShell({
   appElement,
+  cloudManagementElement,
   marketingHomeElement,
   downloadsElement,
 }: CloudRouterShellProps): React.JSX.Element {
@@ -585,7 +623,11 @@ export function CloudRouterShell({
               key={route.path}
               path={route.path}
               element={
-                <CloudRouteElement route={route} appElement={appElement} />
+                <CloudRouteElement
+                  route={route}
+                  appElement={appElement}
+                  cloudManagementElement={cloudManagementElement}
+                />
               }
             />
           ))}
@@ -619,7 +661,12 @@ export function CloudRouterShell({
               app-shell page before the tab router resolves the path. */}
           <Route
             path="cloud/*"
-            element={<PrivateCloudAppRoute appElement={appElement} />}
+            element={
+              <PrivateCloudAppRoute
+                appElement={appElement}
+                cloudManagementElement={cloudManagementElement}
+              />
+            }
           />
 
           {/* Catch-all: the existing tab/view app (chat is home) — except on

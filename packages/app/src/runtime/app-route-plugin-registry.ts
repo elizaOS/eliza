@@ -6,7 +6,7 @@
 export type {
   AppRoutePluginLoader,
   AppRoutePluginRegistryEntry,
-} from "@elizaos/shared/api/app-route-plugin-registry";
+} from "@elizaos/shared";
 export {
   listAppRoutePluginLoaders,
   registerAppRoutePluginLoader,

@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
-import { resolveConcurrency } from "../lib/test-task-pool.mjs";
+import { resolveConcurrency } from "../lib/test-task-pool.ts";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

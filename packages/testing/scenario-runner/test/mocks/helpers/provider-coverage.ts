@@ -1,5 +1,5 @@
 /** Provides provider coverage helper utilities shared by package tests and scenario harnesses. */
-import type { MockEnvironmentName } from "../scripts/start-mocks.ts";
+import type { MockEnvironmentName } from "../../../../scripts/mocks/start-mocks.ts";
 
 export type LifeOpsProviderMockMode =
   | "stateful-http"

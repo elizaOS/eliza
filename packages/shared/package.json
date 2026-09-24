@@ -65,6 +65,16 @@
       "import": "./dist/todo-cutover.js",
       "default": "./dist/todo-cutover.js"
     },
+    "./synthetic-control": {
+      "types": "./dist/synthetic-control/index.d.ts",
+      "eliza-source": {
+        "types": "./src/synthetic-control/index.ts",
+        "import": "./src/synthetic-control/index.ts",
+        "default": "./src/synthetic-control/index.ts"
+      },
+      "import": "./dist/synthetic-control/index.js",
+      "default": "./dist/synthetic-control/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {
@@ -204,66 +214,6 @@
       "types": "./dist/local-inference/index.d.ts",
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
-    },
-    "./mcp": {
-      "types": "./dist/mcp/index.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/index.ts",
-        "import": "./src/mcp/index.ts",
-        "default": "./src/mcp/index.ts"
-      },
-      "import": "./dist/mcp/index.js",
-      "default": "./dist/mcp/index.js"
-    },
-    "./mcp/action-naming": {
-      "types": "./dist/mcp/action-naming.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/action-naming.ts",
-        "import": "./src/mcp/action-naming.ts",
-        "default": "./src/mcp/action-naming.ts"
-      },
-      "import": "./dist/mcp/action-naming.js",
-      "default": "./dist/mcp/action-naming.js"
-    },
-    "./mcp/json": {
-      "types": "./dist/mcp/json.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/json.ts",
-        "import": "./src/mcp/json.ts",
-        "default": "./src/mcp/json.ts"
-      },
-      "import": "./dist/mcp/json.js",
-      "default": "./dist/mcp/json.js"
-    },
-    "./mcp/prompts": {
-      "types": "./dist/mcp/prompts.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/prompts.ts",
-        "import": "./src/mcp/prompts.ts",
-        "default": "./src/mcp/prompts.ts"
-      },
-      "import": "./dist/mcp/prompts.js",
-      "default": "./dist/mcp/prompts.js"
-    },
-    "./mcp/schema-budget": {
-      "types": "./dist/mcp/schema-budget.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/schema-budget.ts",
-        "import": "./src/mcp/schema-budget.ts",
-        "default": "./src/mcp/schema-budget.ts"
-      },
-      "import": "./dist/mcp/schema-budget.js",
-      "default": "./dist/mcp/schema-budget.js"
-    },
-    "./mcp/schema-converter": {
-      "types": "./dist/mcp/schema-converter.d.ts",
-      "eliza-source": {
-        "types": "./src/mcp/schema-converter.ts",
-        "import": "./src/mcp/schema-converter.ts",
-        "default": "./src/mcp/schema-converter.ts"
-      },
-      "import": "./dist/mcp/schema-converter.js",
-      "default": "./dist/mcp/schema-converter.js"
     },
     "./local-inference/routing-preferences": {
       "types": "./dist/local-inference/routing-preferences.d.ts",
@@ -936,12 +886,12 @@
     "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
     "json5": "^2.2.3",
-    "react": "^19.0.0",
+    "react": "19.2.7",
     "yaml": "^2.8.2",
     "zod": "^4.6.5",
     "markdown-it": "^14.1.0",
     "file-type": "^22.0.0",
-    "@huggingface/tokenizers": "0.1.3",
+    "@huggingface/tokenizers": "0.2.0",
     "handlebars": "^4.7.8"
   },
   "devDependencies": {

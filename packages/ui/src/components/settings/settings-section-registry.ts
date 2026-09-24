@@ -3,9 +3,9 @@
  * plugins so the Settings view can render declared sections in one order.
  */
 import type { ViewKind } from "@elizaos/core";
+import { getUiRegistryStore } from "@elizaos/shared";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
-import { getUiRegistryStore } from "../../registry-host";
 import type {
   SettingsRuntimeCapabilities,
   SettingsRuntimeCapability,

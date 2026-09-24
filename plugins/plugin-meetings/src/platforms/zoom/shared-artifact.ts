@@ -4,13 +4,13 @@
  * that source loss explicitly instead of claiming per-participant audio.
  */
 
+import type { TranscriptSegment } from "@elizaos/shared";
 import {
   assertValidMeetingArtifact,
   MEETING_ARTIFACT_SCHEMA_VERSION,
   type MeetingArtifact,
   type MeetingParticipant,
 } from "@elizaos/shared";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 
 export interface ZoomBotMeetingArtifactInput {
   artifactId: string;

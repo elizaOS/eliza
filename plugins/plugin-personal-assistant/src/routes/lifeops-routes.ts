@@ -40,8 +40,8 @@ import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -121,7 +121,10 @@ import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { handleAccountHandoffRoutes } from "./account-handoff.js";
-import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
+import {
+  entityHasVerifiedMachineAuthBinding,
+  type LifeOpsAuthenticatedPrincipal,
+} from "./authenticated-entity-principal.js";
 import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
 export interface LifeOpsRouteContext {
@@ -134,6 +137,8 @@ export interface LifeOpsRouteContext {
     runtime: AgentRuntime | null;
     adminEntityId: UUID | null;
     requestEntityId?: string | null;
+    /** Set by the authorization wrapper; owner fallback IDs are not activity proof. */
+    authenticatedPrincipal?: LifeOpsAuthenticatedPrincipal;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
@@ -2368,7 +2373,20 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       await ensureRouteSchema(ctx.state.runtime);
-      json(res, { signal: await service.captureActivitySignal(body) }, 201);
+      const principal = ctx.state.authenticatedPrincipal;
+      const ownerActivity =
+        principal?.kind === "owner" && ctx.state.adminEntityId
+          ? {
+              principalId: principal.entityId,
+              ownerPrincipalId: ctx.state.adminEntityId,
+              receivedAtIso: new Date().toISOString(),
+            }
+          : undefined;
+      json(
+        res,
+        { signal: await service.captureActivitySignal(body, ownerActivity) },
+        201,
+      );
     });
   }
 

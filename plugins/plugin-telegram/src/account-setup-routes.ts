@@ -20,11 +20,7 @@
  */
 
 import type { IAgentRuntime, SetupState } from "@elizaos/core";
-import type {
-  Route,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "fetch-corpus-assets.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "terminal-bench" / "fetch-corpus-assets.py"
 spec = importlib.util.spec_from_file_location("fetch_corpus_assets", SCRIPT)
 assert spec is not None and spec.loader is not None
 fetcher = importlib.util.module_from_spec(spec)

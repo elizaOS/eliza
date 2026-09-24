@@ -43,7 +43,7 @@ import type {
   AppViewerAuthMessage,
   AppViewerConfig,
   RegistryAppInfo,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import type { TrajectoryExportFormat } from "./client-types-core";
 
 export type {
@@ -80,6 +80,8 @@ export type {
 
 // Cloud
 export interface CloudStatus {
+  /** Older servers omit this field; omission must remain visibly unavailable. */
+  applicationBilling?: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection;
   connected: boolean;
   enabled?: boolean;
   cloudVoiceProxyAvailable?: boolean;

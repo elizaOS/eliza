@@ -20,8 +20,8 @@ import {
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships/knowledge-graph";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/plugin-relationships";
+import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";

@@ -97,7 +97,7 @@ def _verify_pinned_corpus(tasks_dir: Path) -> dict[str, object]:
     if missing_downloads:
         raise TerminalBenchDatasetMissingError(
             "Terminal-Bench large inputs are missing: " + ", ".join(missing_downloads)
-            + ". Run python3 packages/benchmarks/suites/terminal-bench/scripts/"
+            + ". Run python3 packages/benchmarks/scripts/terminal-bench/"
             "fetch-corpus-assets.py from the repository root."
         )
     expected_count = manifest.get("expected_task_count")

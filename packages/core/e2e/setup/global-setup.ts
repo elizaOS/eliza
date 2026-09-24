@@ -8,7 +8,7 @@
 
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import {
 	createOllamaModelHandlers,
 	detectInferenceProviders,

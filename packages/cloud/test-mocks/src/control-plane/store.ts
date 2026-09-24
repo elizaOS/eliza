@@ -15,7 +15,7 @@ import type {
   SharedTodoCutoverRecord,
   SharedTodoCutoverSnapshot,
   SharedTodoMutationCutoverRecord,
-} from "@elizaos/shared/todo-cutover";
+} from "@elizaos/shared";
 
 export type SandboxStatus =
   | "provisioning"

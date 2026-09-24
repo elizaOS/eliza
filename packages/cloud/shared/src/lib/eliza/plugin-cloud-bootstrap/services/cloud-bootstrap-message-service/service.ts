@@ -27,7 +27,7 @@ import {
   truncateToCompleteSentence,
   type UUID,
 } from "@elizaos/core";
-import { composePromptFromState } from "@elizaos/shared/text/template-rendering";
+import { composePromptFromState } from "@elizaos/shared";
 import { v4 } from "uuid";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";

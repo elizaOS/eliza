@@ -24,7 +24,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
-import { resolveKnowledgeGraphService } from "../knowledge-graph/index.ts";
+import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
 
 import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
 

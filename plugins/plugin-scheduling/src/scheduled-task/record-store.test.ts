@@ -376,3 +376,179 @@ it("keeps domain records out of core collections and rejects unsupported domain 
     await adapter.recordStore.get("plugin_scheduling_schema", "version"),
   ).toBe(2);
 });
+
+function admissionExpectation(row: ScheduledTask) {
+  const { state, metadata, ...definition } = row;
+  return {
+    expectedState: state,
+    expectedMetadata: metadata ?? {},
+    expectedDefinition: definition,
+  };
+}
+
+it("consumes one admitted occurrence atomically across workers and retains it through database reopen", async () => {
+  const adapter = await open();
+  const a = createSchedulingRecordStores(adapter.recordStore, agentId);
+  const b = createSchedulingRecordStores(adapter.recordStore, agentId);
+  const row = task();
+  row.metadata = { admitted: { signalId: "owner-first", day: "2026-09-22" } };
+  await a.store.upsert(row);
+  const observed = await a.store.get(row.taskId);
+  if (!observed) throw new Error("task missing");
+  const claims = await Promise.all(
+    [a, b].map(({ store }) =>
+      store.claimForFire({
+        taskId: row.taskId,
+        firedAtIso: "2026-09-22T12:00:00.000Z",
+        ...admissionExpectation(observed),
+        claimedMetadata: {
+          ...observed.metadata,
+          admitted: null,
+          consumedDay: "2026-09-22",
+        },
+      }),
+    ),
+  );
+  expect(claims.map((claim) => claim.kind).sort()).toEqual(["fired", "raced"]);
+  await adapter.close();
+  const reopened = await open();
+  const restored = createSchedulingRecordStores(reopened.recordStore, agentId);
+  const durable = await restored.store.get(row.taskId);
+  expect(durable?.state.status).toBe("fired");
+  expect(durable?.metadata).toMatchObject({
+    admitted: null,
+    consumedDay: "2026-09-22",
+  });
+  expect(
+    await restored.store.claimForFire({
+      taskId: row.taskId,
+      firedAtIso: "2026-09-22T12:01:00.000Z",
+      ...admissionExpectation(observed),
+      claimedMetadata: {},
+    }),
+  ).toEqual({ kind: "raced" });
+});
+
+it.each(["state", "metadata", "definition", "deleted"] as const)(
+  "rejects stale %s in admission writes, claims and receipt commits",
+  async (change) => {
+    const adapter = await open();
+    const a = createSchedulingRecordStores(adapter.recordStore, agentId);
+    const b = createSchedulingRecordStores(adapter.recordStore, agentId);
+    const row = task();
+    await a.store.upsert(row);
+    const observed = await a.store.get(row.taskId);
+    if (!observed) throw new Error("task missing");
+    const changed = structuredClone(observed);
+    if (change === "state") changed.state.followupCount++;
+    if (change === "metadata")
+      changed.metadata = { ...changed.metadata, enabled: false };
+    if (change === "definition") changed.trigger = { kind: "manual" };
+    if (change === "deleted") await b.store.delete(row.taskId);
+    else await b.store.upsert(changed);
+    const winner = await b.store.get(row.taskId);
+    expect(
+      await a.store.upsertIfStatus(observed, {
+        expectedStatus: observed.state.status,
+        nextFireAtIso: null,
+        ...admissionExpectation(observed),
+      }),
+    ).toBe(false);
+    expect(
+      await a.store.claimForFire({
+        taskId: row.taskId,
+        firedAtIso: "2026-09-22T12:00:00.000Z",
+        ...admissionExpectation(observed),
+        claimedMetadata: {},
+      }),
+    ).toEqual({ kind: "raced" });
+    await expect(
+      a.store.commitApply({
+        task: observed,
+        receiptKey: "stale",
+        commit: receipt(row, "stale"),
+        nextFireAtIso: null,
+        ...admissionExpectation(observed),
+      }),
+    ).rejects.toMatchObject({ code: "SCHEDULED_TASK_MUTATION_RACED" });
+    expect(await a.store.get(row.taskId)).toEqual(winner);
+    expect(await a.logStore.list({ agentId, taskId: row.taskId })).toEqual([]);
+  },
+);
+
+it.each(["expectedState", "expectedMetadata", "expectedDefinition"] as const)(
+  "rejects claim metadata without %s before changing the durable row",
+  async (missing) => {
+    const adapter = await open();
+    const { store } = createSchedulingRecordStores(
+      adapter.recordStore,
+      agentId,
+    );
+    const row = task();
+    await store.upsert(row);
+    const observed = await store.get(row.taskId);
+    if (!observed) throw new Error("task missing");
+    await expect(
+      store.claimForFire({
+        taskId: row.taskId,
+        firedAtIso: "2026-09-22T12:00:00.000Z",
+        ...admissionExpectation(observed),
+        [missing]: undefined,
+        claimedMetadata: {},
+      }),
+    ).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_CLAIM_EXPECTATION_REQUIRED",
+    });
+    expect(await store.get(row.taskId)).toEqual(observed);
+  },
+);
+
+it("allows one concurrent admission update and replays guarded receipts before stale-snapshot rejection", async () => {
+  const adapter = await open();
+  const a = createSchedulingRecordStores(adapter.recordStore, agentId);
+  const b = createSchedulingRecordStores(adapter.recordStore, agentId);
+  const row = task();
+  await a.store.upsert(row);
+  const observed = await a.store.get(row.taskId);
+  if (!observed) throw new Error("task missing");
+  const updates = await Promise.all(
+    [a, b].map(({ store }, index) =>
+      store.upsertIfStatus(
+        {
+          ...observed,
+          metadata: { ...observed.metadata, signalId: `device-${index}` },
+        },
+        {
+          expectedStatus: observed.state.status,
+          nextFireAtIso: null,
+          ...admissionExpectation(observed),
+        },
+      ),
+    ),
+  );
+  expect(updates.filter(Boolean)).toHaveLength(1);
+  const admitted = await a.store.get(row.taskId);
+  if (!admitted) throw new Error("task missing");
+  expect(admitted.metadata?.signalId).toBe(`device-${updates.indexOf(true)}`);
+  const proposal = {
+    task: {
+      ...admitted,
+      state: { ...admitted.state, status: "completed" as const },
+    },
+    receiptKey: "guarded",
+    commit: receipt(row, "guarded"),
+    nextFireAtIso: null,
+    ...admissionExpectation(admitted),
+  };
+  const results = await Promise.all([
+    a.store.commitApply(proposal),
+    b.store.commitApply(proposal),
+  ]);
+  expect(results.map((result) => result.kind).sort()).toEqual([
+    "applied",
+    "replayed",
+  ]);
+  expect(await a.logStore.list({ agentId, taskId: row.taskId })).toEqual([
+    proposal.commit,
+  ]);
+});

@@ -33,12 +33,13 @@ import "@elizaos/ui/styles";
 // Relationships owns the canonical /apps/relationships route. Its registration
 // metadata is tiny and must be available before the first route capture; the
 // page component itself remains lazy-loaded by the plugin registration.
-import "@elizaos/plugin-relationships/register";
+import { registerRelationshipsApp } from "@elizaos/plugin-relationships";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
 // the same surfaces.
 import "./cloud-apps-view";
+import "./context-inspector-page";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
@@ -55,18 +56,18 @@ import {
 import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
-import { getStylePresets } from "@elizaos/shared/character-presets";
-import {
-  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
-  cloudPairTokenKeyForAgent,
-  isCloudPairAgentId,
-  isCloudPairLoopbackOrigin,
-} from "@elizaos/shared/contracts";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared/contracts/personal-assistant";
-import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+} from "@elizaos/shared";
+import {
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  cloudPairTokenKeyForAgent,
+  getStylePresets,
+  isCloudPairAgentId,
+  isCloudPairLoopbackOrigin,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
 import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
@@ -207,10 +208,10 @@ import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
-import { isTrustedAppLink } from "./deep-link-handler";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
+  isTrustedAppLink,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
@@ -260,7 +261,10 @@ import {
 } from "./runtime-chooser-override";
 import {
   isElizaCloudSharedHost,
+  isLoopbackApiHost,
+  isPrivateOrLoopbackApiHost,
   isTrustedCloudOnlyApiBaseUrl,
+  isTrustedPrivateHttpHost,
 } from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -278,6 +282,8 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
+
+registerRelationshipsApp();
 
 const { createRoot } = ReactDomClient;
 // Keep one renderer owner across entry-module HMR. An in-flight boot finishes
@@ -338,13 +344,6 @@ function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
     "@elizaos/plugin-agent-orchestrator/ui/register",
     () => import("@elizaos/plugin-agent-orchestrator/ui/register"),
-  );
-}
-
-function importAppRelationshipsRegister() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-relationships/register",
-    () => import("@elizaos/plugin-relationships/register"),
   );
 }
 
@@ -904,6 +903,7 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    applicationBillingSlot: import.meta.env.VITE_ELIZA_APPLICATION_SLOT,
     autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
@@ -944,10 +944,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-agent-orchestrator/ui/register",
       load: importAppTaskCoordinatorRegister,
-    },
-    {
-      key: "@elizaos/plugin-relationships/register",
-      load: importAppRelationshipsRegister,
     },
     { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];
@@ -2809,6 +2805,14 @@ const CloudRouterShell = lazy(async () => {
   return { default: mod.CloudRouterShell };
 });
 
+/** Account management follows the Cloud session independently of agent boot. */
+const ManagedCloudPage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("ManagedCloudPage is web-build-only");
+  }
+  return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
+});
+
 /**
  * Simulator-only production chat gallery. Keeping this behind the literal
  * build flag makes the harness (and its fixture providers) unreachable from
@@ -2891,6 +2895,7 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+        cloudManagementElement={<ManagedCloudPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
@@ -2940,34 +2945,6 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-function isTrustedPrivateHttpHost(host: string): boolean {
-  return (
-    host === "0.0.0.0" ||
-    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    host === "local" ||
-    host === "internal" ||
-    host === "lan" ||
-    host === "ts.net" ||
-    host.endsWith(".local") ||
-    host.endsWith(".lan") ||
-    host.endsWith(".internal") ||
-    host.endsWith(".ts.net")
-  );
-}
-
-function isLoopbackApiHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host === "::1"
-  );
-}
-
 /**
  * Dedicated Cloud agents serve their runtime on the canonical managed-agent
  * hostname family. The shared classifier also recognizes legacy agent hosts
@@ -2983,18 +2960,6 @@ function isNativeIosStoreBuild(): boolean {
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
   return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
-}
-
-function isPrivateOrLoopbackApiHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
-  return (
-    isLoopbackApiHost(normalized) ||
-    (normalized.includes(":") &&
-      (normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
-        normalized.startsWith("fe80:"))) ||
-    isTrustedPrivateHttpHost(normalized)
-  );
 }
 
 function isNativeIosCloudRuntimeMode(): boolean {

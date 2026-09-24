@@ -11,7 +11,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/shared/api/http-plugin";
+} from "@elizaos/shared";
 import {
   executeInboxQueueOperation,
   type InboxQueueOperationResult,

@@ -23,6 +23,7 @@ import { isViewVisible } from "@elizaos/shared/views/view-kind";
 import { X } from "lucide-react";
 import { registerDeviceControlInteractHandler } from "./components/views/device-control-interact";
 import "./components/chat/chat-source-registration";
+import { getOverlayApp } from "@elizaos/shared";
 import {
   type ComponentType,
   lazy,
@@ -89,7 +90,6 @@ import {
 import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { OverlayAppSurface } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
-import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { AgentAuthGateSurface } from "./components/auth/AgentAuthGateSurface";
 import {
   CloudPairRelay,
@@ -663,7 +663,13 @@ function RegisteredAppShellPage({
   // capability bridge for them. This keeps registry pages and remote bundles
   // equivalent: controls registered with useAgentElement are live immediately.
   return (
-    <ShellViewAgentSurface viewId={bridge.viewId} surfaceKind={bridge.kind}>
+    <ShellViewAgentSurface
+      viewId={bridge.viewId}
+      surfaceKind={bridge.kind}
+      capabilities={registration.capabilities}
+      interact={registration.interact}
+      surface={registration.surface}
+    >
       {content}
     </ShellViewAgentSurface>
   );
@@ -1337,6 +1343,7 @@ function renderRemoteView(
         viewType={view.viewType}
         reserveChatClearance={false}
         surface={view.surface}
+        capabilities={view.capabilities}
         viewProps={viewProps}
       />
     </ViewSurfaceFrame>
@@ -1467,6 +1474,7 @@ function ViewLayoutSurface({
                       viewId={view.id}
                       viewType={view.viewType}
                       surface={view.surface}
+                      capabilities={view.capabilities}
                     />
                   ) : (
                     <ViewRouter

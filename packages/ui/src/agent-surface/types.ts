@@ -139,4 +139,4 @@ export interface AgentActionResult {
 // canonical definition lives in @elizaos/shared so the agent server can dispatch
 // against it without importing UI internals (#12408); re-exported here for the
 // UI's agent-surface consumers.
-export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared/views/view-interact-protocol";
+export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared";

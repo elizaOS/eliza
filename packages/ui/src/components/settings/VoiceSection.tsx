@@ -121,7 +121,7 @@ export interface VoiceSectionPrefs {
 }
 
 export interface VoiceSectionProps {
-  /** Hardware tier from I9 (null falls back to "GOOD"). */
+  /** Assessed hardware tier; null never implies a successful assessment. */
   tier: VoiceDeviceTier | null;
   /** Optional summary line for the tier banner. */
   tierSummary?: string;
@@ -193,13 +193,11 @@ export function VoiceSection({
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
         {leadingContent}
-        <SettingsGroup bare>
-          <VoiceTierBanner
-            tier={tier ?? "GOOD"}
-            summary={tierSummary}
-            compact
-          />
-        </SettingsGroup>
+        {tier !== null ? (
+          <SettingsGroup bare>
+            <VoiceTierBanner tier={tier} summary={tierSummary} compact />
+          </SettingsGroup>
+        ) : null}
 
         <SettingsGroup
           title={t("voicesection.chatGroupTitle", {

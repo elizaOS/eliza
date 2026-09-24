@@ -23,7 +23,7 @@ import {
 	type SignedRemoteCommand,
 	type SignedRemoteCommandResult,
 	type SignedRemoteCommandStartReceipt,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/shared";
 import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";
 import {

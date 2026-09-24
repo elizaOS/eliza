@@ -18,9 +18,11 @@ import {
   logger,
   type TargetSource,
 } from "@elizaos/core";
-import { formatErrorWithStack } from "@elizaos/shared/format-error";
-import { isMobilePlatform } from "@elizaos/shared/runtime-env";
-import { ensureRuntimeSqlCompatibility } from "@elizaos/shared/utils/sql-compat";
+import {
+  ensureRuntimeSqlCompatibility,
+  formatErrorWithStack,
+  isMobilePlatform,
+} from "@elizaos/shared";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";

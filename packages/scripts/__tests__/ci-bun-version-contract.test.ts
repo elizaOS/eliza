@@ -202,7 +202,7 @@ describe("ci-bun-version-contract", () => {
   test("fails when a concrete pin diverges from the source of truth", () => {
     expectViolation(
       buildRepo({ extra: { "drift.yml": pinnedWorkflow("1.3.99") } }),
-      /canonical CI Bun version is 1\.3\.14/,
+      /canonical CI Bun version is 1\.4\.2/,
     );
   });
 
@@ -1232,7 +1232,7 @@ jobs:
     expect(classifyTypeRange(CANONICAL, CANONICAL)).toBe("exact-canonical");
     expect(classifyTypeRange("*", CANONICAL)).toBe("compatible-range");
     expect(classifyTypeRange("^1.2.25", CANONICAL)).toBe("compatible-range");
-    expect(classifyTypeRange("~1.3.2", CANONICAL)).toBe("compatible-range");
+    expect(classifyTypeRange("~1.4.0", CANONICAL)).toBe("compatible-range");
     expect(classifyTypeRange("~1.2.0", CANONICAL)).toBe("drift");
     expect(classifyTypeRange("1.3.13", CANONICAL)).toBe("drift");
     expect(classifyTypeRange("^2.0.0", CANONICAL)).toBe("drift");

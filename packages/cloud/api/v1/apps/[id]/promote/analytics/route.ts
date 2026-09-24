@@ -1,7 +1,7 @@
 /**
  * Serves authenticated app-promotion analytics with a bounded reporting window.
  */
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parsePositiveInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";

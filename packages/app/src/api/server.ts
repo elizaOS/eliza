@@ -21,7 +21,6 @@ import {
   type ConversationMeta,
   clearPersistedFirstRunConfig,
   cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
@@ -54,8 +53,8 @@ import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
@@ -77,6 +76,7 @@ import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
+export { injectApiBaseIntoHtml } from "@elizaos/agent";
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
@@ -99,7 +99,6 @@ export {
   buildCorsAllowedPorts,
   invalidateCorsAllowedPorts,
 } from "./server-cors";
-export { injectApiBaseIntoHtml } from "./server-html";
 // Re-export helpers from split-out modules so tests can import from "./server"
 export {
   ensureApiTokenForBindHost,
@@ -149,10 +148,10 @@ async function getLocalInferenceRoutes() {
 }
 
 import {
+  ensureRuntimeSqlCompatibility,
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
-} from "@elizaos/shared/settings-debug";
-import { ensureRuntimeSqlCompatibility } from "@elizaos/shared/utils/sql-compat";
+} from "@elizaos/shared";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -178,10 +177,6 @@ import {
   normalizeRouteKey,
   recordRouteTiming,
 } from "./perf-instrument";
-import {
-  PLUGIN_REGISTRY_LOAD_DEADLINE_MS,
-  resolveWithinDeadline,
-} from "./plugin-registry-load-deadline";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
@@ -200,10 +195,7 @@ const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-aosp-llama",
 ] as const;
 
-import {
-  clearCloudSecrets,
-  getCloudSecret,
-} from "@elizaos/shared/elizacloud/cloud-secrets";
+import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";

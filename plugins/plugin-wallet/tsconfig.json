@@ -14,6 +14,7 @@
     "esModuleInterop": true,
     "noEmit": true,
     "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"],

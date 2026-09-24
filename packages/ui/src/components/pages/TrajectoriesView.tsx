@@ -4,6 +4,12 @@
  * Read capabilities are independent from management capabilities because
  * shared runtimes may expose trajectory history without export/delete routes.
  */
+
+import {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "@elizaos/shared";
 import { AlertTriangle, Download, Route, Trash2, XCircle } from "lucide-react";
 import {
   type ComponentProps,
@@ -38,11 +44,6 @@ import {
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import {
-  formatTrajectoryDuration,
-  formatTrajectoryTimestamp,
-  formatTrajectoryTokenCount,
-} from "../../utils/trajectory-format";
 import { PagePanel } from "../composites/page-panel";
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";

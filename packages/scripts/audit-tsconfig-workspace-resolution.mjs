@@ -503,7 +503,7 @@ function inspectProject({
       }
       if (!specifier.startsWith("@elizaos/")) continue;
       if (
-        !pathPatterns.some((pattern) => pattern.startsWith("@elizaos/")) ||
+        !targetName &&
         !rootPathPatterns.some((pattern) =>
           pathPatternMatches(pattern, specifier),
         )
@@ -512,14 +512,14 @@ function inspectProject({
       }
       let valid = Boolean(resolution);
       if (targetName) {
-        if (targetName === packageName) valid = true;
-        else {
+        const resolvedToGeneratedOutput =
+          resolution?.resolvedFileName.includes(`${path.sep}dist${path.sep}`) ??
+          false;
+        if (targetName === packageName) {
+          valid = Boolean(resolution) && !resolvedToGeneratedOutput;
+        } else {
           const target = manifestsByName.get(targetName);
           if (declarationEntryIsGenerated(target, specifier, targetName)) {
-            const resolvedToGeneratedOutput =
-              resolution?.resolvedFileName.includes(
-                `${path.sep}dist${path.sep}`,
-              ) ?? false;
             valid =
               (Boolean(resolution) && !resolvedToGeneratedOutput) ||
               builtPackages.has(targetName);

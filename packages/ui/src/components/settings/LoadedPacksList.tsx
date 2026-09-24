@@ -4,7 +4,7 @@
  * row is agent-addressable via `useAgentElement`.
  */
 
-import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
+import type { ResolvedContentPack } from "@elizaos/shared";
 import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector } from "../../state";

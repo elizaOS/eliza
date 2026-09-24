@@ -3,8 +3,9 @@
  * health inference and personal-assistant scheduling. The cases preserve exact
  * offset handling across DST boundaries and dependency-free browser behavior.
  */
+
+import { parseIsoMs, roundConfidence } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 describe("parseIsoMs", () => {
   it("preserves explicit offsets on both sides of a DST transition", () => {

@@ -16,9 +16,8 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
-import type { RouteHelpers } from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import { PostAgentAutonomyRequestSchema } from "@elizaos/shared";
-import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
 import { detectRuntimeModel } from "./agent-model.ts";
 
 type AgentStateStatus =

@@ -7,6 +7,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app": ["../../packages/app/src/index.ts"],
@@ -29,7 +30,8 @@
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
-      ]
+      ],
+      "@elizaos/plugin-scheduling": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { latestVoiceModelVersion } from "@elizaos/shared/local-inference";
+import { latestVoiceModelVersion } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
 	downloadedAssetName,

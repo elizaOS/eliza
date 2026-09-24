@@ -12,7 +12,7 @@ import { AgentRuntime, elizaLogger, type Plugin } from "@elizaos/core";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships/knowledge-graph";
+} from "@elizaos/plugin-relationships";
 import dotenv from "dotenv";
 import {
   type BenchmarkSession,

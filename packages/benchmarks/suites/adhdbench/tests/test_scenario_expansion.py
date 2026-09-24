@@ -12,7 +12,17 @@ from elizaos_adhdbench.scenarios import (
     get_scenarios,
     validate_scenarios,
 )
-from scripts.run_benchmark import _expected_real_result_count
+import importlib.util
+from pathlib import Path
+
+_cli_spec = importlib.util.spec_from_file_location(
+    "adhdbench_cli",
+    Path(__file__).resolve().parents[3] / "scripts/adhdbench/run_benchmark.py",
+)
+assert _cli_spec is not None and _cli_spec.loader is not None
+_cli = importlib.util.module_from_spec(_cli_spec)
+_cli_spec.loader.exec_module(_cli)
+_expected_real_result_count = _cli._expected_real_result_count
 
 
 def test_expansion_adds_exactly_ten_variants_per_authored_scenario() -> None:

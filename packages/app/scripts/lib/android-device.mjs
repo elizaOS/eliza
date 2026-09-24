@@ -1,12 +1,8 @@
-// Shared Android device helpers for the mobile e2e harness.
-//
-// Resolves adb / emulator / avdmanager cross-platform (ANDROID_HOME,
-// ANDROID_SDK_ROOT, PATH, common macOS/Linux/Windows locations), boots an AVD
-// on demand, installs/launches the app, wires adb port forwards, and discovers
-// the debuggable WebView CDP target. All device-driving scripts (the local-chat
-// smoke, the adb installer, the Playwright Android config) build on this so the
-// SDK/adb resolution lives in exactly one place and runs on Linux CI, a mac, or
-// Windows without hardcoded "~/Library/Android/sdk" paths.
+/**
+ * Shares Android SDK discovery, device operations and installed-artifact checks
+ * across mobile smoke, installer and Playwright lanes. Required tool discovery
+ * fails explicitly; optional smoke discovery may report a missing SDK.
+ */
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -111,14 +107,14 @@ function resolveSdkBinary({ name, subdirs, envOverride, probeArgs }) {
   return null;
 }
 
-export function resolveAdb() {
+export function resolveAdb({ required = true } = {}) {
   const adb = resolveSdkBinary({
     name: "adb",
     subdirs: ["platform-tools"],
     envOverride: "ADB",
     probeArgs: ["version"],
   });
-  if (!adb) {
+  if (!adb && required) {
     throw new Error(
       "adb not found. Install Android SDK platform-tools or set ANDROID_HOME / ANDROID_SDK_ROOT / ADB so adb is resolvable.",
     );

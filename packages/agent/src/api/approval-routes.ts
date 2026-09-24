@@ -30,7 +30,7 @@ import {
   type ApprovalService,
   PENDING_PROMPTS_SERVICE,
 } from "@elizaos/plugin-assistant";
-import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
+import type { RouteHelpers } from "@elizaos/shared";
 
 interface ApprovalRouteRuntime {
   agentId?: string;

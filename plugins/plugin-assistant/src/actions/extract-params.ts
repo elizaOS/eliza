@@ -12,9 +12,8 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared";
+import { composePrompt, getRecentMessagesData } from "@elizaos/shared";
 import { parseJSONObjectFromText } from "@elizaos/shared/text/model-output";
-import { composePrompt } from "@elizaos/shared/text/template-rendering";
 
 /**
  * Schema descriptor for a single action parameter — matches the shape used

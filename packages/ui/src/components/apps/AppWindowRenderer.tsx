@@ -6,6 +6,8 @@
  * re-resolves on a short bounded poll before settling on "App not found".
  */
 
+import type { OverlayApp, OverlayAppContext } from "@elizaos/shared";
+import { getAvailableOverlayApps } from "@elizaos/shared";
 import {
   type ComponentType,
   Suspense,
@@ -24,8 +26,6 @@ import { Card } from "../ui/card";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
 import { getAppSlug } from "./helpers";
-import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
-import { getAvailableOverlayApps } from "./overlay-app-registry";
 
 export interface AppWindowRendererProps {
   slug: string;

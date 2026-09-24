@@ -14,8 +14,9 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
+import type { UiSpec } from "@elizaos/shared";
+import { isRetryableChatFailureKind } from "@elizaos/shared";
 import { stripUnclaimedInteractionMarkup } from "@elizaos/shared/browser-contracts";
-import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,
@@ -30,7 +31,6 @@ import {
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import type { UiSpec } from "../../config/ui-spec";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";

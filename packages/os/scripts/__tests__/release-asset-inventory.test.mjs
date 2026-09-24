@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 import {
   evaluatePrEvidence,
   REQUIRED_EVIDENCE_ROWS,
-} from "../check-pr-evidence.mjs";
+} from "../../../scripts/check-pr-evidence.ts";
 import {
   assertReleaseAssetInventoriesEqual,
   createReleaseAssetInventory,
@@ -28,7 +28,7 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const scriptPath = path.join(repoRoot, "scripts/release-asset-inventory.mjs");
 const evidenceCheckerPath = path.join(
   repoRoot,
-  "scripts/check-pr-evidence.mjs",
+  "../scripts/check-pr-evidence.ts",
 );
 
 function sha256(payload) {

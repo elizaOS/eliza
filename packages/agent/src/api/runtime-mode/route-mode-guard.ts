@@ -10,8 +10,8 @@
  */
 
 import type http from "node:http";
-import { sendJsonError } from "@elizaos/shared/api/http-helpers";
-import type { Route } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared";
+import { sendJsonError } from "@elizaos/shared";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { matchPluginRoutePath } from "../plugin-route-path.ts";
 import {

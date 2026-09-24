@@ -4,7 +4,7 @@
  * silently return one row.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", () => ({

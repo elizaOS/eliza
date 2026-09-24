@@ -4,12 +4,13 @@
  * authenticated session and a mock ModelHub snapshot so the widget renders each
  * phase without a backend.
  */
-import type { Decorator, Meta, StoryObj } from "@storybook/react";
-import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
+
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "../../../services/local-inference/types";
+} from "@elizaos/shared";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
+import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import {
   assert,
   WithAuthenticatedSession,
