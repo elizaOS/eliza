@@ -22,7 +22,7 @@ const meta = {
       callReady: true,
       dialed: "",
       calls: [],
-      loading: false,
+      historyStatus: "ready",
       error: null,
     },
   },
@@ -33,7 +33,11 @@ type Story = StoryObj<typeof meta>;
 export const Empty: Story = {};
 export const Loading: Story = {
   args: {
-    snapshot: { ...meta.args.snapshot, loading: true, callReady: false },
+    snapshot: {
+      ...meta.args.snapshot,
+      historyStatus: "loading",
+      callReady: false,
+    },
   },
 };
 export const LoadError: Story = {
@@ -41,6 +45,7 @@ export const LoadError: Story = {
     snapshot: {
       ...meta.args.snapshot,
       callReady: false,
+      historyStatus: "unavailable",
       error:
         "Phone status is unavailable. Retry after checking device permissions.",
     },
@@ -51,6 +56,7 @@ export const Denied: Story = {
     snapshot: {
       ...meta.args.snapshot,
       callReady: false,
+      historyStatus: "unavailable",
       error: "Phone access is needed. Grant it in device settings, then retry.",
     },
   },
