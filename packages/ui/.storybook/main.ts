@@ -140,6 +140,13 @@ const config: StorybookConfig = {
       { find: /^@elizaos\/ui$/, replacement: resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: resolve(uiSrc, "$1") },
       {
+        find: /^@elizaos\/shared\/logger$/,
+        replacement: resolve(
+          monorepoRoot,
+          "packages/shared/scripts/browser-logger.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/shared\/browser-contracts$/,
         replacement: resolve(
           monorepoRoot,
