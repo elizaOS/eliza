@@ -1,24 +1,19 @@
 /** Runs assistant source contracts against the real workspace runtime and SQL adapter. */
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 export default defineConfig({
   resolve: {
     conditions: ["eliza-source", "node"],
-    alias: {
-      "@elizaos/core/media": new URL(
-        "../../packages/core/src/media/index.ts",
-        import.meta.url,
-      ).pathname,
-      "@elizaos/core": new URL(
-        "../../packages/core/src/index.ts",
-        import.meta.url,
-      ).pathname,
-      "@elizaos/plugin-sql": new URL(
-        "../plugin-sql/src/index.ts",
-        import.meta.url,
-      ).pathname,
-      "@elizaos/plugin-assistant": new URL("./src/index.ts", import.meta.url)
-        .pathname,
-    },
+    alias: [
+      {
+        find: /^@elizaos\/core\/media$/,
+        replacement: new URL(
+          "../../packages/core/src/media/index.ts",
+          import.meta.url,
+        ).pathname,
+      },
+      ...buildWorkspaceSourceAliases(),
+    ],
   },
   test: {
     environment: "node",
