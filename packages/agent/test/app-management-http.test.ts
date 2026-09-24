@@ -154,6 +154,22 @@ it("serves catalogs, rejects anonymous launch, launches an already loaded packag
   expect(config.ui.favoriteApps).toContain("@elizaos/plugin-calendar");
 }, 60_000);
 
+it("reports unavailable permission management instead of an empty inventory", async () => {
+  const base = `http://127.0.0.1:${server.port}`;
+  const headers = { authorization: `Bearer ${token}` };
+  expect(fixture.runtime.getService("app-registry")).toBeNull();
+  for (const route of [
+    "/api/apps/permissions",
+    "/api/apps/permissions/probe",
+  ]) {
+    const response = await fetch(`${base}${route}`, { headers });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: "AppRegistryService is not registered on the runtime",
+    });
+  }
+});
+
 it("honors an explicit workspace override without reusing another scope's catalog", async () => {
   const url = `http://127.0.0.1:${server.port}/api/apps`;
   const headers = { authorization: `Bearer ${token}` };
