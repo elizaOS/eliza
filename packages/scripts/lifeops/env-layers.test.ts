@@ -429,7 +429,7 @@ test("writeSecret rejects invalid keys, multi-line values, and bad scopes", () =
 test("surviving HITL consumers import the shared layered env module", () => {
   const importers = [
     "packages/scripts/lifeops/hitl-credential-dashboard.mjs",
-    "packages/scripts/lifeops/env-layers.test.mjs",
+    "packages/scripts/lifeops/env-layers.test.ts",
   ];
   for (const relativePath of importers) {
     const text = readFileSync(join(ROOT, relativePath), "utf8");

@@ -87,7 +87,7 @@ jobs:
       # install that skipped lifecycle scripts.
       - name: Batch runner clean-install preflight self-test
         if: matrix.shard == 1
-        run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
+        run: bun test packages/scripts/__tests__/test-cloud-run.test.ts
       - name: Run cloud integration tests
         run: bun run test:cloud
 

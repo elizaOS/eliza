@@ -12,7 +12,7 @@
  * workflow (and a laptop) can run it without a bun install. The pure pieces —
  * offer filtering/sorting, onstart assembly + the 16 KB vast onstart cap,
  * the poll state machine, and the budget guard — are exported for
- * run-certification.test.mjs; only main() touches the network.
+ * run-certification.test.ts; only main() touches the network.
  *
  * Secrets discipline: the Ed25519 signing key (ELIZA_CERT_SIGNING_KEY) and
  * the optional storage push command (CERT_PUSH_CMD, may embed credentials)
