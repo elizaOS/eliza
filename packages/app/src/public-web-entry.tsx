@@ -1,8 +1,8 @@
 /**
- * Mounts only the Cloud public/auth route shell for a cold hosted
+ * Mounts the Cloud public, account-management, and marketing shell for a cold hosted
  * public URL. The full application graph stays out of anonymous `/login`, then
  * loads into the same document when client-side navigation leaves that route
- * table so successful authentication does not reboot the browser page.
+ * table. Account management uses only the Cloud session and never starts an agent.
  */
 
 import "@elizaos/ui/styles";
@@ -17,6 +17,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderBootFailure } from "./boot-failure";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
+
+const ManagedCloudPage = lazy(
+  () => import("@elizaos/ui/cloud/shell/ManagedCloudPage"),
+);
+
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;
@@ -68,7 +73,12 @@ function mountPublicWebEntry(): void {
     <ErrorBoundary>
       <React.StrictMode>
         <Suspense fallback={null}>
-          <CloudRouterShell appElement={<FullAppHandoff />} />
+          <CloudRouterShell
+
+
+            appElement={<FullAppHandoff />}
+            cloudManagementElement={<ManagedCloudPage />}
+          />
         </Suspense>
       </React.StrictMode>
     </ErrorBoundary>,

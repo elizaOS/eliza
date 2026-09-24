@@ -80,6 +80,8 @@ export type {
 
 // Cloud
 export interface CloudStatus {
+  /** Older servers omit this field; omission must remain visibly unavailable. */
+  applicationBilling?: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection;
   connected: boolean;
   enabled?: boolean;
   cloudVoiceProxyAvailable?: boolean;

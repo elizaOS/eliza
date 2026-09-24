@@ -11,6 +11,7 @@ import {
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import {
   validateCancellationCustomer,
@@ -32,6 +33,7 @@ export async function recoverMissedSubscriptionEvents() {
     const claim = await claimSubscriptionReconciliation(candidate);
     if (!claim) continue;
     try {
+      assertOrganizationSubscription(claim.source);
       const configuredEnvironment = getCloudAwareEnv();
       const contract = await findPurchasedSubscriptionContract(claim.source);
       const stripe = createStripeRecoveryClient(deadline);

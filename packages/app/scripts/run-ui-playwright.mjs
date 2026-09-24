@@ -380,7 +380,6 @@ if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
   if (!env.ELIZA_UI_SMOKE_API_PORT) {
     const apiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
-    env.ELIZA_API_PORT = env.ELIZA_API_PORT || String(apiPort);
     reservedPorts.add(apiPort);
   } else {
     // Pre-set overrides must be canonical ports before reservation/spawn.
@@ -395,10 +394,11 @@ if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
   if (!env.ELIZA_UI_SMOKE_PORT) {
     const uiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_PORT = String(uiPort);
-    env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
   } else {
     parsePlaywrightPort(env.ELIZA_UI_SMOKE_PORT, "ELIZA_UI_SMOKE_PORT");
   }
+  env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
+  env.ELIZA_PORT = env.ELIZA_PORT || env.ELIZA_UI_SMOKE_PORT;
 }
 
 // The all-views audit is evidence for production plugin bundles, so its stub

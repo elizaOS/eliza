@@ -6,6 +6,8 @@ import { MODEL_CATALOG } from "@elizaos/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
+import { localInferenceService } from "../../services/local-inference/service";
+
 import { FirstRunOffer } from "./FirstRunOffer";
 
 const hardware: HardwareProbe = {
@@ -26,7 +28,7 @@ it("dispatches a published download even when a larger pending tier fits the Mac
   const onDownload = vi.fn();
   render(
     <FirstRunOffer
-      catalog={filterSettingsDefaultLocalModels(MODEL_CATALOG)}
+      catalog={localInferenceService.getCatalog()}
       installed={[]}
       downloads={[]}
       hardware={hardware}

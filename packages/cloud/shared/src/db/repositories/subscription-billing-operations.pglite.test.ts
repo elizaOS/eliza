@@ -131,6 +131,11 @@ beforeAll(async () => {
   await applyMigration("0383_subscription_cancellation_result.sql");
   await applyMigration("0384_subscription_cancellation_undo.sql");
   await applyMigration("0397_subscription_checkout_contract.sql");
+  const { applyAppBillingTestMigrations } = await import("./app-billing-test-migrations");
+  await applyAppBillingTestMigrations(
+    (statement) => getPgliteClientForTests().exec(statement),
+    true,
+  );
 });
 
 beforeEach(async () => {

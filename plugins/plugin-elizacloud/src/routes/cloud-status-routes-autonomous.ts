@@ -1,7 +1,8 @@
 import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import type { AgentRuntime, Service } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
+import { nativeBillingSelection } from "./native-billing-selection";
 import {
   resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
   resolveCloudBillingUrl,
@@ -114,6 +115,7 @@ export async function handleCloudStatusRoutes(
   const topUpUrl = resolveCloudBillingUrl(config.cloud?.baseUrl);
 
   if (method === "GET" && pathname === "/api/cloud/status") {
+    const applicationBilling = nativeBillingSelection(runtime);
     migrateLegacyRuntimeConfig(config as Record<string, unknown>);
     const cloudEnabled = isCloudInferenceSelectedInConfig(
       config as Record<string, unknown>,
@@ -131,6 +133,7 @@ export async function handleCloudStatusRoutes(
 
     if (authConnected || hasApiKey) {
       json(res, {
+        applicationBilling,
         connected: true,
         enabled: cloudEnabled,
         cloudVoiceProxyAvailable,
@@ -151,6 +154,7 @@ export async function handleCloudStatusRoutes(
 
     if (!runtime) {
       json(res, {
+        applicationBilling,
         connected: false,
         enabled: cloudEnabled,
         cloudVoiceProxyAvailable,
@@ -161,6 +165,7 @@ export async function handleCloudStatusRoutes(
     }
 
     json(res, {
+      applicationBilling,
       connected: false,
       enabled: cloudEnabled,
       cloudVoiceProxyAvailable,

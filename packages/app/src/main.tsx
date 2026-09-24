@@ -39,6 +39,7 @@ import { registerRelationshipsApp } from "@elizaos/plugin-relationships";
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
 // the same surfaces.
 import "./cloud-apps-view";
+import "./context-inspector-page";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
@@ -899,6 +900,7 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    applicationBillingSlot: import.meta.env.VITE_ELIZA_APPLICATION_SLOT,
     autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
@@ -2800,6 +2802,15 @@ const CloudRouterShell = lazy(async () => {
   return { default: mod.CloudRouterShell };
 });
 
+/** Account management follows the Cloud session independently of agent boot. */
+const ManagedCloudPage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("ManagedCloudPage is web-build-only");
+  }
+  return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
+});
+
+
 /**
  * Simulator-only production chat gallery. Keeping this behind the literal
  * build flag makes the harness (and its fixture providers) unreachable from
@@ -2882,6 +2893,9 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+
+
+        cloudManagementElement={<ManagedCloudPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }

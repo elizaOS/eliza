@@ -10,7 +10,7 @@
  * reproduce the page-reload reality: ONLY a persisted JWT, no Steward provider.
  */
 
-import { renderHook } from "@testing-library/react";
+import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthenticatedQueryGate } from "../../lib/auth-query";
@@ -57,6 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 

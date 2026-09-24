@@ -58,7 +58,7 @@
     "dedent": "^1.7.1",
     "mammoth": "^1.9.0",
     "unpdf": "^1.4.0",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "uuid": "^14.0.0",
     "@elizaos/shared": "workspace:*",
     "yaml": "^2.7.0",
@@ -68,9 +68,9 @@
     "typescript": "^6.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*",
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@elizaos/plugin-sql": "workspace:*"
   },
   "publishConfig": {

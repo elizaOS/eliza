@@ -14,11 +14,9 @@
  *   - **gn reminder** — fires at 22:00 local daily; low priority.
  *   - **daily check-in** — `kind: "checkin"`, `priority: "medium"`, fires
  *     at 09:00 local; `completionCheck.kind = "user_replied_within"`.
- *   - **morning brief opt-in watcher** — `kind: "watcher"` triggered on the
- *     `wake.confirmed` anchor; `priority: "medium"`. The actual brief
- *     assembler lives in the morning-brief default pack — this entry signals
- *     "the user opted into a morning brief" so the morning brief pack does not
- *     double-schedule.
+ *   - **morning brief watcher** — first authenticated owner activity of the
+ *     dossier day invokes the shared briefing assembler; `priority: "medium"`.
+ *     This identity prevents the catalog pack from scheduling a second brief.
  *   - **weekly review (paused starter)** — `kind: "recap"` with a
  *     `trigger.kind: "manual"`. It exists and is owner-visible on a fresh
  *     install but never fires on its own (no cron/anchor/interval), so it ships
@@ -36,6 +34,7 @@
  */
 
 import type { ScheduledTaskInput } from "@elizaos/plugin-scheduling";
+import { DOSSIER_ACTIVITY_ANCHOR_KEY } from "../scheduled-task/dossier-activity-policy.js";
 import type { OwnerFactWindow } from "./state.js";
 
 const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -222,10 +221,10 @@ export function buildDefaultsPack(
     {
       kind: "watcher",
       promptInstructions:
-        "Render the morning brief at the wake.confirmed anchor.",
+        "Assemble the daily dossier after the owner's first authenticated activity of the day.",
       trigger: {
         kind: "relative_to_anchor",
-        anchorKey: "wake.confirmed",
+        anchorKey: DOSSIER_ACTIVITY_ANCHOR_KEY,
         offsetMinutes: 0,
       },
       priority: "medium",
@@ -242,6 +241,7 @@ export function buildDefaultsPack(
       metadata: {
         firstRunPack: "defaults",
         slot: "morningBrief",
+        delegatesAssemblyTo: "lifeops:checkin:morning",
       },
     },
     {

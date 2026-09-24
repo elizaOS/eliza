@@ -1,29 +1,6 @@
-/**
- * Persists runtime trajectories, step indexes, model calls, and reward metadata
- * for replay, UI inspection, export, and training-data collection.
- */
-
-import type {
-  TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
-  TrajectoryDetailRecord,
-  TrajectoryExportResult,
-} from "@elizaos/core";
-import {
-  createTrajectoryJsonBudget,
-  ElizaError,
-  logger,
-  sanitizeTrajectoryJsonValue,
-  sanitizeTrajectoryJsonValueInBudget,
-  serializeTrajectoryExport,
-} from "@elizaos/core";
-import { sql } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
-
-/** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
-export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
-
 import type {
   ActionAttempt,
+  TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
   EnvironmentState,
   IAgentRuntime,
   JsonObject,
@@ -33,20 +10,37 @@ import type {
   RecordedStage,
   RewardComponents,
   Trajectory,
+  TrajectoryDetailRecord,
+  TrajectoryExportResult,
   TrajectoryRuntimeLlmCallParams,
   TrajectoryStep,
 } from "@elizaos/core";
 import {
   canonicalPromptForModelCall,
   composeToolDiagnosticRedactor,
+  createTrajectoryJsonBudget,
+  ElizaError,
+  logger,
   omitUnvalidatedProviderSpans,
   parseTrajectorySemanticStages,
   projectProtectedModelCallValue,
   projectToolDiagnosticValue,
   recordedStageToSemanticStage,
   Service,
+  sanitizeTrajectoryJsonValue,
+  sanitizeTrajectoryJsonValueInBudget,
   type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
+import { sql } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
+import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
+/**
+ * Persists runtime trajectories, step indexes, model calls, and reward metadata
+ * for replay, UI inspection, export, and training-data collection.
+ */
+
+/** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
+export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
 // ============================================================================
 // Database Row Types
@@ -82,6 +76,8 @@ export interface TrajectoryListOptions {
   endDate?: string;
   search?: string;
   scenarioId?: string;
+  /** Conversation room stored in trajectory metadata for scoped inspection. */
+  roomId?: string;
   /** Correlation join key (#13775): all trajectories in one root turn's trace. */
   traceId?: string;
   batchId?: string;
@@ -1616,6 +1612,9 @@ export class TrajectoriesService extends Service {
       );
       await this.executeRawSql(
         `CREATE INDEX IF NOT EXISTS idx_trajectories_is_training ON trajectories(is_training_data)`,
+      );
+      await this.executeRawSql(
+        `CREATE INDEX IF NOT EXISTS idx_trajectories_room_id ON trajectories ((metadata_json ->> 'roomId'))`,
       );
     } catch (e) {
       // error-policy:J4 Indexes are performance-only; table persistence
@@ -3191,6 +3190,11 @@ export class TrajectoriesService extends Service {
     }
     if (options.scenarioId) {
       whereClauses.push(`scenario_id = ${sqlLiteral(options.scenarioId)}`);
+    }
+    if (options.roomId) {
+      whereClauses.push(
+        `metadata_json ->> 'roomId' = ${sqlLiteral(options.roomId)}`,
+      );
     }
     if (options.traceId) {
       whereClauses.push(`trace_id = ${sqlLiteral(options.traceId)}`);

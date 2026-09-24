@@ -18,8 +18,10 @@ import {
   type ContactSummary,
   Contacts,
 } from "@elizaos/plugin-native-contacts/bridge";
+import { ElizaError } from "@elizaos/core";
 
 const CONTACTS_PROVIDER_NAME = "androidContacts";
+const COMPLETE_CONTACTS_READ_LIMIT = 2_147_483_647;
 
 interface AndroidContactEntry {
   id: string;
@@ -57,7 +59,18 @@ export const contactsProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const { contacts } = await Contacts.listContacts();
+      const { contacts } = await Contacts.listContacts({
+        limit: COMPLETE_CONTACTS_READ_LIMIT,
+      });
+      if (contacts.length === COMPLETE_CONTACTS_READ_LIMIT) {
+        throw new ElizaError(
+          "Contacts provider reached the native bridge boundary; refusing potentially incomplete planner context.",
+          {
+            code: "NATIVE_CONTACTS_PROVIDER_INCOMPLETE",
+            context: { limit: COMPLETE_CONTACTS_READ_LIMIT },
+          },
+        );
+      }
       const entries = contacts.map(toEntry);
 
       return {

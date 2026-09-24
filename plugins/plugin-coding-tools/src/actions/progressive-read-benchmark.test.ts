@@ -24,6 +24,11 @@ type BenchmarkReport = {
   boundedPageComparison: { largeSourceBytes: number };
   cleanup: { remaining: string[] };
   memory: { peak: Record<string, number> };
+  performance: {
+    observed: Record<string, number>;
+    ceilings: Record<string, number>;
+    withinCeilings: boolean;
+  };
   eventLoopDelay: Record<string, number>;
   fileDescriptors: Record<string, number | null>;
 };
@@ -116,6 +121,14 @@ describe("progressive read benchmark", () => {
     );
     expect(report.cleanup.remaining).toEqual([]);
     expect(report.memory.peak).toHaveProperty("rss");
+    expect(report.performance.withinCeilings).toBe(true);
+    for (const [metric, actual] of Object.entries(
+      report.performance.observed,
+    )) {
+      expect(actual).toBeLessThanOrEqual(
+        report.performance.ceilings[metric] ?? -1,
+      );
+    }
     expect(report.eventLoopDelay).toHaveProperty("p99Ms");
     expect(report.fileDescriptors).toHaveProperty("before");
     expect(report.fileDescriptors).toHaveProperty("afterCleanup");
