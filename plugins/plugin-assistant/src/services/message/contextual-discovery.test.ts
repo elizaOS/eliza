@@ -165,6 +165,25 @@ describe("contextual native discovery", () => {
     },
   );
 
+  it.each([
+    [["list saved notes"], ["NOTES_LIST"]],
+    [
+      ["list saved notes", "delete the selected note"],
+      ["NOTES_DELETE", "NOTES_LIST"],
+    ],
+  ])(
+    "ranks Notes operations from declared outcomes while retaining request evidence: %j",
+    (intents, expected) => {
+      const found = retrieveContextualPlannerActions({
+        actions: notesPlugin.actions ?? [],
+        query: "List my saved notes. Do not create or modify anything.",
+        intents,
+        contexts: ["notes"],
+      });
+      expect(found.map((action) => action.name).sort()).toEqual(expected);
+    },
+  );
+
   it("preserves mixed-domain work when one operation has no recognized verb", () => {
     const calendar: Action = {
       name: "AGENDA",
@@ -174,7 +193,8 @@ describe("contextual native discovery", () => {
     const actions = [...(notesPlugin.actions ?? []), calendar];
     const found = retrieveContextualPlannerActions({
       actions,
-      query: "list notes and summarize calendar",
+      query: "list notes and summarize calendar. Do not create anything",
+      intents: ["list notes", "summarize calendar"],
       contexts: ["notes", "calendar"],
     });
     expect(found.map((action) => action.name).sort()).toEqual([

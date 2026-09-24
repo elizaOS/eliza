@@ -375,6 +375,16 @@
       "import": "./dist/contracts/synthetic-environment-lease.js",
       "default": "./dist/contracts/synthetic-environment-lease.js"
     },
+    "./utils/pglite-storage": {
+      "types": "./dist/utils/pglite-storage.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/pglite-storage.ts",
+        "import": "./src/utils/pglite-storage.ts",
+        "default": "./src/utils/pglite-storage.ts"
+      },
+      "import": "./dist/utils/pglite-storage.js",
+      "default": "./dist/utils/pglite-storage.js"
+    },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",
       "eliza-source": {

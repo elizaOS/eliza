@@ -89,3 +89,76 @@ it("loads complete template helpers from the shared distribution in native Node"
     );
   }
 });
+
+for (const mode of ["source", "published"]) {
+  it(`renders complete authored templates in the ${mode} browser graph`, async () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const result = await build({
+      stdin: {
+        contents: `import { composePrompt } from '@elizaos/shared/text/template-rendering';
+          import { assertMcpJsonSchemaBudget } from './${mode === "source" ? "src/mcp/schema-budget.ts" : "dist/mcp/schema-budget.js"}';
+          const cyclic = {}; cyclic.self = cyclic;
+          let schemaError;
+          try { assertMcpJsonSchemaBudget(cyclic); } catch (error) { schemaError = error.code; }
+          const value = '<&> {{opaque}}' + 'long content '.repeat(12000);
+          const state = { value, roomId: 'browser-room' };
+          const template = '{{value}}|{{#if value}}complete{{/if}}|{{{slot}}}';
+          state.slot = '{{name1}} and {{user1}}';
+          globalThis.result = {
+            value,
+            schemaError,
+            first: composePrompt({state, template}),
+            again: composePrompt({state, template})
+          };`,
+        resolveDir: root,
+      },
+      bundle: true,
+      tsconfigRaw: { compilerOptions: {} },
+      platform: "browser",
+      format: "iife",
+      write: false,
+      plugins: [
+        {
+          name: "renderer-runtime-boundary",
+          setup(builder) {
+            builder.onResolve({ filter: /^@elizaos\/core(?:\/|$)/ }, () => {
+              throw new Error(
+                "Node runtime barrel reached the browser template graph",
+              );
+            });
+            if (mode === "source") {
+              builder.onResolve(
+                { filter: /^@elizaos\/shared\/text\/template-rendering$/ },
+                () => ({
+                  path: `${root}/src/text/template-rendering.ts`,
+                }),
+              );
+              builder.onResolve(
+                { filter: /^@elizaos\/shared\/browser-contracts$/ },
+                () => ({
+                  path: `${root}/scripts/browser-contracts-entry.ts`,
+                }),
+              );
+            }
+          },
+        },
+      ],
+    });
+    const sandbox = { TextEncoder };
+    runInNewContext(result.outputFiles[0].text, sandbox, {
+      contextCodeGeneration: { strings: false, wasm: false },
+    });
+    assert.equal(sandbox.result.schemaError, "MCP_TOOL_SCHEMA_UNBOUNDED");
+    assert.equal(sandbox.result.first, sandbox.result.again);
+    assert.ok(
+      sandbox.result.first.startsWith(`${sandbox.result.value}|complete|`),
+    );
+    const names = sandbox.result.first.slice(
+      sandbox.result.value.length + "|complete|".length,
+    );
+    const [first, second] = names.split(" and ");
+    assert.ok(first.length > 0);
+    assert.equal(first, second);
+    assert.ok(!names.includes("{{"));
+  });
+}

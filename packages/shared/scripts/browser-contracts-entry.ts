@@ -27,6 +27,10 @@ export { getRecentMessagesData } from "../../core/src/recent-messages-state.js";
 export * from "../../core/src/types/effects.js";
 export * from "../../core/src/types/message-source.js";
 export * from "../../core/src/types/notification.js";
+export {
+  buildDeterministicSeed,
+  getDeterministicNames,
+} from "../../core/src/utils/deterministic.js";
 export { resolveEnvAlias } from "../../core/src/utils/env-alias.js";
 export * from "../../core/src/utils/format-error.js";
 export * from "../../core/src/utils/unicode.js";

@@ -56,6 +56,8 @@ import {
 export function retrieveContextualPlannerActions(args: {
   actions: readonly Action[];
   query: string;
+  /** Model-selected outcomes rank operations; the full request still ranks domains. */
+  intents?: readonly string[];
   contexts?: readonly string[];
 }): Action[] {
   const catalog = buildActionCatalog(
@@ -91,6 +93,8 @@ export function retrieveContextualPlannerActions(args: {
   // must not erase a calendar intent whose operation wording has no name match.
   const searchDomains = domains.size > 0 ? [...domains] : [undefined];
   const selected = new Set<Action>();
+  const operationQuery =
+    args.intents?.filter((intent) => intent.trim()).join("\n") || args.query;
   for (const domain of searchDomains) {
     const candidates =
       domain === undefined
@@ -101,7 +105,7 @@ export function retrieveContextualPlannerActions(args: {
             ),
           );
     const operationNames = preferredOperationNames(
-      args.query,
+      operationQuery,
       candidates.map((action) => action.name),
     );
     for (const action of candidates) {
