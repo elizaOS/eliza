@@ -304,6 +304,16 @@ export async function hydrateInitialConversation(
       !Array.isArray(rawConversations) ||
       !rawConversations.every(isConversationRecord)
     ) {
+      logger.warn(
+        {
+          isArray: Array.isArray(rawConversations),
+          invalidRows: Array.isArray(rawConversations)
+            ? rawConversations.filter((row) => !isConversationRecord(row))
+                .length
+            : null,
+        },
+        "[useChatCallbacks] invalid conversation list during hydration",
+      );
       return null;
     }
     const conversations = normalizeConversationList(rawConversations);
@@ -461,7 +471,12 @@ export async function hydrateInitialConversation(
       }
       return null;
     }
-  } catch {
+  } catch (error) {
+    // error-policy:J4 Keep hydration unavailable and expose the failed restore for diagnosis.
+    logger.warn(
+      { error },
+      "[useChatCallbacks] initial conversation hydration failed",
+    );
     return null;
   }
 }
