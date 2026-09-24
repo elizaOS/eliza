@@ -48,7 +48,7 @@ test("Railpack runtime resolves workspace dependencies and serves health without
       await mkdir(dirname(join(build, path)), { recursive: true });
       await cp(join(root, path), join(build, path));
     }
-    for (const name of ["auth", "core", "shared"]) {
+    for (const name of ["auth", "core"]) {
       await cp(join(root, "packages", name), join(build, "packages", name), {
         recursive: true,
         filter: (path) =>
