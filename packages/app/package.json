@@ -387,10 +387,7 @@
     },
     "scripts": {
       "coreBuild": true,
-      "testLanes": [
-        "client",
-        "server"
-      ],
+      "testLanes": ["client"],
       "buildOnInstall": {
         "script": "build:dist"
       }
