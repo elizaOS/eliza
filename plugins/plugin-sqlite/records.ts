@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import {
   type AccessContext,
   type Agent,
+  type AtomicMemoryPublicationParams,
+  type AtomicMemoryPublicationResult,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
   authorizeMessageContentRead,
@@ -1954,6 +1956,113 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       return params.includeEmbedding === false
         ? ranked.map(({ embedding, ...memory }) => memory)
         : ranked;
+    });
+  }
+
+  async compareAndSwapMemoryPublication(
+    params: AtomicMemoryPublicationParams,
+  ): Promise<AtomicMemoryPublicationResult> {
+    return this.withMemoryMutationLock(async () => {
+      const headId = params.head.memory.id;
+      if (!headId)
+        throw new TypeError("Atomic memory publication head requires an id");
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "Atomic memory publication requires transactional storage",
+          {
+            code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+          },
+        );
+      }
+      const current = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        headId,
+      );
+      const revision = (
+        current?.metadata as Record<string, unknown> | undefined
+      )?.revision;
+      if (
+        (params.expectedRevision === null && current) ||
+        (params.expectedRevision !== null &&
+          revision !== params.expectedRevision)
+      ) {
+        return { status: "conflict" };
+      }
+      const staged = new Map<string, StoredMemory>();
+      const prepare = (memory: Memory, tableName: string): StoredMemory => {
+        if (!memory.id)
+          throw new TypeError("Atomic memory publication requires row ids");
+        if (memory.agentId !== undefined && memory.agentId !== this.agentId) {
+          throw new ElizaError(
+            "Atomic publication cannot target another agent",
+            { code: "SQLITE_AGENT_MISMATCH" },
+          );
+        }
+        return {
+          ...persistableMemory(memory),
+          id: memory.id,
+          tableName,
+          agentId: this.agentId,
+          unique: true,
+          createdAt: memory.createdAt ?? Date.now(),
+        };
+      };
+      const head = prepare(params.head.memory, params.head.tableName);
+      const sameOwner = (left: StoredMemory, right: StoredMemory): boolean =>
+        left.agentId === right.agentId &&
+        left.roomId === right.roomId &&
+        left.entityId === right.entityId &&
+        storedMemoryTableName(left) === storedMemoryTableName(right);
+      if (current && !sameOwner(current, head)) {
+        throw new ElizaError(
+          "Atomic publication cannot replace another owner's head",
+          {
+            code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+            context: { memoryId: headId },
+          },
+        );
+      }
+      for (const dependency of params.dependencies) {
+        const row = prepare(dependency.memory, dependency.tableName);
+        const id = row.id as string;
+        const existing =
+          staged.get(id) ??
+          (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id));
+        if (
+          id === headId ||
+          (existing &&
+            (!sameOwner(existing, row) ||
+              JSON.stringify(existing.content) !== JSON.stringify(row.content)))
+        ) {
+          throw new ElizaError(
+            "Immutable memory dependency id has different content or ownership",
+            {
+              code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+              context: { memoryId: id },
+            },
+          );
+        }
+        if (!existing) staged.set(id, row);
+      }
+      staged.set(headId, {
+        ...current,
+        ...head,
+        createdAt: current?.createdAt ?? head.createdAt,
+      });
+      for (const [id, row] of staged) {
+        if (row.embedding?.length)
+          await this.vectorIndex.add(id, row.embedding);
+        else await this.vectorIndex.remove(id);
+      }
+      await this.storage.applyBatch({
+        collection: COLLECTIONS.MEMORIES,
+        deletes: [],
+        sets: [...staged].map(([id, data]) => ({ id, data })),
+      });
+      return {
+        status: "published",
+        head: toMemory(staged.get(headId) as StoredMemory),
+      };
     });
   }
 
