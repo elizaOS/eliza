@@ -1,74 +1,73 @@
+/**
+ * Round-trips complete histories through the real Android SMS provider.
+ * Only this test's inserted rows are read and removed; no radio or private inbox is required.
+ */
 package ai.eliza.plugins.messages
 
 import android.Manifest
-import android.content.Context
 import android.content.ContentValues
+import android.net.Uri
+import android.os.Build
 import android.provider.Telephony
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
-import org.junit.Assert.assertTrue
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Emulator-only SMS provider write -> production reader -> cleanup round trip. */
 @RunWith(AndroidJUnit4::class)
 class MessagesReaderInstrumentedTest {
-
     @get:Rule
-    val permissionRule: GrantPermissionRule =
-        GrantPermissionRule.grant(Manifest.permission.READ_SMS)
-
-    private val context: Context
-        get() = InstrumentationRegistry.getInstrumentation().targetContext
-
-    private fun shell(command: String): String =
-        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use {
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().use { reader -> reader.readText() }
-        }
+    val permissionRule = GrantPermissionRule.grant(Manifest.permission.READ_SMS)
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val context get() = instrumentation.targetContext
 
     @Test
-    fun listMessages_readsBackTheInjectedSms() {
-        // A unique emulator-only fixture prevents an old run's SMS from making
-        // this test green. The shell provider write never sends an actual SMS.
-        check(android.os.Build.HARDWARE in setOf("ranchu", "goldfish", "cutf_cvm")) {
-            "SMS fixture tests require an emulator"
-        }
-        val marker = "$MARKER-${System.nanoTime()}"
-        shell("appops set ${context.packageName} android:write_sms allow")
-        if (android.os.Build.VERSION.SDK_INT >= 37) {
-            // Android 17 marks messages inserted by non-default SMS apps as
-            // restricted. Grant only this disposable emulator test package
-            // access to read back its own synthetic provider fixture.
-            shell("appops set ${context.packageName} android:read_restricted_messages allow")
-        }
-        val uri = context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, ContentValues().apply {
-            put("address", "15558675309")
-            put("body", marker)
-            // Android temporarily hides newly received possible OTPs from
-            // non-default SMS apps. This synthetic historical message tests
-            // provider access without depending on the device's OTP classifier.
-            put("date", System.currentTimeMillis() - 24 * 60 * 60 * 1000L)
-            put("type", 1)
-            put("sub_id", android.telephony.SubscriptionManager.getDefaultSmsSubscriptionId())
-        })
-        assertNotNull("SMS fixture insertion must return its URI", uri)
+    fun completeHistoryAndExplicitLimitsPreserveBodiesBeyondFiveHundredRows() {
+        check(Build.HARDWARE in setOf("ranchu", "goldfish", "cutf_cvm")) { "SMS fixtures require an emulator" }
+        val inserted = mutableListOf<Uri>()
+        val address = "+1555${System.nanoTime().toString().takeLast(7)}"
+        val body = "  complete SMS body\n" + "context ".repeat(1000) + "\nend  "
+        val resolver = context.contentResolver
+        // The instrumentation target is a disposable test package, not the user's SMS app.
+        shell("appops set ${context.packageName} WRITE_SMS allow")
         try {
-            val rows = MessagesReader(context).listMessages(threadId = null, limit = 500)
-            val sms = rows.find { it.body == marker }
-            assertNotNull("inserted SMS must be read through the production reader", sms)
-            assertTrue("address survives provider round trip", sms!!.address == "15558675309")
-            assertTrue("date is a real epoch ms", sms.date > 0)
-            assertTrue("inbox type survives round trip", sms.type == 1)
-            assertTrue("id is non-empty", sms.id.isNotEmpty())
+            for (index in 0 until 502) {
+                inserted += requireNotNull(resolver.insert(Telephony.Sms.Inbox.CONTENT_URI, ContentValues().apply {
+                    put(Telephony.Sms.ADDRESS, address)
+                    put(Telephony.Sms.BODY, "$index:$body")
+                    put(Telephony.Sms.DATE, 1_700_000_000_000L + index)
+                    put(Telephony.Sms.READ, 0)
+                    put(Telephony.Sms.SUBSCRIPTION_ID, -1)
+                    // Android 17 defaults non-role-app inserts to restricted messages.
+                    // These synthetic fixtures are deliberately ordinary readable SMS.
+                    if (Build.VERSION.SDK_INT >= 37) put("restricted", false)
+                })) { "Fixture SMS insertion must succeed" }
+            }
+            val thread = requireNotNull(resolver.query(inserted.first(), arrayOf(Telephony.Sms.THREAD_ID), null, null, null)).use {
+                check(it.moveToFirst()) { "Inserted fixture must be visible: " + shell("content query --uri ${inserted.first()} --projection _id:thread_id:type:sub_id:restricted") }
+                it.getString(0)
+            }
+            val reader = MessagesReader(context)
+            val all = reader.listMessages(thread)
+            assertEquals(502, all.size)
+            assertEquals("501:$body", all.first().body)
+            assertEquals("0:$body", all.last().body)
+            assertEquals(501, reader.listMessages(thread, 501).size)
+            assertEquals(all.first(), reader.listMessages(thread, 1).single())
+            assertThrows(IllegalArgumentException::class.java) { reader.listMessages(thread, 0) }
+            assertTrue(reader.listMessages("-1").isEmpty())
         } finally {
-            assertTrue("SMS fixture must be deleted", context.contentResolver.delete(uri!!, null, null) == 1)
+            for (uri in inserted) resolver.delete(uri, null, null)
+            shell("appops set ${context.packageName} WRITE_SMS default")
         }
     }
 
-    companion object {
-        const val MARKER = "Eliza-9967-SMS-roundtrip"
+    private fun shell(command: String): String {
+        return instrumentation.uiAutomation.executeShellCommand(command).use { descriptor ->
+            java.io.FileInputStream(descriptor.fileDescriptor).use { it.readBytes().toString(Charsets.UTF_8) }
+        }
     }
 }

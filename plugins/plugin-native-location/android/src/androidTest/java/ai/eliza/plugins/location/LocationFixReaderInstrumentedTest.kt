@@ -1,3 +1,8 @@
+/**
+ * Exercises production framework location requests on an Android emulator.
+ * A real LocationManager test provider supplies fixes; no Google services,
+ * external GPS injection, skipped assertions or mocked readers are involved.
+ */
 package ai.eliza.plugins.location
 
 import android.Manifest
@@ -5,129 +10,150 @@ import android.content.Context
 import android.location.Criteria
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.Tasks
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 
-/** Deterministic provider -> production reader round trips, including AOSP. */
 @RunWith(AndroidJUnit4::class)
 class LocationFixReaderInstrumentedTest {
     @get:Rule
-    val permissionRule: GrantPermissionRule = GrantPermissionRule.grant(
+    val permissionRule = GrantPermissionRule.grant(
         Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION,
     )
-    private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context: Context get() = instrumentation.targetContext
+    private val manager get() = context.getSystemService(LocationManager::class.java)
+    private val reader get() = LocationFixReader(context)
+    private val handles = mutableListOf<LocationFixReader.RequestHandle>()
+    private var providerAdded = false
 
-    private fun fix() = Location(LocationManager.GPS_PROVIDER).apply {
-        latitude = 37.7749
-        longitude = -122.4194
-        accuracy = 2f
-        time = System.currentTimeMillis()
-        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-    }
-
-    private fun withProvider(block: (LocationManager) -> Unit) {
-        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        instrumentation.uiAutomation.executeShellCommand("appops set ${context.packageName} android:mock_location allow").use {
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+    @Before
+    fun createProvider() {
+        check(Build.HARDWARE.contains("cutf") || Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) {
+            "Framework location fixture requires a disposable emulator"
         }
+        shell("appops set ${context.packageName} android:mock_location allow")
+        check(manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) { "Enable emulator location before this test" }
         @Suppress("DEPRECATION")
-        manager.addTestProvider(LocationManager.GPS_PROVIDER, false, false, false, false, true, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE)
-        try {
-            manager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
-            block(manager)
-        } finally {
-            manager.removeTestProvider(LocationManager.GPS_PROVIDER)
+        manager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false, false, true, true, true,
+            Criteria.POWER_LOW, Criteria.ACCURACY_FINE)
+        providerAdded = true
+        manager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+    }
+
+    @After
+    fun cleanup() {
+        instrumentation.runOnMainSync { handles.forEach { it.cancel() } }
+        if (providerAdded) manager.removeTestProvider(LocationManager.GPS_PROVIDER)
+        shell("appops set ${context.packageName} android:mock_location default")
+    }
+
+    @Test
+    fun currentFixAndCacheReadBackExactFrameworkCoordinates() {
+        val delivered = CountDownLatch(1)
+        val result = AtomicReference<Location>()
+        instrumentation.runOnMainSync {
+            handles += reader.getCurrentPosition("high", 3000, 0, { fix, cached ->
+                assertFalse(cached)
+                result.set(fix)
+                delivered.countDown()
+            }, { code, message -> fail("$code: $message") })
         }
-    }
-
-    @Test
-    fun mapAccuracyToPriority_coversEveryTier() {
-        val reader = LocationFixReader(context)
-        try {
-            assertEquals(Priority.PRIORITY_HIGH_ACCURACY, reader.mapAccuracyToPriority("best"))
-            assertEquals(Priority.PRIORITY_HIGH_ACCURACY, reader.mapAccuracyToPriority("high"))
-            assertEquals(Priority.PRIORITY_BALANCED_POWER_ACCURACY, reader.mapAccuracyToPriority("medium"))
-            assertEquals(Priority.PRIORITY_LOW_POWER, reader.mapAccuracyToPriority("low"))
-            assertEquals(Priority.PRIORITY_PASSIVE, reader.mapAccuracyToPriority("passive"))
-        } finally { reader.close() }
-    }
-
-    @Test
-    fun awaitNextLocation_readsBackAnInjectedFixWithoutSkipping() = withProvider { manager ->
-        val reader = LocationFixReader(context)
-        val fused = LocationServices.getFusedLocationProviderClient(context)
-        val executor = Executors.newSingleThreadScheduledExecutor()
-        val failure = AtomicReference<Exception?>()
-        try {
-            if (!reader.usesFrameworkLocation) Tasks.await(fused.setMockMode(true), 5, TimeUnit.SECONDS)
-            executor.scheduleAtFixedRate({
-                try {
-                    if (reader.usesFrameworkLocation) manager.setTestProviderLocation(LocationManager.GPS_PROVIDER, fix())
-                    else Tasks.await(fused.setMockLocation(fix()), 5, TimeUnit.SECONDS)
-                } catch (error: Exception) { failure.set(error) }
-            }, 100, 100, TimeUnit.MILLISECONDS)
-            val location = reader.awaitNextLocation("high", 5000)
-            failure.get()?.let { throw it }
-            assertNotNull("the production location backend must deliver the injected fix", location)
-            assertEquals(37.7749, location!!.latitude, 0.00001)
-            assertEquals(-122.4194, location.longitude, 0.00001)
-            assertTrue(location.elapsedRealtimeNanos > 0)
-        } finally {
-            executor.shutdownNow()
-            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS))
-            if (!reader.usesFrameworkLocation) Tasks.await(fused.setMockMode(false), 5, TimeUnit.SECONDS)
-            reader.close()
+        inject(37.4219999)
+        assertTrue("Framework fix must be delivered", delivered.await(4, TimeUnit.SECONDS))
+        assertEquals(37.4219999, result.get().latitude, 0.000001)
+        assertEquals(-122.0840575, result.get().longitude, 0.000001)
+        val cachedResult = CountDownLatch(1)
+        instrumentation.runOnMainSync {
+            handles += reader.getCurrentPosition("high", 3000, 60000, { fix, cached ->
+                assertTrue(cached)
+                assertEquals(result.get().latitude, fix.latitude, 0.000001)
+                cachedResult.countDown()
+            }, { code, message -> fail("$code: $message") })
         }
+        assertTrue("Cached read must settle", cachedResult.await(1, TimeUnit.SECONDS))
     }
 
     @Test
-    fun frameworkWatchDeliversCoordinatesAndStopsAfterClose() = withProvider { manager ->
-        val provider = AndroidLocationProvider(context)
-        val first = CountDownLatch(1)
-        val afterClose = CountDownLatch(1)
-        var closed = false
-        val failure = AtomicReference<Exception?>()
-        val received = AtomicReference<Location?>()
-        val watch = provider.watch(Priority.PRIORITY_HIGH_ACCURACY, 0, 0f, {
-            received.set(it)
-            if (closed) afterClose.countDown() else first.countDown()
-        }, { failure.set(it) })
-        try {
-            manager.setTestProviderLocation(LocationManager.GPS_PROVIDER, fix())
-            assertTrue("framework watch must receive a fix", first.await(5, TimeUnit.SECONDS))
-            assertEquals(37.7749, received.get()!!.latitude, 0.00001)
-            instrumentation.runOnMainSync { watch.close(); closed = true }
-            manager.setTestProviderLocation(LocationManager.GPS_PROVIDER, fix().apply { latitude = 38.0 })
-            assertFalse("closed watch must not deliver events", afterClose.await(500, TimeUnit.MILLISECONDS))
-            failure.get()?.let { throw it }
-        } finally { watch.close(); provider.close() }
+    fun timeoutSettlesOnceAndRemovesTheListener() {
+        val settled = CountDownLatch(1)
+        val callbacks = AtomicInteger()
+        instrumentation.runOnMainSync {
+            handles += reader.getCurrentPosition("high", 100, 0, { _, _ ->
+                callbacks.incrementAndGet()
+                fail("No fix was injected before timeout")
+            }, { code, _ ->
+                assertEquals("TIMEOUT", code)
+                callbacks.incrementAndGet()
+                settled.countDown()
+            })
+        }
+        assertTrue(settled.await(2, TimeUnit.SECONDS))
+        inject(38.0)
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(200)
+        assertEquals(1, callbacks.get())
     }
 
     @Test
-    fun frameworkFreshRequestTimesOutAndDestroyCancelsPendingRequest() = withProvider { _ ->
-        val provider = AndroidLocationProvider(context)
-        try {
-            assertNull(Tasks.await(provider.current(Priority.PRIORITY_HIGH_ACCURACY, 150, 0), 3, TimeUnit.SECONDS))
-            val pending = provider.current(Priority.PRIORITY_HIGH_ACCURACY, 5000, 0)
-            provider.close()
-            val error = assertThrows(java.util.concurrent.ExecutionException::class.java) {
-                Tasks.await(pending, 3, TimeUnit.SECONDS)
+    fun watchDeliversUpdatesAndCancellationStopsDelivery() {
+        val delivered = CountDownLatch(1)
+        val callbacks = AtomicInteger()
+        lateinit var watch: LocationFixReader.RequestHandle
+        instrumentation.runOnMainSync {
+            watch = reader.watchPosition("high", 0, 0f, {
+                callbacks.incrementAndGet()
+                delivered.countDown()
+            }, { fail(it) })
+            handles += watch
+        }
+        inject(36.0)
+        assertTrue(delivered.await(3, TimeUnit.SECONDS))
+        instrumentation.runOnMainSync { watch.cancel(); watch.cancel() }
+        val count = callbacks.get()
+        inject(35.0)
+        SystemClock.sleep(200)
+        instrumentation.waitForIdleSync()
+        assertEquals(count, callbacks.get())
+    }
+
+    @Test
+    fun invalidDurationsRejectBeforeRegistering() {
+        instrumentation.runOnMainSync {
+            assertThrows(IllegalArgumentException::class.java) {
+                reader.getCurrentPosition("high", 0, 0, { _, _ -> fail() }, { _, _ -> fail() })
             }
-            assertTrue(error.cause is IllegalStateException)
-        } finally { provider.close() }
+            assertThrows(IllegalArgumentException::class.java) {
+                reader.watchPosition("high", -1, 0f, { fail() }, { fail() })
+            }
+        }
+    }
+
+    private fun inject(latitude: Double) {
+        manager.setTestProviderLocation(LocationManager.GPS_PROVIDER, Location(LocationManager.GPS_PROVIDER).apply {
+            this.latitude = latitude
+            longitude = -122.0840575
+            accuracy = 1f
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        })
+    }
+
+    private fun shell(command: String) {
+        instrumentation.uiAutomation.executeShellCommand(command).use { descriptor ->
+            java.io.FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
+        }
     }
 }

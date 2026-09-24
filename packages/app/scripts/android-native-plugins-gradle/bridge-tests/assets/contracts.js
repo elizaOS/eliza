@@ -1,4 +1,4 @@
-/* Executed inside the device WebView. No web shims or mocked native methods. */
+/** Exercises actual Capacitor bridges from the device WebView, including native outputs and invalid-input settlement. */
 (async () => {
   window.nativeContractResult = null;
   let assertions = 0;

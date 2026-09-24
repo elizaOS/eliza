@@ -258,7 +258,19 @@ async function main() {
         entry.apkSha256 = createHash("sha256")
           .update(fs.readFileSync(apk))
           .digest("hex");
-        adb("install", "-r", "-t", "-g", apk);
+        if (plugin.directory === "plugin-native-camera") {
+          // The real microphone-denial test owns its prompt; pregrant only camera access.
+          adb("install", "-r", "-t", apk);
+          adb(
+            "shell",
+            "pm",
+            "grant",
+            applicationId,
+            "android.permission.CAMERA",
+          );
+        } else {
+          adb("install", "-r", "-t", "-g", apk);
+        }
         if (plugin.directory === "plugin-native-mobile-signals")
           adb(
             "shell",
