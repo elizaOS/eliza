@@ -133,7 +133,7 @@ export async function readCachedJwks(
   const envelope = parseEnvelope(raw);
   if (!envelope) return null;
   if (envelope.issuer !== issuer) return null;
-  if (now - envelope.fetchedAt > ttlMs) return null;
+  if (envelope.fetchedAt > now || now - envelope.fetchedAt > ttlMs) return null;
   return envelope.jwks;
 }
 

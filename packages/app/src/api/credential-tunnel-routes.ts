@@ -122,6 +122,12 @@ export async function handleCredentialTunnelRoute(
       });
       return true;
     }
+    // Provider errors may contain credentials; report the failed operation only.
+    state.current?.reportError(
+      "app.credentialTunnel",
+      new Error("Credential tunnel failed"),
+      { phase: "tunnelCredential" },
+    );
     sendJsonError(res, 500, "credential_tunnel_failed");
   }
   return true;

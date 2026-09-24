@@ -5,7 +5,7 @@
  * drift apart.
  */
 
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -81,14 +81,13 @@ function stateFileFinding(
   label: string,
   filePath: string,
 ): ConnectorSecretFinding | null {
-  if (!existsSync(filePath)) return null;
   let mode: number;
   try {
     mode = statSync(filePath).mode & 0o777;
-  } catch {
-    // The connector can remove login state while inventory is being read.
-    // Treat that race as an absent finding instead of failing the owner API.
-    return null;
+  } catch (error) {
+    // A removed session is absent; unreadable state is an inventory failure.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
   return {
     id,

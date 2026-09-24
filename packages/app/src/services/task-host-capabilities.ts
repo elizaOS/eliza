@@ -44,80 +44,7 @@ interface CapacitorGlobalLike {
   isNativePlatform?: () => boolean;
 }
 
-/**
- * Resolves the host's currently-available execution profiles. Pure
- * function of `globalThis.Capacitor` + `runtime.getSetting`; safe to call
- * on every fire.
- */
-export function getHostExecutionCapabilities(
-  runtime: IAgentRuntime,
-): ReadonlySet<TaskExecutionProfile> {
-  const profiles = new Set<TaskExecutionProfile>();
-  // Foreground + notify-only are always available.
-  profiles.add("foreground");
-  profiles.add("notify-only");
-
-  const capacitor: unknown = Reflect.get(globalThis, "Capacitor");
-  const isCapacitor =
-    typeof capacitor === "object" &&
-    capacitor !== null &&
-    typeof (capacitor as CapacitorGlobalLike).isNativePlatform === "function" &&
-    (capacitor as CapacitorGlobalLike).isNativePlatform?.() === true;
-
-  if (!isCapacitor) {
-    // Node desktop or pure browser. Desktop hosts every profile; pure
-    // browser cannot keep a process alive but is rare in production. We
-    // err toward "capable" because the Node path is the dominant one;
-    // the browser-only case is covered by the engine's own activation
-    // gate (`assertHostSupports` refuses `requiresLongRunning` on pure
-    // browsers).
-    profiles.add("bg-light-30s");
-    profiles.add("bg-heavy-fgs");
-    return profiles;
-  }
-
-  const plugins = (capacitor as CapacitorGlobalLike).Plugins;
-  const hasBackgroundRunner =
-    plugins != null &&
-    typeof plugins === "object" &&
-    plugins.BackgroundRunner != null &&
-    typeof plugins.BackgroundRunner === "object";
-  if (hasBackgroundRunner) {
-    profiles.add("bg-light-30s");
-  }
-
-  // iOS: ElizaTasksPlugin registers `ai.eliza.tasks.processing`
-  // (BGProcessingTask). Its presence means we can ask for a long
-  // background window on charger+idle.
-  const hasElizaTasks =
-    plugins != null &&
-    typeof plugins === "object" &&
-    plugins.ElizaTasks != null &&
-    typeof plugins.ElizaTasks === "object";
-
-  // Android: ElizaAgentService sets ELIZA_HOST_FGS_ACTIVE to "1" while
-  // the foreground service is running. The runtime exposes this via
-  // `getSetting` (read-through to env / settings store).
-  let fgsActive = false;
-  const getSetting = (runtime as { getSetting?: (k: string) => unknown })
-    .getSetting;
-  if (typeof getSetting === "function") {
-    const raw = getSetting.call(runtime, "ELIZA_HOST_FGS_ACTIVE");
-    fgsActive = raw === "1" || raw === true;
-  }
-
-  if (hasElizaTasks || fgsActive) {
-    profiles.add("bg-heavy-fgs");
-  }
-
-  return profiles;
-}
-
-/**
- * Snapshot helper for diagnostics — returns the same data as
- * `getHostExecutionCapabilities` but as a structured object that's
- * easier to serialize into `/api/health` extensions.
- */
+/** Read one host snapshot so scheduler decisions and diagnostics agree. */
 export function describeHostExecutionCapabilities(runtime: IAgentRuntime): {
   profiles: TaskExecutionProfile[];
   isCapacitor: boolean;
@@ -125,36 +52,37 @@ export function describeHostExecutionCapabilities(runtime: IAgentRuntime): {
   hasElizaTasksPlugin: boolean;
   fgsActive: boolean;
 } {
-  const profiles = Array.from(getHostExecutionCapabilities(runtime));
-  const capacitor: unknown = Reflect.get(globalThis, "Capacitor");
-  const isCapacitor =
-    typeof capacitor === "object" &&
-    capacitor !== null &&
-    typeof (capacitor as CapacitorGlobalLike).isNativePlatform === "function" &&
-    (capacitor as CapacitorGlobalLike).isNativePlatform?.() === true;
-  const plugins =
-    isCapacitor && capacitor != null
-      ? (capacitor as CapacitorGlobalLike).Plugins
-      : undefined;
+  const capacitor = Reflect.get(globalThis, "Capacitor") as
+    | CapacitorGlobalLike
+    | undefined;
+  const isCapacitor = capacitor?.isNativePlatform?.() === true;
+  const plugins = isCapacitor ? capacitor?.Plugins : undefined;
   const hasBackgroundRunner =
-    plugins != null &&
-    typeof plugins === "object" &&
-    plugins.BackgroundRunner != null;
+    plugins?.BackgroundRunner !== null &&
+    typeof plugins?.BackgroundRunner === "object";
   const hasElizaTasksPlugin =
-    plugins != null &&
-    typeof plugins === "object" &&
-    plugins.ElizaTasks != null;
-  const getSetting = (runtime as { getSetting?: (k: string) => unknown })
-    .getSetting;
-  const raw =
-    typeof getSetting === "function"
-      ? getSetting.call(runtime, "ELIZA_HOST_FGS_ACTIVE")
-      : undefined;
+    plugins?.ElizaTasks !== null && typeof plugins?.ElizaTasks === "object";
+  const raw = runtime.getSetting("ELIZA_HOST_FGS_ACTIVE");
+  const fgsActive = raw === "1" || raw === true;
+  const isNode =
+    !isCapacitor &&
+    typeof process !== "undefined" &&
+    Boolean(process.versions?.node);
+  const profiles: TaskExecutionProfile[] = ["foreground", "notify-only"];
+  if (isNode || hasBackgroundRunner) profiles.push("bg-light-30s");
+  if (isNode || (isCapacitor && (hasElizaTasksPlugin || fgsActive)))
+    profiles.push("bg-heavy-fgs");
   return {
     profiles,
     isCapacitor,
-    hasBackgroundRunner: Boolean(hasBackgroundRunner),
-    hasElizaTasksPlugin: Boolean(hasElizaTasksPlugin),
-    fgsActive: raw === "1" || raw === true,
+    hasBackgroundRunner,
+    hasElizaTasksPlugin,
+    fgsActive,
   };
+}
+
+export function getHostExecutionCapabilities(
+  runtime: IAgentRuntime,
+): ReadonlySet<TaskExecutionProfile> {
+  return new Set(describeHostExecutionCapabilities(runtime).profiles);
 }

@@ -144,6 +144,7 @@ export function registerAuthAdoptCodexSubcommand(program: Command): void {
           codexHome: opts.codexHome,
           overwrite: opts.overwrite,
           yes: opts.yes,
+          ...(opts.json ? { log: () => {} } : {}),
         });
         if (opts.json) process.stdout.write(`${JSON.stringify(result)}\n`);
         if (!result.ok) process.exitCode = 1;

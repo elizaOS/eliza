@@ -12,9 +12,11 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 import {
-  type JsValue as AgentJsValue,
+  type JsRuntimeEvaluateOptions as CapacitorQuickJsEvaluateOptions,
+  type JsRuntimeImportOptions as CapacitorQuickJsImportOptions,
   type JsRuntimeBridge,
   type JsRuntimeKind,
+  type JsValue,
   registerJsRuntimeFactory,
 } from "@elizaos/agent";
 
@@ -23,26 +25,11 @@ import {
  * `JsRuntimeBridge`. Re-exported so callers that only depend on this connector
  * don't need to import `@elizaos/agent` for the type alone.
  */
-export type JsValue =
-  | { kind: "undefined" }
-  | { kind: "null" }
-  | { kind: "boolean"; value: boolean }
-  | { kind: "number"; value: number }
-  | { kind: "string"; value: string }
-  | { kind: "object"; entries: Array<[string, JsValue]> }
-  | { kind: "array"; items: JsValue[] }
-  | { kind: "function"; functionId: string };
-
-export interface CapacitorQuickJsEvaluateOptions {
-  code: string;
-  sourceUrl?: string;
-  timeoutMs?: number;
-}
-
-export interface CapacitorQuickJsImportOptions {
-  absolutePath: string;
-  specifier?: string;
-}
+export type {
+  CapacitorQuickJsEvaluateOptions,
+  CapacitorQuickJsImportOptions,
+  JsValue,
+};
 
 /**
  * Native API surface the Kotlin / Swift implementation must expose. On
@@ -107,20 +94,14 @@ class CapacitorQuickJsBridge implements JsRuntimeBridge {
       "quickjs-android" | "quickjs-ios-fallback"
     >,
   ) {}
-  async evaluate(opts: {
-    code: string;
-    sourceUrl?: string;
-    timeoutMs?: number;
-  }): Promise<AgentJsValue> {
+  async evaluate(opts: CapacitorQuickJsEvaluateOptions): Promise<JsValue> {
     const result = await this.plugin.evaluate(opts);
-    return result.value as AgentJsValue;
+    return result.value;
   }
-  async importModule(opts: {
-    absolutePath: string;
-    specifier?: string;
-  }): Promise<{ exports: AgentJsValue }> {
-    const result = await this.plugin.importModule(opts);
-    return { exports: result.exports as AgentJsValue };
+  async importModule(
+    opts: CapacitorQuickJsImportOptions,
+  ): Promise<{ exports: JsValue }> {
+    return this.plugin.importModule(opts);
   }
   async dispose(): Promise<void> {
     await this.plugin.dispose();

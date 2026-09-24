@@ -262,6 +262,7 @@
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-github": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-knowledge": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",

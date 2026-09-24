@@ -12,8 +12,10 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 import {
-  type JsValue as AgentJsValue,
+  type JsRuntimeEvaluateOptions as CapacitorJscEvaluateOptions,
+  type JsRuntimeImportOptions as CapacitorJscImportOptions,
   type JsRuntimeBridge,
+  type JsValue,
   registerJsRuntimeFactory,
 } from "@elizaos/agent";
 
@@ -22,28 +24,7 @@ import {
  * `JsRuntimeBridge`. Re-exported so callers that only depend on this connector
  * don't need to import `@elizaos/agent` for the type alone.
  */
-export type JsValue =
-  | { kind: "undefined" }
-  | { kind: "null" }
-  | { kind: "boolean"; value: boolean }
-  | { kind: "number"; value: number }
-  | { kind: "string"; value: string }
-  | { kind: "object"; entries: Array<[string, JsValue]> }
-  | { kind: "array"; items: JsValue[] }
-  | { kind: "function"; functionId: string };
-
-export interface CapacitorJscEvaluateOptions {
-  code: string;
-  sourceUrl?: string;
-  timeoutMs?: number;
-}
-
-export interface CapacitorJscImportOptions {
-  /** Absolute path on the device filesystem. */
-  absolutePath: string;
-  /** Optional ESM-style specifier (file URL by default). */
-  specifier?: string;
-}
+export type { CapacitorJscEvaluateOptions, CapacitorJscImportOptions, JsValue };
 
 /**
  * Native API surface the Swift implementation must expose. The Capacitor
@@ -100,20 +81,14 @@ function isJscPluginAvailable(): boolean {
 class CapacitorJscBridge implements JsRuntimeBridge {
   readonly kind = "jsc-ios" as const;
   constructor(private readonly plugin: CapacitorJscPlugin) {}
-  async evaluate(opts: {
-    code: string;
-    sourceUrl?: string;
-    timeoutMs?: number;
-  }): Promise<AgentJsValue> {
+  async evaluate(opts: CapacitorJscEvaluateOptions): Promise<JsValue> {
     const result = await this.plugin.evaluate(opts);
-    return result.value as AgentJsValue;
+    return result.value;
   }
-  async importModule(opts: {
-    absolutePath: string;
-    specifier?: string;
-  }): Promise<{ exports: AgentJsValue }> {
-    const result = await this.plugin.importModule(opts);
-    return { exports: result.exports as AgentJsValue };
+  async importModule(
+    opts: CapacitorJscImportOptions,
+  ): Promise<{ exports: JsValue }> {
+    return this.plugin.importModule(opts);
   }
   async dispose(): Promise<void> {
     await this.plugin.dispose();

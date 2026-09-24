@@ -99,14 +99,10 @@ export const publicLinkSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter 
     async deliver({ request, runtime }): Promise<DeliveryResult> {
       const typed = request as SensitiveRequestWithPaymentContext;
 
-      if (typed.kind !== "payment") {
-        return {
-          delivered: false,
-          target: "public_link",
-          error: "public_link only allowed for any_payer payment",
-        };
-      }
-      if (typed.paymentContext?.kind !== "any_payer") {
+      if (
+        typed.kind !== "payment" ||
+        typed.paymentContext?.kind !== "any_payer"
+      ) {
         return {
           delivered: false,
           target: "public_link",

@@ -28,6 +28,7 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
+export * from "@elizaos/plugin-github/github-credentials";
 export type {
   AllPermissionsState,
   PermissionCheckResult,
@@ -107,7 +108,6 @@ export * from "./services/account-pool";
 export * from "./services/account-pool-consumer-metering";
 export * from "./services/auth-store";
 export * from "./services/credential-tunnel-service";
-export * from "./services/github-credentials";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
 // Explicit .ts extension on steward-sidecar.ts disambiguates from the
