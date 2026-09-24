@@ -57,13 +57,25 @@ export function readDevConsoleLogTail(
     if (!fs.existsSync(absPath)) {
       return { ok: false, error: "log file not found" };
     }
-    const st = fs.statSync(absPath);
+    const canonicalPath = fs.realpathSync(absPath);
+    const canonicalStateDir = fs.realpathSync(resolveStateDir());
+    const relative = path.relative(canonicalStateDir, canonicalPath);
+    if (
+      path.basename(absPath) !== "desktop-dev-console.log" ||
+      relative.length === 0 ||
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) {
+      return { ok: false, error: "log path is outside the state directory" };
+    }
+    const st = fs.statSync(canonicalPath);
     if (!st.isFile()) {
       return { ok: false, error: "not a file" };
     }
     const readSize = Math.min(st.size, maxBytes);
     const start = st.size - readSize;
-    const fd = fs.openSync(absPath, "r");
+    const fd = fs.openSync(canonicalPath, "r");
     try {
       const buf = Buffer.alloc(readSize);
       fs.readSync(fd, buf, 0, readSize, start);

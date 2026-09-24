@@ -79,6 +79,7 @@ export function resolveDiscordExchange(
     try {
       const tokenRes = await doFetch(tokenUrl, {
         method: "POST",
+        signal: AbortSignal.timeout(10_000),
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           client_id: clientId,
@@ -112,6 +113,7 @@ export function resolveDiscordExchange(
 
     try {
       const userRes = await doFetch(userUrl, {
+        signal: AbortSignal.timeout(10_000),
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!userRes.ok) {

@@ -10,7 +10,9 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-blocker": [
+        "../../plugins/plugin-blocker/src/register.ts"
+      ],
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
@@ -103,6 +105,12 @@
       ],
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
+      ],
+      "@elizaos/plugin-personal-assistant/ui": [
+        "../../plugins/plugin-personal-assistant/src/ui.ts"
+      ],
+      "@elizaos/plugin-native-phone/ui": [
+        "../../plugins/plugin-native-phone/src/ui.ts"
       ]
     }
   }

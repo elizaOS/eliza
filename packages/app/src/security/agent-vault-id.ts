@@ -45,8 +45,9 @@ export function resolveCanonicalStateDir(): string {
   const resolved = path.resolve(resolveStateDir());
   try {
     return fs.realpathSync(resolved);
-  } catch {
-    return resolved;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return resolved;
+    throw error;
   }
 }
 

@@ -5,19 +5,21 @@
     "paths": {
       "@elizaos/app": ["./src/index.ts"],
       "@elizaos/app/*": ["./src/*"],
-      "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-agent-orchestrator/ui": [
-        "./src/types/app-plugin-modules.d.ts"
+        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
       ],
       "@elizaos/plugin-personal-assistant": [
-        "./src/types/app-plugin-modules.d.ts"
+        "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
-      "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-blocker": [
+        "../../plugins/plugin-blocker/src/register.ts"
+      ],
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-native-phone": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-native-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/dist/ui/index.d.ts"
       ],
@@ -117,6 +119,12 @@
       ],
       "@elizaos/plugin-native-messages/bridge": [
         "../../plugins/plugin-native-messages/src/bridge.ts"
+      ],
+      "@elizaos/plugin-personal-assistant/ui": [
+        "../../plugins/plugin-personal-assistant/src/ui.ts"
+      ],
+      "@elizaos/plugin-native-phone/ui": [
+        "../../plugins/plugin-native-phone/src/ui.ts"
       ]
     }
   },

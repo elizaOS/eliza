@@ -17,9 +17,9 @@ export function scheduleUpdateNotification(): void {
   if (notified) return;
   notified = true;
 
+  if (process.env.CI || !process.stderr.isTTY) return;
   const config = loadElizaConfig();
   if (config.update?.checkOnStart === false) return;
-  if (process.env.CI || !process.stderr.isTTY) return;
 
   void checkForUpdate()
     .then((result) => {

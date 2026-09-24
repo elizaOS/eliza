@@ -3,6 +3,9 @@
  * how to read/edit config values and the common provider API-key environment
  * variables — plus a docs link. Guidance only; it does not mutate any config.
  */
+
+import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { formatDocsLink, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 
@@ -22,7 +25,7 @@ export function registerConfigureCommand(program: Command) {
         `  ${theme.command("eliza config get <key>")}     Read a config value`,
       );
       console.log(
-        `  Edit ~/.local/state/eliza/eliza.json directly for full control.\n`,
+        `  Edit ${path.join(resolveStateDir(), "eliza.json")} directly for full control.\n`,
       );
       console.log("Common environment variables:");
       console.log(

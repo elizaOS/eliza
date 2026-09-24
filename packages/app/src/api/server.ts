@@ -76,7 +76,11 @@ import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
-export { injectApiBaseIntoHtml } from "@elizaos/agent";
+export {
+  injectApiBaseIntoHtml,
+  isSafeResetStateDir,
+  resolveCorsOrigin,
+} from "@elizaos/agent";
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
@@ -107,11 +111,6 @@ export {
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
 } from "./server-security";
-export {
-  findOwnPackageRoot,
-  isSafeResetStateDir,
-  resolveCorsOrigin,
-} from "./server-startup";
 export { resolveWalletExportRejection } from "./server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,

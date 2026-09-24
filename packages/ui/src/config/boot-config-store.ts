@@ -139,12 +139,6 @@ export interface AppBootConfig {
    * shows its own logo, not the elizaOS mark). Receives an optional className.
    */
   brandMark?: ComponentType<{ className?: string }>;
-  /** Coding-agent tasks panel provided by the host app. */
-  codingAgentTasksPanel?: ComponentType<CodingAgentTasksPanelProps>;
-  /** Coding-agent settings panel provided by the host app. */
-  codingAgentSettingsSection?: ComponentType<Record<string, never>>;
-  /** Coding-agent chat control chip provided by the host app. */
-  codingAgentControlChip?: ComponentType<Record<string, never>>;
   /** Coding-agent PTY drawer provided by the host app. */
   ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
   /** App blocker settings card provided by the host app. */

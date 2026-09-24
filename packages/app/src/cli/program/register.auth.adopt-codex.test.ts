@@ -136,7 +136,7 @@ describe("runAuthAdoptCodex", () => {
 describe("commander wiring", () => {
   it("registers adopt-codex under the auth group with the confirmation flag", () => {
     const program = new Command();
-    registerProgramCommands(program, ["node", "eliza"]);
+    registerProgramCommands(program);
 
     const auth = program.commands.find((c) => c.name() === "auth");
     expect(auth).toBeDefined();
@@ -157,7 +157,7 @@ describe("commander wiring", () => {
 
   it("registers every top-level command exactly once", () => {
     const program = new Command();
-    registerProgramCommands(program, ["node", "eliza"]);
+    registerProgramCommands(program);
 
     const names = program.commands.map((c) => c.name());
     for (const expected of [

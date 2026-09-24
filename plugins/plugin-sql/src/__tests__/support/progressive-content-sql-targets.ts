@@ -19,14 +19,14 @@ import {
 } from "@elizaos/testing";
 import { and, count, eq, inArray, sql, sum } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
-import { DatabaseMigrationService } from "../migration-service";
-import { PgDatabaseAdapter } from "../pg/adapter";
-import { PostgresConnectionManager } from "../pg/manager";
-import { PgliteDatabaseAdapter } from "../pglite/adapter";
-import { PGliteClientManager } from "../pglite/manager";
-import * as schema from "../schema";
-import { memoryTable } from "../schema";
-import type { DrizzleDatabase } from "../types";
+import { DatabaseMigrationService } from "../../migration-service";
+import { PgDatabaseAdapter } from "../../pg/adapter";
+import { PostgresConnectionManager } from "../../pg/manager";
+import { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { PGliteClientManager } from "../../pglite/manager";
+import * as schema from "../../schema";
+import { memoryTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 
 const SOURCE_PAGE_BYTES = 64 * 1024;
 const SOURCE_READ_BYTES = SOURCE_PAGE_BYTES - 4;

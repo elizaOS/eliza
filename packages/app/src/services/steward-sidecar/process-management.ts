@@ -49,22 +49,31 @@ export async function pipeOutput(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
 
+  let pending = "";
+  const emit = (line: string): void => {
+    if (!line) return;
+    if (name === "stderr") logger.warn(`[Steward:err] ${line}`);
+    else logger.info(`[Steward] ${line}`);
+    onLog?.(line, name);
+  };
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value).trimEnd();
-      if (text) {
-        const prefix = name === "stderr" ? "[Steward:err]" : "[Steward]";
-        if (name === "stderr") {
-          logger.warn(`${prefix} ${text}`);
-        } else {
-          logger.info(`${prefix} ${text}`);
-        }
-        onLog?.(text, name);
+      pending += decoder.decode(value, { stream: !done });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) emit(line.replace(/\r$/, ""));
+      if (done) {
+        emit(pending);
+        break;
       }
     }
-  } catch {
-    // stream closed
+  } catch (error) {
+    logger.error(
+      { error, stream: name },
+      "[StewardSidecar] Output forwarding failed",
+    );
+  } finally {
+    reader.releaseLock();
   }
 }

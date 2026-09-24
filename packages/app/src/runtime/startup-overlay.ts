@@ -57,8 +57,6 @@ export function getStartupEmbeddingAugmentation(): Record<
     snapshot = null;
     return null;
   }
-  if (snapshot.phase === "ready") return null;
-
   const out: Record<string, unknown> = {
     embeddingPhase: snapshot.phase,
   };
