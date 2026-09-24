@@ -23,7 +23,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.0",
-    "bun-types": "^1.4.2",
+    "bun-types": "1.3.14",
     "fast-check": "^4.10.2",
     "vitest": "^5.0.1",
     "@typescript/native": "npm:typescript@^7.0.2",

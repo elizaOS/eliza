@@ -52,7 +52,7 @@
   },
   "devDependencies": {
     "@elizaos/plugin-inmemorydb": "__ELIZAOS_VERSION__",
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.14",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^25.0.3",
     "@types/react-dom": "^19.2.3",

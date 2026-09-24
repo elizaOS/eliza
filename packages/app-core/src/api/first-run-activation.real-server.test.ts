@@ -226,7 +226,7 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true });
 });
 
-describe.sequential("local first-run activation", () => {
+describe("local first-run activation", { concurrent: false }, () => {
   it("registers the real selected provider and waits for its transport health", async () => {
     expect(fixture.runtime.models.get(ModelType.TEXT_SMALL)).toBeUndefined();
     const response = await submit();

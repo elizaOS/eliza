@@ -34,7 +34,9 @@ const rightId = crypto.randomUUID() as UUID;
 const otherLeftId = crypto.randomUUID() as UUID;
 const otherRightId = crypto.randomUUID() as UUID;
 
-describe.sequential("authenticated identity person-link ingress", () => {
+describe("authenticated identity person-link ingress", {
+  concurrent: false,
+}, () => {
   let cleanup: () => Promise<void>;
   let db: DrizzleDatabase;
   let runtime: Awaited<

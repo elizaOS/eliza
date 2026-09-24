@@ -696,7 +696,7 @@ function isWebhookMessage(value: unknown): value is WhatsAppIncomingMessage {
 
 export class WhatsAppConnectorService extends Service {
   static serviceType = "whatsapp";
-  protected declare runtime: IAgentRuntime;
+  declare protected runtime: IAgentRuntime;
 
   capabilityDescription = "The agent is able to send and receive messages on whatsapp";
 
