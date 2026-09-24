@@ -357,6 +357,26 @@ const nativeStubs = {
   "react/jsx-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
   "react/jsx-dev-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
 };
+
+// Android's lazy bridge imports UI-bearing plugin barrels. Their component
+// definitions call React APIs during module initialization, even without a DOM.
+// Resolve the real runtime explicitly so namespace imports retain real exports
+// and cannot follow the type-only aliases used by workspace typechecking.
+if (TARGET === "android") {
+  for (const specifier of [
+    "react",
+    "react-dom",
+    "react-dom/client",
+    "react/jsx-runtime",
+    "react/jsx-dev-runtime",
+  ]) {
+    nativeStubs[specifier] = Bun.resolveSync(
+      specifier,
+      path.join(repoRoot, "packages/ui"),
+    );
+  }
+}
+
 // iOS-specific overrides. The iOS Bun port (see native/ios-bun-port/) forbids
 // `child_process` / `Bun.spawn` (kernel sandbox), restricts `bun:ffi` to
 // statically-linked symbols, and routes `os.homedir()` through env vars set by
