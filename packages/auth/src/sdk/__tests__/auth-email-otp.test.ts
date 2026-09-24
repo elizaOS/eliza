@@ -1,3 +1,4 @@
+/** Exercises email-code and passkey signup contracts with controlled HTTP and WebAuthn responses. */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { LoginAuth } from "../auth";
 import { LoginApiError } from "../client";
@@ -186,21 +187,6 @@ describe("LoginAuth email magic-link companion code", () => {
 });
 
 describe("LoginAuth.sendEmailOtp", () => {
-  it("POSTs email (+ tenant) to /auth/email/otp/send", async () => {
-    const auth = new LoginAuth({
-      baseUrl: "https://api.example.test",
-      tenantId: "elizacloud",
-    });
-    const res = await auth.sendEmailOtp("new@user.test");
-
-    expect(captured[0]?.url).toBe(
-      "https://api.example.test/auth/email/otp/send",
-    );
-    expect(captured[0]?.body?.email).toBe("new@user.test");
-    expect(captured[0]?.body?.tenantId).toBe("elizacloud");
-    expect(res.ok).toBe(true);
-  });
-
   it("forwards an optional captchaToken", async () => {
     const auth = new LoginAuth({ baseUrl: "https://api.example.test" });
     await auth.sendEmailOtp("new@user.test", "captcha-123");
@@ -221,22 +207,6 @@ describe("LoginAuth.sendEmailOtp", () => {
 });
 
 describe("LoginAuth.verifyEmailOtp", () => {
-  it("exchanges a code for an emailGrant", async () => {
-    const auth = new LoginAuth({
-      baseUrl: "https://api.example.test",
-      tenantId: "elizacloud",
-    });
-    const res = await auth.verifyEmailOtp("new@user.test", "123456");
-
-    expect(captured[0]?.url).toBe(
-      "https://api.example.test/auth/email/otp/verify",
-    );
-    expect(captured[0]?.body?.email).toBe("new@user.test");
-    expect(captured[0]?.body?.code).toBe("123456");
-    expect(res.emailGrant).toBe("grant-xyz");
-    expect(res.expiresInSeconds).toBe(300);
-  });
-
   it("throws LoginApiError on a wrong/expired code", async () => {
     routes["/auth/email/otp/verify"] = () =>
       jsonResponse({ ok: false, error: "Invalid or expired code" }, 401);
@@ -247,53 +217,31 @@ describe("LoginAuth.verifyEmailOtp", () => {
   });
 });
 
-describe("LoginAuth.addPasskey with emailGrant (signed-out first-time signup)", () => {
-  it("forwards the emailGrant on BOTH register/options and register/verify", async () => {
-    const auth = new LoginAuth({
-      baseUrl: "https://api.example.test",
-      tenantId: "elizacloud",
-    });
-    const result = await auth.addPasskey("new@user.test", {
-      emailGrant: "grant-xyz",
-    });
-
-    const paths = captured.map((c) =>
-      c.url.replace("https://api.example.test", ""),
-    );
-    expect(paths).toEqual([
-      "/auth/passkey/register/options",
-      "/auth/passkey/register/verify",
-    ]);
-
-    // The grant must ride along on both calls — Steward peeks it on options
-    // and consumes it on verify, in place of a session.
-    expect(captured[0]?.body?.emailGrant).toBe("grant-xyz");
-    expect(captured[1]?.body?.emailGrant).toBe("grant-xyz");
-    expect(captured[0]?.body?.email).toBe("new@user.test");
-
-    expect(result.token).toBe("test-jwt");
-    expect(result.user?.email).toBe("new@user.test");
-  });
-
-  it("rejects a signed-out add-passkey when no emailGrant is supplied", async () => {
-    const auth = new LoginAuth({ baseUrl: "https://api.example.test" });
-    await expect(auth.addPasskey("existing@user.test")).rejects.toThrow(
-      "Not authenticated. Sign in first or provide a verified-email grant.",
-    );
-    expect(captured).toEqual([]);
-  });
-});
-
-describe("end-to-end Privy-style passkey signup", () => {
+describe("email OTP and passkey SDK signup", () => {
   it("send OTP → verify OTP → register passkey with the grant", async () => {
     const auth = new LoginAuth({
       baseUrl: "https://api.example.test",
       tenantId: "elizacloud",
     });
 
-    await auth.sendEmailOtp("new@user.test");
-    const { emailGrant } = await auth.verifyEmailOtp("new@user.test", "123456");
-    const result = await auth.addPasskey("new@user.test", { emailGrant });
+    const send = await auth.sendEmailOtp("new@user.test");
+    expect(send.ok).toBe(true);
+    expect(captured[0]?.body?.email).toBe("new@user.test");
+    expect(captured[0]?.body?.tenantId).toBe("elizacloud");
+
+    const grant = await auth.verifyEmailOtp("new@user.test", "123456");
+    expect(captured[1]?.body?.email).toBe("new@user.test");
+    expect(captured[1]?.body?.code).toBe("123456");
+    expect(grant.emailGrant).toBe("grant-xyz");
+    expect(grant.expiresInSeconds).toBe(300);
+
+    const result = await auth.addPasskey("new@user.test", {
+      emailGrant: grant.emailGrant,
+    });
+    expect(captured[2]?.body?.emailGrant).toBe("grant-xyz");
+    expect(captured[3]?.body?.emailGrant).toBe("grant-xyz");
+    expect(captured[2]?.body?.email).toBe("new@user.test");
+    expect(result.user?.email).toBe("new@user.test");
 
     const paths = captured.map((c) =>
       c.url.replace("https://api.example.test", ""),

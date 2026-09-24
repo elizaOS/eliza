@@ -280,6 +280,19 @@ function buildAuth(
   });
 }
 
+function gatedDelivery(id: string) {
+  const started = Promise.withResolvers<string>();
+  const accepted = Promise.withResolvers<void>();
+  const provider: EmailProvider = {
+    send: async (_to, _subject, body) => {
+      started.resolve(body);
+      await accepted.promise;
+      return { provider: "test", id };
+    },
+  };
+  return { provider, started: started.promise, accept: accepted.resolve };
+}
+
 function expectOpaqueBoundedPublicationReceipt(
   backend: CapturingBackend,
   canaries: readonly string[],
@@ -723,26 +736,13 @@ describe("fail-closed magic-link delivery", () => {
 
   it("does not redeem a magic link or companion code while delivery is in flight", async () => {
     const backend = new CapturingBackend();
-    let text = "";
-    let accept!: () => void;
-    const accepted = new Promise<void>((resolve) => {
-      accept = resolve;
-    });
-    const auth = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          text = body;
-          await accepted;
-          return { provider: "test", id: "accepted-after-race" };
-        },
-      },
-      backend,
-    );
+    const delivery = gatedDelivery("accepted-after-race");
+    const auth = buildAuth(delivery.provider, backend);
 
     const sending = auth.sendMagicLink("race@example.com", {
       tenantId: "tenant-a",
     });
-    while (!text) await Bun.sleep(1);
+    const text = await delivery.started;
     const token = text.match(/[?&]token=([a-f0-9]{64})/)?.[1] ?? "";
     const code = text.match(/\b(\d{6})\b/)?.[1] ?? "";
 
@@ -757,7 +757,7 @@ describe("fail-closed magic-link delivery", () => {
       valid: false,
     });
 
-    accept();
+    delivery.accept();
     await sending;
     expect(
       await auth.verifyMagicLink(token, "race@example.com", "tenant-a"),
@@ -769,32 +769,19 @@ describe("fail-closed magic-link delivery", () => {
 
   it("does not redeem an OTP while delivery is in flight", async () => {
     const backend = new CapturingBackend();
-    let text = "";
-    let accept!: () => void;
-    const accepted = new Promise<void>((resolve) => {
-      accept = resolve;
-    });
-    const auth = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          text = body;
-          await accepted;
-          return { provider: "test", id: "accepted-otp-after-race" };
-        },
-      },
-      backend,
-    );
+    const delivery = gatedDelivery("accepted-otp-after-race");
+    const auth = buildAuth(delivery.provider, backend);
 
     const sending = auth.sendOtp("otp-race@example.com", {
       tenantId: "tenant-a",
     });
-    while (!text) await Bun.sleep(1);
+    const text = await delivery.started;
     const code = text.match(/\b(\d{6})\b/)?.[1] ?? "";
     expect(await auth.verifyOtp("otp-race@example.com", code, "tenant-a")).toBe(
       false,
     );
 
-    accept();
+    delivery.accept();
     await sending;
     expect(await auth.verifyOtp("otp-race@example.com", code, "tenant-a")).toBe(
       true,
@@ -804,31 +791,18 @@ describe("fail-closed magic-link delivery", () => {
 
   it("keeps magic-link staging invisible to an old pod during provider acceptance", async () => {
     const backend = new CapturingBackend();
-    let text = "";
-    let accept!: () => void;
-    const accepted = new Promise<void>((resolve) => {
-      accept = resolve;
-    });
-    const auth = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          text = body;
-          await accepted;
-          return { provider: "test", id: "accepted-after-legacy-probe" };
-        },
-      },
-      backend,
-    );
+    const delivery = gatedDelivery("accepted-after-legacy-probe");
+    const auth = buildAuth(delivery.provider, backend);
 
     const sending = auth.sendMagicLink("legacy-race@example.com", {
       tenantId: "tenant-a",
     });
-    while (!text) await Bun.sleep(1);
+    const text = await delivery.started;
     const token = text.match(/[?&]token=([a-f0-9]{64})/)?.[1] ?? "";
     expect(token).not.toBe("");
     expect(await legacyVerifyMagicLink(backend, token)).toBe(false);
 
-    accept();
+    delivery.accept();
     await sending;
     expect(
       await auth.verifyMagicLink(token, "legacy-race@example.com", "tenant-a"),
@@ -840,26 +814,13 @@ describe("fail-closed magic-link delivery", () => {
 
   it("keeps OTP staging invisible and free of aliases or recipient PII", async () => {
     const backend = new CapturingBackend();
-    let text = "";
-    let accept!: () => void;
-    const accepted = new Promise<void>((resolve) => {
-      accept = resolve;
-    });
     const email = "otp-staging@example.com";
     const tenantId = "tenant-a";
-    const auth = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          text = body;
-          await accepted;
-          return { provider: "test", id: "accepted-opaque-otp" };
-        },
-      },
-      backend,
-    );
+    const delivery = gatedDelivery("accepted-opaque-otp");
+    const auth = buildAuth(delivery.provider, backend);
 
     const sending = auth.sendOtp(email, { tenantId });
-    while (!text) await Bun.sleep(1);
+    const text = await delivery.started;
     const code = text.match(/\b(\d{6})\b/)?.[1] ?? "";
     expect(code).not.toBe("");
     const legacyStoreKey = hashSha256Hex(
@@ -868,7 +829,7 @@ describe("fail-closed magic-link delivery", () => {
     const stagedKeys = [...backend.values.keys()];
     const stagedValues = [...backend.values.values()].map(({ value }) => value);
 
-    accept();
+    delivery.accept();
     await sending;
 
     expect(stagedKeys).not.toContain(legacyStoreKey);
@@ -883,31 +844,18 @@ describe("fail-closed magic-link delivery", () => {
 
   it("does not let an old pod consume an OTP while provider acceptance is pending", async () => {
     const backend = new CapturingBackend();
-    let text = "";
-    let accept!: () => void;
-    const accepted = new Promise<void>((resolve) => {
-      accept = resolve;
-    });
     const email = "legacy-otp-race@example.com";
     const tenantId = "tenant-a";
-    const auth = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          text = body;
-          await accepted;
-          return { provider: "test", id: "accepted-after-legacy-otp-probe" };
-        },
-      },
-      backend,
-    );
+    const delivery = gatedDelivery("accepted-after-legacy-otp-probe");
+    const auth = buildAuth(delivery.provider, backend);
 
     const sending = auth.sendOtp(email, { tenantId });
-    while (!text) await Bun.sleep(1);
+    const text = await delivery.started;
     const code = text.match(/\b(\d{6})\b/)?.[1] ?? "";
     expect(code).not.toBe("");
     expect(await legacyVerifyOtp(backend, email, code, tenantId)).toBe(false);
 
-    accept();
+    delivery.accept();
     await sending;
     expect(await legacyVerifyOtp(backend, email, code, tenantId)).toBe(true);
     auth.destroy();
@@ -1376,48 +1324,22 @@ describe("fail-closed magic-link delivery", () => {
 
   it("keeps only the newest concurrently published challenge across independent instances", async () => {
     const backend = new CapturingBackend();
-    let firstText = "";
-    let secondText = "";
-    let acceptFirst!: () => void;
-    let acceptSecond!: () => void;
-    const firstAccepted = new Promise<void>((resolve) => {
-      acceptFirst = resolve;
-    });
-    const secondAccepted = new Promise<void>((resolve) => {
-      acceptSecond = resolve;
-    });
-    const first = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          firstText = body;
-          await firstAccepted;
-          return { provider: "test", id: "first-independent" };
-        },
-      },
-      backend,
-    );
-    const second = buildAuth(
-      {
-        send: async (_to, _subject, body) => {
-          secondText = body;
-          await secondAccepted;
-          return { provider: "test", id: "second-independent" };
-        },
-      },
-      backend,
-    );
+    const firstDelivery = gatedDelivery("first-independent");
+    const secondDelivery = gatedDelivery("second-independent");
+    const first = buildAuth(firstDelivery.provider, backend);
+    const second = buildAuth(secondDelivery.provider, backend);
 
     const firstSend = first.sendMagicLink("independent@example.com", {
       tenantId: "tenant-a",
     });
-    while (!firstText) await Bun.sleep(1);
+    const firstText = await firstDelivery.started;
     const secondSend = second.sendMagicLink("independent@example.com", {
       tenantId: "tenant-a",
     });
-    while (!secondText) await Bun.sleep(1);
-    acceptSecond();
+    const secondText = await secondDelivery.started;
+    secondDelivery.accept();
     await secondSend;
-    acceptFirst();
+    firstDelivery.accept();
     await expect(firstSend).rejects.toThrow(EmailDeliveryError);
 
     const firstToken = firstText.match(/[?&]token=([a-f0-9]{64})/)?.[1] ?? "";

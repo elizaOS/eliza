@@ -345,6 +345,33 @@ function transactionGatedRuntime(agentId: string): {
   };
 }
 
+function transactionFailureRuntime(failure: Error) {
+  const target = sharedDatabaseRuntime(crypto.randomUUID());
+  const baseDb = (target as unknown as { adapter: { db: TestRuntimeDb } })
+    .adapter.db;
+  let armed = false;
+  (target as unknown as { adapter: { db: TestRuntimeDb } }).adapter = {
+    db: {
+      execute: baseDb.execute.bind(baseDb),
+      transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+        baseDb.transaction(async (tx) => {
+          const result = await callback(tx);
+          if (armed) {
+            armed = false;
+            throw failure;
+          }
+          return result;
+        }),
+    },
+  };
+  return {
+    runtime: target,
+    arm: () => {
+      armed = true;
+    },
+  };
+}
+
 async function installedDatabaseLogger(
   agentId: string,
   installedRuntime = sharedDatabaseRuntime(agentId),
@@ -2234,27 +2261,9 @@ describe("trajectory capture -> DB -> viewer", () => {
   it.each(["public", "installed"] as const)(
     "%s logger exposes child-start batch rollback without partial parent links",
     async (mode) => {
-      const batchRuntime = sharedDatabaseRuntime(crypto.randomUUID());
-      const baseDb = (
-        batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }
-      ).adapter.db;
-      let failNext = false;
       const failure = new Error("child-start transaction failure");
-      (batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }).adapter =
-        {
-          db: {
-            execute: baseDb.execute.bind(baseDb),
-            transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
-              baseDb.transaction(async (tx) => {
-                const result = await callback(tx);
-                if (failNext) {
-                  failNext = false;
-                  throw failure;
-                }
-                return result;
-              }),
-          },
-        };
+      const fault = transactionFailureRuntime(failure);
+      const batchRuntime = fault.runtime;
       const { logger } = await databaseLogger(
         mode,
         batchRuntime.agentId,
@@ -2265,7 +2274,7 @@ describe("trajectory capture -> DB -> viewer", () => {
         const rootId = logger.startStep(trajectoryId);
         await flushTrajectoryWrites(batchRuntime, trajectoryId);
         const before = await loadTrajectoryById(batchRuntime, trajectoryId);
-        failNext = true;
+        fault.arm();
         const first = logger.startStep(trajectoryId, { parentStepId: rootId });
         logger.startStep(trajectoryId, { parentStepId: first });
         await expect(
@@ -2353,27 +2362,9 @@ describe("trajectory capture -> DB -> viewer", () => {
   it.each(["public", "installed"] as const)(
     "%s logger exposes batch rollback and accepts a complete explicit retry",
     async (mode) => {
-      const batchRuntime = sharedDatabaseRuntime(crypto.randomUUID());
-      const baseDb = (
-        batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }
-      ).adapter.db;
-      let failNext = false;
       const failure = new Error("batch transaction failure");
-      (batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }).adapter =
-        {
-          db: {
-            execute: baseDb.execute.bind(baseDb),
-            transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
-              baseDb.transaction(async (tx) => {
-                const result = await callback(tx);
-                if (failNext) {
-                  failNext = false;
-                  throw failure;
-                }
-                return result;
-              }),
-          },
-        };
+      const fault = transactionFailureRuntime(failure);
+      const batchRuntime = fault.runtime;
       const { logger } = await databaseLogger(
         mode,
         batchRuntime.agentId,
@@ -2393,7 +2384,7 @@ describe("trajectory capture -> DB -> viewer", () => {
           purpose: "context",
           data: { text: "Keep the entire batch." },
         }));
-        failNext = true;
+        fault.arm();
         for (const capture of captures) logger.logProviderAccess(capture);
         await expect(
           flushTrajectoryWrites(batchRuntime, trajectoryId),
@@ -2431,21 +2422,8 @@ describe("trajectory capture -> DB -> viewer", () => {
   it.each(["public", "installed"] as const)(
     "%s logger batches adjacent providers without crossing another capture",
     async (mode) => {
-      const batchRuntime = sharedDatabaseRuntime(crypto.randomUUID());
-      const baseDb = (
-        batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }
-      ).adapter.db;
-      const transaction = vi.fn();
-      (batchRuntime as unknown as { adapter: { db: TestRuntimeDb } }).adapter =
-        {
-          db: {
-            execute: baseDb.execute.bind(baseDb),
-            transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) => {
-              transaction();
-              return baseDb.transaction(callback);
-            },
-          },
-        };
+      const counted = transactionGatedRuntime(crypto.randomUUID());
+      const batchRuntime = counted.runtime;
       const { logger } = await databaseLogger(
         mode,
         batchRuntime.agentId,
@@ -2456,7 +2434,7 @@ describe("trajectory capture -> DB -> viewer", () => {
       });
       const stepId = logger.startStep(trajectoryId);
       await flushTrajectoryWrites(batchRuntime, trajectoryId);
-      transaction.mockClear();
+      counted.transactions.count = 0;
 
       const timestamp = Date.now();
       const ids = Array.from({ length: 40 }, () => crypto.randomUUID());
@@ -2474,7 +2452,7 @@ describe("trajectory capture -> DB -> viewer", () => {
         });
       }
       await flushTrajectoryWrites(batchRuntime, trajectoryId);
-      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(counted.transactions.count).toBe(1);
       const detail = await logger.getTrajectoryDetail(trajectoryId);
       const accesses = detail?.steps?.flatMap(
         (step) => step.providerAccesses ?? [],
@@ -2493,7 +2471,7 @@ describe("trajectory capture -> DB -> viewer", () => {
         ),
       ).toBe(40);
 
-      transaction.mockClear();
+      counted.transactions.count = 0;
       const firstId = crypto.randomUUID();
       const lastId = crypto.randomUUID();
       logger.logProviderAccess({
@@ -2514,7 +2492,7 @@ describe("trajectory capture -> DB -> viewer", () => {
         data: {},
       });
       await flushTrajectoryWrites(batchRuntime, trajectoryId);
-      expect(transaction).toHaveBeenCalledTimes(3);
+      expect(counted.transactions.count).toBe(3);
       const after = await logger.getTrajectoryDetail(trajectoryId);
       expect(
         after?.steps
@@ -2525,7 +2503,7 @@ describe("trajectory capture -> DB -> viewer", () => {
         1,
       );
 
-      transaction.mockClear();
+      counted.transactions.count = 0;
       for (const providerId of ids) {
         logger.logProviderAccess({
           stepId,
@@ -2537,7 +2515,7 @@ describe("trajectory capture -> DB -> viewer", () => {
         });
       }
       await flushTrajectoryWrites(batchRuntime, trajectoryId);
-      expect(transaction).not.toHaveBeenCalled();
+      expect(counted.transactions.count).toBe(0);
       await logger.endTrajectory(trajectoryId, "completed");
       await logger.stop();
     },

@@ -1,3 +1,4 @@
+/** Exercises OAuth, tenant and MFA session transitions with controlled HTTP responses and in-memory storage. */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   _generateCodeChallenge,
@@ -25,31 +26,7 @@ interface CapturedRequest {
 let lastCapture: CapturedRequest | null = null;
 
 function installMockFetch(responseBody: object, status = 200): void {
-  global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : (input as Request).url;
-    const headers: Record<string, string> = {};
-    if (init?.headers) {
-      const h = new Headers(init.headers);
-      h.forEach((v, k) => {
-        headers[k] = v;
-      });
-    }
-    lastCapture = {
-      url,
-      method: (init?.method ?? "GET").toUpperCase(),
-      headers,
-      body: init?.body ? JSON.parse(init.body as string) : undefined,
-    };
-    return new Response(JSON.stringify(responseBody), {
-      status,
-      headers: { "Content-Type": "application/json" },
-    });
-  };
+  installMockFetchSequence([{ body: responseBody, status }]);
 }
 
 function installMockFetchSequence(
@@ -112,7 +89,10 @@ const BASE_URL = "http://localhost:3200";
 let storage: TestStorage;
 let auth: LoginAuth;
 
-function fakeJwt(claims: Record<string, unknown> = {}): string {
+function fakeJwt(
+  claims: Record<string, unknown> = {},
+  signature = "sig",
+): string {
   const header = btoa(JSON.stringify({ alg: "HS256" }))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -126,7 +106,7 @@ function fakeJwt(claims: Record<string, unknown> = {}): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  return `${header}.${payload}.sig`;
+  return `${header}.${payload}.${signature}`;
 }
 
 beforeEach(() => {
@@ -569,28 +549,12 @@ describe("getProviders", () => {
 // ─── signInWithJwt ─────────────────────────────────────────────────────────
 
 describe("signInWithJwt", () => {
-  function fakeJwt(claims: Record<string, unknown> = {}): string {
-    const header = btoa(JSON.stringify({ alg: "HS256" }))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const payload = btoa(
-      JSON.stringify({
-        address: "0x1234",
-        tenantId: "tenant-oidc",
-        userId: "user-oidc",
-        exp: Math.floor(Date.now() / 1000) + 900,
-        ...claims,
-      }),
-    )
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    return `${header}.${payload}.sig`;
-  }
-
   it("exchanges a BYO JWT for a Steward session", async () => {
-    const accessToken = fakeJwt();
+    const accessToken = fakeJwt({
+      address: "0x1234",
+      tenantId: "tenant-oidc",
+      userId: "user-oidc",
+    });
     installMockFetch({
       ok: true,
       token: accessToken,
@@ -642,28 +606,14 @@ describe("signInWithJwt", () => {
 // ─── MFA Recovery Codes ────────────────────────────────────────────────────
 
 describe("MFA recovery code helpers", () => {
-  function fakeJwt(claims: Record<string, unknown> = {}): string {
-    const header = btoa(JSON.stringify({ alg: "HS256" }))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const payload = btoa(
-      JSON.stringify({
-        address: "0x1234",
-        tenantId: "tenant-mfa",
-        userId: "user-mfa",
-        exp: Math.floor(Date.now() / 1000) + 900,
-        ...claims,
-      }),
-    )
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    return `${header}.${payload}.sig`;
-  }
+  const claims = {
+    address: "0x1234",
+    tenantId: "tenant-mfa",
+    userId: "user-mfa",
+  };
 
   it("completes MFA challenges with TOTP or recovery codes", async () => {
-    const accessToken = fakeJwt({ mfaVerifiedAt: Date.now() });
+    const accessToken = fakeJwt({ ...claims, mfaVerifiedAt: Date.now() });
     installMockFetch({
       ok: true,
       token: accessToken,
@@ -709,7 +659,7 @@ describe("MFA recovery code helpers", () => {
   });
 
   it("gets and regenerates recovery codes with bearer auth", async () => {
-    storage.setItem("steward_session_token", fakeJwt());
+    storage.setItem("steward_session_token", fakeJwt(claims));
 
     installMockFetch({ ok: true, enabled: true, remaining: 7 });
     const status = await auth.getRecoveryCodeStatus();
@@ -730,7 +680,7 @@ describe("MFA recovery code helpers", () => {
   });
 
   it("manages SMS MFA enrollment helpers with bearer auth", async () => {
-    storage.setItem("steward_session_token", fakeJwt());
+    storage.setItem("steward_session_token", fakeJwt(claims));
 
     installMockFetch({ ok: true, enabled: false, pending: false });
     const status = await auth.getSmsMfaStatus();
@@ -851,27 +801,11 @@ describe("MFA recovery code helpers", () => {
 });
 
 describe("identity token helper", () => {
-  function fakeJwt(): string {
-    const header = btoa(JSON.stringify({ alg: "HS256" }))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const payload = btoa(
-      JSON.stringify({
-        address: "0x1234",
-        tenantId: "tenant-id",
-        userId: "user-id",
-        exp: Math.floor(Date.now() / 1000) + 900,
-      }),
-    )
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    return `${header}.${payload}.sig`;
-  }
-
   it("fetches an identity token with bearer auth", async () => {
-    storage.setItem("steward_session_token", fakeJwt());
+    storage.setItem(
+      "steward_session_token",
+      fakeJwt({ address: "0x1234", tenantId: "tenant-id", userId: "user-id" }),
+    );
     installMockFetch({
       ok: true,
       token: "identity.jwt",
@@ -926,31 +860,12 @@ describe("identity token helper", () => {
 // ─── handleOAuthCallback ──────────────────────────────────────────────────
 
 describe("handleOAuthCallback", () => {
-  // Helper: build a fake JWT for the mock response
-  function fakeJwt(claims: Record<string, unknown> = {}): string {
-    const header = btoa(JSON.stringify({ alg: "HS256" }))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const payload = btoa(
-      JSON.stringify({
-        address: "0x1234",
-        tenantId: "t-test",
-        userId: "user-1",
-        email: "test@example.com",
-        exp: Math.floor(Date.now() / 1000) + 900,
-        ...claims,
-      }),
-    )
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const sig = btoa("fakesig")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    return `${header}.${payload}.${sig}`;
-  }
+  const claims = {
+    address: "0x1234",
+    tenantId: "t-test",
+    userId: "user-1",
+    email: "test@example.com",
+  };
 
   it("throws when no state is stored", async () => {
     try {
@@ -1004,7 +919,7 @@ describe("handleOAuthCallback", () => {
     storage.setItem("steward_oauth_state", state);
     storage.setItem("steward_oauth_verifier", verifier);
 
-    const jwt = fakeJwt();
+    const jwt = fakeJwt(claims, "ZmFrZXNpZw");
     installMockFetch({
       ok: true,
       token: jwt,
@@ -1069,7 +984,7 @@ describe("handleOAuthCallback", () => {
 
     installMockFetch({
       ok: true,
-      token: fakeJwt({ tenantId: "tenant-1" }),
+      token: fakeJwt({ ...claims, tenantId: "tenant-1" }, "ZmFrZXNpZw"),
       refreshToken: "rt-tenant",
       expiresIn: 900,
       user: {
