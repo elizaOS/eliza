@@ -27,9 +27,6 @@
       "bun-types"
     ],
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/dist"
-      ],
     }
   },
   "include": [
