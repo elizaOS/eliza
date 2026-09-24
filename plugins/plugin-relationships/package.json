@@ -22,7 +22,13 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./register": {
+      "types": "./dist/register.d.ts",
+      "eliza-source": "./src/register.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    }
   },
   "files": [
     "assets",
@@ -84,7 +90,8 @@
   },
   "elizaos": {
     "appRegister": {
-      "export": "registerRelationshipsApp"
+      "export": "registerRelationshipsApp",
+      "subpath": "register"
     },
     "app": {
       "displayName": "Relationships",
