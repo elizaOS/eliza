@@ -14,6 +14,7 @@ import {
   test,
 } from "bun:test";
 import { runInNewContext } from "node:vm";
+import { Hono } from "hono";
 import { hasDbCacheContext } from "@/db/client";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
@@ -39,6 +40,9 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   balance: 100,
 };
 let enqueueCalls = 0;
+const wakeCalls: Record<string, unknown>[] = [];
+let wakeCreated = true;
+let wakeJobId: string | undefined = "wake-1";
 let enqueueError: Error | null = null;
 let workerHealthResult: ProvisioningWorkerHealth = {
   ok: true,
@@ -97,6 +101,11 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
   ...provisioningJobsActual,
   provisioningJobService: {
     ...provisioningJobsActual.provisioningJobService,
+    enqueueAgentWakeOnce: async (params: Record<string, unknown>) => {
+      wakeCalls.push(params);
+      if (enqueueError) throw enqueueError;
+      return { job: { id: wakeJobId }, created: wakeCreated };
+    },
     enqueueAgentProvisionOnce: async () => {
       enqueueCalls++;
       if (enqueueError) throw enqueueError;
@@ -266,6 +275,9 @@ beforeEach(() => {
   sandboxLookupError = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
+  wakeCalls.length = 0;
+  wakeCreated = true;
+  wakeJobId = "wake-1";
   enqueueError = null;
   workerHealthResult = { ok: true, required: false };
   wasStoppedByUser = false;
@@ -2003,3 +2015,115 @@ describe("dedicated-agent-proxy — workflow origin timeout budgets", () => {
     ).toBe(30_000);
   });
 });
+
+// Exercise both real HTTP entrypoints against the same cold-retirement contract.
+const { default: pairingRoute } = await import(
+  "../v1/eliza/agents/[agentId]/pairing-token/route"
+);
+const pairingApp = new Hono().route(
+  "/agents/:agentId/pairing-token",
+  pairingRoute,
+);
+for (const surface of ["proxy", "pairing"] as const) {
+  describe(`${surface} cold-retirement recovery`, () => {
+    beforeEach(() => {
+      authResult = { user: { id: "u1", organization_id: "org1" } };
+      sandboxResult = {
+        ...runningDedicated,
+        status: "sleeping",
+        lifecycle_revision: 19,
+      };
+    });
+    const requestRecovery = () => {
+      if (surface === "pairing")
+        return pairingApp.request(
+          `/agents/${AGENT}/pairing-token`,
+          { method: "POST", headers: { authorization: "Bearer cloud-token" } },
+          ENV,
+        );
+      const request = makeRequest("cloud-token");
+      return handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+    };
+    test("a user shutdown stays stopped without scheduling work", async () => {
+      wasStoppedByUser = true;
+      const response = await requestRecovery();
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "agent_stopped",
+        data: { status: "sleeping" },
+      });
+      expect(wakeCalls).toHaveLength(0);
+      expect(enqueueCalls).toBe(0);
+    });
+    for (const created of [true, false]) {
+      test(`billing recovery admits a verified wake with created=${created}`, async () => {
+        wakeCreated = created;
+        const response = await requestRecovery();
+        expect(response.status).toBe(202);
+        expect(await response.json()).toMatchObject({
+          success: true,
+          data: {
+            status: "starting",
+            jobId: "wake-1",
+            alreadyInProgress: !created,
+          },
+        });
+        expect(wakeCalls).toEqual([
+          {
+            agentId: AGENT,
+            organizationId: "org1",
+            userId: "u1",
+            expectedLifecycleRevision: 19,
+          },
+        ]);
+        expect(enqueueCalls).toBe(0);
+        expect(captured).toBeNull();
+      });
+    }
+    test("credit denial cannot schedule a cold wake", async () => {
+      creditGateResult = { allowed: false, balance: 0 };
+      const response = await requestRecovery();
+      expect(response.status).toBe(402);
+      expect(wakeCalls).toHaveLength(0);
+      expect(enqueueCalls).toBe(0);
+    });
+    test("offline worker cannot be reported as an admitted wake", async () => {
+      workerHealthResult = {
+        ok: false,
+        required: true,
+        status: 503,
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+        error: "Worker offline",
+      };
+      const response = await requestRecovery();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+      });
+      expect(wakeCalls).toHaveLength(0);
+      expect(enqueueCalls).toBe(0);
+    });
+    test("changed lifecycle authority returns a retryable admission failure", async () => {
+      enqueueError = new Error("Agent state changed while waking");
+      const response = await requestRecovery();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_ENQUEUE_FAILED",
+        retryable: true,
+      });
+      expect(wakeCalls).toHaveLength(1);
+      expect(enqueueCalls).toBe(0);
+    });
+    test("missing durable job identity never reports queued success", async () => {
+      wakeJobId = undefined;
+      const response = await requestRecovery();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_ENQUEUE_FAILED",
+      });
+      expect(enqueueCalls).toBe(0);
+    });
+  });
+}
