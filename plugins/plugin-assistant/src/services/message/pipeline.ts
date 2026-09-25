@@ -144,6 +144,7 @@ import {
   withActionResultsForPrompt,
   withContextRoutingValues,
 } from "./response-state.ts";
+import { replyClaimsInProgressWork } from "./side-effect-claims.ts";
 import {
   getSourceReplyRendering,
   sourceReplyAssertionText,
@@ -961,6 +962,10 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
+      // A pending draft is not a read result. Only whole-reply progress can
+      // precede tools; answer-like text (including progress plus an answer)
+      // waits for the normal grounded final path. Never fabricate a substitute.
+      if (!replyClaimsInProgressWork(earlyReplyText)) earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
