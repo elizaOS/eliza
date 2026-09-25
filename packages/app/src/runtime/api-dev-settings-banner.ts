@@ -11,10 +11,11 @@ import process from "node:process";
 import {
   ELIZA_RUNTIME_ENV_KEYS,
   firstWinningEnvString,
+  isElizaSettingsDebugEnabled,
   resolveApiSecurityConfig,
   resolveApiToken,
-} from "@elizaos/core/runtime-env";
-import { isElizaSettingsDebugEnabled } from "@elizaos/core/settings-debug";
+} from "@elizaos/core";
+
 import {
   type DevSettingsRow,
   formatDevSettingsTable,
