@@ -926,9 +926,29 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             for (i in 0 until commands.length()) {
-                val command = commands.getJSONObject(i) ?: continue
-                val type = command.optString("type", "")
-                val args = command.optJSONObject("args") ?: continue
+                val command = commands.optJSONObject(i)
+                val type = command?.opt("type") as? String
+                val args = command?.optJSONObject("args")
+                if (command == null || type == null || args == null) {
+                    call.reject("Command $i requires an object, string type and object args", "INVALID_COMMAND", null,
+                        JSObject().put("commandIndex", i))
+                    return@runOnUiThread
+                }
+                val invalid = when (type) {
+                    "rect" -> args.optJSONObject("rect") == null
+                    "ellipse" -> args.optJSONObject("center") == null
+                    "line" -> args.optJSONObject("from") == null || args.optJSONObject("to") == null || args.optJSONObject("stroke") == null
+                    "path" -> args.optJSONObject("path")?.optJSONArray("commands") == null
+                    "text" -> args.opt("text") !is String || args.optJSONObject("position") == null || args.optJSONObject("style") == null
+                    "image" -> args.optJSONObject("destRect") == null
+                    "clear" -> false
+                    else -> true
+                }
+                if (invalid) {
+                    call.reject("Command $i has an unsupported type or missing required arguments", "INVALID_COMMAND", null,
+                        JSObject().put("commandIndex", i))
+                    return@runOnUiThread
+                }
                 // Paint state (notably dash patterns) belongs to one command.
                 val paint = Paint().apply { isAntiAlias = true }
 
