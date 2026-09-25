@@ -290,7 +290,7 @@ def test_voice_audio_defaults_do_not_publish_mock_fixture_runs(
     assert voiceagentbench_extra.get("no_judge") is not True
 
 
-def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
+def test_gauntlet_rejects_placeholder_transaction_agents_even_with_surfpool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -310,10 +310,10 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
         lambda: True,
     )
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
-    assert _is_harness_compatible(adapter, "eliza") is True
-    assert _is_harness_compatible(adapter, "hermes") is True
-    assert _is_harness_compatible(adapter, "openclaw") is True
+    assert adapter.agent_compatibility == ()
+    assert _is_harness_compatible(adapter, "eliza") is False
+    assert _is_harness_compatible(adapter, "hermes") is False
+    assert _is_harness_compatible(adapter, "openclaw") is False
 
 
 def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
@@ -1039,11 +1039,12 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count == 2
+    assert report.incompatible_cell_count == 5
     assert report.error_count == 0
     incompatible = [cell for cell in report.cells if not cell.compatible]
     assert {(cell.benchmark_id, cell.harness) for cell in incompatible} == {
-        ("framework", "hermes"), ("framework", "openclaw")
+        ("framework", "hermes"), ("framework", "openclaw"),
+        ("gauntlet", "eliza"), ("gauntlet", "hermes"), ("gauntlet", "openclaw")
     }
 
     compatible = [cell for cell in report.cells if cell.compatible]
