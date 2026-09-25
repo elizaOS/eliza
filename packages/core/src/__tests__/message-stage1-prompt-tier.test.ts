@@ -156,7 +156,7 @@ function makeRuntime(
 	} as IAgentRuntime;
 }
 
-async function renderedModelPrompt(
+async function renderedStage1Prompt(
 	message: Memory,
 	stage1ResponseBody: unknown = stage1Response({
 		shouldRespond: "RESPOND",
@@ -164,8 +164,8 @@ async function renderedModelPrompt(
 	}),
 	settings: Record<string, string> = {},
 ): Promise<{
-	promptContent: string;
 	systemContent: string;
+	turnContent: string;
 	outcome: Awaited<ReturnType<typeof runV5MessageRuntimeStage1>>;
 	runtime: IAgentRuntime;
 }> {
@@ -181,12 +181,19 @@ async function renderedModelPrompt(
 	const params = calls[0]?.[1] as
 		| { messages?: Array<{ role?: string; content?: string }> }
 		| undefined;
+	const messages = params?.messages;
+	expect(messages?.map(({ role }) => role)).toEqual(["system", "user"]);
+	const systemContent = messages?.[0]?.content ?? "";
+	const turnContent = messages?.[1]?.content ?? "";
+	expect(systemContent).toContain("You are concise.");
+	expect(systemContent).toContain("Never disclose secrets or credentials.");
+	expect(systemContent).not.toMatch(/^# Task$/m);
+	expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+	expect(turnContent).toContain("# Current message");
+	expect(turnContent).toContain(message.content.text);
 	return {
-		systemContent: params?.messages?.[0]?.content ?? "",
-		// The stable system prefix and per-turn task/catalog are separate wire messages.
-		promptContent:
-			params?.messages?.map((message) => message.content ?? "").join("\n\n") ??
-			"",
+		systemContent,
+		turnContent,
 		outcome,
 		runtime,
 	};
@@ -251,29 +258,29 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("renders the full block for an unaddressed group message", async () => {
-		const { promptContent, outcome } = await renderedModelPrompt(
+		const { turnContent, outcome } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "IGNORE" }),
 		);
 
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(promptContent).toContain(
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
 			"Support tickets: open, escalate, check status",
 		);
 		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
-		expect(promptContent).not.toContain("## Response Handler Fields");
+		expect(turnContent).not.toContain("## Response Handler Fields");
 		// The envelope still parses and routes: IGNORE ends the turn.
 		expect(outcome.kind).toBe("terminal");
 	});
 
 	it("produces a non-terminal result with the full block when group triage decides RESPOND", async () => {
-		const { promptContent, outcome, runtime } = await renderedModelPrompt(
+		const { turnContent, outcome, runtime } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "RESPOND", replyText: "Hello." }),
 		);
 
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(promptContent).toContain(
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
 			"Support tickets: open, escalate, check status",
 		);
 		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
@@ -282,44 +289,44 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("renders the full rule block when the agent is platform-mentioned", async () => {
-		const { promptContent } = await renderedModelPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				mentionContext: { isMention: true, isReply: false },
 			}),
 		);
 
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 		// Full context catalog with complete descriptions.
-		expect(promptContent).toContain(
+		expect(turnContent).toContain(
 			"Support tickets: open, escalate, check status",
 		);
 		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
-		expect(promptContent).not.toContain("## Response Handler Fields");
+		expect(turnContent).not.toContain("## Response Handler Fields");
 	});
 
 	it("renders the full rule block on a platform reply to the agent", async () => {
-		const { promptContent } = await renderedModelPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				mentionContext: { isMention: false, isReply: true },
 			}),
 		);
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 	});
 
 	it("renders the full rule block when the agent is named in the text", async () => {
-		const { promptContent } = await renderedModelPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				text: "Test Agent can you check the build?",
 			}),
 		);
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(promptContent).toContain(
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
 			"Sticky notes: create, read, update, delete, search",
 		);
-		expect(promptContent).not.toContain(
+		expect(turnContent).not.toContain(
 			candidateActionNamesFieldEvaluator.description,
 		);
 	});
@@ -374,20 +381,20 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
-		const { promptContent } = await renderedModelPrompt(makeMessage());
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
+		const { turnContent } = await renderedStage1Prompt(makeMessage());
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 	});
 
 	it("keeps the full canonical template on DM channels", async () => {
-		const { promptContent, runtime } = await renderedModelPrompt(
+		const { turnContent, runtime } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.DM) }),
 		);
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(promptContent).toContain(
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(
 			"Support tickets: open, escalate, check status",
 		);
 		expect(FIXTURE_CONTEXTS[1].description).toBe(LONG_CONTEXT_DESCRIPTION);
-		expect(promptContent).not.toContain("## Response Handler Fields");
+		expect(turnContent).not.toContain("## Response Handler Fields");
 		expect(
 			JSON.stringify(
 				(runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls[0][1],
@@ -396,19 +403,19 @@ describe("Stage-1 complete prompt rendering", () => {
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {
-		const { promptContent } = await renderedModelPrompt(
+		const { turnContent } = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "IGNORE" }),
 			{ ELIZA_STAGE1_GROUP_TRIAGE: "0" },
 		);
-		expect(promptContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(turnContent).toContain(FULL_TEMPLATE_MARKER);
 	});
 
-	it("keeps the stable system prefix identical while preserving group addressing evidence", async () => {
-		const unaddressed = await renderedModelPrompt(
+	it("keeps addressed and unaddressed group instruction footprints identical", async () => {
+		const unaddressed = await renderedStage1Prompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 		);
-		const addressed = await renderedModelPrompt(
+		const addressed = await renderedStage1Prompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				mentionContext: { isMention: true, isReply: false },
@@ -416,8 +423,15 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 
 		expect(unaddressed.systemContent).toBe(addressed.systemContent);
-		expect(unaddressed.promptContent).toContain("ambient_turn_policy:");
-		expect(addressed.promptContent).not.toContain("ambient_turn_policy:");
+		expect(unaddressed.turnContent).toContain("ambient_turn_policy:");
+		expect(addressed.turnContent).not.toContain("ambient_turn_policy:");
+		const taskBlock = (content: string) =>
+			content
+				.slice(content.indexOf(FULL_TEMPLATE_MARKER))
+				.split("# Conversation")[0];
+		expect(taskBlock(unaddressed.turnContent)).toBe(
+			taskBlock(addressed.turnContent),
+		);
 	});
 });
 
