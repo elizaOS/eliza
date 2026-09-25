@@ -33,6 +33,7 @@ dependencies {
     implementation project(':elizaos-capacitor-gateway')
     implementation project(':elizaos-capacitor-location')
     implementation project(':elizaos-capacitor-mobile-signals')
+    implementation project(':elizaos-capacitor-network-policy')
     implementation project(':elizaos-capacitor-secure-store')
     implementation project(':elizaos-capacitor-swabble')
     implementation project(':elizaos-capacitor-system')
