@@ -156,6 +156,14 @@ class NativeBridgeInstrumentedTest {
                     val result = JSONObject(JSONTokener(raw).nextValue() as String)
                     assertFalse("Native contract failed: $result", result.has("error"))
                     assertTrue("Contract must assert native behavior", result.getInt("assertions") > 0)
+                    if (descriptor.getString("directory") == "plugin-native-canvas") {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeCanvasEvidence)")
+                        result.put("canvas", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "canvas-pixels.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
                     if (descriptor.has("smsRole")) {
                         val evidence = evaluate(scenario, "JSON.stringify(window.nativeSmsEvidence)")
                         result.put("sms", JSONObject(JSONTokener(evidence).nextValue() as String))
