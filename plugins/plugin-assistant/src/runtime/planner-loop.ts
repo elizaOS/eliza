@@ -2922,7 +2922,7 @@ function renderPlannerModelInput(params: {
           nativeToolsOnly: true,
         })
       : template;
-  const instructions = (
+  let instructions = (
     params.replyOnly && !params.codingMode && template === plannerTemplate
       ? plannerReplyTemplate
       : params.codingMode
@@ -2931,6 +2931,12 @@ function renderPlannerModelInput(params: {
             scopedTemplate.split("context_object:")[0] ?? scopedTemplate,
           )
   ).trim();
+  if (actionSourceSelectionSchema) {
+    const shared = completionContextFieldInstructions(
+      actionSourceSelectionSchema,
+    );
+    if (!instructions.includes(shared)) instructions += `\n\n${shared}`;
+  }
   const completeStepMessages =
     params.trajectory.modelHistory ??
     trajectoryStepsToMessages(params.trajectory.steps, {
@@ -3361,6 +3367,37 @@ export function withTurnScopeToolArg(
   });
 }
 
+/** Exact field prose is shared once; validation remains on every native tool. */
+export function completionContextFieldInstructions(schema: JSONSchema): string {
+  return [
+    `Completion-context field instructions (${ACTION_CONTEXT_ARG}):`,
+    ...(schema.description ? [schema.description] : []),
+    ...Object.entries(schema.properties ?? {}).flatMap(([name, property]) =>
+      property.description ? [`${name}: ${property.description}`] : [],
+    ),
+  ].join("\n");
+}
+
+export function withSharedCompletionContextDescriptions(
+  schema: JSONSchema,
+  sharedSystemPrompt?: string,
+): JSONSchema {
+  // Isolated/custom callers keep the complete field descriptions unless the
+  // trusted system actually contains this exact contract, not just its title.
+  if (!sharedSystemPrompt?.includes(completionContextFieldInstructions(schema)))
+    return schema;
+  return {
+    ...schema,
+    description: `Follow the shared Completion-context field instructions (${ACTION_CONTEXT_ARG}).`,
+    properties: Object.fromEntries(
+      Object.entries(schema.properties ?? {}).map(([name, property]) => {
+        const { description: _description, ...validation } = property;
+        return [name, validation];
+      }),
+    ),
+  };
+}
+
 /**
  * Strip the reserved turn-scope argument from every call and fold the
  * declarations into one turn-level completion signal. Any
@@ -3741,7 +3778,15 @@ async function dispatchPlannerModelCall(params: {
         ? renderedInput.messages[0].content
         : undefined,
     );
-    const actionSourceSchema = renderedInput.actionSourceSelectionSchema;
+    const actionSourceSchema = renderedInput.actionSourceSelectionSchema
+      ? withSharedCompletionContextDescriptions(
+          renderedInput.actionSourceSelectionSchema,
+          renderedInput.messages[0]?.role === "system" &&
+            typeof renderedInput.messages[0].content === "string"
+            ? renderedInput.messages[0].content
+            : undefined,
+        )
+      : undefined;
     if (actionSourceSchema) {
       modelParams.tools = modelParams.tools?.map((tool) => {
         if (

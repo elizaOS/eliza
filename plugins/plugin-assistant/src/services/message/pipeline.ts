@@ -1225,7 +1225,7 @@ export async function runV5MessageRuntimeStage1(
     const verifyReplyWithoutActionHints =
       prePatchStageOneReplyIsUngroundedAppliedClaim &&
       stageOneCandidates.length === 0;
-    const selectedActionFamilies =
+    let selectedActionFamilies =
       args.codingMode === true || deterministicPlanSelection
         ? []
         : stageOneCandidates.length === 0
@@ -1243,6 +1243,22 @@ export async function runV5MessageRuntimeStage1(
               deferParentHints: true,
               intents: messageHandler.plan.intents,
             });
+    if (
+      args.codingMode !== true &&
+      !deterministicPlanSelection &&
+      stageOneCandidates.length > 0 &&
+      messageHandler.plan.intents?.length
+    ) {
+      // Cost: one in-memory catalog retrieval, no additional model or I/O call.
+      // Fill declared pending domains before paying a discovery/planner round.
+      selectedActionFamilies = retrieveContextualPlannerActions({
+        actions: plannerCandidateActions,
+        query: messageHandler.plan.intents.join("\n"),
+        intents: messageHandler.plan.intents,
+        contexts: selectedContexts,
+        selectedActions: selectedActionFamilies,
+      });
+    }
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain
     // hint resolved, or when every admitted domain action was selected.

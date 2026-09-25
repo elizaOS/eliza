@@ -786,7 +786,21 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 function detectScheduledItemAdminDomain(
   text: string,
 ): ScheduledAdminDomain | null {
-  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+  // Use the existing contrast-clause boundary parser. A restriction cannot
+  // create a mutation hint; affirmative work before it or after "but" remains.
+  // This projection is only for inference: the full request still reaches the planner.
+  const normalized = intentClauses(text)
+    .flatMap((clause) => clause.split(/[.!?\n]/u))
+    .map(
+      (clause) =>
+        clause.split(
+          /\b(?:do\s+not|don['’]?t|never(?!\s+mind\b)|without)\b/iu,
+          1,
+        )[0] ?? "",
+    )
+    .join(" ")
+    .replace(/\s+/gu, " ")
+    .trim();
   if (!normalized || looksLikeActionExplanationRequest(normalized)) {
     return null;
   }

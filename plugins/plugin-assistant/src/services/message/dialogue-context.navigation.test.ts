@@ -189,8 +189,23 @@ describe("historical navigation input", () => {
       expect(wire.indexOf("runtime:historical_navigation_scope")).toBeLessThan(
         wire.indexOf("current_turn_boundary:"),
       );
-      for (const receipt of receipts)
-        expect(wire).toContain(JSON.stringify(receipt));
+      const tableSegment = input.promptSegments.find(
+        (segment) => segment.label === "runtime:historical_navigation_table",
+      );
+      const table = JSON.parse(tableSegment?.content.trim() ?? "{}");
+      expect(table.columns).toEqual(["requestSourceEventId", "navigation"]);
+      expect(table.receiptColumns).toEqual(["success", "receipt"]);
+      expect(table.rows).toEqual(
+        receipts.map((receipt) => [
+          receipt.requestSourceEventId,
+          receipt.navigation.map(
+            (entry: { success: boolean; receipt: string }) => [
+              entry.success,
+              entry.receipt,
+            ],
+          ),
+        ]),
+      );
     }
     expect(originals).toEqual(before);
   });

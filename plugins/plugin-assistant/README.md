@@ -23,6 +23,17 @@ it is not a prompt-only instruction or a second model call. Stage 1 chooses
 contexts without receiving the action catalog. The planner can request more
 operations throughout the turn.
 
+Exact action hints stay selected. For other selected domains with pending
+intents, the existing authorized retriever loads matching operations before
+planning, avoiding a discovery round caused solely by an incomplete hint list.
+Negated mutation clauses do not supply positive action hints.
+
+Historical receipt wrappers may use compact row tables when their shapes are
+uniform and the representation is smaller. Every value and source binding stays
+available; original context events and restoration are unchanged. Shared source
+review descriptions appear once in the planner instructions without weakening
+the native tool schemas.
+
 Use `query` and optional `contexts` when an action name is unknown. When contexts
 are omitted, exact registered domain phrases or declared aliases in the query scope the search; the
 result reports those inferred domains. Queries without a domain retain global

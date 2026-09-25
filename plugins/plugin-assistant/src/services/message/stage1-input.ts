@@ -25,6 +25,7 @@ import {
   formatAvailableContextsForPrompt,
   listAvailableContextsForTurn,
 } from "./context-catalog.js";
+import { compactHistoricalReceiptSegments } from "./historical-receipt-wire.js";
 import {
   type HistoryDiscovery,
   loadedHistorySegments,
@@ -210,7 +211,7 @@ export function renderMessageHandlerModelInput(
     (segment) => segment.label !== "message:user",
   );
   const orderedDynamicSegments = [
-    ...historicalNavigationSegments,
+    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
     ...dynamicProviderSegments,
     ...(catalogInstructions
       ? [{ content: catalogInstructions, stable: false }]
@@ -230,7 +231,7 @@ export function renderMessageHandlerModelInput(
       undefined,
       false,
     ),
-    ...otherTurnSegments,
+    ...compactHistoricalReceiptSegments(otherTurnSegments),
     {
       id: "runtime-task",
       content: [

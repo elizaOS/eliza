@@ -2,12 +2,14 @@
 import {
   type Action,
   AgentRuntime,
+  buildPlannerToolsFromActions,
   ContextRegistry,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
+import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
   collectV5PlannerCandidateActions,
   retrieveContextualPlannerActions,
@@ -21,6 +23,169 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("contextual native discovery", () => {
+  it("completes hinted navigation with read operations for uncovered declared domains", async () => {
+    const views: Action = {
+      name: "VIEWS_SHOW",
+      description: "Open a view",
+      contexts: ["general", "notes", "calendar"],
+    };
+    const calendarRead: Action = {
+      name: "CALENDAR_NEXT_EVENT",
+      description: "Read the next saved calendar event",
+      contexts: ["calendar"],
+      tags: ["domain:calendar", "capability:read"],
+    };
+    const calendarWrite: Action = {
+      name: "CALENDAR_DELETE_EVENT",
+      description: "Delete a calendar event",
+      contexts: ["calendar"],
+      tags: ["domain:calendar", "capability:delete"],
+    };
+    const found = retrieveContextualPlannerActions({
+      actions: [
+        views,
+        ...(notesPlugin.actions ?? []),
+        calendarRead,
+        calendarWrite,
+      ],
+      query:
+        "Open Notes and read my latest existing note and my next saved Calendar event. Do not create, edit, or delete anything.",
+      intents: [
+        "Open Notes view",
+        "Read latest existing note",
+        "Read next saved calendar event",
+      ],
+      contexts: ["general", "notes", "calendar"],
+      selectedActions: [views],
+    });
+    expect(found.map((action) => action.name).sort()).toEqual([
+      "CALENDAR_NEXT_EVENT",
+      "NOTES_GET",
+      "NOTES_LIST",
+      "VIEWS_SHOW",
+    ]);
+    const sequence: string[] = [];
+    let planners = 0;
+    const evaluations: string[] = [];
+    const result = await runPlannerLoop({
+      context: { id: "compound-read", events: [] },
+      tools: buildPlannerToolsFromActions(found),
+      runtime: {
+        useModel: async () => {
+          planners++;
+          if (planners > 1)
+            throw new Error("Unexpected schema-discovery replan");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "navigation",
+                name: "VIEWS_SHOW",
+                arguments: {
+                  view: "notes",
+                  eliza_turn_scope: "final",
+                },
+              },
+              {
+                id: "notes",
+                name: "NOTES_LIST",
+                arguments: { eliza_turn_scope: "final" },
+              },
+              {
+                id: "calendar",
+                name: "CALENDAR_NEXT_EVENT",
+                arguments: { eliza_turn_scope: "final" },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        sequence.push(call.name);
+        if (call.name === "VIEWS_SHOW")
+          return {
+            success: true,
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: {
+              navigation: {
+                effect: "view_navigation",
+                status: "delivered",
+                viewId: "notes",
+                label: "Notes",
+                path: "/notes",
+                handoffId: "offline",
+                stepId: call.params?.navigationStepId,
+              },
+            },
+          };
+        return {
+          success: true,
+          text: `${call.name} read complete.`,
+          transcriptVisibility: "internal",
+          modelReplyRequired: true,
+          data: { readOnlyOperation: true },
+        };
+      },
+      evaluate: async () => {
+        evaluations.push(sequence.at(-1) ?? "");
+        return sequence.at(-1) === "NOTES_LIST"
+          ? {
+              success: true,
+              decision: "NEXT_RECOMMENDED",
+              thought: "Calendar read is still queued.",
+              recommendedToolCallId: "calendar",
+              raw: {},
+            }
+          : {
+              success: true,
+              decision: "FINISH",
+              thought: "Both records were read.",
+              messageToUser:
+                "Notes is open. The saved note and next calendar event were read.",
+              raw: {},
+            };
+      },
+    });
+    expect(result.status).toBe("finished");
+    expect(sequence).toEqual([
+      "VIEWS_SHOW",
+      "NOTES_LIST",
+      "CALENDAR_NEXT_EVENT",
+    ]);
+    expect(planners).toBe(1);
+    expect(evaluations).toEqual(["NOTES_LIST", "CALENDAR_NEXT_EVENT"]);
+  });
+  it("retains exact domain hints and does not fill their unselected sibling operations", () => {
+    const actions = notesPlugin.actions ?? [];
+    const exact = actions.find((action) => action.name === "NOTES_GET");
+    if (!exact) throw new Error("Missing Notes fixture operation");
+    expect(
+      retrieveContextualPlannerActions({
+        actions,
+        query: "read notes",
+        intents: ["Read the selected note"],
+        contexts: ["notes"],
+        selectedActions: [exact],
+      }),
+    ).toEqual([exact]);
+  });
+  it("does not load record operations for a navigation-only intent", () => {
+    const view: Action = {
+      name: "VIEWS_SHOW",
+      description: "Open a view",
+      contexts: ["general", "notes", "calendar"],
+    };
+    expect(
+      retrieveContextualPlannerActions({
+        actions: [view, ...(notesPlugin.actions ?? [])],
+        query: "Open Notes view",
+        intents: ["Open Notes view"],
+        contexts: ["general", "notes"],
+        selectedActions: [view],
+      }),
+    ).toEqual([view]);
+  });
   it("discovers gate-only domains while preserving required, forbidden and role terms", async () => {
     const runtime = new AgentRuntime({
       character: { name: "Context gates", bio: "Test" },

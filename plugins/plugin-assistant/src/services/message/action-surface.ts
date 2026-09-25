@@ -59,6 +59,8 @@ export function retrieveContextualPlannerActions(args: {
   /** Model-selected outcomes rank operations; the full request still ranks domains. */
   intents?: readonly string[];
   contexts?: readonly string[];
+  /** Preserve exact hints while filling only domains they do not own. */
+  selectedActions?: readonly Action[];
 }): Action[] {
   const catalog = buildActionCatalog(
     args.actions.map((action) => ({ ...action, subActions: undefined })),
@@ -83,11 +85,28 @@ export function retrieveContextualPlannerActions(args: {
       ?.map(normalizeContextId)
       .filter((context) => context !== "general" && context !== "simple"),
   );
+  if (args.selectedActions) {
+    for (const action of args.selectedActions) {
+      const contexts = actionDiscoveryContexts(action)
+        .map(normalizeContextId)
+        .filter((context) => context !== "general" && context !== "simple");
+      // Cross-domain UI tools do not cover the records in every view they can
+      // open. Ownership tags or a single declared domain establish coverage.
+      for (const tag of action.tags ?? []) {
+        if (tag.startsWith("domain:") || tag.startsWith("resource:"))
+          domains.delete(normalizeContextId(tag.slice(tag.indexOf(":") + 1)));
+      }
+      if (contexts.length === 1) domains.delete(contexts[0]);
+    }
+    if (domains.size === 0) return [...args.selectedActions];
+  }
   const domainMatches = matches.filter((action) =>
     actionDiscoveryContexts(action).some((context) =>
       domains.has(normalizeContextId(context)),
     ),
   );
+  if (args.selectedActions && domainMatches.length === 0)
+    return [...args.selectedActions];
   const domainRelevant = domainMatches.length > 0 ? domainMatches : matches;
   // Narrow each requested domain independently. A recognized notes operation
   // must not erase a calendar intent whose operation wording has no name match.
@@ -119,12 +138,19 @@ export function retrieveContextualPlannerActions(args: {
       ? domainRelevant.filter((action) => selected.has(action))
       : domainRelevant;
   const names = new Set(relevant.map((action) => action.name));
-  return relevant.filter(
+  const retrieved = relevant.filter(
     (action) =>
       !action.subActions?.some((child) =>
         names.has(typeof child === "string" ? child : child.name),
       ),
   );
+  const selectedNames = new Set(
+    args.selectedActions?.map((action) => action.name),
+  );
+  return [
+    ...(args.selectedActions ?? []),
+    ...retrieved.filter((action) => !selectedNames.has(action.name)),
+  ];
 }
 
 export type V5PlannerActionSurfaceSummary = {
