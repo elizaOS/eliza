@@ -1,13 +1,16 @@
 /** Exercises the actual conversational create boundary, before service writes. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import {
   evaluateCalendarWriteAvailability,
   findCalendarFreeSlots,
 } from "./conflict-detect.js";
-import type { CalendarActionDeps } from "./deps.js";
+import type { CalendarActionDeps, CalendarModelCallArgs } from "./deps.js";
 
 const start = "2027-09-18T20:00:00.000Z";
 const end = "2027-09-18T20:30:00.000Z";
@@ -38,8 +41,28 @@ function fixture(
   events: LifeOpsCalendarEvent[] = [],
   status = "fresh",
   sourceKey = key,
+  calendars?: LifeOpsCalendarSummary[],
 ) {
   const service = {
+    listCalendars: vi.fn(
+      async () =>
+        calendars ?? [
+          {
+            ...sourceKey,
+            accountEmail: null,
+            summary: "Primary",
+            description: null,
+            primary: true,
+            accessRole: "owner",
+            backgroundColor: null,
+            foregroundColor: null,
+            timeZone: "America/New_York",
+            selected: true,
+            includeInFeed: true,
+            selectionVersion: 1,
+          },
+        ],
+    ),
     getCalendarFeed: vi.fn(
       async (_url: string, _options: Record<string, unknown>) => ({
         events,
@@ -89,14 +112,20 @@ async function create(
     details?: Record<string, unknown>;
   },
   sourceKey = key,
+  calendars?: LifeOpsCalendarSummary[],
 ) {
-  const { runtime, service, reportError } = fixture(events, "fresh", sourceKey);
+  const { runtime, service, reportError } = fixture(
+    events,
+    "fresh",
+    sourceKey,
+    calendars,
+  );
   const parsed = {
     grantId: key.grantId,
     calendarId: key.calendarId,
     ...extracted,
   };
-  const runJsonModel = vi.fn(async () => ({
+  const runJsonModel = vi.fn(async (_args: CalendarModelCallArgs) => ({
     rawResponse: JSON.stringify(parsed),
     parsed,
   }));
@@ -136,6 +165,42 @@ async function create(
 }
 
 describe("calendar conversational write boundary", () => {
+  it("grounds same-named calendars in their distinct account identities", async () => {
+    const calendars = ["personal@example.test", "work@company.test"].map(
+      (accountEmail, index) => ({
+        provider: "google" as const,
+        side: "owner" as const,
+        grantId: `connector-account:opaque-${index}`,
+        connectorAccountId: `opaque-${index}`,
+        calendarId: "primary",
+        accountEmail,
+        summary: "Primary",
+        description: null,
+        primary: true,
+        accessRole: "owner",
+        backgroundColor: null,
+        foregroundColor: null,
+        timeZone: "UTC",
+        selected: true,
+        includeInFeed: true,
+        selectionVersion: 1,
+      }),
+    );
+    const { service, runJsonModel } = await create(
+      { requiresInput: true, grantId: null, calendarId: null },
+      [],
+      undefined,
+      key,
+      calendars,
+    );
+    expect(service.listCalendars).toHaveBeenCalledOnce();
+    const prompt = runJsonModel.mock.calls[0]?.[0].prompt;
+    expect(prompt).toContain(
+      `Authorized calendar account identities: ${JSON.stringify(calendars)}`,
+    );
+    expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+  });
+
   it("does not hide calendar sources behind a planner-proposed destination", async () => {
     const { service, result } = await create(
       { requiresInput: true, grantId: null, calendarId: null },
