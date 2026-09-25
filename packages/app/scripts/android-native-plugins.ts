@@ -358,7 +358,13 @@ async function main() {
         } else if (plugin.directory === "plugin-native-phone") {
           adb("install", "-r", "-t", "-g", apk);
           // Call-placement contracts must exercise real denial, never place a call.
-          adb("shell", "pm", "revoke", applicationId, "android.permission.CALL_PHONE");
+          adb(
+            "shell",
+            "pm",
+            "revoke",
+            applicationId,
+            "android.permission.CALL_PHONE",
+          );
         } else {
           adb("install", "-r", "-t", "-g", apk);
         }
