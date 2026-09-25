@@ -1,3 +1,4 @@
+/// <reference types="bun-types/sqlite" />
 /** Selects a pinned runtime's native SQLite driver behind the same synchronous SQL contract. */
 import { ElizaError } from "@elizaos/core";
 

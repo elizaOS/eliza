@@ -9,7 +9,7 @@
     "declaration": true,
     "declarationMap": true,
     "noEmit": true,
-    "types": ["node", "bun"],
+    "types": ["node"],
     "skipLibCheck": true,
     "strict": true,
     "strictNullChecks": true,

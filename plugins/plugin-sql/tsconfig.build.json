@@ -1,6 +1,7 @@
 {
   "extends": "./src/tsconfig.typecheck.json",
   "compilerOptions": {
+    "customConditions": [],
     "incremental": false,
     "composite": false
   },

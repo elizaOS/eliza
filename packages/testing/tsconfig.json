@@ -4,8 +4,6 @@
     "types": ["node", "bun"],
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "paths": {
-      "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/plugin-sqlite": ["../../plugins/plugin-sqlite/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
       "@elizaos/core/*": ["../core/src/*"]
     },
