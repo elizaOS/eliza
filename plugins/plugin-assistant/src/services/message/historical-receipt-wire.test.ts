@@ -60,6 +60,21 @@ function expand(segments: ContextObjectPromptSegment[]) {
   return segments.flatMap((segment) => {
     const body = JSON.parse(segment.content);
     if (!segment.label?.endsWith("_table")) return [body];
+    if (body.receiptShapes) {
+      const index = body.receiptColumns.indexOf("receipt");
+      for (const [, receipts] of body.rows)
+        for (const receipt of receipts) {
+          const [shape, values] = receipt[index];
+          const object = Object.fromEntries(
+            body.receiptShapes[shape].map((key: string, offset: number) => [
+              key,
+              values[offset],
+            ]),
+          );
+          receipt[index] =
+            body.columns[1] === "navigation" ? JSON.stringify(object) : object;
+        }
+    }
     return body.rows.map((row: [string, unknown[][]]) => ({
       requestSourceEventId: row[0],
       ...(body.scope === undefined ? {} : { scope: body.scope }),
@@ -162,4 +177,108 @@ it("never moves records across other segments or combines distinct scopes", () =
   };
   const input = [effects(1), boundary, changedScope, effects(3), navigation(8)];
   expect(compactHistoricalReceiptSegments(input)).toEqual(input);
+});
+
+it("shares ordered top-level receipt keys and reconstructs canonical navigation string bytes exactly", () => {
+  const input = Array.from({ length: 30 }, (_, id) => {
+    const receipt =
+      id % 2
+        ? {
+            label: 'Exact Ω "quote"',
+            effect: "view_navigation",
+            status: "failed",
+            viewId: null,
+            stepId: `s${id}`,
+          }
+        : {
+            effect: "view_navigation",
+            stepId: `s${id}`,
+            viewId: null,
+            status: "delivered",
+            label: 'Exact Ω "quote"',
+          };
+    return {
+      label: "runtime:historical_navigation",
+      stable: false,
+      content: JSON.stringify({
+        requestSourceEventId: `history:${30 - id}`,
+        navigation: [
+          { success: id % 2 === 0, receipt: JSON.stringify(receipt) },
+        ],
+      }),
+    };
+  });
+  const before = structuredClone(input);
+  const packed = compactHistoricalReceiptSegments(input);
+  const table = JSON.parse(packed[0].content);
+  expect(table.receiptShapes).toHaveLength(2);
+  expect(table.receiptShapes[0]).not.toEqual(table.receiptShapes[1]);
+  expect(expand(packed)).toEqual(
+    input.map((segment) => JSON.parse(segment.content)),
+  );
+  expect(input).toEqual(before);
+  for (const change of [
+    (value: string) => ` ${value}`,
+    (_value: string) => "malformed",
+    (value: string) =>
+      JSON.stringify({ ...JSON.parse(value), unknownFutureField: null }),
+    (_value: string) => '{"effect":"view_navigation","effect":"different"}',
+  ]) {
+    const varied = structuredClone(input);
+    const first = JSON.parse(varied[0].content);
+    first.navigation[0].receipt = change(first.navigation[0].receipt);
+    varied[0].content = JSON.stringify(first);
+    const result = compactHistoricalReceiptSegments(varied);
+    expect(JSON.parse(result[0].content).receiptShapes).toBeUndefined();
+    expect(expand(result)).toEqual(
+      varied.map((segment) => JSON.parse(segment.content)),
+    );
+  }
+});
+it("shares only complete top-level effect shapes, preserving absent versus null and unknown-field fallback", () => {
+  const input = Array.from({ length: 30 }, (_, id) => ({
+    label: "runtime:historical_effects",
+    stable: false,
+    content: JSON.stringify({
+      requestSourceEventId: `history:${id}`,
+      scope: "Past outcomes only.",
+      outcomes: [
+        {
+          actionName: "NOTES",
+          success: false,
+          receipt: {
+            receiptId: `receipt-${id}`,
+            operation: "notes.update",
+            resource: {
+              kind: "note",
+              id: `note-${id}`,
+              unknownNestedField: null,
+            },
+            artifacts: [],
+            idempotency: { key: `key-${id}`, replayed: false },
+            observedAt: "exact timestamp",
+            outcome: "failed",
+            ...(id % 2 ? { reason: null } : {}),
+          },
+        },
+      ],
+    }),
+  }));
+  const packed = compactHistoricalReceiptSegments(input);
+  expect(JSON.parse(packed[0].content).receiptShapes).toHaveLength(2);
+  const restored = expand(packed);
+  const originals = input.map((segment) => JSON.parse(segment.content));
+  expect(restored).toEqual(originals);
+  expect(
+    restored.map((record) => Object.keys(record.outcomes[0].receipt)),
+  ).toEqual(originals.map((record) => Object.keys(record.outcomes[0].receipt)));
+  const unknown = structuredClone(input);
+  const first = JSON.parse(unknown[0].content);
+  first.outcomes[0].receipt.futureField = false;
+  unknown[0].content = JSON.stringify(first);
+  const result = compactHistoricalReceiptSegments(unknown);
+  expect(JSON.parse(result[0].content).receiptShapes).toBeUndefined();
+  expect(expand(result)).toEqual(
+    unknown.map((segment) => JSON.parse(segment.content)),
+  );
 });

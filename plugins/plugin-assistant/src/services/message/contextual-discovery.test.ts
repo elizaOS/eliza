@@ -6,9 +6,13 @@ import {
   ContextRegistry,
   type IAgentRuntime,
   type Memory,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
+import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
+import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
+import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
   collectV5PlannerCandidateActions,
@@ -21,6 +25,15 @@ import {
 
 const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
+const sharedCalendarActions = [
+  ...promoteSubactionsToActions(scheduledTaskAction),
+  ...promoteSubactionsToActions(
+    createHouseholdOperationsAction({ authorize: async () => true }),
+  ),
+  ...promoteSubactionsToActions(
+    createResourceCapacityAction({ authorize: async () => true }),
+  ),
+];
 
 describe("contextual native discovery", () => {
   it("completes hinted navigation with read operations for uncovered declared domains", async () => {
@@ -47,6 +60,7 @@ describe("contextual native discovery", () => {
         ...(notesPlugin.actions ?? []),
         calendarRead,
         calendarWrite,
+        ...sharedCalendarActions,
       ],
       query:
         "Open Notes and read my latest existing note and my next saved Calendar event. Do not create, edit, or delete anything.",
@@ -169,6 +183,31 @@ describe("contextual native discovery", () => {
         selectedActions: [exact],
       }),
     ).toEqual([exact]);
+  });
+  it("preserves explicit cross-domain hints without treating their incidental Calendar domain as covered", () => {
+    const capacity = sharedCalendarActions.find(
+      (action) => action.name === "HOUSEHOLD_RESOURCE_CAPACITY_READ_PROPOSAL",
+    );
+    if (!capacity) throw new Error("Missing capacity fixture");
+    const calendar: Action = {
+      name: "CALENDAR_NEXT_EVENT",
+      description: "Read next calendar event",
+      contexts: ["calendar"],
+      tags: ["domain:calendar"],
+    };
+    const selected = retrieveContextualPlannerActions({
+      actions: [...sharedCalendarActions, calendar],
+      query: "Read the next calendar event and the household resource proposal",
+      intents: ["Read next calendar event", "Read household resource proposal"],
+      contexts: ["calendar"],
+      selectedActions: [capacity],
+    });
+    expect(selected).toEqual([capacity, calendar]);
+    expect(
+      sharedCalendarActions.some(
+        (action) => action.name === "SCHEDULED_TASKS_LIST",
+      ),
+    ).toBe(true);
   });
   it("does not load record operations for a navigation-only intent", () => {
     const view: Action = {

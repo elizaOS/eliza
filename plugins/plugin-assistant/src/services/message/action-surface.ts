@@ -47,6 +47,32 @@ import {
   uiViewActionPriority,
 } from "./provider-state.ts";
 
+/** Explicit resource/domain ownership outranks an incidental execution context.
+ * A single-domain owner is more specific than a cross-domain coordinator.
+ */
+function plannerDomainOwnership(action: Action, domain: string): number {
+  const domains = new Set(
+    (action.tags ?? [])
+      .filter((tag) => tag.startsWith("domain:"))
+      .map((tag) => normalizeContextId(tag.slice(7))),
+  );
+  if (
+    (action.tags ?? []).some(
+      (tag) =>
+        tag.startsWith("resource:") &&
+        normalizeContextId(tag.slice(9)) === domain,
+    )
+  )
+    return 3;
+  if (domains.has(domain)) return 2 + 1 / domains.size;
+  const contexts = actionDiscoveryContexts(action)
+    .map(normalizeContextId)
+    .filter((context) => context !== "general" && context !== "simple");
+  return domains.size === 0 && contexts.length === 1 && contexts[0] === domain
+    ? 3
+    : 0;
+}
+
 /**
  * Retrieve complete operation definitions from an already authorized registry.
  * Search operates on individual operations rather than expanding every matched
@@ -86,17 +112,18 @@ export function retrieveContextualPlannerActions(args: {
       .filter((context) => context !== "general" && context !== "simple"),
   );
   if (args.selectedActions) {
-    for (const action of args.selectedActions) {
-      const contexts = actionDiscoveryContexts(action)
-        .map(normalizeContextId)
-        .filter((context) => context !== "general" && context !== "simple");
-      // Cross-domain UI tools do not cover the records in every view they can
-      // open. Ownership tags or a single declared domain establish coverage.
-      for (const tag of action.tags ?? []) {
-        if (tag.startsWith("domain:") || tag.startsWith("resource:"))
-          domains.delete(normalizeContextId(tag.slice(tag.indexOf(":") + 1)));
-      }
-      if (contexts.length === 1) domains.delete(contexts[0]);
+    for (const domain of domains) {
+      const strongest = Math.max(
+        0,
+        ...args.actions.map((action) => plannerDomainOwnership(action, domain)),
+      );
+      if (
+        strongest > 0 &&
+        args.selectedActions.some(
+          (action) => plannerDomainOwnership(action, domain) === strongest,
+        )
+      )
+        domains.delete(domain);
     }
     if (domains.size === 0) return [...args.selectedActions];
   }
@@ -127,10 +154,25 @@ export function retrieveContextualPlannerActions(args: {
       operationQuery,
       candidates.map((action) => action.name),
     );
-    for (const action of candidates) {
-      if (operationNames.size === 0 || operationNames.has(action.name))
+    const operations = candidates.filter(
+      (action) => operationNames.size === 0 || operationNames.has(action.name),
+    );
+    const strongest =
+      domain === undefined
+        ? 0
+        : Math.max(
+            0,
+            ...operations.map((action) =>
+              plannerDomainOwnership(action, domain),
+            ),
+          );
+    for (const action of operations)
+      if (
+        domain === undefined ||
+        strongest === 0 ||
+        plannerDomainOwnership(action, domain) === strongest
+      )
         selected.add(action);
-    }
   }
   // A selected context with no registry matches must still permit global lookup.
   const relevant =

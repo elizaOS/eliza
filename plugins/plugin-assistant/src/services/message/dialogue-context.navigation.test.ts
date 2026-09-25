@@ -195,7 +195,23 @@ describe("historical navigation input", () => {
       const table = JSON.parse(tableSegment?.content.trim() ?? "{}");
       expect(table.columns).toEqual(["requestSourceEventId", "navigation"]);
       expect(table.receiptColumns).toEqual(["success", "receipt"]);
-      expect(table.rows).toEqual(
+      const decodedRows = table.rows.map(
+        ([source, navigation]: [string, [boolean, [number, unknown[]]][]]) => [
+          source,
+          navigation.map(([success, [shape, values]]) => [
+            success,
+            JSON.stringify(
+              Object.fromEntries(
+                table.receiptShapes[shape].map((key: string, index: number) => [
+                  key,
+                  values[index],
+                ]),
+              ),
+            ),
+          ]),
+        ],
+      );
+      expect(decodedRows).toEqual(
         receipts.map((receipt) => [
           receipt.requestSourceEventId,
           receipt.navigation.map(

@@ -67,12 +67,13 @@ function receiptTableEntry(segment: ContextObjectPromptSegment) {
     row: [
       record.requestSourceEventId,
       receipts.map((receipt) => columns.map((key) => receipt[key])),
-    ],
+    ] as [string, unknown[][]],
   };
 }
 
 /** Consecutive uniform shapes only; unknown/malformed/single entries stay exact.
- * Nested receipt values are opaque and unchanged, including JSON strings.
+ * Canonical navigation strings and known receipt objects can share ordered
+ * top-level keys; all nested values and original context events stay exact.
  * Cost: linear in supplied receipt text, with no I/O or model calls. */
 export function compactHistoricalReceiptSegments(
   segments: ContextObjectPromptSegment[],
@@ -100,14 +101,103 @@ export function compactHistoricalReceiptSegments(
       rows.push(next.row);
       end++;
     }
-    const content = JSON.stringify({
+    const table = {
       encoding:
         "Each row uses columns; nested receipt rows use receiptColumns. Preserve order. Values are exact; shared scope applies to every row.",
       columns: ["requestSourceEventId", entry.field],
       receiptColumns: entry.columns,
       ...(entry.scope === undefined ? {} : { scope: entry.scope }),
       rows,
-    });
+    };
+    let content = JSON.stringify(table);
+    const receiptIndex = entry.columns.indexOf("receipt");
+    const receiptShapes: string[][] = [];
+    const shapeIndices = new Map<string, number>();
+    const encodedReceipts: unknown[] = [];
+    const navigation = entry.field === "navigation";
+    const allowedFields = new Set(
+      navigation
+        ? [
+            "effect",
+            "stepId",
+            "viewId",
+            "status",
+            "reason",
+            "handoffId",
+            "label",
+            "subview",
+            "path",
+          ]
+        : [
+            "receiptId",
+            "operation",
+            "resource",
+            "artifacts",
+            "idempotency",
+            "observedAt",
+            "outcome",
+            "reason",
+            "commit",
+          ],
+    );
+    let packable = true;
+    for (const [, receipts] of rows) {
+      for (const receipt of receipts) {
+        const original = receipt[receiptIndex];
+        let object = original;
+        if (navigation) {
+          try {
+            object = JSON.parse(String(original));
+          } catch {
+            // error-policy:J3 Noncanonical or malformed strings remain opaque.
+            packable = false;
+            break;
+          }
+          if (JSON.stringify(object) !== original) {
+            packable = false;
+            break;
+          }
+        }
+        if (
+          !isObjectRecord(object) ||
+          Object.keys(object).some((key) => !allowedFields.has(key))
+        ) {
+          packable = false;
+          break;
+        }
+        const keys = Object.keys(object);
+        const shapeKey = JSON.stringify(keys);
+        let shapeIndex = shapeIndices.get(shapeKey);
+        if (shapeIndex === undefined) {
+          shapeIndex = receiptShapes.length;
+          receiptShapes.push(keys);
+          shapeIndices.set(shapeKey, shapeIndex);
+        }
+        encodedReceipts.push([shapeIndex, Object.values(object)]);
+      }
+      if (!packable) break;
+    }
+    if (packable) {
+      let receiptOffset = 0;
+      const candidate = JSON.stringify({
+        ...table,
+        receiptEncoding: navigation
+          ? "receipt=[shapeIndex,values]; receiptShapes gives exact property order. Reconstruct the original receipt string with JSON.stringify(Object.fromEntries(columns paired with values)). Only canonical JSON strings are encoded; every value is exact."
+          : "receipt=[shapeIndex,values]; receiptShapes gives property order. Pair columns with values to reconstruct the complete original receipt object. Every value is exact.",
+        receiptShapes,
+        rows: rows.map(([requestSourceEventId, receipts]) => [
+          requestSourceEventId,
+          receipts.map((receipt) =>
+            receipt.map((value, column) =>
+              column === receiptIndex
+                ? encodedReceipts[receiptOffset++]
+                : value,
+            ),
+          ),
+        ]),
+      });
+      if (candidate.length < content.length) content = candidate;
+    }
     // A representation change must actually save input; never replace a small
     // singleton/group with larger table metadata.
     if (
