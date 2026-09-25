@@ -16,11 +16,8 @@ import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
 import android.util.Log
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 
 class WebsiteBlockerVpnService : VpnService() {
@@ -40,7 +37,11 @@ class WebsiteBlockerVpnService : VpnService() {
         fun isRunning(): Boolean = activeInstance != null
     }
 
+    @Volatile
     private var vpnInterface: ParcelFileDescriptor? = null
+    private val tunnelWriteLock = Any()
+    @Volatile
+    private var dnsForwarder: DnsForwarder? = null
     private var tunnelThread: Thread? = null
     private val tunnelRunning = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -145,6 +146,8 @@ class WebsiteBlockerVpnService : VpnService() {
         }
 
         val descriptor = vpnInterface ?: return
+        val forwarder = DnsForwarder(::resolveUpstreamDnsServers) { protect(it) }
+        dnsForwarder = forwarder
         tunnelRunning.set(true)
         tunnelThread = Thread {
             val dnsAddress = InetAddress.getByName(DNS_ADDRESS) as Inet4Address
@@ -166,26 +169,23 @@ class WebsiteBlockerVpnService : VpnService() {
                     // The service can receive another START while the tunnel stays up.
                     // Take one coherent policy snapshot for each incoming query.
                     val policy = activePolicy ?: continue
-                    val responsePayload = if (
-                        WebsiteBlockerStateStore.isBlockedHostname(policy, query.queryName)
-                    ) {
-                        DnsPacketCodec.buildBlockedDnsResponse(query.dnsPayload)
+                    if (WebsiteBlockerStateStore.isBlockedHostname(policy, query.queryName)) {
+                        sendDnsResponse(descriptor, forwarder, query,
+                            DnsPacketCodec.buildBlockedDnsResponse(query.dnsPayload))
                     } else {
-                        forwardDnsQuery(query.dnsPayload)
-                            ?: DnsPacketCodec.buildServerFailureDnsResponse(query.dnsPayload)
+                        forwarder.submit(query.dnsPayload) { response ->
+                            try {
+                                sendDnsResponse(descriptor, forwarder, query,
+                                    response ?: DnsPacketCodec.buildServerFailureDnsResponse(query.dnsPayload))
+                            } catch (error: Exception) {
+                                failTunnel(descriptor, error)
+                            }
+                        }
                     }
-                    val response = DnsPacketCodec.buildUdpDnsResponse(query, responsePayload)
-                    Os.write(descriptor.fileDescriptor, response, 0, response.size)
                 } catch (error: Exception) {
                     // error-policy:J1 Shutdown closes the descriptor; other I/O failures stop enforcement.
                     if (tunnelRunning.get() && !Thread.currentThread().isInterrupted) {
-                        Log.e("WebsiteBlockerVpn", "DNS tunnel failed", error)
-                        mainHandler.post {
-                            if (vpnInterface === descriptor) {
-                                stopTunnelLoop()
-                                stopSelf()
-                            }
-                        }
+                        failTunnel(descriptor, error)
                     }
                     break
                 }
@@ -197,35 +197,46 @@ class WebsiteBlockerVpnService : VpnService() {
         }
     }
 
-    private fun stopTunnelLoop() {
-        tunnelRunning.set(false)
-        tunnelThread?.interrupt()
-        tunnelThread = null
-        try {
-            vpnInterface?.close()
-        } catch (_: Exception) {
-        }
-        vpnInterface = null
-    }
-
-    private fun forwardDnsQuery(queryPayload: ByteArray): ByteArray? {
-        val upstreamServers = resolveUpstreamDnsServers()
-        for (server in upstreamServers) {
-            try {
-                DatagramSocket().use { socket ->
-                    protect(socket)
-                    socket.soTimeout = 3_000
-                    socket.connect(InetSocketAddress(server, 53))
-                    socket.send(DatagramPacket(queryPayload, queryPayload.size))
-                    val responseBuffer = ByteArray(4_096)
-                    val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
-                    socket.receive(responsePacket)
-                    return responseBuffer.copyOf(responsePacket.length)
-                }
-            } catch (_: Exception) {
+    private fun sendDnsResponse(descriptor: ParcelFileDescriptor, forwarder: DnsForwarder,
+        query: DnsQueryPacket, payload: ByteArray) {
+        val response = DnsPacketCodec.buildUdpDnsResponse(query, payload)
+        synchronized(tunnelWriteLock) {
+            // Responses from an expired/stopped tunnel cannot write into its replacement.
+            if (dnsForwarder !== forwarder || vpnInterface !== descriptor || !tunnelRunning.get()) return
+            check(Os.write(descriptor.fileDescriptor, response, 0, response.size) == response.size) {
+                "Incomplete DNS tunnel response"
             }
         }
-        return null
+    }
+
+    private fun failTunnel(descriptor: ParcelFileDescriptor, error: Exception) {
+        if (vpnInterface !== descriptor) return
+        Log.e("WebsiteBlockerVpn", "DNS tunnel failed", error)
+        mainHandler.post {
+            if (vpnInterface === descriptor) {
+                stopTunnelLoop()
+                stopSelf()
+            }
+        }
+    }
+
+    private fun stopTunnelLoop() {
+        val stopped = synchronized(tunnelWriteLock) {
+            tunnelRunning.set(false)
+            val previous = dnsForwarder
+            dnsForwarder = null
+            tunnelThread?.interrupt()
+            tunnelThread = null
+            try {
+                vpnInterface?.close()
+            } catch (error: Exception) {
+                Log.w("WebsiteBlockerVpn", "Failed to close DNS tunnel", error)
+            }
+            vpnInterface = null
+            previous
+        }
+        // Close owned sockets and cancel queued work; reads use bounded waits.
+        stopped?.close()
     }
 
     private fun resolveUpstreamDnsServers(): List<InetAddress> {
