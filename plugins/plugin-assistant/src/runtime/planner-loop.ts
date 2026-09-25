@@ -2874,7 +2874,7 @@ function renderPlannerModelInput(params: {
       id: "action-source-review",
       label: "action_source_review",
       stable: false,
-      content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every call in this batch. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
+      content: `${COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS.replaceAll("completionContext", ACTION_CONTEXT_ARG)}\nUse ${ACTION_CONTEXT_ARG} to review originals for the WHOLE remaining user request, including every pending intent, not only this tool. Return the same review on every eligible domain call in this batch; discovery, reply and restoration protocol calls do not carry this review. Include all applicable standing constraints, corrections, guest identities and referents needed by any remaining operation or final answer. If uncertain, select all_prior_dialogue with complete=false. Current requests, provider facts, tool receipts and complete restorable originals remain available. This never changes the reply handler input.`,
     });
   }
   if (
