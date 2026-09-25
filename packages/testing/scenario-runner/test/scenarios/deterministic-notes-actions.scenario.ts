@@ -2,6 +2,7 @@
  * Keyless end-to-end coverage for Notes CRUD through the real action, service,
  * and durable store on a PGLite-backed scenario runtime.
  */
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -22,6 +23,7 @@ const originalBody = "Confirm the native run output.\nKeep  two spaces.";
 const updatedBody =
   "Confirm the native run and widget output.\nKeep  two spaces.";
 let notesFilePath: string;
+let notesAgentId: string;
 let createdNote: StickyNote | undefined;
 const replacementParameters: {
   action: "patch";
@@ -98,7 +100,26 @@ function expectNotesResult(
         result.readOnlyOperation !== true ||
         result.count !== 1 ||
         result.lookupMode !== "text" ||
-        !isDeepStrictEqual(result.notes, notes) ||
+        !isDeepStrictEqual(
+          result.notes,
+          notes.map((note) => ({
+            ...note,
+            sourceNote: {
+              agentId: notesAgentId,
+              noteId: note.id,
+              contentHash: createHash("sha256")
+                .update(
+                  JSON.stringify([
+                    notesAgentId,
+                    note.id,
+                    note.title,
+                    note.body,
+                  ]),
+                )
+                .digest("hex"),
+            },
+          })),
+        ) ||
         typeof result.notesRevision !== "number" ||
         result.notesRevision !== stored.revision
       ) {
@@ -154,6 +175,7 @@ export default scenario({
         if (!service) return "NotesService did not start";
         await service.clearNotes();
         notesFilePath = service.store.filePath;
+        notesAgentId = String(runtime.agentId);
         createdNote = undefined;
         delete replacementParameters.expectedRevision;
         return undefined;

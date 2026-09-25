@@ -12,6 +12,18 @@ import { Miniflare } from "miniflare";
 import { z } from "zod";
 import { createPrivateWorkerdFailureCapture } from "../test/workerd-failure-capture";
 
+function modelSystemContent(requests: Array<Record<string, unknown>>): string {
+  return requests
+    .flatMap((request) =>
+      z
+        .array(z.object({ role: z.string(), content: z.unknown() }))
+        .parse(request.messages),
+    )
+    .filter((message) => message.role === "system")
+    .map((message) => z.string().parse(message.content))
+    .join("\n\n");
+}
+
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
@@ -1079,7 +1091,7 @@ describe("Shared Eliza runtime in Workerd", () => {
 
     const imageRequests = modelRequests.slice(requestsBefore);
     expect(imageRequests).toHaveLength(2);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nUSER:");
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1178,8 +1190,10 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.mediaRequests).toEqual([]);
 
     const imageRequests = modelRequests.slice(requestsBefore);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(imageRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nGUEST:");
+    expect(modelSystemContent(imageRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1234,8 +1248,12 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(toolNames).not.toContain("WEB_SEARCH");
     expect(toolNames).not.toContain("REMINDERS");
     expect(toolNames).not.toContain("TODO");
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     expect(systemLifecyclePlannerRequests).toBeGreaterThanOrEqual(2);
   }, 120_000);
 
@@ -1257,8 +1275,12 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(result.actionResults).toBeUndefined();
     const lifecycleRequests = modelRequests.slice(requestsBefore);
     expect(lifecycleRequests).toHaveLength(1);
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = (
       (lifecycleRequests[0]?.tools as
         | Array<{ function?: { name?: string } }>
