@@ -125,7 +125,11 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
           install-protoc: "false"
-          setup-python: "false"
+          setup-python: ${{ matrix.partition == 'remaining' }}
+          python-version: "3.14.6"
+      - name: Prepare pinned GEPA producer dependencies
+        if: matrix.partition == 'remaining'
+        run: bun run --cwd packages/testing gepa:setup
       - name: Server tests
         run: bun run test:server
   tests_client:

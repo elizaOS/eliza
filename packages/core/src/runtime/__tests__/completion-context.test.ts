@@ -223,7 +223,7 @@ describe("source-bound completion relevance", () => {
 	);
 
 	it.each([false, true])(
-		"renders source policy once in the stable prefix without changing evidence or binding (registered fields: %s)",
+		"renders source policy once with the task without changing evidence or binding (registered fields: %s)",
 		(withFields) => {
 			const context = historyContext();
 			const before = structuredClone(context);
@@ -242,7 +242,7 @@ describe("source-bound completion relevance", () => {
 				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
 			);
 			expect(policySegments).toHaveLength(1);
-			expect(policySegments[0]?.stable).toBe(true);
+			expect(policySegments[0]?.stable).toBe(false);
 			const binding = input.promptSegments.filter((segment) =>
 				segment.content.includes(
 					`completion_source_set: ${sources.sourceSetId}`,
@@ -252,7 +252,7 @@ describe("source-bound completion relevance", () => {
 			expect(binding[0]?.stable).toBe(false);
 			const wire = input.messages.map((message) => message.content).join("\n");
 			for (const { id, event } of sources.sources) {
-				expect(wire).toContain(`[${id}]`);
+				expect(wire).toContain(`${id}: characters `);
 				expect(wire).toContain(event.segment.content);
 			}
 			expect(context).toEqual(before);
@@ -329,9 +329,9 @@ describe("source-bound completion relevance", () => {
 			{ character: { name: "Eliza" } },
 			context,
 		);
-		expect(String(input.messages[1].content)).toContain(
-			"[h6; same_text_as=h1]",
-		);
+		const transcript = String(input.messages[1].content);
+		expect(transcript).toContain("h6: characters ");
+		expect(transcript.split(first.segment.content)).toHaveLength(3);
 		const chosen = {
 			...selection(context),
 			relevantSourceIds: ["h6"],
@@ -355,7 +355,8 @@ describe("source-bound completion relevance", () => {
 		);
 		const user = String(input.messages[1].content);
 		for (const { id, event } of completionContextSources(context).sources) {
-			expect(user).toContain(`[${id}]\n${event.segment.content}`);
+			expect(user).toContain(`${id}: characters `);
+			expect(user).toContain(event.segment.content);
 		}
 		expect(user).toContain(completionContextSources(context).sourceSetId);
 		const chosen = selection(context);

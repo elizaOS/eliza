@@ -20,7 +20,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { EventType, runWithTrajectoryContext } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
@@ -1352,7 +1352,11 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       searchGmailMessages: vi.fn(),
       getGmailMessage: vi.fn(async () => null),
       getGmailMessageDetail: vi.fn(),
-      getGmailMessageRevision: vi.fn(async () => null),
+      getGmailMessageRevision: vi.fn(async () => {
+        throw new Error(
+          "This metadata-only fixture does not authorize content reads",
+        );
+      }),
       sendGmailReply: vi.fn(),
       sendGmailMessage: vi.fn(),
       modifyGmailMessages: vi.fn(),
@@ -1465,7 +1469,11 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
                 metadata: {},
               })),
               getGmailMessageDetail: vi.fn(),
-              getGmailMessageRevision: vi.fn(async () => null),
+              getGmailMessageRevision: vi.fn(async () => {
+                throw new Error(
+                  "This metadata-only fixture does not authorize content reads",
+                );
+              }),
               sendGmailReply,
               sendGmailMessage: vi.fn(),
               modifyGmailMessages,

@@ -40,9 +40,8 @@ import {
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
-  recordUsageAnalytics,
 } from "../ai-billing";
-import { aiBillingRecordsService } from "../ai-billing-records";
+import { recordSettledInferenceBilling } from "../ai-billing-settled";
 import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
 import { contentSafetyService } from "../content-safety";
@@ -1137,20 +1136,13 @@ async function finishBilling(
       billing.reservation,
     );
     const reconciliation = await billing.settle(result.totalCost);
-    const record = await recordUsageAnalytics(billing.context, result, {
-      type: "chat",
-      content: reply,
-      prompt,
+    await recordSettledInferenceBilling({
+      context: billing.context,
+      billing: result,
+      reconciliation,
+      idempotencyKey: billing.idempotencyKey,
+      analytics: { type: "chat", content: reply, prompt },
     });
-    if (record) {
-      await aiBillingRecordsService.record({
-        context: billing.context,
-        billing: result,
-        usageRecord: record,
-        idempotencyKey: billing.idempotencyKey,
-        reconciliation,
-      });
-    }
   } catch (error) {
     // error-policy:J1 the reply may already be delivered, so an unavailable
     // meter is not evidence of zero provider work. Preserve the admitted

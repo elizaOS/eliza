@@ -9,6 +9,7 @@
  * hooks; the service never imports the grant registry directly, keeping the
  * dependency direction `plugin-lifeops -> plugin-calendar`.
  */
+
 import { createHash } from "node:crypto";
 import {
   ElizaError,
@@ -20,50 +21,51 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type CreateLifeOpsCalendarEventResponse,
-  type CreateLifeOpsIcsCalendarSourceRequest,
-  type CreateLifeOpsLinkedCalendarLinkRequest,
-  type DisconnectLifeOpsLinkedCalendarRequest,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarAllDayRange,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarImportedDataPurgeReceipt,
-  type LifeOpsCalendarProvider,
-  type LifeOpsCalendarRecurrenceScope,
-  type LifeOpsCalendarSeedReceipt,
-  type LifeOpsCalendarSourceError,
-  type LifeOpsCalendarSourceHealth,
-  type LifeOpsCalendarSourceKey,
-  type LifeOpsCalendarSummary,
-  type LifeOpsIcsCalendarSource,
-  type LifeOpsIcsCalendarSyncResponse,
-  type LifeOpsLinkedCalendarControl,
-  type LifeOpsLinkedCalendarControlMutationResult,
-  type LifeOpsLinkedCalendarEventView,
-  type LifeOpsLinkedCalendarLink,
-  type LifeOpsLinkedCalendarMutationResponse,
-  type LifeOpsNextCalendarEventContext,
-  type ListLifeOpsCalendarsRequest,
-  type PurgeLifeOpsCalendarImportedDataRequest,
-  type RebindLifeOpsLinkedCalendarRequest,
-  type RebindLifeOpsLinkedCalendarResponse,
-  type ResolveLifeOpsLinkedCalendarConflictRequest,
-  type RunLifeOpsLinkedCalendarReconciliationRequest,
-  type SeedLifeOpsCalendarRequest,
-  type SetLifeOpsCalendarIncludedRequest,
-  type SetLifeOpsCalendarIncludedResponse,
-  type UpdateLifeOpsIcsCalendarSourceRequest,
-  type UpdateLifeOpsLinkedCalendarControlRequest,
+import type {
+  CalendarNoteSourceReference,
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
+  CreateLifeOpsIcsCalendarSourceRequest,
+  CreateLifeOpsLinkedCalendarLinkRequest,
+  DisconnectLifeOpsLinkedCalendarRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarAllDayRange,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarImportedDataPurgeReceipt,
+  LifeOpsCalendarProvider,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSeedReceipt,
+  LifeOpsCalendarSourceError,
+  LifeOpsCalendarSourceHealth,
+  LifeOpsCalendarSourceKey,
+  LifeOpsCalendarSummary,
+  LifeOpsIcsCalendarSource,
+  LifeOpsIcsCalendarSyncResponse,
+  LifeOpsLinkedCalendarControl,
+  LifeOpsLinkedCalendarControlMutationResult,
+  LifeOpsLinkedCalendarEventView,
+  LifeOpsLinkedCalendarLink,
+  LifeOpsLinkedCalendarMutationResponse,
+  LifeOpsNextCalendarEventContext,
+  ListLifeOpsCalendarsRequest,
+  PurgeLifeOpsCalendarImportedDataRequest,
+  RebindLifeOpsLinkedCalendarRequest,
+  RebindLifeOpsLinkedCalendarResponse,
+  ResolveLifeOpsLinkedCalendarConflictRequest,
+  RunLifeOpsLinkedCalendarReconciliationRequest,
+  SeedLifeOpsCalendarRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
+  UpdateLifeOpsIcsCalendarSourceRequest,
+  UpdateLifeOpsLinkedCalendarControlRequest,
 } from "@elizaos/core/contracts/calendar";
-import { type FeatureResult } from "@elizaos/core/contracts/feature-result";
-import {
-  type LifeOpsConnectorGrant,
-  type LifeOpsConnectorMode,
-  type LifeOpsConnectorSide,
+import type { FeatureResult } from "@elizaos/core/contracts/feature-result";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
 } from "@elizaos/core/contracts/personal-assistant";
 import {
   isSerializedSecretHandle,
@@ -162,6 +164,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "../internal/normalize.js";
+import { parseCalendarNoteSource } from "../internal/note-source.js";
 import {
   assertRecurrenceStartMatchesRule,
   buildRecurrenceSplitPlan,
@@ -6043,12 +6046,44 @@ export class CalendarService extends Service {
     return this.repo.getCalendarEventById(this.agentId(), normalized);
   }
 
+  private async validateNoteSource(
+    request: CreateLifeOpsCalendarEventRequest,
+  ): Promise<void> {
+    const source = parseCalendarNoteSource(request.sourceNote);
+    if (!source) return;
+    const notes = this.runtime.getService<
+      Service & {
+        assertSourceReference(
+          reference: CalendarNoteSourceReference,
+        ): Promise<void>;
+      }
+    >("notes");
+    if (
+      source.agentId !== this.agentId() ||
+      !notes ||
+      typeof notes.assertSourceReference !== "function"
+    ) {
+      throw new ElizaError(
+        "The source note is unavailable for this agent. Read it again before creating the event.",
+        {
+          code: "CALENDAR_NOTE_SOURCE_CONFLICT",
+          severity: "ephemeral",
+        },
+      );
+    }
+    await notes.assertSourceReference(source);
+  }
+
   async createCalendarEventMutation(
     requestUrl: URL,
     request: CreateLifeOpsCalendarEventRequest,
     now = new Date(),
     options: { acceptWriteOnlyReceipt?: boolean } = {},
   ): Promise<CreateLifeOpsCalendarEventResponse> {
+    request = {
+      ...request,
+      sourceNote: parseCalendarNoteSource(request.sourceNote),
+    };
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const calendarId = normalizeCalendarId(request.calendarId);
@@ -6080,6 +6115,9 @@ export class CalendarService extends Service {
         attendees: normalizeCalendarAttendees(request.attendees),
         now,
       });
+      await this.validateNoteSource(request);
+      if (request.sourceNote)
+        event.metadata.sourceNote = parseCalendarNoteSource(request.sourceNote);
       const receipt = await this.repo.insertCalendarEventIfAbsent(event);
       const persisted = receipt.event;
       if (receipt.inserted) {
@@ -6122,6 +6160,7 @@ export class CalendarService extends Service {
         calendarId,
         side,
       });
+      await this.validateNoteSource(request);
       const microsoftEvent = await this.microsoftPort.createEvent({
         account: target.account,
         calendarId: target.calendarId,
@@ -6146,6 +6185,8 @@ export class CalendarService extends Service {
         agentId: this.agentId(),
         syncedAt,
       });
+      if (request.sourceNote)
+        event.metadata.sourceNote = parseCalendarNoteSource(request.sourceNote);
       await this.repo.upsertCalendarEvent(event, target.account.grant.side);
       await this.syncCalendarReminderPlans([event]);
       await reconcileMeetingAutoJoin({
@@ -6210,6 +6251,7 @@ export class CalendarService extends Service {
     }
     const createEvent = requireGoogleServiceMethod(this.runtime, "createEvent");
     let googleEvent: GoogleCalendarEvent;
+    await this.validateNoteSource(request);
     try {
       googleEvent = await createEvent(
         googleCalendarEventInput({
@@ -6235,6 +6277,8 @@ export class CalendarService extends Service {
       grant,
       agentId: this.agentId(),
     });
+    if (request.sourceNote)
+      event.metadata.sourceNote = parseCalendarNoteSource(request.sourceNote);
     await this.repo.upsertCalendarEvent(event, grant.side);
     await this.syncCalendarReminderPlans([event]);
     await reconcileMeetingAutoJoin({
@@ -6277,6 +6321,7 @@ export class CalendarService extends Service {
     if (normalizeRecurrence(request.recurrence)) {
       failAppleRecurrenceUnsupported("create");
     }
+    await this.validateNoteSource(request);
     const nativeEvent = await createNativeAppleCalendarEvent({
       agentId: this.agentId(),
       request: {
@@ -6301,6 +6346,7 @@ export class CalendarService extends Service {
           title: request.title,
         },
         {
+          ...(request.sourceNote ? { sourceNote: request.sourceNote } : {}),
           accessLevel: "write_only",
           readBackAvailable: false,
           providerEventId: null,
@@ -6313,6 +6359,8 @@ export class CalendarService extends Service {
       };
     }
     const event = nativeEvent.data.event;
+    if (request.sourceNote)
+      event.metadata.sourceNote = parseCalendarNoteSource(request.sourceNote);
     await this.repo.upsertCalendarEvent(event, "owner");
     await this.syncCalendarReminderPlans([event]);
     await reconcileMeetingAutoJoin({
@@ -6584,6 +6632,7 @@ export class CalendarService extends Service {
               request.startAt,
               "startAt",
               parseTimeZone,
+              "reject",
             )
           : undefined),
       endAt:
@@ -6593,6 +6642,7 @@ export class CalendarService extends Service {
               request.endAt,
               "endAt",
               parseTimeZone,
+              "reject",
             )
           : undefined),
       timeZone,
@@ -6692,6 +6742,7 @@ export class CalendarService extends Service {
                   request.startAt,
                   "startAt",
                   parseTimeZone,
+                  "reject",
                 )
               : undefined),
           endAt:
@@ -6701,6 +6752,7 @@ export class CalendarService extends Service {
                   request.endAt,
                   "endAt",
                   parseTimeZone,
+                  "reject",
                 )
               : undefined),
           timeZone,
@@ -6897,6 +6949,7 @@ export class CalendarService extends Service {
           args.request.startAt,
           "startAt",
           args.parseTimeZone,
+          "reject",
         )
       : undefined;
     const requestedEndAt = args.request.endAt
@@ -6904,6 +6957,7 @@ export class CalendarService extends Service {
           args.request.endAt,
           "endAt",
           args.parseTimeZone,
+          "reject",
         )
       : undefined;
     const startAt = requestedStartAt ?? context.occurrence.startAt;

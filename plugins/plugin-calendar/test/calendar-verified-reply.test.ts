@@ -10,13 +10,16 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 /** Wednesday 2026-09-16, 09:00 in America/New_York. */
 const PINNED_NOW = new Date("2026-09-16T13:00:00.000Z");
@@ -77,6 +80,9 @@ function stubService(args: {
   updated?: LifeOpsCalendarEvent;
 }) {
   return {
+    listCalendars: vi.fn(async () =>
+      calendarSummariesForEvents(args.feedEvents),
+    ),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "all",
       events: args.feedEvents,
@@ -120,6 +126,8 @@ function fakeDeps(service: StubService): CalendarActionDeps {
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: "eliza-calendar",
+              calendarId: "primary",
               startAt: "2026-09-18T15:00:00-04:00",
               endAt: "2026-09-18T16:00:00-04:00",
               timeZone: OWNER_TIME_ZONE,

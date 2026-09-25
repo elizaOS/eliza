@@ -1,93 +1,44 @@
-/**
- * DST spring-forward reschedule (mirror of the fall-back scenario).
- *
- * In America/Los_Angeles the 2026 spring-forward transition is at 02:00 local
- * on 2026-03-08. Before spring-forward, 8am Pacific is 16:00Z (PST, UTC-8).
- * After spring-forward, 8am Pacific is 15:00Z (PDT, UTC-7). The agent must
- * reason in local time, not UTC.
- *
- * Cited: docs/audits/lifeops-2026-05-09/03-coverage-gap-matrix.md — DST
- * coverage has a fall-back guard but no spring-forward counterpart.
- */
+/** Checks a spring-forward reschedule against the exact persisted event and unchanged unrelated records. */
 
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  expectScenarioToCallAction,
-  judgeRubric,
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/testing";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
+import { inspectCalendarReschedule } from "../../../support/helpers/calendar-reschedule-check.js";
 
 const PACIFIC_TZ = "America/Los_Angeles";
-// 2026-03-08 is the US DST spring-forward day for Pacific Time.
-const PRE_SPRING_FWD_8AM_UTC = "2026-03-08T16:00:00.000Z"; // 08:00 PST
-const _POST_SPRING_FWD_9AM_UTC = "2026-03-08T16:00:00.000Z"; // 09:00 PDT
-// After the transition, 9am PDT = 16:00Z. The trap is the same UTC value
-// represents different local hours depending on the date — the agent must
-// reason in local time.
-const _POST_SPRING_FWD_10AM_UTC = "2026-03-08T17:00:00.000Z"; // 10:00 PDT (target)
+const EIGHT_AM_UTC = "2026-03-08T15:00:00.000Z";
+const TEN_AM_UTC = "2026-03-08T17:00:00.000Z";
 const EVENT_ID = "seed_dst_spring_event_1";
+const UNRELATED_ID = "seed_dst_spring_unrelated";
+type CalendarRows = Awaited<
+  ReturnType<LifeOpsRepository["listCalendarEvents"]>
+>;
+const seededRows = new WeakMap<AgentRuntime, CalendarRows>();
 
-function localHourPacific(iso: string): number | null {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return null;
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: PACIFIC_TZ,
-    hour: "numeric",
-    hour12: false,
-  });
-  const parts = fmt.formatToParts(new Date(ms));
-  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "";
-  const hour = Number.parseInt(hourStr, 10);
-  return Number.isFinite(hour) ? hour : null;
-}
-
-function inspectCalendarActionForLocalTenAm(
+async function inspectPersistedReschedule(
   ctx: ScenarioContext,
-): string | undefined {
-  const calls = ctx.actionsCalled.filter(
-    (action) => action.actionName === "CALENDAR",
+): Promise<string | undefined> {
+  const runtime = ctx.runtime as AgentRuntime | undefined;
+  if (!runtime) return "scenario runtime unavailable";
+  const before = seededRows.get(runtime);
+  if (!before) return "persisted seed snapshot unavailable";
+  const after = await new LifeOpsRepository(runtime).listCalendarEvents(
+    String(runtime.agentId),
+    "google",
   );
-  if (calls.length === 0) {
-    return "expected the agent to invoke the CALENDAR action to reschedule";
-  }
-  let foundLocalHour: number | null = null;
-  let sawAnyTimestamp = false;
-  for (const call of calls) {
-    const blob = JSON.stringify({
-      parameters: call.parameters ?? null,
-      data: call.result?.data ?? null,
-      values: call.result?.values ?? null,
-      text: call.result?.text ?? null,
-    });
-    const isoMatches =
-      blob.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?Z/g) ?? [];
-    for (const iso of isoMatches) {
-      sawAnyTimestamp = true;
-      const hour = localHourPacific(iso);
-      if (hour === 10) {
-        foundLocalHour = 10;
-        break;
-      }
-    }
-    if (foundLocalHour === 10) break;
-  }
-  if (!sawAnyTimestamp) {
-    return `CALENDAR action was called but no ISO timestamp appeared in parameters or result; cannot verify DST handling.`;
-  }
-  if (foundLocalHour !== 10) {
-    return `Expected the rescheduled event to land at 10:00 ${PACIFIC_TZ} (post spring-forward UTC=17:00Z). No timestamp matched. The agent likely added 2h of UTC instead of reasoning in local time.`;
-  }
-  return undefined;
+  return inspectCalendarReschedule(before, after, {
+    eventId: EVENT_ID,
+    startAt: TEN_AM_UTC,
+    endAt: "2026-03-08T18:00:00.000Z",
+  });
 }
 
 export default scenario({
   lane: "live-only",
   id: "calendar.dst-spring-forward",
   title:
-    "Reschedule across DST spring-forward keeps the event at the right LOCAL hour",
+    "Reschedule on the Pacific spring-forward date preserves exact local time",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "dst", "timezone", "robustness"],
   isolation: "per-scenario",
@@ -106,7 +57,7 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "seed-pre-spring-forward-event",
+      name: "seed-spring-forward-event",
       apply: async (ctx) => {
         const runtime = ctx.runtime as AgentRuntime | undefined;
         if (!runtime) return "scenario runtime unavailable";
@@ -115,9 +66,9 @@ export default scenario({
         });
         const repository = new LifeOpsRepository(runtime);
         const agentId = String(runtime.agentId);
-        const startAt = PRE_SPRING_FWD_8AM_UTC;
+        const startAt = EIGHT_AM_UTC;
         const endAt = new Date(
-          Date.parse(PRE_SPRING_FWD_8AM_UTC) + 60 * 60_000,
+          Date.parse(EIGHT_AM_UTC) + 60 * 60_000,
         ).toISOString();
         await repository.upsertCalendarEvent({
           id: EVENT_ID,
@@ -155,6 +106,24 @@ export default scenario({
             Date.parse(startAt) - 6 * 60 * 60_000,
           ).toISOString(),
         });
+        const persisted = await repository.listCalendarEvents(
+          agentId,
+          "google",
+        );
+        const target = persisted.find((event) => event.id === EVENT_ID);
+        if (!target) return "seeded event was not persisted";
+        await repository.upsertCalendarEvent({
+          ...target,
+          id: UNRELATED_ID,
+          externalId: `${UNRELATED_ID}-external`,
+          title: "Unrelated afternoon appointment",
+          startAt: "2026-03-08T22:00:00.000Z",
+          endAt: "2026-03-08T23:00:00.000Z",
+        });
+        seededRows.set(
+          runtime,
+          await repository.listCalendarEvents(agentId, "google"),
+        );
         return undefined;
       },
     },
@@ -178,20 +147,13 @@ export default scenario({
     {
       type: "custom",
       name: "rescheduled-event-lands-at-10am-pacific-local",
-      predicate: inspectCalendarActionForLocalTenAm,
-    },
-    {
-      type: "custom",
-      name: "calendar-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR"],
-        description: "DST-aware reschedule",
-      }),
+      predicate: inspectPersistedReschedule,
     },
     judgeRubric({
       name: "calendar-dst-spring-forward-rubric",
       threshold: 0.7,
-      description: `The user moved an 8am Pacific event to 10am Pacific on the 2026-03-08 spring-forward day. Correct: the new start, interpreted in America/Los_Angeles, equals 10:00 (17:00Z PDT). Incorrect: agent added 2h to UTC and landed at 9am PDT, or fabricated a different time. Score 0 if any time in the reply is "9am PDT" or "18:00Z".`,
+      description:
+        "The assistant reports the exact board prep moved to 10am Pacific on March 8, 2026, without claiming a different date or changing unrelated events. The separate persisted-state check is mandatory and cannot be replaced by wording in the reply.",
     }),
   ],
 });
