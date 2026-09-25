@@ -57,9 +57,16 @@ function effects(index: number, actionName = true): ContextObjectPromptSegment {
   };
 }
 function expand(segments: ContextObjectPromptSegment[]) {
+  const legends = new Map();
   return segments.flatMap((segment) => {
-    const body = JSON.parse(segment.content);
-    if (!segment.label?.endsWith("_table")) return [body];
+    let body = JSON.parse(segment.content);
+    if (segment.label === "runtime:historical_receipt_encoding") {
+      legends.set(body.id, body);
+      return [];
+    }
+    const shared = Array.isArray(body) ? legends.get(body[0]) : undefined;
+    if (shared) body = { ...shared, rows: [body[1]] };
+    if (!segment.label?.endsWith("_table") && !shared) return [body];
     if (body.receiptShapes) {
       const index = body.receiptColumns.indexOf("receipt");
       for (const [, receipts] of body.rows)
@@ -280,5 +287,121 @@ it("shares only complete top-level effect shapes, preserving absent versus null 
   expect(JSON.parse(result[0].content).receiptShapes).toBeUndefined();
   expect(expand(result)).toEqual(
     unknown.map((segment) => JSON.parse(segment.content)),
+  );
+});
+
+it("shares legends across interleaved trusted receipt positions without changing dialogue, source identities or stable prefix", () => {
+  const prefix = { id: "system", content: "Trusted prefix", stable: true };
+  const input: ContextObjectPromptSegment[] = [prefix];
+  for (let index = 0; index < 40; index++) {
+    const receipt = navigation(index);
+    const record = JSON.parse(receipt.content);
+    record.navigation = record.navigation.slice(0, 1);
+    receipt.content = JSON.stringify(record);
+    input.push({ ...receipt, metadata: { chronology: index } });
+    input.push({
+      id: `dialogue:${index}`,
+      label: "prior_message:user",
+      stable: false,
+      content:
+        index === 0
+          ? `receipt_wire_1\nruntime:historical_navigation:\n${receipt.content}`
+          : `original dialogue ${index}`,
+    });
+    input.push(effects(index));
+  }
+  const snapshot = structuredClone(input);
+  const result = compactHistoricalReceiptSegments(input);
+  const legends = result.filter(
+    (segment) => segment.label === "runtime:historical_receipt_encoding",
+  );
+  expect(legends).toHaveLength(2);
+  expect(
+    legends.map((segment) => JSON.parse(segment.content).id),
+  ).not.toContain("receipt_wire_1");
+  const originalPositions = result.filter(
+    (segment) => segment.label !== "runtime:historical_receipt_encoding",
+  );
+  expect(originalPositions.map((segment) => segment.id)).toEqual(
+    input.map((segment) => segment.id),
+  );
+  for (const [index, original] of input.entries()) {
+    const packed = originalPositions[index];
+    if (!original.label?.startsWith("runtime:historical_"))
+      expect(packed).toBe(original);
+    expect(packed.metadata).toEqual(original.metadata);
+    expect(packed.label).toBe(original.label);
+    expect(packed.stable).toBe(original.stable);
+  }
+  const packedReceipts = result.filter((segment) =>
+    segment.label?.startsWith("runtime:historical_"),
+  );
+  const originalReceipts = input.filter((segment) =>
+    segment.label?.startsWith("runtime:historical_"),
+  );
+  expect(
+    expand(packedReceipts).map((record) => JSON.stringify(record)),
+  ).toEqual(originalReceipts.map((segment) => segment.content));
+  expect(input).toEqual(snapshot);
+  expect(result[0]).toBe(prefix);
+  expect(compactHistoricalReceiptSegments(result)).toEqual(result);
+});
+
+it("leaves unknown outer order and stable receipt-like content unchanged and never references a legend across a stable boundary", () => {
+  const unknownOrder = {
+    ...navigation(1),
+    content: JSON.stringify({
+      navigation: [],
+      requestSourceEventId: "history:1",
+    }),
+  };
+  const stable = { ...navigation(2), stable: true };
+  expect(
+    compactHistoricalReceiptSegments([
+      unknownOrder,
+      unknownOrder,
+      stable,
+      stable,
+    ]),
+  ).toEqual([unknownOrder, unknownOrder, stable, stable]);
+  const first = Array.from({ length: 20 }, (_, id) => [
+    navigation(id),
+    { content: "{}", label: "prior_message:user", stable: false },
+  ]).flat();
+  const second = Array.from({ length: 20 }, (_, id) => [
+    navigation(id + 30),
+    { content: "{}", label: "prior_message:user", stable: false },
+  ]).flat();
+  const result = compactHistoricalReceiptSegments([
+    ...first,
+    stable,
+    ...second,
+  ]);
+  const boundary = result.indexOf(stable);
+  const before = result
+    .slice(0, boundary)
+    .filter((segment) => segment.label?.startsWith("runtime:historical_"));
+  const after = result
+    .slice(boundary + 1)
+    .filter((segment) => segment.label?.startsWith("runtime:historical_"));
+  expect(
+    before.some(
+      (segment) => segment.label === "runtime:historical_receipt_encoding",
+    ),
+  ).toBe(true);
+  expect(
+    after.some(
+      (segment) => segment.label === "runtime:historical_receipt_encoding",
+    ),
+  ).toBe(true);
+  expect(expand(before)).toEqual(
+    first
+      .filter((segment) => segment.label === "runtime:historical_navigation")
+      .map((segment) => JSON.parse(segment.content)),
+  );
+  expect(expand(after)).toEqual(
+    second
+      .filter((segment) => segment.label === "runtime:historical_navigation")
+      .map((segment) => JSON.parse(segment.content)),
   );
 });

@@ -1,3 +1,4 @@
+import { projectBackgroundHistory } from "./history-discovery.ts";
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
 import type {
@@ -277,13 +278,14 @@ export async function executeV5PlannedToolCall(
           ...args.plannerContext,
           metadata: {
             ...args.plannerContext.metadata,
-            completionContext: actionSelection ?? undefined,
+            completionContext: actionSelection,
           },
         }
       : args.plannerContext;
   const actionConversation = boundToRequest
     ? completionContextSources(
-        selectCompletionContext(actionContext).context,
+        projectBackgroundHistory(selectCompletionContext(actionContext).context)
+          .context,
       ).sources.map(({ event }) => event)
     : [];
   const executorCtx = {

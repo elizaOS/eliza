@@ -44,6 +44,8 @@ import {
 } from "../../runtime/builtin-field-evaluators";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
+import { getEvaluatorProgressState } from "../evaluator-progress.ts";
+import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
 import { resolveStage1SenderRole } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
@@ -69,6 +71,7 @@ import {
   type HistoryDiscovery,
   historyReferences,
   loadHistoryReferences,
+  projectReviewedHistory,
   readHistoryContextRequests,
   repairableHistorySourceIds,
   requestedHistory,
@@ -217,8 +220,39 @@ export async function generateStage1Decision(
   const discoveryEnabled = progressiveContextChannel;
   let history: HistoryDiscovery | undefined;
   let historyReadEvidence: HistoryDiscovery | undefined;
-  // Full originals stay inline and flow unchanged into planning. Builtin
-  // source selection is not another responsibility of the reply handler.
+  if (
+    discoveryEnabled &&
+    args.runtime.evaluators?.some(
+      (evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
+    ) &&
+    !args.runtime.providers?.some((provider) =>
+      provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
+    )
+  ) {
+    try {
+      const checkpoint = await getEvaluatorProgressState(
+        args.runtime,
+        args.message,
+        HISTORY_RETENTION_EVALUATOR,
+      );
+      stage1TurnSignal.throwIfAborted();
+      history = projectReviewedHistory(
+        context,
+        {
+          agentId: args.runtime.agentId,
+          roomId: args.message.roomId,
+          entityId: args.message.entityId,
+          roles: [senderRole],
+        },
+        checkpoint,
+      );
+    } catch (error) {
+      stage1TurnSignal.throwIfAborted();
+      args.runtime.reportError("MessageService.historyRetention", error, {
+        roomId: args.message.roomId,
+      });
+    }
+  }
   // A plugin that owns this name retains its ordinary provider-reference
   // contract; framework catalog discovery must not shadow its requests.
   let contextCatalogRead = false;
@@ -426,12 +460,7 @@ export async function generateStage1Decision(
     nativeHistoryRead = Boolean(
       history &&
         readTool &&
-        selectedResponseHandlerFields.includes(
-          completionContextFieldEvaluator,
-        ) &&
         selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-        canonicalResponseHandlerSchema.properties?.completionContext ===
-          completionContextFieldEvaluator.schema &&
         canonicalResponseHandlerSchema.properties?.contextRequests ===
           contextRequestsFieldEvaluator.schema,
     );
@@ -1502,6 +1531,7 @@ export async function generateStage1Decision(
     providerDiscoveryEnabled: discoveryEnabled,
     loadedContextProviders: [...loadedContext],
     historyReadEvidence,
+    backgroundHistory: history,
     contextCatalogRead,
     fieldRunResult,
     inferenceMessageText,

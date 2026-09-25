@@ -113,7 +113,10 @@ import {
   evaluatePlannedReplyEgress,
   resolvePlannedReplyEgress,
 } from "./egress-policy.js";
-import { withHistoryReadEvidence } from "./history-discovery.js";
+import {
+  withBackgroundHistory,
+  withHistoryReadEvidence,
+} from "./history-discovery.js";
 import {
   buildV5ExecutorContext,
   collectBudgetedStageOneCandidateActions,
@@ -371,6 +374,7 @@ export async function runV5MessageRuntimeStage1(
       providerReview,
       loadedContextProviders,
       historyReadEvidence,
+      backgroundHistory,
       sourceReplyRendering,
       contextCatalogRead,
       contextReadAcknowledgmentSent,
@@ -1414,24 +1418,27 @@ export async function runV5MessageRuntimeStage1(
       },
       "Built v5 planner action surface",
     );
-    const plannerContext = withHistoryReadEvidence(
-      await createV5MessageContextObject({
-        ...args,
-        includeContextCatalog: contextCatalogRead,
-        state: plannerState,
-        selectedContexts,
-        includeTools: true,
-        userRoles: [senderRole],
-        availableContexts,
-        preselectedActions: exposedPlannerActions,
-        actionSurface,
-        ambientTurn,
-        extraProviderExclusions: ambientTurnProviderExclusions(
-          args.runtime,
-          args.message,
-        ),
-      }),
-      historyReadEvidence,
+    const plannerContext = withBackgroundHistory(
+      withHistoryReadEvidence(
+        await createV5MessageContextObject({
+          ...args,
+          includeContextCatalog: contextCatalogRead,
+          state: plannerState,
+          selectedContexts,
+          includeTools: true,
+          userRoles: [senderRole],
+          availableContexts,
+          preselectedActions: exposedPlannerActions,
+          actionSurface,
+          ambientTurn,
+          extraProviderExclusions: ambientTurnProviderExclusions(
+            args.runtime,
+            args.message,
+          ),
+        }),
+        historyReadEvidence,
+      ),
+      backgroundHistory,
     );
     const responseHandlerContextSlices = stringArrayProperty(
       (messageHandler.plan as { contextSlices?: unknown }).contextSlices,

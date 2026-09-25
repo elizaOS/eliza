@@ -1,3 +1,4 @@
+import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
 /**
  * Evaluator stage of the planner loop: renders the evaluator model input, runs
  * the evaluator model call, and parses/repairs/sanitizes its structured
@@ -731,7 +732,9 @@ export async function runEvaluator(
     const readHistory = scope === "history" || scope === "full";
     const readProviders = scope === "providers" || scope === "full";
     if (
-      (readHistory && selectCompletionContext(original).applied) ||
+      (readHistory &&
+        (selectCompletionContext(original).applied ||
+          projectBackgroundHistory(original).applied)) ||
       (readProviders && projectDeferredProviders(original).available.length)
     ) {
       // A context read takes precedence over a conflicting verdict. Record
@@ -753,7 +756,11 @@ export async function runEvaluator(
         metadata: {
           ...original.metadata,
           ...(readHistory
-            ? { completionContext: undefined, plannerQueryTokensRestored: true }
+            ? {
+                completionContext: undefined,
+                backgroundHistory: undefined,
+                plannerQueryTokensRestored: true,
+              }
             : {}),
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
@@ -969,7 +976,10 @@ function renderEvaluatorModelInput(params: {
   const completion = selectCompletionContext(
     params.trajectory.modelBaseContext ?? params.context,
   );
-  const deferred = projectDeferredProviders(completion.context);
+  const background = completion.applied
+    ? { context: completion.context, applied: false, omittedSourceCount: 0 }
+    : projectBackgroundHistory(completion.context);
+  const deferred = projectDeferredProviders(background.context);
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
   );
@@ -983,6 +993,12 @@ function renderEvaluatorModelInput(params: {
       label: "completion_context",
       stable: false,
       content: `Deferred provider references: ${JSON.stringify(deferred.available)}. If their advertised complete syntax or factual details are needed, request contextRequest=providers with decision=CONTINUE, success=false and no user reply or clipboard effect. This reads authorized provider bodies without adding omitted dialogue or running tools. A provider reference does not promise fields it explicitly excludes: use a current record tool for those fields rather than expanding history. Do not emit Stage-1 contextRequests here. Do not request missing context when settled receipts already establish the answer.`,
+    });
+  if (background.applied)
+    renderedContext.promptSegments.push({
+      id: "completion-background-history",
+      stable: false,
+      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals, not a current-request source review. For missing or uncertain constraints, corrections, referents or historical evidence request contextRequest=history with decision=CONTINUE, success=false and no user reply or effects. Full canonical originals will be restored without repeating actions.`,
     });
   if (completion.applied) {
     renderedContext.promptSegments.push({
@@ -1045,7 +1061,7 @@ function renderEvaluatorModelInput(params: {
     promptSegments,
     cacheKeySegments,
     completionSelectionApplied:
-      completion.applied || deferred.available.length > 0,
+      completion.applied || background.applied || deferred.available.length > 0,
   };
 }
 

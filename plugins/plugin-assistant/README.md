@@ -28,8 +28,8 @@ intents, the existing authorized retriever loads matching operations before
 planning, avoiding a discovery round caused solely by an incomplete hint list.
 Negated mutation clauses do not supply positive action hints.
 
-Historical receipt wrappers may use compact row tables when their shapes are
-uniform and the representation is smaller. Every value and source binding stays
+Historical receipt wrappers may use compact row tables or position-preserving
+shared legends when their shapes are uniform and the representation is smaller. Every value and source binding stays
 available; original context events and restoration are unchanged. Shared source
 review descriptions appear once in the planner instructions without weakening
 the native tool schemas.
@@ -71,3 +71,16 @@ and repeated unchanged observations stop stalled work. A resource limit or
 planner timeout returns an incomplete result with the full settled trajectory
 and pending calls intact; it never reports earlier committed effects as undone
 or automatically retries the turn.
+
+## Reviewed history
+
+A committed background retention review can provide a source-bound view of exact
+original messages to the response handler and planner. It is not a foreground
+completion certificate. Missing, stale or wrong-scope reviews retain full history;
+constraints, uncertain/linked sources and unreviewed messages remain available.
+The same validated view reaches action field extraction through the existing
+request-bound dialogue handoff. Explicit full or invalid foreground selections
+retain full-context fallback. Canonical events and historical effect outcomes
+are unchanged. Explicit history
+reads and restoration recover complete originals before dependent work. Plain
+replies do not acquire a source-classification field or an extra review call.

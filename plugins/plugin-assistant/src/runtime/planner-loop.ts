@@ -1,3 +1,4 @@
+import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
 /**
  * The planner's tool-calling agent loop: iteratively calls the planner model,
  * dispatches queued tool calls, and either gates or runs the trajectory
@@ -2825,10 +2826,14 @@ function renderPlannerModelInput(params: {
           omittedSourceCount: 0,
           selection: undefined,
         };
+  const background =
+    params.allowSourceSelection && !params.codingMode && !selected.applied
+      ? projectBackgroundHistory(original)
+      : { context: selected.context, applied: false, omittedSourceCount: 0 };
   const diagnosticProjection =
     params.allowSourceSelection && !params.codingMode
-      ? referencePlannerQueryTokens(selected.context)
-      : { context: selected.context, applied: false };
+      ? referencePlannerQueryTokens(background.context)
+      : { context: background.context, applied: false };
   const deferred =
     params.allowSourceSelection && !params.codingMode
       ? projectDeferredProviders(diagnosticProjection.context)
@@ -2839,6 +2844,7 @@ function renderPlannerModelInput(params: {
   const actionSources =
     params.allowSourceSelection &&
     !selected.applied &&
+    !background.applied &&
     original.metadata?.plannerQueryTokensRestored !== true &&
     !params.codingMode &&
     !params.replyOnly &&
@@ -2902,6 +2908,12 @@ function renderPlannerModelInput(params: {
       stable: false,
       content:
         "The tokenized retrieval query is referenced by exact source event, count and hash. It is derived search diagnostics, not additional user instructions. All routing decisions remain inline. Call RESTORE_CONTEXT alone if the original diagnostic array is needed; it restores the complete list together with original dialogue before any effects.",
+    });
+  if (background.applied)
+    renderedContext.promptSegments.push({
+      id: "planner-background-history",
+      stable: false,
+      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
     });
   if (selected.applied)
     renderedContext.promptSegments.push({
@@ -3010,6 +3022,7 @@ function renderPlannerModelInput(params: {
     actionSourceSelectionSchema,
     sourceSelectionApplied:
       selected.applied ||
+      background.applied ||
       diagnosticProjection.applied ||
       deferred.available.length > 0,
   };
@@ -4028,18 +4041,29 @@ async function dispatchPlannerModelCall(params: {
     const accepted = reviewed?.applied ? selection : undefined;
     params.trajectory.modelBaseContext = {
       ...original,
-      metadata: { ...original.metadata, completionContext: accepted },
+      metadata: {
+        ...original.metadata,
+        completionContext: accepted ?? (submitted ? null : undefined),
+        ...(submitted ? { backgroundHistory: undefined } : {}),
+      },
     };
     params.trajectory.context = {
       ...params.trajectory.context,
       metadata: {
         ...params.trajectory.context.metadata,
-        completionContext: accepted,
+        completionContext: accepted ?? (submitted ? null : undefined),
+        ...(submitted ? { backgroundHistory: undefined } : {}),
       },
     };
     parsed.toolCalls = parsed.toolCalls.map((call) => ({
       ...call,
-      completionContext: accepted ?? null,
+      // No offered/submitted foreground review is distinct from an explicit
+      // invalid/full review: only the former may keep background projection.
+      completionContext:
+        accepted ??
+        (projectBackgroundHistory(original).applied && !submitted
+          ? undefined
+          : null),
     }));
   }
 
@@ -4183,6 +4207,7 @@ async function callPlanner(
       (!(
         readHistory &&
         (selectCompletionContext(original).applied ||
+          projectBackgroundHistory(original).applied ||
           referencePlannerQueryTokens(original).applied)
       ) &&
         !(readProviders && projectDeferredProviders(original).available.length))
@@ -4207,7 +4232,11 @@ async function callPlanner(
         metadata: {
           ...original.metadata,
           ...(readHistory
-            ? { completionContext: undefined, plannerQueryTokensRestored: true }
+            ? {
+                completionContext: undefined,
+                backgroundHistory: undefined,
+                plannerQueryTokensRestored: true,
+              }
             : {}),
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
