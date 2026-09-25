@@ -88,6 +88,14 @@ class CanvasPlugin : Plugin() {
         private val drawPaint = Paint()
         var touchHandler: ((String, List<TouchInfo>) -> Unit)? = null
         var acceptsTouch: Boolean = false
+        private var activeTouches: List<TouchInfo> = emptyList()
+
+        fun cancelActiveTouch() {
+            if (activeTouches.isEmpty()) return
+            val touches = activeTouches
+            activeTouches = emptyList()
+            touchHandler?.invoke("cancel", touches)
+        }
 
         data class TouchInfo(
             val id: Int, val x: Float, val y: Float, val pressure: Float?
@@ -135,6 +143,8 @@ class CanvasPlugin : Plugin() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (!acceptsTouch) return false
+            // Removing a view can also produce a framework cancel after our explicit one.
+            if (event.actionMasked == MotionEvent.ACTION_CANCEL && activeTouches.isEmpty()) return true
             val type = when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> "start"
                 MotionEvent.ACTION_MOVE -> "move"
@@ -155,6 +165,11 @@ class CanvasPlugin : Plugin() {
                 )
             }
 
+            activeTouches = when (event.actionMasked) {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> emptyList()
+                MotionEvent.ACTION_POINTER_UP -> touches.filterIndexed { index, _ -> index != event.actionIndex }
+                else -> touches
+            }
             touchHandler?.invoke(type, touches)
             return true
         }
@@ -1283,13 +1298,21 @@ class CanvasPlugin : Plugin() {
             call.reject("Missing canvasId")
             return
         }
-        val enabled = call.getBoolean("enabled") ?: false
+        val enabled = call.data.opt("enabled") as? Boolean ?: run {
+            call.reject("enabled must be a boolean", "INVALID_ARGUMENT")
+            return
+        }
         val canvas = canvases[canvasId] ?: run {
             call.reject("Canvas not found")
             return
         }
 
         activity.runOnUiThread {
+            if (canvas.touchEnabled == enabled) {
+                call.resolve()
+                return@runOnUiThread
+            }
+            if (!enabled) cancelCanvasTouches(canvas)
             canvas.touchEnabled = enabled
             configureTouch(canvas)
             sortLayers(canvas)
@@ -2055,12 +2078,22 @@ class CanvasPlugin : Plugin() {
     private fun ownedViews(canvas: ManagedCanvas): List<View> =
         listOfNotNull(canvas.webView, canvas.view) + canvas.layers.values.sortedBy { it.zIndex }.map { it.view }
 
+    private fun cancelCanvasTouches(canvas: ManagedCanvas) {
+        canvas.view.cancelActiveTouch()
+        canvas.layers.values.forEach { it.view.cancelActiveTouch() }
+    }
+
     private fun detachCanvasViews(canvas: ManagedCanvas) {
+        cancelCanvasTouches(canvas)
         ownedViews(canvas).forEach { (it.parent as? ViewGroup)?.removeView(it) }
     }
 
     private fun placeCanvasViews(canvas: ManagedCanvas, parent: ViewGroup) {
         val views = ownedViews(canvas)
+        val existingFirst = if (canvas.touchEnabled) parent.childCount - views.size else 0
+        if (existingFirst >= 0 && views.withIndex().all { (index, view) ->
+                view.parent === parent && parent.getChildAt(existingFirst + index) === view
+            }) return
         detachCanvasViews(canvas)
         val first = if (canvas.touchEnabled) parent.childCount else 0
         views.forEachIndexed { index, view ->

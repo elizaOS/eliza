@@ -212,6 +212,93 @@ class CanvasLifecycleInstrumentedTest {
         }
     }
 
+    @Test fun disablingDetachingOrDestroyingCancelsAnActiveGestureExactlyOnce() {
+        val results = JSONArray()
+        for (operation in listOf("disable", "detach", "destroy")) {
+            ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+                val id = create(scenario)
+                val target = JSONObject().put("canvasId", id)
+                success(scenario, "attach", target)
+                success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", true))
+                evaluate(scenario, "window.gestureEvents=[];window.gestureListener=window.Capacitor.addListener('ElizaCanvas','touch',event=>window.gestureEvents.push(event))")
+                val origin = IntArray(2)
+                scenario.onActivity { it.bridge.webView.getLocationOnScreen(origin) }
+                val downTime = SystemClock.uptimeMillis()
+                fun inject(action: Int) {
+                    val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, origin[0]+20f, origin[1]+40f, 0)
+                    event.source = InputDevice.SOURCE_TOUCHSCREEN
+                    try { assertTrue(InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+                }
+                inject(MotionEvent.ACTION_DOWN)
+                try {
+                    waitFor(scenario, "window.gestureEvents.length > 0")
+                    if (operation == "disable") success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", false))
+                    else success(scenario, operation, target)
+                    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                } finally { inject(MotionEvent.ACTION_UP) }
+                SystemClock.sleep(100)
+                val events = JSONArray(JSONTokener(evaluate(scenario, "JSON.stringify(window.gestureEvents)")).nextValue() as String)
+                results.put(JSONObject().put("operation", operation).put("events", events))
+                evaluate(scenario, "window.gestureListener.remove()")
+                if (operation != "destroy") success(scenario, "destroy", target)
+            }
+        }
+        receipt("canvas-gesture-cancellation.json", JSONObject().put("cases", results))
+        for (index in 0 until results.length()) {
+            val entry = results.getJSONObject(index)
+            val events = entry.getJSONArray("events")
+            assertEquals("${entry.getString("operation")} must emit exactly start/cancel", 2, events.length())
+            assertEquals("start", events.getJSONObject(0).getString("type"))
+            assertEquals("cancel", events.getJSONObject(1).getString("type"))
+            val last = events.getJSONObject(1).getJSONArray("touches").getJSONObject(0)
+            assertEquals(20.0, last.getDouble("x"), 0.01)
+            assertEquals(40.0, last.getDouble("y"), 0.01)
+        }
+    }
+
+    @Test fun malformedTouchSettingsRejectAndRepeatedEnablePreservesGesture() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            val id = create(scenario)
+            val target = JSONObject().put("canvasId", id)
+            success(scenario, "attach", target)
+            success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", true))
+            evaluate(scenario, "window.gestureEvents=[];window.gestureListener=window.Capacitor.addListener('ElizaCanvas','touch',event=>window.gestureEvents.push(event))")
+            val origin = IntArray(2)
+            scenario.onActivity { it.bridge.webView.getLocationOnScreen(origin) }
+            val downTime = SystemClock.uptimeMillis()
+            fun inject(action: Int) {
+                val event=MotionEvent.obtain(downTime,SystemClock.uptimeMillis(),action,origin[0]+20f,origin[1]+40f,0)
+                event.source=InputDevice.SOURCE_TOUCHSCREEN
+                try { assertTrue(InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(event,true)) } finally {event.recycle()}
+            }
+            val invalid=JSONArray()
+            inject(MotionEvent.ACTION_DOWN)
+            try {
+                waitFor(scenario,"window.gestureEvents.length > 0")
+                for (value in listOf<Any?>(null,JSONObject.NULL,"true",1,JSONObject(),JSONArray())) {
+                    val args=JSONObject().put("canvasId",id)
+                    if(value!=null) args.put("enabled",value)
+                    invalid.put(JSONObject().put("args",args).put("reply",call(scenario,"setTouchEnabled",args)))
+                }
+                success(scenario,"setTouchEnabled",JSONObject().put("canvasId",id).put("enabled",true))
+                success(scenario,"attach",target)
+            } finally {inject(MotionEvent.ACTION_UP)}
+            SystemClock.sleep(100)
+            val events=JSONArray(JSONTokener(evaluate(scenario,"JSON.stringify(window.gestureEvents)")).nextValue() as String)
+            receipt("canvas-touch-setting-validation.json",JSONObject().put("invalid",invalid).put("events",events))
+            evaluate(scenario,"window.gestureListener.remove()")
+            success(scenario,"destroy",target)
+            for(index in 0 until invalid.length()) {
+                val reply=invalid.getJSONObject(index).getJSONObject("reply")
+                assertFalse(reply.toString(),reply.getBoolean("ok"))
+                assertEquals("INVALID_ARGUMENT",reply.getString("code"))
+            }
+            assertEquals(2,events.length())
+            assertEquals("start",events.getJSONObject(0).getString("type"))
+            assertEquals("end",events.getJSONObject(1).getString("type"))
+        }
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
