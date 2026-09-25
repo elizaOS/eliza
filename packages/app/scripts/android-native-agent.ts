@@ -14,7 +14,20 @@ import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const embedding = process.argv.includes("--embedding");
-const scenario = embedding ? "native embedding" : "native agent lifecycle";
+const speech = process.argv.includes("--speech-model-dir");
+const speechModelDir = speech
+  ? process.argv[process.argv.indexOf("--speech-model-dir") + 1]
+  : undefined;
+if (speech && (!speechModelDir || speechModelDir.startsWith("--") || embedding))
+  throw new Error(
+    "Pass --speech-model-dir <pinned-kokoro-directory> separately from --embedding",
+  );
+const nativeInference = embedding || speech;
+const scenario = embedding
+  ? "native embedding"
+  : speech
+    ? "native speech transport and PCM diagnostics"
+    : "native agent lifecycle";
 const serial = process.argv[process.argv.indexOf("--serial") + 1];
 if (!process.argv.includes("--serial") || !serial)
   throw new Error(
@@ -60,8 +73,17 @@ const report = {
   startedAt: new Date().toISOString(),
   builtFromCheckout: true,
   scenario,
-  fixture: embedding
-    ? "Production framed inference host, JNI encoder and APK-packaged BGE model"
+  ...(speech
+    ? {
+        speechQualification: {
+          scope: "transport, finite PCM, input rejection and resident reload",
+          intelligibility: "unqualified",
+          unresolvedIssue: "https://github.com/elizaOS/eliza/issues/30679",
+        },
+      }
+    : {}),
+  fixture: nativeInference
+    ? "Production native inference host and APK-packaged model artifacts"
     : "Minimal WebView page; production MainActivity, Agent library and ElizaAgentService",
   pass: false,
   problems: [],
@@ -78,10 +100,10 @@ try {
     throw new Error("This host lane currently requires an x86_64 emulator");
   if (adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim())
     throw new Error("Refusing to replace an existing Eliza installation");
-  if (embedding) {
+  if (nativeInference) {
     if (process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1")
       throw new Error(
-        "Embedding requires the native library; unset ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB",
+        "Native inference requires the native library; unset ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB",
       );
     for (const abi of ["arm64-v8a", "x86_64"]) {
       logged(
@@ -115,6 +137,17 @@ try {
     stagingLog.join("\n"),
   );
   const assets = path.join(stage, "app/src/main/assets");
+  const voiceAssets = path.join(assets, "agent/models/voice");
+  fs.rmSync(voiceAssets, { recursive: true, force: true });
+  if (speech && speechModelDir) {
+    fs.mkdirSync(voiceAssets, { recursive: true });
+    for (const name of ["kokoro-82m-v1_0.gguf", "af_sam.bin"]) {
+      fs.copyFileSync(
+        path.join(speechModelDir, name),
+        path.join(voiceAssets, name),
+      );
+    }
+  }
   report.agentBundleSha256 = hash(path.join(assets, "agent/agent-bundle.js"));
   report.deviceFingerprint = adb(
     "shell",
@@ -198,7 +231,10 @@ try {
   adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
   adb("shell", "wm", "dismiss-keyguard");
   // This helper is restricted to this disposable, debuggable emulator and root.
-  if (!embedding && adb("shell", "getprop", "ro.debuggable").trim() === "1") {
+  if (
+    !nativeInference &&
+    adb("shell", "getprop", "ro.debuggable").trim() === "1"
+  ) {
     try {
       if (adb("shell", "su", "0", "id", "-u").trim() !== "0")
         throw new Error("root unavailable");
@@ -260,7 +296,9 @@ try {
       "class",
       embedding
         ? "ai.elizaos.app.BionicEmbeddingInstrumentedTest,ai.elizaos.app.CapacitorBgeInstrumentedTest"
-        : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
+        : speech
+          ? "ai.elizaos.app.BionicSpeechInstrumentedTest"
+          : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
       "ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner",
     ],
     360000,
@@ -284,6 +322,12 @@ try {
     ]) {
       if (!report.artifacts.some((artifact) => artifact.path === name))
         report.problems.push(`Missing complete embedding proof: ${name}`);
+    }
+  }
+  if (speech) {
+    for (const name of ["bionic-speech-proof.json", "bionic-speech.wav"]) {
+      if (!report.artifacts.some((artifact) => artifact.path === name))
+        report.problems.push(`Missing complete speech proof: ${name}`);
     }
   }
   report.pass = parsed.pass && report.problems.length === 0;
