@@ -87,6 +87,7 @@ class CanvasPlugin : Plugin() {
         private var drawCanvas: Canvas = Canvas(bitmap)
         private val drawPaint = Paint()
         var touchHandler: ((String, List<TouchInfo>) -> Unit)? = null
+        var acceptsTouch: Boolean = false
 
         data class TouchInfo(
             val id: Int, val x: Float, val y: Float, val pressure: Float?
@@ -133,6 +134,7 @@ class CanvasPlugin : Plugin() {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (!acceptsTouch) return false
             val type = when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> "start"
                 MotionEvent.ACTION_MOVE -> "move"
@@ -205,14 +207,8 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             canvases[canvasId]?.let { canvas ->
-                canvas.webView?.let { wv ->
-                    wv.destroy()
-                    (wv.parent as? ViewGroup)?.removeView(wv)
-                }
-                (canvas.view.parent as? ViewGroup)?.removeView(canvas.view)
-                canvas.layers.values.forEach { layer ->
-                    (layer.view.parent as? ViewGroup)?.removeView(layer.view)
-                }
+                detachCanvasViews(canvas)
+                canvas.webView?.destroy()
             }
             canvases.remove(canvasId)
             call.resolve()
@@ -234,51 +230,15 @@ class CanvasPlugin : Plugin() {
         }
 
         activity.runOnUiThread {
-            val webView = bridge.webView
-            val parent = webView?.parent as? ViewGroup
-
-            if (parent != null) {
-                canvas.view.layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-
-                parent.addView(canvas.view, 0)
-                webView.setBackgroundColor(Color.TRANSPARENT)
-
-                // If a web canvas exists, ensure it's also in the hierarchy.
-                canvas.webView?.let { wv ->
-                    if (wv.parent == null) {
-                        wv.layoutParams = FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT
-                        )
-                        parent.addView(wv, 0)
-                    }
-                }
-
-                // Set up touch handler.
-                canvas.view.touchHandler = { type, touches ->
-                    if (canvas.touchEnabled) {
-                        val touchArray = JSArray()
-                        touches.forEach { touch ->
-                            touchArray.put(JSObject().apply {
-                                put("id", touch.id)
-                                put("x", touch.x.toDouble())
-                                put("y", touch.y.toDouble())
-                                touch.pressure?.let { put("force", it.toDouble()) }
-                            })
-                        }
-
-                        notifyListeners("touch", JSObject().apply {
-                            put("type", type)
-                            put("touches", touchArray)
-                            put("timestamp", System.currentTimeMillis())
-                        })
-                    }
-                }
+            val host = bridge.webView
+            val parent = host.parent as? ViewGroup
+            if (parent == null) {
+                call.reject("Canvas host is detached", "HOST_UNAVAILABLE")
+                return@runOnUiThread
             }
-
+            configureTouch(canvas)
+            placeCanvasViews(canvas, parent)
+            host.setBackgroundColor(Color.TRANSPARENT)
             call.resolve()
         }
     }
@@ -289,14 +249,12 @@ class CanvasPlugin : Plugin() {
             call.reject("Missing canvasId")
             return
         }
-
         val canvas = canvases[canvasId] ?: run {
             call.reject("Canvas not found")
             return
         }
-
         activity.runOnUiThread {
-            (canvas.view.parent as? ViewGroup)?.removeView(canvas.view)
+            detachCanvasViews(canvas)
             call.resolve()
         }
     }
@@ -403,8 +361,7 @@ class CanvasPlugin : Plugin() {
             val layer = ManagedLayer(layerId, name, visible, opacity, zIndex, view)
             canvas.layers[layerId] = layer
 
-            val parent = canvas.view.parent as? ViewGroup
-            parent?.addView(view)
+            configureTouch(canvas)
             sortLayers(canvas)
 
             call.resolve(JSObject().apply {
@@ -1334,7 +1291,8 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             canvas.touchEnabled = enabled
-            canvas.view.isClickable = enabled
+            configureTouch(canvas)
+            sortLayers(canvas)
             call.resolve()
         }
     }
@@ -1748,8 +1706,7 @@ class CanvasPlugin : Plugin() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            val parent = canvas.view.parent as? ViewGroup
-            parent?.addView(wv, 0)
+            sortLayers(canvas)
             canvas.view.setBackgroundColor(Color.TRANSPARENT)
         }
 
@@ -2095,14 +2052,54 @@ class CanvasPlugin : Plugin() {
 
     // ---- Layer Sorting ----
 
+    private fun ownedViews(canvas: ManagedCanvas): List<View> =
+        listOfNotNull(canvas.webView, canvas.view) + canvas.layers.values.sortedBy { it.zIndex }.map { it.view }
+
+    private fun detachCanvasViews(canvas: ManagedCanvas) {
+        ownedViews(canvas).forEach { (it.parent as? ViewGroup)?.removeView(it) }
+    }
+
+    private fun placeCanvasViews(canvas: ManagedCanvas, parent: ViewGroup) {
+        val views = ownedViews(canvas)
+        detachCanvasViews(canvas)
+        val first = if (canvas.touchEnabled) parent.childCount else 0
+        views.forEachIndexed { index, view ->
+            if (view !== canvas.webView) {
+                view.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            parent.addView(view, first + index)
+        }
+    }
+
+    private fun configureTouch(canvas: ManagedCanvas) {
+        val surfaces = listOf(canvas.view) + canvas.layers.values.map { it.view }
+        surfaces.forEach { view ->
+            view.acceptsTouch = canvas.touchEnabled
+            view.isClickable = canvas.touchEnabled
+            view.touchHandler = { type, touches ->
+                if (canvas.touchEnabled) {
+                    val values = JSArray()
+                    touches.forEach { touch ->
+                        values.put(JSObject().apply {
+                            put("id", touch.id)
+                            put("x", touch.x.toDouble())
+                            put("y", touch.y.toDouble())
+                            touch.pressure?.let { put("force", it.toDouble()) }
+                        })
+                    }
+                    notifyListeners("touch", JSObject().apply {
+                        put("type", type)
+                        put("touches", values)
+                        put("timestamp", System.currentTimeMillis())
+                    })
+                }
+            }
+        }
+    }
+
     private fun sortLayers(canvas: ManagedCanvas) {
         val parent = canvas.view.parent as? ViewGroup ?: return
-        val sorted = canvas.layers.values.sortedBy { it.zIndex }
-        sorted.forEachIndexed { index, layer ->
-            parent.removeView(layer.view)
-            // Offset by 1 if web view is at index 0 inside canvas.view.
-            parent.addView(layer.view, index + 1)
-        }
+        placeCanvasViews(canvas, parent)
     }
 
     // ---- Lifecycle ----
@@ -2110,11 +2107,8 @@ class CanvasPlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         canvases.values.forEach { canvas ->
+            detachCanvasViews(canvas)
             canvas.webView?.destroy()
-            (canvas.view.parent as? ViewGroup)?.removeView(canvas.view)
-            canvas.layers.values.forEach { layer ->
-                (layer.view.parent as? ViewGroup)?.removeView(layer.view)
-            }
         }
         standaloneWebCanvas?.let { canvas ->
             canvas.webDialog?.setOnDismissListener(null)

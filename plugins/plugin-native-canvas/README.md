@@ -30,3 +30,8 @@ Existing explicit `canvasId` calls remain isolated. Inline content sits behind t
 host WebView; fullscreen sits above it; popup uses a native dialog. Wait for
 `webViewReady` before using page content. Snapshot supports PNG/JPEG/WebP and
 rejects invalid options or an unlaid view. A2UI requires the page's runtime host.
+
+Android attachment owns the base, layers, and embedded WebView together. Detach
+removes that group; reattach preserves its contents and layer order. Enabling
+touch places the drawing surfaces above the host; disabling it returns input to
+the host. Repeated attachment does not add duplicate views.
