@@ -19,6 +19,9 @@ Host configuration is exported from the root as well. `AppMemoryConfig` and
 names configuration UI patches. `getAppBootConfigEnvAliases` and
 `resolveAppAliasedEnvValue` retain the host store's initialization behavior.
 
+Event names, payload contracts, and navigation-frame normalization are exported
+from the root. DOM event creation and dispatch belong to the UI host.
+
 HTTP contracts and explicit host helpers are available from the root. Hosts still
 install their route lifecycle explicitly. `AgentStreamEventType` and `AgentLogEntry`
 name HTTP DTOs; `StreamEventType` and `LogEntry` keep their runtime meanings.
