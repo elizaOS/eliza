@@ -127,6 +127,15 @@ class NativeBridgeInstrumentedTest {
             }
             return
         }
+        if (descriptor.getString("directory") == "plugin-native-contacts") {
+            ContactsImportFixture(context).use { fixture ->
+                descriptor.put("contactsFixture", fixture.descriptor)
+                runContract(descriptor, script) { result ->
+                    fixture.verifyImported(result.getJSONObject("contacts").getJSONObject("imported").getJSONArray("imported"))
+                }
+            }
+            return
+        }
         val phoneFixture = if (descriptor.getString("directory") == "plugin-native-phone") PhoneCallLogFixture(context) else null
         try {
             phoneFixture?.let { descriptor.put("phoneFixture", it.descriptor) }
@@ -139,7 +148,7 @@ class NativeBridgeInstrumentedTest {
         }
     }
 
-    private fun runContract(descriptor: JSONObject, script: String) {
+    private fun runContract(descriptor: JSONObject, script: String, verifyResult: (JSONObject) -> Unit = {}) {
         ActivityScenario.launch(NativeBridgeTestActivity::class.java).use { scenario ->
             scenario.moveToState(Lifecycle.State.RESUMED)
             assertEquals("Bridge host must be foregrounded", Lifecycle.State.RESUMED, scenario.state)
@@ -161,6 +170,14 @@ class NativeBridgeInstrumentedTest {
                         result.put("canvas", JSONObject(JSONTokener(evidence).nextValue() as String))
                         InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
                             putString("nativeArtifactName", "canvas-pixels.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
+                    if (descriptor.has("contactsFixture")) {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeContactsEvidence)")
+                        result.put("contacts", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "contacts-import-bridge.json")
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
                         })
                     }
@@ -200,6 +217,7 @@ class NativeBridgeInstrumentedTest {
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
                         })
                     }
+                    verifyResult(result)
                     return
                 }
                 Thread.sleep(30)

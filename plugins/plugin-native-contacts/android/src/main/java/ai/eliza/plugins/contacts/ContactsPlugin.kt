@@ -299,11 +299,12 @@ class ContactsPlugin : Plugin() {
             val separator = line.indexOf(':')
             if (separator <= 0) continue
             val key = line.substring(0, separator).substringBefore(';').uppercase()
-            val value = decodeVCardValue(line.substring(separator + 1)).trim()
+            val rawValue = line.substring(separator + 1)
+            val value = decodeVCardValue(rawValue).trim()
             if (value.isEmpty()) continue
             when (key) {
                 "FN" -> fullName = value
-                "N" -> structuredName = structuredNameToDisplayName(value)
+                "N" -> structuredName = structuredNameToDisplayName(rawValue)
                 "TEL" -> phoneNumbers.add(value)
                 "EMAIL" -> emailAddresses.add(value)
             }
@@ -318,7 +319,20 @@ class ContactsPlugin : Plugin() {
     }
 
     private fun structuredNameToDisplayName(value: String): String {
-        val parts = value.split(';').map { decodeVCardValue(it).trim() }
+        // Split before decoding: escaped semicolons belong to a name component.
+        val parts = mutableListOf<String>()
+        val component = StringBuilder()
+        var escaped = false
+        for (character in value) {
+            if (character == ';' && !escaped) {
+                parts.add(decodeVCardValue(component.toString()).trim())
+                component.setLength(0)
+            } else {
+                component.append(character)
+                escaped = if (escaped) false else character == '\\'
+            }
+        }
+        parts.add(decodeVCardValue(component.toString()).trim())
         val family = parts.getOrNull(0).orEmpty()
         val given = parts.getOrNull(1).orEmpty()
         val additional = parts.getOrNull(2).orEmpty()
@@ -330,12 +344,24 @@ class ContactsPlugin : Plugin() {
     }
 
     private fun decodeVCardValue(value: String): String {
-        return value
-            .replace("\\n", "\n")
-            .replace("\\N", "\n")
-            .replace("\\,", ",")
-            .replace("\\;", ";")
-            .replace("\\\\", "\\")
+        // Decode each escape once. Chained replacements corrupt a literal
+        // backslash followed by n into a newline (RFC 6350 section 3.4).
+        val decoded = StringBuilder()
+        var index = 0
+        while (index < value.length) {
+            val character = value[index++]
+            if (character != '\\' || index == value.length) {
+                decoded.append(character)
+                continue
+            }
+            val escaped = value[index++]
+            when (escaped) {
+                'n', 'N' -> decoded.append('\n')
+                '\\', ',', ';' -> decoded.append(escaped)
+                else -> decoded.append('\\').append(escaped)
+            }
+        }
+        return decoded.toString()
     }
 
     private data class ParsedVCard(
