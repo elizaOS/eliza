@@ -5,6 +5,7 @@
  * verified command results.
  */
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
   copyRemoteCommandBinding,
@@ -475,6 +476,14 @@ export async function desktopCreateRemoteCommand(
       .digest("base64url");
     const sequences = { ...(stored.sessionSequences ?? {}) };
     const previous = sequences[record.sessionId as string];
+    if (
+      !previous &&
+      Object.keys(sequences).length >= MAX_STORED_REMOTE_SESSIONS
+    ) {
+      throw new ElizaError("Remote controller session capacity is exhausted.", {
+        code: "REMOTE_CONTROLLER_SESSION_CAPACITY",
+      });
+    }
     const payload = asRemoteJsonValue(record.payload);
     const requestDigest = createHash("sha256")
       .update(
