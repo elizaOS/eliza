@@ -28,7 +28,10 @@ async function createIdentityTables(client: PGlite) {
 		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),agent_id uuid NOT NULL,
 		entity_a uuid NOT NULL,entity_b uuid NOT NULL,confidence real NOT NULL,
 		evidence jsonb,status text NOT NULL,proposed_at timestamptz DEFAULT now(),resolved_at timestamptz
-	)`);
+	);
+	CREATE UNIQUE INDEX uniq_entity_merge_candidates_pending_pair
+		ON entity_merge_candidates (agent_id, entity_a, entity_b)
+		WHERE status = 'pending'`);
 }
 
 describe("Identity ownership at the SQL write boundary", () => {

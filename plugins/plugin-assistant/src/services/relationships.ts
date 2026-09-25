@@ -2642,10 +2642,8 @@ export class RelationshipsService extends Service {
     const agent = sqlQuote(this.runtime.agentId);
     const a = sqlQuote(entityA);
     const b = sqlQuote(entityB);
-    let inserted: { rows: Record<string, unknown>[] };
-    try {
-      inserted = await this.execSql(
-        `INSERT INTO entity_merge_candidates (
+    const inserted = await this.execSql(
+      `INSERT INTO entity_merge_candidates (
 					agent_id, entity_a, entity_b, confidence, evidence, status
 				) VALUES (
 					${agent},
@@ -2658,21 +2656,7 @@ export class RelationshipsService extends Service {
 				ON CONFLICT (agent_id, entity_a, entity_b) WHERE (status = 'pending')
 				DO NOTHING
 				RETURNING id`,
-      );
-    } catch (error) {
-      // error-policy:J3 unique-index races or older catalogs without the
-      // partial unique index still resolve to the existing pending row.
-      inserted = { rows: [] };
-      logger.debug(
-        {
-          src: "service:relationships",
-          error,
-          entityA,
-          entityB,
-        },
-        "proposeMerge insert collided; reading the pending pair",
-      );
-    }
+    );
     const insertedId = inserted.rows[0]?.id;
     if (typeof insertedId === "string" && insertedId.length > 0) {
       logger.info(
@@ -2719,9 +2703,8 @@ export class RelationshipsService extends Service {
    * Applies a pending merge candidate: folds `entity_b` into `entity_a` and
    * marks the row accepted. Throws `RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND`
    * for an unknown id and `RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED`
-   * once the candidate is accepted or rejected. A repeated accept is not
-   * treated as idempotent success: the caller learns the row was already
-   * resolved instead of receiving a fabricated fresh acceptance.
+   * when the candidate was rejected. Repeating an accepted resolution is
+   * idempotent and does not replay merge side effects.
    */
   async acceptMerge(candidateId: UUID): Promise<void> {
     // Claim the pending row before folding identities so a concurrent
@@ -2743,7 +2726,6 @@ export class RelationshipsService extends Service {
       );
       const claimedRow = claimed.rows[0];
       if (!claimedRow) {
-        await this.execSql("ROLLBACK");
         const existing = await this.execSql(
           `SELECT status
 					 FROM entity_merge_candidates
@@ -2754,10 +2736,14 @@ export class RelationshipsService extends Service {
         if (!existingRow) {
           throw mergeCandidateNotFoundError(candidateId);
         }
-        throw mergeCandidateAlreadyResolvedError(
-          candidateId,
-          normalizeMergeCandidateStatus(existingRow.status),
+        const existingStatus = normalizeMergeCandidateStatus(
+          existingRow.status,
         );
+        if (existingStatus === "accepted") {
+          await this.execSql("ROLLBACK");
+          return;
+        }
+        throw mergeCandidateAlreadyResolvedError(candidateId, existingStatus);
       }
       candidate = parseMergeCandidateRow(claimedRow);
       const a = sqlQuote(candidate.entityA);
@@ -2906,9 +2892,9 @@ export class RelationshipsService extends Service {
   /**
    * Marks a pending merge candidate rejected. Throws
    * `RELATIONSHIPS_MERGE_CANDIDATE_NOT_FOUND` for an unknown id and
-   * `RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED` when the row is no
-   * longer pending, so an applied merge can never be relabelled as rejected
-   * while the folded graph stays in place.
+   * `RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED` when the row was accepted,
+   * so an applied merge can never be relabelled as rejected while the folded
+   * graph stays in place. Repeating a rejected resolution is idempotent.
    */
   async rejectMerge(candidateId: UUID): Promise<void> {
     const candidateLiteral = sqlQuote(candidateId);
@@ -2924,7 +2910,10 @@ export class RelationshipsService extends Service {
       throw mergeCandidateNotFoundError(candidateId);
     }
     const status = normalizeMergeCandidateStatus(row.status);
-    if (status !== "pending") {
+    if (status === "rejected") {
+      return;
+    }
+    if (status === "accepted") {
       throw mergeCandidateAlreadyResolvedError(candidateId, status);
     }
     // The status guard on the UPDATE closes the window between the read
@@ -2948,10 +2937,11 @@ export class RelationshipsService extends Service {
       if (!racedRow) {
         throw mergeCandidateNotFoundError(candidateId);
       }
-      throw mergeCandidateAlreadyResolvedError(
-        candidateId,
-        normalizeMergeCandidateStatus(racedRow.status),
-      );
+      const racedStatus = normalizeMergeCandidateStatus(racedRow.status);
+      if (racedStatus === "rejected") {
+        return;
+      }
+      throw mergeCandidateAlreadyResolvedError(candidateId, racedStatus);
     }
     logger.info(`[RelationshipsService] Rejected merge ${candidateId}`);
     this.graphServiceInstance = null;

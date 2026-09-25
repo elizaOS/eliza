@@ -5,7 +5,7 @@ DELETE FROM entity_merge_candidates AS newer
 		AND newer.agent_id = older.agent_id
 		AND newer.entity_a = older.entity_a
 		AND newer.entity_b = older.entity_b
-		AND newer.id > older.id;
+		AND (newer.proposed_at, newer.id) > (older.proposed_at, older.id);
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "uniq_entity_merge_candidates_pending_pair"
 	ON "entity_merge_candidates" USING btree ("agent_id", "entity_a", "entity_b")

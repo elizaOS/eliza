@@ -162,7 +162,7 @@ describe("RelationshipsService merge candidate status guards", () => {
     expect(await service.getEntityIdentities(SECONDARY)).toHaveLength(1);
   });
 
-  it("rejectMerge resolves a pending candidate exactly once", async () => {
+  it("rejectMerge is idempotent after resolving a pending candidate", async () => {
     const candidate = await service.proposeMerge(PRIMARY, SECONDARY, {
       platform: "github",
       handle: "example",
@@ -170,15 +170,8 @@ describe("RelationshipsService merge candidate status guards", () => {
     await service.rejectMerge(candidate);
     expect(await service.getCandidateMerges()).toEqual([]);
 
-    const error = await service.rejectMerge(candidate).then(
-      () => undefined,
-      (reason: unknown) => reason,
-    );
-    expectMergeCandidateError(
-      error,
-      RELATIONSHIPS_MERGE_CANDIDATE_ALREADY_RESOLVED,
-      { candidateId: candidate, status: "rejected" },
-    );
+    await expect(service.rejectMerge(candidate)).resolves.toBeUndefined();
+    expect(await candidateStatus(client, candidate)).toBe("rejected");
   });
 
   it("proposeMerge throws SAME_ENTITY when both ids are equal", async () => {
