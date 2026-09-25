@@ -126,6 +126,16 @@ try {
     path.join(fixture, "__fixtures__/index.html"),
     path.join(assets, "public/index.html"),
   );
+  if (embedding) {
+    fs.copyFileSync(
+      path.join(root, "node_modules/@capacitor/core/dist/capacitor.js"),
+      path.join(assets, "public/capacitor.js"),
+    );
+    fs.writeFileSync(
+      path.join(assets, "public/index.html"),
+      '<!doctype html><html><head><script src="/capacitor.js"></script></head><body>Android embedding verification</body></html>',
+    );
+  }
   fs.writeFileSync(
     path.join(assets, "capacitor.config.json"),
     JSON.stringify({
@@ -249,13 +259,13 @@ try {
       "-e",
       "class",
       embedding
-        ? "ai.elizaos.app.BionicEmbeddingInstrumentedTest"
+        ? "ai.elizaos.app.BionicEmbeddingInstrumentedTest,ai.elizaos.app.CapacitorBgeInstrumentedTest"
         : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
       "ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner",
     ],
     360000,
   );
-  const parsed = parseInstrumentation(result, 1);
+  const parsed = parseInstrumentation(result, embedding ? 2 : 1);
   report.tests = parsed.tests;
   report.problems.push(...parsed.problems);
   for (const artifact of parseNativeArtifacts(result)) {
@@ -267,13 +277,15 @@ try {
       sha256: hash(file),
     });
   }
-  if (
-    embedding &&
-    !report.artifacts.some(
-      (artifact) => artifact.path === "bionic-embedding-proof.json",
-    )
-  )
-    report.problems.push("Missing complete native embedding proof");
+  if (embedding) {
+    for (const name of [
+      "bionic-embedding-proof.json",
+      "capacitor-embedding-proof.json",
+    ]) {
+      if (!report.artifacts.some((artifact) => artifact.path === name))
+        report.problems.push(`Missing complete embedding proof: ${name}`);
+    }
+  }
   report.pass = parsed.pass && report.problems.length === 0;
 } catch (error) {
   report.problems.push(String(error));
@@ -292,6 +304,8 @@ try {
           "TestRunner:I",
           "BionicEmbeddingProof:I",
           "ElizaVoiceNative:V",
+          "Capacitor:V",
+          "Capacitor/Plugin:V",
           "ElizaBionicInference:V",
         ),
       );

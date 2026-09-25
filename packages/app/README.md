@@ -79,4 +79,6 @@ against the BGE model packaged in the APK. This builds CPU libraries for ARM64
 and x86_64, requires the pinned llama.cpp submodule and Android NDK, and rejects
 `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1`. It checks complete Unicode input, typed
 oversize/artifact rejection, release/reload, and 30 warm requests; the report
-exports the complete 384-dimensional vector and timing evidence.
+exports complete 384-dimensional vectors and timing evidence. It also exercises
+the registered Capacitor BGE bridge from a real WebView, including tokenization,
+embedding, admission rejection, and context release.
