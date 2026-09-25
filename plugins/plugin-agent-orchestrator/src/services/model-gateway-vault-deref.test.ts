@@ -1,8 +1,7 @@
 /**
  * Regression coverage for the vault-sentinel gateway-token leak.
  *
- * Root cause (see /home/shad0w/.moltbot/projects/sol-migration/
- * CODEAGENT-PILLAR-2026-09-24.md): the host's vault-bootstrap rewrites secret
+ * Root cause: the host's vault-bootstrap rewrites secret
  * config keys (incl. `ELIZA_MODEL_GATEWAY_TOKEN`) to `vault://<key>` sentinels.
  * `resolveModelGatewayConfig()` reads that value verbatim, so before this fix
  * the literal string `vault://ELIZA_MODEL_GATEWAY_TOKEN` was injected as the
