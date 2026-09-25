@@ -98,6 +98,9 @@ export function postToolEvaluatorFixture(spec: {
         const discovery = calls[0];
         const receipt = results[0];
         if (
+          discovery.type !== "tool-call" ||
+          receipt.type !== "tool-result" ||
+          typeof discovery.toolCallId !== "string" ||
           discovery.toolName !== "DISCOVER_ACTIONS" ||
           canonical(discovery.input) !==
             canonical({
