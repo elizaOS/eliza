@@ -621,6 +621,9 @@ async function startTranscriptionViaTypedCommand(page: Page): Promise<void> {
   await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.getByTestId("chat-transcribing-badge")).toBeInViewport({
+    ratio: 1,
+  });
   await page.screenshot({
     path: test.info().outputPath("typed-transcription-active.png"),
     fullPage: true,

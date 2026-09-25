@@ -707,28 +707,21 @@ function ComposerMicActivity({
         className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2"
       />
       {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
-        <Card
-          asChild
-          surface="inverseForeground"
-          border="none"
-          radius="full"
+        <span
           key={id}
-        >
-          <span
-            // Stable bar ids keep imperative analyser writes independent of React.
-            ref={(node) => {
-              barsRef.current[index] = node;
-            }}
-            aria-hidden="true"
-            className={cn(
-              "relative z-10 w-0.5 origin-center transition-transform duration-75 sm:w-1",
-              !finishing &&
-                !analyser &&
-                "animate-pulse motion-reduce:animate-none",
-            )}
-            style={{ height, transform: "scaleY(0.32)" }}
-          />
-        </Card>
+          // Stable bar ids keep imperative analyser writes independent of React.
+          ref={(node) => {
+            barsRef.current[index] = node;
+          }}
+          aria-hidden="true"
+          className={cn(
+            "relative z-10 w-0.5 origin-center rounded-full bg-current transition-transform duration-75 sm:w-1",
+            !finishing &&
+              !analyser &&
+              "animate-pulse motion-reduce:animate-none",
+          )}
+          style={{ height, transform: "scaleY(0.32)" }}
+        />
       ))}
     </div>
   );
@@ -6055,7 +6048,7 @@ export function ChatOverlay({
                         variant="statusMuted"
                         size="pill"
                         data-testid="chat-transcribing-badge"
-                        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap"
+                        className="pointer-events-none mx-auto my-1 whitespace-normal text-center"
                       >
                         {transcriptionFinishing
                           ? "Finishing transcription…"
