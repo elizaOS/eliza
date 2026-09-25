@@ -87,6 +87,8 @@ class SystemFlashlightInstrumentedTest {
             for (pkg in listOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")) {
                 val button = root?.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.firstOrNull()
                 if (button != null) {
+                    // Let the system sheet finish animating before capturing its controls.
+                    instrumentation.uiAutomation.waitForIdle(500, 5000)
                     screenshot("flashlight-$id.png")
                     if (button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
                 }
