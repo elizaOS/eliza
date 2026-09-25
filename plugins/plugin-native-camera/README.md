@@ -49,3 +49,9 @@ EV is rounded to the nearest native step; getSettings reports the applied EV.
 Out-of-range requests reject before batch mutation. The original confirmed
 request is retained for rebinds, avoiding drift across cameras with different
 steps. Device tests check completed AE indices, mixed-batch rejection and cancellation.
+
+Android settings-batch zoom uses the same supported ratio range as setZoom and
+waits for native completion before reporting success or caching the ratio.
+Unsupported mixed batches reject before mutation. Confirmed zoom is restored
+before preview restart, camera switch and recording rebind complete. Device tests
+check completed crop/zoom metadata, cancellation and retained white balance/EV.

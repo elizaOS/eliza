@@ -144,6 +144,18 @@ class CameraControlsInstrumentedTest {
                         val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
                         assertEquals(target.toDouble(), settings.getDouble("zoom"), 0.01)
                     }
+                    val batchRatio = initial.minZoomRatio
+                    val batch = call(scenario, "setSettings", "{settings:{zoom:$batchRatio}}")
+                    assertTrue("Standalone batch zoom must succeed: $batch", batch.getBoolean("ok"))
+                    val count = probe.frames.get()
+                    awaitState("Standalone batch zoom must reach completed captures") {
+                        probe.frames.get() >= count + 3 && captureRatio()?.let { kotlin.math.abs(it - batchRatio) < 0.02 } == true
+                    }
+                    val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                    assertEquals(batchRatio.toDouble(), settings.getDouble("zoom"), 0.001)
+                    assertEquals(batchRatio.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.001)
+                    receipts.put(JSONObject().put("stage", "standalone-batch").put("requestedRatio", batchRatio.toDouble())
+                        .put("captureRatio", captureRatio()).put("reportedRatio", settings.getDouble("zoom")).put("result", batch))
                 }
             } finally {
                 call(scenario, "stopPreview")
@@ -211,19 +223,34 @@ class CameraControlsInstrumentedTest {
                 front.exposureState.exposureCompensationRange.upper * front.exposureState.exposureCompensationStep.toDouble())
             val requestedEv = if (back.exposureState.isExposureCompensationSupported && front.exposureState.isExposureCompensationSupported && maximumEv > 0)
                 minOf(back.exposureState.exposureCompensationStep.toDouble() * 0.75, maximumEv) else null
+            val backZoom = requireNotNull(back.zoomState.value)
+            val frontZoom = requireNotNull(front.zoomState.value)
+            val requestedZoom = (maxOf(backZoom.minZoomRatio, frontZoom.minZoomRatio) + minOf(backZoom.maxZoomRatio, frontZoom.maxZoomRatio)) / 2
             fun observed(probe: CaptureProbe, info: CameraInfo, stage: String) {
+                val sensor = requireNotNull(Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE))
+                fun captureZoom(): Double? {
+                    val result = probe.latest.get() ?: return null
+                    val ratio = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) result.get(CaptureResult.CONTROL_ZOOM_RATIO) else null
+                    if (ratio != null && ratio != 1f) return ratio.toDouble()
+                    val crop = result.get(CaptureResult.SCALER_CROP_REGION) ?: return null
+                    return sensor.width().toDouble() / crop.width()
+                }
                 val step = info.exposureState.exposureCompensationStep.toDouble()
                 val count = probe.frames.get()
                 awaitState("$stage must retain $preset in new captures") {
                     val exposureIndex = probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)
-                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode &&
+                    probe.frames.get() >= count + 3 && kotlin.math.abs((captureZoom() ?: 0.0) - requestedZoom) < 0.03 &&
+                        probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode &&
                         (requestedEv == null || (exposureIndex != null && kotlin.math.abs(exposureIndex * step - requestedEv) <= step / 2 + 0.000001))
                 }
                 receipts.put(JSONObject().put("stage", stage).put("preset", preset)
                     .put("actualCamera2Mode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
                     .put("newCaptures", probe.frames.get() - count)
+                    .put("requestedZoom", requestedZoom.toDouble()).put("capturedZoom", captureZoom())
                     .put("requestedEv", requestedEv ?: JSONObject.NULL)
                     .put("actualExposureIndex", probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)))
+                assertEquals(requestedZoom.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.001)
+                assertEquals(requestedZoom.toDouble(), call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("zoom"), 0.001)
                 if (requestedEv != null) {
                     val index = requireNotNull(probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION))
                     assertEquals(index * step, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("exposureCompensation"), 0.000001)
@@ -231,7 +258,7 @@ class CameraControlsInstrumentedTest {
             }
             try {
                 CaptureProbe(back).use { probe ->
-                    val options = JSONObject().put("whiteBalance", preset)
+                    val options = JSONObject().put("whiteBalance", preset).put("zoom", requestedZoom.toDouble())
                     if (requestedEv != null) options.put("exposureCompensation", requestedEv)
                     assertTrue(call(scenario, "setSettings", JSONObject().put("settings", options).toString()).getBoolean("ok"))
                     observed(probe, back, "selected")
@@ -340,6 +367,41 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun settingsZoomRejectsUnsupportedRatioBeforeBatchMutation() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                val info = cameraInfo()
+                val bounds = requireNotNull(info.zoomState.value)
+                val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                CaptureProbe(info).use { probe ->
+                    awaitState("Need native capture before rejected zoom") { probe.latest.get() != null }
+                    val baseline = probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE)
+                    val modes = Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: intArrayOf()
+                    val preset = if (CaptureResult.CONTROL_AWB_MODE_DAYLIGHT in modes) "daylight" else "auto"
+                    val result = call(scenario, "setSettings", "{settings:{zoom:${bounds.maxZoomRatio + 1},whiteBalance:'$preset'}}")
+                    val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                    receipts.put(JSONObject().put("requestedRatio", (bounds.maxZoomRatio + 1).toDouble())
+                        .put("maximumRatio", bounds.maxZoomRatio.toDouble()).put("whiteBalance", preset).put("result", result)
+                        .put("before", before).put("after", after)
+                        .put("actualRatio", requireNotNull(info.zoomState.value).zoomRatio.toDouble()))
+                    assertFalse("Unsupported batch zoom cannot report success", result.getBoolean("ok"))
+                    assertEquals("ZOOM_OUT_OF_RANGE", result.getString("code"))
+                    assertEquals(before.toString(), after.toString())
+                    val count = probe.frames.get()
+                    awaitState("Need fresh captures after rejection") { probe.frames.get() >= count + 3 }
+                    assertEquals(baseline, probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
+                    assertEquals(bounds.zoomRatio.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.001)
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-settings-zoom-range.json", receipts)
+            }
+        }
+    }
+
     @Test fun exposureCompensationUsesNearestNativeStepAndReportsAppliedEv() {
         val receipts = JSONArray()
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
@@ -439,7 +501,7 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
             try {
-                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
+                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setSettings" to "{settings:{zoom:1}}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
                     val result = call(scenario, method, options)
                     receipts.put(JSONObject().put("method", method).put("result", result))
                     assertFalse("Inactive $method must reject", result.getBoolean("ok"))
@@ -617,6 +679,52 @@ class CameraControlsInstrumentedTest {
             emit("camera-exposure-cancellation.json", JSONArray().put(JSONObject()
                 .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
                 .put("supported", state.isExposureCompensationSupported).put("requestedEv", target).put("beforeEv", before).put("afterEv", after)
+                .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
+        }
+    }
+
+    @Test fun stoppingPreviewRejectsPendingBatchZoom_withoutChangingConfirmedRatio() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("zoom")
+            val state = requireNotNull(cameraInfo().zoomState.value)
+            val target = (state.minZoomRatio + state.maxZoomRatio) / 2
+            val settled = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val settlements = AtomicInteger()
+            var rejectedCode: String? = null
+            var resolved = false
+            val pending = object : PluginCall(null, "ElizaCamera", "pending-metering", "setSettings",
+                JSObject().put("settings", JSObject().put("zoom", target))) {
+                override fun resolve() { resolved = true; settlements.incrementAndGet(); settled.countDown() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    rejectedCode = code; settlements.incrementAndGet(); settled.countDown()
+                }
+            }
+            val stopping = object : PluginCall(null, "ElizaCamera", "stop-metering", "stopPreview", JSObject()) {
+                override fun resolve() { stopped.countDown() }
+            }
+            // One UI dispatch guarantees stop runs before the completion listener.
+            // Only reply transport is intercepted; CameraX and plugin lifecycle are real.
+            scenario.onActivity { activity ->
+                val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                plugin.setSettings(pending)
+                plugin.stopPreview(stopping)
+            }
+            assertTrue("Stop did not settle", stopped.await(10, TimeUnit.SECONDS))
+            assertTrue("Pending metering did not settle", settled.await(10, TimeUnit.SECONDS))
+            assertFalse("Cancelled control cannot report success", resolved)
+            val expectedCodes = setOf("CAMERA_INACTIVE", "CAMERA_CONTROL_FAILED")
+            assertTrue("Expected lifecycle/camera cancellation: $rejectedCode", rejectedCode in expectedCodes)
+            assertEquals(1, settlements.get())
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("zoom")
+            assertEquals("Cancelled operation must not update settings", before, after, 0.000001)
+            preview(scenario)
+            assertEquals(before, requireNotNull(cameraInfo().zoomState.value).zoomRatio.toDouble(), 0.001)
+            call(scenario, "stopPreview")
+            emit("camera-settings-zoom-cancellation.json", JSONArray().put(JSONObject()
+                .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
+                .put("requestedRatio", target.toDouble()).put("beforeRatio", before).put("afterRatio", after)
                 .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
         }
     }

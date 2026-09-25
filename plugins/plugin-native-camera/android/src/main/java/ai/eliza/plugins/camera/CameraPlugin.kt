@@ -412,6 +412,7 @@ class CameraPlugin : Plugin() {
                 if (targetInfo.exposureState.isExposureCompensationSupported || requestedExposureEv != 0.0) {
                     planExposure(targetInfo, requestedExposureEv)
                 }
+                validateZoom(targetInfo, (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
                 currentDirection = direction
                 currentCameraSelector = targetSelector
 
@@ -429,7 +430,6 @@ class CameraPlugin : Plugin() {
 
                 // Re-apply settings after rebinding.
                 applyTorch(currentSettings["flash"] as? String == "torch")
-                applyZoom((currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
 
                 restoreCameraSettings(requireNotNull(camera), {
                     call.resolve(JSObject().apply {
@@ -730,7 +730,6 @@ class CameraPlugin : Plugin() {
             camera = provider.bindToLifecycle(activity as LifecycleOwner, currentCameraSelector,
                 requireNotNull(preview), requireNotNull(imageCapture), capture)
             applyTorch(currentSettings["flash"] as? String == "torch")
-            applyZoom((currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
             restoreCameraSettings(requireNotNull(camera), {
                 check(recordingSession === session && !session.stopping) { "Recording was cancelled before native settings completed" }
                 val pending = if (saveToGallery) {
@@ -923,7 +922,7 @@ class CameraPlugin : Plugin() {
             return
         }
 
-        if (settings.has("whiteBalance") || settings.has("exposureCompensation")) {
+        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom")) {
             withActiveCamera(call) { owner ->
                 val preset = if (settings.has("whiteBalance")) settings.getString("whiteBalance") else null
                 if (preset != null && !supportsWhiteBalance(owner.cameraInfo, preset)) {
@@ -933,18 +932,26 @@ class CameraPlugin : Plugin() {
                 val requestedEv = if (settings.has("exposureCompensation")) settings.getDouble("exposureCompensation") else null
                 // Validate every native setting before submitting any part of the batch.
                 val exposure = requestedEv?.let { planExposure(owner.cameraInfo, it) }
+                val zoom = if (settings.has("zoom")) settings.getDouble("zoom").toFloat().also { validateZoom(owner.cameraInfo, it) } else null
                 val epoch = previewEpoch
                 val failed: (Exception) -> Unit = { error -> call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error) }
                 fun complete() {
                     applySettingsValues(settings)
                     call.resolve()
                 }
+                fun applyBatchZoom() {
+                    if (zoom == null) complete()
+                    else awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), {
+                        currentSettings["zoom"] = zoom
+                        complete()
+                    }, failed)
+                }
                 fun applyExposure() {
-                    if (exposure == null) complete()
+                    if (exposure == null) applyBatchZoom()
                     else awaitCameraControl(owner, epoch, owner.cameraControl.setExposureCompensationIndex(exposure.index), {
                         requestedExposureEv = requireNotNull(requestedEv)
                         currentSettings["exposureCompensation"] = exposure.appliedEv
-                        complete()
+                        applyBatchZoom()
                     }, failed)
                 }
                 if (preset == null) applyExposure()
@@ -961,7 +968,7 @@ class CameraPlugin : Plugin() {
 
     private fun applySettingsValues(settings: org.json.JSONObject) {
         settings.keys().forEach { key ->
-            if (key != "exposureCompensation") currentSettings[key] = settings.get(key)
+            if (key != "exposureCompensation" && key != "zoom") currentSettings[key] = settings.get(key)
         }
 
         // Apply flash/torch setting.
@@ -976,13 +983,6 @@ class CameraPlugin : Plugin() {
                 applyTorch(false)
                 imageCapture?.flashMode = flashModeFromSetting(flashMode)
             }
-        }
-
-        // Apply zoom.
-        if (settings.has("zoom")) {
-            val zoom = settings.getDouble("zoom").toFloat()
-            applyZoom(zoom)
-            currentSettings["zoom"] = zoom
         }
 
     }
@@ -1032,7 +1032,7 @@ class CameraPlugin : Plugin() {
                 whiteBalanceMode(preset)).build())
     }
 
-    // Rebinding CameraX use cases must restore confirmed white balance and EV before the
+    // Rebinding CameraX use cases must restore confirmed white balance, EV and zoom before the
     // owning preview/switch/recording operation can report success.
     private fun restoreCameraSettings(owner: Camera, ready: () -> Unit, failed: (Exception) -> Unit) {
         val epoch = previewEpoch
@@ -1046,7 +1046,11 @@ class CameraPlugin : Plugin() {
                     try {
                         future.get()
                         check(stillOwnsCamera()) { "Camera changed during white balance restoration" }
-                        restoreExposure(owner, epoch, ready, failed)
+                        restoreExposure(owner, epoch, {
+                            val zoom = (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f
+                            validateZoom(owner.cameraInfo, zoom)
+                            awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), ready, failed)
+                        }, failed)
                     } catch (error: Exception) {
                         // Unbind/rebind queues an inactive transition on CameraX's
                         // executor. Re-submit once after that transition, only if
@@ -1078,22 +1082,18 @@ class CameraPlugin : Plugin() {
             return
         }
         withActiveCamera(call) { owner ->
-            val bounds = owner.cameraInfo.zoomState.value
-            if (bounds == null || zoom < bounds.minZoomRatio || zoom > bounds.maxZoomRatio) {
-                call.reject("zoom is outside this camera's supported ratio range", "ZOOM_OUT_OF_RANGE")
-            } else {
-                settleCameraControl(call, owner, owner.cameraControl.setZoomRatio(zoom)) {
-                    currentSettings["zoom"] = zoom
-                }
+            validateZoom(owner.cameraInfo, zoom)
+            settleCameraControl(call, owner, owner.cameraControl.setZoomRatio(zoom)) {
+                currentSettings["zoom"] = zoom
             }
         }
     }
 
-    private fun applyZoom(zoom: Float) {
-        val owner = camera ?: return
-        val bounds = owner.cameraInfo.zoomState.value ?: return
-        // The public API specifies a ratio; CameraX linear zoom is not linear in ratio.
-        owner.cameraControl.setZoomRatio(zoom.coerceIn(bounds.minZoomRatio, bounds.maxZoomRatio))
+    private fun validateZoom(info: CameraInfo, zoom: Float) {
+        val bounds = info.zoomState.value
+        if (bounds == null || zoom < bounds.minZoomRatio || zoom > bounds.maxZoomRatio) {
+            throw CameraSettingException("ZOOM_OUT_OF_RANGE", "zoom is outside this camera's supported ratio range")
+        }
     }
 
     @PluginMethod
