@@ -22,8 +22,11 @@ arguments against the exact decision schema. Missing token usage stays null;
 summary coverage identifies how many cases have observed usage. These tests do
 not establish live framework quality. Typechecking is not a substitute for runtime tests.
 
-The TypeScript HTTP-to-report checks run in the required server test lane
-using Node 24.15.0. Reported token counts use observed provider usage; local
+Run the TypeScript HTTP-to-report checks with
+`bun run --cwd packages/benchmarks/suites/eliza-1 test`
+using Bun 1.4.2. The required server CI lane runs this command and collects
+test-case receipts. Node 24.15.0 can also run the file with `node --test`.
+Reported token counts use observed provider usage; local
 decode modes without token receipts show n/a. Accuracy includes parse failures.
 
 The Python runner defaults to the 32-case manual decision set (19 RESPOND,
