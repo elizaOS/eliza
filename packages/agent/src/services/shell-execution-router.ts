@@ -22,16 +22,14 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {
+  applyHostExecutionBaseline,
+  isIosMobile,
   type RuntimeExecutionMode,
+  resolveHostExecutable,
   resolveRuntimeExecutionMode,
   sanitizeSpawnEnv,
 } from "@elizaos/core";
 
-import {
-  applyHostExecutionBaseline,
-  resolveHostExecutable,
-} from "@elizaos/core/host-execution-env";
-import { isIosMobile } from "@elizaos/core/runtime-env";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
 import {

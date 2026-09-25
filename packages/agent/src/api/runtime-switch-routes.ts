@@ -36,17 +36,15 @@
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
 import {
+  createSelfApiRequestHeaders,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   logger,
   readJsonBody,
+  resolveServerOnlyPort,
 } from "@elizaos/core";
 
 import type { ProviderId } from "@elizaos/core/contracts/local-inference-providers";
 
-import {
-  createSelfApiRequestHeaders,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,

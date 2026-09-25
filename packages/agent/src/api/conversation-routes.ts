@@ -30,8 +30,10 @@ import {
   type ChatTerminalFailure,
   type Content,
   composeToolDiagnosticRedactor,
+  conversationClientUserMemoryId,
   createMessageMemory,
   createUniqueUuid,
+  type DurableConversationChatMarker,
   ElizaError,
   getEntityRole,
   getInferenceTimer,
@@ -54,6 +56,7 @@ import {
   PostSeedMessagesRequestSchema,
   parseChatFailureKind,
   parseChatTerminalFailure,
+  parsePositiveInteger,
   projectCompleteToolValueForModel,
   type RoleGrantSource,
   type RolesWorldMetadata,
@@ -62,6 +65,7 @@ import {
   RoomHandlerQueueGlobalSaturatedError,
   RoomHandlerQueueSaturatedError,
   type RouteRequestContext,
+  readDurableConversationChatMarker,
   recordOwnerGrant,
   recordRoleGrant,
   resolveAppliedUserFacingEffectReceipts,
@@ -75,15 +79,10 @@ import {
 } from "@elizaos/core";
 
 import {
-  conversationClientUserMemoryId,
-  type DurableConversationChatMarker,
-  readDurableConversationChatMarker,
-} from "@elizaos/core/conversation-chat-marker";
-import {
   parseSharedTodoCutoverSnapshot,
   TodoCutoverContractError,
 } from "@elizaos/core/todo-cutover";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+
 import {
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,

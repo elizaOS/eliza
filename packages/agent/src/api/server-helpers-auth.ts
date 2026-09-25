@@ -3,11 +3,13 @@
  */
 import crypto from "node:crypto";
 import type http from "node:http";
-import { type AgentRuntime, logger } from "@elizaos/core";
 import {
+  type AgentRuntime,
   isLoopbackBindHost,
   isNullOriginAllowed,
   isWildcardBindHost,
+  logger,
+  readAliasedEnv,
   resolveAllowedHosts,
   resolveAllowedOrigins,
   resolveApiBindHost,
@@ -15,8 +17,8 @@ import {
   resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+} from "@elizaos/core";
+
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { normalizeHostPairingCode } from "../host-use-cases.js";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";

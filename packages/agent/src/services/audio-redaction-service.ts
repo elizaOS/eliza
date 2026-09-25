@@ -7,17 +7,18 @@
  * stream cannot pin the agent event loop on quadratic uniqueness.
  */
 
-import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   assertCompleteAudioRedactionPlan,
   buildAudioRedactionSpans,
+  ElizaError,
+  type IAgentRuntime,
   type PiiTextSpan,
-} from "@elizaos/core/audio-redaction";
-import {
   type RedactionTranscriber,
+  Service,
+  type TranscriptWord,
   verifyAudioRedaction,
-} from "@elizaos/core/audio-redaction-verify";
-import { type TranscriptWord } from "@elizaos/core/transcripts";
+} from "@elizaos/core";
+
 import {
   findRedactedAudioVariant,
   persistVerifiedRedactedAudioVariant,

@@ -22,6 +22,7 @@ import {
   buildDefaultElizaCloudServiceRouting,
   ChannelType,
   type Component,
+  captureHostExecutionBaseline,
   createMessageMemory,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   drainAppRoutePluginLoaders,
@@ -31,6 +32,7 @@ import {
   formatError,
   getFirstRunProviderOption,
   type IAgentRuntime,
+  isMobilePlatform,
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -39,9 +41,12 @@ import {
   type Plugin,
   type Provider,
   type RuntimeStopOptions,
+  readAliasedEnv,
   requireConfirmedSendHandlerDelivery,
   resolveDeploymentTargetInConfig,
+  resolveDesktopApiPort,
   resolveElizaCloudTopology,
+  resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
   stringToUuid,
   type TargetInfo,
@@ -49,17 +54,11 @@ import {
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
 
-import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
-import {
-  isMobilePlatform,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
 import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
 } from "@elizaos/core/settings-debug";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,

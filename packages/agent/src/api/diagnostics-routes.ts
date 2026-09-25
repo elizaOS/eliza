@@ -13,12 +13,11 @@
 import type http from "node:http";
 import {
   PostLogExportRequestSchema,
+  parseClampedInteger,
   type ReadJsonBodyOptions,
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
-
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
 
 interface LogEntryLike {
   timestamp: number;

@@ -16,33 +16,32 @@ import {
   formatError,
   getHttpRuntime,
   type IAgentRuntime,
+  isMobilePlatform,
   logger,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
   type Route,
+  readAliasedEnv,
   readRequestBody,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
   resolveOwnerEntityIdOrDefault,
+  resolveServerOnlyPort,
   ServiceType,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
 } from "@elizaos/core";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/core/agent-backup-limits";
 
 import {
   getStylePresets,
   normalizeCharacterLanguage,
 } from "@elizaos/core/character-presets";
-import {
-  isMobilePlatform,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import { WebSocket, WebSocketServer } from "ws";

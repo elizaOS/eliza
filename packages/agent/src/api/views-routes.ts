@@ -25,6 +25,7 @@ import {
   EventType,
   type IAgentRuntime,
   logger,
+  parseClampedInteger,
   type RoleGateRole,
   type RouteHelpers,
   type RouteRequestMeta,
@@ -38,7 +39,7 @@ import {
   normalizeCompletedActionHandoffId,
   type ShellNavigateViewPayload,
 } from "@elizaos/core/events";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
   STANDARD_CAPABILITIES,

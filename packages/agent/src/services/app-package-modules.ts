@@ -22,13 +22,13 @@ import {
   type AppViewerAuthMessage,
   ElizaError,
   hasAppInterface,
+  isMobilePlatform,
   type HttpPlugin as Plugin,
   packageNameToAppRouteSlug,
   readJsonFile,
   resolveStateDir,
 } from "@elizaos/core";
 
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { getPluginInfo } from "./registry-client.ts";
 

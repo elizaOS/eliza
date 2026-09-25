@@ -28,15 +28,15 @@ import {
   normalizeHostLike,
   normalizeIpForPolicy,
   type PostgresCredentials,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
   type QueryResult,
+  resolveApiBindHost,
   sendJson,
   sendJsonError,
   type TableInfo,
 } from "@elizaos/core";
 
-import { resolveApiBindHost } from "@elizaos/core/runtime-env";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
 import { decodePathComponent } from "./server-helpers.ts";

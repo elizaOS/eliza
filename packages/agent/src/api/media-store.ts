@@ -17,11 +17,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
 import {
+  ElizaError,
+  logger,
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
-} from "@elizaos/core/chat-upload-limits";
+} from "@elizaos/core";
+
 import { resolveStateDir } from "../config/paths.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 

@@ -18,6 +18,7 @@
 
 import {
   type AppRunSummary,
+  createSelfApiRequestHeaders,
   type IAgentRuntime,
   logger,
   type RegistryAppInfo,
@@ -28,7 +29,6 @@ import {
   type WalletTradingProfileResponse,
 } from "@elizaos/core";
 
-import { createSelfApiRequestHeaders } from "@elizaos/core/runtime-env";
 import type { ConversationScope } from "../api/server-types.ts";
 
 async function renderCharacterLiveState(

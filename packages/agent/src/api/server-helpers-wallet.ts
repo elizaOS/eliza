@@ -4,11 +4,11 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import type {
-  WalletExportRejection,
-  WalletExportRequestBody,
+import {
+  readAliasedEnv,
+  type WalletExportRejection,
+  type WalletExportRequestBody,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 
 export type { WalletExportRejection };
 

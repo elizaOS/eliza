@@ -11,12 +11,18 @@ import type http from "node:http";
 import path from "node:path";
 import {
   type AgentRuntime,
+  CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
   type Content,
   ContentType,
   type ConversationMetadata,
   createMessageMemory,
+  decodeUrlPathComponent,
   logger,
+  MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
+  MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
+  MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
   normalizeFirstRunProviderId,
@@ -32,15 +38,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
 } from "@elizaos/core/character-presets";
-import {
-  CHAT_UPLOAD_MIME_TYPES,
-  MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
-  MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
-  MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
-  MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
-} from "@elizaos/core/chat-upload-limits";
 
-import { decodeUrlPathComponent } from "@elizaos/core/utils/path-component";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
@@ -353,7 +351,7 @@ export function decodePathComponent(
 // ---------------------------------------------------------------------------
 // Chat image validation
 // ---------------------------------------------------------------------------
-// Caps + allowlist live in @elizaos/core/chat-upload-limits (imported above,
+// Caps + allowlist live in @elizaos/core (imported above,
 // aliased to the historical local names) so the UI composer enforces the exact
 // same numbers pre-send and the two sides cannot drift.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;

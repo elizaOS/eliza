@@ -25,16 +25,14 @@ import {
   ModelType,
   PatchMemoryRequestSchema,
   PostMemoryRememberRequestSchema,
+  parseCanonicalInteger,
+  parsePositiveInteger,
   projectCompleteToolValueForModel,
   type RouteRequestContext,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 
-import {
-  parseCanonicalInteger,
-  parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
 import {
   type DocumentsServiceResult,
   getDocumentsService,

@@ -15,6 +15,7 @@ import net from "node:net";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  decodeUrlPathComponent,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   isLoopbackHost,
@@ -25,7 +26,6 @@ import {
   type RouteRequestMeta,
 } from "@elizaos/core";
 
-import { decodeUrlPathComponent } from "@elizaos/core/utils/path-component";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,

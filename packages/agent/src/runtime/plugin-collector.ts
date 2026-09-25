@@ -16,11 +16,14 @@ import path from "node:path";
 import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
+  isAndroidMobile,
   isGoogleChatConfigured,
+  isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
+  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
@@ -35,8 +38,6 @@ import shortIdPluginMap from "@elizaos/core/catalog/short-id-plugin-map.json" wi
   type: "json",
 };
 
-import { isAndroidMobile, isMobilePlatform } from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyDevCloudConfigAuthority,

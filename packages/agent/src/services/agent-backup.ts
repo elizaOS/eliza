@@ -19,6 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { createKmsClient, systemKey } from "@elizaos/auth/kms";
 import {
+  AGENT_BACKUP_CANONICAL_JSON,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
@@ -32,16 +33,13 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   parseAgentBackupCaptureV2Request,
   readAgentBackupCaptureV2FrameDigest,
   serializeAgentBackupCaptureV2Frame,
+  stableJsonString,
   timeInferenceSpan,
 } from "@elizaos/core";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/core/agent-backup-limits";
-import {
-  AGENT_BACKUP_CANONICAL_JSON,
-  stableJsonString,
-} from "@elizaos/core/canonical-json";
 
 import { z } from "zod";
 import type { ElizaConfig } from "../config/config.ts";

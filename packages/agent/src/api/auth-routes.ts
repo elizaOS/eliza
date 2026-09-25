@@ -15,9 +15,9 @@ import {
   PostAuthPairRequestSchema,
   type PostAuthPairResponse,
   type RouteRequestContext,
+  resolveApiToken,
 } from "@elizaos/core";
 
-import { resolveApiToken } from "@elizaos/core/runtime-env";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import {
   isAuthorized,

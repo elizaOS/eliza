@@ -10,10 +10,10 @@ import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   ElizaError,
+  isMobilePlatform,
   logger,
 } from "@elizaos/core";
 
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { resolveModelsCacheDir } from "../config/paths.ts";
 export const DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS = 10000;
 type ModelOption = {

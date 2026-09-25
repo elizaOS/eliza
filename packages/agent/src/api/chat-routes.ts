@@ -23,6 +23,7 @@ import {
   ElizaError,
   EventType,
   emitInferenceTiming,
+  extractAssistantReplyText,
   getEntityRole,
   getInferenceTimer,
   hasAppliedUserFacingEffectProof,
@@ -52,6 +53,7 @@ import {
   type RoomHandlerLease,
   type RouteRequestContext,
   readActionReplyFailure,
+  readAliasedEnv,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -73,8 +75,6 @@ import {
 
 import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 
-import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,

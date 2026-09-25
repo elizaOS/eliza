@@ -13,7 +13,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
+  buildStoreVariantBlockedMessage,
   type CustomActionDef,
+  isAndroidMobile,
+  isLocalCodeExecutionAllowed,
   logger,
   ModelType,
   PostAgentEventRequestSchema,
@@ -29,11 +32,6 @@ import {
   validateUuid,
 } from "@elizaos/core";
 
-import {
-  buildStoreVariantBlockedMessage,
-  isLocalCodeExecutionAllowed,
-} from "@elizaos/core/platform/sandbox-policy";
-import { isAndroidMobile } from "@elizaos/core/runtime-env";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
