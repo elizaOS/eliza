@@ -16,3 +16,6 @@ Import Calendar APIs from `@elizaos/plugin-calendar`. Hosts call
 `installCalendarClient()` before using Calendar methods on the shared HTTP
 client. Both operations are idempotent; importing the root performs neither.
 Calendar components install the client methods when used.
+
+The app renderer resolves the package to `src/browser.ts`, which keeps views and
+client registration separate from runtime actions and provider storage.

@@ -64,40 +64,45 @@ async function createAppResolutionServer(
 }
 
 describe("workspace package resolution", () => {
-  test("Relationships dev modules stay inside the renderer boundary", async () => {
-    const { server } = await createAppResolutionServer("serve");
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/plugin-relationships",
-          path.resolve(appRoot, "src/main.tsx"),
+  test.each([
+    ["relationships", "RelationshipsPage"],
+    ["calendar", "CalendarPage"],
+    ["notes", "NotesView"],
+  ])(
+    "%s dev modules stay inside the renderer boundary",
+    async (plugin, view) => {
+      const { server } = await createAppResolutionServer("serve");
+      try {
+        const resolved =
+          await server.environments.client.pluginContainer.resolveId(
+            `@elizaos/plugin-${plugin}`,
+            path.resolve(appRoot, "src/main.tsx"),
+          );
+        const root = normalizePath(
+          path.resolve(appRoot, `../../plugins/plugin-${plugin}/src`),
         );
-      const root = normalizePath(
-        path.resolve(appRoot, "../../plugins/plugin-relationships/src"),
-      );
-      expect(resolved?.id).toBe(`${root}/browser.ts`);
-      const pending = [`/@fs${resolved?.id}`];
-      const visited = new Set<string>();
-      while (pending.length) {
-        const url = pending.pop();
-        if (!url) break;
-        if (visited.has(url)) continue;
-        visited.add(url);
-        await server.environments.client.transformRequest(url);
-        const module =
-          await server.environments.client.moduleGraph.getModuleByUrl(url);
-        for (const dependency of module?.importedModules ?? []) {
-          if (dependency.id?.startsWith(`${root}/`))
-            pending.push(dependency.url);
+        expect(resolved?.id).toBe(`${root}/browser.ts`);
+        const pending = [`/@fs${resolved?.id}`];
+        const visited = new Set<string>();
+        while (pending.length) {
+          const url = pending.pop();
+          if (!url) break;
+          if (visited.has(url)) continue;
+          visited.add(url);
+          await server.environments.client.transformRequest(url);
+          const module =
+            await server.environments.client.moduleGraph.getModuleByUrl(url);
+          for (const dependency of module?.importedModules ?? []) {
+            if (dependency.id?.startsWith(`${root}/`))
+              pending.push(dependency.url);
+          }
         }
+        expect([...visited].some((url) => url.includes(view))).toBe(true);
+      } finally {
+        await server.close();
       }
-      expect(
-        [...visited].some((url) => url.includes("RelationshipsPage")),
-      ).toBe(true);
-    } finally {
-      await server.close();
-    }
-  });
+    },
+  );
 
   test.each([
     [
