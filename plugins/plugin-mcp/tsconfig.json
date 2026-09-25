@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -19,8 +20,6 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/plugin-mcp": ["./src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"]
     },
     "types": ["node"]

@@ -1,7 +1,6 @@
 {
   "extends": "../../cloud/shared/tsconfig.json",
   "compilerOptions": {
-    "customConditions": ["eliza-source"],
     "incremental": false,
     "types": ["node", "bun-types"],
     "lib": ["ES2024", "DOM", "DOM.Iterable"]

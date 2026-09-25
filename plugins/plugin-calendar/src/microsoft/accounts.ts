@@ -7,13 +7,14 @@ import { createHash } from "node:crypto";
 import {
   type ConnectorAccount,
   ElizaError,
+  type FetchLike,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import {
-  type LifeOpsConnectorGrant,
-  type LifeOpsConnectorSide,
-  type LifeOpsMicrosoftCapability,
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorSide,
+  LifeOpsMicrosoftCapability,
 } from "@elizaos/core/contracts/personal-assistant";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 
@@ -766,8 +767,8 @@ interface MicrosoftRefreshResponse {
   expiresAt: number;
 }
 
-function tokenFetch(runtime: IAgentRuntime): typeof fetch {
-  const runtimeFetch = (runtime as { fetch?: typeof fetch }).fetch;
+function tokenFetch(runtime: IAgentRuntime): FetchLike {
+  const runtimeFetch = runtime.fetch;
   return runtimeFetch ? runtimeFetch.bind(runtime) : globalThis.fetch;
 }
 

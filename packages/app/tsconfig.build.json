@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.host.json",
   "compilerOptions": {
+    "customConditions": [],
     "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": true,

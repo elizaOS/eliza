@@ -7,6 +7,7 @@
  */
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
+import type { FetchLike } from "../media/fetch";
 import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
@@ -713,7 +714,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
-	fetch?: typeof fetch | null;
+	fetch?: FetchLike | null;
 	logger: Logger;
 	stateCache: Map<string, State>;
 	/**
