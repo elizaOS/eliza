@@ -160,6 +160,26 @@ class NativeBridgeInstrumentedTest {
             evaluate(scenario, "window.nativeDescriptor = $descriptor; $script")
             val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             while (System.nanoTime() < finishDeadline) {
+                if (descriptor.getString("directory") == "plugin-native-browser-surface") {
+                    val captureRaw = evaluate(scenario, "JSON.stringify(window.nativeBrowserCapture || null)")
+                    val captureText = JSONTokener(captureRaw).nextValue() as? String
+                    if (captureText != null && captureText != "null") {
+                        val capture = JSONObject(captureText)
+                        if (!capture.getBoolean("done")) {
+                            val name = capture.getString("name")
+                            check(name in listOf("browser-before-invalid-present.png", "browser-after-invalid-present.png"))
+                            val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+                            val bytes = java.io.ByteArrayOutputStream()
+                            try { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)) }
+                            finally { bitmap.recycle() }
+                            InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                                putString("nativeArtifactName", name)
+                                putString("nativeArtifactBase64", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
+                            })
+                            evaluate(scenario, "window.nativeBrowserCapture.done = true")
+                        }
+                    }
+                }
                 val raw = evaluate(scenario, "window.nativeContractResult")
                 if (raw != "null") {
                     val result = JSONObject(JSONTokener(raw).nextValue() as String)
@@ -170,6 +190,14 @@ class NativeBridgeInstrumentedTest {
                         result.put("canvas", JSONObject(JSONTokener(evidence).nextValue() as String))
                         InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
                             putString("nativeArtifactName", "canvas-pixels.json")
+                            putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
+                        })
+                    }
+                    if (descriptor.getString("directory") == "plugin-native-browser-surface") {
+                        val evidence = evaluate(scenario, "JSON.stringify(window.nativeBrowserEvidence)")
+                        result.put("browser", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", "browser-navigation.json")
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))
                         })
                     }
