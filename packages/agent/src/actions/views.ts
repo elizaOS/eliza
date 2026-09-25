@@ -203,6 +203,15 @@ export const viewsAction: Action = {
           view,
           navigation: receipt,
         },
+        // The canonical result retains the registry entry. Model history needs
+        // delivery proof; full capability grammar remains an explicit, freshly
+        // authorized registry read. This projection adds no I/O or model call.
+        promptDataMode: "replace-data",
+        promptData: {
+          navigation: receipt,
+          viewDetails:
+            "Call VIEWS_LIST (or VIEWS action=list) for complete registered view definitions and capabilities. This lookup does not navigate.",
+        },
       };
     } catch (error) {
       if (signal?.aborted)

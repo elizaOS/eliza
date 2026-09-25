@@ -19,7 +19,11 @@ import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { uiContextProvider } from "../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/uiContext.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import { runPlannerLoop } from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { toolMessageContent } from "../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
@@ -137,6 +141,136 @@ async function show(runtime: IAgentRuntime, view: string, input = message) {
   });
 }
 describe("host view navigation", () => {
+  it("keeps canonical delivery evidence while deferring registry bulk to authorized view lookup", async () => {
+    const f = await fixture();
+    const capability = {
+      id: "read-projection-fixture",
+      description: "Complete capability grammar PROJECTION_FIXTURE_END ".repeat(
+        40,
+      ),
+      params: {
+        recordId: {
+          type: "string",
+          required: true,
+          description: "Exact record identifier",
+        },
+      },
+    };
+    await registerPluginViews(
+      f.runtime,
+      {
+        name: "projection-view-owner",
+        description: "Registered lookup fixture",
+        views: [
+          {
+            id: "projection-view",
+            label: "Projection fixture",
+            path: "/projection-fixture",
+            bundleUrl: "/projection-fixture.js",
+            capabilities: [capability],
+          },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    const result = await show(f.runtime, "projection-view");
+    if (!result || typeof result === "boolean")
+      throw new Error("Missing navigation result");
+    const before = structuredClone(result);
+    const wireText = toolMessageContent(
+      actionResultToPlannerToolResult(result),
+    );
+    const wire = JSON.parse(wireText);
+    expect(wire.success).toBe(true);
+    expect(wire.text).toBe(result.text);
+    expect(wire.data.navigation).toEqual(result.data?.navigation);
+    for (const field of [
+      "capabilities",
+      "bundleUrl",
+      "pluginDir",
+      "installationId",
+    ])
+      expect(wireText).not.toContain(`"${field}":`);
+    expect(wireText).not.toContain("PROJECTION_FIXTURE_END");
+    expect(wireText).toContain("VIEWS_LIST");
+    expect(result).toEqual(before);
+    expect(result.data?.view).toMatchObject({
+      id: "projection-view",
+      capabilities: [capability],
+      bundleUrl: "/projection-fixture.js",
+    });
+    const receipt = JSON.parse(result.text ?? "{}");
+    expect(receipt).toEqual(result.data?.navigation);
+    expect(result.values).toMatchObject({
+      completedActionDelivered: true,
+      completedActionHandoffId: receipt.handoffId,
+    });
+    expect(f.frames).toHaveLength(1);
+    expect(f.frames[0]).toMatchObject({
+      client: "origin-client",
+      frame: { completedActionHandoffId: receipt.handoffId },
+    });
+    const lookup = createElizaPlugin().actions?.find(
+      (action) => action.name === "VIEWS_LIST",
+    );
+    if (!lookup?.handler) throw new Error("Missing advertised view lookup");
+    const listing = await lookup.handler(f.runtime, message, undefined, {
+      parameters: {},
+    });
+    if (!listing || typeof listing === "boolean")
+      throw new Error("Missing view lookup result");
+    expect(listing.data?.views).toEqual(
+      expect.arrayContaining([result.data?.view]),
+    );
+    expect(
+      toolMessageContent(actionResultToPlannerToolResult(listing)),
+    ).toContain("PROJECTION_FIXTURE_END");
+    expect(f.requests()).toBe(1); // Lookup uses the registry, not another navigation.
+    f.runtime.getWorld = async () =>
+      ({ id: "world", metadata: { roles: { [owner]: "USER" } } }) as never;
+    const revoked = await lookup.handler(f.runtime, message, undefined, {
+      parameters: {},
+    });
+    expect(revoked).toMatchObject({
+      success: false,
+      data: { navigation: { status: "forbidden" } },
+    });
+    expect(JSON.stringify(revoked)).not.toContain("PROJECTION_FIXTURE_END");
+    expect(f.requests()).toBe(1);
+  });
+  it.each(["forbidden", "cancelled", "not-delivered"])(
+    "keeps %s failures unprojected and never claims delivery",
+    async (status) => {
+      const f = await fixture(status === "not-delivered" ? 0 : 1);
+      const input =
+        status === "forbidden"
+          ? {
+              ...message,
+              entityId: "55555555-5555-4555-8555-555555555555" as UUID,
+            }
+          : message;
+      const abort = new AbortController();
+      if (status === "cancelled") abort.abort();
+      const result = await runWithStreamingContext(
+        { abortSignal: abort.signal },
+        () => show(f.runtime, "Notes", input),
+      );
+      if (!result || typeof result === "boolean")
+        throw new Error("Missing failure result");
+      expect(result).toMatchObject({
+        success: false,
+        data: { navigation: { status } },
+      });
+      expect(result.promptDataMode).toBeUndefined();
+      expect(
+        JSON.parse(toolMessageContent(actionResultToPlannerToolResult(result))),
+      ).toMatchObject({
+        success: false,
+        data: { navigation: { status } },
+      });
+      expect(f.requests()).toBe(status === "not-delivered" ? 1 : 0);
+    },
+  );
   it("discovers the current host action and exposes separate list/show contracts", async () => {
     const f = await fixture();
     const loaded: unknown[] = [];
