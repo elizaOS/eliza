@@ -11,6 +11,11 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import {
+  CONNECTOR_ENV_MAP,
+  collectConfigEnvVars,
+  collectConnectorEnvVars,
+} from "../config/env-vars.ts";
+import {
   applyAdvancedCapabilitiesConfig,
   isAdvancedCapabilityPluginId,
 } from "../runtime/advanced-capabilities-config.ts";
@@ -73,15 +78,46 @@ function pluginId(name: string): string {
   return name.replace(/^@[^/]+\//, "").replace(/^plugin-/, "");
 }
 
+function canonicalEntry(
+  config: ElizaConfig,
+  plugin: Pick<PluginEntry, "id" | "npmName">,
+) {
+  config.plugins ??= {};
+  config.plugins.entries ??= {};
+  const npmName = plugin.npmName ?? `@elizaos/plugin-${plugin.id}`;
+  const scoped = config.plugins.entries[npmName];
+  const short = config.plugins.entries[plugin.id];
+  const entry = {
+    ...scoped,
+    ...short,
+    config: { ...scoped?.config, ...short?.config },
+  };
+  config.plugins.entries[plugin.id] = entry;
+  if (npmName !== plugin.id) delete config.plugins.entries[npmName];
+  return entry;
+}
+
+function clearCredentialSources(config: ElizaConfig, key: string) {
+  if (config.env) {
+    delete config.env[key];
+    if (config.env.vars) delete config.env.vars[key];
+  }
+  for (const [connector, fields] of Object.entries(CONNECTOR_ENV_MAP)) {
+    const settings = config.connectors?.[connector];
+    if (!settings || typeof settings !== "object") continue;
+    for (const [field, envKey] of Object.entries(fields))
+      if (envKey === key) delete (settings as Record<string, unknown>)[field];
+  }
+}
+
 function toggle(
   config: ElizaConfig,
   id: string,
   npmName: string,
   enabled: boolean,
 ): void {
+  canonicalEntry(config, { id, npmName }).enabled = enabled;
   config.plugins ??= {};
-  config.plugins.entries ??= {};
-  config.plugins.entries[id] = { ...config.plugins.entries[id], enabled };
   const allow = (config.plugins.allow ?? []).filter(
     (entry) => entry !== id && entry !== npmName,
   );
@@ -94,14 +130,28 @@ function toggle(
   }
 }
 
+function explicitlyDisabled(config: ElizaConfig, plugin: PluginEntry): boolean {
+  return (
+    config.plugins?.entries?.[plugin.id]?.enabled === false ||
+    config.plugins?.entries?.[plugin.npmName ?? `@elizaos/plugin-${plugin.id}`]
+      ?.enabled === false
+  );
+}
+
 function valueFor(
   ctx: PluginManagementRouteContext,
   plugin: PluginEntry,
   key: string,
 ): string | undefined {
   const value =
-    ctx.state.config.plugins?.entries?.[plugin.id]?.config?.[key] ??
-    ctx.state.config.env?.[key];
+    (
+      ctx.state.config.plugins?.entries?.[plugin.id] ??
+      ctx.state.config.plugins?.entries?.[
+        plugin.npmName ?? `@elizaos/plugin-${plugin.id}`
+      ]
+    )?.config?.[key] ??
+    collectConfigEnvVars(ctx.state.config)[key] ??
+    collectConnectorEnvVars(ctx.state.config)[key];
   if (typeof value === "string") return value;
   const runtimeValue = ctx.state.runtime?.getSetting(key);
   return typeof runtimeValue === "string" ? runtimeValue : process.env[key];
@@ -126,6 +176,7 @@ function validateKeys(
     if (resolveDevCloudEnvAuthority() && isDevCloudEnvOwnedKey(key))
       return `${key} is controlled by the development launcher`;
     if (
+      !secretsOnly &&
       !value.trim() &&
       plugins.some((plugin) =>
         plugin.parameters.some(
@@ -155,19 +206,15 @@ async function persistMutation(
   }
   const previousConfig = ctx.state.config;
   const nextConfig = structuredClone(previousConfig);
-  nextConfig.plugins ??= {};
-  nextConfig.plugins.entries ??= {};
-  nextConfig.plugins.entries[plugin.id] ??= {};
-  const entry = nextConfig.plugins.entries[plugin.id];
-  entry.config = { ...entry.config };
+  const entry = canonicalEntry(nextConfig, plugin);
   nextConfig.env ??= {};
   for (const [key, value] of Object.entries(values)) {
     if (value.trim()) {
       entry.config[key] = value;
       nextConfig.env[key] = value;
     } else {
-      delete entry.config[key];
-      delete nextConfig.env[key];
+      entry.config[key] = "";
+      clearCredentialSources(nextConfig, key);
     }
   }
   const npmName = plugin.npmName ?? `@elizaos/plugin-${plugin.id}`;
@@ -176,15 +223,16 @@ async function persistMutation(
   saveElizaConfig(nextConfig);
   ctx.state.config = nextConfig;
   for (const param of plugin.parameters) {
-    if (enabled === false || (enabled === undefined && !plugin.enabled))
+    if (
+      enabled === false ||
+      (enabled === undefined && explicitlyDisabled(nextConfig, plugin))
+    )
       ctx.state.runtime?.setSetting(param.key, null, param.sensitive);
     else if (enabled === true || Object.hasOwn(values, param.key)) {
-      const value =
-        nextConfig.plugins.entries[plugin.id]?.config?.[param.key] ??
-        nextConfig.env[param.key];
+      const value = valueFor(ctx, plugin, param.key);
       ctx.state.runtime?.setSetting(
         param.key,
-        typeof value === "string" ? value : null,
+        typeof value === "string" && value.trim() ? value : null,
         param.sensitive,
       );
     }
@@ -348,21 +396,19 @@ async function dispatchPluginManagementRoutes(
         error(res, rejection, 422);
         return;
       }
-      const next = structuredClone(ctx.state.config);
+      const previousConfig = ctx.state.config;
+      const next = structuredClone(previousConfig);
       next.env ??= {};
       next.plugins ??= {};
       next.plugins.entries ??= {};
       for (const [key, value] of Object.entries(values)) {
         if (value.trim()) next.env[key] = value;
-        else delete next.env[key];
+        else clearCredentialSources(next, key);
         for (const plugin of plugins.filter((item) =>
           item.parameters.some((param) => param.key === key && param.sensitive),
         )) {
-          next.plugins.entries[plugin.id] ??= {};
-          const entry = next.plugins.entries[plugin.id];
-          entry.config = { ...entry.config };
-          if (value.trim()) entry.config[key] = value;
-          else delete entry.config[key];
+          const entry = canonicalEntry(next, plugin);
+          entry.config[key] = value.trim() ? value : "";
         }
       }
       saveElizaConfig(next);
@@ -373,14 +419,45 @@ async function dispatchPluginManagementRoutes(
           value.trim() &&
             plugins.some(
               (plugin) =>
-                plugin.enabled &&
+                !explicitlyDisabled(next, plugin) &&
                 plugin.parameters.some((param) => param.key === key),
             )
             ? value
             : null,
           true,
         );
-      json(res, { ok: true, updated: Object.keys(values) });
+      const applications = [];
+      for (const plugin of plugins.filter(
+        (item) =>
+          !explicitlyDisabled(next, item) &&
+          item.parameters.some((param) => Object.hasOwn(values, param.key)),
+      )) {
+        const config = Object.fromEntries(
+          Object.entries(values).filter(([key]) =>
+            plugin.parameters.some((param) => param.key === key),
+          ),
+        );
+        const applied = await applyPluginRuntimeMutation({
+          runtime: ctx.state.runtime,
+          previousConfig,
+          nextConfig: next,
+          changedPluginId: plugin.id,
+          changedPluginPackage:
+            plugin.npmName ?? `@elizaos/plugin-${plugin.id}`,
+          config,
+          reason: `Plugin credentials changed: ${plugin.id}`,
+          configurationOnly: true,
+          ...(ctx.restartRuntime ? { restartRuntime: ctx.restartRuntime } : {}),
+        });
+        if (applied.requiresRestart) ctx.scheduleRuntimeRestart(applied.reason);
+        applications.push({ pluginId: plugin.id, ...applied });
+      }
+      json(res, {
+        ok: true,
+        updated: Object.keys(values),
+        applications,
+        requiresRestart: applications.some((entry) => entry.requiresRestart),
+      });
       return;
     }
     if (coreToggle) {

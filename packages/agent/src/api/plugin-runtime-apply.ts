@@ -42,6 +42,8 @@ interface ApplyPluginRuntimeMutationOptions {
   config?: Record<string, string>;
   forceReloadPackages?: string[];
   expectRuntimeGraphChange?: boolean;
+  /** Credentials for an already-enabled plugin cannot change graph membership. */
+  configurationOnly?: boolean;
   reason: string;
   restartRuntime?: (reason: string) => Promise<boolean>;
 }
@@ -245,6 +247,43 @@ export async function applyPluginRuntimeMutation(
       reason,
     };
   };
+
+  if (
+    options.configurationOnly &&
+    !expectRuntimeGraphChange &&
+    forceReloadPackages.length === 0 &&
+    config &&
+    supportsRuntimePluginLifecycle(runtime)
+  ) {
+    const target = runtime.plugins.find(
+      (plugin) =>
+        normalizePluginIdentity(plugin.name) ===
+        normalizePluginIdentity(changedPluginPackage ?? changedPluginId ?? ""),
+    );
+    if (target && typeof target.applyConfig === "function") {
+      try {
+        if (await runtime.applyPluginConfig(target.name, config)) {
+          return {
+            mode: "config_apply",
+            requiresRestart: false,
+            restartedRuntime: false,
+            loadedPackages: [],
+            unloadedPackages: [],
+            reloadedPackages: [],
+            appliedConfigPackage: changedPluginPackage ?? target.name,
+            reason,
+          };
+        }
+      } catch {
+        // error-policy:J6 A failed in-place credential update needs restart; never
+        // expose a provider exception which could contain the submitted secret.
+        logger.warn(
+          "[plugin-runtime-apply] Credential configuration hook failed; restarting runtime",
+        );
+        return await tryRuntimeRestart();
+      }
+    }
+  }
 
   let previousResolvedPlugins: ResolvedPlugin[];
   let nextResolvedPlugins: ResolvedPlugin[];

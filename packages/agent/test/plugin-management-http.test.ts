@@ -108,7 +108,7 @@ it("rejects unauthorized and undeclared mutations, persists credentials across h
     secrets: { OPENAI_API_KEY: replacement },
   });
   expect(update.status).toBe(200);
-  expect(await update.json()).toEqual({
+  expect(await update.json()).toMatchObject({
     ok: true,
     updated: ["OPENAI_API_KEY"],
   });
@@ -204,6 +204,114 @@ it("executes registered connection probes and keeps provider errors private", as
     expect(
       (await request("/api/plugins/management-no-probe/test", "POST")).status,
     ).toBe(501);
+  } finally {
+    await server.close();
+    await fixture.cleanup();
+    server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+  }
+}, 120_000);
+
+it("normalizes npm-name configuration on enable and clears every persisted credential source", async () => {
+  await server.close();
+  await writeFile(
+    path.join(directory, "eliza.json"),
+    JSON.stringify({
+      env: { vars: { OPENAI_API_KEY: secret } },
+      plugins: {
+        entries: {
+          "@elizaos/plugin-openai": {
+            enabled: false,
+            config: { OPENAI_API_KEY: secret },
+          },
+        },
+      },
+    }),
+  );
+  server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+  const enabled = await request("/api/plugins/openai", "PUT", {
+    enabled: true,
+  });
+  expect(enabled.status, await enabled.clone().text()).toBe(200);
+  const enabledConfig = JSON.parse(
+    await readFile(path.join(directory, "eliza.json"), "utf8"),
+  );
+  expect(
+    enabledConfig.plugins.entries["@elizaos/plugin-openai"],
+  ).toBeUndefined();
+  expect(enabledConfig.plugins.entries.openai).toMatchObject({
+    enabled: true,
+    config: { OPENAI_API_KEY: secret },
+  });
+  const cleared = await request("/api/secrets", "PUT", {
+    secrets: { OPENAI_API_KEY: "" },
+  });
+  expect(cleared.status, await cleared.clone().text()).toBe(200);
+  expect(await cleared.json()).toMatchObject({
+    ok: true,
+    updated: ["OPENAI_API_KEY"],
+    applications: [{ pluginId: "openai", mode: "none" }],
+  });
+  const config = JSON.parse(
+    await readFile(path.join(directory, "eliza.json"), "utf8"),
+  );
+  expect(config.env.vars.OPENAI_API_KEY).toBeUndefined();
+  expect(config.plugins.entries.openai.config.OPENAI_API_KEY).toBe("");
+  const secrets = await (await request("/api/secrets")).json();
+  expect(
+    secrets.secrets.find(
+      (entry: { key: string }) => entry.key === "OPENAI_API_KEY",
+    ),
+  ).toMatchObject({ isSet: false, maskedValue: null });
+}, 120_000);
+
+it("applies saved secrets to a live plugin's cached configuration", async () => {
+  await server.close();
+  await writeFile(
+    path.join(directory, "eliza.json"),
+    JSON.stringify({
+      plugins: {
+        allow: ["@elizaos/plugin-openai"],
+        entries: {
+          openai: { enabled: true, config: { OPENAI_API_KEY: secret } },
+        },
+      },
+    }),
+  );
+  let cachedCredential = secret;
+  const fixture = await createTestRuntime({
+    characterName: "PluginCredentialApplyHttp",
+    plugins: [
+      {
+        name: "openai",
+        description:
+          "Synthetic plugin with a real lifecycle configuration hook",
+        applyConfig: async (config) => {
+          const credential = config.OPENAI_API_KEY;
+          if (typeof credential !== "string")
+            throw new Error("Credential was not passed to applyConfig");
+          cachedCredential = credential;
+        },
+      },
+    ],
+  });
+  try {
+    server = await startApiServer({
+      port: 0,
+      runtime: fixture.runtime,
+      skipDeferredStartupWork: true,
+    });
+    const replacement = `${secret}-live`;
+    const response = await request("/api/secrets", "PUT", {
+      secrets: { OPENAI_API_KEY: replacement },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      applications: [{ pluginId: "openai", mode: "config_apply" }],
+      requiresRestart: false,
+    });
+    expect(cachedCredential).toBe(replacement);
+    expect(fixture.runtime.getSetting("OPENAI_API_KEY")).toBe(replacement);
   } finally {
     await server.close();
     await fixture.cleanup();
