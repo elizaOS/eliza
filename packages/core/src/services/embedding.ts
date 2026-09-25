@@ -20,8 +20,12 @@ import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
-import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
+import {
+	type BatchItemOutcome,
+	BatchQueue,
+} from "../utils/batch-queue/index.js";
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
+import { isModelFundingAuthorityError } from "../utils/model-errors";
 
 interface EmbeddingQueueItem {
 	memory: Memory;
@@ -183,7 +187,7 @@ export class EmbeddingGenerationService extends Service {
 
 		this.runtime.registerEvent(EventType.MESSAGE_SENT, this.messageSentHandler);
 
-		// Uses shared `utils/batch-queue` (see `batch-queue.ts` header): same drain/retry/priority
+		// Uses shared `utils/batch-queue` (see `batch-queue/index.ts`): same drain/retry/priority
 		// model as other services so we do not maintain another bespoke queue + task stack here.
 		// Task system owns WHEN (repeat EMBEDDING_DRAIN tick); we own WHAT (dequeue, embed, persist).
 		// No maxSize — bottleneck is embedding I/O, not queue length.
@@ -205,6 +209,7 @@ export class EmbeddingGenerationService extends Service {
 			getPriority: (item) => item.priority,
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
+			shouldRetry: (_item, error) => !isModelFundingAuthorityError(error),
 			process: (item) => this.generateEmbedding(item),
 			onDrainBatchOutcomes: (outcomes) => {
 				for (const { item } of outcomes) {

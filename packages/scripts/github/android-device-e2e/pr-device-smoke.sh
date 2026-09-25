@@ -9,7 +9,7 @@ bun run --cwd packages/app build  # ensure web dist
 mkdir -p test-results/app/android-onboarding-to-home
 ELIZA_API_PORT=31337 \
 ELIZA_PAIRING_DISABLED=1 \
-  node packages/app/scripts/run-node-tsx.mjs \
+  node packages/app/scripts/run-node-tsx.ts \
     packages/app/scripts/serve-real-local-agent.ts \
     > test-results/app/android-onboarding-to-home/host-agent.log 2>&1 &
 HOST_AGENT_PID=$!

@@ -20,18 +20,21 @@
  * if it is lost or the variant was GC'd, re-running the redaction converges
  * on the identical output sha.
  */
-
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import type {
-  AudioRedactionSpan,
-  RedactionVerifyResult,
-} from "@elizaos/shared";
+import {
+  type AudioRedactionSpan,
+  ElizaError,
+  logger,
+  type RedactionVerifyResult,
+} from "@elizaos/core";
+
 import { resolveStateDir } from "../config/paths.ts";
-import type { AudioRedactionMode } from "./audio-redaction.ts";
-import { redactAudioBytes } from "./audio-redaction.ts";
+import {
+  type AudioRedactionMode,
+  redactAudioBytes,
+} from "./audio-redaction.ts";
 import {
   isValidStoredMediaFileName,
   mimeForStoredMediaFile,
@@ -44,16 +47,13 @@ import {
 const REDACTION_MEMO_FILE = "audio-redactions.json";
 /** Cap so replaced/abandoned redaction keys age out with their variants. */
 const MAX_MEMO_ENTRIES = 256;
-
 interface RedactionMemoEntry {
   key: string;
   fileName: string;
 }
-
 function memoPath(): string {
   return path.join(resolveStateDir(), "media", REDACTION_MEMO_FILE);
 }
-
 function readMemo(): RedactionMemoEntry[] {
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(memoPath(), "utf8"));
@@ -73,7 +73,6 @@ function readMemo(): RedactionMemoEntry[] {
     return [];
   }
 }
-
 function writeMemo(key: string, fileName: string): void {
   if (!isValidStoredMediaFileName(fileName)) {
     throw new ElizaError("refusing to memoize an invalid media filename", {
@@ -98,7 +97,6 @@ function writeMemo(key: string, fileName: string): void {
     );
   }
 }
-
 /** Inputs that content-address one redaction job. */
 export interface AudioRedactionKeyParts {
   /** sha256 of the ORIGINAL bytes (the store hash / capability). */
@@ -109,7 +107,6 @@ export interface AudioRedactionKeyParts {
   /** Active PII ruleset version — a bump re-redacts deterministically. */
   rulesetVersion: string;
 }
-
 /**
  * Derive the content-addressed job key — the audio analog of the text lane's
  * `pii:<sha256>:v<ruleset>` done-marker (#14808), extended with the mode and
@@ -125,7 +122,6 @@ export function audioRedactionKey(parts: AudioRedactionKeyParts): string {
     .slice(0, 16);
   return `pii-audio:${parts.originalSha}:v${parts.rulesetVersion}:${parts.mode}:${spanHash}`;
 }
-
 function assertKeyParts(parts: AudioRedactionKeyParts): void {
   if (!/^[a-f0-9]{64}$/.test(parts.originalSha)) {
     throw new ElizaError("audio redaction original sha is invalid", {
@@ -164,7 +160,6 @@ function assertKeyParts(parts: AudioRedactionKeyParts): void {
     previousEnd = span.endMs;
   }
 }
-
 /** A stored redacted variant handle. */
 export interface RedactedAudioVariant {
   /** Served URL of the REDACTED bytes (`/api/media/<sha256'>.<ext>`). */
@@ -177,7 +172,6 @@ export interface RedactedAudioVariant {
   /** True when the variant came from the memo (no recompute). */
   reused: boolean;
 }
-
 /**
  * Look up an existing redacted variant for the job key. Returns null when the
  * memo has no entry or the variant bytes were evicted/GC'd — the caller then
@@ -204,7 +198,6 @@ export function findRedactedAudioVariant(
     reused: true,
   };
 }
-
 /** Request for {@link prepareRedactedAudioVariant}. */
 export interface PrepareRedactedAudioVariantRequest {
   /** The ORIGINAL's stored name (`<sha256>.<ext>`) in the media store. */
@@ -213,7 +206,6 @@ export interface PrepareRedactedAudioVariantRequest {
   mode: AudioRedactionMode;
   rulesetVersion: string;
 }
-
 export interface PreparedRedactedAudioVariant {
   key: string;
   originalSha: string;
@@ -222,7 +214,6 @@ export interface PreparedRedactedAudioVariant {
   lane: "pure-ts-wav" | "ffmpeg";
   inputDurationMs: number;
 }
-
 /**
  * Prepare candidate bytes from a stored original without publishing them:
  * read the original and run the duration-preserving redaction op. The caller
@@ -252,7 +243,6 @@ export async function prepareRedactedAudioVariant(
     rulesetVersion: request.rulesetVersion,
   };
   const key = audioRedactionKey(keyParts);
-
   const originalBytes = readStoredMediaBytes(request.originalFileName);
   if (!originalBytes) {
     throw new ElizaError("audio redaction original media is not in the store", {
@@ -291,7 +281,6 @@ export async function prepareRedactedAudioVariant(
     inputDurationMs: result.inputDurationMs,
   };
 }
-
 export function persistVerifiedRedactedAudioVariant(
   prepared: PreparedRedactedAudioVariant,
   verification: RedactionVerifyResult,

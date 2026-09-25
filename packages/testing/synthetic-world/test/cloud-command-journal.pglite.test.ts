@@ -2,7 +2,6 @@
  * Proves the storage-neutral command journal against real Cloud PGlite
  * transactions and the production agents repository without mocks.
  */
-
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 
@@ -14,18 +13,18 @@ import {
   expect,
   test,
 } from "bun:test";
-import type { DbTransaction } from "@elizaos/cloud-shared/db/client";
 import {
   closeDatabaseConnectionsForTests,
+  type DbTransaction,
   dbWrite,
 } from "@elizaos/cloud-shared/db/client";
 import { agentsRepository } from "@elizaos/cloud-shared/db/repositories/agents/agents";
 import { CloudSyntheticEnvironmentLeaseStore } from "@elizaos/cloud-shared/db/repositories/synthetic-environment-leases";
 import { CloudSyntheticCommandJournalRepository } from "@elizaos/cloud-shared/db/repositories/synthetic-world-commands";
-import { agentTable } from "@elizaos/cloud-shared/db/schemas/eliza";
 import { syntheticEnvironmentLeases } from "@elizaos/cloud-shared/db/schemas/synthetic-environment-leases";
 import { syntheticWorldCommands } from "@elizaos/cloud-shared/db/schemas/synthetic-world-commands";
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/core/contracts/synthetic-environment-lease";
+import { agentTable } from "@elizaos/plugin-sql";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import {
@@ -38,28 +37,24 @@ const leaseStore = new CloudSyntheticEnvironmentLeaseStore();
 const repository: SyntheticCommandJournalRepository<DbTransaction> =
   new CloudSyntheticCommandJournalRepository();
 const journal = new LeaseFencedSyntheticCommandJournal(leaseStore, repository);
-
 beforeAll(async () => {
   const { apply } = await pushSchema(
     { agentTable, syntheticEnvironmentLeases, syntheticWorldCommands } as never,
     dbWrite as never,
   );
   await apply();
-}, 60_000);
-
+}, 60000);
 beforeEach(async () => {
   await dbWrite.delete(syntheticWorldCommands);
   await dbWrite.delete(agentTable);
   await dbWrite.delete(syntheticEnvironmentLeases);
 });
-
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
-
 async function acquire(
   namespace: string,
-  leaseDurationMs = 5_000,
+  leaseDurationMs = 5000,
 ): Promise<SyntheticEnvironmentLeaseAuthority> {
   return (
     await leaseStore.acquire({
@@ -73,7 +68,6 @@ async function acquire(
     })
   ).authority;
 }
-
 function command(
   authority: SyntheticEnvironmentLeaseAuthority,
   commandId: string,
@@ -88,8 +82,10 @@ function command(
     payload,
   } as const;
 }
-
-function deferred(): { promise: Promise<void>; resolve: () => void } {
+function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
   let resolvePromise: (() => void) | undefined;
   const promise = new Promise<void>((resolve) => {
     resolvePromise = resolve;
@@ -97,14 +93,15 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   if (!resolvePromise) throw new Error("deferred resolver was not initialized");
   return { promise, resolve: resolvePromise };
 }
-
 describe("Cloud synthetic command journal on PGlite", () => {
   test("commits production agent readback with COMMITTED and replays without a second callback", async () => {
     const authority = await acquire("cloud:journal:exact");
     const agentId = "00000000-0000-4000-8000-000000000201";
     let callbackCount = 0;
-    const committedReadbacks: Array<{ agentId: string; phase: string }> = [];
-
+    const committedReadbacks: Array<{
+      agentId: string;
+      phase: string;
+    }> = [];
     const first = await journal.execute(
       authority,
       command(authority, "ensure-agent", { agentId }),
@@ -146,7 +143,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
       record: { phase: "SUCCEEDED", outcome: "KNOWN_SUCCESS" },
     });
     expect(committedReadbacks).toEqual([{ agentId, phase: "COMMITTED" }]);
-
     const restartedJournal = new LeaseFencedSyntheticCommandJournal(
       new CloudSyntheticEnvironmentLeaseStore(),
       new CloudSyntheticCommandJournalRepository(),
@@ -172,7 +168,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
       ),
     ).rejects.toMatchObject({ code: "SYNTHETIC_COMMAND_ID_CONFLICT" });
   });
-
   test("serializes a colliding caller and invokes the production mutation once", async () => {
     const authority = await acquire("cloud:journal:collision");
     const agentId = "00000000-0000-4000-8000-000000000205";
@@ -226,7 +221,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
       id: agentId,
     });
   });
-
   test("rolls back the production row and COMMITTED transition when mutation fails", async () => {
     const authority = await acquire("cloud:journal:rollback");
     const agentId = "00000000-0000-4000-8000-000000000202";
@@ -250,14 +244,12 @@ describe("Cloud synthetic command journal on PGlite", () => {
       result: null,
     });
   });
-
   test("rejects stale authority and rolls back an expiry during mutation", async () => {
     const stale = await acquire("cloud:journal:stale");
-    await leaseStore.rollover({ authority: stale, leaseDurationMs: 5_000 });
+    await leaseStore.rollover({ authority: stale, leaseDurationMs: 5000 });
     await expect(
       journal.execute(stale, command(stale, "stale-command"), async () => null),
     ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_LOST" });
-
     const expiring = await acquire("cloud:journal:expiry");
     const agentId = "00000000-0000-4000-8000-000000000203";
     let mutationReadbackObserved = false;
@@ -314,8 +306,7 @@ describe("Cloud synthetic command journal on PGlite", () => {
         .from(syntheticWorldCommands)
         .where(eq(syntheticWorldCommands.command_id, "expired-agent")),
     ).toEqual([{ phase: "EXECUTING", result: null }]);
-  }, 15_000);
-
+  }, 15000);
   test("does not steal same-generation active execution during recovery", async () => {
     const authority = await acquire("cloud:journal:active");
     const recoveries: string[][] = [];
@@ -332,7 +323,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
     );
     expect(recoveries).toEqual([["active-command"]]);
   });
-
   test("classifies commit-before-response as DIRTY after generation recovery", async () => {
     const authority = await acquire("cloud:journal:ambiguous");
     const agentId = "00000000-0000-4000-8000-000000000204";
@@ -360,7 +350,7 @@ describe("Cloud synthetic command journal on PGlite", () => {
     });
     const next = await leaseStore.rollover({
       authority,
-      leaseDurationMs: 5_000,
+      leaseDurationMs: 5000,
     });
     expect(await journal.recover(next.authority)).toEqual({
       retryableCommandIds: [],
@@ -375,7 +365,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
       outcome: "UNKNOWN",
     });
   });
-
   test("fails closed on corrupt JSON and a future-generation row", async () => {
     const authority = await acquire("cloud:journal:corrupt");
     await journal.execute(
@@ -394,7 +383,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
     ).rejects.toMatchObject({
       code: "SYNTHETIC_COMMAND_STORAGE_FAILURE",
     });
-
     await journal.execute(
       authority,
       command(authority, "future-command"),
@@ -412,7 +400,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
       ),
     ).rejects.toMatchObject({ code: "SYNTHETIC_COMMAND_STORAGE_FAILURE" });
   });
-
   test("inspect and recover fail closed on a terminal row from a future generation", async () => {
     const authority = await acquire("cloud:journal:future-terminal");
     await journal.execute(
@@ -424,7 +411,6 @@ describe("Cloud synthetic command journal on PGlite", () => {
       .update(syntheticWorldCommands)
       .set({ generation: authority.generation + 1 })
       .where(eq(syntheticWorldCommands.command_id, "future-terminal-command"));
-
     await expect(
       journal.inspect(authority, "future-terminal-command"),
     ).rejects.toMatchObject({ code: "SYNTHETIC_COMMAND_STORAGE_FAILURE" });

@@ -579,3 +579,10 @@ class TestReportSaving:
         assert data["commands"][0]["stderr"] == long_stderr
         assert data["final_test_output"] == "final pytest output"
         assert data["final_test_exit_code"] == 0
+
+
+@pytest.mark.parametrize("harness", ["smithers", "unknown-harness"])
+def test_unsupported_harness_does_not_fall_back_to_eliza(harness: str) -> None:
+    runner = TerminalBenchRunner(config=TerminalBenchConfig(agent_harness=harness))
+    with pytest.raises(ValueError, match="Unsupported terminal benchmark harness"):
+        runner._build_agent_for_harness(env=object())

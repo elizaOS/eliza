@@ -53,7 +53,7 @@ export async function runAutonomousCli(
   }
 
   if (command === "runtime") {
-    const { bootElizaRuntime } = await import("../runtime/index.ts");
+    const { bootElizaRuntime } = await import("../runtime/eliza.ts");
     await bootElizaRuntime();
     return;
   }
@@ -72,10 +72,10 @@ export async function runAutonomousCli(
     // desktop AgentManager, dev api-supervisor) for a clean restart instead of
     // a silent death. One-shot commands and tests keep default behavior.
     if (process.env.NODE_ENV !== "test") {
-      const { installProcessCrashGuards } = await import("@elizaos/shared");
+      const { installProcessCrashGuards } = await import("@elizaos/core");
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
-    const { startElizaProcess } = await import("../runtime/index.ts");
+    const { startElizaProcess } = await import("../runtime/eliza.ts");
     const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the

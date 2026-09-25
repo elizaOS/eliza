@@ -39,6 +39,8 @@ interface SiloDefinition {
   producedBy: string;
   lane?: string;
   roots: SiloRoot[];
+  /** Keep a single root distinct from other producers sharing its lane. */
+  namespaceRoot?: boolean;
   /** Per-silo kind override; receives the root-relative posix path. */
   classify?: (relPath: string, defaultKind: ArtifactKind) => ArtifactKind;
 }
@@ -293,7 +295,7 @@ async function ingestSilo(
   if (presentRoots.length === 0) {
     return { silo: definition.silo, status: "absent", artifactCount: 0 };
   }
-  const namespace = definition.roots.length > 1;
+  const namespace = definition.namespaceRoot || definition.roots.length > 1;
   let artifactCount = 0;
   for (const root of presentRoots) {
     const rootDir = path.join(repoRoot, root.dir);
@@ -358,9 +360,31 @@ async function ingestSilo(
  */
 const SILO_DEFINITIONS: SiloDefinition[] = [
   {
+    silo: "android-native-agent",
+    source: "android-native-agent",
+    producedBy: "packages/app/scripts/android-native-agent.ts",
+    lane: "native",
+    roots: [{ label: "runs", dir: "test-results/android-native-agent/runs" }],
+  },
+  {
+    silo: "android-native-plugins",
+    source: "android-native-plugins",
+    producedBy: "packages/app/scripts/android-native-plugins.ts",
+    lane: "native",
+    roots: [{ label: "plugins", dir: "test-results/android-native-plugins" }],
+  },
+  {
+    silo: "android-native-sms",
+    source: "android-native-sms",
+    producedBy: "packages/app/scripts/android-native-sms.mjs",
+    lane: "native",
+    namespaceRoot: true,
+    roots: [{ label: "sms", dir: "test-results/android-native-sms" }],
+  },
+  {
     silo: "e2e-recordings",
     source: "e2e-recordings",
-    producedBy: "packages/scripts/e2e-recordings/run-all.mjs",
+    producedBy: "packages/scripts/e2e-recordings/run-all.ts",
     lane: "e2e",
     roots: [{ label: "repo", dir: "e2e-recordings" }],
   },
@@ -389,7 +413,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "device-e2e",
     source: "device-e2e",
-    producedBy: "packages/app/scripts/lib/device-e2e-bundle.mjs",
+    producedBy: "packages/app/scripts/lib/device-e2e-bundle.ts",
     lane: "native",
     roots: [{ label: "app", dir: "test-results/device-e2e" }],
   },
@@ -433,7 +457,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "live-test-runs",
     source: "live-test-runs",
-    producedBy: "packages/scripts/run-live-test-with-artifacts.mjs",
+    producedBy: "packages/scripts/run-live-test-with-artifacts.ts",
     roots: [{ label: "repo", dir: "reports/live-test-runs" }],
   },
   {
@@ -442,6 +466,13 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     producedBy: "packages/testing/scenario-runner/bin/eliza-scenarios",
     lane: "scenario",
     roots: [{ label: "repo", dir: "reports/scenarios" }],
+  },
+  {
+    silo: "cloud-stability",
+    source: "cloud-stability",
+    producedBy: "packages/cloud/scripts/e2e/run-stability-lane.ts",
+    lane: "cloud-stability",
+    roots: [{ label: "repo", dir: "test-results/cloud-stability" }],
   },
   {
     silo: "group-chat-timing",

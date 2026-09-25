@@ -38,73 +38,50 @@
  *     top-level accountId is promoted into TargetInfo only after server-owned
  *     account policy validation.
  */
-
 import type http from "node:http";
-import type {
-  AgentRuntime,
-  ConnectorAccount,
-  ConnectorAccountManager,
-  Memory,
-  RoleGateRole,
-  Room,
-  UUID,
-  World,
-} from "@elizaos/core";
 import {
+  type AgentRuntime,
+  type ConnectorAccount,
+  type ConnectorAccountManager,
   createUniqueUuid,
+  expandConnectorSourceFilter,
   getConnectorAccountManager,
+  type Memory,
+  normalizeConnectorSource,
+  PostInboxMessageRequestSchema,
+  type RoleGateRole,
+  type Room,
+  type RouteHelpers,
   requireConfirmedSendHandlerDelivery,
   roleRank,
   toWellFormedUnicode,
   truncateWellFormed,
+  type UUID,
+  type World,
 } from "@elizaos/core";
+
 import {
   resolveEffectiveMuteState,
   setRoomMuteUntil,
   setWorldMuteState,
 } from "@elizaos/plugin-assistant";
 import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord";
-import type { RouteHelpers } from "@elizaos/shared";
-import {
-  expandConnectorSourceFilter,
-  normalizeConnectorSource,
-  PostInboxMessageRequestSchema,
-} from "@elizaos/shared";
 import { z } from "zod";
 
-let discordModulePromise: Promise<{
-  cacheDiscordAvatarUrl: (
-    avatarUrl: string | undefined,
-    options: {
-      fetchImpl: typeof fetch;
-      userId?: string;
-    },
-  ) => Promise<string | undefined>;
-}> | null = null;
-
+let discordModulePromise: Promise<
+  typeof import("@elizaos/plugin-discord")
+> | null = null;
 // Inlined (not imported from @elizaos/plugin-discord/constants) so the mobile
 // Vite bundle does not statically pull in the Discord plugin. Must stay equal to
 // plugin-discord's DISCORD_SERVICE_NAME — the dynamic import below resolves the
 // same service by this name.
 const DISCORD_SERVICE_NAME = "discord";
-
 function getDiscordModule() {
   if (!discordModulePromise) {
-    discordModulePromise = import(
-      /* @vite-ignore */ "@elizaos/plugin-discord"
-    ) as Promise<{
-      cacheDiscordAvatarUrl: (
-        avatarUrl: string | undefined,
-        options: {
-          fetchImpl: typeof fetch;
-          userId?: string;
-        },
-      ) => Promise<string | undefined>;
-    }>;
+    discordModulePromise = import(/* @vite-ignore */ "@elizaos/plugin-discord");
   }
   return discordModulePromise;
 }
-
 /**
  * Source tags we consider "inbox-worthy". Messages whose content.source
  * is none of these are excluded from the combined feed — this keeps
@@ -124,11 +101,9 @@ const DEFAULT_INBOX_SOURCE_FILTER = [
   "slack",
   "sms",
 ] as const;
-
 const DEFAULT_INBOX_SOURCES = expandConnectorSourceFilter(
   DEFAULT_INBOX_SOURCE_FILTER,
 );
-
 /**
  * Hard ceiling on the number of rooms we scan per request. Large
  * deployments can accumulate hundreds of connector rooms; scanning all
@@ -138,8 +113,7 @@ const DEFAULT_INBOX_SOURCES = expandConnectorSourceFilter(
  * connector channels.
  */
 const MAX_ROOMS_SCANNED = 2000;
-const ORPHAN_ROOM_MEMORY_SCAN_LIMIT = 10_000;
-
+const ORPHAN_ROOM_MEMORY_SCAN_LIMIT = 10000;
 /**
  * Worlds we never want to surface in the connector chats sidebar. These
  * are internal scratch worlds (autonomy-service self-talk, advanced
@@ -155,14 +129,12 @@ const INTERNAL_WORLD_NAME_MARKERS = [
   "relationships world",
   "autonomy world",
 ];
-
 function isInternalWorld(world: { id?: string; name?: string }): boolean {
   if (world.id && INTERNAL_WORLD_IDS.has(world.id.toLowerCase())) return true;
   const name = world.name?.toLowerCase().trim();
   if (!name) return false;
   return INTERNAL_WORLD_NAME_MARKERS.some((marker) => name === marker);
 }
-
 /**
  * How many memories we ask the database for per room. We over-fetch
  * slightly so that after filtering by source tag we still have enough
@@ -171,19 +143,16 @@ function isInternalWorld(world: { id?: string; name?: string }): boolean {
  * tight per-room limit. 3x the requested limit is a reasonable margin.
  */
 const PER_ROOM_OVERFETCH_MULTIPLIER = 3;
-
 export interface InboxRouteState {
   runtime: AgentRuntime | null;
   callerAuthorization?: InboxRouteCallerAuthorization;
 }
-
 export interface InboxRouteCallerAuthorization {
   ok: boolean;
   role: RoleGateRole;
   identityId?: string;
   principal?: string;
 }
-
 /**
  * A single message in the inbox response. Shape mirrors
  * ConversationMessage on the client (see packages/app/src/api/
@@ -213,13 +182,11 @@ interface InboxMessage {
   /** Aggregated reactions attached to this message. */
   reactions?: InboxReaction[];
 }
-
 interface InboxReaction {
   emoji: string;
   count: number;
   users?: string[];
 }
-
 type InboxMessageRecord = InboxMessage & {
   hasExternalUrl: boolean;
   hasExplicitSource: boolean;
@@ -230,7 +197,6 @@ type InboxMessageRecord = InboxMessage & {
   rawSenderId?: string;
   responseId?: string;
 };
-
 type DiscordReactionEvent = {
   action: "add" | "remove";
   emoji: string;
@@ -238,12 +204,10 @@ type DiscordReactionEvent = {
   userKey: string;
   userLabel?: string;
 };
-
 type ReactionAggregateState = {
   emoji: string;
   users: Map<string, string | undefined>;
 };
-
 /**
  * Parse and clamp the `limit` query parameter. Defaults to 100 and caps
  * canonical positive decimal integers at 500.
@@ -255,7 +219,6 @@ function parseLimit(raw: string | null): number | null {
   if (!Number.isSafeInteger(parsed)) return null;
   return Math.min(parsed, 500);
 }
-
 /**
  * Parse the `sources` query parameter into a Set of lowercase tags, or
  * null to mean "use the default inbox source set".
@@ -269,16 +232,13 @@ function parseSourceFilter(raw: string | null): Set<string> | null {
   if (tags.length === 0) return null;
   return expandConnectorSourceFilter(tags);
 }
-
 function getRuntimeSendHandlers(
   runtime: AgentRuntime,
 ): Map<string, unknown> | null {
   const sendHandlers = Reflect.get(runtime, "sendHandlers") as unknown;
   return sendHandlers instanceof Map ? sendHandlers : null;
 }
-
 const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
-
 function runtimeHasAnySendHandler(
   runtime: AgentRuntime,
   source: string,
@@ -291,14 +251,12 @@ function runtimeHasAnySendHandler(
     key.startsWith(accountPrefix),
   );
 }
-
 function runtimeHasUnscopedSendHandler(
   runtime: AgentRuntime,
   source: string,
 ): boolean {
   return getRuntimeSendHandlers(runtime)?.has(source) ?? false;
 }
-
 function runtimeHasAccountScopedSendHandler(
   runtime: AgentRuntime,
   source: string,
@@ -310,7 +268,6 @@ function runtimeHasAccountScopedSendHandler(
     key.startsWith(accountPrefix),
   );
 }
-
 /** Mirrors AgentRuntime.sendMessageToTarget's account-aware route lookup. */
 function runtimeHasSendHandler(
   runtime: AgentRuntime,
@@ -327,7 +284,6 @@ function runtimeHasSendHandler(
   }
   if (handlers.has(source)) return true;
   if (accountId) return false;
-
   const accountPrefix = `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}`;
   let scopedHandlerCount = 0;
   for (const key of handlers.keys()) {
@@ -337,7 +293,6 @@ function runtimeHasSendHandler(
   }
   return scopedHandlerCount === 1;
 }
-
 type InboxAccountRoutingErrorCode =
   | "INBOX_CONNECTOR_ACCOUNT_AMBIGUOUS"
   | "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED"
@@ -347,7 +302,6 @@ type InboxAccountRoutingErrorCode =
   | "INBOX_CONNECTOR_ACCOUNT_REQUIRED"
   | "INBOX_CONNECTOR_ACCOUNT_SOURCE_MISMATCH"
   | "INBOX_CONNECTOR_ACCOUNT_UNAVAILABLE";
-
 interface InboxAccountRoutingFailure {
   ok: false;
   code: InboxAccountRoutingErrorCode;
@@ -355,22 +309,18 @@ interface InboxAccountRoutingFailure {
   status: number;
   context: Record<string, unknown>;
 }
-
 interface InboxAccountRoutingSuccess {
   ok: true;
   accountId?: string;
   mode: "explicit" | "legacy-source-default" | "resolved-default" | "single";
 }
-
 type InboxAccountRoutingResolution =
   | InboxAccountRoutingFailure
   | InboxAccountRoutingSuccess;
-
 /** Match ConnectorAccountManager's provider-key normalization exactly. */
 function normalizeAccountProvider(provider: string): string {
   return provider.trim().toLowerCase();
 }
-
 function accountRoutingFailure(
   code: InboxAccountRoutingErrorCode,
   error: string,
@@ -379,7 +329,6 @@ function accountRoutingFailure(
 ): InboxAccountRoutingFailure {
   return { ok: false, code, error, status, context };
 }
-
 function accountUnavailableReason(account: ConnectorAccount): string | null {
   if (account.status !== "connected") {
     return `status ${account.status} is not connected`;
@@ -399,7 +348,6 @@ function accountUnavailableReason(account: ConnectorAccount): string | null {
   }
   return null;
 }
-
 async function validateInboxAccount(
   manager: ConnectorAccountManager,
   source: string,
@@ -420,7 +368,6 @@ async function validateInboxAccount(
       },
     );
   }
-
   const unavailableReason = accountUnavailableReason(account);
   if (unavailableReason) {
     return accountRoutingFailure(
@@ -434,7 +381,6 @@ async function validateInboxAccount(
       },
     );
   }
-
   const ownerAuthorityRequired =
     account.accessGate === "owner_binding" ||
     account.role.trim().toUpperCase() === "OWNER";
@@ -453,7 +399,6 @@ async function validateInboxAccount(
       },
     );
   }
-
   if (account.accessGate !== "owner_binding") {
     return null;
   }
@@ -483,7 +428,6 @@ async function validateInboxAccount(
       },
     );
   }
-
   const instanceId =
     typeof account.metadata?.instanceId === "string"
       ? account.metadata.instanceId
@@ -521,7 +465,6 @@ async function validateInboxAccount(
   }
   return null;
 }
-
 async function findAccountSourceByExactId(
   manager: ConnectorAccountManager,
   requestedSource: string,
@@ -537,7 +480,6 @@ async function findAccountSourceByExactId(
   if (storedMatch) {
     return normalizeAccountProvider(storedMatch.provider);
   }
-
   const registeredSources = manager
     .listProviders()
     .map((provider) => normalizeAccountProvider(provider.provider))
@@ -551,7 +493,6 @@ async function findAccountSourceByExactId(
   }
   return null;
 }
-
 async function resolveInboxAccountRouting(
   runtime: AgentRuntime,
   source: string,
@@ -564,7 +505,6 @@ async function resolveInboxAccountRouting(
   // `bluebubbles`; canonicalizing here would reject its valid account.
   const provider = normalizeAccountProvider(source);
   const manager = getConnectorAccountManager(runtime);
-
   if (requestedAccountId) {
     const account = await manager.getAccount(provider, requestedAccountId);
     if (!account || account.id !== requestedAccountId) {
@@ -606,7 +546,6 @@ async function resolveInboxAccountRouting(
       }
     );
   }
-
   const accounts = (await manager.listAccounts(provider)).sort((a, b) =>
     a.id.localeCompare(b.id),
   );
@@ -624,7 +563,6 @@ async function resolveInboxAccountRouting(
     }
     return { ok: true, mode: "legacy-source-default" };
   }
-
   const usable: ConnectorAccount[] = [];
   const failures: InboxAccountRoutingFailure[] = [];
   for (const account of accounts) {
@@ -640,7 +578,6 @@ async function resolveInboxAccountRouting(
       usable.push(account);
     }
   }
-
   if (usable.length === 0) {
     if (accounts.length === 1 && failures[0]) {
       return failures[0];
@@ -658,7 +595,6 @@ async function resolveInboxAccountRouting(
   if (usable.length === 1) {
     return { ok: true, accountId: usable[0].id, mode: "single" };
   }
-
   const defaults = usable.filter(
     (account) => account.metadata?.isDefault === true,
   );
@@ -680,7 +616,6 @@ async function resolveInboxAccountRouting(
     },
   );
 }
-
 /**
  * Pull the source tag out of a Memory row. Memory.content is typed as
  * `Content` in core but the shape we care about is a loose record with
@@ -688,46 +623,57 @@ async function resolveInboxAccountRouting(
  * missing, non-string, or empty.
  */
 function extractSource(memory: Memory): string | null {
-  const content = memory.content as { source?: unknown } | undefined;
+  const content = memory.content as
+    | {
+        source?: unknown;
+      }
+    | undefined;
   const source = content?.source;
   if (typeof source !== "string") return null;
   const trimmed = source.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
-
 function isDiscordConnectorSource(source: string | null | undefined): boolean {
   return normalizeConnectorSource(source) === "discord";
 }
-
 /**
  * Pull the visible text out of a Memory row. Same rationale as
  * extractSource — we're pulling fields off a loosely-typed Content
  * object and normalizing.
  */
 function extractText(memory: Memory): string {
-  const content = memory.content as { text?: unknown } | undefined;
+  const content = memory.content as
+    | {
+        text?: unknown;
+      }
+    | undefined;
   const text = content?.text;
   return typeof text === "string" ? text : "";
 }
-
 function extractResponseId(memory: Memory): string | undefined {
-  const content = memory.content as { responseId?: unknown } | undefined;
+  const content = memory.content as
+    | {
+        responseId?: unknown;
+      }
+    | undefined;
   const responseId = content?.responseId;
   if (typeof responseId === "string" && responseId.length > 0) {
     return responseId;
   }
   return undefined;
 }
-
 function extractContentUrl(memory: Memory): string | undefined {
-  const content = memory.content as { url?: unknown } | undefined;
+  const content = memory.content as
+    | {
+        url?: unknown;
+      }
+    | undefined;
   const url = content?.url;
   if (typeof url === "string" && url.length > 0) {
     return url;
   }
   return undefined;
 }
-
 /**
  * Best-effort sender display name from memory.metadata.entityName. The
  * bootstrap plugin stamps this when it builds memories from
@@ -743,21 +689,18 @@ function extractFrom(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractFromUserName(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const entityUserName = meta?.entityUserName;
   if (typeof entityUserName === "string" && entityUserName.length > 0) {
     return entityUserName;
   }
-
   const username = meta?.username;
   if (typeof username === "string" && username.length > 0) {
     return username;
   }
   return undefined;
 }
-
 function extractFromAvatarUrl(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const entityAvatarUrl = meta?.entityAvatarUrl;
@@ -766,7 +709,6 @@ function extractFromAvatarUrl(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractRawSenderId(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const fromId = meta?.fromId;
@@ -775,7 +717,6 @@ function extractRawSenderId(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractDiscordChannelId(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const discordChannelId = meta?.discordChannelId;
@@ -784,7 +725,6 @@ function extractDiscordChannelId(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractDiscordMessageId(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const discordMessageId = meta?.discordMessageId;
@@ -793,13 +733,11 @@ function extractDiscordMessageId(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function readLooseStringValue(
   record: Record<string, unknown> | undefined,
   keys: string[],
 ): string | null {
   if (!record) return null;
-
   for (const key of keys) {
     const value = record[key];
     if (typeof value !== "string") {
@@ -810,20 +748,16 @@ function readLooseStringValue(
       return trimmed;
     }
   }
-
   return null;
 }
-
 function asLooseRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
 }
-
 function readRoomSource(room: Room | undefined): string | null {
   return readLooseStringValue(asLooseRecord(room), ["source"]);
 }
-
 function connectorSourcesMatch(left: string, right: string): boolean {
   // Aliases group sources for inbox display/filtering, but they are not
   // interchangeable transport authorities. Native iMessage and BlueBubbles,
@@ -831,7 +765,6 @@ function connectorSourcesMatch(left: string, right: string): boolean {
   // handlers and account stores.
   return normalizeAccountProvider(left) === normalizeAccountProvider(right);
 }
-
 async function resolveTrustedRoomSource(
   runtime: AgentRuntime,
   room: Room,
@@ -841,14 +774,12 @@ async function resolveTrustedRoomSource(
   const latestMemory = await loadLatestRoomMemory(runtime, room.id);
   return latestMemory ? extractSource(latestMemory) : null;
 }
-
 function readRoomWorldId(room: Room | undefined): string | undefined {
   return (
     readLooseStringValue(asLooseRecord(room), ["worldId", "world_id"]) ??
     undefined
   );
 }
-
 function readRoomServerId(room: Room | undefined): string | undefined {
   return (
     readLooseStringValue(asLooseRecord(room), [
@@ -859,7 +790,6 @@ function readRoomServerId(room: Room | undefined): string | undefined {
     ]) ?? undefined
   );
 }
-
 function readRoomType(room: Room | undefined): string | null {
   return readLooseStringValue(asLooseRecord(room), [
     "type",
@@ -867,22 +797,19 @@ function readRoomType(room: Room | undefined): string | null {
     "room_type",
   ]);
 }
-
 function readRoomChannelId(room: Room | undefined): string | undefined {
   return (
     readLooseStringValue(asLooseRecord(room), ["channelId", "channel_id"]) ??
     undefined
   );
 }
-
 function muteUntilIsoFromDuration(
   durationMinutes: number | undefined,
 ): string | undefined {
   return durationMinutes && durationMinutes > 0
-    ? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+    ? new Date(Date.now() + durationMinutes * 60000).toISOString()
     : undefined;
 }
-
 /**
  * A Discord thread inherits its parent channel's mute: the connector's
  * inbound gate drops the thread's messages on the [room, parent] mute chain,
@@ -903,7 +830,6 @@ async function resolveDiscordParentRoomId(
     ? createUniqueUuid(runtime, profile.parentChannelId)
     : undefined;
 }
-
 async function resolveInboxRoomMuteState(
   runtime: AgentRuntime,
   room: Room | undefined,
@@ -920,7 +846,6 @@ async function resolveInboxRoomMuteState(
   }
   return { muted: true, mutedScope: effective.scope };
 }
-
 function readRoomCreatedAt(room: Room | undefined): number | undefined {
   const record = asLooseRecord(room);
   const value = record?.createdAt ?? record?.created_at;
@@ -936,11 +861,9 @@ function readRoomCreatedAt(room: Room | undefined): number | undefined {
   }
   return undefined;
 }
-
 function readWorldName(world: World | undefined): string | null {
   return readLooseStringValue(asLooseRecord(world), ["name"]);
 }
-
 function readWorldServerId(world: World | undefined): string | undefined {
   return (
     readLooseStringValue(asLooseRecord(world), [
@@ -951,13 +874,11 @@ function readWorldServerId(world: World | undefined): string | undefined {
     ]) ?? undefined
   );
 }
-
 function normalizeRoomTitle(title: string | null | undefined): string | null {
   if (typeof title !== "string") return null;
   const trimmed = title.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
-
 function isPlaceholderConversationTitle(title: string | null): boolean {
   if (!title) return false;
   const normalized = title.trim().toLowerCase();
@@ -967,7 +888,6 @@ function isPlaceholderConversationTitle(title: string | null): boolean {
     normalized === "discord chat"
   );
 }
-
 function equalsNormalizedTitle(
   left: string | null,
   right: string | null,
@@ -975,14 +895,16 @@ function equalsNormalizedTitle(
   if (!left || !right) return false;
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
-
 function extractReplyToMessageId(memory: Memory): string | undefined {
-  const content = memory.content as { inReplyTo?: unknown } | undefined;
+  const content = memory.content as
+    | {
+        inReplyTo?: unknown;
+      }
+    | undefined;
   const inReplyTo = content?.inReplyTo;
   if (typeof inReplyTo === "string" && inReplyTo.length > 0) {
     return inReplyTo;
   }
-
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const replyToMessageId = meta?.replyToMessageId;
   if (typeof replyToMessageId === "string" && replyToMessageId.length > 0) {
@@ -990,7 +912,6 @@ function extractReplyToMessageId(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractReplyAuthorRecord(
   memory: Memory,
 ): Record<string, unknown> | null {
@@ -1001,14 +922,12 @@ function extractReplyAuthorRecord(
   }
   return replyToAuthor as Record<string, unknown>;
 }
-
 function extractReplyToSenderName(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const replyToSenderName = meta?.replyToSenderName;
   if (typeof replyToSenderName === "string" && replyToSenderName.length > 0) {
     return replyToSenderName;
   }
-
   const replyAuthor = extractReplyAuthorRecord(memory);
   const displayName = replyAuthor?.displayName;
   if (typeof displayName === "string" && displayName.length > 0) {
@@ -1020,7 +939,6 @@ function extractReplyToSenderName(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractReplyToSenderUserName(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const replyToSenderUserName = meta?.replyToSenderUserName;
@@ -1030,7 +948,6 @@ function extractReplyToSenderUserName(memory: Memory): string | undefined {
   ) {
     return replyToSenderUserName;
   }
-
   const replyAuthor = extractReplyAuthorRecord(memory);
   const username = replyAuthor?.username;
   if (typeof username === "string" && username.length > 0) {
@@ -1038,14 +955,12 @@ function extractReplyToSenderUserName(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 function extractReplyToSenderId(memory: Memory): string | undefined {
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const replyToSenderId = meta?.replyToSenderId;
   if (typeof replyToSenderId === "string" && replyToSenderId.length > 0) {
     return replyToSenderId;
   }
-
   const replyAuthor = extractReplyAuthorRecord(memory);
   const id = replyAuthor?.id;
   if (typeof id === "string" && id.length > 0) {
@@ -1053,9 +968,7 @@ function extractReplyToSenderId(memory: Memory): string | undefined {
   }
   return undefined;
 }
-
 const LEGACY_DISCORD_REACTION_RE = /^\*(Added|Removed) <(.+?)> (?:to|from):/i;
-
 function extractDiscordReactionEvent(
   memory: Memory,
 ): DiscordReactionEvent | null {
@@ -1063,13 +976,11 @@ function extractDiscordReactionEvent(
   if (!targetMessageId) {
     return null;
   }
-
   const meta = memory.metadata as Record<string, unknown> | undefined;
   const reactionMeta =
     meta?.discordReaction && typeof meta.discordReaction === "object"
       ? (meta.discordReaction as Record<string, unknown>)
       : null;
-
   const structuredAction =
     reactionMeta?.action === "add" || reactionMeta?.action === "remove"
       ? reactionMeta.action
@@ -1079,7 +990,6 @@ function extractDiscordReactionEvent(
     reactionMeta.emoji.trim().length > 0
       ? reactionMeta.emoji.trim()
       : null;
-
   if (structuredAction && structuredEmoji) {
     return {
       action: structuredAction,
@@ -1089,18 +999,15 @@ function extractDiscordReactionEvent(
       userLabel: extractFrom(memory) ?? extractFromUserName(memory),
     };
   }
-
   const source = extractSource(memory);
   if (!isDiscordConnectorSource(source)) {
     return null;
   }
-
   const text = extractText(memory).trim();
   const legacyMatch = text.match(LEGACY_DISCORD_REACTION_RE);
   if (!legacyMatch) {
     return null;
   }
-
   return {
     action: legacyMatch[1].toLowerCase() === "added" ? "add" : "remove",
     emoji: legacyMatch[2].trim(),
@@ -1109,7 +1016,6 @@ function extractDiscordReactionEvent(
     userLabel: extractFrom(memory) ?? extractFromUserName(memory),
   };
 }
-
 function buildMessageReactionMap(
   memories: Memory[],
 ): Map<string, InboxReaction[]> {
@@ -1120,13 +1026,11 @@ function buildMessageReactionMap(
   const chronologicallySortedMemories = [...memories].sort(
     (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
   );
-
   for (const memory of chronologicallySortedMemories) {
     const event = extractDiscordReactionEvent(memory);
     if (!event) {
       continue;
     }
-
     const byEmoji =
       stateByTargetId.get(event.targetMessageId) ??
       new Map<string, ReactionAggregateState>();
@@ -1134,28 +1038,24 @@ function buildMessageReactionMap(
       emoji: event.emoji,
       users: new Map<string, string | undefined>(),
     };
-
     if (event.action === "add") {
       aggregate.users.set(event.userKey, event.userLabel);
       byEmoji.set(event.emoji, aggregate);
       stateByTargetId.set(event.targetMessageId, byEmoji);
       continue;
     }
-
     aggregate.users.delete(event.userKey);
     if (aggregate.users.size === 0) {
       byEmoji.delete(event.emoji);
     } else {
       byEmoji.set(event.emoji, aggregate);
     }
-
     if (byEmoji.size === 0) {
       stateByTargetId.delete(event.targetMessageId);
     } else {
       stateByTargetId.set(event.targetMessageId, byEmoji);
     }
   }
-
   const reactionsByTargetId = new Map<string, InboxReaction[]>();
   for (const [targetMessageId, byEmoji] of stateByTargetId) {
     const reactions = Array.from(byEmoji.values())
@@ -1175,43 +1075,52 @@ function buildMessageReactionMap(
       reactionsByTargetId.set(targetMessageId, reactions);
     }
   }
-
   return reactionsByTargetId;
 }
-
 type DiscordUserProfile = {
   avatarUrl?: string;
   displayName?: string;
   username?: string;
 };
-
 type DiscordMessageAuthorProfile = DiscordUserProfile & {
   rawUserId?: string;
 };
-
 type StoredDiscordEntityProfile = {
   avatarUrl?: string;
   displayName?: string;
   rawUserId?: string;
   username?: string;
 };
-
-const DISCORD_PROFILE_CACHE_TTL_MS = 5 * 60_000;
+const DISCORD_PROFILE_CACHE_TTL_MS = 5 * 60000;
 const discordRoomProfileCache = new Map<
   string,
-  { expiresAt: number; value: DiscordRoomProfile | null }
+  {
+    expiresAt: number;
+    value: DiscordRoomProfile | null;
+  }
 >();
 const discordUserProfileCache = new Map<
   string,
-  { expiresAt: number; value: DiscordUserProfile | null }
+  {
+    expiresAt: number;
+    value: DiscordUserProfile | null;
+  }
 >();
 const discordMessageAuthorProfileCache = new Map<
   string,
-  { expiresAt: number; value: DiscordMessageAuthorProfile | null }
+  {
+    expiresAt: number;
+    value: DiscordMessageAuthorProfile | null;
+  }
 >();
-
 function readCachedValue<T>(
-  cache: Map<string, { expiresAt: number; value: T }>,
+  cache: Map<
+    string,
+    {
+      expiresAt: number;
+      value: T;
+    }
+  >,
   key: string,
 ): T | undefined {
   const entry = cache.get(key);
@@ -1222,7 +1131,6 @@ function readCachedValue<T>(
   }
   return entry.value;
 }
-
 /**
  * Hard ceiling on the entries a single Discord profile cache may retain.
  *
@@ -1241,7 +1149,6 @@ function readCachedValue<T>(
  * page still round-trips entirely from cache.
  */
 export const MAX_DISCORD_PROFILE_CACHE_ENTRIES = 2048;
-
 /**
  * Store `value` under `key` and keep the cache within
  * MAX_DISCORD_PROFILE_CACHE_ENTRIES. Expired entries are swept first; if that
@@ -1250,7 +1157,13 @@ export const MAX_DISCORD_PROFILE_CACHE_ENTRIES = 2048;
  * "oldest" mean what it says here.
  */
 function writeCachedValue<T>(
-  cache: Map<string, { expiresAt: number; value: T }>,
+  cache: Map<
+    string,
+    {
+      expiresAt: number;
+      value: T;
+    }
+  >,
   key: string,
   value: T,
 ): void {
@@ -1260,7 +1173,6 @@ function writeCachedValue<T>(
     value,
   });
   if (cache.size <= MAX_DISCORD_PROFILE_CACHE_ENTRIES) return;
-
   const now = Date.now();
   for (const [entryKey, entry] of cache) {
     if (entry.expiresAt <= now) cache.delete(entryKey);
@@ -1271,17 +1183,17 @@ function writeCachedValue<T>(
     cache.delete(entryKey);
   }
 }
-
 type DiscordClientLike = {
   channels?: {
-    cache?: { get?: (id: string) => unknown };
+    cache?: {
+      get?: (id: string) => unknown;
+    };
     fetch?: (id: string) => Promise<unknown>;
   };
   users?: {
     fetch?: (id: string) => Promise<unknown>;
   };
 };
-
 function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
   const runtimeWithServices = runtime as AgentRuntime & {
     getService?: (name: string) => unknown;
@@ -1292,7 +1204,6 @@ function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
     | undefined;
   return service?.client ?? null;
 }
-
 function firstCollectionValue(collection: unknown): unknown {
   if (!collection || typeof collection !== "object") {
     return null;
@@ -1309,7 +1220,6 @@ function firstCollectionValue(collection: unknown): unknown {
   }
   return null;
 }
-
 function readDiscordDisplayName(user: unknown): string | undefined {
   if (!user || typeof user !== "object") return undefined;
   const record = user as Record<string, unknown>;
@@ -1327,7 +1237,6 @@ function readDiscordDisplayName(user: unknown): string | undefined {
   }
   return undefined;
 }
-
 function readDiscordAvatarUrl(user: unknown): string | undefined {
   if (!user || typeof user !== "object") return undefined;
   const record = user as {
@@ -1344,19 +1253,20 @@ function readDiscordAvatarUrl(user: unknown): string | undefined {
   }
   return undefined;
 }
-
 function readStoredDiscordEntityProfile(
   entity: unknown,
 ): StoredDiscordEntityProfile | null {
   if (!entity || typeof entity !== "object") {
     return null;
   }
-
-  const metadata = (entity as { metadata?: unknown }).metadata;
+  const metadata = (
+    entity as {
+      metadata?: unknown;
+    }
+  ).metadata;
   if (!metadata || typeof metadata !== "object") {
     return null;
   }
-
   const record = metadata as Record<string, unknown>;
   const discord =
     record.discord && typeof record.discord === "object"
@@ -1366,7 +1276,6 @@ function readStoredDiscordEntityProfile(
     record.default && typeof record.default === "object"
       ? (record.default as Record<string, unknown>)
       : null;
-
   const displayName =
     readLooseStringValue(record, ["displayName", "name"]) ??
     readLooseStringValue(discord ?? undefined, [
@@ -1386,11 +1295,9 @@ function readStoredDiscordEntityProfile(
   const rawUserId =
     readLooseStringValue(discord ?? undefined, ["userId", "id"]) ??
     readLooseStringValue(record, ["originalId"]);
-
   if (!displayName && !username && !avatarUrl && !rawUserId) {
     return null;
   }
-
   return {
     ...(avatarUrl ? { avatarUrl } : {}),
     ...(displayName ? { displayName } : {}),
@@ -1398,20 +1305,17 @@ function readStoredDiscordEntityProfile(
     ...(username ? { username } : {}),
   };
 }
-
 async function resolveStoredDiscordEntityProfile(
   runtime: AgentRuntime,
   entityId: string | undefined,
 ): Promise<StoredDiscordEntityProfile | null> {
   if (!entityId) return null;
-
   const runtimeWithEntityLookup = runtime as AgentRuntime & {
     getEntityById?: (id: UUID) => Promise<unknown>;
   };
   if (typeof runtimeWithEntityLookup.getEntityById !== "function") {
     return null;
   }
-
   try {
     const entity = await runtimeWithEntityLookup.getEntityById(
       entityId as UUID,
@@ -1421,7 +1325,6 @@ async function resolveStoredDiscordEntityProfile(
     return null;
   }
 }
-
 async function cacheInboxDiscordAvatar(
   runtime: AgentRuntime,
   avatarUrl: string | undefined,
@@ -1433,7 +1336,6 @@ async function cacheInboxDiscordAvatar(
     userId,
   });
 }
-
 async function resolveDiscordMessageAuthorProfile(
   runtime: AgentRuntime,
   channelId: string,
@@ -1442,7 +1344,6 @@ async function resolveDiscordMessageAuthorProfile(
   const cacheKey = `${channelId}:${messageId}`;
   const cached = readCachedValue(discordMessageAuthorProfileCache, cacheKey);
   if (cached !== undefined) return cached;
-
   const client = getDiscordClient(runtime);
   const cachedChannel = client?.channels?.cache?.get?.(channelId);
   const fetchChannel = client?.channels?.fetch;
@@ -1451,43 +1352,75 @@ async function resolveDiscordMessageAuthorProfile(
     (typeof fetchChannel === "function"
       ? await fetchChannel(channelId).catch(() => null)
       : null);
-
   const fetchMessage =
     channel &&
     typeof channel === "object" &&
-    typeof (channel as { messages?: { fetch?: unknown } }).messages?.fetch ===
-      "function"
-      ? (channel as { messages: { fetch: (id: string) => Promise<unknown> } })
-          .messages.fetch
+    typeof (
+      channel as {
+        messages?: {
+          fetch?: unknown;
+        };
+      }
+    ).messages?.fetch === "function"
+      ? (
+          channel as {
+            messages: {
+              fetch: (id: string) => Promise<unknown>;
+            };
+          }
+        ).messages.fetch
       : null;
   if (!fetchMessage) {
     writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
     return null;
   }
-
   try {
     const message = await fetchMessage(messageId);
     const author =
       message && typeof message === "object"
-        ? ((message as { author?: unknown }).author ?? null)
+        ? ((
+            message as {
+              author?: unknown;
+            }
+          ).author ?? null)
         : null;
     const member =
       message && typeof message === "object"
-        ? ((message as { member?: unknown }).member ?? null)
+        ? ((
+            message as {
+              member?: unknown;
+            }
+          ).member ?? null)
         : null;
     const rawUserId =
       author &&
       typeof author === "object" &&
-      typeof (author as { id?: unknown }).id === "string"
-        ? (author as { id: string }).id
+      typeof (
+        author as {
+          id?: unknown;
+        }
+      ).id === "string"
+        ? (
+            author as {
+              id: string;
+            }
+          ).id
         : undefined;
     const profile: DiscordMessageAuthorProfile = {
       displayName: readDiscordDisplayName(member ?? author),
       username:
         author &&
         typeof author === "object" &&
-        typeof (author as { username?: unknown }).username === "string"
-          ? (author as { username: string }).username
+        typeof (
+          author as {
+            username?: unknown;
+          }
+        ).username === "string"
+          ? (
+              author as {
+                username: string;
+              }
+            ).username
           : undefined,
       avatarUrl: readDiscordAvatarUrl(author),
       ...(rawUserId ? { rawUserId } : {}),
@@ -1499,18 +1432,15 @@ async function resolveDiscordMessageAuthorProfile(
     return null;
   }
 }
-
 async function resolveDiscordUserProfile(
   runtime: AgentRuntime,
   userId: string,
 ): Promise<DiscordUserProfile | null> {
   const cached = readCachedValue(discordUserProfileCache, userId);
   if (cached !== undefined) return cached;
-
   const client = getDiscordClient(runtime);
   const fetchUser = client?.users?.fetch;
   if (typeof fetchUser !== "function") return null;
-
   try {
     const user = await fetchUser(userId);
     const profile: DiscordUserProfile = {
@@ -1518,8 +1448,16 @@ async function resolveDiscordUserProfile(
       username:
         user &&
         typeof user === "object" &&
-        typeof (user as { username?: unknown }).username === "string"
-          ? (user as { username: string }).username
+        typeof (
+          user as {
+            username?: unknown;
+          }
+        ).username === "string"
+          ? (
+              user as {
+                username: string;
+              }
+            ).username
           : undefined,
       avatarUrl: readDiscordAvatarUrl(user),
     };
@@ -1530,7 +1468,6 @@ async function resolveDiscordUserProfile(
     return null;
   }
 }
-
 async function resolveDiscordRoomProfile(
   runtime: AgentRuntime,
   room: Room | undefined,
@@ -1541,10 +1478,8 @@ async function resolveDiscordRoomProfile(
       ? channelIdHint.trim()
       : (readRoomChannelId(room) ?? "");
   if (!channelId) return null;
-
   const cached = readCachedValue(discordRoomProfileCache, channelId);
   if (cached !== undefined) return cached;
-
   const client = getDiscordClient(runtime);
   const cachedChannel = client?.channels?.cache?.get?.(channelId);
   const fetchChannel = client?.channels?.fetch;
@@ -1553,12 +1488,13 @@ async function resolveDiscordRoomProfile(
     (typeof fetchChannel === "function"
       ? await fetchChannel(channelId).catch(() => null)
       : null);
-
   let title: string | null = null;
   let avatarUrl: string | undefined;
   let parentChannelId: string | undefined;
   if (channel && typeof channel === "object") {
-    const namedChannel = channel as { name?: unknown };
+    const namedChannel = channel as {
+      name?: unknown;
+    };
     if (typeof namedChannel.name === "string" && namedChannel.name.trim()) {
       title = namedChannel.name.trim();
     } else {
@@ -1571,7 +1507,9 @@ async function resolveDiscordRoomProfile(
       title = readDiscordDisplayName(recipient) ?? null;
       avatarUrl = readDiscordAvatarUrl(recipient);
     }
-    const parentRecord = channel as { parentId?: unknown };
+    const parentRecord = channel as {
+      parentId?: unknown;
+    };
     if (
       typeof parentRecord.parentId === "string" &&
       parentRecord.parentId.length > 0
@@ -1579,7 +1517,6 @@ async function resolveDiscordRoomProfile(
       parentChannelId = parentRecord.parentId;
     }
   }
-
   const profile: DiscordRoomProfile = {
     title,
     ...(typeof avatarUrl === "string" && avatarUrl.length > 0
@@ -1587,11 +1524,9 @@ async function resolveDiscordRoomProfile(
       : {}),
     ...(parentChannelId ? { parentChannelId } : {}),
   };
-
   writeCachedValue(discordRoomProfileCache, channelId, profile);
   return profile;
 }
-
 /**
  * Enumerate every room the agent currently has state for, up to
  * MAX_ROOMS_SCANNED. We do this by walking every world the runtime
@@ -1612,14 +1547,11 @@ async function resolveDiscordRoomProfile(
 async function collectAgentRoomIds(runtime: AgentRuntime): Promise<UUID[]> {
   const worlds = await runtime.getAllWorlds();
   if (worlds.length === 0) return [];
-
   const worldIds = worlds
     .filter((w) => !isInternalWorld(w))
     .map((w) => w.id)
     .filter((id): id is UUID => typeof id === "string");
-
   if (worldIds.length === 0) return [];
-
   // getRoomsByWorlds is the bulk form — single round trip instead of
   // one query per world.
   const rooms = await runtime.getRoomsByWorlds(worldIds, MAX_ROOMS_SCANNED, 0);
@@ -1630,7 +1562,6 @@ async function collectAgentRoomIds(runtime: AgentRuntime): Promise<UUID[]> {
   }
   return roomIds;
 }
-
 async function collectAgentWorlds(
   runtime: AgentRuntime,
 ): Promise<Map<UUID, World>> {
@@ -1646,7 +1577,6 @@ async function collectAgentWorlds(
   }
   return worldsById;
 }
-
 /**
  * Collect every room owned by the agent (bounded by MAX_ROOMS_SCANNED)
  * as full Room objects rather than just ids. Used by the chats
@@ -1661,7 +1591,6 @@ async function collectAgentRooms(runtime: AgentRuntime): Promise<Room[]> {
   if (worldIds.length === 0) return [];
   return runtime.getRoomsByWorlds(worldIds, MAX_ROOMS_SCANNED, 0);
 }
-
 function resolveInboxWorldLabel(
   room: Room | undefined,
   world: World | undefined,
@@ -1670,36 +1599,29 @@ function resolveInboxWorldLabel(
   if (namedWorld) {
     return namedWorld;
   }
-
   const roomServerId = readRoomServerId(room);
   if (roomServerId) {
     return roomServerId;
   }
-
   const worldServerId = readWorldServerId(world);
   if (worldServerId) {
     return worldServerId;
   }
-
   const roomType = readRoomType(room)?.trim().toUpperCase();
   if (roomType === "DM") {
     return "Direct messages";
   }
-
   const worldId = readRoomWorldId(room);
   if (worldId) {
     return worldId;
   }
-
   return "Unknown world";
 }
-
 async function loadRelevantRooms(
   runtime: AgentRuntime,
   requestedRoomId: UUID | null,
 ): Promise<Map<string, Room>> {
   const roomById = new Map<string, Room>();
-
   if (requestedRoomId) {
     const runtimeWithGetRoom = runtime as AgentRuntime & {
       getRoom?: (roomId: UUID) => Promise<Room | null | undefined>;
@@ -1712,17 +1634,14 @@ async function loadRelevantRooms(
       }
     }
   }
-
   const rooms = await collectAgentRooms(runtime);
   for (const room of rooms) {
     if (!room.id) continue;
     if (requestedRoomId && room.id !== requestedRoomId) continue;
     roomById.set(room.id, room);
   }
-
   return roomById;
 }
-
 function applyInboxChatMemory(
   accumulator: Map<
     string,
@@ -1745,10 +1664,8 @@ function applyInboxChatMemory(
 ): void {
   const key = memory.roomId;
   if (!key) return;
-
   const text = extractText(memory);
   if (!text) return;
-
   const ts = memory.createdAt ?? 0;
   const senderAvatarUrl = extractFromAvatarUrl(memory);
   const senderEntityId =
@@ -1759,7 +1676,6 @@ function applyInboxChatMemory(
   const discordChannelId =
     extractDiscordChannelId(memory) ?? readRoomChannelId(room);
   const discordMessageId = extractDiscordMessageId(memory);
-
   const existing = accumulator.get(key);
   if (!existing) {
     accumulator.set(key, {
@@ -1779,7 +1695,6 @@ function applyInboxChatMemory(
     });
     return;
   }
-
   existing.messageCount += 1;
   if (ts > existing.lastMessageAt) {
     existing.lastMessageAt = ts;
@@ -1801,7 +1716,6 @@ function applyInboxChatMemory(
     existing.latestDiscordMessageId = discordMessageId;
   }
 }
-
 async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1839,7 +1753,6 @@ async function loadLatestRoomMemory(
     return null;
   }
 }
-
 async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,
   roomById: Map<UUID, Room>,
@@ -1848,14 +1761,12 @@ async function augmentRoomsFromRecentMemories(
   if (roomById.size >= MAX_ROOMS_SCANNED) {
     return;
   }
-
   const recentMemories = await runtime.getMemories({
     agentId: runtime.agentId,
     limit: ORPHAN_ROOM_MEMORY_SCAN_LIMIT,
     tableName: "messages",
     unique: false,
   });
-
   for (const memory of recentMemories) {
     if (roomById.size >= MAX_ROOMS_SCANNED) {
       break;
@@ -1864,12 +1775,10 @@ async function augmentRoomsFromRecentMemories(
     if (!roomId || roomById.has(roomId)) {
       continue;
     }
-
     const source = extractSource(memory);
     if (!source || !sourceFilter.has(source.toLowerCase())) {
       continue;
     }
-
     roomById.set(
       roomId as UUID,
       {
@@ -1884,7 +1793,6 @@ async function augmentRoomsFromRecentMemories(
     );
   }
 }
-
 /**
  * Fetch messages, optionally scoped to a single room. When `roomId`
  * is set the function skips world enumeration entirely and targets
@@ -1923,17 +1831,14 @@ async function loadInboxMessages(
       limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
     });
   }
-
   const agentId = runtime.agentId;
   const reactionsByMessageId = buildMessageReactionMap(memories);
   const roomSourceById = new Map<string, string>();
-
   for (const [knownRoomId, room] of roomById) {
     const roomSource = readRoomSource(room);
     if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) continue;
     roomSourceById.set(knownRoomId, roomSource);
   }
-
   for (const memory of memories) {
     const source = extractSource(memory);
     if (!source || !sourceFilter.has(source.toLowerCase())) continue;
@@ -1941,14 +1846,11 @@ async function loadInboxMessages(
     if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
     roomSourceById.set(memoryRoomId, source);
   }
-
   const out: InboxMessageRecord[] = [];
-
   for (const memory of memories) {
     if (extractDiscordReactionEvent(memory)) {
       continue;
     }
-
     const room = roomById.get(memory.roomId);
     const explicitSource = extractSource(memory);
     const source =
@@ -1958,10 +1860,8 @@ async function loadInboxMessages(
         ? (readRoomSource(room) ?? roomSourceHint ?? undefined)
         : undefined);
     if (!source || !sourceFilter.has(source.toLowerCase())) continue;
-
     const text = extractText(memory);
     if (!text) continue;
-
     out.push({
       id: memory.id ?? "",
       role: memory.entityId === agentId ? "assistant" : "user",
@@ -1988,9 +1888,7 @@ async function loadInboxMessages(
       rawSenderId: extractRawSenderId(memory),
     });
   }
-
   const deduped = dedupeInboxMessages(out);
-
   // Newest first. The core API doesn't guarantee order across rooms, so
   // we do the merge sort client-side.
   deduped.sort((a, b) => {
@@ -2005,7 +1903,6 @@ async function loadInboxMessages(
     return bTime - aTime || a.id.localeCompare(b.id);
   });
   const ordered = deduped.slice(0, limit);
-
   await Promise.all(
     ordered.map(async (message) => {
       if (!isDiscordConnectorSource(message.source)) return;
@@ -2022,7 +1919,6 @@ async function loadInboxMessages(
       if (!message.avatarUrl && storedSenderProfile?.avatarUrl) {
         message.avatarUrl = storedSenderProfile.avatarUrl;
       }
-
       const messageAuthorProfile =
         message.rawDiscordChannelId && message.rawDiscordMessageId
           ? await resolveDiscordMessageAuthorProfile(
@@ -2040,7 +1936,6 @@ async function loadInboxMessages(
       if (!message.avatarUrl && messageAuthorProfile?.avatarUrl) {
         message.avatarUrl = messageAuthorProfile.avatarUrl;
       }
-
       const rawSenderId =
         message.rawSenderId ??
         storedSenderProfile?.rawUserId ??
@@ -2080,7 +1975,6 @@ async function loadInboxMessages(
       }
     }),
   );
-
   return ordered.map(
     ({
       hasExternalUrl: _hasExternalUrl,
@@ -2095,11 +1989,9 @@ async function loadInboxMessages(
     }) => message,
   );
 }
-
 function normalizeInboxComparableText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
-
 function getInboxMessagePreferenceScore(message: InboxMessageRecord): number {
   let score = 0;
   if (message.hasExternalUrl) score += 8;
@@ -2110,7 +2002,6 @@ function getInboxMessagePreferenceScore(message: InboxMessageRecord): number {
   if (message.avatarUrl) score += 1;
   return score;
 }
-
 function isConnectorVisibleDiscordAssistantMessage(
   message: InboxMessageRecord,
 ): boolean {
@@ -2120,7 +2011,6 @@ function isConnectorVisibleDiscordAssistantMessage(
     (message.hasExplicitSource || message.hasExternalUrl)
   );
 }
-
 function isImplicitDiscordAssistantShadow(
   message: InboxMessageRecord,
 ): boolean {
@@ -2131,7 +2021,6 @@ function isImplicitDiscordAssistantShadow(
     !message.hasExternalUrl
   );
 }
-
 function buildDiscordReplyKey(message: InboxMessageRecord): string | null {
   const replyToMessageId = message.replyToMessageId?.trim();
   if (!replyToMessageId) {
@@ -2139,47 +2028,38 @@ function buildDiscordReplyKey(message: InboxMessageRecord): string | null {
   }
   return `${message.roomId}\u0000${replyToMessageId}`;
 }
-
 function suppressUnsentDiscordAssistantShadows(
   messages: InboxMessageRecord[],
 ): InboxMessageRecord[] {
   const latestVisibleReplyByKey = new Map<string, number>();
-
   for (const message of messages) {
     if (!isConnectorVisibleDiscordAssistantMessage(message)) {
       continue;
     }
-
     const replyKey = buildDiscordReplyKey(message);
     if (!replyKey) {
       continue;
     }
-
     const existingTimestamp = latestVisibleReplyByKey.get(replyKey) ?? 0;
     if (message.timestamp >= existingTimestamp) {
       latestVisibleReplyByKey.set(replyKey, message.timestamp);
     }
   }
-
   return messages.filter((message) => {
     if (!isImplicitDiscordAssistantShadow(message)) {
       return true;
     }
-
     const replyKey = buildDiscordReplyKey(message);
     if (!replyKey) {
       return true;
     }
-
     const latestVisibleTimestamp = latestVisibleReplyByKey.get(replyKey);
     if (latestVisibleTimestamp === undefined) {
       return true;
     }
-
     return message.timestamp > latestVisibleTimestamp;
   });
 }
-
 function areLikelyConnectorAssistantDuplicates(
   left: InboxMessageRecord,
   right: InboxMessageRecord,
@@ -2196,49 +2076,40 @@ function areLikelyConnectorAssistantDuplicates(
   ) {
     return false;
   }
-
   const leftResponseId = left.responseId?.trim() ?? "";
   const rightResponseId = right.responseId?.trim() ?? "";
   if (leftResponseId && rightResponseId) {
     return leftResponseId === rightResponseId;
   }
-
   if (left.hasExplicitSource === right.hasExplicitSource) {
     return false;
   }
-  if (Math.abs(left.timestamp - right.timestamp) > 15_000) {
+  if (Math.abs(left.timestamp - right.timestamp) > 15000) {
     return false;
   }
-
   const leftReplyId = left.replyToMessageId?.trim() ?? "";
   const rightReplyId = right.replyToMessageId?.trim() ?? "";
   if (leftReplyId && rightReplyId) {
     return leftReplyId === rightReplyId;
   }
-
   return true;
 }
-
 function dedupeInboxMessages(
   messages: InboxMessageRecord[],
 ): InboxMessageRecord[] {
   const filteredMessages = suppressUnsentDiscordAssistantShadows(messages);
   const deduped: InboxMessageRecord[] = [];
-
   for (const message of filteredMessages) {
     const duplicateIndex = deduped.findIndex((candidate) =>
       areLikelyConnectorAssistantDuplicates(candidate, message),
     );
-
     if (duplicateIndex === -1) {
       deduped.push(message);
       continue;
     }
-
     const existing = deduped[duplicateIndex];
     const existingScore = getInboxMessagePreferenceScore(existing);
     const nextScore = getInboxMessagePreferenceScore(message);
-
     if (
       nextScore > existingScore ||
       (nextScore === existingScore && message.timestamp > existing.timestamp)
@@ -2246,10 +2117,8 @@ function dedupeInboxMessages(
       deduped[duplicateIndex] = message;
     }
   }
-
   return deduped;
 }
-
 /**
  * A single entry in the chats list. Mirrors the shape the
  * ConversationsSidebar needs (id, title, updatedAt preview) so the
@@ -2291,10 +2160,8 @@ interface InboxChat {
   /** Total messages in this room at scan time (for an optional counter). */
   messageCount: number;
 }
-
 /** Cap on how many characters of last-message text we return per chat. */
 const INBOX_CHAT_PREVIEW_LENGTH = 140;
-
 const PostInboxChatMuteRequestSchema = z.object({
   roomId: z.string().trim().min(1),
   action: z.enum(["mute", "unmute"]),
@@ -2306,7 +2173,6 @@ const PostInboxChatMuteRequestSchema = z.object({
     .max(60 * 24 * 30)
     .optional(),
 });
-
 type DiscordRoomProfile = {
   avatarUrl?: string;
   title: string | null;
@@ -2318,7 +2184,6 @@ type DiscordRoomProfile = {
    */
   parentChannelId?: string;
 };
-
 /**
  * Walk every agent room, collect the subset that contain connector
  * messages, and reduce each to a single InboxChat row with the room's
@@ -2344,7 +2209,6 @@ async function loadInboxChats(
         )
       : [];
   if (rooms.length === 0) return [];
-
   // Build an id → Room lookup so the memory reducer can fill in the
   // chat title from the room's own name field (plugins stamp this when
   // they create the room from ENTITY_JOINED / WORLD_JOINED).
@@ -2352,12 +2216,9 @@ async function loadInboxChats(
   for (const room of rooms) {
     if (room.id) roomById.set(room.id, room);
   }
-
   await augmentRoomsFromRecentMemories(runtime, roomById, sourceFilter);
-
   const roomIds = Array.from(roomById.keys());
   if (roomIds.length === 0) return [];
-
   // Fetch a wide slice of recent memories in one call and group by
   // room client-side. 2000 messages is enough to catch the latest turn
   // in every active connector chat — the bulk query is the expensive
@@ -2367,7 +2228,6 @@ async function loadInboxChats(
     roomIds,
     limit: 2000,
   });
-
   // Reduce: per room, keep the most recent source-tagged message.
   const accumulator = new Map<
     string,
@@ -2384,7 +2244,6 @@ async function loadInboxChats(
       latestSenderRawId?: string;
     }
   >();
-
   const roomSourceById = new Map<string, string>();
   for (const [knownRoomId, room] of roomById) {
     const roomSource = readRoomSource(room);
@@ -2398,15 +2257,12 @@ async function loadInboxChats(
     if (!key || roomSourceById.has(key)) continue;
     roomSourceById.set(key, source);
   }
-
   for (const memory of memories) {
     const key = memory.roomId;
     if (!key) continue;
-
     if (extractDiscordReactionEvent(memory)) {
       continue;
     }
-
     const room = roomById.get(key as UUID);
     const source =
       extractSource(memory) ??
@@ -2416,7 +2272,6 @@ async function loadInboxChats(
     if (!source || !sourceFilter.has(source.toLowerCase())) continue;
     applyInboxChatMemory(accumulator, memory, room, source);
   }
-
   const backfilledRooms = await Promise.all(
     Array.from(roomById.entries())
       .filter(([roomIdKey]) => !accumulator.has(roomIdKey))
@@ -2432,7 +2287,6 @@ async function loadInboxChats(
         return { latestMemory, room, roomIdKey };
       }),
   );
-
   for (const { latestMemory, room, roomIdKey } of backfilledRooms) {
     if (latestMemory) {
       const source =
@@ -2442,7 +2296,6 @@ async function loadInboxChats(
       }
       continue;
     }
-
     const roomSource = readRoomSource(room);
     if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) {
       continue;
@@ -2455,7 +2308,6 @@ async function loadInboxChats(
       messageCount: 0,
     });
   }
-
   const chats: InboxChat[] = [];
   for (const [roomIdKey, entry] of accumulator) {
     const room = roomById.get(roomIdKey as UUID);
@@ -2588,7 +2440,6 @@ async function loadInboxChats(
       messageCount: entry.messageCount,
     });
   }
-
   chats.sort((a, b) => {
     const bLast =
       typeof b.lastMessageAt === "number" && Number.isFinite(b.lastMessageAt)
@@ -2602,7 +2453,6 @@ async function loadInboxChats(
   });
   return chats;
 }
-
 /**
  * Scan recent memories across all agent rooms and return the distinct
  * set of source tags present. Used by the UI to build the filter chip
@@ -2611,7 +2461,6 @@ async function loadInboxChats(
 async function loadInboxSources(runtime: AgentRuntime): Promise<string[]> {
   const roomIds = await collectAgentRoomIds(runtime);
   if (roomIds.length === 0) return [];
-
   // Sample a bounded page so this stays cheap. 1000 messages is enough
   // to catch every source an active agent uses day-to-day.
   const memories = await runtime.getMemoriesByRoomIds({
@@ -2619,7 +2468,6 @@ async function loadInboxSources(runtime: AgentRuntime): Promise<string[]> {
     roomIds,
     limit: 1000,
   });
-
   const seen = new Set<string>();
   for (const memory of memories) {
     const source = extractSource(memory);
@@ -2632,7 +2480,6 @@ async function loadInboxSources(runtime: AgentRuntime): Promise<string[]> {
   }
   return Array.from(seen).sort();
 }
-
 /**
  * Route handler entry point. Returns `true` when a route matched and
  * the response has been written; `false` so the caller can continue
@@ -2647,7 +2494,6 @@ export async function handleInboxRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/inbox")) return false;
-
   // ── GET /api/inbox/messages ───────────────────────────────────────
   if (method === "GET" && pathname === "/api/inbox/messages") {
     const url = new URL(req.url ?? pathname, "http://localhost");
@@ -2669,13 +2515,11 @@ export async function handleInboxRoute(
     const roomId = roomIdParam.length > 0 ? (roomIdParam as UUID) : null;
     const roomSourceParam = url.searchParams.get("roomSource")?.trim() ?? "";
     const roomSourceHint = roomSourceParam.length > 0 ? roomSourceParam : null;
-
     const runtime = state.runtime;
     if (!runtime) {
       helpers.json(res, { messages: [], count: 0 });
       return true;
     }
-
     try {
       const messages = await loadInboxMessages(
         runtime,
@@ -2694,7 +2538,6 @@ export async function handleInboxRoute(
     }
     return true;
   }
-
   // ── POST /api/inbox/messages ──────────────────────────────────────
   if (method === "POST" && pathname === "/api/inbox/messages") {
     const runtime = state.runtime;
@@ -2702,7 +2545,6 @@ export async function handleInboxRoute(
       helpers.error(res, "runtime not ready", 503);
       return true;
     }
-
     const callerAuthorization = state.callerAuthorization;
     if (
       !callerAuthorization?.ok ||
@@ -2726,7 +2568,6 @@ export async function handleInboxRoute(
       );
       return true;
     }
-
     const rawBody = await helpers.readJsonBody<Record<string, unknown>>(
       req,
       res,
@@ -2747,13 +2588,11 @@ export async function handleInboxRoute(
       return true;
     }
     const { accountId, roomId, source, text, replyToMessageId } = parsed.data;
-
     const room = await runtime.getRoom(roomId as UUID);
     if (!room) {
       helpers.error(res, "inbox room not found", 404);
       return true;
     }
-
     const trustedRoomSource = await resolveTrustedRoomSource(runtime, room);
     if (
       !trustedRoomSource ||
@@ -2785,7 +2624,6 @@ export async function handleInboxRoute(
       );
       return true;
     }
-
     // The server threads its already-resolved caller authority into this
     // handler. This boundary authorizes the narrow top-level selector against
     // server-owned room/account records; client-controlled Content.metadata is
@@ -2850,7 +2688,6 @@ export async function handleInboxRoute(
       },
       "[InboxRoutes] connector account routing validated",
     );
-
     if (!runtimeHasSendHandler(runtime, source, accountRouting.accountId)) {
       helpers.error(
         res,
@@ -2861,7 +2698,6 @@ export async function handleInboxRoute(
       );
       return true;
     }
-
     try {
       requireConfirmedSendHandlerDelivery(
         await runtime.sendMessageToTarget(
@@ -2885,7 +2721,6 @@ export async function handleInboxRoute(
           },
         ),
       );
-
       const [message] = await loadInboxMessages(
         runtime,
         1,
@@ -2893,7 +2728,6 @@ export async function handleInboxRoute(
         room.id as UUID,
         source,
       );
-
       helpers.json(res, message ? { ok: true, message } : { ok: true });
     } catch (err) {
       // error-policy:J1 HTTP route boundary returns a structured 500 when the
@@ -2906,7 +2740,6 @@ export async function handleInboxRoute(
     }
     return true;
   }
-
   // ── POST /api/inbox/chats/mute ───────────────────────────────────
   // Direct UI affordance for the same room/server mute state the ROOM
   // action writes. Keeps the sidebar toggle deterministic instead of
@@ -2917,7 +2750,6 @@ export async function handleInboxRoute(
       helpers.error(res, "runtime not ready", 503);
       return true;
     }
-
     const rawBody = await helpers.readJsonBody<Record<string, unknown>>(
       req,
       res,
@@ -2937,7 +2769,6 @@ export async function handleInboxRoute(
       );
       return true;
     }
-
     const { action, durationMinutes, roomId, scope } = parsed.data;
     const targetRoomId = roomId as UUID;
     const room = await runtime.getRoom(targetRoomId);
@@ -2945,7 +2776,6 @@ export async function handleInboxRoute(
       helpers.error(res, "inbox room not found", 404);
       return true;
     }
-
     try {
       if (scope === "server") {
         const worldId = readRoomWorldId(room);
@@ -2973,7 +2803,6 @@ export async function handleInboxRoute(
             : null,
         );
       }
-
       const latestRoom = (await runtime.getRoom(targetRoomId)) ?? room;
       const muteState = await resolveInboxRoomMuteState(
         runtime,
@@ -2990,15 +2819,12 @@ export async function handleInboxRoute(
     } catch (err) {
       helpers.error(
         res,
-        `failed to update inbox mute state: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `failed to update inbox mute state: ${err instanceof Error ? err.message : String(err)}`,
         500,
       );
     }
     return true;
   }
-
   // ── GET /api/inbox/chats ──────────────────────────────────────────
   // List of connector chat threads (one row per external chat room)
   // used by the messages sidebar. Each row carries the source
@@ -3011,11 +2837,9 @@ export async function handleInboxRoute(
       helpers.json(res, { chats: [], count: 0 });
       return true;
     }
-
     const url = new URL(req.url ?? pathname, "http://localhost");
     const explicitFilter = parseSourceFilter(url.searchParams.get("sources"));
     const sourceFilter = explicitFilter ?? DEFAULT_INBOX_SOURCES;
-
     try {
       const chats = await loadInboxChats(runtime, sourceFilter);
       helpers.json(res, { chats, count: chats.length });
@@ -3028,7 +2852,6 @@ export async function handleInboxRoute(
     }
     return true;
   }
-
   // ── GET /api/inbox/sources ────────────────────────────────────────
   if (method === "GET" && pathname === "/api/inbox/sources") {
     const runtime = state.runtime;
@@ -3036,7 +2859,6 @@ export async function handleInboxRoute(
       helpers.json(res, { sources: [] });
       return true;
     }
-
     try {
       const sources = await loadInboxSources(runtime);
       helpers.json(res, { sources });
@@ -3049,6 +2871,5 @@ export async function handleInboxRoute(
     }
     return true;
   }
-
   return false;
 }

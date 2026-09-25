@@ -7,15 +7,16 @@ import { createHash } from "node:crypto";
 import {
   type ConnectorAccount,
   ElizaError,
+  type FetchLike,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsMicrosoftCapability,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 
 export const MICROSOFT_CALENDAR_PROVIDER = "microsoft";
 export const MICROSOFT_CALENDAR_GRANT_PREFIX = "connector-account:microsoft:";
@@ -766,8 +767,8 @@ interface MicrosoftRefreshResponse {
   expiresAt: number;
 }
 
-function tokenFetch(runtime: IAgentRuntime): typeof fetch {
-  const runtimeFetch = (runtime as { fetch?: typeof fetch }).fetch;
+function tokenFetch(runtime: IAgentRuntime): FetchLike {
+  const runtimeFetch = runtime.fetch;
   return runtimeFetch ? runtimeFetch.bind(runtime) : globalThis.fetch;
 }
 

@@ -4,21 +4,13 @@
  * read/write layer the state modules go through.
  */
 
-import { asRecord } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+import { asRecord } from "@elizaos/core/type-guards";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { removeStorageValue, setStorageValue } from "../bridge/storage-bridge";
-import { MAX_BACKGROUND_HISTORY } from "./background-history";
-import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
-
-// Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
-// sites keep working; the single source is the pure reducer module.
-export { MAX_BACKGROUND_HISTORY } from "./background-history";
-
 import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
@@ -26,6 +18,7 @@ import {
   type UiLanguage,
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
+import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
@@ -34,10 +27,12 @@ import {
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
+import { MAX_BACKGROUND_HISTORY } from "./background-history";
 import {
   type ContinuousChatModeValue,
   resolveContinuousChatMode,
 } from "./continuous-chat-mode";
+import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
 import {
   type BackgroundConfig,
   DEFAULT_ACCENT_ID,
@@ -50,8 +45,11 @@ import {
 } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 
-/* ── Shared localStorage helper ──────────────────────────────────────── */
+// Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
+// sites keep working; the single source is the pure reducer module.
+export { MAX_BACKGROUND_HISTORY } from "./background-history";
 
+/* ── Shared localStorage helper ──────────────────────────────────────── */
 function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
@@ -62,13 +60,11 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
     return fallback;
   }
 }
-
 function describePersistenceError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
 /* ── Theme persistence ────────────────────────────────────────────────── */
-
 export type { UiTheme, UiThemeMode } from "./ui-preferences";
 
 const UI_THEME_STORAGE_KEY = "eliza:ui-theme";
@@ -76,13 +72,11 @@ const LEGACY_UI_THEME_STORAGE_KEY = "elizaos:ui-theme";
 const UI_THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
 const APP_UI_THEME: UiTheme = "dark";
 const APP_UI_THEME_MODE: UiThemeMode = APP_UI_THEME;
-
 function normalizeUiThemeMode(_value: unknown): UiThemeMode {
   return APP_UI_THEME_MODE;
 }
 
 export { normalizeUiThemeMode };
-
 /**
  * The app shell has one curated dark appearance. Keep this compatibility
  * function for consumers of the preference API, but never inherit OS chrome.
@@ -90,25 +84,20 @@ export { normalizeUiThemeMode };
 export function getSystemTheme(): UiTheme {
   return APP_UI_THEME;
 }
-
 /**
  * Resolve any legacy theme mode to the app's single supported appearance.
  */
 export function resolveUiTheme(_mode: UiThemeMode): UiTheme {
   return APP_UI_THEME;
 }
-
 /**
  * Return the supported theme mode regardless of any legacy persisted value.
  */
 export function loadUiThemeMode(): UiThemeMode {
   return APP_UI_THEME_MODE;
 }
-
 /* ── Home time/date widget visibility (#10706) ───────────────────────── */
-
 const HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY = "eliza:home-time-widget-hidden";
-
 /** Load whether the home time/date tile is hidden. Defaults to shown (false). */
 export function loadHomeTimeWidgetHidden(): boolean {
   return tryLocalStorage(
@@ -116,7 +105,6 @@ export function loadHomeTimeWidgetHidden(): boolean {
     false,
   );
 }
-
 export function saveHomeTimeWidgetHidden(hidden: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -125,7 +113,6 @@ export function saveHomeTimeWidgetHidden(hidden: boolean): void {
     );
   }, undefined);
 }
-
 export function saveUiThemeMode(mode: UiThemeMode): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -136,7 +123,6 @@ export function saveUiThemeMode(mode: UiThemeMode): void {
 }
 const THEME_SWITCHING_ATTRIBUTE = "data-theme-switching";
 let themeSwitchResetFrameId: number | null = null;
-
 function normalizeUiTheme(_value: unknown): UiTheme {
   return APP_UI_THEME;
 }
@@ -156,7 +142,6 @@ function suppressThemeTransitions(root: HTMLElement): void {
     });
   });
 }
-
 export function loadUiTheme(): UiTheme {
   return tryLocalStorage(() => {
     const current = localStorage.getItem(UI_THEME_STORAGE_KEY);
@@ -164,7 +149,6 @@ export function loadUiTheme(): UiTheme {
     return normalizeUiTheme(localStorage.getItem(LEGACY_UI_THEME_STORAGE_KEY));
   }, "dark");
 }
-
 export function saveUiTheme(theme: UiTheme): void {
   tryLocalStorage(() => {
     const normalized = normalizeUiTheme(theme);
@@ -172,18 +156,14 @@ export function saveUiTheme(theme: UiTheme): void {
     shellLocalStorage.setItem(LEGACY_UI_THEME_STORAGE_KEY, normalized);
   }, undefined);
 }
-
 /* ── Background persistence ───────────────────────────────────────────── */
-
 const UI_BACKGROUND_STORAGE_KEY = "eliza:ui-background";
-
 /** Accept a 6-digit hex color; anything else falls back to the default. */
 function normalizeHexColor(value: unknown): string {
   return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
     ? value.toLowerCase()
     : DEFAULT_BACKGROUND_COLOR;
 }
-
 // Renamed/recompressed curated wallpapers whose OLD URL may still sit in a
 // user's persisted background config. The asset is gone from /public, so
 // without this read-time alias every install that saved the old default 404s
@@ -192,7 +172,6 @@ function normalizeHexColor(value: unknown): string {
 const LEGACY_WALLPAPER_ALIASES: Record<string, string> = {
   "/bg-sunset.jpg": "/bg-sunset.webp",
 };
-
 export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   const record = asRecord(value);
   if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
@@ -233,13 +212,11 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   }
   return { mode: "shader", color };
 }
-
 // Early builds eagerly persisted untouched fresh state as the exact black
 // shader shape, making it indistinguishable from an intentional selection.
 // This flag permits one safe normalization of that shape. Wallpaper records
 // are never remapped because they lack selected-vs-default provenance.
 const UI_BACKGROUND_DEFAULT_MIGRATION_KEY = "eliza:ui-background-default-v2";
-
 export function loadBackgroundConfig(): BackgroundConfig {
   return tryLocalStorage(
     () => {
@@ -266,7 +243,6 @@ export function loadBackgroundConfig(): BackgroundConfig {
     { ...DEFAULT_BACKGROUND_CONFIG },
   );
 }
-
 export function saveBackgroundConfig(config: BackgroundConfig): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -275,7 +251,6 @@ export function saveBackgroundConfig(config: BackgroundConfig): void {
     );
   }, undefined);
 }
-
 /**
  * Bounded undo history for the background. The most recent previous config is
  * last. Capped so a long session never grows localStorage without bound; image
@@ -292,7 +267,6 @@ const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
  * offline fallback).
  */
 export const MAX_BACKGROUND_HISTORY_DATA_URLS = 1;
-
 export function normalizeBackgroundHistory(value: unknown): BackgroundConfig[] {
   if (!Array.isArray(value)) return [];
   const bounded = value
@@ -311,14 +285,12 @@ export function normalizeBackgroundHistory(value: unknown): BackgroundConfig[] {
   }
   return kept;
 }
-
 export function loadBackgroundHistory(): BackgroundConfig[] {
   return tryLocalStorage(() => {
     const raw = localStorage.getItem(UI_BACKGROUND_HISTORY_STORAGE_KEY);
     return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
   }, []);
 }
-
 export function saveBackgroundHistory(history: BackgroundConfig[]): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -327,19 +299,16 @@ export function saveBackgroundHistory(history: BackgroundConfig[]): void {
     );
   }, undefined);
 }
-
 // Redo stack (#10694) — persisted symmetrically with the undo history (the issue
 // deliverable is "undo + redo, bounded, persisted") so "step forward" survives a
 // reload just like "step back" does. Same bound + data-URL quota cap.
 const UI_BACKGROUND_REDO_STORAGE_KEY = "eliza:ui-background-redo";
-
 export function loadBackgroundRedo(): BackgroundConfig[] {
   return tryLocalStorage(() => {
     const raw = localStorage.getItem(UI_BACKGROUND_REDO_STORAGE_KEY);
     return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
   }, []);
 }
-
 export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -348,7 +317,6 @@ export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
     );
   }, undefined);
 }
-
 /**
  * Apply the theme to the document root.
  * Sets both `data-theme` attribute and `.dark` class so both CSS selectors
@@ -368,16 +336,13 @@ export function applyUiTheme(theme: UiTheme): void {
     ? root.classList.contains("dark") === shouldBeDark
     : true;
   const colorSchemeMatches = root.style.colorScheme === normalizedTheme;
-
   const uiThemeChanged = !(
     currentTheme === normalizedTheme &&
     classMatchesTheme &&
     colorSchemeMatches
   );
-
   if (uiThemeChanged) {
     suppressThemeTransitions(root);
-
     if (currentTheme !== normalizedTheme) {
       if (typeof root.setAttribute === "function") {
         root.setAttribute("data-theme", normalizedTheme);
@@ -387,11 +352,9 @@ export function applyUiTheme(theme: UiTheme): void {
         return;
       }
     }
-
     if (root.style && root.style.colorScheme !== normalizedTheme) {
       root.style.colorScheme = normalizedTheme;
     }
-
     if (root.classList && !classMatchesTheme) {
       if (shouldBeDark) {
         root.classList.add("dark");
@@ -401,11 +364,8 @@ export function applyUiTheme(theme: UiTheme): void {
     }
   }
 }
-
 /* ── Accent color persistence ─────────────────────────────────────────── */
-
 const UI_ACCENT_STORAGE_KEY = "eliza:ui-accent";
-
 /** Load the persisted accent preset id. Defaults to the brand accent. */
 export function loadUiAccentId(): string {
   return tryLocalStorage(
@@ -413,14 +373,12 @@ export function loadUiAccentId(): string {
     DEFAULT_ACCENT_ID,
   );
 }
-
 /** Persist the chosen accent preset id (normalized). */
 export function saveUiAccentId(id: string): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(UI_ACCENT_STORAGE_KEY, normalizeAccentId(id));
   }, undefined);
 }
-
 // The `--accent` family a user accent choice overrides. Applied as inline
 // styles on <html> so they win over base.css and any host brand theme; the
 // `default` accent clears them, restoring the brand accent.
@@ -434,22 +392,18 @@ const ACCENT_OVERRIDE_VARS = [
   "--border-hover",
   "--primary",
 ] as const;
-
 function hexToRgb(hex: string): [number, number, number] | null {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return null;
   const int = Number.parseInt(m[1], 16);
   return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
 }
-
 function mixChannel(channel: number, target: number, amount: number): number {
   return Math.round(channel + (target - channel) * amount);
 }
-
 function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
-
 /**
  * Apply a user-chosen accent color to the document root by overriding the
  * `--accent` family inline (so it wins over base.css / any host brand theme).
@@ -491,16 +445,13 @@ export function applyUiAccent(color: string | null): void {
   root.style.setProperty("--border-hover", color);
   root.style.setProperty("--primary", color);
 }
-
 const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";
 const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
 const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
 /* ── First-run completion persistence ────────────────────────────────── */
-
 const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
 const CLOUD_ONLY_FIRST_RUN_COMPLETE_STORAGE_KEY =
   "eliza:first-run-complete:cloud-only:v1";
-
 /**
  * Keep completion proof scoped to the onboarding contract that produced it.
  * Desktop release channels intentionally share a WebKit container when their
@@ -512,12 +463,10 @@ function firstRunCompleteStorageKey(cloudOnly?: boolean): string {
     ? CLOUD_ONLY_FIRST_RUN_COMPLETE_STORAGE_KEY
     : FIRST_RUN_COMPLETE_STORAGE_KEY;
 }
-
 export function loadPersistedFirstRunComplete(cloudOnly?: boolean): boolean {
   if (typeof localStorage === "undefined") {
     return false;
   }
-
   try {
     return localStorage.getItem(firstRunCompleteStorageKey(cloudOnly)) === "1";
   } catch (err) {
@@ -530,7 +479,6 @@ export function loadPersistedFirstRunComplete(cloudOnly?: boolean): boolean {
     return false;
   }
 }
-
 /**
  * Mirror the completion flag into the Capacitor Preferences native store
  * (Android SharedPreferences / iOS UserDefaults). WebView localStorage can be
@@ -560,15 +508,12 @@ async function persistNativeFirstRunComplete(complete: boolean): Promise<void> {
     // shells; localStorage stays the sole store there by design.
   }
 }
-
 export function savePersistedFirstRunComplete(complete: boolean): void {
   const storageKey = firstRunCompleteStorageKey();
   void persistNativeFirstRunComplete(complete);
-
   if (typeof localStorage === "undefined") {
     return;
   }
-
   try {
     if (complete) {
       shellLocalStorage.setItem(storageKey, "1");
@@ -581,7 +526,6 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
     );
   }
 }
-
 /**
  * Boot-time durability restore for the onboarding-complete flag (issue #11506).
  *
@@ -603,7 +547,6 @@ export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise
   if (typeof localStorage === "undefined") return;
   if (loadPersistedFirstRunComplete()) return;
   const storageKey = firstRunCompleteStorageKey();
-
   try {
     const [{ Capacitor }, { Preferences }] = await Promise.all([
       import("@capacitor/core"),
@@ -621,19 +564,15 @@ export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise
     // authoritative for this boot.
   }
 }
-
 /* ── Content pack persistence ───────────────────────────────────────── */
-
 const ACTIVE_PACK_STORAGE_KEY = "elizaos:active-pack-id";
 const ACTIVE_PACK_URL_STORAGE_KEY = "elizaos:active-pack-url";
-
 export function loadPersistedActivePackId(): string | null {
   return tryLocalStorage(
     () => localStorage.getItem(ACTIVE_PACK_STORAGE_KEY),
     null,
   );
 }
-
 export function savePersistedActivePackId(packId: string | null): void {
   tryLocalStorage(() => {
     if (packId) {
@@ -643,14 +582,12 @@ export function savePersistedActivePackId(packId: string | null): void {
     }
   }, undefined);
 }
-
 export function loadPersistedActivePackUrl(): string | null {
   return tryLocalStorage(
     () => localStorage.getItem(ACTIVE_PACK_URL_STORAGE_KEY),
     null,
   );
 }
-
 export function savePersistedActivePackUrl(packUrl: string | null): void {
   tryLocalStorage(() => {
     if (packUrl) {
@@ -660,7 +597,6 @@ export function savePersistedActivePackUrl(packUrl: string | null): void {
     }
   }, undefined);
 }
-
 export function loadUiLanguage(): UiLanguage {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
@@ -669,7 +605,6 @@ export function loadUiLanguage(): UiLanguage {
     return detectClientLanguage() ?? DEFAULT_UI_LANGUAGE;
   }, DEFAULT_UI_LANGUAGE);
 }
-
 export function saveUiLanguage(language: UiLanguage): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -678,7 +613,6 @@ export function saveUiLanguage(language: UiLanguage): void {
     );
   }, undefined);
 }
-
 /** Whether the user has a persisted UI language (vs. a fresh first visit). */
 export function hasStoredUiLanguage(): boolean {
   return tryLocalStorage(
@@ -686,20 +620,17 @@ export function hasStoredUiLanguage(): boolean {
     false,
   );
 }
-
 function normalizeUiShellMode(_mode: unknown): UiShellMode {
   return "native";
 }
 
 export { normalizeUiShellMode };
-
 export function loadUiShellMode(): UiShellMode {
   return tryLocalStorage(
     () => normalizeUiShellMode(localStorage.getItem(UI_SHELL_MODE_STORAGE_KEY)),
     "native",
   );
 }
-
 export function saveUiShellMode(mode: UiShellMode): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -708,7 +639,6 @@ export function saveUiShellMode(mode: UiShellMode): void {
     );
   }, undefined);
 }
-
 function normalizeLastNativeTab(tab: unknown): Tab {
   switch (tab) {
     case "chat":
@@ -733,7 +663,6 @@ function normalizeLastNativeTab(tab: unknown): Tab {
       return "chat";
   }
 }
-
 export function loadLastNativeTab(): Tab {
   return tryLocalStorage(
     () =>
@@ -741,7 +670,6 @@ export function loadLastNativeTab(): Tab {
     "chat",
   );
 }
-
 export function saveLastNativeTab(tab: Tab): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -750,10 +678,8 @@ export function saveLastNativeTab(tab: Tab): void {
     );
   }, undefined);
 }
-
 /* ── Avatar persistence ───────────────────────────────────────────────── */
 const AVATAR_INDEX_KEY = "eliza_avatar_index";
-
 export function loadAvatarIndex(): number {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(AVATAR_INDEX_KEY);
@@ -764,7 +690,6 @@ export function loadAvatarIndex(): number {
     return 1;
   }, 1);
 }
-
 export function saveAvatarIndex(index: number): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -773,16 +698,13 @@ export function saveAvatarIndex(index: number): void {
     );
   }, undefined);
 }
-
 export function clearAvatarIndex(): void {
   tryLocalStorage(() => {
     shellLocalStorage.removeItem(AVATAR_INDEX_KEY);
   }, undefined);
 }
-
 /* ── Favorite apps persistence ────────────────────────────────────────── */
 const FAVORITE_APPS_KEY = "eliza:favorite-apps";
-
 function sanitizeFavoriteApps(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -796,11 +718,9 @@ function sanitizeFavoriteApps(value: unknown): string[] {
   }
   return apps;
 }
-
 function getDefaultFavoriteApps(): string[] {
   return sanitizeFavoriteApps(getBootConfig().defaultApps);
 }
-
 export function loadFavoriteApps(): string[] {
   const defaultApps = getDefaultFavoriteApps();
   return tryLocalStorage(() => {
@@ -819,7 +739,6 @@ export function loadFavoriteApps(): string[] {
     }
   }, defaultApps);
 }
-
 export function saveFavoriteApps(apps: string[]): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -828,7 +747,6 @@ export function saveFavoriteApps(apps: string[]): void {
     );
   }, undefined);
 }
-
 /**
  * Hydrate the favorites list from the server-side persisted store
  * (config.ui.favoriteApps), falling back to the local cache on failure.
@@ -847,7 +765,9 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
       headers: { Accept: "application/json" },
     });
     if (!resp.ok) return null;
-    const data = (await resp.json()) as { favoriteApps?: unknown };
+    const data = (await resp.json()) as {
+      favoriteApps?: unknown;
+    };
     const sanitized = sanitizeFavoriteApps(data.favoriteApps);
     saveFavoriteApps(sanitized);
     return sanitized;
@@ -867,7 +787,6 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
     return null;
   }
 }
-
 /**
  * Replace the server-persisted favorites list. Used when the UI commits
  * a bulk reorder/edit. Best-effort: returns null on failure.
@@ -882,7 +801,9 @@ export async function replaceServerFavoriteApps(
       body: JSON.stringify({ favoriteAppNames }),
     });
     if (!resp.ok) return null;
-    const data = (await resp.json()) as { favoriteApps?: unknown };
+    const data = (await resp.json()) as {
+      favoriteApps?: unknown;
+    };
     const sanitized = sanitizeFavoriteApps(data.favoriteApps);
     saveFavoriteApps(sanitized);
     return sanitized;
@@ -895,7 +816,6 @@ export async function replaceServerFavoriteApps(
     return null;
   }
 }
-
 /**
  * Toggle a single app's favorite state on the server. Returns the updated
  * list, or `null` if the request failed (caller should keep optimistic UI
@@ -912,7 +832,9 @@ export async function toggleServerFavoriteApp(
       body: JSON.stringify({ appName, isFavorite }),
     });
     if (!resp.ok) return null;
-    const data = (await resp.json()) as { favoriteApps?: unknown };
+    const data = (await resp.json()) as {
+      favoriteApps?: unknown;
+    };
     const sanitized = sanitizeFavoriteApps(data.favoriteApps);
     saveFavoriteApps(sanitized);
     return sanitized;
@@ -925,12 +847,10 @@ export async function toggleServerFavoriteApp(
     return null;
   }
 }
-
 /* ── Recent apps persistence ──────────────────────────────────────────── */
 const RECENT_APPS_KEY = "eliza:recent-apps";
 /** Cap on persisted recency list. Older entries are evicted. */
 export const RECENT_APPS_MAX = 10;
-
 export function loadRecentApps(): string[] {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(RECENT_APPS_KEY);
@@ -951,7 +871,6 @@ export function loadRecentApps(): string[] {
     }
   }, []);
 }
-
 export function saveRecentApps(apps: string[]): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -960,26 +879,21 @@ export function saveRecentApps(apps: string[]): void {
     );
   }, undefined);
 }
-
 /* ── Wallet enabled persistence ─────────────────────────────────────── */
 const WALLET_ENABLED_KEY = "eliza:wallet:enabled";
-
 export function loadWalletEnabled(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(WALLET_ENABLED_KEY);
     return stored === null ? true : stored === "true";
   }, true);
 }
-
 export function saveWalletEnabled(value: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(WALLET_ENABLED_KEY, String(value));
   }, undefined);
 }
-
 /* ── Continuous chat mode persistence ───────────────────────────────────── */
 const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
-
 export function loadContinuousChatMode(): ContinuousChatModeValue {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY);
@@ -987,13 +901,11 @@ export function loadContinuousChatMode(): ContinuousChatModeValue {
     return resolveContinuousChatMode(stored, search, isElectrobunRuntime());
   }, "off");
 }
-
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
   }, undefined);
 }
-
 /* ── OS-intent microphone auto-start consent ───────────────────────────── */
 // Explicit, reversible consent for deep links/shortcuts to begin capture. Both
 // values default false; Settings → Voice and its semantic SETTINGS-action twin
@@ -1002,12 +914,10 @@ export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
 const OS_INTENT_VOICE_AUTO_START_KEY = "eliza:voice:os-intent-auto-start-voice";
 const OS_INTENT_TRANSCRIPTION_AUTO_START_KEY =
   "eliza:voice:os-intent-auto-start-transcription";
-
 export interface OsIntentAutoStartConsent {
   voice: boolean;
   transcription: boolean;
 }
-
 export function loadOsIntentAutoStartConsent(): OsIntentAutoStartConsent {
   return tryLocalStorage(
     () => ({
@@ -1018,7 +928,6 @@ export function loadOsIntentAutoStartConsent(): OsIntentAutoStartConsent {
     { voice: false, transcription: false },
   );
 }
-
 export function saveOsIntentAutoStartConsent(
   consent: OsIntentAutoStartConsent,
 ): void {
@@ -1033,7 +942,6 @@ export function saveOsIntentAutoStartConsent(
     );
   }, undefined);
 }
-
 /* ── Wake-word listening persistence ────────────────────────────────────── */
 // Device-local master switch for the "hey <name>" wake-word listening window
 // (see useWakeListenWindow). Stored here — not under `messages.voice` — because
@@ -1042,20 +950,17 @@ export function saveOsIntentAutoStartConsent(
 // defaults ON so existing installs keep the always-available wake entry ramp;
 // the Settings → Voice toggle is what lets a user turn it off.
 const WAKE_WORD_ENABLED_KEY = "eliza:voice:wake-word-enabled";
-
 export function loadWakeWordEnabled(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(WAKE_WORD_ENABLED_KEY);
     return stored === null ? true : stored === "true";
   }, true);
 }
-
 export function saveWakeWordEnabled(value: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(WAKE_WORD_ENABLED_KEY, String(value));
   }, undefined);
 }
-
 /* ── VAD auto-stop persistence ──────────────────────────────────────────── */
 // Local mirror of the `vadAutoStop` voice setting (source of truth is the agent
 // config under `messages.voice`). Stored here too so the capture hot path
@@ -1063,19 +968,16 @@ export function saveWakeWordEnabled(value: boolean): void {
 // gesture without an async config fetch — mirrors how continuous-chat-mode is
 // dual-stored above.
 const VAD_AUTO_STOP_KEY = "eliza:voice:vad-auto-stop";
-
 export interface VadAutoStopValue {
   /** Trailing silence (ms) that ends a turn in local-ASR capture. */
   silenceMs: number;
   /** RMS amplitude (0–1) above which audio is treated as speech. */
   speechRmsThreshold: number;
 }
-
 const DEFAULT_VAD_AUTO_STOP: VadAutoStopValue = {
   silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
   speechRmsThreshold: DEFAULT_LOCAL_ASR_AUTO_STOP.speechRmsThreshold,
 };
-
 export function loadVadAutoStop(): VadAutoStopValue {
   return tryLocalStorage(() => {
     const raw = localStorage.getItem(VAD_AUTO_STOP_KEY);
@@ -1095,85 +997,70 @@ export function loadVadAutoStop(): VadAutoStopValue {
     };
   }, DEFAULT_VAD_AUTO_STOP);
 }
-
 export function saveVadAutoStop(value: VadAutoStopValue): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(VAD_AUTO_STOP_KEY, JSON.stringify(value));
   }, undefined);
 }
-
 /* ── Browser enabled persistence ────────────────────────────────────── */
 const BROWSER_ENABLED_KEY = "eliza:browser:enabled";
-
 export function loadBrowserEnabled(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(BROWSER_ENABLED_KEY);
     return stored === null ? true : stored === "true";
   }, true);
 }
-
 export function saveBrowserEnabled(value: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(BROWSER_ENABLED_KEY, String(value));
   }, undefined);
 }
-
 /* ── Computer Use enabled persistence ───────────────────────────────── */
 const COMPUTER_USE_ENABLED_KEY = "eliza:computeruse:enabled";
-
 export function loadComputerUseEnabled(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(COMPUTER_USE_ENABLED_KEY);
     return stored === null ? false : stored === "true";
   }, false);
 }
-
 export function saveComputerUseEnabled(value: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(COMPUTER_USE_ENABLED_KEY, String(value));
   }, undefined);
 }
-
 /* ── Chat UI persistence ──────────────────────────────────────────────── */
 const CHAT_AVATAR_VISIBLE_KEY = "eliza:chat:avatarVisible";
 const CHAT_VOICE_MUTED_KEY = "eliza:chat:voiceMuted";
-
 export function loadChatAvatarVisible(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(CHAT_AVATAR_VISIBLE_KEY);
     return stored === null ? true : stored === "true";
   }, true);
 }
-
 export function loadChatVoiceMuted(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(CHAT_VOICE_MUTED_KEY);
     return stored === null ? false : stored === "true";
   }, false);
 }
-
 export function saveChatAvatarVisible(value: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(CHAT_AVATAR_VISIBLE_KEY, String(value));
   }, undefined);
 }
-
 export function saveChatVoiceMuted(value: boolean): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(CHAT_VOICE_MUTED_KEY, String(value));
   }, undefined);
 }
-
 const ACTIVE_CONVERSATION_ID_KEY = "eliza:chat:activeConversationId";
 const COMPANION_MESSAGE_CUTOFF_TS_KEY = "eliza:chat:companionMessageCutoffTs";
-
 export function loadActiveConversationId(): string | null {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(ACTIVE_CONVERSATION_ID_KEY)?.trim();
     return stored ? stored : null;
   }, null);
 }
-
 export function saveActiveConversationId(value: string | null): void {
   tryLocalStorage(() => {
     if (value?.trim()) {
@@ -1183,7 +1070,6 @@ export function saveActiveConversationId(value: string | null): void {
     shellLocalStorage.removeItem(ACTIVE_CONVERSATION_ID_KEY);
   }, undefined);
 }
-
 export function loadCompanionMessageCutoffTs(): number {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(COMPANION_MESSAGE_CUTOFF_TS_KEY);
@@ -1191,7 +1077,6 @@ export function loadCompanionMessageCutoffTs(): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, 0);
 }
-
 export function saveCompanionMessageCutoffTs(value: number): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -1200,7 +1085,6 @@ export function saveCompanionMessageCutoffTs(value: number): void {
     );
   }, undefined);
 }
-
 export interface PersistedActiveServer {
   /** Stable identifier for the selected server target. */
   id: string;
@@ -1217,9 +1101,7 @@ export interface PersistedActiveServer {
   /** Hosting mode of the current Cloud runtime target. */
   cloudRuntime?: "shared" | "dedicated";
 }
-
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
-
 function trimPersistedValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -1227,7 +1109,6 @@ function trimPersistedValue(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }
-
 function normalizeApiBase(value: unknown): string | undefined {
   const trimmed = trimPersistedValue(value);
   if (!trimmed) return trimmed;
@@ -1235,7 +1116,6 @@ function normalizeApiBase(value: unknown): string | undefined {
   while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
   return normalizeDirectCloudSharedAgentApiBase(trimmed.slice(0, end));
 }
-
 function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
   const apiBase = normalizeApiBase(value);
   if (!apiBase) return false;
@@ -1264,7 +1144,6 @@ function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
     return false;
   }
 }
-
 export function createPersistedActiveServer(args: {
   kind: PersistedActiveServer["kind"];
   id?: string;
@@ -1281,7 +1160,6 @@ export function createPersistedActiveServer(args: {
   const accessToken = trimPersistedValue(args.accessToken);
   const explicitLabel = trimPersistedValue(args.label);
   const cloudRuntimeAgentId = trimPersistedValue(args.cloudRuntimeAgentId);
-
   switch (args.kind) {
     case "local":
       return {
@@ -1323,7 +1201,6 @@ export function createPersistedActiveServer(args: {
     }
   }
 }
-
 function normalizePersistedActiveServer(
   value: unknown,
 ): PersistedActiveServer | null {
@@ -1331,7 +1208,6 @@ function normalizePersistedActiveServer(
   if (!record) {
     return null;
   }
-
   const kind =
     record.kind === "local" ||
     record.kind === "cloud" ||
@@ -1343,7 +1219,6 @@ function normalizePersistedActiveServer(
   if (!kind || !id || !label) {
     return null;
   }
-
   const normalizedApiBase = normalizeApiBase(record.apiBase);
   const apiBase = isElizaCloudControlPlaneApiBase(normalizedApiBase)
     ? undefined
@@ -1354,7 +1229,6 @@ function normalizePersistedActiveServer(
     record.cloudRuntime === "shared" || record.cloudRuntime === "dedicated"
       ? record.cloudRuntime
       : undefined;
-
   return {
     id,
     kind,
@@ -1365,7 +1239,6 @@ function normalizePersistedActiveServer(
     ...(kind === "cloud" && cloudRuntime ? { cloudRuntime } : {}),
   };
 }
-
 // Normalization alone repairs the in-memory record; detecting that specific
 // repair lets the load path remove the unusable control-plane base from durable
 // storage without rewriting healthy records on every boot.
@@ -1383,7 +1256,6 @@ function persistedRecordNeedsControlPlaneRepair(
     normalized.apiBase === undefined
   );
 }
-
 export function loadPersistedActiveServer(): PersistedActiveServer | null {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(ACTIVE_SERVER_STORAGE_KEY);
@@ -1400,14 +1272,12 @@ export function loadPersistedActiveServer(): PersistedActiveServer | null {
     return normalized;
   }, null);
 }
-
 export function savePersistedActiveServer(
   server: PersistedActiveServer,
 ): boolean {
   if (typeof localStorage === "undefined") {
     return false;
   }
-
   const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
   if (
     pinnedRemoteApiBase &&
@@ -1419,7 +1289,6 @@ export function savePersistedActiveServer(
     );
     return false;
   }
-
   // The active-server record carries the sign-in state (kind/apiBase/token) and
   // the backend the app reconnects to. A swallowed persist failure (quota,
   // private-mode SecurityError) silently loses a freshly-recovered apiBase, so
@@ -1441,7 +1310,6 @@ export function savePersistedActiveServer(
     return false;
   }
 }
-
 export function clearPersistedActiveServer(): void {
   const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
   if (pinnedRemoteApiBase) {
@@ -1461,7 +1329,6 @@ export function clearPersistedActiveServer(): void {
     shellLocalStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
 }
-
 /** Delete the active runtime target from browser and protected native storage. */
 export async function clearPersistedActiveServerDurably(): Promise<void> {
   const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
@@ -1480,7 +1347,6 @@ export async function clearPersistedActiveServerDurably(): Promise<void> {
   }
   await removeStorageValue(ACTIVE_SERVER_STORAGE_KEY);
 }
-
 /**
  * Clear an account-scoped shared Cloud selection after the Steward account
  * session ends. Shared runtimes have no independent agent credential, so the
@@ -1495,7 +1361,6 @@ export function clearPersistedSharedCloudActiveServer(): boolean {
   clearPersistedActiveServer();
   return true;
 }
-
 /**
  * Drop the bearer access token from the persisted active server while keeping
  * the server selection (kind/apiBase/label). Call this on sign-out: the token

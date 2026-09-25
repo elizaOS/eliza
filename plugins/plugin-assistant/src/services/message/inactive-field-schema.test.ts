@@ -1,14 +1,16 @@
 /** Verifies inactive schema narrowing without changing the registered contract. */
+
+import type { JSONSchema } from "@elizaos/core";
+import { validateSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { validateSchema } from "../../../../../packages/core/src/actions/validate-tool-args.ts";
-import type { JSONSchema } from "../../../../../packages/core/src/types/model.ts";
-import { withInactiveArrayFields } from "./inactive-field-schema.ts";
+import { withoutInactiveFields } from "./inactive-field-schema.ts";
 
 describe("inactive array field schema", () => {
-  it("requires the empty field without mutating the registered active contract", () => {
+  it("omits inactive operations while preserving the registered active contract", () => {
     const schema: JSONSchema = {
       type: "object",
       required: ["ops"],
+      additionalProperties: false,
       properties: {
         ops: {
           type: "array",
@@ -17,9 +19,9 @@ describe("inactive array field schema", () => {
       },
     };
     const before = JSON.stringify(schema);
-    const inactive = withInactiveArrayFields(schema, ["ops"]);
+    const inactive = withoutInactiveFields(schema, ["ops"]);
     const errors: string[] = [];
-    validateSchema(inactive, { ops: [] }, "", errors);
+    validateSchema(inactive, {}, "", errors);
     expect(errors).toEqual([]);
     validateSchema(inactive, { ops: [{ action: "stop" }] }, "", errors);
     expect(errors.length).toBeGreaterThan(0);
@@ -30,7 +32,7 @@ describe("inactive array field schema", () => {
     expect(nonemptyStrings.length).toBeGreaterThan(0);
     const missing: string[] = [];
     validateSchema(inactive, {}, "", missing);
-    expect(missing.length).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
     const activeValue = {
       ops: Array.from({ length: 500 }, (_, index) => ({
         action: `complete operation ${index}`,
@@ -42,10 +44,10 @@ describe("inactive array field schema", () => {
     );
     expect(activeErrors).toEqual([]);
     expect(JSON.stringify(schema)).toBe(before);
-    expect(withInactiveArrayFields(schema, [])).toBe(schema);
+    expect(withoutInactiveFields(schema, [])).toBe(schema);
   });
 
-  it("preserves custom contracts and fields that cannot accept an empty array", () => {
+  it("omits inactive custom fields without changing their active contracts", () => {
     for (const field of [
       { type: "string" },
       { type: "array", minItems: 1, items: { type: "string" } },
@@ -53,9 +55,10 @@ describe("inactive array field schema", () => {
       { type: "array", anyOf: [{ minItems: 1 }] },
     ]) {
       const schema: JSONSchema = { type: "object", properties: { field } };
-      expect(withInactiveArrayFields(schema, ["field", "unknown"])).toBe(
-        schema,
-      );
+      expect(
+        withoutInactiveFields(schema, ["field", "unknown"]).properties,
+      ).toEqual({});
+      expect(schema.properties?.field).toBe(field);
     }
   });
 });

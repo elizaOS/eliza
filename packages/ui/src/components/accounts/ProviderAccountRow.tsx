@@ -12,7 +12,7 @@
  * 2d 4h", making the selection policy legible instead of a black box.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 import type { ProviderSelectionState } from "../../api/client-accounts";
@@ -48,7 +48,6 @@ import { accountResetAt, bySoonestReset, formatResetIn } from "./reset-time";
  * the richer per-card affordances (test / refresh / reorder arrows).
  */
 const ACCOUNT_TABLE_MIN_ROWS = 4;
-
 interface ProviderAccountRowProps {
   option: AccountProviderOption;
   provider?: AccountsListProvider;
@@ -70,7 +69,11 @@ interface ProviderAccountRowProps {
   onPatch: (
     providerId: LinkedAccountProviderId,
     accountId: string,
-    body: Partial<{ label: string; enabled: boolean; priority: number }>,
+    body: Partial<{
+      label: string;
+      enabled: boolean;
+      priority: number;
+    }>,
   ) => Promise<void>;
   onMove: (
     providerId: LinkedAccountProviderId,
@@ -95,7 +98,6 @@ interface ProviderAccountRowProps {
     strategy: AccountStrategy,
   ) => void;
 }
-
 function StatusDot({
   state,
 }: {
@@ -111,7 +113,6 @@ function StatusDot({
     <span className={cn("size-1.5 shrink-0 rounded-full", tone)} aria-hidden />
   );
 }
-
 /**
  * Resolve the active account id + why. Prefers the server's selection state
  * (#16203). Falls back to computing "reset soonest among healthy" locally so
@@ -120,7 +121,10 @@ function StatusDot({
 function resolveActiveSelection(
   accounts: AccountWithCredentialFlag[],
   serverSelection: ProviderSelectionState | undefined,
-): { accountId: string | null; reason: ProviderSelectionState["reason"] } {
+): {
+  accountId: string | null;
+  reason: ProviderSelectionState["reason"];
+} {
   if (serverSelection) {
     return {
       accountId: serverSelection.activeAccountId,
@@ -141,7 +145,6 @@ function resolveActiveSelection(
     reason: anyKnownReset ? "reset-soonest" : "least-recently-throttled",
   };
 }
-
 const SELECTION_REASON_LABEL: Record<
   NonNullable<ProviderSelectionState["reason"]>,
   string
@@ -155,7 +158,6 @@ const SELECTION_REASON_LABEL: Record<
   "quota-aware": "most quota",
   "least-recently-throttled": "least recently used",
 };
-
 export function ProviderAccountRow({
   option,
   provider,
@@ -201,13 +203,11 @@ export function ProviderAccountRow({
     provider?.runtimeEligibility,
   );
   const chips = eligibilityChips(eligibility);
-
   const selection = resolveActiveSelection(sorted, provider?.selection);
   const activeAccount = sorted.find((a) => a.id === selection.accountId);
   const activeResetIn = activeAccount
     ? formatResetIn(accountResetAt(activeAccount))
     : null;
-
   const subscriptionSelection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
     (s) => s.storedProvider === option.id,
   );
@@ -219,7 +219,6 @@ export function ProviderAccountRow({
   );
   const isDirectChatProvider = option.category === "chat";
   const isActiveChatProvider = option.id === activeChatProviderId;
-
   return (
     <div
       className={cn(

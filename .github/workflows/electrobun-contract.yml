@@ -65,19 +65,19 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
           setup-fused-inference: "true"
 
       - name: Build exact Electrobun desktop tree
-        run: node packages/app/scripts/desktop-build.mjs build
+        run: node packages/app/scripts/desktop-build.ts build
 
       - name: Package exact desktop tree as Flatpak
         run: |
           version="$(node -p "require('./packages/app/platforms/electrobun/package.json').version")"
-          node packages/app/scripts/package-electrobun-flatpak.mjs \
+          node packages/app/scripts/package-electrobun-flatpak.ts \
             --version="$version" \
             --arch=x86_64
 

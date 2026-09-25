@@ -1,11 +1,8 @@
-/** Exercises the real browser-first search router against deterministic profile-bound browser receipts and an external API fixture. */
-import type { IAgentRuntime } from "@elizaos/core";
+/** Exercises the registered host action through real browser routing and deterministic transport boundaries. */
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { searchBrowserFirstWeb } from "../browser-web-search";
-import { WebSearchService } from "./webSearchService";
-
-const apiSearch = vi.hoisted(() => vi.fn());
-vi.mock("@tavily/core", () => ({ tavily: () => ({ search: apiSearch }) }));
+import { webSearchAction } from "../index";
+import { searchAuthorizedBrowser } from "./browserSearch";
 
 type Command = { subaction: string; id?: string; url: string };
 class BrowserFixture {
@@ -79,161 +76,108 @@ function runtime(browser: BrowserFixture, settings: Record<string, string> = {})
     } as unknown as IAgentRuntime;
 }
 
-afterEach(() => apiSearch.mockReset());
-
-describe("owner-authorized browser search", () => {
-    it("uses the durable per-agent selection through the host keyless action path", async () => {
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+    globalThis.fetch = originalFetch;
+});
+function publicFallback() {
+    const fetchMock = vi.fn(async () =>
+        Response.json({
+            jsonrpc: "2.0",
+            id: 1,
+            result: {
+                content: [
+                    { type: "text", text: '{"results":[{"url":"https://public.example/result"}]}' },
+                ],
+            },
+        })
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+    return fetchMock;
+}
+function search(selectedRuntime: IAgentRuntime) {
+    return webSearchAction.handler(selectedRuntime, {} as Memory, undefined, {
+        parameters: { query: "query" },
+    });
+}
+describe("registered browser-first host action", () => {
+    it("uses durable selection and retains the entire observed page", async () => {
         const browser = new BrowserFixture();
+        browser.text = `${"complete content ".repeat(30_000)}final fact`;
         const selectedRuntime = runtime(browser);
         selectedRuntime.getCache = async <T>() =>
             ({ targetId: "chromium-device", profileId: "owner-profile" }) as T;
-        const fetchImpl = vi.fn();
-        const result = await searchBrowserFirstWeb(selectedRuntime, "query", { fetchImpl });
-        expect(result?.provider).toBe("browser");
-        expect(fetchImpl).not.toHaveBeenCalled();
-    });
-
-    it("explicitly disabling the per-agent selection overrides advanced host settings", async () => {
-        const browser = new BrowserFixture();
-        const selectedRuntime = runtime(browser, {
-            WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile",
-            TAVILY_API_KEY: "fixture",
+        const fallback = publicFallback();
+        const result = await search(selectedRuntime);
+        expect(result).toMatchObject({
+            success: true,
+            data: { provider: "browser", truncated: false, sources: [] },
         });
-        selectedRuntime.getCache = async <T>() => ({ disabled: true }) as T;
-        apiSearch.mockResolvedValue({ results: [] });
-        const service = await WebSearchService.start(selectedRuntime);
-        await service.search("query");
-        expect(browser.commands).toEqual([]);
-        expect(apiSearch).toHaveBeenCalledOnce();
-    });
-
-    it("works without an API key and pins all observations to the opened tab", async () => {
-        const browser = new BrowserFixture();
-        const service = await WebSearchService.start(
-            runtime(browser, { WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile" })
-        );
-        const result = await service.search("elizaOS browser");
-        expect(result.results.map((item) => item.url)).toEqual([
-            "https://example.com/first",
-            "https://example.org/second",
-        ]);
-        expect(result.browser).toEqual({
-            targetId: "chromium-device",
-            profileId: "owner-profile",
-            tabId: "42",
-            url: "https://www.google.com/search?q=elizaOS+browser",
-        });
+        if (!result || typeof result === "boolean" || !result.text)
+            throw new Error("Expected search receipt");
+        expect(JSON.parse(result.text).answer).toBe(browser.text);
         expect(browser.commands).toEqual([
-            { subaction: "open", url: "https://www.google.com/search?q=elizaOS+browser" },
-            {
-                subaction: "snapshot",
-                url: "https://www.google.com/search?q=elizaOS+browser",
-                id: "42",
-            },
+            { subaction: "open", url: "https://www.google.com/search?q=query" },
+            { subaction: "snapshot", id: "42", url: "https://www.google.com/search?q=query" },
         ]);
-        expect(apiSearch).not.toHaveBeenCalled();
+        expect(fallback).not.toHaveBeenCalled();
     });
-
-    it("reports corrupt persisted selection without dispatch or fallback", async () => {
-        const browser = new BrowserFixture();
-        const selectedRuntime = runtime(browser);
-        selectedRuntime.getCache = async <T>() => ({ profileId: 42 }) as T;
-        const fetchImpl = vi.fn();
-        await expect(
-            searchBrowserFirstWeb(selectedRuntime, "query", { fetchImpl })
-        ).rejects.toThrow("saved browser search selection is invalid");
-        expect(browser.commands).toEqual([]);
-        expect(fetchImpl).not.toHaveBeenCalled();
-    });
-
-    it("preserves the complete observed page even when the caller limits citations", async () => {
-        const browser = new BrowserFixture();
-        browser.text = `${"long page content ".repeat(30_000)}final required fact`;
-        const service = await WebSearchService.start(
-            runtime(browser, { WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile" })
-        );
-        const result = await service.search("complete", { limit: 1, includeAnswer: false });
-        expect(result.results).toHaveLength(1);
-        expect(result.results[0].rawContent).toBe(browser.text);
-        expect(result.answer).toBeUndefined();
-    });
-
-    it.each([undefined, "other-profile"])(
-        "does not read a profile without its explicit grant (%s)",
-        async (profile) => {
+    it.each(["disabled", "unavailable", "unselected", "wrong-profile"])(
+        "uses fallback before dispatch when %s",
+        async (mode) => {
             const browser = new BrowserFixture();
-            apiSearch.mockResolvedValue({ results: [] });
-            const service = await WebSearchService.start(
-                runtime(browser, {
-                    TAVILY_API_KEY: "fixture",
-                    ...(profile ? { WEB_SEARCH_BROWSER_PROFILE_ID: profile } : {}),
-                })
+            browser.available = mode !== "unavailable";
+            const selectedRuntime = runtime(
+                browser,
+                mode === "unselected"
+                    ? {}
+                    : {
+                          WEB_SEARCH_BROWSER_PROFILE_ID:
+                              mode === "wrong-profile" ? "other" : "owner-profile",
+                      }
             );
-            await service.search("public query");
+            if (mode === "disabled")
+                selectedRuntime.getCache = async <T>() => ({ disabled: true }) as T;
+            const fallback = publicFallback();
+            await expect(search(selectedRuntime)).resolves.toMatchObject({
+                success: true,
+                data: { provider: "parallel" },
+            });
             expect(browser.commands).toEqual([]);
-            expect(apiSearch).toHaveBeenCalledTimes(1);
+            expect(fallback).toHaveBeenCalledOnce();
         }
     );
-
-    it("chooses the API before dispatch when no authorized device is available", async () => {
-        const browser = new BrowserFixture();
-        browser.available = false;
-        apiSearch.mockResolvedValue({ results: [] });
-        const service = await WebSearchService.start(
-            runtime(browser, {
-                TAVILY_API_KEY: "fixture",
-                WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile",
-            })
-        );
-        await service.search("query");
-        expect(browser.commands).toEqual([]);
-        expect(apiSearch).toHaveBeenCalledTimes(1);
-    });
-
-    it.each(["open", "snapshot"])(
-        "never changes provider after a dispatched %s fails",
-        async (action) => {
+    it.each(["open", "snapshot", "profile", "consent", "corrupt-selection"])(
+        "does not replay a failed %s search",
+        async (mode) => {
             const browser = new BrowserFixture();
-            if (action === "open") browser.openFailure = new Error("uncertain navigation");
-            else browser.snapshotFailure = new Error("read failed");
-            const service = await WebSearchService.start(
-                runtime(browser, {
-                    TAVILY_API_KEY: "fixture",
-                    WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile",
-                })
-            );
-            await expect(service.search("query")).rejects.toThrow();
-            expect(apiSearch).not.toHaveBeenCalled();
+            if (mode === "open") browser.openFailure = new Error("uncertain navigation");
+            if (mode === "snapshot") browser.snapshotFailure = new Error("read failed");
+            if (mode === "profile") browser.replyProfileId = "wrong-profile";
+            if (mode === "consent") browser.pageUrl = "https://consent.google.com/";
+            const selectedRuntime = runtime(browser, {
+                WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile",
+            });
+            if (mode === "corrupt-selection")
+                selectedRuntime.getCache = async <T>() => ({ profileId: 42 }) as T;
+            const fallback = publicFallback();
+            await expect(search(selectedRuntime)).rejects.toThrow();
+            expect(fallback).not.toHaveBeenCalled();
             expect(browser.commands.filter((command) => command.subaction === "open")).toHaveLength(
-                1
+                mode === "corrupt-selection" ? 0 : 1
             );
         }
     );
-
-    it("rejects a receipt from another browser profile", async () => {
+    it("preserves page content even when a direct caller limits citations", async () => {
         const browser = new BrowserFixture();
-        browser.replyProfileId = "wrong-profile";
-        const service = await WebSearchService.start(
-            runtime(browser, {
-                TAVILY_API_KEY: "fixture",
-                WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile",
-            })
+        browser.text = "long content ".repeat(30_000);
+        const result = await searchAuthorizedBrowser(
+            runtime(browser, { WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile" }),
+            "query",
+            { limit: 1, includeAnswer: false }
         );
-        await expect(service.search("query")).rejects.toThrow("authorized profile");
-        expect(browser.commands).toHaveLength(1);
-        expect(apiSearch).not.toHaveBeenCalled();
-    });
-
-    it("rejects a login/consent redirect without reporting search success or replaying", async () => {
-        const browser = new BrowserFixture();
-        browser.pageUrl = "https://consent.google.com/";
-        const service = await WebSearchService.start(
-            runtime(browser, {
-                TAVILY_API_KEY: "fixture",
-                WEB_SEARCH_BROWSER_PROFILE_ID: "owner-profile",
-            })
-        );
-        await expect(service.search("query")).rejects.toThrow("navigated away");
-        expect(apiSearch).not.toHaveBeenCalled();
+        expect(result?.results).toHaveLength(1);
+        expect(result?.results[0].rawContent).toBe(browser.text);
+        expect(result?.answer).toBeUndefined();
     });
 });

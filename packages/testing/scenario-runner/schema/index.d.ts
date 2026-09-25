@@ -658,6 +658,9 @@ export type ScenarioModelFixture = {
     json?: unknown;
     toolCalls?: readonly ScenarioModelToolCall[];
     finishReason?: string;
+    thought?: string;
+    messageToUser?: string;
+    completed?: boolean;
     usage?: { promptTokens: number; completionTokens: number };
   };
   /** Defaults to exactly once for scenario manifests. */
@@ -724,7 +727,7 @@ export type ScenarioDefinition = {
   deferred?: ScenarioDeferral;
   /**
    * Authoring metadata: the isolation level this scenario was written for.
-   * Not read by the runner — `packages/scripts/run-scenarios-isolated.mjs`
+   * Not read by the runner — `packages/scripts/run-scenarios-isolated.ts`
    * isolates every scenario per process regardless.
    */
   isolation?: "per-scenario" | "shared-runtime" | "worker";

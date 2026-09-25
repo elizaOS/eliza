@@ -16,7 +16,7 @@
  *
  * Run via the repo's tsx runner (real module resolution — vitest's aliasing
  * stubs out plugin handlers and breaks runtime.start):
- *   node packages/app/scripts/run-node-tsx.mjs \
+ *   node packages/app/scripts/run-node-tsx.ts \
  *     packages/app/scripts/check-real-local-reset.ts
  *
  * Exit 0 = all assertions passed; exit 1 = a failure (with the reason logged).
@@ -51,7 +51,7 @@ const CLEANUP_HELPER_SCRIPT = path.join(
   REPO_ROOT,
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 
 async function getJson(url: string): Promise<Record<string, unknown>> {

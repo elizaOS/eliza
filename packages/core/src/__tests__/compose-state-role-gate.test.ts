@@ -8,12 +8,15 @@
  * AgentRuntime + SQLiteDatabaseAdapter with a real world and room; no model.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../runtime";
-import type { Character, Memory, Provider, UUID } from "../types";
-import { ChannelType } from "../types";
+import type { Character } from "../types/agent.js";
+import type { Provider } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import { ChannelType } from "../types/primitives.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "11111111-1111-1111-1111-111111111110" as UUID;

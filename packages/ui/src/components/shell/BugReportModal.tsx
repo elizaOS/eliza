@@ -8,14 +8,14 @@
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/utils/unicode";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import { isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useBugReport } from "../../hooks";
+import { logger } from "../../logger.ts";
 import { type useApp, useAppSelector } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {

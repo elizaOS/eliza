@@ -4,6 +4,25 @@
  * Central export point for all database table schemas.
  */
 
+export {
+  agentTable,
+  cacheTable,
+  channelParticipantsTable,
+  channelTable,
+  componentTable,
+  embeddingTable,
+  entityTable,
+  logTable,
+  memoryTable,
+  messageServerAgentsTable,
+  messageServerTable,
+  messageTable,
+  participantTable,
+  relationshipTable,
+  roomTable,
+  taskTable,
+  worldTable,
+} from "@elizaos/plugin-sql";
 export * from "./account-deletion-exports";
 export * from "./account-deletion-phase-receipts";
 export * from "./account-deletion-requests";
@@ -42,10 +61,22 @@ export * from "./alb-priorities";
 export * from "./analytics-alert-events";
 export * from "./anonymous-sessions";
 export * from "./api-keys";
+export * from "./app-billing";
 export * from "./app-billing-accounts";
+export * from "./app-billing-application-slots";
+export * from "./app-billing-completion-validations";
+export * from "./app-billing-customer-closures";
+export * from "./app-billing-deletion-dispositions";
+export * from "./app-billing-delivery";
+export * from "./app-billing-memberships";
+export * from "./app-billing-quotes";
+export * from "./app-billing-refund-observations";
+export * from "./app-billing-seat-mutations";
+export * from "./app-billing-verifications";
 export * from "./app-config";
 export * from "./app-credit-balances";
 export * from "./app-databases";
+export * from "./app-delegations";
 export * from "./app-domains";
 export * from "./app-earnings";
 export * from "./app-frontend-deployments";
@@ -58,6 +89,8 @@ export * from "./auth-events";
 export * from "./auto-top-up-attempts";
 export * from "./billing-cancel-commands";
 export * from "./billing-funding-reservations";
+export * from "./billing-identities";
+export * from "./billing-owner-subjects";
 export * from "./billing-subscriptions";
 export * from "./cli-auth-sessions";
 export * from "./cloud-files";
@@ -78,7 +111,6 @@ export * from "./discord-connections";
 export * from "./discord-guilds";
 export * from "./docker-nodes";
 export * from "./domain-purchase-idempotency";
-export * from "./eliza";
 export * from "./eliza-room-characters";
 export * from "./entity-settings";
 export * from "./generations";
@@ -107,7 +139,6 @@ export * from "./organization-entitlements";
 export * from "./organization-invites";
 export * from "./organization-policy-audit";
 export * from "./organizations";
-export * from "./outreachr-delegations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";

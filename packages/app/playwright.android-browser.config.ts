@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import { testOutputPath } from "../scripts/lib/test-output.ts";
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
-import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
-import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
+import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.ts";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.ts";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
@@ -63,7 +63,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app", "scripts", "run-node-tsx.ts"))} ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
     url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer: process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1",

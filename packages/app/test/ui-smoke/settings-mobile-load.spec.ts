@@ -6,13 +6,13 @@
 // reports/settings-mobile-load/ so the failing sections are obvious.
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   SETTINGS_SECTIONS,
   VIEWPORT_SIZES,
 } from "../../../scripts/ai-qa/route-catalog.ts";
+import { testOutputPath } from "../../../scripts/lib/test-output";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -20,9 +20,10 @@ import {
   seedAppStorage,
 } from "./helpers";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const REPO_ROOT = resolve(HERE, "../../../..");
-const OUT_DIR = resolve(REPO_ROOT, "reports", "settings-mobile-load");
+import { installCloudApiStubs } from "./helpers/cloud-audit-fixtures";
+import { seedStewardSession } from "./helpers/test-auth";
+
+const OUT_DIR = testOutputPath("app", "settings-mobile-load");
 
 // Console errors that are expected against the keyless stub (an endpoint the
 // stub does not implement returns 4xx/network error). These are NOT a "page
@@ -142,12 +143,9 @@ test.describe("settings sections load at mobile width", () => {
   }
 });
 
-// The Eliza Cloud settings sections are contributed through the pluggable
-// registry (cloud/settings/register-cloud-settings), not the pinned meta list,
-// so they are absent from the route catalog above. They render against the
-// keyless stub as empty/"connect" states — that is fine; this pass only asserts
-// they do not crash the settings page on a phone. Navigated by hash since they
-// have no catalog entry.
+// Cloud sections are registered separately from the local route catalog.
+// Exercise their legacy hashes with a signed-in fixture, checking either the
+// embedded section or the canonical Cloud route body after redirection.
 const CLOUD_SECTION_IDS = [
   "cloud-agents",
   "cloud-account",
@@ -165,17 +163,58 @@ const DEVELOPER_CLOUD_SECTION_IDS = [
   "cloud-monetization",
 ] as const;
 
+const CLOUD_ROUTES: Record<
+  string,
+  {
+    path: string;
+    name: string;
+    role?: "heading" | "button" | "link" | "tabpanel";
+  }
+> = {
+  "cloud-account": { path: "/cloud/account", name: "Profile information" },
+  "cloud-billing": { path: "/cloud/billing", name: "Credit Balance" },
+  "cloud-api-keys": {
+    path: "/cloud/api-keys",
+    name: "Generate key",
+    role: "button",
+  },
+  "cloud-applications": {
+    path: "/cloud/apps",
+    name: "Smoke App",
+    role: "link",
+  },
+  "cloud-monetization": {
+    path: "/cloud/monetization",
+    name: "Earnings",
+    role: "tabpanel",
+  },
+  "cloud-organization": { path: "/cloud/organization", name: "Smoke Org" },
+  "cloud-plugin-grants": {
+    path: "/cloud/security/permissions",
+    name: "Active grants",
+  },
+};
+
 test.describe("cloud settings sections load at mobile width", () => {
   test.use({ viewport: VIEWPORT_SIZES.mobile });
 
-  for (const { id, developerMode } of [
-    ...CLOUD_SECTION_IDS.map((id) => ({ id, developerMode: false })),
+  for (const { id, developerMode, viewport } of [
+    ...CLOUD_SECTION_IDS.map((id) => ({
+      id,
+      developerMode: false,
+      viewport: VIEWPORT_SIZES.mobile,
+    })),
     ...DEVELOPER_CLOUD_SECTION_IDS.map((id) => ({
       id,
       developerMode: true,
+      viewport: VIEWPORT_SIZES.mobile,
     })),
+    { id: "mcps", developerMode: false, viewport: VIEWPORT_SIZES.desktop },
   ] as const) {
-    test(`${id} renders without crashing`, async ({ page }) => {
+    test(`${id} renders without crashing at ${viewport.width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
       await mkdir(OUT_DIR, { recursive: true });
 
       const uncaught: string[] = [];
@@ -195,16 +234,28 @@ test.describe("cloud settings sections load at mobile width", () => {
         developerMode ? { "eliza:developerMode": "1" } : {},
       );
       await installDefaultAppRoutes(page);
+      await installCloudApiStubs(page);
+      await seedStewardSession(page, { jwt: true });
       await openAppPath(page, "/settings");
 
-      // Open the section by hash — it is registered by the time SettingsView
-      // mounts (it imports the cloud settings barrel), so the hashchange handler
-      // resolves the id and renders it on mobile.
+      // Legacy hashes either select an embedded section or redirect to the
+      // canonical authenticated Cloud route; verify that route body renders.
       await page.evaluate((sectionId) => {
         window.location.hash = `#${sectionId}`;
       }, id);
 
-      const sectionRoot = page.locator(`#${id}`).first();
+      const destination = CLOUD_ROUTES[id];
+      if (destination) {
+        await expect(page).toHaveURL(new RegExp(`${destination.path}$`));
+      }
+      const sectionRoot = destination
+        ? page
+            .getByRole(destination.role ?? "heading", {
+              name: destination.name,
+              exact: true,
+            })
+            .first()
+        : page.locator(`#${id}`).first();
       const sectionVisible = await sectionRoot
         .waitFor({ state: "visible", timeout: 30_000 })
         .then(() => true)
@@ -227,18 +278,21 @@ test.describe("cloud settings sections load at mobile width", () => {
         consoleErrors,
       };
       await writeFile(
-        join(OUT_DIR, `${id}.json`),
+        join(OUT_DIR, `${id}-${viewport.width}.json`),
         `${JSON.stringify(verdict, null, 2)}\n`,
       );
       await page
-        .screenshot({ path: join(OUT_DIR, `${id}.png`), fullPage: true })
+        .screenshot({
+          path: join(OUT_DIR, `${id}-${viewport.width}.png`),
+          fullPage: true,
+        })
         .catch(() => {});
 
       expect(uncaught, `${id}: uncaught exception(s)`).toEqual([]);
       expect(boundaryHit, `${id}: rendered an error boundary`).toBe(false);
       expect(
         sectionVisible,
-        `${id}: section root #${id} never became visible`,
+        `${id}: expected section or Cloud route body never became visible`,
       ).toBe(true);
       expect(consoleErrors, `${id}: non-benign console errors`).toEqual([]);
     });

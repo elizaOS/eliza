@@ -7,7 +7,6 @@
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { useCallback, useRef, useState } from "react";
 import {
   client,
@@ -16,6 +15,7 @@ import {
   type SkillInfo,
   type SkillScanReportSummary,
 } from "../api";
+import { logger } from "../logger.ts";
 import { normalizeFirstRunProviderId } from "../providers";
 import {
   confirmDesktopAction,

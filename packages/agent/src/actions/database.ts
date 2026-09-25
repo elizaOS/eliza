@@ -15,16 +15,20 @@
  * for the agent's own tool surface.
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  SearchCategoryRegistration,
+import {
+  type Action,
+  type ActionResult,
+  type ColumnInfo,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  type SearchCategoryRegistration,
+  type TableInfo,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import { logger, ModelType, toWellFormedUnicode } from "@elizaos/core";
-import type { ColumnInfo, TableInfo } from "@elizaos/shared";
+
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
 // ---------------------------------------------------------------------------

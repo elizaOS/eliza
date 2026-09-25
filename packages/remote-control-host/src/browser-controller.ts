@@ -1,23 +1,24 @@
 /** Owner-authorized agent controller. The Cloud relay receives ciphertext only. */
+
+import type { HttpPlugin, RouteHandlerContext } from "@elizaos/core";
 import {
   ElizaError,
   fetchWithSsrfGuard,
   type IAgentRuntime,
 } from "@elizaos/core";
-import {
-  type BrowserService,
-  createRemoteBrowserDeviceTarget,
-} from "@elizaos/plugin-browser";
-import type { HttpPlugin, RouteHandlerContext } from "@elizaos/shared";
 import type {
   RemoteBrowserCommandPayload,
   RemoteControllerPublicIdentity,
   RemoteTargetPublicIdentity,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
 import {
   isRemoteControllerPublicIdentity,
   isRemoteTargetPublicIdentity,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
+import {
+  type BrowserService,
+  createRemoteBrowserDeviceTarget,
+} from "@elizaos/plugin-browser";
 import {
   RemoteControlCloudClient,
   type RemoteSessionSummary,
@@ -130,7 +131,7 @@ export class AgentRemoteBrowserController {
       throw failure("Could not persist browser preference marker.");
     this.enrollment = next;
   }
-  async restore(): Promise<void> {
+  async restore(expectedOwnerId?: string): Promise<void> {
     if (!(await this.runtime.getCache<boolean>(CONFIGURED))) return;
     const read = await this.store.get(VAULT, "runtime.agent_profiles");
     if (!read.ok) throw failure("Persisted browser authority is unavailable.");
@@ -160,6 +161,10 @@ export class AgentRemoteBrowserController {
       !Number.isSafeInteger(value.grantRevision)
     )
       throw failure("Persisted browser owner binding is invalid.");
+    if (expectedOwnerId && value.ownerId !== expectedOwnerId)
+      throw failure(
+        "Persisted browser authority belongs to a different agent owner.",
+      );
     this.enrollment = value as unknown as Enrollment;
     if (this.enrollment.active) this.register();
   }
@@ -472,9 +477,10 @@ export function remoteBrowserController(runtime: IAgentRuntime) {
 }
 export async function restoreRemoteBrowserController(
   runtime: IAgentRuntime,
+  expectedOwnerId?: string,
 ): Promise<void> {
   try {
-    await remoteBrowserController(runtime).restore();
+    await remoteBrowserController(runtime).restore(expectedOwnerId);
   } catch (error) {
     // error-policy:J1 A unavailable encrypted device grant disables remote browsing, not the agent runtime.
     runtime.reportError("remote-browser-controller.restore", error);
@@ -491,26 +497,35 @@ function owner(context: RouteHandlerContext) {
       "Only the authenticated agent owner may configure browser device authority.",
     );
 }
-export const remoteBrowserControllerPlugin: HttpPlugin = {
-  name: "remote-browser-controller",
-  description: "Owner-paired device browser preferences for hosted agents.",
-  routes: ["status", "pair", "confirm", "revoke"].map((operation) => ({
-    type: operation === "status" ? "GET" : "POST",
-    path: `/api/remote-browser/${operation}`,
-    rawPath: true,
-    modes: ["local", "local-only", "cloud", "remote"],
-    routeHandler: async (context) => {
-      owner(context);
-      const controller = remoteBrowserController(context.runtime);
-      const result =
-        operation === "status"
-          ? controller.status()
-          : operation === "pair"
-            ? await controller.pair(context.body)
-            : operation === "confirm"
-              ? await controller.confirm(context.body)
-              : await controller.revoke();
-      return { status: 200, body: result };
-    },
-  })),
-};
+export function createRemoteBrowserControllerPlugin(
+  expectedOwnerId?: string,
+): HttpPlugin {
+  if (expectedOwnerId !== undefined) identifier(expectedOwnerId);
+  return {
+    name: "remote-browser-controller",
+    description: "Owner-paired device browser preferences for hosted agents.",
+    routes: ["status", "pair", "confirm", "revoke"].map((operation) => ({
+      type: operation === "status" ? "GET" : "POST",
+      path: `/api/remote-browser/${operation}`,
+      rawPath: true,
+      modes: ["local", "local-only", "cloud", "remote"],
+      routeHandler: async (context) => {
+        owner(context);
+        const controller = remoteBrowserController(context.runtime);
+        if (expectedOwnerId) controller.assertOwner(expectedOwnerId);
+        const result =
+          operation === "status"
+            ? controller.status()
+            : operation === "pair"
+              ? await controller.pair(context.body, expectedOwnerId)
+              : operation === "confirm"
+                ? await controller.confirm(context.body)
+                : await controller.revoke();
+        return { status: 200, body: result };
+      },
+    })),
+  };
+}
+
+export const remoteBrowserControllerPlugin =
+  createRemoteBrowserControllerPlugin();

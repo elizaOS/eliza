@@ -26,14 +26,17 @@
     "lint": "bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check",
     "format": "bunx @biomejs/biome format --write linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
     "test": "bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test",
-    "test:release": "node --test scripts/__tests__/*.test.mjs && bun test scripts/__tests__/*.test.ts",
-    "verify:layout": "node scripts/verify-os-repository-layout.mjs",
+    "test:release": "node --test scripts/__tests__/*.node.test.ts && bun test --timeout 60000 scripts/__tests__/*.bun.test.ts",
+    "verify:layout": "node scripts/verify-os-repository-layout.ts",
     "verify": "bun run verify:layout && bun run verify:installer-native && bun run typecheck && bun run lint && bun run test && bun run test:release",
     "verify:installer-native": "bun run --cwd linux/installer test:native:compile",
     "verify:linux": "bash scripts/linux/mkosi-lint.sh && python3 scripts/linux/test_disposable_disk_vm.py && python3 scripts/linux/test_mkosi_qualification.py && python3 scripts/linux/test_verify_desktop_artifact.py && python3 scripts/linux/test_stage_browser_artifact.py && python3 scripts/linux/test_assemble_browser_payload.py && python3 scripts/linux/test_mkosi_reproducibility.py && python3 scripts/linux/test_riscv64_agent_staging.py",
     "verify:riscv64": "bash scripts/verify-riscv64-buildpaths.sh",
     "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
     "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh"
+  },
+  "dependencies": {
+    "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -42,8 +45,15 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "turbo": "^2.9.16",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.1",
-    "@elizaos/shared": "workspace:*",
+    "vitest": "4.1.5",
     "@fontsource/poppins": "^5.2.7"
+  },
+  "overrides": {
+    "@biomejs/biome": "2.5.14",
+    "@elizaos/core": "2.0.11-beta.7",
+    "@elizaos/ui": "2.0.11-beta.7",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "rollup": "npm:@rollup/wasm-node@4.60.3"
   }
 }

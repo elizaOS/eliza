@@ -4,13 +4,9 @@
  * cases complement the capability-level suite by covering alias precedence,
  * unavailable services, invalid inputs, and response branches without a model.
  */
+
+import type { ActionResult, HandlerOptions, State, UUID } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import type {
-  ActionResult,
-  HandlerOptions,
-  State,
-  UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
 import {
   captureCallback,
   initStore,

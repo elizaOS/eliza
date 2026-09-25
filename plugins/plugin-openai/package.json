@@ -13,8 +13,8 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
@@ -48,7 +48,7 @@
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
     "js-tiktoken": "^1.0.21",
-    "@elizaos/shared": "workspace:*"
+    "gpt-tokenizer": "^4.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -66,14 +66,14 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "scripts": {
     "build:ts": "bun run build.ts",
     "dev": "bun run build.ts --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",

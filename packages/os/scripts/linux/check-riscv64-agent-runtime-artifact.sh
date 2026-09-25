@@ -4,7 +4,7 @@ set -euo pipefail
 OS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACT_DIR="${1:-${OS_ROOT}/linux/elizaos/artifacts/riscv64}"
 if [ -z "${RISCV64_AGENT_RUNTIME_REPORT:-}" ] || [ -z "${RISCV64_AGENT_RUNTIME_TRANSCRIPT:-}" ]; then
-    eliza_root="$(node "$OS_ROOT/scripts/eliza-source.mjs")"
+    eliza_root="$(node "$OS_ROOT/scripts/eliza-source.ts")"
     output_directory="$(node --input-type=module -e '
         const { testOutputPath } = await import(process.argv[1]);
         console.log(testOutputPath("os-riscv64-runtime-artifact"));

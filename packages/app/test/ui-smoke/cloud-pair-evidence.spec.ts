@@ -7,8 +7,7 @@
  * origin, with the REAL localStorage/sessionStorage. No jsdom, no module mocks.
  *
  * The smoke stack serves the BUILT renderer (there is no dev-server module
- * graph to dynamic-import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import from), so the real modules are bundled from their
+ * graph to dynamic-import from), so the real modules are bundled from their
  * repo sources with esbuild at spec runtime — the same technique the reviewed
  * accounts-ui e2e uses — and injected into the page as one script. The boot
  * adopter source is extracted from the repo's main.tsx — the exact extraction
@@ -30,6 +29,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import { build, type Plugin as EsbuildPlugin, transform } from "esbuild";
+
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE = packages/app/test/ui-smoke → up 2 = packages/app
@@ -54,23 +55,23 @@ function evidenceModulesBundle(): Promise<string> {
       ...builtinModules,
       ...builtinModules.map((name) => `node:${name}`),
     ]);
-    // `@elizaos/core` is never imported by the modules under test (verified —
-    // it only enters transitively through i18n/api barrel collaterals), and
-    // its plugin-manager subtree is node-only, so the whole package becomes an
-    // inert proxy as well.
+    // Storage/auth contracts execute as real browser-safe core source. Only the
+    // unrelated runtime barrel reached through UI collaterals is stubbed.
     const stubElizaCore: EsbuildPlugin = {
       name: "stub-eliza-core",
       setup(b) {
         b.onResolve(
-          { filter: /^@elizaos\/core\/contracts\/first-run-options$/ },
-          () => ({
+          {
+            filter:
+              /^@elizaos\/core\/(contracts\/(first-run-options|cloud-pair)|utils\/eliza-globals|type-guards)$/,
+          },
+          (args) => ({
             path: join(
               REPO_ROOT,
               "packages",
               "core",
               "src",
-              "contracts",
-              "first-run-options.ts",
+              `${args.path.slice("@elizaos/core/".length)}.ts`,
             ),
           }),
         );
@@ -147,6 +148,7 @@ function evidenceModulesBundle(): Promise<string> {
       format: "iife",
       globalName: "__cloudPairEvidenceModules",
       platform: "browser",
+      conditions: ["eliza-source"],
       jsx: "automatic",
       define: { "process.env.NODE_ENV": '"production"' },
       loader: {

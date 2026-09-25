@@ -21,28 +21,29 @@
 import * as crypto from "node:crypto";
 import { Readable } from "node:stream";
 import { createGunzip, gzipSync } from "node:zlib";
-import type {
-  Agent,
-  AgentRuntime,
-  Character,
-  Component,
-  Entity,
-  IDatabaseAdapter,
-  Log,
-  Memory,
-  Relationship,
-  Room,
-  Task,
-  UUID,
-  World,
-} from "@elizaos/core";
-import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
 import {
+  type Agent,
+  type AgentRuntime,
   type CanonicalJsonOptions,
+  type Character,
+  type Component,
   canonicalJsonString,
+  ElizaError,
+  type ElizaErrorOptions,
+  type Entity,
+  type IDatabaseAdapter,
   isCanonicalJsonArray,
+  type Log,
+  logger,
+  type Memory,
+  type Relationship,
+  type Room,
   readCanonicalArrayLength,
-} from "@elizaos/shared/canonical-json";
+  type Task,
+  type UUID,
+  type World,
+} from "@elizaos/core";
+
 import * as zod from "zod";
 import {
   isStoredMediaUrl,

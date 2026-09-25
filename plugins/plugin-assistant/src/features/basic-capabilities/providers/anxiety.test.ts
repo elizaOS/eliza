@@ -18,16 +18,10 @@
  * model calls.
  */
 
+import type { Memory, State, UUID } from "@elizaos/core";
+import { AgentRuntime, ChannelType, createCharacter } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { createCharacter } from "../../../../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
-import type {
-  Memory,
-  State,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
 import {
   anxietyProvider,
   computeAnxietyPressure,

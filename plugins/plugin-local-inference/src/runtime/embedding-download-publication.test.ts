@@ -233,3 +233,60 @@ it("rejects an interrupted HTTP response without publishing partial model bytes"
 		);
 	}
 });
+it("cancels an active download and preserves the previously published model", async () => {
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "embedding-http-"));
+	directories.push(directory);
+	const target = path.join(directory, "model.gguf");
+	fs.writeFileSync(target, "previous-complete-model");
+	const controller = new AbortController();
+	const response: { current?: ServerResponse } = {};
+	const server = createServer((_request, current) => {
+		response.current = current;
+		current.writeHead(200, { "content-length": "8" });
+		current.write("half");
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	try {
+		const address = server.address();
+		if (!address || typeof address === "string")
+			throw new Error("HTTP fixture did not bind");
+		vi.spyOn(https, "get").mockImplementation(((...args: unknown[]) => {
+			const callback = args.at(-1) as (response: IncomingMessage) => void;
+			return httpGet(
+				`http://127.0.0.1:${address.port}/model.gguf`,
+				{ signal: (args[1] as { signal?: AbortSignal }).signal },
+				callback,
+			);
+		}) as typeof https.get);
+		let halfway!: () => void;
+		const progress = new Promise<void>((resolve) => {
+			halfway = resolve;
+		});
+		const pending = ensureModel(
+			directory,
+			"owner/model",
+			"model.gguf",
+			true,
+			(phase, text) => {
+				if (phase === "downloading" && text?.includes("50%")) halfway();
+			},
+			controller.signal,
+		);
+		const rejected = expect(pending).rejects.toMatchObject({
+			code: "ABORT_ERR",
+		});
+		await progress;
+		expect(fs.readFileSync(target, "utf8")).toBe("previous-complete-model");
+		if (!response.current)
+			throw new Error("HTTP fixture did not receive the request");
+		controller.abort();
+		await rejected;
+		expect(fs.readFileSync(target, "utf8")).toBe("previous-complete-model");
+		expect(fs.readdirSync(directory)).toEqual(["model.gguf"]);
+	} finally {
+		server.closeAllConnections();
+		await new Promise<void>((resolve, reject) =>
+			server.close((error) => (error ? reject(error) : resolve())),
+		);
+	}
+});

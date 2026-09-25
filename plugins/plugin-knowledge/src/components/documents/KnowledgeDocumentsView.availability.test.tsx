@@ -5,11 +5,8 @@
  */
 // @vitest-environment jsdom
 
+import { __resetResourceCache, getCached } from "@elizaos/ui";
 import { ApiError } from "@elizaos/ui/api/client-types-core";
-import {
-  __resetResourceCache,
-  getCached,
-} from "@elizaos/ui/hooks/resource-cache";
 import {
   act,
   cleanup,
@@ -57,7 +54,7 @@ vi.mock("./documents-detail", () => ({
   },
 }));
 
-import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
+import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;

@@ -24,8 +24,8 @@ test("desktop resolves the actual build:web Vite owner and runs both output gate
     calls.map(([args]) => args),
     [
       [pinnedCli, "build"],
-      [path.join(appDir, "scripts", "verify-chunk-safety.mjs")],
-      [path.join(appDir, "scripts", "verify-viewport-meta.mjs")],
+      [path.join(appDir, "scripts", "verify-chunk-safety.ts")],
+      [path.join(appDir, "scripts", "verify-viewport-meta.ts")],
     ],
   );
   for (const [, options] of calls) {

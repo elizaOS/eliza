@@ -1,7 +1,7 @@
 package ai.elizaos.plugins.bunruntime
 
-import android.content.ComponentName
-import android.content.Intent
+import android.content.Context
+import java.lang.reflect.InvocationTargetException
 import android.content.pm.PackageManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -71,7 +71,11 @@ class ElizaBunRuntimePlugin : Plugin() {
             try {
                 startServiceReflective()
             } catch (e: Exception) {
-                android.util.Log.w(TAG, "start: could not start ElizaAgentService: ${e.message}")
+                call.resolve(JSObject().apply {
+                    put("ok", false)
+                    put("error", e.message ?: "Could not start ElizaAgentService")
+                })
+                return@Thread
             }
 
             val deadline = System.currentTimeMillis() + startTimeoutMs
@@ -197,7 +201,8 @@ class ElizaBunRuntimePlugin : Plugin() {
         try {
             stopServiceReflective()
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "stop: could not stop ElizaAgentService: ${e.message}")
+            call.reject(e.message ?: "Could not stop ElizaAgentService", e)
+            return
         }
         call.resolve()
     }
@@ -226,7 +231,9 @@ class ElizaBunRuntimePlugin : Plugin() {
             try {
                 val result = dispatchBridgeCall(method, args)
                 val out = JSObject().apply {
-                    put("result", result)
+                    // Android JSONObject.put stringifies arbitrary Maps. Wrap the
+                    // complete value so map/list RPC results retain their JSON shape.
+                    put("result", JSONObject.wrap(result))
                 }
                 call.resolve(out)
             } catch (e: Exception) {
@@ -320,44 +327,24 @@ class ElizaBunRuntimePlugin : Plugin() {
      * The host app registers `AgentPlugin` and keeps `ElizaAgentService` as
      * the process owner. This plugin simply asks it to (re)start.
      */
-    private fun startServiceReflective() {
-        val ctx = context ?: return
+    private fun startServiceReflective() = invokeServiceLifecycle("start")
+
+    private fun stopServiceReflective() = invokeServiceLifecycle("stop")
+
+    private fun invokeServiceLifecycle(methodName: String) {
+        val ctx = context ?: throw IllegalStateException("Android context is unavailable")
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered in ${ctx.packageName}")
+        val serviceClass = Class.forName(serviceClassName)
         try {
-            val serviceClassName = resolveAgentServiceClassName() ?: run {
-                android.util.Log.d(TAG, "ElizaAgentService not registered in ${ctx.packageName}")
-                return
-            }
-            val intent = Intent().apply {
-                component = ComponentName(ctx.packageName, serviceClassName)
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else {
-                ctx.startService(intent)
-            }
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "Could not start ElizaAgentService: ${e.message}")
+            // The host owns RAM policy, detached-process shutdown and watchdog
+            // cancellation. stopService alone deliberately leaves Bun alive.
+            serviceClass.getMethod(methodName, Context::class.java).invoke(null, ctx)
+        } catch (error: InvocationTargetException) {
+            throw error.targetException
         }
     }
 
-    private fun stopServiceReflective() {
-        val ctx = context ?: return
-        try {
-            val serviceClassName = resolveAgentServiceClassName() ?: return
-            val intent = Intent().apply {
-                component = ComponentName(ctx.packageName, serviceClassName)
-            }
-            ctx.stopService(intent)
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "Could not stop ElizaAgentService: ${e.message}")
-        }
-    }
-
-    /**
-     * Read the per-boot bearer token written by `ElizaAgentService`. The
-     * token is stored in a volatile static field (`localAgentToken()`) so we
-     * access it reflectively rather than reading the auth file on disk.
-     */
     private fun readLocalAgentToken(): String? {
         return try {
             val serviceClassName = resolveAgentServiceClassName() ?: return null

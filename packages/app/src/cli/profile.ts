@@ -1,7 +1,7 @@
 /**
  * Pre-Commander parsing and env wiring for the CLI's `--profile <name>` /
  * `--dev` flags, which isolate an agent's state, config, and ports under a
- * named XDG namespace. `parseCliProfileArgs` extracts and validates the profile
+ * named state directory. `parseCliProfileArgs` extracts and validates the profile
  * (rejecting `--dev` combined with `--profile`) and strips the flag from argv
  * ahead of the command word; `applyCliProfileEnv` fills ELIZA_PROFILE /
  * ELIZA_NAMESPACE / ELIZA_STATE_DIR / ELIZA_CONFIG_PATH (and the dev gateway
@@ -9,7 +9,8 @@
  */
 import os from "node:os";
 import path from "node:path";
-import { isValidProfileName } from "./profile-utils";
+
+const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
 export type CliProfileParseResult =
   | { ok: true; profile: string | null; argv: string[] }
@@ -23,8 +24,7 @@ function takeValue(
   consumedNext: boolean;
 } {
   if (raw.includes("=")) {
-    const [, value] = raw.split("=", 2);
-    const trimmed = value.trim();
+    const trimmed = raw.slice(raw.indexOf("=") + 1).trim();
     return { value: trimmed || null, consumedNext: false };
   }
   const trimmed = (next ?? "").trim();
@@ -48,13 +48,18 @@ export function parseCliProfileArgs(argv: string[]): CliProfileParseResult {
       continue;
     }
 
+    if (arg === "--") {
+      out.push(...args.slice(i));
+      break;
+    }
+
     if (sawCommand) {
       out.push(arg);
       continue;
     }
 
     if (arg === "--dev") {
-      if (profile && profile !== "dev") {
+      if (profile !== null && !sawDev) {
         return { ok: false, error: "Cannot combine --dev with --profile" };
       }
       sawDev = true;
@@ -74,7 +79,7 @@ export function parseCliProfileArgs(argv: string[]): CliProfileParseResult {
       if (!value) {
         return { ok: false, error: "--profile requires a value" };
       }
-      if (!isValidProfileName(value)) {
+      if (!PROFILE_NAME_RE.test(value)) {
         return {
           ok: false,
           error: 'Invalid --profile (use letters, numbers, "_", "-" only)',
@@ -113,8 +118,8 @@ export function applyCliProfileEnv(params: {
   const env = params.env ?? (process.env as Record<string, string | undefined>);
   const homedir = params.homedir ?? os.homedir;
   const profile = params.profile.trim();
-  if (!profile) {
-    return;
+  if (!PROFILE_NAME_RE.test(profile)) {
+    throw new Error("Invalid profile name");
   }
 
   // Convenience only: fill defaults, never override explicit env values.

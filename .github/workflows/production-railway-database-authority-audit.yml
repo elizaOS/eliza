@@ -153,7 +153,7 @@ jobs:
           set -e
           chmod 0600 "$report"
           if ! GITHUB_TOKEN='${{ github.token }}' \
-            node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \

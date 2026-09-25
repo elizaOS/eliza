@@ -1,6 +1,6 @@
 /**
  * ERLE metrics for the voice pipeline. The math is canonical in
- * `@elizaos/shared/voice/aec`; this module re-exports it and adds the
+ * `@elizaos/core/voice/aec`; this module re-exports it and adds the
  * capture-replay helper that turns an armed AEC evidence window (#11373)
  * into an offline ERLE measurement using the exact production canceller.
  */
@@ -9,7 +9,7 @@ import {
 	computeErle,
 	computeFarActiveErle,
 	NlmsEchoCanceller,
-} from "@elizaos/shared/voice/aec";
+} from "@elizaos/core/voice/aec";
 
 export { computeErle, computeFarActiveErle };
 

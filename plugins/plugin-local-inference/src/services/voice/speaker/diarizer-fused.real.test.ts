@@ -9,7 +9,7 @@
  * Skipped (not faked) when the fused lib is not resolvable, or when it does not
  * link the pyannote diarizer graph. To run them, point `ELIZA_INFERENCE_LIBRARY`
  * (or `ELIZA_INFERENCE_LIB_DIR`) at a built `libelizainference` with the diarizer
- * ABI, or build one via `packages/app/scripts/build-llama-cpp-mtp.mjs`.
+ * ABI, or build one via `packages/app/scripts/build-llama-cpp-mtp.ts`.
  * Runs in the post-merge `bun test` lane (`*.real.test.ts` is excluded from the
  * default lane in `vitest.config.ts`).
  */

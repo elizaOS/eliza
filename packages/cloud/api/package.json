@@ -10,9 +10,9 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "dev": "node ../scripts/admin/dev/cloud-api-dev.mjs",
-    "dev:full": "node ../scripts/admin/dev/cloud-api-dev.mjs --with-control-plane",
-    "agent:build": "node ../scripts/admin/dev/build-cloud-agent-image.mjs",
+    "dev": "node ../scripts/admin/dev/cloud-api-dev.ts",
+    "dev:full": "node ../scripts/admin/dev/cloud-api-dev.ts --with-control-plane",
+    "agent:build": "node ../scripts/admin/dev/build-cloud-agent-image.ts",
     "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
     "check:router-contract": "node test/_router-contract.mjs",
@@ -25,7 +25,7 @@
     "test:audit": "node test/_audit-coverage.mjs",
     "test:e2e": "node test/e2e/run-e2e-batches.mjs",
     "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000",
-    "voice:measure-warm-turns": "bun ../scripts/api/voice-warm-turn-measure.mjs",
+    "voice:measure-warm-turns": "bun ../scripts/api/voice-warm-turn-measure.ts",
     "voice:local-gateway": "bun ../scripts/api/local-voice-gateway.ts"
   },
   "dependencies": {
@@ -50,10 +50,12 @@
     "viem": "^2.48.8",
     "wrangler": "^4.0.0",
     "zod": "^4.6.5",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sqlite": "workspace:*"
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/plugin-web-search": "workspace:*",
@@ -67,6 +69,8 @@
     "miniflare": "4.20260730.0",
     "pg": "^8.23.0",
     "typescript": "^6.0.3",
-    "ws": "^8.21.3"
+    "ws": "^8.21.3",
+    "@elizaos/plugin-todos": "workspace:*",
+    "@elizaos/cloud-sdk": "workspace:*"
   }
 }

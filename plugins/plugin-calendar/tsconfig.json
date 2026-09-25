@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -17,92 +18,34 @@
     "paths": {
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
       ],
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/auth/auth": ["../../packages/auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
-      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/plugin-agent-orchestrator": [
-        "../plugin-agent-orchestrator/src/index.ts"
-      ],
-      "@elizaos/plugin-anthropic": ["../plugin-anthropic/index.ts"],
       "@elizaos/plugin-anthropic/*": ["../plugin-anthropic/*"],
-      "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
-      "@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
       "@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
-      "@elizaos/plugin-computeruse": ["../plugin-computeruse/src/index.ts"],
       "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/src/*"],
-      "@elizaos/plugin-discord": ["../plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../plugin-discord/*"],
-      "@elizaos/plugin-discord/service": ["../plugin-discord/service.ts"],
-      "@elizaos/plugin-elizacloud/host-routes": [
-        "../plugin-elizacloud/src/host-routes.ts"
-      ],
-      "@elizaos/plugin-google-workspace": [
-        "../plugin-google-workspace/src/index.ts"
-      ],
       "@elizaos/plugin-google-workspace/*": [
         "../plugin-google-workspace/src/*"
       ],
-      "@elizaos/plugin-meetings": ["../plugin-meetings/src/index.ts"],
       "@elizaos/plugin-meetings/*": ["../plugin-meetings/src/*"],
-      "@elizaos/plugin-pty": ["../plugin-pty/index.ts"],
-      "@elizaos/plugin-scheduling": ["../plugin-scheduling/src/index.ts"],
-      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["../plugin-sql/src/*"],
-      "@elizaos/plugin-agent-orchestrator/ui": [
-        "../plugin-agent-orchestrator/src/ui/index.ts"
-      ],
       "@elizaos/plugin-agent-orchestrator/ui/*": [
         "../plugin-agent-orchestrator/src/ui/*"
       ],
-      "@elizaos/plugin-vision": ["../plugin-vision/src/index.ts"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/edge": ["../../packages/core/src/index.edge.ts"],
-      "@elizaos/core/atomic-json": [
-        "../../packages/core/src/utils/atomic-json.ts"
-      ],
-      "@elizaos/core/node": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/auth/vault": ["../../packages/auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-secure-store": [
-        "../../plugins/plugin-native-secure-store/src/index.ts"
-      ],
-      "@elizaos/capacitor-calendar": [
-        "../../plugins/plugin-native-calendar/src/index.ts"
-      ],
       "@elizaos/capacitor-calendar/*": [
         "../../plugins/plugin-native-calendar/src/*"
       ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
-      "@elizaos/plugin-native-inference/host-bridge": [
-        "../plugin-native-inference/src/bridge.ts"
-      ],
-      "@elizaos/plugin-native-inference/*": [
-        "../plugin-native-inference/src/*"
-      ],
-      "@elizaos/plugin-native-filesystem": [
-        "../plugin-native-filesystem/src/index.ts"
-      ]
+      "@elizaos/plugin-native-inference/*": ["../plugin-native-inference/src/*"]
     }
   },
   "include": ["src/**/*"],

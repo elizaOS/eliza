@@ -4,13 +4,10 @@
  * turns with identical wording are kept, hygiene filtering applies, and the
  * read is memoized per message. Runtime doubles; no database or model.
  */
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { wrapExternalContent } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { wrapExternalContent } from "../../../../packages/core/src/security/external-content.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import {
   formatRecentMessages,
   getRoomTranscript,

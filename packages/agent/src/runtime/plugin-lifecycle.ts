@@ -1,12 +1,13 @@
 /** Host view/schema/role integration over core's single plugin lifecycle. */
-import type {
-  AgentRuntime,
-  IDatabaseAdapter,
-  Plugin,
-  PluginOwnership,
+import {
+  type AgentRuntime,
+  ElizaError,
+  type IDatabaseAdapter,
+  installHttpPluginLifecycle,
+  type Plugin,
+  type PluginOwnership,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
+
 import {
   beginViewInstallation,
   closeRuntimeViewRegistry,

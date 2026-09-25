@@ -5,7 +5,7 @@ import type {
   RemoteControllerGrant,
   RemoteControllerPublicIdentity,
   RemoteTargetPublicIdentity,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
 import { describe, expect, it } from "vitest";
 import {
   digestRemotePayload,

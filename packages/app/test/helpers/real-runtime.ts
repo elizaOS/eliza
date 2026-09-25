@@ -1,28 +1,26 @@
 /** Builds a real AgentRuntime backed by PGLite and optional live plugins. */
-
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
-import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   createCharacter,
   logger,
   OPTIMIZED_PROMPT_SERVICE,
+  type Plugin,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/shared/utils/pglite-storage";
+} from "@elizaos/testing";
 import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
-
 // Vite 7's import-analysis resolves string-literal dynamic imports at transform
 // time even inside branches that never run, throwing "Failed to resolve entry"
 // for the optional connector plugins below whose dist isn't built in the unit
@@ -35,7 +33,6 @@ function importOptionalPlugin(
 ): Promise<Record<string, unknown>> {
   return import(/* @vite-ignore */ specifier);
 }
-
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
@@ -54,7 +51,6 @@ export interface RealTestRuntimeOptions {
   /** Remove PGLite dir on cleanup. Defaults to true when dir is auto-created. */
   removePgliteDirOnCleanup?: boolean;
 }
-
 export interface RealTestRuntimeResult {
   runtime: AgentRuntime;
   pgliteDir: string;
@@ -65,30 +61,24 @@ export interface RealTestRuntimeResult {
   /** Stops the runtime and removes the temp PGLite directory. */
   cleanup: () => Promise<void>;
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function isPlugin(value: unknown): value is Plugin {
   return isRecord(value) && typeof value.name === "string";
 }
-
 function getPendingTrajectoryWrites(service: unknown): Promise<void>[] {
   if (!isRecord(service)) {
     return [];
   }
-
   const { writeQueues } = service;
   if (!(writeQueues instanceof Map)) {
     return [];
   }
-
   return Array.from(writeQueues.values()).filter(
     (pending): pending is Promise<void> => pending instanceof Promise,
   );
 }
-
 function extractPlugin(
   moduleExports: unknown,
   exportNames: readonly string[],
@@ -96,35 +86,28 @@ function extractPlugin(
   if (isPlugin(moduleExports)) {
     return moduleExports;
   }
-
   if (!isRecord(moduleExports)) {
     return null;
   }
-
   for (const exportName of exportNames) {
     const candidate = moduleExports[exportName];
     if (isPlugin(candidate)) {
       return candidate;
     }
-
     if (isRecord(candidate) && isPlugin(candidate.default)) {
       return candidate.default;
     }
   }
-
   for (const candidate of Object.values(moduleExports)) {
     if (isPlugin(candidate)) {
       return candidate;
     }
-
     if (isRecord(candidate) && isPlugin(candidate.default)) {
       return candidate.default;
     }
   }
-
   return null;
 }
-
 async function importPluginSql(): Promise<Plugin> {
   try {
     const { default: pluginSql } = await import("@elizaos/plugin-sql");
@@ -154,24 +137,19 @@ async function importPluginSql(): Promise<Plugin> {
     }
   }
 }
-
 function suppressWindowDuringNodeRuntime(): () => void {
   if (typeof process === "undefined") {
     return () => {};
   }
-
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
   if (!descriptor?.configurable) {
     return () => {};
   }
-
   Reflect.deleteProperty(globalThis, "window");
-
   return () => {
     Object.defineProperty(globalThis, "window", descriptor);
   };
 }
-
 function applyRuntimeSettings(
   runtime: AgentRuntime,
   settings: Record<string, string>,
@@ -184,7 +162,6 @@ function applyRuntimeSettings(
     );
   }
 }
-
 async function flushPendingTrajectoryWrites(
   runtime: AgentRuntime,
 ): Promise<void> {
@@ -196,7 +173,6 @@ async function flushPendingTrajectoryWrites(
   } catch {
     // Some test runtimes do not register this helper.
   }
-
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const pending = runtime
       .getServicesByType("trajectories")
@@ -208,17 +184,14 @@ async function flushPendingTrajectoryWrites(
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
-
 function hasConfiguredHostsPath(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
-
 function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
   const apiKey =
     process.env.CEREBRAS_API_KEY?.trim() ||
     process.env.ELIZA_E2E_CEREBRAS_API_KEY?.trim();
   if (!apiKey) return null;
-
   // CEREBRAS_API_KEY alone is NOT enough to opt the agent runtime into
   // Cerebras. Lifeops uses Cerebras for *evaluation/training* by default
   // (see `lifeops-eval-model.ts`); the agent under test stays on Anthropic
@@ -235,7 +208,6 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     return null;
   }
   const baseUrl = explicitBaseUrl || "https://api.cerebras.ai/v1";
-
   const smallModel =
     process.env.ELIZA_LIVE_TEST_SMALL_MODEL?.trim() ||
     process.env.OPENAI_SMALL_MODEL?.trim() ||
@@ -270,7 +242,6 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     ACTION_PLANNER_MODEL: actionPlannerModel,
     PLANNER_MODEL: actionPlannerModel,
   };
-
   return {
     name: "cerebras",
     apiKey,
@@ -281,7 +252,6 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     env,
   };
 }
-
 /** Creates a fully initialized runtime for integration tests. */
 export async function createRealTestRuntime(
   options?: RealTestRuntimeOptions,
@@ -293,13 +263,11 @@ export async function createRealTestRuntime(
     (options?.pgliteDir === undefined && !isInMemoryPgliteDataDir(pgliteDir));
   const restoreWindow = suppressWindowDuringNodeRuntime();
   let selfControlTempDir: string | null = null;
-
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
   const prevWebsiteBlockerHostsPath =
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
   const prevSelfControlHostsPath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
   process.env.PGLITE_DATA_DIR = pgliteDir;
-
   if (
     !hasConfiguredHostsPath(process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH) &&
     !hasConfiguredHostsPath(process.env.SELFCONTROL_HOSTS_FILE_PATH)
@@ -315,7 +283,6 @@ export async function createRealTestRuntime(
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = testHostsFilePath;
     process.env.SELFCONTROL_HOSTS_FILE_PATH = testHostsFilePath;
   }
-
   // Apply local embedding defaults so PGLite vector search works
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
@@ -323,28 +290,22 @@ export async function createRealTestRuntime(
   if (!process.env.EMBEDDING_DIMENSION?.trim()) {
     process.env.EMBEDDING_DIMENSION = "384";
   }
-
   try {
     const character = createCharacter({
       name: options?.characterName ?? "TestAgent",
     });
-
     const runtime = new AgentRuntime({
       character,
       plugins: [createAssistantPlugin()],
       logLevel: "warn",
       enableAutonomy: false,
     });
-
     installHttpPluginLifecycle(runtime);
-
     // Always register plugin-sql for PGLite database.
     await runtime.registerPlugin(await importPluginSql());
-
     // Register LLM plugin if requested
     let providerName: LiveProviderName | null = null;
     let providerConfig: LiveProviderConfig | null = null;
-
     if (options?.withLLM) {
       const { selectLiveProvider } = await import("./live-provider.ts");
       providerConfig = selectLiveProvider(options.preferredProvider);
@@ -431,7 +392,6 @@ export async function createRealTestRuntime(
         }
       }
     }
-
     if (
       options?.withLLM &&
       !providerConfig &&
@@ -452,7 +412,6 @@ export async function createRealTestRuntime(
         );
       }
     }
-
     // Register Discord plugin if requested and token available
     if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
       try {
@@ -465,7 +424,6 @@ export async function createRealTestRuntime(
         logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
       }
     }
-
     // Register Telegram plugin if requested and token available
     if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
       try {
@@ -480,14 +438,11 @@ export async function createRealTestRuntime(
         );
       }
     }
-
     // Register any additional plugins
     for (const plugin of options?.plugins ?? []) {
       await runtime.registerPlugin(plugin);
     }
-
     await runtime.initialize();
-
     // Boot barrier: services register asynchronously. `registerPlugin` fires a
     // fire-and-forget `_ensureServiceStarted` for each declared service that
     // awaits `initPromise` before running the service's `start()`, and some
@@ -506,8 +461,11 @@ export async function createRealTestRuntime(
     // are intentionally optional in a given test stay best-effort.
     for (const plugin of options?.plugins ?? []) {
       for (const service of plugin.services ?? []) {
-        const serviceType = (service as unknown as { serviceType?: string })
-          .serviceType;
+        const serviceType = (
+          service as unknown as {
+            serviceType?: string;
+          }
+        ).serviceType;
         if (!serviceType) continue;
         try {
           await runtime.getServiceLoadPromise(serviceType);
@@ -518,7 +476,6 @@ export async function createRealTestRuntime(
         }
       }
     }
-
     // Eagerly start the OptimizedPromptService so the planner-loop's
     // synchronous `runtime.getService('optimized_prompt')` call hits an
     // already-instantiated service. Without this the service is registered
@@ -545,7 +502,6 @@ export async function createRealTestRuntime(
         `[real-runtime] OptimizedPromptService eager start failed: ${err}`,
       );
     }
-
     runtime.registerSendHandler(
       "client_chat",
       async (_rt, _target, _content) => {
@@ -554,7 +510,6 @@ export async function createRealTestRuntime(
         // exercise their normal delivery path without crashing the runtime.
       },
     );
-
     const cleanup = async () => {
       try {
         await flushPendingTrajectoryWrites(runtime);
@@ -609,7 +564,6 @@ export async function createRealTestRuntime(
         }
       }
     };
-
     return { runtime, pgliteDir, providerName, providerConfig, cleanup };
   } catch (error) {
     if (prevPgliteDir !== undefined) {

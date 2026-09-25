@@ -3,7 +3,7 @@
  * source context is unavailable; provider CRUD is never a fallback.
  */
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -173,6 +173,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
     };
     const service = {
       getCalendarFeed: vi.fn(async () => feed),
+      listCalendars: vi.fn(async () => []),
       prepareCalendarEventCreate: vi.fn(),
       createCalendarEvent: vi.fn(),
     };

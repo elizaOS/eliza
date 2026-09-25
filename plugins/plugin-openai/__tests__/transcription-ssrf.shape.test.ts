@@ -18,15 +18,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 // Replace only the media boundary; SSRF cases exercise its real implementation.
-vi.mock("@elizaos/core", async (importActual) => ({
-  ...(await importActual<typeof import("@elizaos/core")>()),
-  recordLlmCall: mocks.recordLlmCall,
-}));
-vi.mock("@elizaos/shared/media", async (importActual) => {
-  const actual = await importActual<typeof import("@elizaos/shared/media")>();
+vi.mock("@elizaos/core", async (importActual) => {
+  const actual = await importActual<typeof import("@elizaos/core")>();
   mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (...args: unknown[]) => Promise<unknown>;
   return {
     ...actual,
+    recordLlmCall: mocks.recordLlmCall,
     fetchRemoteMedia: (...args: unknown[]) => {
       if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia)
         return mocks.realFetchRemoteMedia(...args);

@@ -15,6 +15,7 @@ import {
   promoteSubactionsToActions,
   type UUID,
 } from "@elizaos/core";
+import type { LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import {
   type CalendarHostGate,
@@ -23,11 +24,11 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -39,6 +40,7 @@ import {
 } from "../src/actions/calendar.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
+import { googleHandoffFixture } from "./helpers/handoff-google.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -169,6 +171,27 @@ async function invoke(
   return { delivered, result };
 }
 
+const icsTransport = {
+  fetchImpl: async () =>
+    new Response(icsBody(), {
+      status: 200,
+      headers: {
+        "content-type": "text/calendar",
+        etag: '"receipt-suite-v1"',
+      },
+    }),
+};
+
+beforeEach(() => {
+  const sync = calendar.syncIcsCalendarSource.bind(calendar);
+  // Every forced refresh crosses the same remote fixture boundary; the real
+  // synchronizer still validates, parses and persists the subscription.
+  vi.spyOn(calendar, "syncIcsCalendarSource").mockImplementation(
+    (sourceId, options = {}) =>
+      sync(sourceId, { ...options, transport: icsTransport }),
+  );
+});
+
 afterEach(() => vi.restoreAllMocks());
 
 beforeAll(async () => {
@@ -201,16 +224,7 @@ beforeAll(async () => {
   });
   await calendar.syncIcsCalendarSource(source.id, {
     now: new Date(SOURCE_SYNCED_AT),
-    transport: {
-      fetchImpl: async () =>
-        new Response(icsBody(), {
-          status: 200,
-          headers: {
-            "content-type": "text/calendar",
-            etag: '"receipt-suite-v1"',
-          },
-        }),
-    },
+    transport: icsTransport,
   });
 }, 180_000);
 
@@ -1047,6 +1061,26 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
   });
 
   it("atomically distinguishes first approval, concurrent replay, and later replay", async () => {
+    const fixture = googleHandoffFixture();
+    const grant = writableGrant(String(runtime.agentId));
+    calendar.setGate({
+      ...gate(String(runtime.agentId)),
+      getGoogleConnectorAccounts: async () => [{ ...fixture.status, grant }],
+    });
+    const getService = runtime.getService.bind(runtime);
+    vi.spyOn(runtime, "getService").mockImplementation(((name: string) =>
+      name === "google"
+        ? {
+            listCalendars: async () => [
+              { ...fixture.entry, calendarId: "primary" },
+            ],
+            listEventPage: async () => ({
+              events: [],
+              nextPageToken: null,
+              nextSyncToken: null,
+            }),
+          }
+        : getService(name)) as typeof runtime.getService);
     await new CalendarRepository(runtime).upsertCalendarSyncState({
       id: `${runtime.agentId}:google:owner:grant:connector-account:calendar-receipt-owner:calendar:primary`,
       agentId: String(runtime.agentId),
@@ -1073,6 +1107,8 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       ) {
         expect(params?.temperature).toBe(0);
         return JSON.stringify({
+          grantId: grant.id,
+          calendarId: "primary",
           title: "Family planning",
           startAt: "2026-07-30T17:00:00Z",
           endAt: "2026-07-30T18:00:00Z",
@@ -1083,7 +1119,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     }) as typeof runtime.useModel);
     const actor = message(
       "00000000-0000-0000-0000-000000009931",
-      "Add family planning on July 30, 2026 from 5 to 6 PM UTC.",
+      "Add family planning on owner@example.test primary Google calendar on July 30, 2026 from 5 to 6 PM UTC.",
     );
     const params = {
       action: "create_event",

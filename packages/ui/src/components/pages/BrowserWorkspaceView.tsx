@@ -1,10 +1,6 @@
 /** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
+
 import { Capacitor } from "@capacitor/core";
-import {
-  BROWSER_TAB_PRELOAD_SCRIPT,
-  resolveApiUrl,
-  setBrowserTabsRendererImpl,
-} from "@elizaos/shared";
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,6 +36,11 @@ import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url.js";
+import {
+  BROWSER_TAB_PRELOAD_SCRIPT,
+  setBrowserTabsRendererImpl,
+} from "../../utils/browser-tabs-renderer-registry.js";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -80,7 +81,7 @@ import {
 import { LinuxChromiumBrowser } from "./LinuxChromiumBrowser";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
-const POLL_INTERVAL_MS = 2_500;
+const POLL_INTERVAL_MS = 2500;
 const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
 const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // Concrete partition for a client-side "user" tab on the native mobile shell,
@@ -95,18 +96,16 @@ const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
 // Cross-origin pages can apply autofocus after their `load` event. Keep one
 // bounded handoff alive long enough to catch that deferred focus without
 // turning later, deliberate page interaction into a permanent focus trap.
-const BROWSER_IFRAME_FOCUS_SETTLE_MS = 1_500;
-const BROWSER_IFRAME_FOCUS_ARM_TIMEOUT_MS = 30_000;
+const BROWSER_IFRAME_FOCUS_SETTLE_MS = 1500;
+const BROWSER_IFRAME_FOCUS_ARM_TIMEOUT_MS = 30000;
 const BROWSER_IFRAME_FOCUS_POLL_MS = 16;
 const BROWSER_WORKSPACE_RUNTIME_UNAVAILABLE_CODE =
   "browser_workspace_runtime_unavailable";
-
 type BrowserWorkspaceLoadError = {
   message: string;
   code?: string;
   retryable: boolean;
 };
-
 type BrowserIframeFocusHandoff = {
   returnTarget: HTMLElement | null;
   navigationUrl: string | null;
@@ -115,7 +114,6 @@ type BrowserIframeFocusHandoff = {
   timer: number | null;
   pendingTargetRestore: boolean;
 };
-
 function isAvailableBrowserFocusTarget(
   target: HTMLElement | null,
 ): target is HTMLElement {
@@ -179,7 +177,6 @@ const BROWSER_WORKSPACE_TAB_MASK_SELECTORS = [
   '[role="listbox"]',
   '[role="status"]',
 ].join(", ");
-
 // Minimal subset of Electrobun's <electrobun-webview> custom element surface
 // used by this view. Inlined so this file typechecks identically from any
 // package that consumes app source — the full type lives in
@@ -215,7 +212,6 @@ type WebviewTagElement = HTMLElement & {
    */
   togglePassthrough(value?: boolean): void;
 };
-
 function _isWebviewTagElement(
   value: EventTarget | null,
 ): value is WebviewTagElement {
@@ -227,7 +223,6 @@ function _isWebviewTagElement(
     typeof candidate.executeJavascript === "function"
   );
 }
-
 type ElectrobunWebviewProps = React.DetailedHTMLProps<
   React.HTMLAttributes<WebviewTagElement> & {
     src?: string;
@@ -261,7 +256,6 @@ type ElectrobunWebviewProps = React.DetailedHTMLProps<
   },
   WebviewTagElement
 >;
-
 // JSX intrinsic for the Electrobun custom element. Kept local so packages that
 // consume ui source do not need app's ambient module declarations.
 declare module "react/jsx-runtime" {
@@ -271,10 +265,8 @@ declare module "react/jsx-runtime" {
     }
   }
 }
-
 type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
 type BrowserWorkspaceTabSectionKey = "agent" | "app" | "user";
-
 function resolveBrowserWorkspaceTabSectionKey(
   tab: BrowserWorkspaceTab,
 ): BrowserWorkspaceTabSectionKey {
@@ -287,7 +279,6 @@ function resolveBrowserWorkspaceTabSectionKey(
   }
   return "user";
 }
-
 function resolveBrowserWorkspaceTabPartition(
   sectionKey: BrowserWorkspaceTabSectionKey,
 ): string | undefined {
@@ -300,7 +291,6 @@ function resolveBrowserWorkspaceTabPartition(
       return undefined;
   }
 }
-
 function isBrowserWorkspaceSessionMode(
   mode: BrowserWorkspaceSnapshot["mode"],
 ): boolean {
@@ -309,7 +299,6 @@ function isBrowserWorkspaceSessionMode(
   // there's no need to poll for screenshot data.
   return mode === "cloud";
 }
-
 function resolveBrowserWorkspaceLoadError(
   error: unknown,
   t: TranslateFn,
@@ -320,11 +309,18 @@ function resolveBrowserWorkspaceLoadError(
     typeof errorData === "object" &&
     errorData !== null &&
     "retryable" in errorData &&
-    typeof (errorData as { retryable?: unknown }).retryable === "boolean"
-      ? (errorData as { retryable: boolean }).retryable
+    typeof (
+      errorData as {
+        retryable?: unknown;
+      }
+    ).retryable === "boolean"
+      ? (
+          errorData as {
+            retryable: boolean;
+          }
+        ).retryable
       : undefined;
   const code = apiError?.code;
-
   if (code === BROWSER_WORKSPACE_RUNTIME_UNAVAILABLE_CODE) {
     return {
       code,
@@ -334,7 +330,6 @@ function resolveBrowserWorkspaceLoadError(
       retryable: false,
     };
   }
-
   if (apiError?.status === 404) {
     return {
       ...(code ? { code } : {}),
@@ -344,7 +339,6 @@ function resolveBrowserWorkspaceLoadError(
       retryable: false,
     };
   }
-
   return {
     ...(code ? { code } : {}),
     message: t("browserworkspace.ConnectionFailed", {
@@ -353,7 +347,6 @@ function resolveBrowserWorkspaceLoadError(
     retryable: structuredRetryable ?? true,
   };
 }
-
 export function normalizeBrowserWorkspaceInputUrl(
   rawUrl: string,
   t: TranslateFn,
@@ -368,13 +361,11 @@ export function normalizeBrowserWorkspaceInputUrl(
       }),
     );
   }
-
   const candidate = trimmed.startsWith("/")
     ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
     : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
       ? trimmed
       : `https://${trimmed}`;
-
   let parsed: URL;
   try {
     parsed = new URL(candidate);
@@ -394,7 +385,6 @@ export function normalizeBrowserWorkspaceInputUrl(
   }
   return parsed.toString();
 }
-
 function readBrowserWorkspaceQueryParam(name: string): string | null {
   if (typeof window === "undefined") return null;
   const rawSearch =
@@ -405,7 +395,6 @@ function readBrowserWorkspaceQueryParam(name: string): string | null {
   const value = params.get(name)?.trim();
   return value ? value : null;
 }
-
 function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
   if (url === "about:blank") {
     return t("browserworkspace.NewTab", {
@@ -425,7 +414,6 @@ function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
     });
   }
 }
-
 /**
  * Build a client-side tab for the native mobile shell. Unlike desktop/web, the
  * mobile agent server does not manage Browser tabs (its tab API returns 503), so
@@ -450,17 +438,14 @@ function buildLocalBrowserWorkspaceTab(
     lastFocusedAt: now,
   };
 }
-
 function getBrowserWorkspaceTabKind(
   tab: BrowserWorkspaceTab,
 ): "internal" | "standard" {
   return tab.kind === "internal" ? "internal" : "standard";
 }
-
 function isInternalBrowserWorkspaceTab(tab: BrowserWorkspaceTab): boolean {
   return getBrowserWorkspaceTabKind(tab) === "internal";
 }
-
 function isBrowserWorkspaceFrameBlockedUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -471,7 +456,6 @@ function isBrowserWorkspaceFrameBlockedUrl(url: string): boolean {
     return false;
   }
 }
-
 function getBrowserWorkspaceTabLabel(
   tab: BrowserWorkspaceTab,
   t: TranslateFn,
@@ -480,22 +464,18 @@ function getBrowserWorkspaceTabLabel(
   if (trimmedTitle && trimmedTitle !== "Browser") return trimmedTitle;
   return inferBrowserWorkspaceTitle(tab.url, t);
 }
-
 function getBrowserWorkspaceTabMonogram(label: string): string {
   const alphanumeric = label.trim().replace(/[^a-z0-9]/gi, "");
   return (alphanumeric[0] ?? "B").toUpperCase();
 }
-
 function getBrowserWorkspaceTabDescription(
   tab: BrowserWorkspaceTab,
   mode: BrowserWorkspaceSnapshot["mode"],
 ): string {
   const details: string[] = [];
-
   if (isInternalBrowserWorkspaceTab(tab)) {
     details.push("Internal");
   }
-
   if (mode !== "web") {
     if (tab.provider?.trim()) {
       details.push(tab.provider.trim());
@@ -504,11 +484,9 @@ function getBrowserWorkspaceTabDescription(
       details.push(tab.status.trim());
     }
   }
-
   details.push(tab.url);
   return details.join(" · ");
 }
-
 function resolveBrowserWorkspaceSelection(
   tabs: BrowserWorkspaceTab[],
   selectedId: string | null,
@@ -519,7 +497,6 @@ function resolveBrowserWorkspaceSelection(
   const visibleTab = tabs.find((tab) => tab.visible);
   return visibleTab?.id ?? tabs[0]?.id ?? null;
 }
-
 function resolveSolanaCluster(
   value: unknown,
 ): "mainnet" | "devnet" | "testnet" | undefined {
@@ -530,7 +507,6 @@ function resolveSolanaCluster(
   if (normalized.includes("mainnet")) return "mainnet";
   return undefined;
 }
-
 function BrowserNavButton({
   agentId,
   agentLabel,
@@ -558,7 +534,6 @@ function BrowserNavButton({
   });
   return <Button ref={ref} {...agentProps} {...buttonProps} />;
 }
-
 function BrowserAddressInput({
   agentLabel,
   agentDescription,
@@ -583,7 +558,6 @@ function BrowserAddressInput({
     <Input ref={ref} aria-label={agentLabel} {...agentProps} {...inputProps} />
   );
 }
-
 export function BrowserWorkspaceView(): React.JSX.Element {
   const authority = useActiveAgentAuthority();
   if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
@@ -599,7 +573,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }
   return <BrowserWorkspaceForAuthority key={authority} />;
 }
-
 /**
  * Browser state includes live tabs, snapshots, native surfaces, wallet grants,
  * and in-flight agent requests. Keying that complete state owner by authority
@@ -730,7 +703,6 @@ function BrowserWorkspaceForAuthority({
   const walletAddressesRef = useRef(walletAddresses);
   const walletConfigRef = useRef(walletConfig);
   const previousSelectedTabIdRef = useRef<string | null>(null);
-
   if (typeof initialBrowseUrlRef.current === "undefined") {
     const browseParam = handleInitialBrowse
       ? readBrowserWorkspaceQueryParam("browse")
@@ -743,7 +715,6 @@ function BrowserWorkspaceForAuthority({
       initialBrowseUrlRef.current = null;
     }
   }
-
   // A Capacitor native shell (iOS/Android), distinct from the mobile web browser
   // which also reports `mode: "web"` — so the resolver cannot infer it from mode
   // and we pass it explicitly. Electrobun is desktop, not a mobile shell.
@@ -751,7 +722,6 @@ function BrowserWorkspaceForAuthority({
     () => Capacitor.isNativePlatform() && !isElectrobunRuntime(),
     [],
   );
-
   // Which embedding each browser tab renders into, DRIVEN by the view's declared
   // isolation level (not the raw mode string): `native-webview` resolves to the
   // desktop native child surface (the `<electrobun-webview renderer="cef">`
@@ -779,7 +749,6 @@ function BrowserWorkspaceForAuthority({
   const browserWorkspaceCanRetryLoad =
     loadError?.retryable === true &&
     loadError.code !== BROWSER_WORKSPACE_RUNTIME_UNAVAILABLE_CODE;
-
   const selectedTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
@@ -797,9 +766,7 @@ function BrowserWorkspaceForAuthority({
   // leak into a user tab. The address bar remains the explicit path for opening
   // a chosen URL.
   const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
-
   workspaceSnapshotRef.current = workspace;
-
   useEffect(() => {
     const epoch = ++lifecycleEffectEpochRef.current;
     return () => {
@@ -821,7 +788,6 @@ function BrowserWorkspaceForAuthority({
       });
     };
   }, []);
-
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
     getStewardStatusRef.current = getStewardStatus;
@@ -837,7 +803,6 @@ function BrowserWorkspaceForAuthority({
     walletAddresses,
     walletConfig,
   ]);
-
   const loadBrowserWalletState = useCallback(async () => {
     try {
       // Steward status / pending-approval failures propagate to the catch
@@ -881,7 +846,6 @@ function BrowserWorkspaceForAuthority({
       return nextState;
     }
   }, []);
-
   const {
     beginBrowserWalletFrameNavigation,
     revokeBrowserWalletFrame,
@@ -892,7 +856,6 @@ function BrowserWorkspaceForAuthority({
     walletState: browserWalletState,
     loadWalletState: loadBrowserWalletState,
   });
-
   const readBrowserWorkspaceFocusReturnTarget = useCallback(() => {
     if (typeof document === "undefined") return null;
     const activeElement = document.activeElement;
@@ -903,7 +866,6 @@ function BrowserWorkspaceForAuthority({
       ? activeElement
       : null;
   }, []);
-
   const clearBrowserWorkspaceIframeFocusTimer = useCallback(
     (handoff: BrowserIframeFocusHandoff) => {
       if (handoff.timer === null || typeof window === "undefined") return;
@@ -913,7 +875,6 @@ function BrowserWorkspaceForAuthority({
     },
     [],
   );
-
   const releaseBrowserWorkspaceIframeFocusReturn = useCallback(
     (iframe: HTMLIFrameElement, expected?: BrowserIframeFocusHandoff) => {
       const current = iframeFocusHandoffsRef.current.get(iframe);
@@ -923,7 +884,6 @@ function BrowserWorkspaceForAuthority({
     },
     [clearBrowserWorkspaceIframeFocusTimer],
   );
-
   const monitorBrowserWorkspaceIframeFocus = useCallback(
     (iframe: HTMLIFrameElement, handoff: BrowserIframeFocusHandoff) => {
       if (
@@ -933,7 +893,6 @@ function BrowserWorkspaceForAuthority({
       ) {
         return;
       }
-
       clearBrowserWorkspaceIframeFocusTimer(handoff);
       const activeElement = document.activeElement;
       const parentFocusIsNeutral =
@@ -955,7 +914,6 @@ function BrowserWorkspaceForAuthority({
           returnTarget === workspaceRootRef.current &&
           handoff.returnTarget !== null;
       }
-
       if (
         handoff.pendingTargetRestore &&
         document.activeElement === workspaceRootRef.current &&
@@ -964,14 +922,12 @@ function BrowserWorkspaceForAuthority({
         handoff.returnTarget.focus({ preventScroll: true });
         handoff.pendingTargetRestore = false;
       }
-
       if (!handoff.loaded || Date.now() >= handoff.deadline) {
         if (handoff.loaded) {
           releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
         }
         return;
       }
-
       const timer = window.setTimeout(
         () => monitorBrowserWorkspaceIframeFocus(iframe, handoff),
         BROWSER_IFRAME_FOCUS_POLL_MS,
@@ -984,7 +940,6 @@ function BrowserWorkspaceForAuthority({
       releaseBrowserWorkspaceIframeFocusReturn,
     ],
   );
-
   const armBrowserWorkspaceIframeFocusReturn = useCallback(
     (
       iframe: HTMLIFrameElement,
@@ -1006,7 +961,6 @@ function BrowserWorkspaceForAuthority({
       if (existing) {
         releaseBrowserWorkspaceIframeFocusReturn(iframe, existing);
       }
-
       const handoff: BrowserIframeFocusHandoff = {
         returnTarget: options?.returnTarget
           ? options.returnTarget
@@ -1031,7 +985,6 @@ function BrowserWorkspaceForAuthority({
       releaseBrowserWorkspaceIframeFocusReturn,
     ],
   );
-
   const beginBrowserWorkspaceIframeFocusSettle = useCallback(
     (iframe: HTMLIFrameElement) => {
       const handoff = iframeFocusHandoffsRef.current.get(iframe);
@@ -1055,12 +1008,10 @@ function BrowserWorkspaceForAuthority({
       releaseBrowserWorkspaceIframeFocusReturn,
     ],
   );
-
   useEffect(() => {
     if (typeof document === "undefined" || typeof window === "undefined") {
       return;
     }
-
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof HTMLIFrameElement) {
@@ -1108,7 +1059,6 @@ function BrowserWorkspaceForAuthority({
       iframeFocusHandoffsRef.current.clear();
     };
   }, [releaseBrowserWorkspaceIframeFocusReturn]);
-
   const loadWorkspace = useCallback(
     async (options?: {
       preferTabId?: string | null;
@@ -1215,7 +1165,6 @@ function BrowserWorkspaceForAuthority({
       syncBrowserWalletFrameTarget,
     ],
   );
-
   const runBrowserWorkspaceAction = useCallback(
     async (
       actionKey: string,
@@ -1237,7 +1186,7 @@ function BrowserWorkspaceForAuthority({
               tRef.current("browserworkspace.ActionFailed", {
                 defaultValue: "Browser action failed.",
               }));
-        setActionNoticeRef.current(message, "error", 4_000);
+        setActionNoticeRef.current(message, "error", 4000);
       } finally {
         workspaceActionsInFlightRef.current -= 1;
         setBusyAction(null);
@@ -1250,7 +1199,6 @@ function BrowserWorkspaceForAuthority({
     },
     [readBrowserWorkspaceFocusReturnTarget],
   );
-
   const refreshWorkspaceInBackground = useCallback(async () => {
     // Native-mobile tabs are authoritative client state: the remote agent's
     // workspace endpoint deliberately has no matching native WebView tabs.
@@ -1275,7 +1223,6 @@ function BrowserWorkspaceForAuthority({
       backgroundWorkspaceRefreshInFlightRef.current = false;
     }
   }, [browserTabRenderPath, loadWorkspace, selectedTabId]);
-
   const loadSelectedBrowserWorkspaceSnapshot = useCallback(
     async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
       if (!isBrowserWorkspaceSessionMode(mode)) {
@@ -1324,7 +1271,6 @@ function BrowserWorkspaceForAuthority({
     },
     [],
   );
-
   const openNewBrowserWorkspaceTab = useCallback(
     async (
       rawUrl: string,
@@ -1366,7 +1312,6 @@ function BrowserWorkspaceForAuthority({
     },
     [browserTabRenderPath, loadWorkspace, t],
   );
-
   const activateBrowserWorkspaceTab = useCallback(
     async (tabId: string) => {
       setSelectedTabId(tabId);
@@ -1400,18 +1345,15 @@ function BrowserWorkspaceForAuthority({
     },
     [armBrowserWorkspaceIframeFocusReturn],
   );
-
   // Keep a ref so the host-message handler always sees the latest wallet
   // state without needing a fresh closure per render.
   browserWalletStateRef.current = browserWalletState;
   selectedTabIdRef.current = selectedTabId;
-
   // Wallet-action consent (eth_sendTransaction, personal_sign, eth_sign,
   // first-time eth_requestAccounts). Must be declared before
   // handleTabWalletRequest references it.
   const { confirm: walletActionConfirm, modalProps: walletActionModalProps } =
     useConfirm();
-
   const handleTabWalletRequest = useCallback(
     async (req: {
       tabId: string;
@@ -1487,7 +1429,11 @@ function BrowserWorkspaceForAuthority({
               const arr = Array.isArray(req.params) ? req.params : [req.params];
               const next =
                 arr[0] && typeof arr[0] === "object"
-                  ? (arr[0] as { chainId?: unknown }).chainId
+                  ? (
+                      arr[0] as {
+                        chainId?: unknown;
+                      }
+                    ).chainId
                   : null;
               const chainId = parseBrowserWorkspaceEvmChainId(next);
               if (!chainId) {
@@ -1772,7 +1718,6 @@ function BrowserWorkspaceForAuthority({
     },
     [loadBrowserWalletState, walletActionConfirm],
   );
-
   // ── Vault autofill ────────────────────────────────────────────────
   // The in-tab preload sends `__elizaVaultAutofillRequest` whenever it
   // detects a login form. We resolve credentials from the vault via the
@@ -1824,7 +1769,6 @@ function BrowserWorkspaceForAuthority({
       });
     },
   });
-
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
       if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
@@ -1904,7 +1848,6 @@ function BrowserWorkspaceForAuthority({
       workspace.mode,
     ],
   );
-
   // Remote browser actions mutate the server workspace. Native mobile tabs are
   // deliberately local, so mirror the completed action's verified deep-link
   // URL into the currently mounted secure WebView instead of leaving it on the
@@ -1942,7 +1885,6 @@ function BrowserWorkspaceForAuthority({
     runBrowserWorkspaceAction,
     t,
   ]);
-
   const readNativePage = useCallback(
     async (selector?: string) => {
       if (!selectedTabId) throw new Error("No native Browser tab is selected.");
@@ -1950,7 +1892,6 @@ function BrowserWorkspaceForAuthority({
     },
     [selectedTabId, nativeTabSurfaces.readPage],
   );
-
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
       tabId: string;
@@ -1972,7 +1913,6 @@ function BrowserWorkspaceForAuthority({
           `window.__elizaVaultReply(${JSON.stringify(req.requestId)}, ${JSON.stringify(payload)})`,
         );
       };
-
       const userHint = req.fieldHints.find((h) => h.kind === "username");
       const passwordHint = req.fieldHints.find((h) => h.kind === "password");
       if (!passwordHint) {
@@ -1980,7 +1920,6 @@ function BrowserWorkspaceForAuthority({
         reply({ fields: {} });
         return;
       }
-
       try {
         // Aggregate from every signed-in backend. The manager filters by
         // domain (case-insensitive); external adapters list everything
@@ -2001,7 +1940,6 @@ function BrowserWorkspaceForAuthority({
           reply({ fields: {} });
           return;
         }
-
         // Pick the most-recently-modified entry; first-save flows typically
         // have one entry per domain.
         const sorted = [...candidates].sort(
@@ -2012,14 +1950,12 @@ function BrowserWorkspaceForAuthority({
           reply({ fields: {} });
           return;
         }
-
         const sourceLabel =
           chosen.source === "1password"
             ? "1Password"
             : chosen.source === "bitwarden"
               ? "Bitwarden"
               : "local vault";
-
         const allowed = await client.getAutofillAllowed(req.domain);
         const consented =
           allowed ||
@@ -2033,12 +1969,10 @@ function BrowserWorkspaceForAuthority({
           reply({ fields: {} });
           return;
         }
-
         const reveal = await client.revealSavedLogin(
           chosen.source,
           chosen.identifier,
         );
-
         const fields: Record<string, string> = {};
         if (userHint) fields[userHint.selector] = reveal.username;
         fields[passwordHint.selector] = reveal.password;
@@ -2050,7 +1984,6 @@ function BrowserWorkspaceForAuthority({
     },
     [vaultAutofillConfirm],
   );
-
   const handleTabHostMessage = useCallback(
     (tabId: string, event: CustomEvent) => {
       const detail = event.detail as
@@ -2075,7 +2008,6 @@ function BrowserWorkspaceForAuthority({
         | null
         | undefined;
       if (!detail || typeof detail.type !== "string") return;
-
       if (
         detail.type === "__elizaTabExecResult" &&
         typeof detail.requestId === "number"
@@ -2091,7 +2023,6 @@ function BrowserWorkspaceForAuthority({
         });
         return;
       }
-
       if (
         detail.type === "__elizaWalletRequest" &&
         typeof detail.requestId === "number" &&
@@ -2108,7 +2039,6 @@ function BrowserWorkspaceForAuthority({
         });
         return;
       }
-
       if (
         detail.type === "__elizaVaultAutofillRequest" &&
         typeof detail.requestId === "number" &&
@@ -2141,7 +2071,6 @@ function BrowserWorkspaceForAuthority({
     },
     [handleTabWalletRequest, handleTabVaultAutofillRequest],
   );
-
   const registerBrowserWorkspaceElectrobunWebview = useCallback(
     (tabId: string, element: WebviewTagElement | null) => {
       const previous = electrobunWebviewRefs.current.get(tabId);
@@ -2205,7 +2134,6 @@ function BrowserWorkspaceForAuthority({
     },
     [handleTabHostMessage],
   );
-
   // Track the surface container so layout changes (sidebar collapse,
   // window resize, route entry) re-poke every mounted tag. Without this
   // the OOPIF can latch at whatever rect it had on first mount because
@@ -2238,7 +2166,6 @@ function BrowserWorkspaceForAuthority({
       observer.disconnect();
     };
   }, []);
-
   // Drive native hide/show on every tag whenever selection or an in-app
   // consent dialog changes. The native webview is an OOPIF overlay, so
   // React dialogs are otherwise rendered under it and cannot be acted on.
@@ -2265,7 +2192,6 @@ function BrowserWorkspaceForAuthority({
       }
     }
   }, [browserWorkspaceConfirmOpen, selectedTabId, workspace.mode]);
-
   // On unmount, hide every OOPIF and engage passthrough so leftover native
   // views don't bleed onto other routes between React's unmount and the
   // tag's disconnectedCallback firing.
@@ -2288,7 +2214,6 @@ function BrowserWorkspaceForAuthority({
       handlers.current.clear();
     };
   }, []);
-
   useEffect(() => {
     const tagsRef = electrobunWebviewRefs;
     const pendingsRef = pendingTabExecsRef;
@@ -2344,7 +2269,6 @@ function BrowserWorkspaceForAuthority({
       pendingsRef.current.clear();
     };
   }, []);
-
   const closeBrowserWorkspaceTabById = useCallback(
     async (tabId: string) => {
       // Native mobile shell: tabs are client-side. Drop the tab from state (the
@@ -2383,7 +2307,6 @@ function BrowserWorkspaceForAuthority({
       selectedTabId,
     ],
   );
-
   const closeAllBrowserWorkspaceTabs = useCallback(async () => {
     const closableTabs = workspace.tabs.filter(
       (tab) => !isInternalBrowserWorkspaceTab(tab),
@@ -2425,21 +2348,17 @@ function BrowserWorkspaceForAuthority({
     revokeBrowserWalletFrame,
     workspace.tabs,
   ]);
-
   useEffect(() => {
     if (initialWorkspaceLoadStartedRef.current) return;
     initialWorkspaceLoadStartedRef.current = true;
     void loadWorkspace();
   }, [loadWorkspace]);
-
   useEffect(() => {
     void loadBrowserWalletState();
   }, [loadBrowserWalletState]);
-
   useIntervalWhenDocumentVisible(() => {
     void refreshWorkspaceInBackground();
   }, POLL_INTERVAL_MS);
-
   useEffect(() => {
     if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
       setSnapshotError(null);
@@ -2447,7 +2366,6 @@ function BrowserWorkspaceForAuthority({
     }
     void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
   }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
-
   useIntervalWhenDocumentVisible(
     () => {
       if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
@@ -2458,11 +2376,9 @@ function BrowserWorkspaceForAuthority({
     POLL_INTERVAL_MS,
     Boolean(selectedTabId) && isBrowserWorkspaceSessionMode(workspace.mode),
   );
-
   useIntervalWhenDocumentVisible(() => {
     void loadBrowserWalletState();
-  }, 5_000);
-
+  }, 5000);
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
     if (currentSelectedId !== previousSelectedTabIdRef.current) {
@@ -2475,7 +2391,6 @@ function BrowserWorkspaceForAuthority({
       setLocationInput(selectedTab?.url ?? "");
     }
   }, [locationDirty, selectedTab?.id, selectedTab?.url]);
-
   useEffect(() => {
     if (
       !initialBrowseUrlRef.current ||
@@ -2485,7 +2400,6 @@ function BrowserWorkspaceForAuthority({
     ) {
       return;
     }
-
     initialBrowseHandledRef.current = true;
     const existing = workspace.tabs.find(
       (tab) => tab.url === initialBrowseUrlRef.current,
@@ -2502,7 +2416,6 @@ function BrowserWorkspaceForAuthority({
       );
       return;
     }
-
     void runBrowserWorkspaceAction(
       "open:initial-browse",
       async () => {
@@ -2521,7 +2434,6 @@ function BrowserWorkspaceForAuthority({
     t,
     workspace.tabs,
   ]);
-
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
     if (browserTabRenderPath === "native-mobile-webview") {
@@ -2553,7 +2465,6 @@ function BrowserWorkspaceForAuthority({
     selectedTab,
     workspace.mode,
   ]);
-
   const backSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
     if (nativeMobileTabPath) {
@@ -2565,20 +2476,18 @@ function BrowserWorkspaceForAuthority({
       nativeTag.executeJavascript("history.back()");
       return;
     }
-    const result = await client.fetch<{ tab?: BrowserWorkspaceTab }>(
-      "/api/browser-workspace/command",
-      {
-        method: "POST",
-        body: JSON.stringify({ subaction: "back", id: selectedTab.id }),
-      },
-    );
+    const result = await client.fetch<{
+      tab?: BrowserWorkspaceTab;
+    }>("/api/browser-workspace/command", {
+      method: "POST",
+      body: JSON.stringify({ subaction: "back", id: selectedTab.id }),
+    });
     if (result.tab) {
       setLocationInput(result.tab.url);
       setLocationDirty(false);
       await loadWorkspace({ preferTabId: result.tab.id, silent: true });
     }
   }, [selectedTab, loadWorkspace, nativeMobileTabPath, nativeTabSurfaces]);
-
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
   });
@@ -2603,7 +2512,6 @@ function BrowserWorkspaceForAuthority({
   const agentActiveLabel = t("browserworkspace.AgentActive", {
     defaultValue: "Agent is on this tab",
   });
-
   // Map the section-grouped tabs down to the switcher's display shape and fold
   // them (#13596). The switcher — not a permanent sidebar strip — is the only
   // multi-tab surface, so it must carry every section (agent tabs stay visually
@@ -2641,15 +2549,12 @@ function BrowserWorkspaceForAuthority({
     defaultValue: "Show {{count}} tabs",
     count: foldedTabs.count,
   });
-
   const openTabSwitcher = useCallback(() => {
     setSwitcherOpen(true);
   }, []);
-
   const handleTabSwitcherOpenChange = useCallback((open: boolean) => {
     setSwitcherOpen(open);
   }, []);
-
   const navNode = (
     <div className="flex items-center gap-0 px-0.5 py-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
       <TooltipHint
@@ -2684,8 +2589,8 @@ function BrowserWorkspaceForAuthority({
         </BrowserNavButton>
       </TooltipHint>
       {/* Folded tabs (#13596): one compact count control opens the switcher —
-          no permanent tab strip. It names the active tab so the user always
-          knows which page is live even with the rest folded away. */}
+            no permanent tab strip. It names the active tab so the user always
+            knows which page is live even with the rest folded away. */}
       <BrowserTabFoldControl
         activeLabel={foldControlActiveLabel}
         count={foldedTabs.count}
@@ -3023,14 +2928,12 @@ function BrowserWorkspaceForAuthority({
       </span>
     </div>
   );
-
   const watchBannerLabel = busyAction
     ? t("browserworkspace.Working", {
         defaultValue: "Working: {{action}}",
         action: busyAction.replace(/[:\-_]+/g, " "),
       })
     : null;
-
   const browserSurface = (
     <div
       ref={browserSurfaceRef}
@@ -3391,7 +3294,6 @@ function BrowserWorkspaceForAuthority({
       )}
     </div>
   );
-
   // The fullscreen view owns one flat navigation rail and one content surface.
   // Compact layouts keep a 16px canvas inset and fold secondary actions away;
   // every remaining control still meets the 44px touch floor.
@@ -3433,7 +3335,6 @@ function BrowserWorkspaceForAuthority({
       </div>
     </main>
   );
-
   return (
     <ShellViewAgentSurface
       viewId="browser"

@@ -1,9 +1,4 @@
 "use client";
-
-/**
- * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
- */
-import { formatTime } from "@elizaos/shared";
 import {
   Copy,
   Download,
@@ -14,6 +9,9 @@ import {
   WifiOff,
 } from "lucide-react";
 import * as React from "react";
+/**
+ * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
+ */
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -27,13 +25,13 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
+import { formatTime } from "../../utils/format.js";
 import { cn } from "../lib/utils";
 import { CornerBrackets } from "./brand/corner-brackets";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 type BadgeTone = React.ComponentProps<typeof Badge>["tone"];
 type BadgeSize = React.ComponentProps<typeof Badge>["size"];
-
 export interface LogViewerBadge {
   key?: string;
   label: React.ReactNode;
@@ -41,12 +39,10 @@ export interface LogViewerBadge {
   tone?: BadgeTone;
   size?: BadgeSize;
 }
-
 export interface LogViewerSelectOption {
   value: string;
   label: string;
 }
-
 export interface LogViewerSelectControl {
   value: string;
   onChange: (value: string) => void;
@@ -54,14 +50,12 @@ export interface LogViewerSelectControl {
   ariaLabel?: string;
   triggerClassName?: string;
 }
-
 export interface LogViewerSearchControl {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   resultLabel?: React.ReactNode;
 }
-
 export interface LogViewerStructuredEntry {
   id?: string;
   timestamp?: string | number | Date;
@@ -69,7 +63,6 @@ export interface LogViewerStructuredEntry {
   message: string;
   metadata?: unknown;
 }
-
 export interface LogViewerStreamingStatus {
   enabled: boolean;
   active: boolean;
@@ -77,13 +70,11 @@ export interface LogViewerStreamingStatus {
   activeLabel?: string;
   inactiveLabel?: string;
 }
-
 export interface LogViewerEmptyState {
   title: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactNode;
 }
-
 export interface LogViewerProps {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -124,7 +115,6 @@ export interface LogViewerProps {
   onCopyEntry?: (entry: LogViewerStructuredEntry) => void;
   className?: string;
 }
-
 function getDefaultLineClassName(line: string): string {
   const normalized = line.toLowerCase();
   if (
@@ -140,7 +130,6 @@ function getDefaultLineClassName(line: string): string {
     return "border-l-status-info text-status-info";
   return "border-l-neutral-700 text-neutral-300";
 }
-
 function getDefaultEntryLevelVariant(level: string): BadgeVariant {
   switch (level) {
     case "error":
@@ -153,7 +142,6 @@ function getDefaultEntryLevelVariant(level: string): BadgeVariant {
       return "outline";
   }
 }
-
 function getDefaultEntryClassName(entry: LogViewerStructuredEntry): string {
   switch (entry.level) {
     case "error":
@@ -168,7 +156,6 @@ function getDefaultEntryClassName(entry: LogViewerStructuredEntry): string {
       return "text-foreground";
   }
 }
-
 function renderMetadata(metadata: unknown): React.ReactNode {
   if (
     !metadata ||
@@ -178,7 +165,6 @@ function renderMetadata(metadata: unknown): React.ReactNode {
   }
   return JSON.stringify(metadata);
 }
-
 export function LogViewer({
   title,
   subtitle,
@@ -236,7 +222,6 @@ export function LogViewer({
       };
     });
   }, [lines]);
-
   return (
     <Card variant="brand" className={cn("relative ", className)}>
       <CornerBrackets size="sm" />

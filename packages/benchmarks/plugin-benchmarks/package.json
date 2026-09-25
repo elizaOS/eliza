@@ -23,23 +23,15 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -63,6 +55,7 @@
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist .turbo",
@@ -71,5 +64,12 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }

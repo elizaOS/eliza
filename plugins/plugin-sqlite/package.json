@@ -11,15 +11,15 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
     "./portable": {
-      "types": "./dist/portable.d.ts",
       "eliza-source": "./portable.ts",
+      "types": "./dist/portable.d.ts",
       "import": "./dist/portable.js",
       "default": "./dist/portable.js"
     }
@@ -37,14 +37,15 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.3",
+    "@types/sql.js": "^1.4.11",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "@types/bun": "1.3.14"
+    "bun-types": "1.3.14"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.validation.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json *.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run --config vitest.config.ts",
@@ -60,7 +61,7 @@
     ],
     "runtime": "node",
     "platformDetails": {
-      "node": "Node 24.15.0 node:sqlite or Bun 1.3.14 bun:sqlite; one database per agent; Android device qualification required"
+      "node": "Node 24.15.0 node:sqlite or Bun 1.4.2 bun:sqlite; one database per agent; Android device qualification required"
     }
   }
 }

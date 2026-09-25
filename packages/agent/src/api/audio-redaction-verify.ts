@@ -2,7 +2,7 @@
  * Audio PII redaction — verifier transcriber adapters (#14807).
  *
  * The verifier CONTRACT (and the pure PII-absence / sentinel-presence
- * judgment) lives in `@elizaos/shared/audio-redaction-verify`, deliberately
+ * judgment) lives in `@elizaos/core`, deliberately
  * separable from the span producer so verification can run on a different
  * ASR backend. This module supplies the concrete backends the agent host can
  * offer:
@@ -30,21 +30,18 @@ import {
   fetchWithSsrfGuard,
   type IAgentRuntime,
   ModelType,
+  type RedactionTranscribeInput,
+  type RedactionTranscriber,
+  type RedactionTranscript,
+  type TranscriptWord,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type {
-  RedactionTranscribeInput,
-  RedactionTranscriber,
-  RedactionTranscript,
-  TranscriptWord,
-} from "@elizaos/shared";
-import { BLEEP_FREQUENCY_HZ, parseWavPcm16 } from "./audio-redaction.ts";
 
+import { BLEEP_FREQUENCY_HZ, parseWavPcm16 } from "./audio-redaction.ts";
 // ---------------------------------------------------------------------------
 // Runtime TRANSCRIPTION adapter
 // ---------------------------------------------------------------------------
-
 /**
  * Verify through the runtime's registered TRANSCRIPTION model (interim
  * purpose — a verify pass is pipeline-internal, never a billable user
@@ -76,11 +73,9 @@ export function runtimeTranscriptionTranscriber(
     },
   };
 }
-
 // ---------------------------------------------------------------------------
 // OpenAI-compatible STT adapter (independent verifier lane)
 // ---------------------------------------------------------------------------
-
 /** Config for an OpenAI-compatible `/v1/audio/transcriptions` verifier. */
 export interface OpenAiCompatSttOptions {
   /** Endpoint base, e.g. `https://stt.internal` (no trailing path). */
@@ -96,7 +91,6 @@ export interface OpenAiCompatSttOptions {
     init?: RequestInit,
   ) => Promise<Response>;
 }
-
 /**
  * Verifier backend over any self-hosted OpenAI-compatible STT server —
  * multipart `file` + `model` to `/v1/audio/transcriptions`, `{text}` back.
@@ -143,7 +137,7 @@ export function openAiCompatSttTranscriber(
         guarded = await fetchWithSsrfGuard({
           url: endpoint.toString(),
           fetchImpl: options.fetchImpl,
-          timeoutMs: options.timeoutMs ?? 120_000,
+          timeoutMs: options.timeoutMs ?? 120000,
           // Audio and bearer credentials must never cross an origin boundary.
           // A redirect is therefore a typed failure, not an automatic replay.
           maxRedirects: 0,
@@ -185,7 +179,11 @@ export function openAiCompatSttTranscriber(
             cause: error,
           });
         }
-        const text = (body as { text?: unknown }).text;
+        const text = (
+          body as {
+            text?: unknown;
+          }
+        ).text;
         if (typeof text !== "string" || !text.trim()) {
           throw new ElizaError("STT verifier returned no transcript text", {
             code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT",
@@ -198,7 +196,6 @@ export function openAiCompatSttTranscriber(
     },
   };
 }
-
 async function readResponseTextLimited(
   response: Response,
   maxBytes: number,
@@ -241,22 +238,22 @@ async function readResponseTextLimited(
     reader.releaseLock();
   }
 }
-
 // ---------------------------------------------------------------------------
 // Deterministic energy-fixture verifier (no-ASR environments)
 // ---------------------------------------------------------------------------
-
 /** A word window is "silenced" below this RMS fraction of full scale (~−52 dB). */
 const SILENCE_RMS_FLOOR = 0.0025;
 /** A word window is "bleeped" when ≥ this fraction of its energy is the tone. */
 const TONE_DOMINANCE_FLOOR = 0.8;
-
 /** Goertzel power of one frequency over a PCM16 window, plus total power. */
 function windowPowers(
   samples: Int16Array,
   sampleRate: number,
   frequencyHz: number,
-): { tonePower: number; totalPower: number } {
+): {
+  tonePower: number;
+  totalPower: number;
+} {
   const n = samples.length;
   if (n === 0) return { tonePower: 0, totalPower: 0 };
   const k = Math.round((n * frequencyHz) / sampleRate);
@@ -277,7 +274,6 @@ function windowPowers(
     (s1 * s1 + s2 * s2 - coeff * s1 * s2) / Math.max(1, n * n * 0.25);
   return { tonePower, totalPower: totalPower / n };
 }
-
 /**
  * Deterministic fixture verifier for PCM16 WAV: given the words expected in
  * the ORIGINAL audio, it emits only those whose window still carries audible

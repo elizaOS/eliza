@@ -4,17 +4,18 @@
  * primitive; the paired controller can reach only the routes required for the
  * selected runtime's readiness and conversation surface.
  */
-
 import {
 	classifyRemoteAgentRequestPath,
 	parseRemoteAgentRequest,
-	parseRemoteBrowserCommandPayload,
 	REMOTE_AGENT_CHAT_TIMEOUT_MS,
 	REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
 	type RemoteAgentRequest,
+} from "@elizaos/core/contracts/remote-agent-request";
+import {
+	parseRemoteBrowserCommandPayload,
 	type RemoteCommandAction,
 	type RemoteJsonValue,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import type {
 	RemoteTargetCommandExecutor,
 	RemoteTargetEffectResult,
@@ -22,8 +23,7 @@ import type {
 import type { RemoteTargetFetch } from "./remote-target-transport";
 
 const LOCAL_RESPONSE_LIMIT_BYTES = REMOTE_AGENT_RESPONSE_LIMIT_BYTES;
-const LOCAL_REQUEST_TIMEOUT_MS = 5_000;
-
+const LOCAL_REQUEST_TIMEOUT_MS = 5000;
 export function normalizeRemoteTargetLoopbackBase(value: string): string {
 	const url = new URL(value);
 	if (
@@ -39,7 +39,6 @@ export function normalizeRemoteTargetLoopbackBase(value: string): string {
 	}
 	return url.toString().replace(/\/$/, "");
 }
-
 function isEmptyObject(value: RemoteJsonValue): boolean {
 	return (
 		typeof value === "object" &&
@@ -48,7 +47,6 @@ function isEmptyObject(value: RemoteJsonValue): boolean {
 		Object.keys(value).length === 0
 	);
 }
-
 function isAllowlistedStatusRequest(value: RemoteJsonValue): boolean {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return false;
@@ -66,12 +64,10 @@ function isAllowlistedStatusRequest(value: RemoteJsonValue): boolean {
 		(headers === undefined || isEmptyObject(headers))
 	);
 }
-
 export class LoopbackRemoteTargetExecutor
 	implements RemoteTargetCommandExecutor
 {
 	private readonly apiBase: string;
-
 	constructor(input: {
 		apiBase: string;
 		apiToken: string;
@@ -86,11 +82,9 @@ export class LoopbackRemoteTargetExecutor
 		this.fetchImpl = input.fetchImpl ?? globalThis.fetch;
 		this.timeoutMs = input.timeoutMs;
 	}
-
 	private readonly apiToken: string;
 	private readonly fetchImpl: RemoteTargetFetch;
 	private readonly timeoutMs: number | undefined;
-
 	async execute(input: {
 		action: RemoteCommandAction;
 		payload: RemoteJsonValue;
@@ -212,7 +206,6 @@ export class LoopbackRemoteTargetExecutor
 		}
 	}
 }
-
 export const remoteTargetExecutorInternals = {
 	LOCAL_RESPONSE_LIMIT_BYTES,
 	normalizeLoopbackBase: normalizeRemoteTargetLoopbackBase,

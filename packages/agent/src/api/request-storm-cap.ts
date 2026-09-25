@@ -12,11 +12,9 @@
  */
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { logger } from "@elizaos/core";
-import {
-  isLoopbackRemoteAddress,
-  resolveSelfApiCredential,
-} from "@elizaos/shared";
+import { logger, resolveSelfApiCredential } from "@elizaos/core";
+
+import { isLoopbackRemoteAddress } from "./loopback-trust.js";
 
 // One cold dashboard hydration fans out across the independent product
 // surfaces (chat, views, plugins, approvals, notifications, and settings).
@@ -29,17 +27,13 @@ const RETRY_AFTER_SECONDS = 3;
 const IDLE_EVICT_MS = 10 * 60 * 1000;
 const EVICT_SCAN_INTERVAL_MS = 60 * 1000;
 const WARN_INTERVAL_MS = 60 * 1000;
-
 interface Bucket {
   tokens: number;
   updatedAt: number;
   lastWarnAt: number;
 }
-
 const buckets = new Map<string, Bucket>();
-
 let nextEvictScanAt = 0;
-
 function isExemptPath(pathname: string): boolean {
   return (
     pathname === "/ws" ||
@@ -49,7 +43,6 @@ function isExemptPath(pathname: string): boolean {
     pathname.startsWith("/api/media/")
   );
 }
-
 function bearerKey(req: IncomingMessage): string | null {
   const header = req.headers.authorization;
   if (typeof header !== "string" || !header.startsWith("Bearer ")) return null;
@@ -72,7 +65,6 @@ function bearerKey(req: IncomingMessage): string | null {
   }
   return createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
-
 function evictIdle(now: number): void {
   if (buckets.size < 512) return;
   if (now < nextEvictScanAt) return;
@@ -81,7 +73,6 @@ function evictIdle(now: number): void {
     if (now - bucket.updatedAt > IDLE_EVICT_MS) buckets.delete(key);
   }
 }
-
 /**
  * Returns true when the request was answered with 429 and dispatch must stop.
  */
@@ -94,7 +85,6 @@ export function maybeCapRequestStorm(
   if (isExemptPath(pathname)) return false;
   const key = bearerKey(req);
   if (!key) return false;
-
   const now = Date.now();
   evictIdle(now);
   let bucket = buckets.get(key);
@@ -109,12 +99,10 @@ export function maybeCapRequestStorm(
     );
     bucket.updatedAt = now;
   }
-
   if (bucket.tokens >= 1) {
     bucket.tokens -= 1;
     return false;
   }
-
   if (now - bucket.lastWarnAt > WARN_INTERVAL_MS) {
     bucket.lastWarnAt = now;
     logger.warn(
@@ -134,13 +122,11 @@ export function maybeCapRequestStorm(
   );
   return true;
 }
-
 /** Test-only: reset all request-budget state. */
 export function __resetRequestStormCapForTests(): void {
   buckets.clear();
   nextEvictScanAt = 0;
 }
-
 /** Test-only: inspect bounded in-memory state without exposing session keys. */
 export function __requestStormCapBucketCountForTests(): number {
   return buckets.size;

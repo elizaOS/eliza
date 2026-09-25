@@ -2,12 +2,9 @@
  * Unit tests for ComponentSecretStorage: validates secret storage backed
  * by user runtime components.
  */
+
+import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  Component,
-  IAgentRuntime,
-  UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
 import type { KeyManager } from "../crypto/encryption.ts";
 import type { SecretContext } from "../types.ts";
 import { ComponentSecretStorage } from "./component-store.ts";

@@ -6,7 +6,7 @@
  * the subject/snippet/body it reasoned over. Identity and policy lookups (VIP
  * senders, retention rules) are injected as hooks so the engine carries no
  * connector or runtime dependency. Consumed by the inbox triage flow and
- * exposed at the `@elizaos/plugin-inbox/inbox/email-curation` subpath.
+ * exposed through the `@elizaos/plugin-inbox` root API.
  */
 import { extractAsciiEmailAddress } from "./email-address.ts";
 

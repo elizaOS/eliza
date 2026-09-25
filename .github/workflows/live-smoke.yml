@@ -89,7 +89,7 @@ jobs:
         with:
           bun-version: 1.3.14
           node-version: 24.15.0
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           skip-avatar-clone: "true"
           no-vision-deps: "true"
           setup-python: "true"
@@ -116,7 +116,7 @@ jobs:
           RUN_LIVE_PI_LINKED_ACCOUNT: "1"
           LIVE_PI_SOURCE_SHA: ${{ inputs.pi_source_sha }}
           LIVE_PI_EVIDENCE_DIR: artifacts/pi-linked-account
-        run: bun --conditions=eliza-source packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs
+        run: bun --conditions=eliza-source packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.ts
       - name: Retain sanitized source-bound Pi receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -197,7 +197,7 @@ jobs:
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           SCENARIO_TURN_TIMEOUT_MS: "300000"
-        run: bun packages/scripts/run-scenarios-isolated.mjs packages/testing/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
+        run: bun packages/scripts/run-scenarios-isolated.ts packages/testing/scenarios/group-chat --lane live-only --provider ${{ inputs.planner_provider }} --workers 4 --timeout-ms 900000 --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios
       - name: Validate complete independently judged group-chat evidence
         if: inputs.suite == 'group-chat'
         run: bun packages/scripts/validate-group-chat-eval-report.ts --report reports/group-chat-evaluation/aggregate.json --artifacts-dir reports/group-chat-evaluation/scenarios --scenario-dir packages/testing/scenarios/group-chat --provider ${{ inputs.planner_provider }}
@@ -1996,7 +1996,7 @@ jobs:
             esac
             self_heal_enabled=false
             if printf 'true' | sudo node \
-              /usr/local/lib/eliza-admin/systemd-environment-line.mjs \
+              /usr/local/lib/eliza-admin/systemd-environment-line.ts \
               equals \
               /opt/eliza/cloud/.env.local \
               CONTAINERS_PREPULL_SELF_HEAL_RESTART >/dev/null 2>&1; then
@@ -2199,7 +2199,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

@@ -7,11 +7,9 @@
  * constructed. Pure functions plus two early returns — no service, no runtime
  * behaviour exercised.
  */
+
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-} from "../../../../../packages/core/src/types/index.ts";
 import {
   maybeStoreTaskClipboardItem,
   resolveClipboardTitle,

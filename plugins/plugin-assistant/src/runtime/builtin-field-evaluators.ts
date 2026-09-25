@@ -1,33 +1,9 @@
 /**
- * Built-in `ResponseHandlerFieldEvaluator`s — the canonical core fields the
- * Stage-1 response handler extracts from every turn.
- *
- * The model-facing schema is a flat list of typed fields. Each field is an
- * independent registered evaluator with:
- *
- *   - description: verbatim in the system prompt
- *   - schema:      JSON schema slice (parameter descriptions also visible
- *                  to the LLM in strict mode)
- *   - parse:       validate / normalize the LLM's value
- *   - handle:      optional pipeline step (most core fields don't have one
- *                  — the parsed value flows through to downstream consumers)
- *
- * Canonical schemas retain their full guidance. The direct-text discovery
- * path can omit duplicated root descriptions for these exact builtins;
- * other channels and custom registrations retain their original schemas.
- *
- * Per the contract:
- *   - Flat: no `plan.*` wrapper
- *   - All required: empty array / empty string for N/A
- *   - `simple` is a context name, not a flag (contexts: ["simple"])
- *   - `STOP` remains a first-class terminal response for explicit stop requests
- *   - No `thought` / `requiresTool` / `contextSlices` / `parentActionHints`
- *     (derivable, redundant, or prompt theater)
- *   - New `intents` field for short verb phrases (routing-friendly)
- *
- * Register via `runtime.registerResponseHandlerFieldEvaluator(...)`. The
- * canonical set is exported as `BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS`
- * for runtime init to consume.
+ * Defines typed response-handler fields and their native schema guidance.
+ * Parsers preserve routing, exact-source selection and extraction contracts;
+ * plugins may contribute fields through the same registry. Legacy adapters use
+ * the corresponding prose descriptions, while native calls carry them once in
+ * the tool schema. Empty values represent inapplicable fields.
  */
 
 import type {
@@ -37,9 +13,9 @@ import type {
   ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
 import {
+  ChannelType,
   COMPLETION_CONTEXT_SCHEMA,
   parseCompletionContextSelection,
-  SHOULD_RESPOND_SCHEMA_DESCRIPTION,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
 import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
@@ -83,14 +59,15 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "shouldRespond",
   description:
-    "RESPOND when the current message addresses you, assigns work, clearly continues your question, or specifically needs your correction/action. Group questions alone do not justify interrupting; apply ambient-turn policy. IGNORE acknowledgements, reactions, side chatter, feeds and messages to others. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
+    "Respond to addressed conversation and direct follow-ups; apply room policy to ambient/group input. Ignore noise or others' conversation; stop only on explicit disengagement.",
   descriptionCompressed:
-    "RESPOND when the current message addresses you, assigns work, continues your question, or specifically needs your correction/action; otherwise apply ambient policy and IGNORE reactions, feeds, or others' conversation; STOP only explicit stop.",
+    "Respond to addressed conversation and direct follow-ups; apply room policy to ambient/group input. Ignore noise or others' conversation; stop only on explicit disengagement.",
   priority: 5,
   schema: {
     type: "string",
     enum: ["RESPOND", "IGNORE", "STOP"],
-    description: SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+    description:
+      "Respond to addressed conversation and direct follow-ups; apply room policy to ambient/group input. Ignore noise or others' conversation; stop only on explicit disengagement.",
   },
   parse(value) {
     const normalized =
@@ -115,15 +92,15 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "contexts",
   description:
-    'Use available_contexts tags; RESPOND needs at least one. ["simple"]=complete supplied-context reply, no pending runtime work. Opening a known view needs navigation only; reading visible controls, contents or current app values needs inspection, not route/section labels. Owner goal/habit/routine/todo/reminder records route to tasks/OWNER_*; discussion or supplied-history recall needs no live record operation.',
+    "Available context IDs for requested work; simple alone means a complete supplied-evidence answer with no pending runtime work.",
   descriptionCompressed:
-    'Ids from available_contexts. ["simple"]=complete supplied-context reply, no pending work; opening a view needs navigation only, inspecting contents/current values needs a read; owner record operations route to tasks/OWNER_* actions, discussion and supplied-history recall do not.',
+    "Available context IDs for requested work; simple alone means a complete supplied-evidence answer with no pending runtime work.",
   priority: 10,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "Context ids from available_contexts. 'simple'=direct reply, no planner.",
+      "Available context IDs for requested work; simple alone means a complete supplied-evidence answer with no pending runtime work.",
   },
   parse(value) {
     if (!Array.isArray(value)) return [];
@@ -157,15 +134,15 @@ export function readCompleteStringHints(raw: unknown): string[] | null {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "intents",
   description:
-    'One short verb phrase per explicit runtime/external-state outcome this turn. Keep navigation separate from data changes: "open notes and update a note" needs both. A drafted navigation confirmation executes nothing; retain its intent. Exclude work awaiting a clarification answer; asking for missing details completes this turn, not an intent to invent them. [] when no lookup or independent work can proceed. Runtime chooses direct execution or planning.',
+    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
   descriptionCompressed:
-    "One verb phrase per requested runtime action, navigation separately from edits. A held confirmation does not complete navigation: retain its intent. Omit work awaiting a clarification answer; keep independent executable work. Runtime chooses execution or planning.",
+    "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
   priority: 15,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "Pending runtime outcomes, including navigation even when replyText drafts its confirmation. One intent per requested operation; keep navigation separate from data changes. [] for answers or clarifications complete without execution; omit dependent work awaiting a user answer.",
+      "One verb phrase per requested runtime outcome, including useful prerequisite reads; keep navigation and record changes separate. Omit work awaiting clarification; keep independent executable work. Empty for answers complete without execution.",
   },
   parse: readCompleteStringHints,
 };
@@ -175,11 +152,16 @@ export const contextRequestsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "contextRequests",
   description:
-    'Use exact advertised references only when needed, following their notices; batch reads. Prefer READ_CONTEXT when offered. Otherwise use this field with contexts=["simple"], empty replyText and no action candidates; [] if supplied context suffices. Reads load complete authorized bodies for a new decision, never discover or execute app actions.',
+    "Exact advertised references needed before deciding; prefer READ_CONTEXT. Otherwise request them here with simple context, empty reply and no action candidates. Reads never execute domain work.",
   descriptionCompressed:
-    'Request needed context_discovery names before answering; replyText="". [] if supplied evidence suffices. Context reads need no action planning.',
+    "Exact advertised references needed before deciding; prefer READ_CONTEXT. Otherwise request them here with simple context, empty reply and no action candidates. Reads never execute domain work.",
   priority: 14,
-  schema: { type: "array", items: { type: "string" } },
+  schema: {
+    type: "array",
+    items: { type: "string" },
+    description:
+      "Exact advertised references needed before deciding; prefer READ_CONTEXT. Otherwise use simple context, empty reply and no action candidates. Reads do not execute domain work.",
+  },
   parse: (value) =>
     Array.isArray(value)
       ? value.filter((entry): entry is string => typeof entry === "string")
@@ -191,9 +173,9 @@ export const completionContextFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "completionContext",
   description:
-    "Select exact prior dialogue for planning/execution/completion using history_source_selection modes and missing-dialogue rules. Pending live-record reads do not make dialogue selection incomplete. No summaries or completed-tool claims.",
+    "Follow the source-selection contract for complete original dialogue, including corrections, constraints and referenced unfinished work; never summarize sources or claim execution.",
   descriptionCompressed:
-    "Follow history_source_selection for the FINAL CURRENT REQUEST, including missing or unresolved dialogue. With sourceSetId, retain every applicable fact, standing constraint/correction, referent and referenced pending intent; reviewed empty lists are valid. List each source once across categories; all categories are retained together. No summaries/caps. Current request/providers remain; future receipts arrive later.",
+    "Follow the source-selection contract for complete original dialogue, including corrections, constraints and referenced unfinished work; never summarize sources or claim execution.",
   priority: 16,
   schema: COMPLETION_CONTEXT_SCHEMA,
   parse: parseCompletionContextSelection,
@@ -209,17 +191,15 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "candidateActionNames",
   description:
-    "UPPER_SNAKE_CASE retrieval hints for every intent executable before this reply; [] if none. Exclude prohibited/cancelled/hypothetical work and actions awaiting clarification; keep useful lookups and independent work. Cancelling an unexecuted intention needs no mutation; cancelling a stored record/job does. " +
-    "Prefer exact available children. Sticky notes: NOTES_CREATE; NOTES_GET reads by known ID; NOTES_LIST searches/lists; NOTES_PATCH edits title/body or exact text while preserving other fields; NOTES_UPDATE replaces a complete note; NOTES_DELETE. Stored messages/saved facts: MEMORY_SEARCH for source contents; MEMORY_COUNT for fresh inventory totals, categories and newest timestamps (do not reuse old dialogue counts); writes: MEMORY_CREATE/MEMORY_UPDATE/MEMORY_DELETE. Calendar: CALENDAR_NEXT_EVENT=next event; CALENDAR_FEED=check/list/count the calendar for a day or range; CALENDAR_SEARCH_EVENTS=only a user-supplied title/attendee/location/topic filter, with optional date bounds. A date or generic event/calendar wording is not a content filter; do not invent a search query; writes: CALENDAR_CREATE_EVENT/CALENDAR_UPDATE_EVENT/CALENDAR_DELETE_EVENT. One known app view: VIEWS_SHOW; other view/layout/native-device work: VIEWS. Navigation needs data actions only for requested data work. Clarification answers and accepted alternative Calendar slots resume the original Calendar create/update; do not switch to OWNER_REMINDERS unless the user changes the requested resource. Life management: matching available OWNER_* or TRIGGER. Umbrellas only for unresolved operations or unknown suitable children; further tools remain discoverable. " +
-    "Name known domain actions directly. For unfamiliar capabilities or schema inspection, use DISCOVER_TOOLS with a non-simple context; do not invent domain candidates just to permit discovery. Clarification without useful lookup/independent work uses [] and simple context. Examples and unlisted hints never prove availability, execution or permission.",
+    "Optional exact action-name retrieval hints when known; otherwise empty and the planner discovers operations from contexts and intents. Hints grant neither availability nor permission. Exclude hypothetical, prohibited, cancelled or clarification-dependent effects.",
   descriptionCompressed:
-    "Likely UPPER_SNAKE_CASE actions needed before this reply. Notes field replacements -> NOTES_PATCH; literal word/substrings -> NOTES_UPDATE with textEdit; other Notes data -> matching NOTES_* child; single view -> VIEWS_SHOW when registered; other navigation/native device -> VIEWS; calendar agenda/date-only counts -> CALENDAR_FEED; keyword-filtered events -> CALENDAR_SEARCH_EVENTS; next event -> CALENDAR_NEXT_EVENT. Open-and-edit requires both. A clarification that needs no lookup uses [] and simple context; do not name future tools awaiting the answer. Keep independently executable current work.",
+    "Optional exact action-name retrieval hints when known; otherwise empty and the planner discovers operations from contexts and intents. Hints grant neither availability nor permission. Exclude hypothetical, prohibited, cancelled or clarification-dependent effects.",
   priority: 50,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "UPPER_SNAKE_CASE retrieval hints covering all intents. Include navigation as well as data actions for open-and-edit requests.",
+      "Optional exact action-name retrieval hints when known; otherwise empty and the planner discovers operations from contexts and intents. Hints grant neither availability nor permission. Exclude hypothetical, prohibited, cancelled or clarification-dependent effects.",
   },
   parse(value) {
     if (!Array.isArray(value)) return [];
@@ -243,29 +223,20 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 // an acknowledgement or a held navigation confirmation, never an early effect claim.
 // ---------------------------------------------------------------------------
 
-const NAVIGATION_REPLY_RULE =
-  "Current uiView/uiViewPath identify the open view, not its records. Requested navigationOnly uses singleViewOnly=true, nonempty intents, replyEffectStatus=pending and a non-simple routing context. Keep replyText nonempty: a short destination-is-open confirmation held until successful delivery, not a progress promise. This takes precedence over acknowledgment wording. Do not claim record reads or changes. ";
-
-const EXACT_REPLY_TEXT_RULE =
-  " When quoting or previewing text requested verbatim or exactly, copy every character, including punctuation, repeated spaces and line breaks. Put explanations outside that text.";
-
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
   name: "replyText",
   description:
-    NAVIGATION_REPLY_RULE +
     ACKNOWLEDGMENT_RULE +
-    'RESPOND requires a user-facing reply: simple=complete answer; other tool/planner work=brief acknowledgment. IGNORE="". No internal reasoning or capability refusal on the planning path: let available tools attempt work. Only if none can, RESPOND with simple context and explain the limitation.' +
-    EXACT_REPLY_TEXT_RULE,
+    " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   descriptionCompressed:
     ACKNOWLEDGMENT_RULE +
-    "User-facing reply. simple=whole answer; navigationOnly=completed-state destination confirmation spoken after successful navigation; other planning=brief ack, never a refusal; IGNORE=empty string.",
+    " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   priority: 20,
   schema: {
     type: "string",
     description:
       ACKNOWLEDGMENT_RULE +
-      "User-facing reply. Simple=whole answer. navigationOnly=completed-state destination confirmation spoken only after navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
-      EXACT_REPLY_TEXT_RULE,
+      " Complete answer for simple; brief acknowledgment for planned work, without unsupported completion or capability refusal. IGNORE is empty. Navigation-only replies confirm the destination is open, held until success; keep navigation intents pending. They never prove record reads or writes. Exact quotations preserve every character.",
   },
   parse(value) {
     if (typeof value !== "string") return "";
@@ -293,15 +264,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
   {
     name: "replyEffectStatus",
     description:
-      "Classify replyText's current-request work using the schema, including indirect claims in any language (e.g. 'on the books', 'quedó listo'). An applied-change claim is never execution proof. A newly saved reminder is applied; recall plus promised navigation is pending. A missing-detail question for a future action is non_applied; pending applies to independent work executable now. Historical advice/actions or existing facts alone are none.",
+      "Classify current-request work: pending=work executable now, including recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=no current action decision. Historical recall alone is none.",
     descriptionCompressed:
-      "Current-request work status in replyText: pending work (including lookup/navigation), claimed new applied change, terminal non_applied outcome, or none. Recall of earlier advice/actions alone is none; wording and language do not determine routing.",
+      "Classify current-request work: pending=work executable now, including recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=no current action decision. Historical recall alone is none.",
     priority: 25,
     schema: {
       type: "string",
       enum: ["none", "applied", "non_applied", "pending"],
       description:
-        "Classify current-request work: pending=unfinished work to perform this turn, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined outcome or an action preview/clarification/conditional offer awaiting a later user answer. A save awaiting separate confirmation is non_applied; other work still to perform this turn is pending. none=answer, explanation or general question without a current action decision. Recalling earlier advice, past actions or existing facts alone is none.",
+        "Classify current-request work: pending=work executable now, including recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=no current action decision. Historical recall alone is none.",
     },
     parse: normalizeReplyEffectStatus,
   };
@@ -313,15 +284,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
 export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "facts",
   description:
-    'Extract only durable assertions newly stated by the user in the FINAL CURRENT MESSAGE. Never copy facts from history, providers or your answer to a recall question. "What color was Rowan\'s mug?" states no fact; "Rowan\'s mug is blue now; what was it before?" states the new blue correction. Keep fictional facts explicitly fictional. Skip transient state/mood and facts owned by explicit memory mutations, including deletions. Return [] when no independent new assertion remains.',
+    "Durable assertions newly stated by the user in this message only; exclude recalled answers, transient state and facts owned by explicit memory mutations. Preserve fictional framing; empty when none.",
   descriptionCompressed:
-    "Only durable assertions newly stated in the final current user message; no recalled answers, transient state or facts owned by explicit memory mutations. Keep fictional framing. Otherwise [].",
+    "Durable assertions newly stated by the user in this message only; exclude recalled answers, transient state and facts owned by explicit memory mutations. Preserve fictional framing; empty when none.",
   priority: 80,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "New durable assertions in the final user message only, not answers recalled from context. One plain-English fact per item; [] for recall-only questions.",
+      "Durable assertions newly stated by the user in this message only; exclude recalled answers, transient state and facts owned by explicit memory mutations. Preserve fictional framing; empty when none.",
   },
   parse(value) {
     if (!Array.isArray(value)) return [];
@@ -378,9 +349,9 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "relationships",
   description:
-    'User-stated relationship triples, e.g. {"subject":"alice","predicate":"works_with","object":"bob"}; [] if none.',
+    "New user-stated subject/predicate/object relationships; snake_case predicate, empty when none. Exclude relationships owned by explicit memory mutations.",
   descriptionCompressed:
-    "Stated subject-predicate-object triples; empty if none.",
+    "New user-stated subject/predicate/object relationships; snake_case predicate, empty when none. Exclude relationships owned by explicit memory mutations.",
   priority: 85,
   schema: relationshipsSchema,
   parse(value) {
@@ -434,16 +405,25 @@ export function normalizeTopics(value: unknown): string[] {
 
 export const topicsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
   name: "topics",
+  shouldRun: ({ message }) =>
+    [
+      ChannelType.GROUP,
+      ChannelType.VOICE_GROUP,
+      ChannelType.THREAD,
+      ChannelType.WORLD,
+      ChannelType.FORUM,
+      ChannelType.FEED,
+    ].some((type) => type === message.content.channelType),
   description:
-    '1-5 short lowercase nouns/noun-phrases for this message: ["billing", "auth bug", "vacation plans"], not verbs/sentences. Tracks channel topics over time. [] if none salient.',
+    "Short lowercase topic labels for group/social discussion; empty when none.",
   descriptionCompressed:
-    "1-5 short lowercase topic labels; empty when no salient topic.",
+    "Short lowercase topic labels for group/social discussion; empty when none.",
   priority: 88,
   schema: {
     type: "array",
     items: { type: "string" },
     description:
-      "Short topic labels. Lowercase. Nouns/noun-phrases, not verbs.",
+      "Short lowercase topic labels for group/social discussion; empty when none.",
   },
   parse(value) {
     return normalizeTopics(value);

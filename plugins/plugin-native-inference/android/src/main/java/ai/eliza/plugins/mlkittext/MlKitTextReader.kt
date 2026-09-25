@@ -1,3 +1,7 @@
+/**
+ * Maps bundled on-device ML Kit recognition into the renderer's OCR word contract.
+ * Confidence preserves the engine score on the bridge's 0–100 scale.
+ */
 package ai.eliza.plugins.mlkittext
 
 import android.graphics.Bitmap
@@ -13,17 +17,13 @@ data class OcrWord(
     val top: Int,
     val width: Int,
     val height: Int,
-    val confidence: Int,
+    val confidence: Double,
     val block: Int,
     val par: Int,
     val line: Int,
 )
 
-/**
- * Engine wrapper around ML Kit Text Recognition v2 shared by the Capacitor
- * plugin and the instrumented test (issue #11001): one recognizer, one
- * word mapping, so the tested path is exactly the shipped path.
- */
+
 class MlKitTextReader {
     private val recognizer by lazy {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -52,10 +52,7 @@ class MlKitTextReader {
                             top = box.top,
                             width = box.width(),
                             height = box.height(),
-                            // ML Kit's Latin recognizer does not expose a
-                            // per-element confidence; the bridge contract
-                            // requires one, so report full confidence.
-                            confidence = 100,
+                            confidence = element.confidence.toDouble() * 100.0,
                             block = blockIndex,
                             par = 0,
                             line = lineIndex,

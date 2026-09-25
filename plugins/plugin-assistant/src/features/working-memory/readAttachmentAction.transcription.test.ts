@@ -39,31 +39,26 @@
  *      prose says); a re-attempt supersedes any stale failure note — latest
  *      outcome wins.
  */
-import { v4 as uuidv4 } from "uuid";
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerCallback,
   IAgentRuntime,
   Media,
   Memory,
   UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import {
-  ContentType,
-  ModelType,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { ContentType, ModelType } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { describe, expect, it, vi } from "vitest";
 
 // Only the network-touching remote fetcher is mocked; the module's other
 // exports (MediaFetchError, the shared streaming cap reader) stay real so the
 // local-branch read path under test runs its actual code.
 const fetchRemoteMediaMock = vi.fn();
-vi.mock(
-  "../../../../../packages/shared/src/media/fetch.ts",
-  async (importActual) => ({
-    ...(await importActual<typeof import("@elizaos/core")>()),
-    fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
-  }),
-);
+vi.mock("@elizaos/core", async (importActual) => ({
+  ...(await importActual<typeof import("@elizaos/core")>()),
+  fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
+}));
 
 const { readAttachmentAction } = await import("./readAttachmentAction.ts");
 

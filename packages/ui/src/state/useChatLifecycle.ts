@@ -5,17 +5,18 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
-import { clearStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
-import type {
-  Conversation,
-  ConversationMessage,
-  FirstRunOptions,
-  ImageAttachment,
+import {
+  type AgentStatus,
+  type Conversation,
+  type ConversationMessage,
+  client,
+  type FirstRunOptions,
+  type ImageAttachment,
+  type StreamEventEnvelope,
 } from "../api";
-import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { deliverSystemNotification } from "../bridge/notification-delivery";
@@ -25,25 +26,25 @@ import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
+import { logger } from "../logger.ts";
 import { enableForceFreshFirstRun } from "../platform";
 import { alertDesktopMessage } from "../utils";
 import { inferAgentRuntimeTarget } from "./agent-runtime-target";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
-import type { AppState, LifecycleAction } from "./internal";
 import {
+  type AppState,
   clearAvatarIndex,
   clearPersistedActiveServer,
   LIFECYCLE_MESSAGES,
+  type LifecycleAction,
   loadPersistedActiveServer,
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
 import { shouldAwaitAgentReadiness } from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
-
 const RESET_LOG_PREFIX = "[eliza][reset]";
-
 /**
  * Signature of the only `AgentStatus` fields the readiness poll cares about
  * (`state`, `port`, `canRespond`). The 1.5s poll re-applies the status snapshot
@@ -66,18 +67,15 @@ export function readinessPollSignature(status: AgentStatus | null): string {
     : "";
   return `${status.state}|${status.port ?? ""}|${status.canRespond ?? ""}|${resume}`;
 }
-
 function logResetDebug(
   message: string,
   detail?: Record<string, unknown>,
 ): void {
   logger.debug(detail ?? {}, `${RESET_LOG_PREFIX} ${message}`);
 }
-
 function logResetInfo(message: string, detail?: Record<string, unknown>): void {
   logger.info(detail ?? {}, `${RESET_LOG_PREFIX} ${message}`);
 }
-
 function logResetWarn(message: string, detail?: unknown): void {
   logger.warn(
     detail != null && typeof detail === "object"
@@ -86,7 +84,6 @@ function logResetWarn(message: string, detail?: unknown): void {
     `${RESET_LOG_PREFIX} ${message}`,
   );
 }
-
 async function waitForLifecycleIdle(
   lifecycleBusyRef: MutableRefObject<boolean>,
   timeoutMs: number,
@@ -102,7 +99,6 @@ async function waitForLifecycleIdle(
   }
   return true;
 }
-
 /** Publish server cloud snapshot for chat TTS (`useVoiceChat` + `loadVoiceConfig`). */
 function publishElizaCloudVoiceSnapshot(
   setCloudVoiceProxyAvailable: (value: boolean) => void,
@@ -123,15 +119,12 @@ function publishElizaCloudVoiceSnapshot(
     cloudVoiceProxyAvailable: snapshot.cloudVoiceProxyAvailable,
   });
 }
-
 // ── Deps interface ──────────────────────────────────────────────────
-
 export interface UseChatLifecycleDeps {
   // Agent status
   agentStatus: AgentStatus | null;
   setAgentStatus: (s: AgentStatus | null) => void;
   pollAgentReadiness?: boolean;
-
   // Lifecycle
   lifecycleAction: LifecycleAction | null;
   beginLifecycleAction: (action: LifecycleAction) => boolean;
@@ -145,7 +138,6 @@ export interface UseChatLifecycleDeps {
     once?: boolean,
     busy?: boolean,
   ) => void;
-
   // Pending restart
   pendingRestart: boolean;
   pendingRestartReasons: string[];
@@ -153,18 +145,14 @@ export interface UseChatLifecycleDeps {
   setPendingRestartReasons: (
     v: string[] | ((prev: string[]) => string[]),
   ) => void;
-
   // Backend connection
   resetBackendConnection: () => void;
-
   // Loaders
   loadConversations: () => Promise<Conversation[] | null>;
   loadPlugins: () => Promise<unknown>;
-
   // Greeting / hydration (injected from parent to avoid circular deps)
   hydrateInitialConversationState: () => Promise<string | null>;
   requestGreetingWhenRunning: (convId: string | null) => Promise<void>;
-
   // Reset conversation state
   interruptActiveChatPipelineWithDraft: () => {
     text: string;
@@ -186,7 +174,6 @@ export interface UseChatLifecycleDeps {
   conversationHydrationEpochRef: MutableRefObject<number>;
   claimConversationMessagesOwnership: (conversationId: string | null) => void;
   discardConversationMessageState: (conversationId?: string) => void;
-
   // Cloud state
   elizaCloudPreferDisconnectedUntilLoginRef: MutableRefObject<boolean>;
   setElizaCloudEnabled: (v: boolean) => void;
@@ -202,7 +189,6 @@ export interface UseChatLifecycleDeps {
   setElizaCloudUserId: (v: string | null) => void;
   setElizaCloudStatusReason: (v: string | null) => void;
   setElizaCloudLoginError: (v: string | null) => void;
-
   // First-run setters
   firstRunCompletionCommittedRef: MutableRefObject<boolean>;
   setFirstRunUiRevealNonce: (fn: (n: number) => number) => void;
@@ -218,23 +204,18 @@ export interface UseChatLifecycleDeps {
   setFirstRunRemoteApiBase: (v: string) => void;
   setFirstRunRemoteToken: (v: string) => void;
   setFirstRunOptions: (v: FirstRunOptions | null) => void;
-
   // Character / avatar
   setSelectedVrmIndex: (v: number) => void;
   setCustomVrmUrl: (v: string) => void;
   setCustomBackgroundUrl: (v: string) => void;
-
   // Plugins / skills / logs
   setPlugins: (v: never[]) => void;
   setSkills: (v: never[]) => void;
   setLogs: (v: never[]) => void;
-
   // Startup coordinator
   coordinatorResetRef: MutableRefObject<(() => void) | null>;
 }
-
 // ── Hook ────────────────────────────────────────────────────────────
-
 export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   const defaultFirstRunStyle = getDefaultStylePreset();
   const {
@@ -302,11 +283,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setLogs,
     coordinatorResetRef,
   } = deps;
-
   const heartbeatNotificationKeyRef = useRef<string | null>(null);
   const restartNotificationSignatureRef = useRef<string | null>(null);
   const readinessPollSignatureRef = useRef<string | null>(null);
-
   const handleStartDraftConversation = useCallback(async () => {
     const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
     claimConversationMessagesOwnership(null);
@@ -328,13 +307,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setChatInput,
     setChatPendingImages,
   ]);
-
   const handleStart = useCallback(async () => {
     if (!beginLifecycleAction("start")) return;
     setActionNotice(
       LIFECYCLE_MESSAGES.start.progress,
       "info",
-      300_000,
+      300000,
       false,
       true,
     );
@@ -344,9 +322,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setActionNotice(LIFECYCLE_MESSAGES.start.success, "success", 2400);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.start.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
-        }`,
+        `Failed to ${LIFECYCLE_MESSAGES.start.verb} agent: ${err instanceof Error ? err.message : "unknown error"}`,
         "error",
         4200,
       );
@@ -359,13 +335,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setActionNotice,
     setAgentStatus,
   ]);
-
   const handleStop = useCallback(async () => {
     if (!beginLifecycleAction("stop")) return;
     setActionNotice(
       LIFECYCLE_MESSAGES.stop.progress,
       "info",
-      120_000,
+      120000,
       false,
       true,
     );
@@ -375,9 +350,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setActionNotice(LIFECYCLE_MESSAGES.stop.success, "success", 2400);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.stop.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
-        }`,
+        `Failed to ${LIFECYCLE_MESSAGES.stop.verb} agent: ${err instanceof Error ? err.message : "unknown error"}`,
         "error",
         4200,
       );
@@ -390,13 +363,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setActionNotice,
     setAgentStatus,
   ]);
-
   const handleRestart = useCallback(async () => {
     if (!beginLifecycleAction("restart")) return;
     setActionNotice(
       LIFECYCLE_MESSAGES.restart.progress,
       "info",
-      300_000,
+      300000,
       false,
       true,
     );
@@ -422,7 +394,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         type: "active-conversation",
         conversationId: null,
       });
-      const s = await client.restartAndWait(120_000);
+      const s = await client.restartAndWait(120000);
       setAgentStatus(s);
       const greetConvId = await hydrateInitialConversationState();
       await requestGreetingWhenRunning(greetConvId);
@@ -432,9 +404,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setActionNotice(LIFECYCLE_MESSAGES.restart.success, "success", 2400);
     } catch (err) {
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.restart.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
-        }`,
+        `Failed to ${LIFECYCLE_MESSAGES.restart.verb} agent: ${err instanceof Error ? err.message : "unknown error"}`,
         "error",
         4200,
       );
@@ -467,15 +437,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setPendingRestart,
     setPendingRestartReasons,
   ]);
-
   const triggerRestart = useCallback(async () => {
     await handleRestart();
   }, [handleRestart]);
-
   const retryBackendConnection = useCallback(() => {
     client.resetConnection();
   }, []);
-
   const restartBackend = useCallback(async () => {
     const restarted = await invokeDesktopBridgeRequest({
       rpcMethod: "agentRestart",
@@ -486,7 +453,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     }
     resetBackendConnection();
   }, [resetBackendConnection]);
-
   const relaunchDesktop = useCallback(async () => {
     const relaunched = await invokeDesktopBridgeRequest<void>({
       rpcMethod: "desktopRelaunch",
@@ -496,7 +462,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       await handleRestart();
     }
   }, [handleRestart]);
-
   const showDesktopNotification = useCallback(
     async (options: {
       title: string;
@@ -523,7 +488,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     },
     [],
   );
-
   const notifyHeartbeatEvent = useCallback(
     (event: StreamEventEnvelope) => {
       const payload = event.payload as Record<string, unknown>;
@@ -537,7 +501,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       if (!isFailure && !isSkipped && silent) {
         return;
       }
-
       const eventTs =
         typeof payload.ts === "number"
           ? payload.ts
@@ -552,12 +515,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           .filter(Boolean)
           .join(" · ") || "background trigger";
       const notificationKey = `${eventTs}:${status}:${target}`;
-
       if (heartbeatNotificationKeyRef.current === notificationKey) {
         return;
       }
       heartbeatNotificationKeyRef.current = notificationKey;
-
       const preview =
         typeof payload.preview === "string" ? payload.preview.trim() : "";
       const reason =
@@ -566,11 +527,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         typeof payload.durationMs === "number"
           ? `Duration: ${Math.round(payload.durationMs)}ms`
           : "";
-
       const body = [target, preview, reason !== preview ? reason : "", duration]
         .filter(Boolean)
         .join("\n");
-
       void showDesktopNotification({
         title: isFailure
           ? "Automation failed"
@@ -584,7 +543,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     },
     [showDesktopNotification],
   );
-
   // Until the agent can respond, keep refreshing its status so readiness
   // (`canRespond`) flips the moment it becomes true — e.g. a slow on-device
   // model still warming after boot, or a status snapshot that landed before
@@ -630,13 +588,11 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       window.clearInterval(intervalId);
     };
   }, [awaitingAgentReadiness, setAgentStatus]);
-
   useEffect(() => {
     if (!pendingRestart) {
       restartNotificationSignatureRef.current = null;
       return;
     }
-
     const signature =
       pendingRestartReasons.length > 0
         ? pendingRestartReasons.join("\n")
@@ -645,14 +601,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       return;
     }
     restartNotificationSignatureRef.current = signature;
-
     const summary =
       pendingRestartReasons.length === 1
         ? pendingRestartReasons[0]
         : pendingRestartReasons.length > 1
           ? `${pendingRestartReasons.length} changes are waiting for restart.`
           : "Restart required to apply changes.";
-
     void showDesktopNotification({
       title: "Restart required",
       body: `${summary}\nUse Restart Now from the banner or Menu > Restart Agent. Use Menu > Relaunch App when the desktop shell itself needs a full relaunch.`,
@@ -660,7 +614,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       silent: false,
     });
   }, [pendingRestart, pendingRestartReasons, showDesktopNotification]);
-
   const completeResetLocalStateAfterServerWipe = useCallback(
     async (postResetAgentStatus: AgentStatus | null): Promise<void> => {
       await runCompleteResetLocalStateAfterServerWipe(postResetAgentStatus, {
@@ -801,7 +754,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       coordinatorResetRef,
     ],
   );
-
   const handleResetAppliedFromMain = useCallback(
     async (payload: unknown) => {
       await handleResetAppliedFromMainCore(payload, {
@@ -829,7 +781,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       lifecycleBusyRef,
     ],
   );
-
   const completeConnectedAgentStateAfterServerWipe = useCallback(
     async (postResetAgentStatus: AgentStatus | null): Promise<void> => {
       if (postResetAgentStatus != null) {
@@ -877,7 +828,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setSkills,
     ],
   );
-
   const handleReset = useCallback(async () => {
     logResetInfo("handleReset: invoked");
     const activeServer = loadPersistedActiveServer();
@@ -905,11 +855,11 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setActionNotice(
         `Waiting for current agent action to finish (${LIFECYCLE_MESSAGES[activeAction].inProgress}).`,
         "info",
-        12_000,
+        12000,
         false,
         true,
       );
-      const idle = await waitForLifecycleIdle(lifecycleBusyRef, 10_000);
+      const idle = await waitForLifecycleIdle(lifecycleBusyRef, 10000);
       if (!idle) {
         logResetInfo("handleReset: skipped — lifecycle remained busy", {
           activeAction,
@@ -929,7 +879,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       logResetInfo(
         "handleReset: beginLifecycleAction raced with another action — waiting",
       );
-      const idle = await waitForLifecycleIdle(lifecycleBusyRef, 10_000);
+      const idle = await waitForLifecycleIdle(lifecycleBusyRef, 10000);
       if (!idle || !beginLifecycleAction("reset")) {
         logResetInfo(
           "handleReset: forcing lifecycle lock clear after confirmed reset",
@@ -961,7 +911,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setActionNotice(
       LIFECYCLE_MESSAGES.reset.progress,
       "info",
-      120_000,
+      120000,
       false,
       true,
     );
@@ -1001,18 +951,15 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
             return;
           }
         }
-
         logResetDebug("handleReset: calling client.resetAgent()");
         await client.resetAgent();
         logResetDebug("handleReset: client.resetAgent() completed");
       };
-
       await resetViaCurrentRuntime();
-
       if (resetTarget.kind !== "local") {
         let postResetAgentStatus: AgentStatus | null = null;
         try {
-          postResetAgentStatus = await client.restartAndWait(120_000);
+          postResetAgentStatus = await client.restartAndWait(120000);
           logResetDebug(
             "handleReset: connected-agent restartAndWait completed",
             {
@@ -1036,12 +983,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         setActionNotice(`Reset ${resetTargetName}.`, "success", 3200);
         return;
       }
-
       logResetDebug(
         "handleReset: applying local UI reset before local restart wait",
       );
       await completeResetLocalStateAfterServerWipe(null);
-
       // Mobile (iOS + Android) runs the agent in-process via the native IPC
       // bridge. There is no separate process to restart, so the desktop bridge
       // and HTTP restart paths below are inactive and would hang/time out. The reset
@@ -1060,12 +1005,11 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         setActionNotice(LIFECYCLE_MESSAGES.reset.success, "success", 3200);
         return;
       }
-
       let postResetAgentStatus: AgentStatus | null = null;
       logResetDebug(
         "handleReset: invoking desktop bridge agentRestartClearLocalDb",
       );
-      const BRIDGE_RESTART_MS = 150_000;
+      const BRIDGE_RESTART_MS = 150000;
       try {
         postResetAgentStatus = await Promise.race([
           invokeDesktopBridgeRequest<AgentStatus>({
@@ -1112,23 +1056,20 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           );
         }
       }
-
       const embeddedRestartedOk =
         postResetAgentStatus != null &&
         (postResetAgentStatus.state === "running" ||
           postResetAgentStatus.state === "starting");
-
       logResetDebug("handleReset: embedded restart decision", {
         embeddedRestartedOk,
         bridgeState: postResetAgentStatus?.state ?? null,
       });
-
       if (!embeddedRestartedOk) {
         logResetInfo(
           "handleReset: calling client.restartAndWait(120s) — external API or bridge inactive",
         );
         try {
-          postResetAgentStatus = await client.restartAndWait(120_000);
+          postResetAgentStatus = await client.restartAndWait(120000);
           logResetDebug("handleReset: restartAndWait completed", {
             state: postResetAgentStatus.state,
             port: postResetAgentStatus.port,
@@ -1142,7 +1083,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           );
         }
       }
-
       if (postResetAgentStatus != null) {
         setAgentStatus(postResetAgentStatus);
       }
@@ -1158,9 +1098,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     } catch (err) {
       logResetWarn("handleReset: failed before reset could complete", err);
       setActionNotice(
-        `Failed to ${LIFECYCLE_MESSAGES.reset.verb} agent: ${
-          err instanceof Error ? err.message : "unknown error"
-        }`,
+        `Failed to ${LIFECYCLE_MESSAGES.reset.verb} agent: ${err instanceof Error ? err.message : "unknown error"}`,
         "error",
         4200,
       );
@@ -1183,7 +1121,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     lifecycleActionRef,
     lifecycleBusyRef,
   ]);
-
   return {
     handleStartDraftConversation,
     handleStart,

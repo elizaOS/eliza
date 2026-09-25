@@ -3,7 +3,7 @@ set -euo pipefail
 
 OS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LINUX_DIR="${OS_ROOT}/linux/elizaos"
-RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/scripts/rm-path-recursive.ts"
 
 ARCH="amd64"
 SKIP_BUILD=0
@@ -91,7 +91,7 @@ if [ -z "${OUT}" ]; then
     OUT="${LINUX_DIR}/artifacts/${ARCH}"
 fi
 
-ELIZA_ROOT="$(node "$OS_ROOT/scripts/eliza-source.mjs")"
+ELIZA_ROOT="$(node "$OS_ROOT/scripts/eliza-source.ts")"
 AGENT_BUNDLE="${ELIZA_ROOT}/packages/agent/dist-mobile/agent-bundle.js"
 if [ "${SKIP_BUILD}" != "1" ]; then
     (cd "${ELIZA_ROOT}" && bun run --cwd packages/agent build:mobile)

@@ -18,12 +18,12 @@
  * owner-password wall.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { persistCloudPairApiToken } from "../components/auth/CloudPairRelay";
 import { getBootConfig } from "../config/boot-config";
+import { logger } from "../logger.ts";
 import { persistActiveServerCredential } from "../state/active-server-credential";
 import {
   type AgentSessionUnauthReason,

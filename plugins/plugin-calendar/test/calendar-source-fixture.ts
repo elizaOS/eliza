@@ -2,7 +2,8 @@
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarSourceHealth,
-} from "@elizaos/shared";
+  LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
 export function freshCalendarSources(
   events: readonly LifeOpsCalendarEvent[] = [],
 ): LifeOpsCalendarSourceHealth[] {
@@ -37,4 +38,26 @@ export function freshCalendarSources(
     } as LifeOpsCalendarSourceHealth);
   }
   return [...sources.values()];
+}
+
+/** Calendar discovery uses the same declared destinations as source health. */
+export function calendarSummariesForEvents(
+  events: readonly LifeOpsCalendarEvent[] = [],
+): LifeOpsCalendarSummary[] {
+  return freshCalendarSources(events).map(({ key, summary, accessRole }) => ({
+    ...key,
+    summary,
+    accessRole,
+    accountEmail:
+      events.find((event) => event.grantId === key.grantId)?.accountEmail ??
+      null,
+    description: null,
+    primary: true,
+    backgroundColor: null,
+    foregroundColor: null,
+    timeZone: "UTC",
+    selected: true,
+    includeInFeed: true,
+    selectionVersion: 1,
+  }));
 }

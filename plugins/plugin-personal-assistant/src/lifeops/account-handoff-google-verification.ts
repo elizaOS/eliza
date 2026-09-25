@@ -4,8 +4,8 @@
  * account-disconnect authorization remain separate handoff requirements.
  */
 import { ElizaError } from "@elizaos/core";
+import { type LifeOpsGoogleCapability } from "@elizaos/core/contracts/personal-assistant";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
-import type { LifeOpsGoogleCapability } from "@elizaos/shared";
 import type { AccountHandoffReview } from "./account-handoff-store.js";
 import type { LifeOpsGoogleService } from "./service-mixin-google.js";
 

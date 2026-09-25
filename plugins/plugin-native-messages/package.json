@@ -2,40 +2,32 @@
   "name": "@elizaos/plugin-native-messages",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/plugin-native-messages/bridge.",
+  "description": "Android Messages overlay app for ElizaOS \u2014 SMS inbox and compose surface backed by @elizaos/plugin-native-messages/bridge.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "types": "./dist/plugin.d.ts",
       "eliza-source": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./bridge": {
-      "types": "./dist/bridge.d.ts",
       "eliza-source": "./src/bridge.ts",
+      "types": "./dist/bridge.d.ts",
       "import": "./dist/bridge.js",
       "default": "./dist/bridge.js"
     }
@@ -44,8 +36,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-messages -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-messages -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
@@ -57,7 +49,6 @@
   "dependencies": {
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "@capacitor/core": "8.4.0"

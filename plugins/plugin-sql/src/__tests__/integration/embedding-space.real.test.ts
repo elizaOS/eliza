@@ -20,8 +20,9 @@ import {
 import { v4 } from "uuid";
 import { expect, test } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
-import * as schema from "../../schema";
-import { embeddingTable, memoryTable } from "../../schema";
+import { schema } from "../../schema";
+import { embeddingTable } from "../../schema/embedding";
+import { memoryTable } from "../../schema/memory";
 import { MemoryStore } from "../../stores/memory.store";
 import type { DrizzleDatabase } from "../../types";
 import { mockCharacter } from "../schema-data";

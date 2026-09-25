@@ -44,7 +44,7 @@ jobs:
 
       - name: Resolve pinned Eliza source
         id: eliza-source
-        run: node scripts/read-eliza-source-lock.mjs --github-output >> "$GITHUB_OUTPUT"
+        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
 
       - name: Checkout application native sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -86,6 +86,40 @@ jobs:
         run: |
           (cd ../.. && bun install --frozen-lockfile --ignore-scripts)
           bun install --cwd .eliza-source --frozen-lockfile --ignore-scripts
+
+      # Fingerprint the riscv64 build inputs from the git index (blob SHAs of
+      # tracked native sources + submodule pins). Fast (no byte reads), and it
+      # cannot self-pollute because build outputs land in gitignored build/
+      # dirs that `git ls-files` never lists.
+      - name: Compute riscv64 source fingerprint
+        id: riscv64-fp
+        run: |
+          set -euo pipefail
+          {
+            git -C .eliza-source submodule status --recursive
+            git -C .eliza-source ls-files -s \
+              plugins/plugin-local-inference/native/plugins \
+              packages/app/scripts/aosp/compile-libllama.ts
+            git ls-files -s \
+              scripts/build-riscv64-artifacts.sh \
+              toolchains/cmake
+          } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
+
+      # build-riscv64-artifacts.sh is idempotent via existence sentinels, but its
+      # outputs never persist across runs. Restore them so an unchanged native
+      # source tree replays from the sentinels instead of recompiling every
+      # artifact (~30 min). EXACT-MATCH ONLY (no restore-keys): a stale prefix
+      # restore would let should_build skip a needed rebuild and smoke a stale
+      # artifact — a false green. A source/submodule change busts the key and
+      # forces a full rebuild.
+      - name: Cache riscv64 build outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            packages/os/.eliza-source/plugins/plugin-local-inference/native/plugins/*/build/riscv64
+            packages/os/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
+            ~/.cache/eliza-android-agent/seccomp-shim/riscv64
+          key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
 
       - name: Build every riscv64 artifact (linux only; android skipped)
         run: |

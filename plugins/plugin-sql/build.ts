@@ -1,4 +1,4 @@
-/** Node-only SQL adapter, with explicit schema and query-helper entry points. */
+/** SQL adapter package build. */
 
 import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -14,11 +14,7 @@ export async function buildPluginSql(
   );
   await rm(`${root}src/dist`, { recursive: true, force: true });
   await build({
-    entry: {
-      index: `${root}src/index.ts`,
-      schema: `${root}src/schema/index.ts`,
-      drizzle: `${root}src/drizzle/index.ts`,
-    },
+    entry: { index: `${root}src/index.ts` },
     outDir: `${root}dist`,
     tsconfig: `${root}tsconfig.build.json`,
     platform: "node",

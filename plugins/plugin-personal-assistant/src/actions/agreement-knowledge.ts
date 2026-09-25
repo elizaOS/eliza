@@ -10,7 +10,7 @@ import type {
   HandlerOptions,
   ProviderValue,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   AgreementKnowledgeError,

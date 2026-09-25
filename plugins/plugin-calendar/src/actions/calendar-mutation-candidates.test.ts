@@ -3,7 +3,8 @@
  * contradicts the only event carrying the requested title. Pure function under
  * test; no runtime, model, or calendar service.
  */
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it } from "vitest";
 import { resolveCalendarMutationCandidates } from "./calendar-handler.js";
 
@@ -33,7 +34,6 @@ const dentistSaturday = event(
   "2026-09-12T22:00:00.000Z",
 );
 const gym = event("e3", "Gym session", "2026-09-11T14:00:00.000Z");
-
 describe("resolveCalendarMutationCandidates with a planner-authored date", () => {
   it("separates dates in the title from the source-day constraint", () => {
     const target = event("qa", "September 22 QA", "2026-09-23T16:00:00Z");
@@ -73,7 +73,6 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
     });
     expect(candidates.map((c) => c.id)).toEqual(["e1"]);
   });
-
   it("still honours a day the user stated in their own words", () => {
     const candidates = resolveCalendarMutationCandidates({
       action: "update",
@@ -89,7 +88,6 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
     });
     expect(candidates).toEqual([]);
   });
-
   it("does not turn an unmatched date into permission to mutate the only unrelated event", () => {
     expect(
       resolveCalendarMutationCandidates({
@@ -103,7 +101,6 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
       }),
     ).toEqual([]);
   });
-
   it("preserves an authoritative date even when its bytes equal the planner field", () => {
     expect(
       resolveCalendarMutationCandidates({
@@ -117,7 +114,6 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
       }),
     ).toEqual([]);
   });
-
   it("does not pick among several title matches on a wrong date", () => {
     const candidates = resolveCalendarMutationCandidates({
       action: "update",
@@ -129,7 +125,6 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
     });
     expect(candidates).toEqual([]);
   });
-
   it("uses a correct details.date to choose among several title matches", () => {
     const candidates = resolveCalendarMutationCandidates({
       action: "update",

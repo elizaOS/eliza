@@ -8,11 +8,9 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "../../../../",
+    "noEmit": true,
     "types": ["bun-types", "node"],
     "paths": {
-      "@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../../../plugins/plugin-elizacloud/src/index.ts"
       ],
@@ -20,20 +18,20 @@
         "../../../../plugins/plugin-workflow/src/index.ts"
       ],
       "@elizaos/cloud-sdk": ["../../sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
       "@elizaos/plugin-browser": [
         "../../../../plugins/plugin-browser/src/index.ts"
       ],
       "@elizaos/core": ["../../../../packages/core/src/index.ts"],
-      "@elizaos/shared": ["../../../../packages/shared/src/index.ts"],
       "@elizaos/auth/vault": ["../../../../packages/auth/src/vault/index.ts"],
       "@elizaos/plugin-assistant": [
         "../../../../plugins/plugin-assistant/src/index.ts"
       ],
-      "@elizaos/shared/contracts/remote-control": [
-        "../../../../packages/shared/src/contracts/remote-control.ts"
+      "@elizaos/core/contracts/remote-control": [
+        "../../../../packages/core/src/contracts/remote-control.ts"
       ],
-      "@elizaos/shared/elizacloud/domain-contract": [
-        "../../../../packages/shared/src/elizacloud/domain-contract.ts"
+      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
+        "../../../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts"
       ]
     }
   },

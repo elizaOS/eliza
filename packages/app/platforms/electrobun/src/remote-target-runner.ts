@@ -4,6 +4,7 @@
  * start receipt before invoking an allowlisted local effect, and persists the
  * signed terminal envelope before attempting relay delivery.
  */
+
 import { randomUUID } from "node:crypto";
 import {
 	copyRemoteCommandBinding,
@@ -16,7 +17,7 @@ import {
 	type RemoteControllerGrant,
 	type RemoteJsonValue,
 	type SignedRemoteCommand,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import {
 	digestRemoteResultValue,
 	openRemoteControlMessage,
@@ -31,23 +32,21 @@ import type {
 	RemoteTargetStoredCommand,
 	RemoteTargetStoredSession,
 } from "./remote-target-store";
-import type {
-	RemoteTargetActivationResponse,
-	RemoteTargetClaim,
-	RemoteTargetRelayTransport,
+import {
+	type RemoteTargetActivationResponse,
+	type RemoteTargetClaim,
+	type RemoteTargetRelayTransport,
+	RemoteTargetTransportError,
 } from "./remote-target-transport";
-import { RemoteTargetTransportError } from "./remote-target-transport";
 import type {
 	EnrolledRemoteTargetVaultRecord,
 	RemoteTargetVault,
 } from "./remote-target-vault";
-
 export interface RemoteTargetEffectResult {
 	status: Exclude<RemoteCommandResultStatus, "execution_ambiguous">;
 	result?: RemoteJsonValue;
 	errorCode?: string;
 }
-
 export interface RemoteTargetCommandExecutor {
 	execute(input: {
 		action: RemoteCommandAction;
@@ -55,13 +54,11 @@ export interface RemoteTargetCommandExecutor {
 		executionId: string;
 	}): Promise<RemoteTargetEffectResult>;
 }
-
 export interface RemoteTargetRunnerHooks {
 	afterReserve?(commandId: string): Promise<void> | void;
 	afterStartPersisted?(commandId: string): Promise<void> | void;
 	afterEffect?(commandId: string): Promise<void> | void;
 }
-
 export interface RemoteTargetRunnerStatus {
 	running: boolean;
 	enrolled: boolean;
@@ -70,18 +67,15 @@ export interface RemoteTargetRunnerStatus {
 	lastPollAt: number | null;
 	lastErrorCode: string | null;
 }
-
 type PollDisposition =
 	| "empty"
 	| "completed"
 	| "duplicate"
 	| "delivery_pending"
 	| "offline";
-
 function isCommittedSession(session: RemoteTargetStoredSession): boolean {
 	return session.activationState !== "staged";
 }
-
 function errorCode(error: unknown): string {
 	if (
 		error instanceof RemoteTargetTransportError &&
@@ -91,7 +85,6 @@ function errorCode(error: unknown): string {
 	}
 	return "REMOTE_TARGET_UNAVAILABLE";
 }
-
 function resultEnvelope(
 	command: SignedRemoteCommand,
 	stored: RemoteTargetStoredCommand,
@@ -124,7 +117,6 @@ function resultEnvelope(
 		controllerEncryptionPublicKeyJwk,
 	);
 }
-
 function startEnvelope(
 	command: SignedRemoteCommand,
 	stored: RemoteTargetStoredCommand,
@@ -155,7 +147,6 @@ function startEnvelope(
 		controllerEncryptionPublicKeyJwk,
 	);
 }
-
 export class RemoteTargetRunner {
 	private running = false;
 	private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -163,7 +154,6 @@ export class RemoteTargetRunner {
 	private lastErrorCode: string | null = null;
 	private pollTail: Promise<void> = Promise.resolve();
 	private loopGeneration = 0;
-
 	private stopFailedLoop(generation: number, error: unknown): void {
 		if (generation !== this.loopGeneration) return;
 		this.running = false;
@@ -174,7 +164,6 @@ export class RemoteTargetRunner {
 			error,
 		});
 	}
-
 	constructor(
 		private readonly vault: RemoteTargetVault,
 		private readonly stateStore: RemoteTargetStateStore,
@@ -186,11 +175,9 @@ export class RemoteTargetRunner {
 			hooks?: RemoteTargetRunnerHooks;
 		} = {},
 	) {}
-
 	private now(): number {
 		return (this.options.now ?? Date.now)();
 	}
-
 	async installActivation(
 		activation: RemoteTargetActivationResponse,
 		browserProfileId?: string,
@@ -249,7 +236,6 @@ export class RemoteTargetRunner {
 			};
 		});
 	}
-
 	async commitLocalActivation(sessionId: string): Promise<void> {
 		await this.stateStore.transact((state) => {
 			const session = state.sessions[sessionId];
@@ -263,7 +249,6 @@ export class RemoteTargetRunner {
 			session.activationState = "active";
 		});
 	}
-
 	async recoverStagedActivations(): Promise<string | null> {
 		const enrollment = await this.requireEnrollment();
 		const state = await this.stateStore.read();
@@ -320,7 +305,6 @@ export class RemoteTargetRunner {
 		}
 		return transientErrorCode;
 	}
-
 	async pollOnce(expectedGeneration?: number): Promise<PollDisposition> {
 		let disposition: PollDisposition = "offline";
 		const run = this.pollTail.then(async () => {
@@ -333,7 +317,6 @@ export class RemoteTargetRunner {
 		await run;
 		return disposition;
 	}
-
 	private async pollOnceSerialized(
 		expectedGeneration?: number,
 	): Promise<PollDisposition> {
@@ -399,7 +382,6 @@ export class RemoteTargetRunner {
 			throw error;
 		}
 	}
-
 	private async processClaim(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 		claim: RemoteTargetClaim,
@@ -448,7 +430,6 @@ export class RemoteTargetRunner {
 			throw new Error("Remote claim routing fields do not match the command.");
 		}
 		if (!this.canProcessGeneration(expectedGeneration)) return "empty";
-
 		const admission = await this.stateStore.transact((state) => {
 			const authority = state.sessions[opened.body.sessionId];
 			if (
@@ -492,8 +473,8 @@ export class RemoteTargetRunner {
 			) {
 				throw new Error("Remote command replay capacity is exhausted.");
 			}
-			if (Object.keys(state.commands).length >= 16_384) {
-				const pruneBefore = this.now() - 24 * 60 * 60 * 1_000;
+			if (Object.keys(state.commands).length >= 16384) {
+				const pruneBefore = this.now() - 24 * 60 * 60 * 1000;
 				for (const [commandId, candidate] of Object.entries(state.commands)) {
 					if (
 						candidate.resultDelivered &&
@@ -503,7 +484,7 @@ export class RemoteTargetRunner {
 						delete state.commands[commandId];
 					}
 				}
-				if (Object.keys(state.commands).length >= 16_384) {
+				if (Object.keys(state.commands).length >= 16384) {
 					throw new Error("Remote target command capacity is exhausted.");
 				}
 			}
@@ -549,7 +530,6 @@ export class RemoteTargetRunner {
 				? "duplicate"
 				: "delivery_pending";
 		}
-
 		const started = await this.stateStore.transact((state) => {
 			const record = state.commands[opened.body.commandId];
 			if (!record) throw new Error("Reserved remote command disappeared.");
@@ -571,7 +551,6 @@ export class RemoteTargetRunner {
 		await this.options.hooks?.afterStartPersisted?.(opened.body.commandId);
 		return this.resumeStartedCommand(enrollment, opened.body.commandId);
 	}
-
 	private async resumeStartedCommand(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 		commandId: string,
@@ -642,7 +621,6 @@ export class RemoteTargetRunner {
 				}
 			});
 		}
-
 		const dispatch = await this.stateStore.transact((state) => {
 			const current = state.commands[commandId];
 			const session = current
@@ -672,7 +650,6 @@ export class RemoteTargetRunner {
 			await this.deliverResult(enrollment, dispatch.record);
 			return "delivery_pending";
 		}
-
 		record = dispatch.record;
 		let effect:
 			| RemoteTargetEffectResult
@@ -721,7 +698,6 @@ export class RemoteTargetRunner {
 		await this.deliverResult(enrollment, terminal);
 		return "completed";
 	}
-
 	async recoverInterrupted(): Promise<number> {
 		const enrollment = await this.requireEnrollment();
 		const state = await this.stateStore.read();
@@ -734,7 +710,6 @@ export class RemoteTargetRunner {
 		await this.flushPending(enrollment);
 		return recovered.length;
 	}
-
 	private canProcessGeneration(
 		expectedGeneration: number | undefined,
 	): boolean {
@@ -743,7 +718,6 @@ export class RemoteTargetRunner {
 			(this.running && expectedGeneration === this.loopGeneration)
 		);
 	}
-
 	private async flushPending(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 	): Promise<void> {
@@ -757,7 +731,6 @@ export class RemoteTargetRunner {
 		);
 		for (const record of pending) await this.deliverResult(enrollment, record);
 	}
-
 	private async deliverResult(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 		record: RemoteTargetStoredCommand,
@@ -846,7 +819,6 @@ export class RemoteTargetRunner {
 			}
 		});
 	}
-
 	async revokeSession(sessionId: string): Promise<void> {
 		const enrollment = await this.requireEnrollment();
 		await this.stateStore.transact((state) => {
@@ -894,7 +866,6 @@ export class RemoteTargetRunner {
 		});
 		await this.flushPending(enrollment);
 	}
-
 	private async fenceSession(sessionId: string): Promise<void> {
 		await this.stateStore.transact((state) => {
 			const session = state.sessions[sessionId];
@@ -909,7 +880,6 @@ export class RemoteTargetRunner {
 			session.nonces = {};
 		});
 	}
-
 	async start(): Promise<void> {
 		if (this.running) return;
 		await this.recoverStagedActivations();
@@ -938,7 +908,7 @@ export class RemoteTargetRunner {
 						this.stopFailedLoop(generation, error);
 					});
 				},
-				Math.max(250, this.options.pollIntervalMs ?? 1_000),
+				Math.max(250, this.options.pollIntervalMs ?? 1000),
 			);
 		};
 		try {
@@ -948,7 +918,6 @@ export class RemoteTargetRunner {
 			throw error;
 		}
 	}
-
 	async stop(): Promise<void> {
 		this.running = false;
 		this.loopGeneration += 1;
@@ -956,7 +925,6 @@ export class RemoteTargetRunner {
 		this.pollTimer = null;
 		await this.pollTail;
 	}
-
 	async status(): Promise<RemoteTargetRunnerStatus> {
 		const [enrollment, state] = await Promise.all([
 			this.vault.load(),
@@ -978,7 +946,6 @@ export class RemoteTargetRunner {
 			lastErrorCode: this.lastErrorCode,
 		};
 	}
-
 	private async requireEnrollment(): Promise<EnrolledRemoteTargetVaultRecord> {
 		const enrollment = await this.vault.load();
 		if (enrollment?.status !== "enrolled") {

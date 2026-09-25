@@ -9,20 +9,21 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { writeJsonAtomicSync } from "@elizaos/core";
-import type {
-  BscTradeSide,
-  BscTradeTxStatus,
-  WalletTradeLedgerEntry,
-  WalletTradeLedgerQuoteLeg,
-  WalletTradeLedgerRecordInput,
-  WalletTradeSource,
-  WalletTradingProfileRecentSwap,
-  WalletTradingProfileResponse,
-  WalletTradingProfileSourceFilter,
-  WalletTradingProfileTokenBreakdown,
-  WalletTradingProfileWindow,
-} from "@elizaos/shared";
+import {
+  type BscTradeSide,
+  type BscTradeTxStatus,
+  type WalletTradeLedgerEntry,
+  type WalletTradeLedgerQuoteLeg,
+  type WalletTradeLedgerRecordInput,
+  type WalletTradeSource,
+  type WalletTradingProfileRecentSwap,
+  type WalletTradingProfileResponse,
+  type WalletTradingProfileSourceFilter,
+  type WalletTradingProfileTokenBreakdown,
+  type WalletTradingProfileWindow,
+  writeJsonAtomicSync,
+} from "@elizaos/core";
+
 import { resolveStateDir } from "../config/paths.ts";
 
 const WALLET_PROFILE_LEDGER_VERSION = 1;

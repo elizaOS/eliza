@@ -15,10 +15,10 @@
  * host realm without any `globalThis` bridge or import-map indirection.
  *
  * Both the agent bundle route (`views-routes.ts`) and the Playwright UI-smoke
- * stub (`playwright-ui-smoke-api-stub.mjs`) apply the identical transform, so it
+ * stub (`playwright-ui-smoke-api-stub.ts`) apply the identical transform, so it
  * lives here once. Plain ESM (no deps, no build step) so the node-run smoke stub
  * can import it directly by path while the agent bundles it normally. The typed
- * factory/importer contract lives in `@elizaos/shared` (`src/views/
+ * factory/importer contract lives in `@elizaos/core` (`src/views/
  * host-external-contract.ts`); this module is its runtime implementation.
  *
  * The transform relies on the fixed shape the view-bundle build emits (single
@@ -26,10 +26,8 @@
  * export collected into one trailing `export { … }` list — see
  * `view-bundle-vite.config.ts` and `view-bundle-single-chunk.test.ts`).
  */
-
 /** Factory parameter name the wrapped bundle resolves host externals through. */
 export const HOST_IMPORT_PARAM = "__elizaHostImport";
-
 /** @param {string} namedImports @returns {string} */
 export function convertNamedImportsToDestructuring(
   namedImports: string,
@@ -41,7 +39,6 @@ export function convertNamedImportsToDestructuring(
     .map((part) => part.replace(/\s+as\s+/u, ": "))
     .join(", ");
 }
-
 /**
  * Build the binding statements that replace one host-external `import` clause,
  * resolving the module through the injected `hostImport` factory parameter.
@@ -65,7 +62,6 @@ export function buildHostExternalImportReplacement(
     lines.push(`const ${trimmed.slice("* as ".length).trim()} = ${moduleVar};`);
     return lines.join("\n");
   }
-
   const namedMatch = trimmed.match(/^\{([\s\S]*)\}$/u);
   if (namedMatch) {
     lines.push(
@@ -73,7 +69,6 @@ export function buildHostExternalImportReplacement(
     );
     return lines.join("\n");
   }
-
   const defaultAndNamedMatch = trimmed.match(/^([^,]+),\s*\{([\s\S]*)\}$/u);
   if (defaultAndNamedMatch) {
     lines.push(
@@ -84,11 +79,9 @@ export function buildHostExternalImportReplacement(
     );
     return lines.join("\n");
   }
-
   lines.push(`const ${trimmed} = ${moduleVar}.default ?? ${moduleVar};`);
   return lines.join("\n");
 }
-
 /**
  * Replace every bare `import … from "<specifier>"` (and side-effect
  * `import "<specifier>"`) whose specifier is host-external with bindings that
@@ -120,7 +113,6 @@ function bindHostExternalImports(
     "gu",
   );
   let replacementIndex = 0;
-
   return source
     .replace(fromImportPattern, (_match, importClause, specifier) =>
       buildHostExternalImportReplacement(
@@ -135,11 +127,11 @@ function bindHostExternalImports(
         `await ${HOST_IMPORT_PARAM}(${JSON.stringify(String(specifier))});`,
     );
 }
-
 /** One `<local> as <exported>` (or bare `<local>`) entry of an export list. */
-function parseExportEntry(
-  entry: string,
-): { local: string; exported: string } | null {
+function parseExportEntry(entry: string): {
+  local: string;
+  exported: string;
+} | null {
   const trimmed = entry.trim();
   if (!trimmed) return null;
   const asMatch = trimmed.match(/^([\S]+)\s+as\s+(.+)$/u);
@@ -149,7 +141,6 @@ function parseExportEntry(
   }
   return { local: trimmed, exported: trimmed };
 }
-
 /**
  * Convert the bundle's single trailing `export { a as X, b as default }` list
  * into a `return { X: a, default: b }` object and strip the `export` keyword.
@@ -161,7 +152,10 @@ function parseExportEntry(
  */
 function collectTrailingExports(source: string): string {
   const exportListPattern = /export\s*\{([\s\S]*?)\}\s*;?/gu;
-  const entries: Array<{ local: string; exported: string }> = [];
+  const entries: Array<{
+    local: string;
+    exported: string;
+  }> = [];
   const body = source.replace(exportListPattern, (_match, inner) => {
     for (const raw of String(inner).split(",")) {
       const parsed = parseExportEntry(raw);
@@ -174,12 +168,11 @@ function collectTrailingExports(source: string): string {
     .join(", ");
   return `${body}\nreturn { ${namespace} };\n`;
 }
-
 /**
  * Wrap a served view bundle as a host-external factory module: bind its
  * host-external imports to an injected `hostImport` parameter and return its
  * exports as a namespace. The module's sole export is a default async factory
- * matching the `HostExternalBundleFactory` contract in `@elizaos/shared`.
+ * matching the `HostExternalBundleFactory` contract in `@elizaos/core`.
  *
  * @param {string} source
  * @param {readonly string[]} specifiers
@@ -196,7 +189,6 @@ export function wrapBundleAsHostExternalFactory(
     `${factoryBody}}\n`
   );
 }
-
 /**
  * Read the host-external specifier list off a served-bundle request URL. The
  * loader sends it (`hostExternalSpecifiers`) alongside `hostExternalRuntime=1`.

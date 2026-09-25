@@ -39,7 +39,7 @@ const DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES = 500 * 1024 ** 3;
 
 /**
  * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
- * `elizaos/eliza-1` (`ELIZA_1_HF_REPO` in `@elizaos/shared/local-inference`);
+ * `elizaos/eliza-1` (`ELIZA_1_HF_REPO` in `@elizaos/plugin-native-inference/model-catalog`);
  * scoping to the org prefix keeps the cloud's `HF_TOKEN` from being used to
  * download arbitrary — including gated third-party — HuggingFace repos on the
  * cloud's bandwidth/quota.

@@ -1,13 +1,19 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 
-import { promoteSubactionsToActions } from "@elizaos/core";
+import type {
+  Action,
+  ContextObject,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
+import {
+  buildPlannerToolsFromActions,
+  normalizeActionJsonSchema,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
-import type { Action } from "../../../../../packages/core/src/types/components.ts";
-import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
-import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
+import { notesPlugin } from "../../../../plugin-notes/src/plugin.ts";
 import { documentAction } from "../../features/documents/actions";
 import { createAssistantPlugin } from "../../index.ts";
 import { collectV5PlannerCandidateActions } from "./action-surface";
@@ -23,6 +29,193 @@ import {
 
 const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
+
+describe("canonical discovery surface", () => {
+  it("retains discriminator and parent validation boundaries for every explicitly discovered child", async () => {
+    const dispatched: unknown[] = [];
+    const validated: unknown[] = [];
+    const parent: Action = {
+      name: "LEDGER",
+      description: "Read, create, or delete a ledger entry",
+      parameters: [
+        {
+          name: "action",
+          description: "Operation",
+          required: true,
+          schema: { type: "string", enum: ["read", "create", "delete"] },
+        },
+      ],
+      validate: async (_runtime, _message, _state, options) => {
+        validated.push(options?.parameters?.action);
+        return false;
+      },
+      handler: async (_runtime, _message, _state, options) => {
+        dispatched.push(options?.parameters?.action);
+        return { success: true };
+      },
+    };
+    const actions = [...promoteSubactionsToActions(parent)];
+    const context: ContextObject = {
+      id: "pinned-discovery",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    for (const child of actions.slice(1)) {
+      const tools = collectPlannerTools(context, actions, {
+        canonicalFamilies: true,
+        directActionNames: new Set([child.name, "UNREGISTERED_OPERATION"]),
+      });
+      const native = tools.find((tool) => tool.name === child.name);
+      expect(native?.parameters).toEqual(normalizeActionJsonSchema(child));
+      expect(tools.some((tool) => tool.name === "UNREGISTERED_OPERATION")).toBe(
+        false,
+      );
+      const pin = normalizeActionJsonSchema(child).properties?.action.default;
+      expect(native?.parameters.properties?.action.enum).toEqual([pin]);
+      const conflicting = pin === "delete" ? "read" : "delete";
+      const before = dispatched.length;
+      expect(
+        (
+          await child.handler?.(runtime, message, undefined, {
+            parameters: { action: conflicting },
+          })
+        )?.success,
+      ).toBe(false);
+      expect(dispatched).toHaveLength(before);
+      expect(
+        await child.validate?.(runtime, message, undefined, { parameters: {} }),
+      ).toBe(false);
+      expect(validated.at(-1)).toBe(pin);
+      // Direct wrapper dispatch independently proves the pin. Normal execution
+      // first checks the validator above and would stop on its false result.
+      expect(
+        (await child.handler?.(runtime, message, undefined, { parameters: {} }))
+          ?.success,
+      ).toBe(true);
+      expect(dispatched.at(-1)).toBe(pin);
+    }
+  });
+
+  it("refines a Notes search simile to its native child and progressively loads another operation", async () => {
+    const actions = notesPlugin.actions ?? [];
+    const list = actions.find((action) => action.name === "NOTES_LIST");
+    if (!list) throw new Error("Missing registered NOTES_LIST");
+    const initial = collectBudgetedStageOneCandidateActions({
+      actions,
+      candidateActions: ["SEARCH_NOTES"],
+      contexts: ["notes"],
+      deferUnselectedContexts: true,
+      deferParentHints: true,
+      intents: ["search notes"],
+    });
+    expect(initial.map((action) => action.name)).toEqual(["NOTES_LIST"]);
+    const context: ContextObject = {
+      id: "notes-search",
+      events: initial.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    const tools = collectPlannerTools(context, initial, {
+      canonicalFamilies: true,
+    });
+    const native = tools.find((tool) => tool.name === "NOTES_LIST");
+    expect(native?.parameters).toEqual(normalizeActionJsonSchema(list));
+    expect(native?.parameters.properties?.content.minLength).toBe(1);
+    expect(native?.description).not.toContain("Complete alias contracts:");
+    expect(tools.some((tool) => tool.name === "NOTES")).toBe(false);
+    const before = structuredClone(native);
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (loaded, names) =>
+        appendDiscoveredPlannerTools(context, tools, loaded, names),
+    );
+    expect(
+      (
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: ["NOTES_GET"] },
+        })
+      )?.success,
+    ).toBe(true);
+    expect(tools.find((tool) => tool.name === "NOTES_LIST")).toEqual(before);
+    const get = actions.find((action) => action.name === "NOTES_GET");
+    if (!get) throw new Error("Missing registered NOTES_GET");
+    expect(tools.find((tool) => tool.name === "NOTES_GET")?.parameters).toEqual(
+      normalizeActionJsonSchema(get),
+    );
+    expect(
+      (
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: ["NOTES"] },
+        })
+      )?.success,
+    ).toBe(true);
+    expect(tools.some((tool) => tool.name === "NOTES")).toBe(true);
+    // Loading a complete family later must not weaken an already selected child.
+    const expanded = collectPlannerTools(context, actions, {
+      canonicalFamilies: true,
+      directActionNames: new Set(["NOTES_LIST", "NOTES_GET"]),
+    });
+    expect(
+      expanded.find((tool) => tool.name === "NOTES_LIST")?.parameters,
+    ).toEqual(native?.parameters);
+    const umbrella = expanded.find((tool) => tool.name === "NOTES");
+    expect(umbrella?.description).toContain("NOTES_CREATE");
+    for (const action of actions) {
+      expect(
+        expanded.some((tool) => tool.name === action.name) ||
+          umbrella?.description.includes(action.name),
+      ).toBe(true);
+    }
+    expect(
+      collectBudgetedStageOneCandidateActions({
+        actions,
+        candidateActions: ["NOTES"],
+        contexts: [],
+        deferUnselectedContexts: true,
+        intents: ["search notes"],
+      }).map((action) => action.name),
+    ).toEqual(["NOTES_LIST"]);
+    for (const [hint, intents] of [
+      ["NOTES", ["organize notes"]],
+      ["SEARCH_NOTES", ["organize notes"]],
+    ] as const) {
+      const family = collectBudgetedStageOneCandidateActions({
+        actions,
+        candidateActions: [hint],
+        contexts: [],
+        deferUnselectedContexts: true,
+        intents,
+      });
+      expect(family.map((action) => action.name)).toContain("NOTES");
+      expect(family.length).toBe(actions.length);
+    }
+  });
+
+  it("exposes one canonical native schema while retaining the legacy simile", async () => {
+    const domain: Action = {
+      name: "READ_RECORD",
+      description: "Read records",
+      parameters: [],
+    };
+    const loaded: Action[][] = [];
+    const action = createPlannerToolDiscoveryAction([domain], (actions) =>
+      loaded.push(actions),
+    );
+    const tools = buildPlannerToolsFromActions([action]);
+    expect(tools.map((tool) => tool.name)).toEqual(["DISCOVER_ACTIONS"]);
+    expect(action.similes).toContain("DISCOVER_TOOLS");
+    const result = await action.handler?.(runtime, message, undefined, {
+      parameters: { names: ["READ_RECORD"] },
+    });
+    expect(result?.success).toBe(true);
+    expect(loaded).toEqual([[domain]]);
+  });
+});
 
 describe("planner tool discovery", () => {
   it("returns exact parameter evidence only for fresh named descriptions", async () => {
@@ -987,8 +1180,6 @@ describe("planner tool discovery", () => {
           {
             name: "NOTES_READ",
             description: childDetail,
-            contexts: ["notes"],
-            similes: ["READ_SAVED_NOTE"],
           },
         ],
       }),
@@ -1020,23 +1211,35 @@ describe("planner tool discovery", () => {
     },
   );
 
-  it("returns admitted exact retry names without loading a partial or rejected request", async () => {
+  it("refreshes admission for known names and loads only after reauthorization", async () => {
     const loads: Action[][] = [];
+    const document: Action = {
+      name: "DOCUMENT",
+      description: "Read documents",
+    };
+    let admitted: Action[] = [];
     const discovery = createPlannerToolDiscoveryAction(
-      [{ name: "DOCUMENT", description: "Read documents" }],
+      [document],
       (actions) => loads.push(actions),
-      async () => [],
+      async () => admitted,
     );
     const rejected = await discovery.handler?.(runtime, message, undefined, {
       parameters: { names: ["DOCUMENT", "DOCUMENTS_READ"] },
     });
     expect(rejected?.success).toBe(false);
     expect(loads).toEqual([]);
-    expect(rejected?.data?.availableNames).toEqual(["DOCUMENT"]);
+    expect(rejected?.data?.coachingFailure).toBe(true);
+    expect(rejected?.data?.availableNames).toBeUndefined();
     const retry = await discovery.handler?.(runtime, message, undefined, {
       parameters: { names: ["DOCUMENT"] },
     });
-    expect(retry?.success).toBe(true);
+    expect(retry?.success).toBe(false);
+    expect(loads).toEqual([]);
+    admitted = [document];
+    const allowed = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: ["DOCUMENT"] },
+    });
+    expect(allowed?.success).toBe(true);
     expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
   });
 
@@ -1077,12 +1280,15 @@ describe("planner tool discovery", () => {
     expect(loaded).toEqual(["MESSAGE"]);
   });
 
-  it("rejects a registered action using the reserved discovery protocol name", () => {
-    expect(() =>
-      createPlannerToolDiscoveryAction(
-        [{ name: "DISCOVER_TOOLS", description: "Collision" }],
-        () => undefined,
-      ),
-    ).toThrow("conflicts");
-  });
+  it.each(["DISCOVER_ACTIONS", "DISCOVER_TOOLS"])(
+    "rejects a registered action using reserved protocol name %s",
+    (name) => {
+      expect(() =>
+        createPlannerToolDiscoveryAction(
+          [{ name, description: "Collision" }],
+          () => undefined,
+        ),
+      ).toThrow("conflicts");
+    },
+  );
 });

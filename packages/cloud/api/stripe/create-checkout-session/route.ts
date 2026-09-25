@@ -5,12 +5,18 @@
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
-import { findBySku, HARDWARE_SKUS } from "@elizaos/shared/hardware-catalog";
+import {
+  findBySku,
+  HARDWARE_SKUS,
+} from "@elizaos/cloud-shared/hardware-catalog";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requireCurrentBillingManagerSession,
+  requireUserWithOrg,
+} from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -65,7 +71,7 @@ const app = new Hono<AppEnv>();
 
 app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
-    const user = await requireUserWithOrg(c);
+    let user = await requireUserWithOrg(c);
     const body = await c.req.json();
     const validationResult = checkoutRequestSchema.safeParse(body);
     if (!validationResult.success) {
@@ -85,6 +91,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       hardwareSku,
       returnUrl,
     } = validationResult.data;
+
+    if (!hardwareSku) user = await requireCurrentBillingManagerSession(c);
 
     // Credit checkout callers may pin the principal they rendered. Compare
     // that precondition to the live authenticated principal before catalog,
@@ -320,6 +328,23 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
           }),
         )
       : null;
+    // Catalog reads and digest computation await work. Recheck immediately
+    // before creating durable order/customer authority or calling Stripe.
+    if (creditQuote) {
+      const current = await requireCurrentBillingManagerSession(c);
+      if (
+        current.id !== user.id ||
+        current.organization_id !== organizationId
+      ) {
+        return c.json(
+          {
+            error: "Checkout identity changed; refresh before retrying",
+            code: "CHECKOUT_PRINCIPAL_CHANGED",
+          },
+          409,
+        );
+      }
+    }
     let checkoutOrder = creditQuote
       ? await stripeCheckoutOrdersService.create({
           organizationId,

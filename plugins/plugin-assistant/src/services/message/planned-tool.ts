@@ -40,7 +40,10 @@ import {
   shouldSuppressActionResultClipboard,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
+import {
+  parentAliasesForCandidateAction,
+  preferredOperationNames,
+} from "../../runtime/action-retrieval.ts";
 import type {
   EvaluatorEffects,
   EvaluatorOutput,
@@ -640,6 +643,7 @@ export function collectPlannerTools(
   options: {
     expandSubActions?: boolean;
     canonicalFamilies?: boolean;
+    directActionNames?: ReadonlySet<string>;
   } = {},
 ): ToolDefinition[] {
   const hasAnyAction = context.events.some(
@@ -654,7 +658,7 @@ export function collectPlannerTools(
   const actions = narrowedActions ?? collectActionsFromContext(context);
   const tierAParents = readTierAParentsFromContext(context);
   const wireActions = options.canonicalFamilies
-    ? collectCanonicalPlannerActions(actions)
+    ? collectCanonicalPlannerActions(actions, options.directActionNames)
     : actions;
   const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
     tierAParents,
@@ -891,12 +895,26 @@ function canonicalJson(value: unknown): string {
  */
 export function collectCanonicalPlannerActions(
   actions: readonly Action[],
+  directActionNames?: ReadonlySet<string>,
 ): Action[] {
   const authorized = new Map(actions.map((action) => [action.name, action]));
   return actions.filter((action) => {
     const parentName = promotedSubactionParent(action);
+    if (directActionNames?.has(action.name)) return true;
     if (!parentName) return true;
     const parent = authorized.get(parentName);
+    // A required child operand cannot become optional on the native tool
+    // schema merely because its constraint survives in descriptive prose.
+    if (
+      action.parameters?.some(
+        (parameter) =>
+          parameter.required &&
+          !parent?.parameters?.some(
+            (entry) => entry.name === parameter.name && entry.required,
+          ),
+      )
+    )
+      return true;
     // An umbrella requiring a field absent from this alias cannot represent
     // that alias's valid calls without manufacturing an extra argument.
     if (
@@ -972,6 +990,8 @@ export function collectBudgetedStageOneCandidateActions(args: {
    * operation inline and the family discoverable; explicit discovery never
    * uses this projection. */
   deferParentHints?: boolean;
+  /** Refine Stage-1 family hints using already interpreted outcomes. */
+  intents?: readonly string[];
 }): Action[] {
   if (args.candidateActions.length === 0) return [];
 
@@ -1001,9 +1021,27 @@ export function collectBudgetedStageOneCandidateActions(args: {
           .filter((action): action is Action => action !== undefined);
     // Hints are not an execution contract. One invented name must not throw
     // away the known families and inflate the entire surface; the pipeline
-    // exposes DISCOVER_TOOLS for the remaining authorized catalog.
+    // exposes DISCOVER_ACTIONS for the remaining authorized catalog.
     if (resolved.length === 0) continue;
     for (const action of resolved) {
+      if (args.deferUnselectedContexts && args.intents?.length) {
+        const children = new Set(
+          action.subActions?.map((child) =>
+            typeof child === "string" ? child : child.name,
+          ),
+        );
+        const preferred = preferredOperationNames(
+          args.intents.join("\n"),
+          args.actions
+            .filter((child) => children.has(child.name))
+            .map((child) => child.name),
+        );
+        if (preferred.size > 0) {
+          for (const name of preferred)
+            selectedNames.add(normalizeActionIdentifier(name));
+          continue;
+        }
+      }
       selectedNames.add(normalizeActionIdentifier(action.name));
     }
   }
@@ -1026,7 +1064,7 @@ export function collectBudgetedStageOneCandidateActions(args: {
   }
   // Legacy budget fallback has no discovery guarantee and keeps the whole
   // family. Progressive planning keeps exact child hints; unselected siblings
-  // and their parent stay in DISCOVER_TOOLS, including for compound follow-ups.
+  // and their parent stay in DISCOVER_ACTIONS, including for compound follow-ups.
   // A parent still selected after the initial hint projection expands its
   // complete authorized family. Explicit discovery retains every named parent.
   for (const parent of args.deferUnselectedContexts ? [] : args.actions) {

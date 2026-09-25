@@ -12,7 +12,6 @@
  * terminal, and a user-initiated dismissal sticks.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -42,6 +41,7 @@ import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { useRealtimeVoiceMint } from "../../hooks/useRealtimeVoiceMint";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
+import { logger } from "../../logger.ts";
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,

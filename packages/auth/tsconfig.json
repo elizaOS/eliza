@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -15,9 +16,7 @@
     "declaration": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"]
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
   "include": [

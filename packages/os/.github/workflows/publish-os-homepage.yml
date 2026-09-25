@@ -63,15 +63,15 @@ jobs:
           checksums_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/SHA256SUMS"
           test -s "$manifest"
           test -s _release/SHA256SUMS
-          node scripts/verify-release-checksums.mjs \
+          node scripts/verify-release-checksums.ts \
             --manifest "$manifest" \
             --artifact-root _release \
             --checksums _release/SHA256SUMS
-          node scripts/validate-release-manifest.mjs \
+          node scripts/validate-release-manifest.ts \
             --manifest "$manifest" \
             --require-publishable-checksums \
             --require-distribution-signatures
-          node scripts/generate-os-homepage-data.mjs \
+          node scripts/generate-os-homepage-data.ts \
             --manifest "$manifest" \
             --output homepage/public/downloads/elizaos-beta-manifest.json \
             --checksums-url "$checksums_url"

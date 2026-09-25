@@ -6,7 +6,7 @@
  * required for core session flows.
  */
 
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import { EXTERNAL_URLS } from "@elizaos/core/config/public-endpoints";
 import { getPromptPreset, type PromptPreset } from "../../eliza/prompt-presets";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models";
 

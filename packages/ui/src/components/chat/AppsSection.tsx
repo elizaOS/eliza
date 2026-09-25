@@ -5,12 +5,17 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { isOverlayApp } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
+import { isOverlayApp } from "../../apps/overlay-app-registry.js";
+import { logger } from "../../logger.ts";
 import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppIdentityTile } from "../apps/app-identity";
@@ -29,16 +34,13 @@ import { WidgetSection } from "./widgets/shared";
 function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
   return isOverlayApp(app.name) || app.launchType === "overlay";
 }
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
 export interface AppsSectionProps {
   /** Optional action node rendered at the top-right of the section header. */
   headerAction?: ReactNode;
 }
-
 export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   const {
     favoriteApps: favoriteAppsValue,
@@ -55,13 +57,10 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
-
   const favoriteApps = Array.isArray(favoriteAppsValue)
     ? favoriteAppsValue
     : [];
-
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
-
   // Fetch the full catalog once for sidebar launch targets.
   useEffect(() => {
     let cancelled = false;
@@ -81,42 +80,35 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
       cancelled = true;
     };
   }, []);
-
   // -------------------------------------------------------------------------
   // Derive the ordered button list:
   //   1. Running apps (by appName), in their natural order
   //   2. Favorited apps not already in the running set
   // -------------------------------------------------------------------------
-
   const { orderedApps, runByName } = useMemo(() => {
     const catalogByName = new Map(catalogApps.map((a) => [a.name, a]));
     const runMap = new Map<string, AppRunSummary>();
     for (const run of appRuns) {
       runMap.set(run.appName, run);
     }
-
     // Running apps (deduplicated by appName, stable order)
     const runningAppNames = [...new Set(appRuns.map((r) => r.appName))];
     const runningItems = runningAppNames
       .map((name) => catalogByName.get(name))
       .filter((app): app is RegistryAppInfo => app !== undefined);
-
     // Favorite apps not already running
     const runningSet = new Set(runningAppNames);
     const favOnlyItems = catalogApps.filter(
       (app) => favoriteApps.includes(app.name) && !runningSet.has(app.name),
     );
-
     return {
       orderedApps: [...runningItems, ...favOnlyItems],
       runByName: runMap,
     };
   }, [catalogApps, appRuns, favoriteApps]);
-
   // -------------------------------------------------------------------------
   // Kebab menu actions: relaunch, edit, stop. Launch stays as the tile click.
   // -------------------------------------------------------------------------
-
   const handleRelaunch = useCallback(
     async (app: RegistryAppInfo) => {
       try {
@@ -145,7 +137,6 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     },
     [setActionNotice, t],
   );
-
   const handleEdit = useCallback(
     async (app: RegistryAppInfo) => {
       try {
@@ -171,7 +162,6 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     },
     [setActionNotice],
   );
-
   const handleStop = useCallback(
     async (app: RegistryAppInfo) => {
       try {
@@ -194,11 +184,9 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     },
     [setActionNotice],
   );
-
   // -------------------------------------------------------------------------
   // Launch handler (identical logic to FavoriteAppsBar)
   // -------------------------------------------------------------------------
-
   const handleLaunch = useCallback(
     async (app: RegistryAppInfo) => {
       const internalToolTab = getInternalToolAppTargetTab(app.name);
@@ -279,11 +267,9 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     },
     [setActionNotice, setState, setTab, t],
   );
-
   // Hide the section entirely when there is nothing to show AND no header
   // action to render (i.e. no collapse-affordance owner).
   if (orderedApps.length === 0 && !headerAction) return null;
-
   return (
     <WidgetSection
       title={t("nav.apps", { defaultValue: "Apps" })}

@@ -43,7 +43,7 @@ import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
 import { runSharedToDedicatedUpgradeHandoff } from "@elizaos/ui/cloud/handoff/start-tier-upgrade";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";

@@ -4,7 +4,7 @@
  * state — from the local agent API or the runtime's own stores — and formats a
  * compact, agent-readable brief for a given `ConversationScope`.
  *
- * A leaf module by design: it depends only on `@elizaos/core`, `@elizaos/shared`,
+ * A leaf module by design: it depends only on `@elizaos/core`, `@elizaos/core`,
  * and API-layer types, never on providers or services. Both the page-scoped
  * context provider (`page-scoped-context.ts`) and the proactive-interaction
  * decider (`../services/proactive-interaction-decider.ts`) consume it, so keeping
@@ -15,16 +15,20 @@
  * through `runtime.reportError`; a genuinely empty result renders a designed
  * empty brief, distinct from an unreachable one.
  */
-import { type IAgentRuntime, logger, toWellFormedUnicode } from "@elizaos/core";
-import type {
-  AppRunSummary,
-  RegistryAppInfo,
-  WalletBalancesResponse,
-  WalletConfigStatus,
-  WalletNftsResponse,
-  WalletTradingProfileResponse,
-} from "@elizaos/shared";
-import { createSelfApiRequestHeaders } from "@elizaos/shared";
+
+import {
+  type AppRunSummary,
+  createSelfApiRequestHeaders,
+  type IAgentRuntime,
+  logger,
+  type RegistryAppInfo,
+  toWellFormedUnicode,
+  type WalletBalancesResponse,
+  type WalletConfigStatus,
+  type WalletNftsResponse,
+  type WalletTradingProfileResponse,
+} from "@elizaos/core";
+
 import type { ConversationScope } from "../api/server-types.ts";
 
 async function renderCharacterLiveState(
@@ -34,7 +38,11 @@ async function renderCharacterLiveState(
   if (!character) return null;
   const lines: string[] = ["Live character state:"];
   lines.push(`- Name: ${character.name ?? "(unnamed)"}`);
-  const bio = (character as { bio?: unknown }).bio;
+  const bio = (
+    character as {
+      bio?: unknown;
+    }
+  ).bio;
   if (typeof bio === "string" && bio.trim().length > 0) {
     lines.push(`- Bio: ${toWellFormedUnicode(bio.trim())}`);
   } else if (Array.isArray(bio) && bio.length > 0) {
@@ -46,7 +54,6 @@ async function renderCharacterLiveState(
   lines.push(`- Message examples: ${exampleCount}`);
   return lines.join("\n");
 }
-
 function getLocalApiUrls(path: string): string[] {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const configuredPort = process.env.API_PORT || process.env.SERVER_PORT;
@@ -57,7 +64,6 @@ function getLocalApiUrls(path: string): string[] {
     (port) => `http://127.0.0.1:${port}${normalizedPath}`,
   );
 }
-
 async function fetchLocalJson<T>(
   path: string,
   timeoutMs = 1500,
@@ -82,7 +88,6 @@ async function fetchLocalJson<T>(
   }
   return null;
 }
-
 /**
  * Minimal structural view of the browser workspace service. Typed locally so
  * the module never takes an import edge into the browser plugin; the service is
@@ -91,23 +96,27 @@ async function fetchLocalJson<T>(
  */
 interface BrowserWorkspaceSnapshotView {
   mode: string;
-  tabs: Array<{ title?: string | null; url: string; visible?: boolean }>;
+  tabs: Array<{
+    title?: string | null;
+    url: string;
+    visible?: boolean;
+  }>;
 }
 interface BrowserWorkspaceServiceLike {
   getWorkspaceSnapshot(): Promise<BrowserWorkspaceSnapshotView>;
 }
-
 const BROWSER_SERVICE_TYPE = "browser";
-
 function isBrowserWorkspaceService(
   service: unknown,
 ): service is BrowserWorkspaceServiceLike {
   return (
-    typeof (service as { getWorkspaceSnapshot?: unknown } | null)
-      ?.getWorkspaceSnapshot === "function"
+    typeof (
+      service as {
+        getWorkspaceSnapshot?: unknown;
+      } | null
+    )?.getWorkspaceSnapshot === "function"
   );
 }
-
 async function renderBrowserLiveState(
   runtime: IAgentRuntime,
 ): Promise<string | null> {
@@ -122,7 +131,6 @@ async function renderBrowserLiveState(
       const flags = tab.visible ? "[visible]" : "";
       lines.push(`- ${tab.title || "(untitled)"} — ${tab.url} ${flags}`.trim());
     }
-
     return lines.join("\n");
   } catch (err) {
     // error-policy:J4 explicit user-facing degrade — one failing subsection
@@ -133,7 +141,6 @@ async function renderBrowserLiveState(
     return null;
   }
 }
-
 function dedupeApps(
   groups: Array<RegistryAppInfo[] | null>,
 ): RegistryAppInfo[] {
@@ -149,7 +156,6 @@ function dedupeApps(
     left.displayName.localeCompare(right.displayName),
   );
 }
-
 async function renderAppsLiveState(): Promise<string | null> {
   const [catalogApps, serverApps, runs] = await Promise.all([
     fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps"),
@@ -159,13 +165,11 @@ async function renderAppsLiveState(): Promise<string | null> {
   if (!catalogApps && !serverApps && !runs) {
     return "Live apps state: unavailable from the Apps API.";
   }
-
   const apps = dedupeApps([catalogApps, serverApps]);
   const activeRuns = runs ?? [];
   const lines: string[] = [
     `Live apps state: ${apps.length} catalog app${apps.length === 1 ? "" : "s"}, ${activeRuns.length} running app${activeRuns.length === 1 ? "" : "s"}.`,
   ];
-
   if (activeRuns.length > 0) {
     lines.push("Running apps:");
     for (const run of activeRuns) {
@@ -183,7 +187,6 @@ async function renderAppsLiveState(): Promise<string | null> {
   } else {
     lines.push("Running apps: none.");
   }
-
   if (apps.length > 0) {
     lines.push("Catalog sample:");
     for (const app of apps) {
@@ -196,27 +199,22 @@ async function renderAppsLiveState(): Promise<string | null> {
       );
     }
   }
-
   return lines.join("\n");
 }
-
 function shortAddress(address: string | null | undefined): string {
   if (!address) return "(not configured)";
   return toWellFormedUnicode(address);
 }
-
 function readyLabel(value: boolean | undefined): string {
   if (value === true) return "ready";
   if (value === false) return "not ready";
   return "unknown";
 }
-
 function hasPositiveAmount(value: string | null | undefined): boolean {
   if (!value) return false;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && parsed > 0;
 }
-
 async function renderWalletLiveState(): Promise<string | null> {
   const [config, balances, nfts, profile] = await Promise.all([
     fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
@@ -226,11 +224,9 @@ async function renderWalletLiveState(): Promise<string | null> {
       "/api/wallet/trading/profile?window=24h&source=all",
     ),
   ]);
-
   if (!config && !balances && !nfts && !profile) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
-
   const lines: string[] = ["Live wallet state:"];
   if (config) {
     lines.push(`- Wallet source: ${config.walletSource ?? "unknown"}`);
@@ -249,7 +245,6 @@ async function renderWalletLiveState(): Promise<string | null> {
       `- Signing: EVM=${config.evmSigningCapability ?? "unknown"}, Solana=${readyLabel(config.solanaSigningAvailable)}`,
     );
   }
-
   const assetLines: string[] = [];
   if (balances?.evm) {
     for (const chain of balances.evm.chains) {
@@ -281,7 +276,6 @@ async function renderWalletLiveState(): Promise<string | null> {
       lines.push(`  - ${asset}`);
     }
   }
-
   if (nfts) {
     const evmNftCount = nfts.evm.reduce(
       (sum, chain) => sum + chain.nfts.length,
@@ -291,16 +285,13 @@ async function renderWalletLiveState(): Promise<string | null> {
     const nftCount = evmNftCount + solanaNftCount;
     lines.push(`- NFTs: ${nftCount} item${nftCount === 1 ? "" : "s"}.`);
   }
-
   if (profile) {
     lines.push(
       `- 24h activity: ${profile.summary.totalSwaps} swap${profile.summary.totalSwaps === 1 ? "" : "s"}, realized P&L ${profile.summary.realizedPnlBnb} BNB, volume ${profile.summary.volumeBnb} BNB.`,
     );
   }
-
   return lines.join("\n");
 }
-
 async function renderAutomationsLiveState(
   runtime: IAgentRuntime,
 ): Promise<string | null> {
@@ -327,12 +318,10 @@ async function renderAutomationsLiveState(
     return null;
   }
 }
-
 const KNOWLEDGE_LIVE_STATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const ATTACHMENT_DOCUMENT_TAG = "attachment";
 const MEDIA_FORMAT_TAG_PREFIX = "media-format:";
 const TRANSCRIPT_DOCUMENT_TAG = "transcript";
-
 function documentStringTags(
   metadata: Record<string, unknown> | undefined,
 ): string[] {
@@ -341,7 +330,6 @@ function documentStringTags(
     ? tags.filter((value): value is string => typeof value === "string")
     : [];
 }
-
 function documentMediaFormat(
   metadata: Record<string, unknown> | undefined,
   tags: string[],
@@ -352,7 +340,6 @@ function documentMediaFormat(
   const tagged = tags.find((tag) => tag.startsWith(MEDIA_FORMAT_TAG_PREFIX));
   return tagged ? tagged.slice(MEDIA_FORMAT_TAG_PREFIX.length) : "file";
 }
-
 function documentAddedAt(
   metadata: Record<string, unknown> | undefined,
   createdAt: number | undefined,
@@ -365,7 +352,6 @@ function documentAddedAt(
     (typeof createdAt === "number" ? createdAt : undefined)
   );
 }
-
 /**
  * Live knowledge state for the Knowledge view (#13593): counts of recently
  * ingested chat attachments (and transcript mirrors) over the trailing week,
@@ -380,7 +366,6 @@ async function renderKnowledgeLiveState(
   let recentAttachments = 0;
   let recentTranscripts = 0;
   const byFormat = new Map<string, number>();
-
   try {
     const batch = await runtime.getMemories({
       tableName: "documents",
@@ -411,13 +396,8 @@ async function renderKnowledgeLiveState(
     runtime.reportError("PageScopedContext.knowledgeLiveState", err);
     return "Live knowledge state: unavailable (documents store unreachable).";
   }
-
   const lines: string[] = [
-    `Live knowledge state (last 7 days): ${recentAttachments} ingested chat attachment${
-      recentAttachments === 1 ? "" : "s"
-    }, ${recentTranscripts} transcript mirror${
-      recentTranscripts === 1 ? "" : "s"
-    }.`,
+    `Live knowledge state (last 7 days): ${recentAttachments} ingested chat attachment${recentAttachments === 1 ? "" : "s"}, ${recentTranscripts} transcript mirror${recentTranscripts === 1 ? "" : "s"}.`,
   ];
   if (byFormat.size > 0) {
     const parts = [...byFormat.entries()]
@@ -427,7 +407,6 @@ async function renderKnowledgeLiveState(
   }
   return lines.join("\n");
 }
-
 /**
  * Live transcript state for the Transcripts view (#13587): count of recorded
  * voice transcripts ingested over the trailing week. Transcripts land in the
@@ -443,7 +422,6 @@ async function renderTranscriptsLiveState(
   const windowStart = now - KNOWLEDGE_LIVE_STATE_WINDOW_MS;
   let recentTranscripts = 0;
   let newestAt: number | undefined;
-
   try {
     const batch = await runtime.getMemories({
       tableName: "documents",
@@ -467,14 +445,11 @@ async function renderTranscriptsLiveState(
     runtime.reportError("PageScopedContext.transcriptsLiveState", err);
     return "Live transcript state: unavailable (transcript store unreachable).";
   }
-
   if (recentTranscripts === 0) {
     return "Live transcript state (last 7 days): no recorded transcripts yet.";
   }
   const lines: string[] = [
-    `Live transcript state (last 7 days): ${recentTranscripts} recorded transcript${
-      recentTranscripts === 1 ? "" : "s"
-    }.`,
+    `Live transcript state (last 7 days): ${recentTranscripts} recorded transcript${recentTranscripts === 1 ? "" : "s"}.`,
   ];
   if (typeof newestAt === "number") {
     const minutesAgo = Math.max(0, Math.round((now - newestAt) / 60000));
@@ -482,7 +457,6 @@ async function renderTranscriptsLiveState(
   }
   return lines.join("\n");
 }
-
 /**
  * Render the live-state brief for a `ConversationScope`. Returns null for scopes
  * that carry no live-state surface (connectors/plugins/settings today), which
@@ -516,7 +490,6 @@ export async function renderLiveStateForScope(
       return null;
   }
 }
-
 /**
  * Map a view id (as carried on VIEW_SWITCHED / ViewDeclaration.id) to the
  * `ConversationScope` whose live-state renderer applies. Ids not listed have no
@@ -534,7 +507,6 @@ const VIEW_ID_TO_SCOPE: Record<string, ConversationScope> = {
   apps: "page-apps",
   connectors: "page-connectors",
 };
-
 /**
  * Live-state brief for the proactive-interaction judge, keyed by view id.
  * Returns null when the view has no live-state surface. Shared with the

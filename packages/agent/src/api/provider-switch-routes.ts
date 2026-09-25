@@ -9,20 +9,23 @@
  */
 import type http from "node:http";
 import type { SecretsManager } from "@elizaos/auth/vault";
-import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  logger,
   normalizeFirstRunProviderId,
   PostProviderSwitchRequestSchema,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+  type ReadJsonBodyOptions,
+} from "@elizaos/core";
+
+import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import type { ElizaConfig } from "../config/config.ts";
+import type {
+  ProviderSwitchIntent,
+  RuntimeOperationManager,
+} from "../runtime/operations/types.ts";
 import {
   defaultSecretsManager,
-  type ProviderSwitchIntent,
   persistProviderApiKey,
-  type RuntimeOperationManager,
-} from "../runtime/operations/index.ts";
+} from "../runtime/operations/vault-bridge.ts";
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,

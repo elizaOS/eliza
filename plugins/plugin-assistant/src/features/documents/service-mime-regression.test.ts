@@ -7,14 +7,10 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import type { Character, Memory, UUID } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
 
 const AGENT_ID = "00000000-0000-4000-8000-000000019153" as UUID;
@@ -73,7 +69,9 @@ async function ingestPdf(
     })
   )
     .filter(
-      (fragment) => fragment.metadata?.documentId === result.clientDocumentId,
+      (fragment) =>
+        fragment.metadata?.documentId === result.clientDocumentId &&
+        fragment.metadata?.fragmentRole !== "source-segment",
     )
     .sort((left, right) => fragmentPosition(left) - fragmentPosition(right));
   expect(fragments).toHaveLength(result.fragmentCount);

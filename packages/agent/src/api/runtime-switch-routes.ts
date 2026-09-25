@@ -35,18 +35,20 @@
 
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
-
-import { logger } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
-  DEFAULT_ELIGIBLE_MODEL_IDS,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  FIRST_RUN_DEFAULT_MODEL_ID,
-  findCatalogModel,
+  logger,
   type ProviderId,
   readJsonBody,
   resolveServerOnlyPort,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
+import {
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { PendingRequestMap } from "./pending-request-map.ts";
 
 // Provider ids as registered with the routing layer. Typed against the shared
@@ -56,10 +58,8 @@ import { PendingRequestMap } from "./pending-request-map.ts";
 // runtime modules.
 const LOCAL_TEXT_PROVIDER: ProviderId = "eliza-local-inference";
 const CLOUD_TEXT_PROVIDER: ProviderId = "elizacloud";
-
 const PREFIX = "/api/runtime";
 let modelSwitchOperation: Promise<void> | undefined;
-
 async function withModelSwitchLock<T>(operation: () => Promise<T>): Promise<T> {
   const previous = modelSwitchOperation;
   let release: () => void = () => undefined;
@@ -75,16 +75,13 @@ async function withModelSwitchLock<T>(operation: () => Promise<T>): Promise<T> {
     if (modelSwitchOperation === current) modelSwitchOperation = undefined;
   }
 }
-
 /** How long the model-load call may take before the switch reports an error. */
-const ACTIVE_LOAD_TIMEOUT_MS = 120_000;
+const ACTIVE_LOAD_TIMEOUT_MS = 120000;
 /** How long the shell gets to resolve + apply an agent switch. */
-const AGENT_SWITCH_TIMEOUT_MS = 12_000;
-const LOOPBACK_TIMEOUT_MS = 10_000;
-
+const AGENT_SWITCH_TIMEOUT_MS = 12000;
+const LOOPBACK_TIMEOUT_MS = 10000;
 export type ModelSwitchTarget = "local" | "cloud";
 export type ModelSwitchStatus = "ready" | "loading" | "downloading";
-
 /** Wire response of POST /api/runtime/model-switch. */
 export interface ModelSwitchResponse {
   ok: true;
@@ -95,7 +92,6 @@ export interface ModelSwitchResponse {
   /** Bundle size in GB when status === "downloading" (from the catalog). */
   downloadSizeGb?: number;
 }
-
 /** Wire response of POST /api/runtime/agent-switch. */
 export interface AgentSwitchResponse {
   ok: boolean;
@@ -108,9 +104,7 @@ export interface AgentSwitchResponse {
    */
   reason?: string;
 }
-
 const pendingAgentSwitches = new PendingRequestMap();
-
 export interface RuntimeSwitchRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -122,17 +116,14 @@ export interface RuntimeSwitchRouteContext {
   /** Test seam; defaults to global fetch against the server's own loopback. */
   loopbackFetch?: typeof fetch;
 }
-
 function loopbackBase(): string {
   return `http://127.0.0.1:${resolveServerOnlyPort(process.env)}`;
 }
-
 interface LoopbackResult {
   ok: boolean;
   status: number;
   body: Record<string, unknown> | null;
 }
-
 async function loopbackJson(
   fetchImpl: typeof fetch,
   method: "GET" | "POST",
@@ -159,11 +150,9 @@ async function loopbackJson(
         : null,
   };
 }
-
 function sanctionedLocalIds(): string {
   return [...DEFAULT_ELIGIBLE_MODEL_IDS].join(", ");
 }
-
 /**
  * Resolve the effective local model id for a switch request: an explicit
  * sanctioned id wins; otherwise the current TEXT_LARGE assignment when it is
@@ -187,7 +176,6 @@ async function resolveLocalModelId(
   }
   return FIRST_RUN_DEFAULT_MODEL_ID;
 }
-
 async function applyTextRouting(
   fetchImpl: typeof fetch,
   provider: ProviderId,
@@ -204,7 +192,6 @@ async function applyTextRouting(
     throw new Error(`routing/text returned ${routing.status}`);
   }
 }
-
 async function isModelInstalled(
   fetchImpl: typeof fetch,
   modelId: string,
@@ -225,14 +212,12 @@ async function isModelInstalled(
     )
   );
 }
-
 async function switchToLocal(
   fetchImpl: typeof fetch,
   modelId: string,
 ): Promise<ModelSwitchResponse> {
   const catalog = findCatalogModel(modelId);
   const displayName = catalog?.displayName ?? modelId;
-
   // Assign the chat slot first so readiness derivation reflects the chosen
   // tier even while the bundle is still downloading.
   const assignment = await loopbackJson(
@@ -275,7 +260,6 @@ async function switchToLocal(
     await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
     return { ok: true, target: "local", model: modelId, displayName, status };
   }
-
   const download = await loopbackJson(
     fetchImpl,
     "POST",
@@ -299,7 +283,6 @@ async function switchToLocal(
     ...(catalog ? { downloadSizeGb: catalog.sizeGb } : {}),
   };
 }
-
 async function switchToCloud(
   fetchImpl: typeof fetch,
   modelId: string,
@@ -313,7 +296,6 @@ async function switchToCloud(
     status: "ready",
   };
 }
-
 /**
  * Resolve a pending agent switch from the frontend's result callback. Exposed
  * for the route's own result endpoint and for tests.
@@ -335,21 +317,18 @@ export function resolveAgentSwitchResult(result: {
     },
   });
 }
-
 export async function handleRuntimeSwitchRoutes(
   ctx: RuntimeSwitchRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, json, error } = ctx;
   if (!pathname.startsWith(PREFIX)) return false;
   const fetchImpl = ctx.loopbackFetch ?? fetch;
-
   // ── POST /api/runtime/model-switch ────────────────────────────────────────
   if (method === "POST" && pathname === `${PREFIX}/model-switch`) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
     if (!body) return true;
-
     const target = body.target;
     if (target !== "local" && target !== "cloud") {
       error(res, 'target must be "local" or "cloud"', 400);
@@ -359,7 +338,6 @@ export async function handleRuntimeSwitchRoutes(
       typeof body.model === "string" && body.model.trim().length > 0
         ? body.model.trim()
         : null;
-
     // Sanctioned-models-only is a hard product rule: local = curated Eliza-1
     // release tiers, cloud = the managed default text model. No other ids.
     if (
@@ -386,7 +364,6 @@ export async function handleRuntimeSwitchRoutes(
       );
       return true;
     }
-
     try {
       const result = await withModelSwitchLock(async () =>
         target === "local"
@@ -399,7 +376,6 @@ export async function handleRuntimeSwitchRoutes(
               requestedModel ?? DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
             ),
       );
-
       logger.info(
         {
           src: "RuntimeSwitchRoutes",
@@ -430,14 +406,12 @@ export async function handleRuntimeSwitchRoutes(
     }
     return true;
   }
-
   // ── POST /api/runtime/agent-switch ────────────────────────────────────────
   if (method === "POST" && pathname === `${PREFIX}/agent-switch`) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
     if (!body) return true;
-
     const profile =
       typeof body.profile === "string" && body.profile.trim().length > 0
         ? body.profile.trim()
@@ -453,7 +427,6 @@ export async function handleRuntimeSwitchRoutes(
       } satisfies AgentSwitchResponse);
       return true;
     }
-
     const requestId = randomUUID();
     logger.info(
       { src: "RuntimeSwitchRoutes", requestId, profile },
@@ -464,7 +437,6 @@ export async function handleRuntimeSwitchRoutes(
       AGENT_SWITCH_TIMEOUT_MS,
     );
     ctx.broadcastWs({ type: "shell:switch-agent", requestId, profile });
-
     try {
       const outcome = await pending;
       const detail =
@@ -501,7 +473,6 @@ export async function handleRuntimeSwitchRoutes(
     }
     return true;
   }
-
   // ── POST /api/runtime/agent-switch/result ─────────────────────────────────
   if (method === "POST" && pathname === `${PREFIX}/agent-switch/result`) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
@@ -526,6 +497,5 @@ export async function handleRuntimeSwitchRoutes(
     json(res, { ok: true });
     return true;
   }
-
   return false;
 }

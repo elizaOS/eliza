@@ -1,17 +1,15 @@
 /** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
 import { Capacitor } from "@capacitor/core";
-import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
+import type { RemoteControllerPublicIdentity } from "@elizaos/core/contracts/remote-control";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  RemoteHostDirectory,
-  RemoteHostSummary,
-  RemotePairingClaimReceipt,
-  RemoteSessionSummary,
-} from "../../api/remote-control-cloud-client";
 import {
   RemoteCloudRequestError,
   RemoteControlAuthenticationRequiredError,
+  type RemoteHostDirectory,
+  type RemoteHostSummary,
+  type RemotePairingClaimReceipt,
+  type RemoteSessionSummary,
 } from "../../api/remote-control-cloud-client";
 import { createDefaultRemoteControlCloudClient } from "../../api/remote-control-cloud-default";
 import { getOrCreateRemoteControllerIdentity } from "../../platform/remote-controller";
@@ -54,14 +52,12 @@ function messageFor(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim()) return cause.message;
   return "The device request failed. Check the connection and try again.";
 }
-
 function isCloudAuthenticationRequired(cause: unknown): boolean {
   return (
     cause instanceof RemoteControlAuthenticationRequiredError ||
     (cause instanceof RemoteCloudRequestError && cause.status === 401)
   );
 }
-
 async function startSshWithCredentialCleanup(
   runtimeId: string,
   input: SshConnectInput,
@@ -102,7 +98,6 @@ async function startSshWithCredentialCleanup(
     throw cause;
   }
 }
-
 function platformName(platform: RemoteHostSummary["platform"]): string {
   if (platform === "macos") return "Mac";
   if (platform === "windows") return "Windows PC";
@@ -125,7 +120,6 @@ function desktopTargetPlatform():
   if (platform.includes("linux")) return "linux";
   return null;
 }
-
 function controllerClaimView(
   claim: RemotePairingClaimReceipt,
 ): ControllerPairingClaimView {
@@ -137,7 +131,6 @@ function controllerClaimView(
     capabilities: claim.capabilities,
   };
 }
-
 function requireHostCreatedAt(value: string): number {
   const createdAt = Date.parse(value);
   if (!Number.isSafeInteger(createdAt) || createdAt <= 0) {
@@ -145,7 +138,6 @@ function requireHostCreatedAt(value: string): number {
   }
   return createdAt;
 }
-
 function restoredRelayProfile(
   host: RemoteHostSummary,
   session: RemoteSessionSummary,
@@ -179,7 +171,6 @@ function restoredRelayProfile(
     },
   };
 }
-
 function profileTarget(
   profile: AgentProfile,
   activeId: string | null,
@@ -276,7 +267,6 @@ function profileTarget(
     canRemove: profile.kind === "remote",
   };
 }
-
 function hostTarget(
   host: RemoteHostSummary,
   sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
@@ -321,14 +311,12 @@ function hostTarget(
     canRevoke: !revoked && Boolean(activeHere),
   };
 }
-
 interface RelayRevocationAuthority {
   sessionId: string;
   ownerId: string;
   controllerDeviceId: string;
   profile: AgentProfile | null;
 }
-
 function relayAuthorityFromProfile(
   profile: AgentProfile,
 ): RelayRevocationAuthority | null {
@@ -341,7 +329,6 @@ function relayAuthorityFromProfile(
     profile,
   };
 }
-
 function resolveRelayRevocationAuthority(
   targetId: string,
   profiles: readonly AgentProfile[],
@@ -351,7 +338,6 @@ function resolveRelayRevocationAuthority(
   const directProfile = profiles.find((profile) => profile.id === targetId);
   if (directProfile) return relayAuthorityFromProfile(directProfile);
   if (!targetId.startsWith("host:") || !controller) return null;
-
   const hostId = targetId.slice("host:".length);
   const session = (sessions.get(hostId) ?? []).find(
     (candidate) =>
@@ -371,7 +357,6 @@ function resolveRelayRevocationAuthority(
     profile,
   };
 }
-
 function buildRuntimeTargets(
   registry: AgentProfileRegistry,
   sshStatuses: ReadonlyMap<string, SshRuntimeStatus>,
@@ -412,7 +397,6 @@ function buildRuntimeTargets(
     .map((host) => hostTarget(host, sessions, controller));
   return [...profiles, ...hosts];
 }
-
 async function revokeRelayAuthorityWithCleanup(
   authority: RelayRevocationAuthority,
   dependencies: {
@@ -433,7 +417,6 @@ async function revokeRelayAuthorityWithCleanup(
   });
   if (authority.profile) dependencies.removeProfile(authority.profile.id);
 }
-
 interface RuntimeRemovalDependencies {
   revokeSession: (sessionId: string) => Promise<void>;
   clearSession: (input: {
@@ -445,7 +428,6 @@ interface RuntimeRemovalDependencies {
   deleteCredential: (runtimeId: string) => Promise<unknown>;
   removeProfile: (profileId: string) => void;
 }
-
 async function removeRuntimeWithAuthority(
   profile: AgentProfile,
   dependencies: RuntimeRemovalDependencies,
@@ -461,7 +443,6 @@ async function removeRuntimeWithAuthority(
   }
   dependencies.removeProfile(profile.id);
 }
-
 async function revokeLinuxHostCloudFirst(
   hostId: string,
   dependencies: {
@@ -476,7 +457,6 @@ async function revokeLinuxHostCloudFirst(
     );
   }
 }
-
 export function DevicesRuntimesContainer({
   className,
 }: {
@@ -507,13 +487,11 @@ export function DevicesRuntimesContainer({
   const [cloudState, setCloudState] = useState<
     "loading" | "available" | "signed-out" | "error"
   >("loading");
-
   const refresh = useCallback(async () => {
     setError(null);
     setCloudState("loading");
     const nextRegistry = loadAgentProfileRegistry();
     setRegistry(nextRegistry);
-
     const sshProfiles = nextRegistry.profiles.filter(
       (profile) => profile.connectionMode === "ssh",
     );
@@ -554,7 +532,6 @@ export function DevicesRuntimesContainer({
     } else {
       setLinuxTarget(null);
     }
-
     try {
       const cloud = createDefaultRemoteControlCloudClient();
       const nextDirectory = await cloud.listHosts();
@@ -579,7 +556,6 @@ export function DevicesRuntimesContainer({
       setCloudState("available");
       setController(nextController);
       setSessions(nextSessions);
-
       for (const host of nextDirectory.hosts) {
         for (const session of nextSessions.get(host.id) ?? []) {
           if (session.status !== "active") continue;
@@ -614,11 +590,9 @@ export function DevicesRuntimesContainer({
       }
     }
   }, []);
-
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
   const run = useCallback(async (operation: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -632,7 +606,6 @@ export function DevicesRuntimesContainer({
       setBusy(false);
     }
   }, []);
-
   const targets = useMemo(() => {
     return buildRuntimeTargets(
       registry,
@@ -642,7 +615,6 @@ export function DevicesRuntimesContainer({
       controller,
     );
   }, [controller, directory, registry, sessions, sshStatuses]);
-
   const onSelect = (id: string) =>
     run(async () => {
       const result = switchRuntimeNonDestructive(id);
@@ -651,7 +623,6 @@ export function DevicesRuntimesContainer({
           "That runtime could not be selected. Check its connection and try again.",
         );
     });
-
   const onPair = (targetId: string, code: string) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -664,7 +635,6 @@ export function DevicesRuntimesContainer({
         controllerClaimView(outcome.data?.claim as RemotePairingClaimReceipt),
       );
     });
-
   const onRevoke = (targetId: string) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -674,7 +644,6 @@ export function DevicesRuntimesContainer({
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
-
   const onRemove = (id: string) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -683,7 +652,6 @@ export function DevicesRuntimesContainer({
       });
       if (!outcome.ok) throw new Error(outcome.error);
     });
-
   const onRetry = (id: string) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -693,7 +661,6 @@ export function DevicesRuntimesContainer({
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
-
   const onInspectSsh = (input: { target: string; sshPort: number }) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -704,7 +671,6 @@ export function DevicesRuntimesContainer({
       if (!outcome.ok) throw new Error(outcome.error);
       setSshInspection(outcome.data?.inspection as SshHostInspection);
     });
-
   const onConnectSsh = (input: SshConnectInput) =>
     run(async () => {
       const runtimeId = pendingSshId.current;
@@ -718,7 +684,6 @@ export function DevicesRuntimesContainer({
       setSshInspection(null);
       await refresh();
     });
-
   const onEnrollLinuxTarget = (managedNetwork: boolean) =>
     run(async () => {
       const platform = desktopTargetPlatform();
@@ -735,7 +700,6 @@ export function DevicesRuntimesContainer({
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
-
   const onCreateTargetPairing = () =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -777,7 +741,6 @@ export function DevicesRuntimesContainer({
         status: "pending",
       });
     });
-
   const pairingSessionId = pairing?.sessionId;
   useEffect(() => {
     if (!pairingSessionId) return;
@@ -811,7 +774,7 @@ export function DevicesRuntimesContainer({
       }
     };
     void update();
-    const timer = window.setInterval(() => void update(), 2_000);
+    const timer = window.setInterval(() => void update(), 2000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -856,7 +819,6 @@ export function DevicesRuntimesContainer({
       if (!outcome.ok) throw new Error(outcome.error);
       setPairing(null);
     });
-
   const onClaimControllerPairing = useCallback(
     (input: { sessionId: string; code: string }) =>
       run(async () => {
@@ -871,7 +833,6 @@ export function DevicesRuntimesContainer({
       }),
     [run],
   );
-
   useEffect(
     () =>
       subscribeRemoteControllerPairingIntents((intent) =>
@@ -882,7 +843,6 @@ export function DevicesRuntimesContainer({
       ),
     [onClaimControllerPairing],
   );
-
   const onSetLinuxTargetRunning = (running: boolean) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -891,7 +851,6 @@ export function DevicesRuntimesContainer({
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
-
   const onRevokeLinuxTarget = () =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
@@ -902,7 +861,6 @@ export function DevicesRuntimesContainer({
       setPairing((current) => (current?.hostId === hostId ? null : current));
       await refresh();
     });
-
   return (
     <DevicesRuntimesSection
       className={className}
@@ -932,7 +890,6 @@ export function DevicesRuntimesContainer({
     />
   );
 }
-
 export const devicesRuntimesInternals = {
   buildRuntimeTargets,
   hostTarget,

@@ -1,12 +1,11 @@
 /** Exercises the rendered Settings download action against real catalog publication and hardware policy. */
 // @vitest-environment jsdom
 
-import type { HardwareProbe } from "@elizaos/shared";
-import { MODEL_CATALOG } from "@elizaos/shared";
+import type { HardwareProbe } from "@elizaos/core/contracts/local-inference";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
-import { localInferenceService } from "../../services/local-inference/service";
 import { FirstRunOffer } from "./FirstRunOffer";
 
 const hardware: HardwareProbe = {
@@ -20,14 +19,12 @@ const hardware: HardwareProbe = {
   recommendedBucket: "large",
   source: "os-fallback",
 };
-
 afterEach(cleanup);
-
 it("dispatches a published download even when a larger pending tier fits the Mac", () => {
   const onDownload = vi.fn();
   render(
     <FirstRunOffer
-      catalog={localInferenceService.getCatalog()}
+      catalog={filterSettingsDefaultLocalModels(MODEL_CATALOG)}
       installed={[]}
       downloads={[]}
       hardware={hardware}
@@ -44,7 +41,6 @@ it("dispatches a published download even when a larger pending tier fits the Mac
   );
   expect(selected?.publishStatus).toBe("published");
 });
-
 it("offers no download when the catalog has no published tier", () => {
   const onDownload = vi.fn();
   const pending = MODEL_CATALOG.map((model) => ({

@@ -21,16 +21,16 @@
  * evaluates what is stored. Default-matrix ratification is tracked in #14777 —
  * revisit the ordering below if D4/D5 land differently.
  */
+import type { AccessContext } from "../types/access-context.js";
 import type {
-	AccessContext,
 	ArtifactRoomSnapshot,
 	ArtifactShareGrant,
 	ArtifactShareGrantMode,
 	ArtifactShareMetadata,
 	Memory,
 	MemoryScope,
-	UUID,
-} from "../types";
+} from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 import { actorFromAccessContext, canReadScope } from "./filter";
 
 /** What a viewer's DTO may contain for one artifact. */

@@ -7,14 +7,15 @@
  * merge mutation errors plus cache invalidation, person detail assembly, and
  * the cluster-aware memory fan-out helpers.
  */
-import { describe, expect, it } from "vitest";
+
 import type {
   IAgentRuntime,
   Memory,
   Metadata,
   Relationship,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   createNativeRelationshipsGraphService,
   getMemoriesForCluster,

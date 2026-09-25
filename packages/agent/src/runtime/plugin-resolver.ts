@@ -18,21 +18,15 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { Plugin } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
-import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
-  type AppManifestBlock,
-  applyAppManifestDefaults,
-  filterCandidatesByAppManifest,
-  readAppManifest,
-} from "@elizaos/shared/config/app-manifest";
-import {
-  applyPluginManifestVerdicts,
-  evaluatePluginManifests,
-  type PluginManifestCandidate,
-  type PluginManifestVerdict,
-} from "@elizaos/shared/config/plugin-manifest";
+  ElizaError,
+  formatError,
+  isMobilePlatform,
+  logger,
+  type Plugin,
+  type PluginInstallRecord,
+} from "@elizaos/core";
+
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,
@@ -40,7 +34,18 @@ import {
 } from "../config/dev-cloud-env-authority.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
-import type { PluginInstallRecord } from "../config/types.eliza.ts";
+import {
+  type AppManifestBlock,
+  applyAppManifestDefaults,
+  filterCandidatesByAppManifest,
+  readAppManifest,
+} from "../host-manifests/app-manifest.js";
+import {
+  applyPluginManifestVerdicts,
+  evaluatePluginManifests,
+  type PluginManifestCandidate,
+  type PluginManifestVerdict,
+} from "../host-manifests/plugin-manifest.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.ts";
 import {
   BLOCKING_CORE_PLUGINS,

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /** Exercises owner-authorized Notes reads against real filesystem state, trusted dispatch, the planner loop and reply-egress guard with bounded scripted models. */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -9,13 +10,13 @@ import {
   type IAgentRuntime,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  evaluatePlannedReplyEgress,
-  plannedReplyHasClaimGroundingReceipt,
-} from "@elizaos/plugin-assistant";
 import { initializeTestRuntime } from "@elizaos/testing";
 import { afterEach, expect, test } from "vitest";
 import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  evaluatePlannedReplyEgress,
+  plannedReplyHasClaimGroundingReceipt,
+} from "../../../plugin-assistant/src/services/message/egress-policy.ts";
 import { notesAction } from "../action.js";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";
@@ -88,6 +89,31 @@ test("an empty owner read remains structured and does not license an invented br
   expect(result.text).toBeUndefined();
   expect(result.userFacingText).toBeUndefined();
   expect(result.verifiedUserFacing).toBeUndefined();
+  for (const reply of [
+    "You have no saved notes.",
+    "You have no notes saved at the moment.",
+  ]) {
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        actionResults: [result],
+        actions: [notesAction],
+      }),
+    ).toEqual({ verdict: "allow" });
+  }
+  for (const reply of [
+    "You have no tasks.",
+    "You have no notes or tasks.",
+    "You have no notes from last week.",
+  ]) {
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        actionResults: [result],
+        actions: [notesAction],
+      }).verdict,
+    ).toBe("reject");
+  }
   expect(result.turnComplete).toBeUndefined();
   expect(
     evaluatePlannedReplyEgress({
@@ -236,4 +262,18 @@ test("denied reads and mutations cannot supply empty-read authority", async () =
       }),
     ).toBe(false);
   }
+});
+
+test("a later write invalidates earlier empty inventory authority", async () => {
+  const { invoke } = await setup();
+  const empty = await invoke({ action: "list" });
+  const created = await invoke({ action: "create", content: "A real note" });
+  expect(created.success).toBe(true);
+  expect(
+    evaluatePlannedReplyEgress({
+      reply: "You have no saved notes.",
+      actionResults: [empty, created],
+      actions: [notesAction],
+    }).verdict,
+  ).toBe("reject");
 });

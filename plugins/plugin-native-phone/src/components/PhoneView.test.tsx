@@ -1,3 +1,4 @@
+/** Exercises the rendered phone surface against a controlled bridge, including permission and unavailable-state recovery. */
 // @vitest-environment jsdom
 
 // Drives PhoneView through the rendered DOM for the shipped GUI surface.
@@ -201,6 +202,18 @@ describe("PhoneView — unified GUI dialer", () => {
 });
 
 describe("PhoneView — recent calls", () => {
+  it("keeps calling disabled when status fails and recovers on refresh", async () => {
+    phoneBridge.getStatus.mockRejectedValueOnce(
+      new Error("Telecom unavailable"),
+    );
+    render(React.createElement(PhoneView));
+    await screen.findByText("Telecom unavailable");
+    fireEvent.click(button("key-5"));
+    expect(button("phone-call").disabled).toBe(true);
+    fireEvent.click(button("phone-refresh"));
+    await screen.findByText("Ada Lovelace");
+    expect(button("phone-call").disabled).toBe(false);
+  });
   it("shows a disabled refresh control while the first device read is pending", async () => {
     let resolveCalls!: (value: { calls: typeof recentCalls }) => void;
     phoneBridge.listRecentCalls.mockImplementationOnce(
@@ -211,6 +224,8 @@ describe("PhoneView — recent calls", () => {
     );
     render(React.createElement(PhoneView));
     await screen.findByText("loading");
+    expect(screen.queryByText("None")).toBeNull();
+    expect(screen.queryByText("0 recent")).toBeNull();
     expect(button("phone-refresh").disabled).toBe(true);
     resolveCalls({ calls: recentCalls });
     await screen.findByText("Ada Lovelace");
@@ -268,7 +283,11 @@ describe("PhoneView — recent calls", () => {
       new Error("bridge unavailable"),
     );
     render(React.createElement(PhoneView));
-    await screen.findByText(/Phone access is needed/i);
+    await screen.findByText("bridge unavailable");
+    await screen.findByText("Recent calls unavailable");
+    expect(screen.queryByText("None")).toBeNull();
+    expect(screen.queryByText("0 recent")).toBeNull();
+    expect(screen.queryByText(/Grant it in your device settings/)).toBeNull();
     expect(phoneBridge.listRecentCalls).not.toHaveBeenCalled();
   });
 

@@ -1,7 +1,7 @@
 /**
  * Resolves workspace sources for real-runtime tests without requiring builds.
- * Core exposes only its public root; removed subpaths remain subject to package
- * exports. Other workspaces retain their declared source entries and barriers.
+ * Core resolves its public root and explicitly declared source leaves; removed
+ * subpaths remain subject to package exports. Private barriers stay enforced.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -188,6 +188,12 @@ export function buildWorkspaceSourceAliases(
       }) =>
         packageName === "@elizaos/core"
           ? [
+              ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
+                find: new RegExp(
+                  `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
+                ),
+                replacement: sourcePath,
+              })),
               {
                 find: /^@elizaos\/core$/,
                 replacement: indexPath,
@@ -205,7 +211,7 @@ export function buildWorkspaceSourceAliases(
                 replacement: indexPath,
               },
               // Asset subpaths (JSON data imports like
-              // `@elizaos/shared/catalog/curated-app-definitions.json`)
+              // `@elizaos/core/catalog/curated-app-definitions.json`)
               // resolve to the source file as-is; the generic rule below would
               // otherwise append `.ts` and break the resolve. First-match wins.
               {

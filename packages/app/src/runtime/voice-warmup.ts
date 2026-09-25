@@ -106,7 +106,7 @@ function isMissingModelHandlerError(err: unknown): boolean {
 /**
  * Retry a warmup call up to `maxRetries` times when the error message
  * indicates a transient HTTP issue (429 / 503). Waits `delayMs` between
- * retries (doubles each attempt). Non-transient errors are re-thrown
+ * retries (increases linearly each attempt). Non-transient errors are re-thrown
  * immediately so the caller's catch handler logs them.
  */
 async function withRetry(

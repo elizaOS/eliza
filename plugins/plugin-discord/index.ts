@@ -6,12 +6,13 @@
  * providers are registered — all behavior flows through services and
  * `DiscordEventTypes` events.
  */
+
 import {
 	getConnectorAccountManager,
 	type IAgentRuntime,
 	logger,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DISCORD_SERVICE_NAME } from "./constants";
@@ -70,16 +71,12 @@ const discordPlugin: Plugin = {
 				"Failed to register Discord provider with ConnectorAccountManager",
 			);
 		}
-
 		registerDiscordDmSensitiveRequestAdapter(runtime);
-
 		// Register the cross-connector triage adapter for the "discord" source.
 		registerDiscordTriageAdapter();
-
 		// Register the Discord target-source enumerator so the host's
 		// connector-target-catalog can surface guild/channel quick-picks.
 		registerDiscordTargetSource(runtime);
-
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
 		const applicationId = runtime.getSetting(
@@ -101,7 +98,6 @@ const discordPlugin: Plugin = {
 		const respondOnlyToMentions = runtime.getSetting(
 			"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
 		) as string;
-
 		printBanner({
 			pluginName: "plugin-discord",
 			description: "Discord bot integration for servers and channels",
@@ -153,7 +149,6 @@ const discordPlugin: Plugin = {
 			],
 			runtime,
 		});
-
 		if (
 			(!token || token.trim() === "") &&
 			(!botTokens || botTokens.trim() === "")
@@ -171,9 +166,7 @@ const discordPlugin: Plugin = {
 		await svc?.stop();
 	},
 };
-
 export default discordPlugin;
-
 // Account management exports (runtime utilities)
 export {
 	DEFAULT_ACCOUNT_ID,

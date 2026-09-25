@@ -3,8 +3,7 @@
  * Route adapters choose the conversation scope and durable outcome shape while
  * this service enforces active-turn ownership and settled-result retention.
  */
-import { ElizaError } from "@elizaos/core";
-import { normalizeChatIdempotencyKey } from "@elizaos/shared/conversation-chat-marker";
+import { ElizaError, normalizeChatIdempotencyKey } from "@elizaos/core";
 
 export interface ChatIdempotencyReservation {
   readonly scope: string;

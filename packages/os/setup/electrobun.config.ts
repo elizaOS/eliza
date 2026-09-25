@@ -40,23 +40,23 @@ export default {
       "../android/release-trust.json": "android/release-trust.json",
       "../android/installer/install-elizaos-android.sh":
         "android/installer/install-elizaos-android.sh",
-      "../scripts/android-installer/validate-release-manifest.mjs":
-        "scripts/android-installer/validate-release-manifest.mjs",
+      "../scripts/android-installer/validate-release-manifest.ts":
+        "scripts/android-installer/validate-release-manifest.ts",
       "../scripts/android-installer/validate-post-flash.sh":
         "scripts/android-installer/validate-post-flash.sh",
-      "../scripts/android/install-release.mjs":
-        "scripts/android/install-release.mjs",
-      "../scripts/android/release-contract.mjs":
-        "scripts/android/release-contract.mjs",
-      "../scripts/android/flash-metadata.mjs":
-        "scripts/android/flash-metadata.mjs",
-      "../scripts/android/revocations.mjs": "scripts/android/revocations.mjs",
-      "../scripts/android/install-lock.mjs": "scripts/android/install-lock.mjs",
-      "../scripts/android/post-boot.mjs": "scripts/android/post-boot.mjs",
-      "../scripts/android/runtime-health.mjs":
-        "scripts/android/runtime-health.mjs",
-      "../scripts/aosp/lib/android-socket-fetch.mjs":
-        "scripts/aosp/lib/android-socket-fetch.mjs",
+      "../scripts/android/install-release.ts":
+        "scripts/android/install-release.ts",
+      "../scripts/android/release-contract.ts":
+        "scripts/android/release-contract.ts",
+      "../scripts/android/flash-metadata.ts":
+        "scripts/android/flash-metadata.ts",
+      "../scripts/android/revocations.ts": "scripts/android/revocations.ts",
+      "../scripts/android/install-lock.ts": "scripts/android/install-lock.ts",
+      "../scripts/android/post-boot.ts": "scripts/android/post-boot.ts",
+      "../scripts/android/runtime-health.ts":
+        "scripts/android/runtime-health.ts",
+      "../scripts/aosp/lib/android-socket-fetch.ts":
+        "scripts/aosp/lib/android-socket-fetch.ts",
     },
     mac: {
       codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),

@@ -15,6 +15,7 @@ import "@elizaos/capacitor-location";
 import "@elizaos/plugin-native-messages/bridge";
 import "@elizaos/plugin-native-inference/bridge";
 import "@elizaos/capacitor-mobile-signals";
+import "@elizaos/capacitor-network-policy";
 import "@elizaos/capacitor-appblocker";
 import "@elizaos/capacitor-bun-runtime";
 import "@elizaos/plugin-native-phone/bridge";

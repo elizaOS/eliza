@@ -5,7 +5,7 @@
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions. Provider, device, deployment, and destructive-effect lanes remain
 # excluded.
-name: PR Static Smoke
+name: PR Validation
 
 on:
   pull_request:
@@ -30,9 +30,14 @@ env:
 
 jobs:
   source-smoke:
-    name: Source static smoke
+    name: Source checks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      # Cloud API checking needs more than 4 GiB; serialize tasks so its
+      # 8 GiB heap does not compete with another compiler on a 16 GiB runner.
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -112,17 +117,17 @@ jobs:
 
       - name: Apply required dependency compatibility patches
         run: |
-          bun packages/scripts/patch-punycode-deprecation.mjs
-          bun packages/scripts/patch-llama-cpp-capacitor.mjs
-          bun packages/scripts/patch-electrobun-linux-cef-profile.mjs
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Test required workflow contracts
         run: >-
           bun test
-          packages/cloud/scripts/shared/messaging-gateway-preflight.test.mjs
+          packages/cloud/scripts/shared/messaging-gateway-preflight.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -137,8 +142,8 @@ jobs:
         env:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
         run: |
-          if [[ -f packages/scripts/pr-core-build-scope.mjs ]]; then
-            node packages/scripts/pr-core-build-scope.mjs "$MERGE_BASE" "$GITHUB_OUTPUT"
+          if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
+            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
           else
             echo "Candidate predates scoped bootstrap; retaining the full core build."
             echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
@@ -151,7 +156,7 @@ jobs:
       - name: Build affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
 
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
@@ -160,12 +165,12 @@ jobs:
       - name: Lint affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run lint:check --concurrency=4 --affected
+        run: node packages/scripts/run-turbo.ts run lint:check --concurrency=4 --affected
 
       - name: Typecheck affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
+        run: node packages/scripts/run-turbo.ts run typecheck --concurrency=4 --affected
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
@@ -341,7 +346,7 @@ jobs:
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           test -n "$merge_base"
           if git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages/cloud/shared packages/core packages/shared \
+            packages/cloud/shared packages/core packages/core \
             package.json bun.lock bunfig.toml turbo.json \
             tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
             .github/workflows/pr-static-smoke.yml; then
@@ -395,9 +400,7 @@ jobs:
             sleep 1
           done
           bun test --config=/dev/null --isolate \
-          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
-          bun test --config=/dev/null \
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \

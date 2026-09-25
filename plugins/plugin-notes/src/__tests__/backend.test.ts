@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
@@ -19,7 +20,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/shared";
+} from "@elizaos/core/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   interact,
@@ -196,6 +197,212 @@ async function invokeRoute(
 }
 
 describe("NotesStore", () => {
+  it.each([
+    "Title\n\nBody\n",
+    "x".repeat(241),
+    `${"a".repeat(239)}😀tail`,
+    "Reminder:  keep both spaces: and this colon.",
+  ])(
+    "lossless content survives persistence and restart: %s",
+    async (content) => {
+      const filePath = await temporaryStateFile();
+      const first = await serviceFor(filePath);
+      const note = await first.createNote({ content });
+      await first.stop();
+      const second = await serviceFor(filePath);
+      const restored = second.getNote(note.id);
+      expect(restored).toEqual(note);
+      expect(`${restored.title}${restored.body}`).toBe(content);
+      await second.stop();
+    },
+  );
+
+  it("migrates a maximum schema1 body once across mutations and restarts", async () => {
+    const filePath = await temporaryStateFile();
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        persistedAt: timestamp,
+        notes: [
+          {
+            id: "note-legacy",
+            title: "Legacy",
+            body: "x".repeat(20000),
+            color: "yellow",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const first = await serviceFor(filePath);
+    expect(first.getNote("note-legacy").body).toBe(`\n${"x".repeat(20000)}`);
+    await first.createNote({ title: "Another" });
+    const expected = first.snapshot();
+    await first.stop();
+    const second = await serviceFor(filePath);
+    expect(second.snapshot()).toEqual(expected);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).schemaVersion).toBe(
+      2,
+    );
+    await second.stop();
+  });
+
+  it("keeps structured create separate from exact content create", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const structured = await service.createNote({
+      title: "Title",
+      body: "Body",
+    });
+    expect(structured.title + structured.body).toBe("Title\nBody");
+    for (const mixed of [
+      { content: "Whole", title: "Other" },
+      { content: "Whole", body: "Other" },
+    ]) {
+      const before = service.snapshot();
+      await expect(service.createNote(mixed)).rejects.toThrow("not both");
+      await expect(
+        service.updateNote(structured.id, mixed, before.revision),
+      ).rejects.toThrow("not both");
+      expect(service.snapshot()).toEqual(before);
+    }
+    const complete = await service.createNote({ content: "Whole\n\nBody\n" });
+    expect(complete.title + complete.body).toBe("Whole\n\nBody\n");
+    await service.stop();
+  });
+
+  it("preserves a long whitespace prefix through complete-content create and restart", async () => {
+    const path = await temporaryStateFile();
+    const first = await serviceFor(path);
+    const content = " ".repeat(300) + "\nValid text\nTail";
+    const note = await first.createNote({ content });
+    await first.stop();
+    const second = await serviceFor(path);
+    const saved = second.getNote(note.id);
+    expect(saved.title + saved.body).toBe(content);
+    await second.stop();
+  });
+
+  it.each([
+    [{ title: "Renamed" }, "Renamed\nBody"],
+    [{ body: "New" }, "Title\nNew"],
+    [{ title: "Renamed", body: "New" }, "Renamed\nNew"],
+    [{ body: "" }, "Title"],
+    [{ body: "\nNew" }, "Title\n\nNew"],
+  ])(
+    "preserves structured update layout and restart for %j",
+    async (patch, expected) => {
+      const filePath = await temporaryStateFile();
+      const first = await serviceFor(filePath);
+      const note = await first.createNote({ title: "Title", body: "Body" });
+      const saved = await first.updateNote(
+        note.id,
+        patch,
+        first.snapshot().revision,
+      );
+      expect(saved.title + saved.body).toBe(expected);
+      await first.stop();
+      const second = await serviceFor(filePath);
+      const restored = second.getNote(note.id);
+      expect(restored.title + restored.body).toBe(expected);
+      await second.stop();
+    },
+  );
+
+  it("atomically edits canonical whitespace prefixes and rejects blank results across restart", async () => {
+    const filePath = await temporaryStateFile();
+    const first = await serviceFor(filePath);
+    const note = await first.createNote({
+      content: " ".repeat(300) + "\nValid text",
+    });
+    const before = first.snapshot();
+    await first.updateNote(
+      note.id,
+      {
+        textEdit: {
+          field: "title",
+          oldText: " ".repeat(240),
+          newText: " ".repeat(239),
+        },
+      },
+      before.revision,
+    );
+    expect(first.getNote(note.id).title).toBe(" ".repeat(239));
+    expect(first.getNote(note.id).body).toBe(note.body);
+    const edited = first.snapshot();
+    expect(edited.revision).toBe(before.revision + 1);
+    const bytes = await fs.readFile(filePath, "utf8");
+    await expect(
+      first.updateNote(
+        note.id,
+        {
+          textEdit: { field: "body", oldText: "Valid text", newText: "" },
+        },
+        edited.revision,
+      ),
+    ).rejects.toThrow("must not be empty");
+    expect(first.snapshot()).toEqual(edited);
+    expect(await fs.readFile(filePath, "utf8")).toBe(bytes);
+    await first.stop();
+    const second = await serviceFor(filePath);
+    const saved = second.getNote(note.id);
+    expect(saved.title + saved.body).toBe(" ".repeat(299) + "\nValid text");
+    expect(second.snapshot().revision).toBe(edited.revision);
+    await second.stop();
+  });
+
+  it("edits and replaces migrated maximum content without losing its separator", async () => {
+    const filePath = await temporaryStateFile();
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        persistedAt: timestamp,
+        notes: [
+          {
+            id: "note-legacy",
+            title: "L".repeat(240),
+            body: "y" + "x".repeat(19999),
+            color: "yellow",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const first = await serviceFor(filePath);
+    await first.updateNote("note-legacy", {
+      textEdit: { field: "body", oldText: "y", newText: "z" },
+    });
+    const edited = first.getNote("note-legacy");
+    const beforeStale = await fs.readFile(filePath, "utf8");
+    await expect(
+      first.updateNote(
+        "note-legacy",
+        { content: edited.title + edited.body },
+        3,
+      ),
+    ).rejects.toMatchObject({ code: "NOTES_EDIT_CONFLICT" });
+    expect(await fs.readFile(filePath, "utf8")).toBe(beforeStale);
+    expect(edited.body).toBe("\nz" + "x".repeat(19999));
+    await first.updateNote(
+      "note-legacy",
+      { content: edited.title + edited.body },
+      first.snapshot().revision,
+    );
+    await first.stop();
+    const second = await serviceFor(filePath);
+    expect(second.getNote("note-legacy").body).toBe(edited.body);
+    await second.stop();
+  });
+
   it("persists one document and restores notes after restart", async () => {
     const filePath = await temporaryStateFile();
     const first = await serviceFor(filePath);
@@ -219,7 +426,7 @@ describe("NotesStore", () => {
 
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
@@ -468,7 +675,7 @@ describe("Notes capabilities", () => {
       id: noteId,
     });
     expect(service.getNote(noteId)).toMatchObject({
-      body: "Polished draft",
+      body: "\nPolished draft",
       color: "green",
     });
     const polishedSnapshot = service.snapshot();
@@ -786,7 +993,7 @@ describe("Notes capabilities", () => {
     expect(remaining).toHaveLength(1);
     expect(remaining[0]).toMatchObject({
       title: "Keep",
-      body: "edited in the race window",
+      body: "\nedited in the race window",
     });
   });
 
@@ -855,8 +1062,8 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_NOT_FOUND" },
     });
     expect(service.listNotes().map((note) => note.body)).toEqual([
-      "Evening",
-      "Morning",
+      "\nEvening",
+      "\nMorning",
     ]);
   });
 
@@ -1071,15 +1278,15 @@ describe("Notes capabilities", () => {
     );
     expect(updated).toMatchObject({
       success: true,
-      data: { note: { title: "Shopping list", body: "Done shopping" } },
+      data: { note: { title: "Shopping list", body: "\nDone shopping" } },
     });
     // "Todo" remains unchanged; order may shift after update.
     expect(
       service.listNotes().map((n) => ({ title: n.title, body: n.body })),
     ).toEqual(
       expect.arrayContaining([
-        { title: "Shopping list", body: "Done shopping" },
-        { title: "Todo", body: "Fix the bug" },
+        { title: "Shopping list", body: "\nDone shopping" },
+        { title: "Todo", body: "\nFix the bug" },
       ]),
     );
   });
@@ -1132,7 +1339,7 @@ describe("Notes capabilities", () => {
 
     // Nothing was mutated.
     expect(service.listNotes().map((n) => n.body)).toEqual(
-      expect.arrayContaining(["Morning sync", "Afternoon review"]),
+      expect.arrayContaining(["\nMorning sync", "\nAfternoon review"]),
     );
   });
 

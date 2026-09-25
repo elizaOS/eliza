@@ -6,14 +6,15 @@
  * deterministic: the runtime, DocumentService, and useModel are vi.fn stubs (the
  * planner-trust path asserts useModel is never called); no live model or DB.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   SearchCategoryRegistration,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { documentAction } from "../actions.ts";
 import { type DocumentListResult, DocumentService } from "../service.ts";
 

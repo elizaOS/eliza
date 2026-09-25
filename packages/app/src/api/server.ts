@@ -21,7 +21,6 @@ import {
   type ConversationMeta,
   clearPersistedFirstRunConfig,
   cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   type ElizaConfig,
@@ -53,9 +52,16 @@ import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-st
 import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import {
+  type AgentRuntime,
+  getHttpRuntime,
+  isElizaSettingsDebugEnabled,
+  logger,
+  resolveLinkedAccountsInConfig,
+  resolveStateDir,
+  settingsDebugCloudSummary,
+} from "@elizaos/core";
+
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { authStoreForRuntime } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
@@ -78,11 +84,16 @@ import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
+  injectApiBaseIntoHtml,
+  isSafeResetStateDir,
+  resolveCorsOrigin,
+} from "@elizaos/agent";
+export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/shared/elizacloud/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -99,7 +110,6 @@ export {
   buildCorsAllowedPorts,
   invalidateCorsAllowedPorts,
 } from "./server-cors";
-export { injectApiBaseIntoHtml } from "./server-html";
 // Re-export helpers from split-out modules so tests can import from "./server"
 export {
   ensureApiTokenForBindHost,
@@ -108,11 +118,6 @@ export {
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
 } from "./server-security";
-export {
-  findOwnPackageRoot,
-  isSafeResetStateDir,
-  resolveCorsOrigin,
-} from "./server-startup";
 export { resolveWalletExportRejection } from "./server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
@@ -148,11 +153,7 @@ async function getLocalInferenceRoutes() {
   return _localInferenceRoutes;
 }
 
-import {
-  ensureRuntimeSqlCompatibility,
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/shared";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/plugin-sql";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -178,10 +179,6 @@ import {
   normalizeRouteKey,
   recordRouteTiming,
 } from "./perf-instrument";
-import {
-  PLUGIN_REGISTRY_LOAD_DEADLINE_MS,
-  resolveWithinDeadline,
-} from "./plugin-registry-load-deadline";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
@@ -200,7 +197,10 @@ const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-aosp-llama",
 ] as const;
 
-import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
+import {
+  clearCloudSecrets,
+  getCloudSecret,
+} from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
@@ -212,7 +212,7 @@ import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-acti
 import {
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "@elizaos/shared/elizacloud/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud/cloud-config/server-cloud-tts";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------

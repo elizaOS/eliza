@@ -1,3 +1,4 @@
+import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
  * the durable per-agent document; HTTP routes and view capabilities call this
@@ -5,8 +6,9 @@
  * identical across every entry point.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { CalendarNoteSourceReference } from "@elizaos/core/contracts/calendar";
 import { NotesStore } from "./store.js";
 import type {
   NotesSnapshot,
@@ -17,7 +19,9 @@ import type {
 import {
   parseCreateNoteInput,
   parseEntityId,
+  parseNoteContent,
   parseNoteEditRevision,
+  parseStickyNote,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -77,7 +81,7 @@ function queryMatches(
   );
   if (exactTitle.length > 0) return exactTitle;
   const contained = indexed.filter(({ note }) =>
-    normalizedLookup(`${note.title} ${note.body} ${note.color}`).includes(
+    normalizedLookup(`${reconstructNoteContent(note)} ${note.color}`).includes(
       target,
     ),
   );
@@ -219,7 +223,7 @@ function applyNotePatch(
     // A replacement callback keeps $&, $1 and similar text literal. The
     // match is checked under the same store barrier that commits the update.
     const replacement = original.replace(oldText, () => newText);
-    const validated = parseUpdateNoteInput({ [field]: replacement });
+    const validated = parseStickyNote({ ...updated, [field]: replacement });
     if (validated[field] !== replacement) {
       throw new ElizaError(
         "The exact edit would require whitespace normalization; nothing changed.",
@@ -233,8 +237,14 @@ function applyNotePatch(
     updated[field] = replacement;
     return updated;
   }
-  if (patch.title !== undefined) updated.title = patch.title;
-  if (patch.body !== undefined) updated.body = patch.body;
+  if (patch.content !== undefined) {
+    Object.assign(updated, parseNoteContent(patch.content));
+  } else {
+    if (patch.title !== undefined) updated.title = patch.title;
+    // Public structured bodies exclude the separator; stored remainders include it.
+    if (patch.body !== undefined)
+      updated.body = patch.body ? `\n${patch.body}` : "";
+  }
   if (patch.color !== undefined) updated.color = patch.color;
   return updated;
 }
@@ -317,6 +327,63 @@ export class NotesService extends Service {
     const note = snapshot.notes.find((candidate) => candidate.id === id);
     if (!note) throw notFound(id);
     return note;
+  }
+
+  sourceReference(note: StickyNote): CalendarNoteSourceReference {
+    if (!this.eventRuntime) {
+      throw new ElizaError(
+        "Notes source references require an agent identity.",
+        {
+          code: "NOTES_SOURCE_UNAVAILABLE",
+        },
+      );
+    }
+    const agentId = String(this.eventRuntime.agentId);
+    return {
+      agentId,
+      noteId: note.id,
+      contentHash: createHash("sha256")
+        .update(JSON.stringify([agentId, note.id, note.title, note.body]))
+        .digest("hex"),
+    };
+  }
+
+  /** Wait for pending Notes writes before checking the exact source bytes. */
+  async assertSourceReference(
+    reference: CalendarNoteSourceReference,
+  ): Promise<void> {
+    let snapshot: NotesSnapshot;
+    try {
+      snapshot = await this.store.persistedSnapshot();
+    } catch (error) {
+      // error-policy:J2 Unreadable source storage cannot authorize calendar dispatch.
+      throw new ElizaError(
+        "The source note could not be read. Restore Notes access and review the calendar draft.",
+        {
+          code: "CALENDAR_NOTE_SOURCE_CONFLICT",
+          cause: error,
+          severity: "ephemeral",
+        },
+      );
+    }
+    const note = snapshot.notes.find(
+      (candidate) => candidate.id === reference.noteId,
+    );
+    if (
+      !note ||
+      !this.eventRuntime ||
+      reference.agentId !== String(this.eventRuntime.agentId) ||
+      this.sourceReference(note).contentHash !== reference.contentHash
+    ) {
+      throw new ElizaError(
+        "The source note changed or is unavailable. Read it again and reconcile the calendar draft before creating the event.",
+        {
+          code: "CALENDAR_NOTE_SOURCE_CONFLICT",
+          severity: "ephemeral",
+          context: { noteId: reference.noteId },
+        },
+      );
+    }
   }
 
   getNoteByLookup(

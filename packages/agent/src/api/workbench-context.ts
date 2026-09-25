@@ -8,8 +8,13 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, Task, UUID } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type {
+  AgentRuntime,
+  ReadJsonBodyOptions,
+  Task,
+  UUID,
+} from "@elizaos/core";
+
 import type { TriggerSummary } from "../triggers/types.ts";
 
 export interface WorkbenchTodoView {

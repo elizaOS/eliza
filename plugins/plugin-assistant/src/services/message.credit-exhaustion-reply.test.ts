@@ -15,22 +15,19 @@
  * a connector would actually post to the channel.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { v4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TrajectoryLimitExceeded } from "../../../../packages/core/src/runtime/limits.ts";
-import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import type { Room } from "../../../../packages/core/src/types/environment.ts";
-import type { Memory } from "../../../../packages/core/src/types/memory.ts";
+import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import {
   asUUID,
   ChannelType,
   type Content,
+  ResponseHandlerFieldRegistry,
+  TrajectoryLimitExceeded,
+  TurnControllerRegistry,
   type UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../packages/core/src/types/state.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { v4 } from "uuid";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import {
   DefaultMessageService,
@@ -127,6 +124,10 @@ function makeFailingRuntime(
     getCurrentRunId: vi.fn(() => RUN_ID),
     endRun: vi.fn(),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: vi.fn(async () => asUUID(v4())),
     updateMemory: vi.fn(async () => true),
     queueEmbeddingGeneration: vi.fn(async () => undefined),

@@ -4,13 +4,10 @@
  * topic, and rendered (excluding the picked topic) when other topics exist.
  * Deterministic: a hand-built runtime stub, no live model.
  */
+
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
 import { characterProvider } from "./character.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";

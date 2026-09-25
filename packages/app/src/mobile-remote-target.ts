@@ -9,10 +9,10 @@ import {
   resolveStateDir,
   Service,
 } from "@elizaos/core";
-import type { HttpPlugin, Route } from "@elizaos/shared/api/http-plugin";
-import { resolveAliasedEnvValue } from "@elizaos/shared/config/boot-config";
-import { REMOTE_AGENT_RESPONSE_LIMIT_BYTES } from "@elizaos/shared/contracts/remote-agent-request";
-import { parseRemoteBrowserCommandPayload } from "@elizaos/shared/contracts/remote-control";
+import type { HttpPlugin, Route } from "@elizaos/core/api/http-plugin";
+import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config-store";
+import { REMOTE_AGENT_RESPONSE_LIMIT_BYTES } from "@elizaos/core/contracts/remote-agent-request";
+import { parseRemoteBrowserCommandPayload } from "@elizaos/core/contracts/remote-control";
 import { LoopbackRemoteTargetExecutor } from "../platforms/electrobun/src/remote-target-executor";
 import { RemoteTargetDesktopService } from "../platforms/electrobun/src/remote-target-rpc";
 import type { RemoteTargetCommandExecutor } from "../platforms/electrobun/src/remote-target-runner";

@@ -5,7 +5,7 @@
  *   1. PGlite TCP bridge (via packages/cloud/scripts/admin/dev/pglite-server.ts)
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
- *   4. cloud-api worker subprocess (cloud-api-e2e-server.mjs)
+ *   4. cloud-api worker subprocess (cloud-api-e2e-server.ts)
  *   5. packages/app (apex) Vite dev subprocess
  *
  * Returns a handle with URLs and a `stop()` that tears everything down.
@@ -13,10 +13,10 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { type AddressInfo, createConnection, createServer } from "node:net";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type RunningControlPlaneMock,
@@ -40,6 +40,8 @@ import {
 } from "./backend-fault-proxy";
 import { buildSharedEnv } from "./env";
 import { type RunningMockLlm, startMockLlm } from "./mock-llm";
+import { trackOwnedReadiness, waitForOwnedReadiness } from "./owned-readiness";
+import { reserveStackPort } from "./port-reservation";
 
 /**
  * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
@@ -48,6 +50,9 @@ import { type RunningMockLlm, startMockLlm } from "./mock-llm";
  */
 function resolveBun(): string {
   if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
+  if (process.versions.bun && existsSync(process.execPath)) {
+    return process.execPath;
+  }
   const names = process.platform === "win32" ? ["bun.exe", "bun"] : ["bun"];
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const dirs = [
@@ -105,18 +110,6 @@ export interface StackHandle {
   logDir: string;
 }
 
-async function pickFreePort(): Promise<number> {
-  return new Promise((resolvePort, rejectPort) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", rejectPort);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo;
-      server.close(() => resolvePort(port));
-    });
-  });
-}
-
 async function waitForTcp(
   host: string,
   port: number,
@@ -153,6 +146,42 @@ async function waitForTcp(
   );
 }
 
+async function waitForOwnedPglite(
+  proc: SpawnedProc,
+  logFile: string,
+  dataDir: string,
+  opts: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  const intervalMs = opts.intervalMs ?? 100;
+  const ownershipMarker = `(data: ${dataDir})`;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (proc.child.exitCode !== null || proc.child.signalCode !== null) {
+      throw new Error(
+        `[stack] owned PGlite exited before readiness (code=${String(proc.child.exitCode)}, signal=${String(proc.child.signalCode)})`,
+      );
+    }
+    const output = await readFile(logFile, "utf8").catch((error: unknown) => {
+      // error-policy:J3 The log may not exist until the spawned process opens it.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return "";
+      }
+      throw error;
+    });
+    if (output.includes(ownershipMarker)) return;
+    await delay(intervalMs);
+  }
+  throw new Error(
+    `[stack] owned PGlite did not publish its data-directory marker within ${timeoutMs}ms`,
+  );
+}
+
 async function waitForHttpOk(
   url: string,
   opts: {
@@ -160,6 +189,7 @@ async function waitForHttpOk(
     intervalMs?: number;
     requestTimeoutMs?: number;
     label?: string;
+    process?: ChildProcess;
   } = {},
 ): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
@@ -168,12 +198,24 @@ async function waitForHttpOk(
   const label = opts.label ?? url;
   const start = Date.now();
   let lastErr: unknown;
+  const assertRunning = () => {
+    if (
+      opts.process &&
+      (opts.process.exitCode !== null || opts.process.signalCode !== null)
+    ) {
+      throw new Error(`[stack] owned ${label} exited before HTTP readiness`);
+    }
+  };
   while (Date.now() - start < timeoutMs) {
+    assertRunning();
     try {
       const res = await fetch(url, {
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
-      if (res.status < 500) return;
+      if (res.ok) {
+        assertRunning();
+        return;
+      }
       lastErr = new Error(`status ${res.status}`);
     } catch (err) {
       lastErr = err;
@@ -189,6 +231,7 @@ interface SpawnedProc {
   child: ChildProcess;
   log: WriteStream;
   name: string;
+  announced: (url: string) => boolean;
 }
 
 function spawnLogged(
@@ -215,7 +258,7 @@ function spawnLogged(
   child.on("exit", (code, signal) => {
     log.write(`\n[${name}] exited code=${code} signal=${signal}\n`);
   });
-  return { child, log, name };
+  return { child, log, name, announced: trackOwnedReadiness(child) };
 }
 
 async function runLoggedStep(
@@ -275,12 +318,20 @@ async function withFakeStripeBootstrapRollback<T>(
 }
 
 export interface StartCloudStackOptions {
+  /** Per-run subprocess log directory; defaults to the package `.logs` path. */
+  logDir?: string;
   /** Skip running cloud-shared migrations. Defaults to false. */
   skipMigrate?: boolean;
   /** Override API port. Default: free port. */
   apiPort?: number;
+  /** Override Wrangler's DevTools inspector port. Default: free port. */
+  inspectorPort?: number;
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
+  /** Override the PGlite bridge port. Default: free port. */
+  pglitePort?: number;
+  /** Test-only fault proving transactional cleanup after PGlite ownership. */
+  testFailAfterPgliteStart?: boolean;
   /**
    * Boot the packages/app (apex) Vite dev server. Defaults to true. Set to false
    * for API-only stacks (e.g. the monetized-app loop) that never drive a browser
@@ -326,20 +377,62 @@ export interface StartCloudStackOptions {
   env?: Readonly<Record<string, string>>;
 }
 
+class PartialStackOwner {
+  private cleanups: Array<() => Promise<void>> = [];
+
+  add(cleanup: () => Promise<void>): void {
+    this.cleanups.push(cleanup);
+  }
+
+  release(): void {
+    this.cleanups = [];
+  }
+
+  async cleanup(): Promise<unknown[]> {
+    const failures: unknown[] = [];
+    for (const cleanup of [...this.cleanups].reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        // error-policy:J6 Startup rollback continues in strict ownership order
+        // so later resources cannot recreate state after an earlier deletion.
+        failures.push(error);
+      }
+    }
+    this.cleanups = [];
+    return failures;
+  }
+}
+
 /**
  * Start the full cloud test stack. Heavy — only call once per worker.
  */
-export async function startCloudStack(
+async function startCloudStackOwned(
   opts: StartCloudStackOptions = {},
+  startup: PartialStackOwner,
 ): Promise<StackHandle> {
-  await mkdir(LOG_DIR, { recursive: true });
+  const logDir = opts.logDir ? resolve(opts.logDir) : LOG_DIR;
+  await mkdir(logDir, { recursive: true });
   const dataDir = await mkdtemp(join(tmpdir(), "cloud-e2e-"));
+  startup.add(() => rm(dataDir, { recursive: true, force: true }));
   const pgDataDir = join(dataDir, "pgdata");
   await mkdir(pgDataDir, { recursive: true });
 
-  const pglitePort = await pickFreePort();
-  const apiPort = opts.apiPort ?? (await pickFreePort());
-  const frontendPort = opts.frontendPort ?? (await pickFreePort());
+  // Keep ports bound while mocks and database migrations start. A closed probe
+  // can be reassigned to one of this very stack's ephemeral mock servers.
+  const reserve = async (port?: number) => {
+    const reservation = await reserveStackPort(port);
+    startup.add(reservation.release);
+    return reservation;
+  };
+  const pgliteReservation = await reserve(opts.pglitePort);
+  const apiReservation = await reserve(opts.apiPort);
+  const inspectorReservation = await reserve(opts.inspectorPort);
+  const frontendReservation = await reserve(opts.frontendPort);
+  const pglitePort = pgliteReservation.port;
+  const apiPort = apiReservation.port;
+  const inspectorPort = inspectorReservation.port;
+  const frontendPort = frontendReservation.port;
 
   // 1. In-process mocks
   const hetzner = await startHetznerMock({
@@ -348,16 +441,20 @@ export async function startCloudStack(
     port: 0,
     actionMs: Number(process.env.MOCK_HETZNER_ACTION_MS ?? "30"),
   });
+  startup.add(() => hetzner.stop());
   const controlPlane = await startControlPlaneMock({
     port: 0,
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
+  startup.add(() => controlPlane.stop());
   const steward = await startStewardMock();
+  startup.add(() => steward.stop());
   const mockLlm =
     opts.mockLlm || opts.mockLlmEchoContext || opts.mockLlmOpenRouter
       ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
       : undefined;
+  if (mockLlm) startup.add(() => mockLlm.stop());
   const mockLlmEnv: Record<string, string> = mockLlm
     ? {
         OPENAI_API_KEY: "mock-llm-key",
@@ -388,6 +485,13 @@ export async function startCloudStack(
       STEWARD_API_URL: steward.url,
       STEWARD_PLATFORM_KEYS: "steward-e2e-platform-key",
       ...opts.env,
+      // Wrangler otherwise binds every local Worker inspector to 9229. Give
+      // each owned stack its own free port so concurrent worktrees cannot
+      // prevent the API from booting.
+      DEV_CLOUD_INSPECTOR_PORT: String(inspectorPort),
+      PATH: [isAbsolute(BUN) ? dirname(BUN) : undefined, process.env.PATH]
+        .filter((entry): entry is string => Boolean(entry))
+        .join(delimiter),
     },
   );
 
@@ -400,6 +504,8 @@ export async function startCloudStack(
     PGLITE_DATA_DIR: pgDataDir,
     PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
   };
+  const pgliteLogFile = join(logDir, "pglite.log");
+  await pgliteReservation.release();
   procs.push(
     spawnLogged(
       "pglite",
@@ -408,14 +514,23 @@ export async function startCloudStack(
       {
         env: pgliteEnv,
         cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "pglite.log"),
+        logFile: pgliteLogFile,
       },
     ),
   );
+  const pgliteProc = procs[procs.length - 1];
+  startup.add(() => killProc(pgliteProc));
+  await waitForOwnedPglite(pgliteProc, pgliteLogFile, pgDataDir);
   await waitForTcp("127.0.0.1", pglitePort, {
     timeoutMs: 60_000,
     label: "pglite",
   });
+  if (opts.testFailAfterPgliteStart) {
+    if (process.env.NODE_ENV !== "test") {
+      throw new Error("testFailAfterPgliteStart requires NODE_ENV=test");
+    }
+    throw new Error("injected Cloud stack startup failure after PGlite");
+  }
 
   const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
   const stackEnv: NodeJS.ProcessEnv = {
@@ -431,6 +546,14 @@ export async function startCloudStack(
   const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
   process.env.DATABASE_URL = databaseUrl;
   process.env.TEST_DATABASE_URL = databaseUrl;
+  startup.add(async () => {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    if (previousTestDatabaseUrl === undefined)
+      delete process.env.TEST_DATABASE_URL;
+    else process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
+  });
+  startup.add(() => closeCloudSharedDatabaseConnections());
 
   if (!opts.skipMigrate) {
     await runLoggedStep(
@@ -440,7 +563,7 @@ export async function startCloudStack(
       {
         env: stackEnv,
         cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-migrate.log"),
+        logFile: join(logDir, "cloud-migrate.log"),
       },
     );
   }
@@ -452,6 +575,9 @@ export async function startCloudStack(
   if (fakeStripe) {
     stackEnv.STRIPE_CLOUD_E2E_API_ORIGIN = fakeStripe.url;
   }
+
+  await apiReservation.release();
+  await inspectorReservation.release();
 
   // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
   // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
@@ -470,19 +596,27 @@ export async function startCloudStack(
         {
           env: stackEnv,
           cwd: REPO_ROOT,
-          logFile: join(LOG_DIR, "cloud-api.log"),
+          logFile: join(logDir, "cloud-api.log"),
         },
       ),
     ),
   );
+  const cloudApiProc = procs[procs.length - 1];
+  startup.add(() => killProc(cloudApiProc));
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
-  await withFakeStripeBootstrapRollback(fakeStripe, () =>
-    waitForHttpOk(`${apiUrl}/api/health`, {
+  await withFakeStripeBootstrapRollback(fakeStripe, async () => {
+    await waitForOwnedReadiness(
+      cloudApiProc.child,
+      cloudApiProc.announced,
+      apiUrl,
+    );
+    await waitForHttpOk(`${apiUrl}/api/health`, {
       timeoutMs: 180_000,
       label: "cloud-api",
-    }),
-  );
+      process: cloudApiProc.child,
+    });
+  });
 
   const backendFaults = opts.backendFaults
     ? await withFakeStripeBootstrapRollback(fakeStripe, () =>
@@ -522,20 +656,23 @@ export async function startCloudStack(
       VITE_API_BASE_URL: frontendApiUrl,
       NEXT_PUBLIC_API_BASE_URL: frontendApiUrl,
     };
+    await frontendReservation.release();
     procs.push(
       await withFakeStripeBootstrapRollback(fakeStripe, () =>
         spawnLogged(
           "frontend",
           "node",
-          [join(REPO_ROOT, "packages/cloud/scripts/e2e/frontend.mjs")],
+          [join(REPO_ROOT, "packages/cloud/scripts/e2e/frontend.ts")],
           {
             env: frontendEnv,
             cwd: frontendDir,
-            logFile: join(LOG_DIR, "frontend.log"),
+            logFile: join(logDir, "frontend.log"),
           },
         ),
       ),
     );
+    const frontendProc = procs[procs.length - 1];
+    startup.add(() => killProc(frontendProc));
 
     frontendUrl = `http://127.0.0.1:${frontendPort}`;
     await withFakeStripeBootstrapRollback(fakeStripe, () =>
@@ -546,6 +683,7 @@ export async function startCloudStack(
         // readiness probe itself from ever observing a healthy cold start.
         requestTimeoutMs: 60_000,
         label: "frontend",
+        process: frontendProc.child,
       }),
     );
   } else {
@@ -553,6 +691,7 @@ export async function startCloudStack(
     // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
     // fixtures (authenticatedPage) skip explicitly rather than reading an empty
     // `urls.frontend` as a pass.
+    await frontendReservation.release();
     frontendSkipReason =
       "frontend boot disabled (stack started with { frontend: false }).";
   }
@@ -600,7 +739,7 @@ export async function startCloudStack(
   process.once("SIGINT", handler);
   process.once("SIGTERM", handler);
 
-  return {
+  const handle: StackHandle = {
     stop,
     urls: {
       api: apiUrl,
@@ -622,6 +761,28 @@ export async function startCloudStack(
       ...(backendFaults ? { backendFaults } : {}),
     },
     dataDir,
-    logDir: LOG_DIR,
+    logDir,
   };
+  startup.release();
+  return handle;
+}
+
+/** Starts the stack transactionally and tears down every acquired resource on boot failure. */
+export async function startCloudStack(
+  opts: StartCloudStackOptions = {},
+): Promise<StackHandle> {
+  const startup = new PartialStackOwner();
+  try {
+    return await startCloudStackOwned(opts, startup);
+  } catch (error) {
+    // error-policy:J2 Startup failure remains authoritative and cleanup failures retain their causes.
+    const cleanupFailures = await startup.cleanup();
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupFailures],
+        "Cloud stack startup and partial cleanup failed",
+      );
+    }
+    throw error;
+  }
 }

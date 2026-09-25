@@ -40,18 +40,14 @@ import {
   completionContextFieldEvaluator,
   contextRequestsFieldEvaluator,
   replyTextFieldEvaluator,
-  withDirectTextBuiltinSchemaDescriptions,
+  topicsFieldEvaluator,
 } from "../../runtime/builtin-field-evaluators";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
-import { getEvaluatorProgressState } from "../evaluator-progress.ts";
-import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
-import {
-  listAvailableContextsForRole,
-  resolveStage1SenderRole,
-} from "./addressing.js";
+import { resolveStage1SenderRole } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
+import { listAvailableContextsForTurn } from "./context-catalog.js";
 import {
   createContextReadTool,
   extractContextRead,
@@ -72,19 +68,17 @@ import {
   type HistoryDiscovery,
   historyReferences,
   loadHistoryReferences,
-  projectReviewedHistory,
   readHistoryContextRequests,
   repairableHistorySourceIds,
   requestedHistory,
   withReviewedHistorySelection,
 } from "./history-discovery.js";
-import { withInactiveArrayFields } from "./inactive-field-schema.js";
+import { withoutInactiveFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
 import {
   createSourceReplySnapshot,
-  resolveSourceReply,
-  SOURCE_REPLY_INSTRUCTIONS,
+  resolveLiteralSourceReply,
   SOURCE_REPLY_SCHEMA,
   type SourceReplyRendering,
 } from "./source-reply.ts";
@@ -170,7 +164,7 @@ export async function generateStage1Decision(
   }: {
     senderRole: Awaited<ReturnType<typeof resolveStage1SenderRole>>;
     context: Awaited<ReturnType<typeof createV5MessageContextObject>>;
-    availableContexts: ReturnType<typeof listAvailableContextsForRole>;
+    availableContexts: Awaited<ReturnType<typeof listAvailableContextsForTurn>>;
     directMessageChannel: boolean;
     progressiveContextChannel: boolean;
     stage1PreprocessStartedAt: number;
@@ -197,66 +191,33 @@ export async function generateStage1Decision(
     senderRole: senderRole as ResponseHandlerSenderRole,
     turnSignal: stage1TurnSignal,
   };
+  const topicsActive = await topicsFieldEvaluator.shouldRun?.(
+    responseHandlerFieldContext,
+  );
   const selectedResponseHandlerFields =
-    args.runtime.responseHandlerFieldRegistry.list();
+    args.runtime.responseHandlerFieldRegistry
+      .list()
+      .filter(
+        (field) =>
+          field !== completionContextFieldEvaluator &&
+          (field !== topicsFieldEvaluator || topicsActive),
+      );
+  const fieldSelection = {
+    includeFieldNames: selectedResponseHandlerFields.map((field) => field.name),
+  };
   let responseHandlerFieldPrompt =
     await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
       responseHandlerFieldContext,
+      fieldSelection,
     );
   const canonicalResponseHandlerSchema =
-    args.runtime.responseHandlerFieldRegistry.composeSchema();
+    args.runtime.responseHandlerFieldRegistry.composeSchema(fieldSelection);
   const loadedContext = new Set<string>();
   const discoveryEnabled = progressiveContextChannel;
-  const responseHandlerSchema = discoveryEnabled
-    ? withDirectTextBuiltinSchemaDescriptions(
-        canonicalResponseHandlerSchema,
-        selectedResponseHandlerFields,
-      )
-    : canonicalResponseHandlerSchema;
   let history: HistoryDiscovery | undefined;
   let historyReadEvidence: HistoryDiscovery | undefined;
-  if (
-    discoveryEnabled &&
-    args.runtime.evaluators?.some(
-      (evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
-    ) &&
-    !args.runtime.providers?.some((provider) =>
-      provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
-    )
-  ) {
-    const started = performance.now();
-    try {
-      const checkpoint = await getEvaluatorProgressState(
-        args.runtime,
-        args.message,
-        HISTORY_RETENTION_EVALUATOR,
-      );
-      history = projectReviewedHistory(
-        context,
-        {
-          agentId: args.runtime.agentId,
-          roomId: args.message.roomId,
-          entityId: args.message.entityId,
-          roles: [senderRole],
-        },
-        checkpoint,
-      );
-    } catch (error) {
-      // error-policy:J4 Report the optional index failure and render complete
-      // original history instead; no unavailable source is treated as absent.
-      args.runtime.reportError("MessageService.historyRetention", error, {
-        roomId: args.message.roomId,
-      });
-    }
-    recordInferenceSpan(
-      "message:history-checkpoint",
-      performance.now() - started,
-      {
-        applied: !!history,
-        retainedSourceCount: history?.visibleEventIds.size ?? 0,
-      },
-    );
-  }
+  // Full originals stay inline and flow unchanged into planning. Builtin
+  // source selection is not another responsibility of the reply handler.
   // A plugin that owns this name retains its ordinary provider-reference
   // contract; framework catalog discovery must not shadow its requests.
   let contextCatalogRead = false;
@@ -280,6 +241,7 @@ export async function generateStage1Decision(
     availableContexts,
     {
       directMessage: directMessageChannel,
+      nativeTools: true,
       progressiveContext: discoveryEnabled,
       responseHandlerFields: responseHandlerFieldPrompt.rendered,
       contextCatalog,
@@ -300,7 +262,6 @@ export async function generateStage1Decision(
   let stage1PrefixHash =
     stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
     hashString(`stage1:${stage1SystemContent}`);
-  let compactInactiveFields = discoveryEnabled;
   let repairHistoryIdentity = false;
   let repairHistorySourceIds: string[] | undefined;
   let nativeHistoryRead = false;
@@ -317,7 +278,7 @@ export async function generateStage1Decision(
     if (!snapshot) return bound;
     const resolveParts = (parsed: Record<string, unknown>) => {
       if (!Array.isArray(parsed.replyText)) return parsed;
-      const resolved = resolveSourceReply(
+      const resolved = resolveLiteralSourceReply(
         discovery.context,
         snapshot,
         parsed,
@@ -386,12 +347,30 @@ export async function generateStage1Decision(
     providerReviewSourceSetId = discoveryEnabled
       ? providerReviewSources(context)?.sourceSetId
       : undefined;
-    let fieldSchema = compactInactiveFields
-      ? withInactiveArrayFields(
-          responseHandlerSchema,
-          responseHandlerFieldPrompt.skippedFieldNames,
-        )
-      : responseHandlerSchema;
+    const responseHandlerSchema = {
+      ...canonicalResponseHandlerSchema,
+      properties: Object.fromEntries(
+        selectedResponseHandlerFields.map((field) => {
+          if (
+            responseHandlerFieldPrompt.skippedFieldNames.includes(field.name)
+          ) {
+            const { description: _description, ...inactiveSchema } =
+              field.schema;
+            return [field.name, inactiveSchema];
+          }
+          return [
+            field.name,
+            field.schema.description
+              ? field.schema
+              : { ...field.schema, description: field.description },
+          ];
+        }),
+      ),
+    };
+    let fieldSchema = withoutInactiveFields(
+      responseHandlerSchema,
+      responseHandlerFieldPrompt.skippedFieldNames,
+    );
     sourceReplySnapshot = undefined;
     effectiveReplySchema = undefined;
     if (
@@ -399,10 +378,7 @@ export async function generateStage1Decision(
       selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
       canonicalResponseHandlerSchema.properties?.replyText ===
         replyTextFieldEvaluator.schema &&
-      selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
       selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-      canonicalResponseHandlerSchema.properties?.completionContext ===
-        completionContextFieldEvaluator.schema &&
       canonicalResponseHandlerSchema.properties?.contextRequests ===
         contextRequestsFieldEvaluator.schema
     ) {
@@ -426,7 +402,8 @@ export async function generateStage1Decision(
       if (sourceReplySnapshot?.originals.size && replySchema) {
         effectiveReplySchema = {
           ...SOURCE_REPLY_SCHEMA,
-          description: SOURCE_REPLY_INSTRUCTIONS,
+          description:
+            "Ordered reply parts: text is your own prose. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. Preserve speaker attribution. Use [] for no reply.",
         };
         fieldSchema = {
           ...fieldSchema,
@@ -470,7 +447,7 @@ export async function generateStage1Decision(
       discovery.context,
       repairHistoryIdentity,
     );
-    // Only the registered native direct-message history contract supports request binding.
+    // Only the registered native history contract supports request binding.
     sourceSelectionBinding =
       (history || sourceReplySnapshot) &&
       !repairHistoryIdentity &&
@@ -557,15 +534,30 @@ export async function generateStage1Decision(
     buildResponseGrammar(
       {
         actions: args.runtime.actions ?? [],
-        responseHandlerFields: selectedResponseHandlerFields.map((field) =>
-          field === replyTextFieldEvaluator && effectiveReplySchema
-            ? { ...field, schema: effectiveReplySchema }
-            : field,
-        ),
-        responseHandlerFieldSignature: effectiveReplySchema
-          ? hashString(JSON.stringify(effectiveReplySchema)) +
-            args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature()
-          : args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+        responseHandlerFields: selectedResponseHandlerFields
+          .filter(
+            (field) =>
+              !responseHandlerFieldPrompt.skippedFieldNames.includes(
+                field.name,
+              ),
+          )
+          .map((field) =>
+            field === replyTextFieldEvaluator && effectiveReplySchema
+              ? { ...field, schema: effectiveReplySchema }
+              : field,
+          ),
+        responseHandlerFieldSignature:
+          hashString(
+            JSON.stringify(responseHandlerFieldPrompt.skippedFieldNames),
+          ) +
+          (effectiveReplySchema
+            ? hashString(JSON.stringify(effectiveReplySchema)) +
+              args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
+                fieldSelection,
+              )
+            : args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
+                fieldSelection,
+              )),
       },
       {
         contexts: availableContexts.map((definition) => String(definition.id)),
@@ -888,8 +880,10 @@ export async function generateStage1Decision(
         // Re-read role-filtered definitions for this read. Never restore an
         // old catalog after the requester's role or registrations changed.
         const role = await resolveStage1SenderRole(args.runtime, args.message);
-        const current = listAvailableContextsForRole(
-          args.runtime.contexts,
+        const current = await listAvailableContextsForTurn(
+          args.runtime,
+          args.message,
+          args.state,
           role,
         );
         const refreshedCatalog = createContextCatalogReference(
@@ -919,8 +913,10 @@ export async function generateStage1Decision(
         );
         if (currentRole !== senderRole) {
           senderRole = currentRole;
-          availableContexts = listAvailableContextsForRole(
-            args.runtime.contexts,
+          availableContexts = await listAvailableContextsForTurn(
+            args.runtime,
+            args.message,
+            args.state,
             currentRole,
           );
           responseHandlerFieldPrompt =
@@ -929,6 +925,7 @@ export async function generateStage1Decision(
                 ...responseHandlerFieldContext,
                 senderRole: currentRole as ResponseHandlerSenderRole,
               },
+              fieldSelection,
             );
           if (contextCatalog) {
             const freshCatalog = createContextCatalogReference(
@@ -955,9 +952,20 @@ export async function generateStage1Decision(
         args.runtime,
         args.message,
       );
+      // Every reference read rechecks admission, even without a history projection.
+      // The refreshed role also owns the next native schema and field dispatch.
+      if (refreshedRole !== senderRole) {
+        senderRole = refreshedRole;
+        availableContexts = await listAvailableContextsForTurn(
+          args.runtime,
+          args.message,
+          args.state,
+          refreshedRole,
+        );
+      }
       const refreshedContext = await createV5MessageContextObject({
         ...args,
-        includeActionDiscovery: args.codingMode ? true : "reference",
+        includeActionDiscovery: false,
         userRoles: [refreshedRole],
         availableContexts,
       });
@@ -1063,16 +1071,20 @@ export async function generateStage1Decision(
           },
         );
       responseHandlerFieldPrompt =
-        await args.runtime.responseHandlerFieldRegistry.composePromptSlices({
-          ...responseHandlerFieldContext,
-          senderRole: refreshedRole as ResponseHandlerSenderRole,
-        });
+        await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+          {
+            ...responseHandlerFieldContext,
+            senderRole: refreshedRole as ResponseHandlerSenderRole,
+          },
+          fieldSelection,
+        );
       messageHandlerInput = renderMessageHandlerModelInput(
         args.runtime,
         discovery.context,
         availableContexts,
         {
           directMessage: directMessageChannel,
+          nativeTools: true,
           progressiveContext: discoveryEnabled,
           responseHandlerFields: responseHandlerFieldPrompt.rendered,
           contextCatalog,
@@ -1114,9 +1126,15 @@ export async function generateStage1Decision(
     });
     // Full restoration returns to the ordinary selection contract. Keep the
     // actual tool schema aligned with the newly rendered history policy.
-    // A read/repair can outlive the field-activity snapshot. Restore the full
-    // contract; dispatch still rechecks shouldRun before handling any field.
-    compactInactiveFields = !decisionRepair;
+    // Reads and repairs refresh field admission before advertising native tools.
+    responseHandlerFieldPrompt =
+      await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+        {
+          ...responseHandlerFieldContext,
+          senderRole: senderRole as ResponseHandlerSenderRole,
+        },
+        fieldSelection,
+      );
     messageHandlerTools = createMessageHandlerTools();
     responseGrammar = createResponseGrammar();
     stage1ModelParams = {
@@ -1218,6 +1236,12 @@ export async function generateStage1Decision(
   if (rawFieldParsed) {
     const normalizedRawParsed =
       normalizeRawParsedForFieldRegistry(rawFieldParsed);
+    if (
+      !selectedResponseHandlerFields.some(
+        (field) => field.name === "completionContext",
+      )
+    )
+      delete normalizedRawParsed.completionContext;
     // Reject progress armor before reply formatting can turn it into a partial
     // visible fragment. The original wire output remains in the trajectory.
     if (
@@ -1278,6 +1302,13 @@ export async function generateStage1Decision(
       subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
     });
   }
+  if (
+    messageHandler &&
+    !selectedResponseHandlerFields.some(
+      (field) => field.name === "completionContext",
+    )
+  )
+    messageHandler.plan.completionContext = undefined;
   const stage1CompletionLimitHit = stage1HitCompletionLimit(
     rawMessageHandler,
     stage1ModelParams.maxTokens,

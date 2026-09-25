@@ -1,4 +1,4 @@
-/** Proves the published package exposes a loadable Worker-safe Todo runtime. */
+/** Proves the published root loads the injected-store Todo factory under Worker resolution. */
 
 import { spawnSync } from "node:child_process";
 import {
@@ -36,8 +36,8 @@ afterEach(() => {
   }
 });
 
-describe("Todo edge package export", () => {
-  test("loads the packed edge entry under the worker condition", () => {
+describe("Todo root package export", () => {
+  test("loads the packed root entry under the worker condition", () => {
     // Pack the complete distributable. A JS-only build clears dist, including
     // the dashboard bundle, and used to leave the local view unavailable.
     run("bun", ["run", "build"], pluginRoot);
@@ -46,20 +46,18 @@ describe("Todo edge package export", () => {
       join(repositoryRoot, ".tmp-plugin-todos-pack-"),
     );
     temporaryDirectories.push(temporaryDirectory);
-    const packJson = run(
-      "npm",
+    const filename = "todos.tgz";
+    run(
+      "bun",
       [
+        "pm",
         "pack",
-        "--json",
         "--ignore-scripts",
-        "--pack-destination",
-        temporaryDirectory,
-        pluginRoot,
+        "--filename",
+        join(temporaryDirectory, filename),
       ],
       pluginRoot,
     );
-    const [{ filename }] = JSON.parse(packJson) as Array<{ filename: string }>;
-    expect(filename).toBeTruthy();
 
     const packageDirectory = join(
       temporaryDirectory,
@@ -95,7 +93,7 @@ describe("Todo edge package export", () => {
         "--conditions=worker",
         "--input-type=module",
         "--eval",
-        'const edge = await import("@elizaos/plugin-todos/edge"); process.stdout.write(JSON.stringify({ converge: typeof edge.convergeTodoScopesInTransaction, plugin: typeof edge.createTodosEdgePlugin, store: typeof edge.createTodosSqlStore }));',
+        'const edge = await import("@elizaos/plugin-todos"); process.stdout.write(JSON.stringify({ converge: typeof edge.convergeTodoScopesInTransaction, plugin: typeof edge.createTodosEdgePlugin, store: typeof edge.createTodosSqlStore }));',
       ],
       temporaryDirectory,
     );

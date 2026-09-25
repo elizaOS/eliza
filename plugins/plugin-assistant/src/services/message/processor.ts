@@ -29,6 +29,7 @@ import {
   getTrajectoryContext,
   getUserMessageText,
   INFERENCE_MARKS,
+  incomingMessagePersistenceSnapshot,
   incomingPipelineHookContext,
   isCanonicalModelCapabilityDisabled,
   isObjectRecord as isRecord,
@@ -39,7 +40,10 @@ import {
   parallelWithShouldRespondPipelineHookContext,
   parseBooleanFromText,
   parseContextRoutingMetadata,
+  persistIncomingMessageMemory,
+  persistMessageMemory,
   preShouldRespondPipelineHookContext,
+  replaceStoredMessageContent,
   setContextRoutingMetadata,
   stripAugmentationForPersistence,
   TurnAbortedError,
@@ -99,7 +103,6 @@ import {
 import {
   getVoiceSpeakerEntityId,
   isVoiceChannelMessage,
-  isVoiceGroupChannelMessage,
 } from "./voice-signals.ts";
 
 /** Processing reports its decision; only the outer lifetime settles the run. */
@@ -231,19 +234,21 @@ export class MessageProcessor {
       // wrapper XML back into the user's chat bubble or re-enter context as
       // history on later turns. `message` (used downstream this turn) keeps its
       // wrap.
-      const persistableMessage = stripAugmentationForPersistence(message);
+      const persistableMessage =
+        incomingMessagePersistenceSnapshot(message) ??
+        stripAugmentationForPersistence(message);
 
       if (message.id) {
-        const createdMemoryId = await runtime.createMemory(
+        const createdMemoryId = await persistIncomingMessageMemory(
+          runtime,
           persistableMessage,
-          "messages",
         );
         memoryToQueue = { ...persistableMessage, id: createdMemoryId };
         await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
-        const memoryId = await runtime.createMemory(
+        const memoryId = await persistIncomingMessageMemory(
+          runtime,
           persistableMessage,
-          "messages",
         );
         message.id = memoryId;
         memoryToQueue = { ...persistableMessage, id: memoryId };
@@ -516,17 +521,18 @@ export class MessageProcessor {
         // instructions. Preserve the canonical persisted text when available.
         const canonicalMessage = await runtime.getMemoryById(message.id);
         const canonicalText = canonicalMessage?.content?.text;
-        await runtime.updateMemory({
-          id: message.id,
-          content: {
-            ...message.content,
-            ...(typeof canonicalText === "string"
-              ? { text: canonicalText }
+        const canonicalTextSource =
+          canonicalMessage?.content?.messageTextSource;
+        await replaceStoredMessageContent(runtime, message.id, {
+          ...message.content,
+          ...(typeof canonicalText === "string"
+            ? { text: canonicalText }
+            : canonicalTextSource
+              ? { text: undefined, messageTextSource: canonicalTextSource }
               : {}),
-            attachments: sanitizeAttachmentsForStorage(
-              message.content.attachments,
-            ),
-          },
+          attachments: sanitizeAttachmentsForStorage(
+            message.content.attachments,
+          ),
         });
       }
     }
@@ -572,10 +578,7 @@ export class MessageProcessor {
         });
       }
       if (message.id) {
-        await runtime.updateMemory({
-          id: message.id,
-          content: message.content,
-        });
+        await replaceStoredMessageContent(runtime, message.id, message.content);
         await runtime.queueEmbeddingGeneration(
           { ...message, id: message.id },
           "normal",
@@ -635,12 +638,13 @@ export class MessageProcessor {
     let stage1Extract: MessageHandlerExtract | undefined;
     const earlyReplyMessages: Memory[] = [];
     const persistedEarlyReplyIds = new Set<string>();
+    const voiceTransport = isVoiceChannelMessage(message);
     // Canonicalize the resolved speaker (imprint → entityId) onto
     // `content.metadata.speakerEntityId` for every voice turn that carries one
     // (#8786). Attribution can arrive top-level (in-process engine) or nested
     // (chat clients); collapsing to one spot lets providers/extraction and the
     // facts/relationships stage attribute the turn to the right person.
-    if (isVoiceChannelMessage(message) && message.content) {
+    if (voiceTransport && message.content) {
       const speakerEntityId = getVoiceSpeakerEntityId(message);
       if (speakerEntityId) {
         const md =
@@ -654,119 +658,115 @@ export class MessageProcessor {
         }
       }
     }
-    const deliverResponseHandlerEarlyReply =
-      isVoiceGroupChannelMessage(message) && !opts.onPlanningAcknowledgment
-        ? async (event: ResponseHandlerEarlyReplyEvent): Promise<boolean> => {
-            // Structural early-ack gate: a pre-planner ack is only warranted
-            // when the routed work is an async handoff — a candidate action
-            // whose execution continues after the turn returns (sub-agent
-            // spawn class), where the real result arrives long after the turn.
-            // Synchronous turns (retrieval, in-turn tool work) deliver one
-            // reply — the final answer — so voice matches text channels
-            // bubble-for-bubble. Returning false tells the Stage-1 producer
-            // nothing was delivered.
-            if (
-              !candidateActionsIncludeAsyncHandoff(
-                runtime.actions,
-                event.messageHandler.plan.candidateActions ?? [],
-              )
-            ) {
-              return false;
-            }
-            const proposedText = event.text.trim();
-            const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
-              providers: state.data.providers,
-              request: getUserMessageText(message),
-              reply: proposedText,
-              actionResults: [],
-              actions: runtime.actions,
-            });
-            if (earlyReplyEgressDecision.verdict !== "allow") {
-              // An ungrounded completion claim cannot ship, and this delivery
-              // floor must not manufacture a substitute ack — drop the early
-              // reply; the planner's final delivery owns the turn.
-              return false;
-            }
-            const text = proposedText;
-            if (!text || !message.id) return false;
-            const currentResponseId = getLatestResponseId(
-              runtime.agentId,
-              message.roomId,
-            );
-            if (
-              currentResponseId !== responseId &&
-              !opts.keepExistingResponses
-            ) {
-              runtime.logger.info(
-                {
-                  src: "service:message",
-                  agentId: runtime.agentId,
-                  roomId: message.roomId,
-                  responseId,
-                  currentResponseId,
-                },
-                "Response-handler early voice reply discarded - newer message being processed",
-              );
-              return false;
-            }
-            if (getStreamingContext()?.abortSignal?.aborted) {
-              return false;
-            }
-            const earlyResponseId = asUUID(v4());
-            let earlyContent: Content = {
-              thought: event.messageHandler.thought,
-              actions: ["REPLY"],
-              text,
-              responseId: earlyResponseId,
-              inReplyTo: createUniqueUuid(runtime, message.id),
-              // #14873: the early reply IS the Stage-1 model's replyText —
-              // genuine agent voice (egress-rejected text never reaches this
-              // point) — so gated transports must not re-voice it.
-              agentVoiced: true,
-            };
-            await runtime.applyPipelineHooks(
-              "outgoing_before_deliver",
-              outgoingPipelineHookContext(earlyContent, {
-                source: "response-handler",
-                roomId: message.roomId,
-                message,
-                responseId: earlyResponseId,
-              }),
-            );
-            earlyContent = await enforceEffectGroundedVisibleContent(
-              runtime,
-              message,
-              earlyContent,
-              undefined,
-              async () => opts.prepareReplyRecovery?.(),
-            );
-            earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
-              runtime,
-              message,
-              earlyContent,
-            );
-            const earlyMemory: Memory = {
-              id: earlyResponseId,
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: earlyContent,
-              roomId: message.roomId,
-              createdAt: Date.now(),
-            };
-            await runtime.createMemory(earlyMemory, "messages");
-            await this.emitMessageSent(
-              runtime,
-              earlyMemory,
-              message.content.source ?? "messageHandler",
-            );
-            earlyReplyMessages.push(earlyMemory);
-            persistedEarlyReplyIds.add(earlyResponseId);
-            if (callback) {
-              await callback(earlyContent);
-            }
-            return true;
-          }
-        : undefined;
+    const deliverResponseHandlerEarlyReply = async (
+      event: ResponseHandlerEarlyReplyEvent,
+    ): Promise<boolean> => {
+      // Structural early-ack gate: a pre-planner ack is only warranted
+      // when the routed work is an async handoff — a candidate action
+      // whose execution continues after the turn returns (sub-agent
+      // spawn class), where the real result arrives long after the turn.
+      // Synchronous turns (retrieval, in-turn tool work) deliver one
+      // reply — the final answer — so voice matches text channels
+      // bubble-for-bubble. Returning false tells the Stage-1 producer
+      // nothing was delivered.
+      if (
+        !candidateActionsIncludeAsyncHandoff(
+          runtime.actions,
+          event.messageHandler.plan.candidateActions ?? [],
+        )
+      ) {
+        return false;
+      }
+      const proposedText = event.text.trim();
+      const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+        providers: state.data.providers,
+        request: getUserMessageText(message),
+        reply: proposedText,
+        actionResults: [],
+        actions: runtime.actions,
+      });
+      if (earlyReplyEgressDecision.verdict !== "allow") {
+        // An ungrounded completion claim cannot ship, and this delivery
+        // floor must not manufacture a substitute ack — drop the early
+        // reply; the planner's final delivery owns the turn.
+        return false;
+      }
+      const text = proposedText;
+      if (!text || !message.id) return false;
+      const currentResponseId = getLatestResponseId(
+        runtime.agentId,
+        message.roomId,
+      );
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
+        runtime.logger.info(
+          {
+            src: "service:message",
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            responseId,
+            currentResponseId,
+          },
+          "Response-handler early reply discarded - newer message being processed",
+        );
+        return false;
+      }
+      if (getStreamingContext()?.abortSignal?.aborted) {
+        return false;
+      }
+      const earlyResponseId = asUUID(v4());
+      let earlyContent: Content = {
+        thought: event.messageHandler.thought,
+        actions: ["REPLY"],
+        text,
+        responseId: earlyResponseId,
+        inReplyTo: createUniqueUuid(runtime, message.id),
+        // #14873: the early reply IS the Stage-1 model's replyText —
+        // genuine agent voice (egress-rejected text never reaches this
+        // point) — so gated transports must not re-voice it.
+        agentVoiced: true,
+      };
+      await runtime.applyPipelineHooks(
+        "outgoing_before_deliver",
+        outgoingPipelineHookContext(earlyContent, {
+          source: "response-handler",
+          roomId: message.roomId,
+          message,
+          responseId: earlyResponseId,
+        }),
+      );
+      earlyContent = await enforceEffectGroundedVisibleContent(
+        runtime,
+        message,
+        earlyContent,
+        undefined,
+        async () => opts.prepareReplyRecovery?.(),
+      );
+      earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
+        runtime,
+        message,
+        earlyContent,
+      );
+      const earlyMemory: Memory = {
+        id: earlyResponseId,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: earlyContent,
+        roomId: message.roomId,
+        createdAt: Date.now(),
+      };
+      await persistMessageMemory(runtime, earlyMemory);
+      await this.emitMessageSent(
+        runtime,
+        earlyMemory,
+        message.content.source ?? "messageHandler",
+      );
+      earlyReplyMessages.push(earlyMemory);
+      persistedEarlyReplyIds.add(earlyResponseId);
+      if (callback) {
+        await callback(earlyContent);
+      }
+      return true;
+    };
 
     const parallelJoin: { translatedUserText?: string } = {};
     const setTranslatedUserText = (text: string) => {
@@ -821,22 +821,18 @@ export class MessageProcessor {
                 : {}),
               runTerminalOwner,
               onSettledActionResult,
-              onPlanningAcknowledgment:
-                !isVoiceGroupChannelMessage(message) &&
-                opts.onPlanningAcknowledgment
-                  ? (text) => {
-                      if (
-                        opts.abortSignal?.aborted ||
-                        (!opts.keepExistingResponses &&
-                          getLatestResponseId(
-                            runtime.agentId,
-                            message.roomId,
-                          ) !== responseId)
-                      )
-                        return;
-                      opts.onPlanningAcknowledgment?.(text);
-                    }
-                  : undefined,
+              onPlanningAcknowledgment: opts.onPlanningAcknowledgment
+                ? (text) => {
+                    if (
+                      opts.abortSignal?.aborted ||
+                      (!opts.keepExistingResponses &&
+                        getLatestResponseId(runtime.agentId, message.roomId) !==
+                          responseId)
+                    )
+                      return;
+                    opts.onPlanningAcknowledgment?.(text);
+                  }
+                : undefined,
               onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
               onReplyRecoveryPrepared: (prepare) => {
                 opts.prepareReplyRecovery = prepare;
@@ -1111,10 +1107,7 @@ export class MessageProcessor {
     ) {
       message.content.text = joinedTranslation;
       if (message.id) {
-        await runtime.updateMemory({
-          id: message.id,
-          content: message.content,
-        });
+        await replaceStoredMessageContent(runtime, message.id, message.content);
         await runtime.queueEmbeddingGeneration(
           { ...message, id: message.id },
           "normal",
@@ -1134,6 +1127,7 @@ export class MessageProcessor {
       Array.from(persistedEarlyReplyIds, (id) => id as UUID),
     );
     let actionResults: ActionResult[] | undefined;
+    let requestFulfilled: boolean | undefined;
     let replyRecovery: MessageReplyRecoveryContext | undefined;
     let terminalFailure: RuntimeFailure | undefined;
     let mode: StrategyMode = "none";
@@ -1163,6 +1157,7 @@ export class MessageProcessor {
           : result.responseMessages;
       state = result.state;
       actionResults = result.actionResults;
+      requestFulfilled = result.requestFulfilled;
       replyRecovery = result.replyRecovery;
       if (replyRecovery) {
         const savedRecovery = replyRecovery;
@@ -1269,7 +1264,7 @@ export class MessageProcessor {
             "Saving response to memory",
           );
           await timeInferenceSpan("message:delivery:persistence", () =>
-            runtime.createMemory(responseMemory, "messages"),
+            persistMessageMemory(runtime, responseMemory),
           );
           if (responseMemory.id) {
             persistedResponseMessageIds.add(responseMemory.id);
@@ -1378,7 +1373,7 @@ export class MessageProcessor {
                     "Saving response to memory",
                   );
                   await timeInferenceSpan("message:delivery:persistence", () =>
-                    runtime.createMemory(responseMemory, "messages"),
+                    persistMessageMemory(runtime, responseMemory),
                   );
                   if (responseMemory.id) {
                     persistedResponseMessageIds.add(responseMemory.id);
@@ -1523,7 +1518,7 @@ export class MessageProcessor {
         createdAt: Date.now(),
       };
       await timeInferenceSpan("message:delivery:persistence", () =>
-        runtime.createMemory(terminalMemory, "messages"),
+        persistMessageMemory(runtime, terminalMemory),
       );
       await timeInferenceSpan("message:delivery:event", () =>
         this.emitMessageSent(
@@ -1607,6 +1602,7 @@ export class MessageProcessor {
           }
         : {}),
       ...(actionResults ? { actionResults } : {}),
+      ...(typeof requestFulfilled === "boolean" ? { requestFulfilled } : {}),
       ...(replyRecovery ? { replyRecovery } : {}),
       ...(terminalFailure ? { terminalFailure } : {}),
       state,

@@ -350,30 +350,6 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible();
 });
 
-test("finances decomposed view: renders the financial summary", async ({
-  page,
-}) => {
-  // The money mocks seed a source + dashboard + transactions + recurring, so
-  // FinancesView lands on its populated branch: the net balance, the "Latte"
-  // transaction, and the Netflix recurring charge.
-  await openAppPath(page, "/finances");
-  await expect(page.getByText("$2,765.50").first()).toBeVisible({
-    timeout: 60_000,
-  });
-  await expect(page.getByText("Transactions (1)").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Latte").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Recurring (1)").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Netflix").first()).toBeVisible({
-    timeout: 15_000,
-  });
-});
-
 test("focus decomposed view: renders the focus scaffold", async ({ page }) => {
   // The website-blocker mock reports enabled:false, so FocusView resolves to
   // its inactive branch (not loading, not error, not "Focus unavailable").

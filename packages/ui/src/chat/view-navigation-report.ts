@@ -6,9 +6,9 @@
  * and actions to the surface the user can actually see.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { client } from "../api";
 import { readSettingsHashSectionId } from "../components/settings/settings-route";
+import { logger } from "../logger.ts";
 
 /** View lifecycle reports share the bounded 15s renderer-network budget. */
 const VIEW_NAVIGATION_FETCH_TIMEOUT_MS = 15_000;

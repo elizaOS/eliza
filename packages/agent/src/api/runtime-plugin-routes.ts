@@ -5,41 +5,34 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
 import {
-  isJsonObjectBody,
-  readRequestBodyBuffer,
-  writeJsonError,
-} from "@elizaos/shared";
-import {
+  type AgentRuntime,
   assertPublicRouteIntent,
+  getHttpRuntime,
+  isJsonObjectBody,
   type PaymentEnabledRoute,
   type Route,
-} from "@elizaos/shared/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import {
   type RuntimeRouteHostContext,
+  readRequestBodyBuffer,
   setRuntimeRouteHostContext,
-} from "@elizaos/shared/api/runtime-route-context";
+  writeJsonError,
+} from "@elizaos/core";
+
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
-
 type ExpressLikeResponse = ServerResponse & {
   status?: (code: number) => ExpressLikeResponse;
   json?: (data: unknown) => ExpressLikeResponse;
   send?: (data: unknown) => ExpressLikeResponse;
 };
-
 type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
 type X402RoutesModule = Pick<
   X402PluginModule,
   "createPaymentAwareHandler" | "isRoutePaymentWrapped"
 >;
-
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
-
 function getX402RoutesModule(): Promise<X402RoutesModule> {
   const specifier = "@elizaos/plugin-x402";
   x402RoutesModulePromise ??= import(
@@ -49,7 +42,6 @@ function getX402RoutesModule(): Promise<X402RoutesModule> {
 }
 
 export { matchPluginRoutePath } from "./plugin-route-path.ts";
-
 export function isPublicRuntimePluginRoute(options: {
   runtime: AgentRuntime | null | undefined;
   method: string;
@@ -57,7 +49,6 @@ export function isPublicRuntimePluginRoute(options: {
 }): boolean {
   const { runtime, method, pathname } = options;
   if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
-
   return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
     assertPublicRouteIntent(route, "runtime.routes");
     if (
@@ -70,7 +61,6 @@ export function isPublicRuntimePluginRoute(options: {
     return matchPluginRoutePath(route.path, pathname) !== null;
   });
 }
-
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of url.searchParams.keys()) {
@@ -79,14 +69,13 @@ function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   }
   return out;
 }
-
 function attachExpressResponseHelpers(res: ServerResponse): void {
-  const marked = res as ServerResponse & { [EXPRESS_SHIM]?: boolean };
+  const marked = res as ServerResponse & {
+    [EXPRESS_SHIM]?: boolean;
+  };
   if (marked[EXPRESS_SHIM]) return;
   marked[EXPRESS_SHIM] = true;
-
   const r = res as ExpressLikeResponse;
-
   if (typeof r.status !== "function") {
     r.status = (code: number) => {
       res.statusCode = code;
@@ -114,7 +103,6 @@ function attachExpressResponseHelpers(res: ServerResponse): void {
     };
   }
 }
-
 function augmentRequest(
   req: IncomingMessage,
   url: URL,
@@ -126,7 +114,6 @@ function augmentRequest(
     typeof protoHeader === "string"
       ? protoHeader.split(",")[0]?.trim() || "http"
       : "http";
-
   const base = req as IncomingMessage & {
     query?: Record<string, string | string[]>;
     params?: Record<string, string>;
@@ -146,7 +133,6 @@ function augmentRequest(
   };
   return req;
 }
-
 function requestMayHaveJsonBody(req: IncomingMessage, method: string): boolean {
   if (method === "GET" || method === "HEAD") {
     return false;
@@ -164,7 +150,6 @@ function requestMayHaveJsonBody(req: IncomingMessage, method: string): boolean {
   }
   return Boolean(contentLength || req.headers["transfer-encoding"]);
 }
-
 async function attachJsonBodyIfPresent(
   req: IncomingMessage,
   res: ServerResponse,
@@ -217,7 +202,6 @@ async function attachJsonBodyIfPresent(
     return false;
   }
 }
-
 /**
  * Runs the first matching runtime plugin route. Returns true if matched (even on handler error).
  */
@@ -242,17 +226,14 @@ export async function tryHandleRuntimePluginRoute(options: {
     hostContext,
   } = options;
   if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
-
   for (const route of getHttpRuntime(runtime).routes as Route[]) {
     assertPublicRouteIntent(route, "runtime.routes");
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;
     const handler = route.handler;
     if (!handler) continue;
-
     const params = matchPluginRoutePath(route.path, pathname);
     if (params === null) continue;
-
     if (route.public !== true && !isAuthorized()) {
       if (!res.headersSent) {
         res.statusCode = 401;
@@ -261,7 +242,6 @@ export async function tryHandleRuntimePluginRoute(options: {
       }
       return true;
     }
-
     attachExpressResponseHelpers(res);
     augmentRequest(req, url, params);
     if (
@@ -269,7 +249,6 @@ export async function tryHandleRuntimePluginRoute(options: {
     ) {
       return true;
     }
-
     let effectiveHandler: RuntimePluginRouteHandler =
       handler as RuntimePluginRouteHandler;
     if (route.x402 != null) {
@@ -282,7 +261,6 @@ export async function tryHandleRuntimePluginRoute(options: {
         }
       }
     }
-
     const restoreHostContext = hostContext
       ? setRuntimeRouteHostContext(runtime, hostContext)
       : undefined;
@@ -302,11 +280,9 @@ export async function tryHandleRuntimePluginRoute(options: {
     } finally {
       restoreHostContext?.();
     }
-
     // Do not auto-end: handlers may return after attaching long-lived streams
     // (e.g. music-player) before headers or first bytes are flushed.
     return true;
   }
-
   return false;
 }

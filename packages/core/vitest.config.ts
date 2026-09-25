@@ -15,6 +15,15 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
+				find: /^@elizaos\/plugin-sqlite$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"plugins",
+					"plugin-sqlite",
+					"index.ts",
+				),
+			},
+			{
 				find: /^@elizaos\/core$/,
 				replacement: new URL("./src/index.ts", import.meta.url).pathname,
 			},
@@ -67,7 +76,7 @@ export default defineConfig({
 			"**/*.real.e2e.test.*",
 			// #9310 §E: the guarded live/real suites (they self-skip without
 			// creds/opt-in) are invocable only in the post-merge lane, where
-			// run-all-tests.mjs prints a named skip accounting. The unguarded
+			// run-all-tests.ts prints a named skip accounting. The unguarded
 			// live/real files stay excluded in every lane.
 			...(process.env.VITEST_LANE === "post-merge"
 				? []

@@ -19,8 +19,12 @@
  * canonical `/api/setup/telegram-account/*` paths without the plugin-name prefix.
  */
 
-import type { IAgentRuntime, SetupState } from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared";
+import { type IAgentRuntime, type SetupState } from "@elizaos/core";
+import {
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core/api/http-plugin";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,
@@ -33,19 +37,16 @@ import {
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
 } from "./account-auth-service.js";
-
 import { resolveTelegramAppCredentials } from "./account-credentials.js";
 
 export { resolveTelegramAppCredentials } from "./account-credentials.js";
 
 // ── Connector-setup service interface ──────────────────────────────────
-
 interface ConnectorSetupService {
   getConfig(): Record<string, unknown>;
   persistConfig(config: Record<string, unknown>): void;
   updateConfig(updater: (config: Record<string, unknown>) => void): void;
 }
-
 function isConnectorSetupService(
   service: unknown,
 ): service is ConnectorSetupService {
@@ -59,12 +60,10 @@ function isConnectorSetupService(
     typeof candidate.persistConfig === "function"
   );
 }
-
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   const service = runtime.getService("connector-setup");
   return isConnectorSetupService(service) ? service : null;
 }
-
 function sendSetupError(
   res: RouteResponse,
   status: number,
@@ -73,16 +72,12 @@ function sendSetupError(
 ): void {
   res.status(status).json({ error: { code, message } });
 }
-
 // ── Module-level auth session state ────────────────────────────────────
-
 const authSessions = new Map<IAgentRuntime, TelegramAccountAuthSessionLike>();
 const authOperations = new WeakMap<IAgentRuntime, Promise<void>>();
-
 function sessionScope(runtime: IAgentRuntime): TelegramAccountSessionScope {
   return { agentId: String(runtime.agentId), accountId: "default:personal" };
 }
-
 /** Called on plugin shutdown to clean up the auth session. */
 export async function stopTelegramAccountAuthSession(
   runtime?: IAgentRuntime,
@@ -94,9 +89,7 @@ export async function stopTelegramAccountAuthSession(
     authSessions.delete(owner);
   }
 }
-
 // ── Types ──────────────────────────────────────────────────────────────
-
 type TelegramAccountRuntimeServiceLike = {
   isConnected?: () => boolean;
   getAccountError?: () => string | null;
@@ -110,7 +103,6 @@ type TelegramAccountRuntimeServiceLike = {
   stopAccount?: (accountId?: string) => Promise<void>;
   refreshAccount?: (accountId?: string) => Promise<void>;
 };
-
 interface TelegramAccountDetail {
   /**
    * Connector-internal flow status, retained verbatim so the UI can drive
@@ -127,15 +119,12 @@ interface TelegramAccountDetail {
   account: TelegramAccountAuthSnapshot["account"];
   error: string | null;
 }
-
 interface TelegramAccountStatusResponse {
   connector: "telegram-account";
   state: SetupState;
   detail: TelegramAccountDetail;
 }
-
 // ── Config helpers ─────────────────────────────────────────────────────
-
 function readConnectorConfig(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -148,7 +137,6 @@ function readConnectorConfig(
   }
   return raw;
 }
-
 function hasConfiguredTelegramAccount(
   connConfig: Record<string, unknown>,
 ): boolean {
@@ -166,7 +154,6 @@ function hasConfiguredTelegramAccount(
       connConfig.enabled !== false,
   );
 }
-
 function resolveConfiguredPhone(
   runtime: IAgentRuntime,
   connConfig: Record<string, unknown>,
@@ -182,7 +169,6 @@ function resolveConfiguredPhone(
     ? setting.trim()
     : null;
 }
-
 function resolveService(
   runtime: IAgentRuntime,
 ): TelegramAccountRuntimeServiceLike | null {
@@ -191,7 +177,6 @@ function resolveService(
     (service as TelegramAccountRuntimeServiceLike | null | undefined) ?? null
   );
 }
-
 function isServiceConnected(
   service: TelegramAccountRuntimeServiceLike | null,
 ): boolean {
@@ -210,7 +195,6 @@ function isServiceConnected(
   }
   return withFlags.connected === true;
 }
-
 function setupStateFromFlow(
   flowStatus: string,
   configured: boolean,
@@ -230,7 +214,6 @@ function setupStateFromFlow(
   }
   return "idle";
 }
-
 function statusFromState(
   runtime: IAgentRuntime,
   config: Record<string, unknown>,
@@ -247,7 +230,6 @@ function statusFromState(
       ? service.getAccountSummary()
       : null;
   const fallbackPhone = resolveConfiguredPhone(runtime, connectorConfig);
-
   let flowStatus =
     (serviceError ? "error" : authSnapshot?.status) ??
     (serviceConnected
@@ -255,18 +237,15 @@ function statusFromState(
       : configured || sessExists
         ? "configured"
         : "idle");
-
   if (serviceConnected && flowStatus === "configured") {
     flowStatus = "connected";
   }
-
   const state = setupStateFromFlow(
     flowStatus,
     configured,
     sessExists,
     serviceConnected,
   );
-
   return {
     connector: "telegram-account",
     state,
@@ -289,7 +268,6 @@ function statusFromState(
     },
   };
 }
-
 function ensureConnectorBlock(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -309,7 +287,6 @@ function ensureConnectorBlock(
   }
   return connectors.telegramAccount;
 }
-
 function createSessionOptions(
   config: Record<string, unknown>,
   runtime: IAgentRuntime,
@@ -333,7 +310,6 @@ function createSessionOptions(
         : defaultTelegramAccountSystemVersion(),
   };
 }
-
 function ensureAuthSession(
   config: Record<string, unknown>,
   runtime: IAgentRuntime,
@@ -347,9 +323,7 @@ function ensureAuthSession(
   authSessions.set(runtime, session);
   return session;
 }
-
 // ── Route handlers ─────────────────────────────────────────────────────
-
 async function handleStatus(
   _req: RouteRequest,
   res: RouteResponse,
@@ -360,17 +334,17 @@ async function handleStatus(
   ensureAuthSession(config, runtime);
   res.status(200).json(statusFromState(runtime, config));
 }
-
 async function handleStart(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const body = (req.body ?? {}) as { phone?: string };
+  const body = (req.body ?? {}) as {
+    phone?: string;
+  };
   const setupService = getSetupService(runtime);
   const config = setupService?.getConfig() ?? {};
   const connectorConfig = readConnectorConfig(config);
-
   const phone =
     (typeof body.phone === "string" && body.phone.trim()) ||
     resolveConfiguredPhone(runtime, connectorConfig);
@@ -383,16 +357,13 @@ async function handleStart(
     );
     return;
   }
-
   await resolveService(runtime)?.stopAccount?.();
   await authSessions.get(runtime)?.stop();
   const telegramAccountAuthSession = new TelegramAccountAuthSession(
     createSessionOptions(config, runtime),
   );
   authSessions.set(runtime, telegramAccountAuthSession);
-
   const credentials = resolveTelegramAppCredentials(runtime, connectorConfig);
-
   try {
     await telegramAccountAuthSession.start({ phone, credentials });
     const resolved = telegramAccountAuthSession.getResolvedConnectorConfig();
@@ -414,7 +385,6 @@ async function handleStart(
     );
   }
 }
-
 async function handleSubmitCode(
   req: RouteRequest,
   res: RouteResponse,
@@ -427,7 +397,6 @@ async function handleSubmitCode(
   };
   const setupService = getSetupService(runtime);
   const config = setupService?.getConfig() ?? {};
-
   const telegramAccountAuthSession = ensureAuthSession(config, runtime);
   if (!telegramAccountAuthSession) {
     sendSetupError(
@@ -438,7 +407,6 @@ async function handleSubmitCode(
     );
     return;
   }
-
   try {
     await telegramAccountAuthSession.submit(body);
     const resolved = telegramAccountAuthSession.getResolvedConnectorConfig();
@@ -460,7 +428,6 @@ async function handleSubmitCode(
     );
   }
 }
-
 async function handleCancel(
   _req: RouteRequest,
   res: RouteResponse,
@@ -487,16 +454,13 @@ async function handleCancel(
   authSessions.delete(runtime);
   clearTelegramAccountAuthState(sessionScope(runtime));
   clearTelegramAccountSession(sessionScope(runtime));
-
   const service = resolveService(runtime);
   if (typeof service?.stopAccount === "function") {
     await service.stopAccount();
   }
-
   const config = setupService.getConfig();
   res.status(200).json(statusFromState(runtime, config));
 }
-
 function serializeAuthRoute(handler: typeof handleStart): typeof handleStart {
   return async (req, res, runtime) => {
     const pending = (authOperations.get(runtime) ?? Promise.resolve()).then(
@@ -513,9 +477,7 @@ function serializeAuthRoute(handler: typeof handleStart): typeof handleStart {
     await pending;
   };
 }
-
 // ── Exported route definitions ─────────────────────────────────────────
-
 /**
  * Plugin routes for Telegram account (user-account) auth.
  * Registered with `rawPath: true` to expose the canonical

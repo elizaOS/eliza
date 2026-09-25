@@ -8,42 +8,26 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
+      "eliza-source": "./src/plugin.ts",
       "types": "./dist/plugin.d.ts",
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./ui": {
+      "eliza-source": "./src/components/maps-view-bundle.ts",
       "types": "./dist/components/maps-view-bundle.d.ts",
-      "eliza-source": {
-        "types": "./src/components/maps-view-bundle.ts",
-        "import": "./src/components/maps-view-bundle.ts",
-        "default": "./src/components/maps-view-bundle.ts"
-      },
       "import": "./dist/components/maps-view-bundle.js",
       "default": "./dist/components/maps-view-bundle.js"
     },
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }
@@ -56,7 +40,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -68,7 +52,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.0.0",
+    "react": "^19.3.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -78,7 +62,7 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@types/node": "^25.0.6",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",

@@ -3,67 +3,15 @@
   "version": "2.0.3-beta.7",
   "type": "module",
   "description": "First-class calendar plugin for elizaOS agents: Google, Microsoft, Apple, and ICS feeds; scheduling; event management; and owner-facing calendar views.",
-  "sideEffects": [
-    "./src/register.ts",
-    "./src/api/client-calendar.ts",
-    "./src/ui.ts",
-    "./dist/register.js",
-    "./dist/api/client-calendar.js",
-    "./dist/ui.js"
-  ],
+  "sideEffects": false,
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./ui": {
-      "types": "./dist/ui.d.ts",
-      "eliza-source": {
-        "types": "./src/ui.ts",
-        "import": "./src/ui.ts",
-        "default": "./src/ui.ts"
-      },
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
-    "./api/client-calendar": {
-      "types": "./dist/api/client-calendar.d.ts",
-      "eliza-source": {
-        "types": "./src/api/client-calendar.ts",
-        "import": "./src/api/client-calendar.ts",
-        "default": "./src/api/client-calendar.ts"
-      },
-      "import": "./dist/api/client-calendar.js",
-      "default": "./dist/api/client-calendar.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "scripts": {
@@ -71,8 +19,8 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
-    "build:js": "bun run clean && tsup --config tsup.config.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "build:js": "bun run clean && tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -86,7 +34,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
@@ -151,7 +98,9 @@
     }
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "export": "registerCalendarApp"
+    },
     "app": {
       "permissions": [
         "calendar"

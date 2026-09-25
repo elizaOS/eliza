@@ -37,7 +37,6 @@
     "src/widgets/index.ts",
     "src/bridge/gateway-discovery.ts",
     "src/first-run/use-microphone-permission.ts",
-    "src/platform/empty-node-module.ts",
     "src/platform/is-native-server.ts",
     "src/services/local-inference/index.ts",
     "src/views/view-interact-protocol.ts",
@@ -50,7 +49,7 @@
     "src/voice/**/fixtures/**/*.mjs",
     "test/**/*.{ts,tsx,mjs}",
     "stories/**/*.{ts,tsx,mjs}",
-    "scripts/*.mjs"
+    "scripts/*.ts"
   ],
   "paths": {
     "@ui-src/*": ["src/*"]
@@ -63,7 +62,7 @@
     "stories/**/*.{css,mdx}",
     ".storybook/**/*.{css,mdx}",
     "*.config.{ts,mts,mjs}",
-    "scripts/**/*.{ts,mts,mjs}"
+    "scripts/**/*.ts"
   ],
   "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
   "vitest": false

@@ -77,7 +77,7 @@ jobs:
           gh release download --repo "$GITHUB_REPOSITORY" --pattern "elizaos-*-android-*.zip" --dir "$stage" -- "$RELEASE_TAG"
           gh release download --repo "$GITHUB_REPOSITORY" --pattern "*.android-release.json" --dir "$stage" -- "$RELEASE_TAG"
           output="$stage/aosp-update-manifest-${RELEASE_CHANNEL}.json"
-          node scripts/android/publish-update-manifest.mjs \
+          node scripts/android/publish-update-manifest.ts \
             "$stage" "$RELEASE_VERSION" "$RELEASE_CHANNEL" "$RELEASE_TAG" \
             "$GITHUB_REPOSITORY" "$output"
           gh release upload --repo "$GITHUB_REPOSITORY" --clobber -- "$RELEASE_TAG" "$output"

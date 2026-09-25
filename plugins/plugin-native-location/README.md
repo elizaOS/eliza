@@ -14,3 +14,12 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-location build  # build
 bun run --cwd plugins/plugin-native-location test   # tests
 ```
+
+Android uses framework `LocationManager` providers without requiring Google Play
+Services. Pending fixes and watches are cancelled on teardown, and cached ages
+use the monotonic clock. The emulator suite injects known coordinates and checks
+reads, watch cancellation, and timeouts without silently skipping missing fixes:
+
+```bash
+node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-location
+```

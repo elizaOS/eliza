@@ -4,13 +4,14 @@
  */
 import {
   ChannelType,
+  getValidationKeywordTerms,
   type IAgentRuntime,
   logger,
   type Memory,
   type Provider,
   type State,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+
 import { COMPONENT_CATALOG } from "../shared/ui-catalog-prompt.ts";
 
 // Core components to describe in detail — subset to keep context short.

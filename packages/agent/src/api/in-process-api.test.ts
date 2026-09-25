@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
 import { expect, it } from "vitest";
 import { buildLegacyShim, capturedToResult } from "./dispatch-route";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount";

@@ -25,13 +25,11 @@
  * (`AppCatchAllRoute`) and the {@link AppModeEntryRoute} gate; the apex check
  * runs first there, so apex behavior can never be affected by this module.
  */
-
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared";
-
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 /** Production + staging Eliza app hosts (the staging Pages deploy serves the
  * identical bundle on `app-staging.*`, so staging must mirror prod behavior). */
 export const APP_MODE_HOSTNAMES: ReadonlySet<string> = new Set([
@@ -40,7 +38,6 @@ export const APP_MODE_HOSTNAMES: ReadonlySet<string> = new Set([
   ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames,
   ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames,
 ]);
-
 /** Trusted apex-console → app-host pairing for cross-origin product entry. */
 export function appModeOriginForApexHostname(hostname: string): string | null {
   const classified = classifyElizaHostname(hostname);
@@ -54,17 +51,15 @@ export function appModeOriginForApexHostname(hostname: string): string | null {
     ? ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin
     : null;
 }
-
 /** Dev-only app-mode emulation: the app hosts are never `localhost`, so the
  * entry routing is otherwise untestable in `vite dev`. Vite inlines the env
  * read on literal access, and production-mode packages/app builds REFUSE to
- * bake the flag (`packages/app/scripts/forced-host-mode-guard.mjs` throws at
+ * bake the flag (`packages/app/scripts/forced-host-mode-guard.ts` throws at
  * build time), so it can never reach a deployed bundle. Mirrors
  * `VITE_FORCE_APEX_CONSOLE` in `../shell/apex-host.ts`. */
 function readAppModeDevFlag(): boolean {
   return import.meta.env?.VITE_FORCE_APP_MODE === "true";
 }
-
 /**
  * Pure hostname decision, exposed for the test matrix. `devFlag` defaults to
  * the Vite env escape hatch; tests inject it explicitly.
@@ -84,14 +79,12 @@ export function isAppModeHostname(
     hostname.trim().toLowerCase().replace(/\.$/, ""),
   );
 }
-
 /** True when the current document is served in app-mode. No-DOM (SSR /
  * prerender / native) → false, so server and native builds never branch. */
 export function isAppModeHost(): boolean {
   if (typeof window === "undefined") return false;
   return isAppModeHostname(window.location.hostname);
 }
-
 /** Minimal structural slice of `AgentListItemDto` the routing decision needs
  * (assignable from the full DTO; test fixtures stay small). The lifecycle
  * fields are retained for the planned health-gated background pairing layer;
@@ -104,22 +97,24 @@ export interface AppModeAgent {
   lastHeartbeatAt: string | null;
   updatedAt: string;
 }
-
 /** The deploy-first-agent flow: `/join` select-or-provisions a Cloud agent and
  * drops the user straight into chat. */
 export const APP_MODE_CREATE_PATH = "/join";
-
 export type AppModeRoute =
   /** No agents at all — the `/join` deploy-first-agent flow. */
-  | { kind: "create"; to: string }
+  | {
+      kind: "create";
+      to: string;
+    }
   /** The org has agents (any tier, any lifecycle state) — the same-origin
    * chat app is home. This is the chat floor: entry never bounces to the
    * console and never pairing-redirects into a per-agent web UI, because a
    * cold-starting agent cannot consume a 60s one-time pairing token and the
    * redirect dead-ends on "Sign-in link expired" (the app-staging cold-start
    * regression this floor exists for). */
-  | { kind: "chat-home" };
-
+  | {
+      kind: "chat-home";
+    };
 /**
  * Given the org's agents (GET /api/v1/eliza/agents), decide where app-mode
  * entry lands: any agents → the same-origin chat app; none → `/join`.
@@ -138,7 +133,6 @@ export function decideAppModeRoute(
   if (agents.length > 0) return { kind: "chat-home" };
   return { kind: "create", to: APP_MODE_CREATE_PATH };
 }
-
 /**
  * Indirection over `window.location.assign` so tests can observe redirects
  * (jsdom forbids stubbing `location.assign` directly). Used by the SSO bridge

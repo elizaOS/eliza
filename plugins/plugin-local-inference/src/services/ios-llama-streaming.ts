@@ -8,7 +8,7 @@
  *
  * Status (2026-05-12): the XCFramework currently ships without streaming-LLM
  * support. The Swift implementation against
- * `libelizainference.dylib` (built by `build-llama-cpp-mtp.mjs` with
+ * `libelizainference.dylib` (built by `build-llama-cpp-mtp.ts` with
  * the `darwin-arm64-metal-fused` target) is the gating item; until then
  * `loadIosStreamingLlmBinding` returns `null` and the runtime falls
  * back to the cloud route.

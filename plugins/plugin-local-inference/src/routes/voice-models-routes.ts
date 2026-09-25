@@ -43,20 +43,22 @@
  * `<state-dir>/local-inference/voice-update-prefs.json`; the pin set is
  * stored as a sibling `voice-update-pins.json`.
  */
-
 import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
+import { sendJson, sendJsonError } from "@elizaos/core/api/http-helpers";
+import type { NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import {
-	DEFAULT_NETWORK_POLICY_PREFERENCES,
-	type NetworkPolicyPreferences,
-	sendJson,
-	sendJsonError,
 	VOICE_MODEL_VERSIONS,
 	type VoiceModelId,
 	type VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import {
+	normalizeNetworkPreferences as normalizePrefs,
+	readVoiceNetworkPreferences as readPreferences,
+	voiceNetworkPreferencesPath as voicePrefsPath,
+} from "@elizaos/plugin-native-inference/voice-network-preferences";
 import { evaluateRuntimePolicy } from "../services/network-policy";
 import { stageWakeWordModel } from "../services/voice/wake-word-staging";
 import {
@@ -68,30 +70,28 @@ import {
 import { readCompatJsonBody } from "./compat-helpers";
 
 const ROUTE_PREFIX = "/api/local-inference/voice-models";
-
 /** All known voice model ids (used to validate path params). */
 const KNOWN_VOICE_MODEL_IDS: ReadonlySet<string> = new Set(
 	VOICE_MODEL_VERSIONS.map((v) => v.id),
 );
-
 export interface VoiceModelInstallationView {
 	readonly id: VoiceModelId;
 	readonly installedVersion: string | null;
 	readonly pinned: boolean;
 	readonly lastError: string | null;
 }
-
 interface PreferencesFile {
 	autoUpdateOnWifi: boolean;
 	autoUpdateOnCellular: boolean;
 	autoUpdateOnMetered: boolean;
-	quietHours: Array<{ start: string; end: string }>;
+	quietHours: Array<{
+		start: string;
+		end: string;
+	}>;
 }
-
 interface PinsFile {
 	pinned: VoiceModelId[];
 }
-
 export interface VoiceModelManagementInput {
 	op:
 		| "trigger_voice_model_update"
@@ -101,21 +101,26 @@ export interface VoiceModelManagementInput {
 	pinned?: boolean;
 	preferences?: Partial<NetworkPolicyPreferences>;
 }
-
 export type VoiceModelManagementResult =
-	| { op: "trigger_voice_model_update"; id: VoiceModelId; result: unknown }
-	| { op: "pin_voice_model"; id: VoiceModelId; pinned: boolean }
+	| {
+			op: "trigger_voice_model_update";
+			id: VoiceModelId;
+			result: unknown;
+	  }
+	| {
+			op: "pin_voice_model";
+			id: VoiceModelId;
+			pinned: boolean;
+	  }
 	| {
 			op: "set_voice_model_preferences";
 			preferences: NetworkPolicyPreferences;
 	  };
-
 /* ----------------------------------------------------------------- *
  * Owner gate — the cellular + metered toggles are OWNER-only.        *
  * The runtime writes `ELIZA_ADMIN_ENTITY_ID` after voice-first-run  *
  * completes (see voice-first-run-routes.ts §POST /complete).        *
  * ----------------------------------------------------------------- */
-
 /**
  * `isOwnerRequest()` strategy:
  *
@@ -137,16 +142,11 @@ function isOwnerRequest(req: http.IncomingMessage): boolean {
 	if (!value) return false;
 	return value.toLowerCase() === adminId.toLowerCase();
 }
-
 /* ----------------------------------------------------------------- *
  * State-dir helpers — pure I/O around the prefs + pins files.        *
  * ----------------------------------------------------------------- */
-
 function voicePrefsDir(): string {
 	return path.join(resolveStateDir(process.env), "local-inference");
-}
-function voicePrefsPath(): string {
-	return path.join(voicePrefsDir(), "voice-update-prefs.json");
 }
 function voicePinsPath(): string {
 	return path.join(voicePrefsDir(), "voice-update-pins.json");
@@ -157,24 +157,6 @@ function bundleVoiceDir(): string {
 function voiceStagingDir(): string {
 	return path.join(resolveStateDir(process.env), "cache", "voice-staging");
 }
-
-async function readPreferences(): Promise<NetworkPolicyPreferences> {
-	try {
-		const raw = await fsp.readFile(voicePrefsPath(), "utf8");
-		const parsed = JSON.parse(raw) as Partial<PreferencesFile>;
-		return normalizePrefs(parsed);
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-			return DEFAULT_NETWORK_POLICY_PREFERENCES;
-		}
-		logger.warn(
-			{ err },
-			"[voice-models-routes] failed to read voice-update-prefs.json — using defaults",
-		);
-		return DEFAULT_NETWORK_POLICY_PREFERENCES;
-	}
-}
-
 async function writePreferences(
 	prefs: NetworkPolicyPreferences,
 ): Promise<void> {
@@ -187,40 +169,6 @@ async function writePreferences(
 	};
 	await fsp.writeFile(voicePrefsPath(), JSON.stringify(out, null, 2), "utf8");
 }
-
-function normalizePrefs(
-	candidate: Partial<PreferencesFile> | null | undefined,
-): NetworkPolicyPreferences {
-	const def = DEFAULT_NETWORK_POLICY_PREFERENCES;
-	if (!candidate || typeof candidate !== "object") return def;
-	const quietHours = Array.isArray(candidate.quietHours)
-		? candidate.quietHours
-				.filter(
-					(q): q is { start: string; end: string } =>
-						!!q &&
-						typeof q === "object" &&
-						typeof (q as { start: unknown }).start === "string" &&
-						typeof (q as { end: unknown }).end === "string",
-				)
-				.map((q) => ({ start: q.start, end: q.end }))
-		: def.quietHours;
-	return {
-		autoUpdateOnWifi:
-			typeof candidate.autoUpdateOnWifi === "boolean"
-				? candidate.autoUpdateOnWifi
-				: def.autoUpdateOnWifi,
-		autoUpdateOnCellular:
-			typeof candidate.autoUpdateOnCellular === "boolean"
-				? candidate.autoUpdateOnCellular
-				: def.autoUpdateOnCellular,
-		autoUpdateOnMetered:
-			typeof candidate.autoUpdateOnMetered === "boolean"
-				? candidate.autoUpdateOnMetered
-				: def.autoUpdateOnMetered,
-		quietHours,
-	};
-}
-
 async function readPins(): Promise<Set<VoiceModelId>> {
 	try {
 		const raw = await fsp.readFile(voicePinsPath(), "utf8");
@@ -240,13 +188,11 @@ async function readPins(): Promise<Set<VoiceModelId>> {
 		return new Set();
 	}
 }
-
 async function writePins(pins: ReadonlySet<VoiceModelId>): Promise<void> {
 	await fsp.mkdir(voicePrefsDir(), { recursive: true });
 	const out: PinsFile = { pinned: Array.from(pins).sort() };
 	await fsp.writeFile(voicePinsPath(), JSON.stringify(out, null, 2), "utf8");
 }
-
 function requireVoiceModelId(id: string | undefined, op: string): VoiceModelId {
 	if (typeof id !== "string" || !id.trim()) {
 		throw new Error(`${op} requires id`);
@@ -257,7 +203,6 @@ function requireVoiceModelId(id: string | undefined, op: string): VoiceModelId {
 	}
 	return trimmed as VoiceModelId;
 }
-
 export async function applyVoiceModelManagementMutation(
 	input: VoiceModelManagementInput,
 ): Promise<VoiceModelManagementResult> {
@@ -270,7 +215,6 @@ export async function applyVoiceModelManagementMutation(
 		await writePins(pins);
 		return { op: input.op, id, pinned };
 	}
-
 	if (input.op === "set_voice_model_preferences") {
 		const current = await readPreferences();
 		const preferences = normalizePrefs({
@@ -296,7 +240,6 @@ export async function applyVoiceModelManagementMutation(
 		await writePreferences(preferences);
 		return { op: input.op, preferences };
 	}
-
 	const id = requireVoiceModelId(input.id, input.op);
 	const updater = getUpdater();
 	const [installed, pins] = await Promise.all([
@@ -363,17 +306,14 @@ export async function applyVoiceModelManagementMutation(
 		},
 	};
 }
-
 /* ----------------------------------------------------------------- *
  * Installed-version resolution                                       *
  * Filenames written by `downloadVoiceModel` follow the pattern        *
  *   `<id>-<version>-<original-asset-name>`                            *
  * so we can recover `installedVersion` by directory listing.          *
  * ----------------------------------------------------------------- */
-
 const INSTALLED_FILENAME_RE =
 	/^([a-z0-9-]+)-(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)-/;
-
 export async function resolveInstalledVersions(
 	dir: string = bundleVoiceDir(),
 ): Promise<Map<VoiceModelId, string>> {
@@ -396,59 +336,46 @@ export async function resolveInstalledVersions(
 	}
 	return installed;
 }
-
 /* ----------------------------------------------------------------- *
  * Updater dependency-injection hook (tests inject a fake updater).   *
  * ----------------------------------------------------------------- */
-
 let updaterOverride: VoiceModelUpdater | null = null;
-
 export function setVoiceModelsUpdater(updater: VoiceModelUpdater | null): void {
 	updaterOverride = updater;
 }
-
 function getUpdater(): VoiceModelUpdater {
 	if (updaterOverride) return updaterOverride;
 	return new VoiceModelUpdater({});
 }
-
 /* ----------------------------------------------------------------- *
  * Download dependency-injection hook (tests inject a fake downloader  *
  * avoid touching the network).                                        *
  * ----------------------------------------------------------------- */
-
 type DownloadFn = typeof downloadVoiceModel;
 let downloadOverride: DownloadFn | null = null;
-
 export function setVoiceModelDownloader(fn: DownloadFn | null): void {
 	downloadOverride = fn;
 }
-
 function getDownloader(): DownloadFn {
 	return downloadOverride ?? downloadVoiceModel;
 }
-
 /* ----------------------------------------------------------------- *
  * Bundle-version override (tests pass a deterministic bundle version  *
  * so the updater's decision rule is reproducible).                    *
  * ----------------------------------------------------------------- */
-
 let bundleVersionOverride: string | null = null;
 export function setVoiceModelsBundleVersionForTest(
 	bundleVersion: string | null,
 ): void {
 	bundleVersionOverride = bundleVersion;
 }
-
 function resolveBundleVersion(): string {
 	if (bundleVersionOverride !== null) return bundleVersionOverride;
 	return process.env.ELIZA_BUNDLE_VERSION?.trim() ?? "0.0.0";
 }
-
 /* ----------------------------------------------------------------- *
  * Route handler                                                       *
  * ----------------------------------------------------------------- */
-
 export async function handleVoiceModelsRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -457,7 +384,6 @@ export async function handleVoiceModelsRoutes(
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
 	if (!pathname.startsWith(ROUTE_PREFIX)) return false;
-
 	// GET /api/local-inference/voice-models
 	if (method === "GET" && pathname === ROUTE_PREFIX) {
 		const [installed, pins] = await Promise.all([
@@ -479,7 +405,6 @@ export async function handleVoiceModelsRoutes(
 		sendJson(res, { installations });
 		return true;
 	}
-
 	// GET /api/local-inference/voice-models/check
 	if (method === "GET" && pathname === `${ROUTE_PREFIX}/check`) {
 		const requestedForceValues = url.searchParams.getAll("force");
@@ -524,14 +449,12 @@ export async function handleVoiceModelsRoutes(
 		});
 		return true;
 	}
-
 	// GET /api/local-inference/voice-models/preferences
 	if (method === "GET" && pathname === `${ROUTE_PREFIX}/preferences`) {
 		const preferences = await readPreferences();
 		sendJson(res, { preferences, isOwner: isOwnerRequest(req) });
 		return true;
 	}
-
 	// POST /api/local-inference/voice-models/preferences
 	if (method === "POST" && pathname === `${ROUTE_PREFIX}/preferences`) {
 		const body = await readCompatJsonBody(req, res);
@@ -553,7 +476,10 @@ export async function handleVoiceModelsRoutes(
 					? body.autoUpdateOnMetered
 					: current.autoUpdateOnMetered,
 			quietHours: Array.isArray(body.quietHours)
-				? (body.quietHours as Array<{ start: string; end: string }>)
+				? (body.quietHours as Array<{
+						start: string;
+						end: string;
+					}>)
 				: current.quietHours.map((q) => ({ start: q.start, end: q.end })),
 		});
 		// OWNER gate: only the OWNER can flip cellular or metered to true.
@@ -573,7 +499,6 @@ export async function handleVoiceModelsRoutes(
 		sendJson(res, { ok: true, preferences: candidate });
 		return true;
 	}
-
 	// POST /api/local-inference/voice-models/:id/update | :id/pin
 	const idActionMatch =
 		method === "POST"
@@ -709,10 +634,8 @@ export async function handleVoiceModelsRoutes(
 		}
 		return true;
 	}
-
 	return false;
 }
-
 function serializeStatus(s: VoiceModelStatus): {
 	id: VoiceModelId;
 	installedVersion: string | null;

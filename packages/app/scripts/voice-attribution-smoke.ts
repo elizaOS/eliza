@@ -37,6 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { buildVoiceTurnSignal } from "@elizaos/core/voice/respond-gate";
 import { handleLiveVoiceAttribution } from "@elizaos/plugin-local-inference/runtime/voice-entity-binding";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import {
@@ -52,7 +53,6 @@ import {
   GgmlSileroVad,
   VadDetector,
 } from "@elizaos/plugin-local-inference/services/voice/vad";
-import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(
@@ -156,7 +156,7 @@ const FUSED_LIB = resolveFusedLibraryPath(modelsDir, process.env);
 if (!FUSED_LIB) {
   skip(
     "fused libelizainference not found.\n" +
-      "  Set $ELIZA_INFERENCE_LIBRARY (exact) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app/scripts/build-llama-cpp-mtp.mjs.",
+      "  Set $ELIZA_INFERENCE_LIBRARY (exact) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app/scripts/build-llama-cpp-mtp.ts.",
   );
 }
 const FFI = loadElizaInferenceFfi(FUSED_LIB);

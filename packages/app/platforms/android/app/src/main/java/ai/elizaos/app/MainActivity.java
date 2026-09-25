@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.app.role.RoleManager;
 import android.util.Log;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
@@ -48,7 +49,7 @@ public class MainActivity extends BridgeActivity {
      *
      * White-label forks add additional entries via
      * `app.config.ts > android.userAgentMarkers`; the
-     * `run-mobile-build.mjs:overlayAndroid()` step rewrites
+     * `run-mobile-build.ts:overlayAndroid()` step rewrites
      * `BRAND_USER_AGENT_MARKERS` below to include them. The default
      * `ro.elizaos.product` → `ElizaOS/` entry is always emitted by the
      * framework so the renderer can sniff `isElizaOS()` consistently
@@ -117,15 +118,7 @@ public class MainActivity extends BridgeActivity {
             getBridge().registerPlugin(SafePushNotificationsPlugin.class);
         }
 
-        // Keep the screen on while the agent app is in the foreground.
-        // Voice turns (ASR → LLM → TTS) on local-runtime builds regularly
-        // take 1-5 seconds; screen-off mid-turn breaks the "is the agent
-        // still working?" feedback and confuses the user. The flag is
-        // window-scoped — Android releases it automatically when the window
-        // is no longer visible (app moved to background or fully covered),
-        // so background instances don't drain battery. Same flag set by
-        // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
-        keepScreenAwake();
+        updateScreenWakePolicy();
 
         // Hide the bottom system navigation bar (the white gesture pill) for a
         // clean, full-bleed agent home — iOS-style. We hide ONLY the navigation
@@ -189,10 +182,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        // Some vendor Android builds clear window flags while switching tasks
-        // or returning from an out-of-process browser surface. Restore the
-        // demo-mode wake contract every time Eliza becomes foreground again.
-        keepScreenAwake();
+        updateScreenWakePolicy();
         applyImmersiveNavigationBar();
     }
 
@@ -202,13 +192,21 @@ public class MainActivity extends BridgeActivity {
         // The system restores the nav bar after dialogs / resume; re-hide it
         // whenever we regain focus so the full-bleed home stays clean.
         if (hasFocus) {
-            keepScreenAwake();
+            updateScreenWakePolicy();
             applyImmersiveNavigationBar();
         }
     }
 
-    private void keepScreenAwake() {
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    private void updateScreenWakePolicy() {
+        RoleManager roles = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            ? getSystemService(RoleManager.class) : null;
+        // Home remains visible while idle; its window must allow normal sleep.
+        // Keep the existing conversation/demo behavior for ordinary app use.
+        if (roles != null && roles.isRoleHeld(RoleManager.ROLE_HOME)) {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
     }
 
     /**

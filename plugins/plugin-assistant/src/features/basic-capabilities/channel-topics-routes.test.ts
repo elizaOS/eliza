@@ -6,8 +6,8 @@
  * validation, unavailable-service failures, and successful response shaping.
  */
 
+import type { TopicSearchHit } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { TopicSearchHit } from "../../../../../packages/core/src/services/channel-topics.ts";
 import {
   CHANNEL_TOPICS_ROUTES,
   CHANNEL_TOPICS_SEARCH_ROUTE,

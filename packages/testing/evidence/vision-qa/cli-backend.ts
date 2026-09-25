@@ -172,11 +172,21 @@ function readUsage(
   const record = raw as Record<string, unknown>;
   const input = record[inputKey];
   const output = record[outputKey];
-  if (typeof input !== "number" || typeof output !== "number") {
-    throw new EvidenceError("vision CLI usage block was missing token counts", {
-      code: "VISION_CLI_RESPONSE",
-      context: { inputKey, outputKey },
-    });
+  if (
+    typeof input !== "number" ||
+    typeof output !== "number" ||
+    !Number.isSafeInteger(input) ||
+    !Number.isSafeInteger(output) ||
+    input < 0 ||
+    output < 0
+  ) {
+    throw new EvidenceError(
+      "vision CLI usage must contain non-negative safe integer token counts",
+      {
+        code: "VISION_CLI_RESPONSE",
+        context: { inputKey, outputKey },
+      },
+    );
   }
   return { inputTokens: input, outputTokens: output };
 }
@@ -228,10 +238,11 @@ export class CliVisionBackend {
   private readonly cli: VisionCli;
   private readonly command: string;
   private readonly run: ProcessRunner;
+  private readonly modelArgs: string[];
 
   constructor(options: {
     cli: VisionCli;
-    /** Recorded in provenance; the CLI itself picks the concrete model. */
+    /** Explicit model passed to the CLI, or <cli>-cli for its configured default. */
     model: string;
     /** Override the executable name (default: the cli id). */
     command?: string;
@@ -239,6 +250,8 @@ export class CliVisionBackend {
   }) {
     this.cli = options.cli;
     this.model = options.model;
+    this.modelArgs =
+      options.model === `${options.cli}-cli` ? [] : ["--model", options.model];
     this.command = options.command ?? options.cli;
     this.run = options.runner ?? defaultRunner;
   }
@@ -289,7 +302,15 @@ export class CliVisionBackend {
     // permission) can open it instead of denying the Read and answering blind.
     const result = await this.run(
       this.command,
-      ["-p", prompt, "--output-format", "json", "--add-dir", imageDir],
+      [
+        "-p",
+        prompt,
+        "--output-format",
+        "json",
+        "--add-dir",
+        imageDir,
+        ...this.modelArgs,
+      ],
       { timeoutMs },
     );
     if (result.code !== 0) {
@@ -318,6 +339,7 @@ export class CliVisionBackend {
       this.command,
       [
         "exec",
+        ...this.modelArgs,
         "-i",
         imagePath,
         "-o",

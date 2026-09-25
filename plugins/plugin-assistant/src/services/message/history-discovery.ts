@@ -713,17 +713,16 @@ export function loadHistoryReferences(
   return { projection: restoreAll ? undefined : evidence, evidence };
 }
 
-export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
-The supplied original history contains retained standing constraints and unfinished work, every new unreviewed source, and the complete current exchange. Other reviewed originals remain in this authorized conversation; the current-turn boundary gives the complete reference index. A prior retention review is model judgment, not proof every future dependency is supplied. No original is deleted, rewritten or summarized.
-For a recall dependency missing from supplied originals, read before answering or claiming it is unknown. Search the stable subject or title in the question to locate an original version; searching only its current value can omit earlier revisions. Do not wait for a separate search instruction. Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Use history:search-user:<literal> for user-authored originals and history:search-assistant:<literal> for agent replies; speaker filters do not prove which person authored a source. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Queries in one read form a union. Matches establish occurrences, not the first version or exhaustive history. Before claiming "originally", "always" or "only ever", locate the original subject sources or read history:all. A zero-match result proves only that the exact case-insensitive substring does not occur in the scanned conversation originals. You may report that literal result for an exact-wording question. It does not prove a fact or topic was never discussed: paraphrases, synonyms, corrections and unresolved interpretation require history:all before an absence claim. A further no-progress read restores full history. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
-After resolving dependencies, select applicable supplied originals in completionContext: factual background, standing constraints/corrections, referents and referenced unfinished work. Their complete union remains available without a cap. Use mode=relevant_prior_dialogue; complete=true means this request's dependencies are resolved from supplied originals, not that unseen originals were reviewed. Missing history is requested through contextRequests, not a separate selection mode. Copy completion_source_set exactly. An incomplete selection restores every original before delivery or effects. Current request, system/provider constraints and tool receipts remain complete. This decision cannot rewrite the retention checkpoint.`;
+export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `History selection: use the separate source map to identify original dialogue. Select facts, applicable constraints/corrections, referents and explicitly continued unfinished work; a complete selection retains their exact union, never a summary. Prior selection can miss dependencies.
+Read missing originals through READ_CONTEXT or contextRequests (empty reply/action fields): history:hN for known IDs; history:search:<literal>, history:search-user:<literal> or history:search-assistant:<literal> for case-insensitive substring search. Search subjects as well as current values to find corrections. Speaker filters mean roles, not people. Matches establish occurrences, not earliest versions; zero matches establish literal absence only. Use history:all for unresolved interpretation or exhaustive coverage, and before claiming something was never discussed. These are conversation reads, not external app actions; do not reread supplied originals or infer omitted permission.
+Once dependencies are resolved, use relevant_prior_dialogue with complete=true and the sourceSetId required by the response schema. Incomplete selection restores all originals. Original speaker attribution, current request, system/provider constraints, receipts and retention checkpoints remain intact. Navigation receipts follow their original request.`;
 
 export function historyReferenceNotice(
   context: ContextObject,
   projection?: HistoryDiscovery,
 ): string {
   if (!projection) return "";
-  return `\nHistorical navigation receipts are restored with their original request; read that request before judging its navigation outcome. Complete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
+  return `\nHistory index: h1–h${collectCompletionContextSources(context).length} in chronological order. Read known IDs with history:hN, literal matches with history:search:<text>, or all originals with history:all. Supplied/loaded originals need no reread.`;
 }
 
 /** Carry completed conversation lookups into planning only while their sources remain identical. */
@@ -750,6 +749,23 @@ export function withHistoryReadEvidence(
       },
     ],
   };
+}
+
+/** Complete loaded originals for the plain Stage-1 transcript; receipts remain separate. */
+export function loadedPlainHistorySources(
+  context: ContextObject,
+  projection?: HistoryDiscovery,
+  renderedHistoryIds: ReadonlySet<string> = new Set(),
+): ContextObjectPromptSegment[] {
+  if (!projection || projection.loadedSourceIds.size === 0) return [];
+  const bound = completionContextSources(context);
+  if (projection.sourceSetId !== bound.sourceSetId) return [];
+  return bound.sources
+    .filter(
+      ({ id, event }) =>
+        projection.loadedSourceIds.has(id) && !renderedHistoryIds.has(event.id),
+    )
+    .map(({ event }) => event.segment);
 }
 
 export function loadedHistorySegments(

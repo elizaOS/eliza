@@ -3,8 +3,9 @@
  * follow-up capability is recognized only via the `FOLLOW_UP_CAPABLE_ACTION_TAG`
  * tag, never inferred from an action's name. Pure and deterministic — no runtime.
  */
+
+import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "../../../../../../packages/core/src/types/index.ts";
 import { isFollowUpCapableAction } from "./actions.ts";
 
 describe("actions provider follow-up capability tagging", () => {

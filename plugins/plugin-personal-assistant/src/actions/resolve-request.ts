@@ -32,6 +32,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   ApprovalNotFoundError as RuntimeApprovalNotFoundError,
   ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
@@ -40,7 +41,6 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
 } from "@elizaos/plugin-native-phone/twilio";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -2045,10 +2045,7 @@ export async function executeApprovedRequest(args: {
   }
 
   // No executor exists for this action (spend_money, modify_event,
-  // cancel_event). spend_money has no spend rail to wire:
-  // @elizaos/plugin-finances is read-only — payment-source tracking, CSV
-  // import, and spending summaries — and initiates no purchases or
-  // transfers. Approving must never report success while executing
+  // cancel_event). Approving must never report success while executing
   // nothing — surface the gap instead (issue #10723).
   logger.error(
     `[OwnerResolveRequest] request ${args.request.id} approved but no executor exists for action ${args.request.action}; nothing was executed`,

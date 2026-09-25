@@ -17,8 +17,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fetchCodexUsage } from "@elizaos/auth/auth/codex-usage";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountUsage } from "@elizaos/shared";
-
+import { type LinkedAccountUsage } from "@elizaos/core/contracts/service-routing";
 /**
  * Snapshot returned by the provider usage probes. Mirrors
  * {@link LinkedAccountUsage} but without `refreshedAt` being optional —
@@ -27,7 +26,6 @@ import type { LinkedAccountUsage } from "@elizaos/shared";
 export interface UsageSnapshot extends LinkedAccountUsage {
   refreshedAt: number;
 }
-
 export interface UsageEntry {
   ts: number;
   tokens?: number;
@@ -36,10 +34,8 @@ export interface UsageEntry {
   model?: string;
   errorCode?: string;
 }
-
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 type FetchLike = typeof fetch;
-
 function utilizationToPct(
   value: unknown,
   scaleFractional = true,
@@ -51,7 +47,6 @@ function utilizationToPct(
     scaleFractional && value >= 0 && value <= 1 ? value * 100 : value;
   return Math.max(0, Math.min(100, percent));
 }
-
 function normalizeResetTimestamp(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     // Heuristic: epoch seconds vs ms. Seconds will be ~1.7e9 today; ms is ~1.7e12.
@@ -63,16 +58,15 @@ function normalizeResetTimestamp(value: unknown): number | undefined {
   }
   return undefined;
 }
-
 interface AnthropicUsageWindow {
   utilization?: unknown;
   resets_at?: unknown;
 }
-
 interface AnthropicUsageLimitScope {
-  model?: { display_name?: unknown };
+  model?: {
+    display_name?: unknown;
+  };
 }
-
 interface AnthropicUsageLimit {
   kind?: unknown;
   group?: unknown;
@@ -80,7 +74,6 @@ interface AnthropicUsageLimit {
   resets_at?: unknown;
   scope?: AnthropicUsageLimitScope | null;
 }
-
 interface AnthropicUsagePayload {
   five_hour_utilization?: unknown;
   five_hour_resets_at?: unknown;
@@ -90,11 +83,9 @@ interface AnthropicUsagePayload {
   seven_day?: AnthropicUsageWindow;
   limits?: AnthropicUsageLimit[];
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
-
 function invalidAnthropicUsageShape(field: string): never {
   throw new ElizaError(
     `Anthropic usage response field "${field}" was invalid`,
@@ -105,7 +96,6 @@ function invalidAnthropicUsageShape(field: string): never {
     },
   );
 }
-
 function parseOptionalRecord(
   value: unknown,
   field: string,
@@ -114,7 +104,6 @@ function parseOptionalRecord(
   if (value === undefined || value === null) return undefined;
   return isRecord(value) ? value : invalidAnthropicUsageShape(field);
 }
-
 function parseNullableRecord(
   value: unknown,
   field: string,
@@ -122,7 +111,6 @@ function parseNullableRecord(
   if (value === null) return null;
   return parseOptionalRecord(value, field);
 }
-
 function parseAnthropicUsageWindow(
   value: unknown,
   field: string,
@@ -134,7 +122,6 @@ function parseAnthropicUsageWindow(
     resets_at: record.resets_at,
   };
 }
-
 function parseAnthropicUsageLimits(
   value: unknown,
 ): AnthropicUsageLimit[] | undefined {
@@ -164,7 +151,6 @@ function parseAnthropicUsageLimits(
     };
   });
 }
-
 function parseAnthropicUsagePayload(value: unknown): AnthropicUsagePayload {
   if (!isRecord(value)) return invalidAnthropicUsageShape("root");
   return {
@@ -177,7 +163,6 @@ function parseAnthropicUsagePayload(value: unknown): AnthropicUsagePayload {
     limits: parseAnthropicUsageLimits(value.limits),
   };
 }
-
 /**
  * Probe Anthropic's OAuth usage endpoint.
  *
@@ -218,7 +203,6 @@ export async function pollAnthropicUsage(
     });
   }
   const payload = parseAnthropicUsagePayload(rawPayload);
-
   const fiveHour = payload.five_hour;
   const sevenDay = payload.seven_day;
   const weeklyModelBuckets: NonNullable<UsageSnapshot["weeklyModelBuckets"]> =
@@ -261,7 +245,6 @@ export async function pollAnthropicUsage(
       }
     }
   }
-
   const sessionPct =
     sessionLimitPct ??
     utilizationToPct(fiveHour?.utilization, false) ??
@@ -274,7 +257,6 @@ export async function pollAnthropicUsage(
     weeklyLimitResetsAt ??
     normalizeResetTimestamp(sevenDay?.resets_at) ??
     normalizeResetTimestamp(payload.seven_day_resets_at);
-
   return {
     refreshedAt: Date.now(),
     ...(sessionPct !== undefined ? { sessionPct } : {}),
@@ -285,7 +267,6 @@ export async function pollAnthropicUsage(
     ...(resetsAt !== undefined ? { resetsAt } : {}),
   };
 }
-
 /**
  * Probe Codex / ChatGPT's usage endpoint via the canonical client
  * (`@elizaos/auth/auth/codex-usage` — shared with the agent's inline Test probe).
@@ -306,9 +287,7 @@ export async function pollCodexUsage(
     ...(usage.resetsAt !== undefined ? { resetsAt: usage.resetsAt } : {}),
   };
 }
-
 // Local JSONL counters.
-
 function dayStamp(ts: number = Date.now()): string {
   const d = new Date(ts);
   const yyyy = d.getUTCFullYear();
@@ -316,7 +295,6 @@ function dayStamp(ts: number = Date.now()): string {
   const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
-
 function counterFile(
   providerId: string,
   accountId: string,
@@ -330,7 +308,6 @@ function counterFile(
     `${dayStamp(ts)}.jsonl`,
   );
 }
-
 /**
  * Append a usage entry for the given `(providerId, accountId)` pair.
  * One line per call, written synchronously with mode 0o600. The day
@@ -353,13 +330,11 @@ export function recordCall(
     mode: 0o600,
   });
 }
-
 export interface DailyCounters {
   calls: number;
   tokens: number;
   errors: number;
 }
-
 /**
  * Read today's JSONL and aggregate `(calls, tokens, errors)`. Lines that
  * fail to parse are skipped silently (best-effort).

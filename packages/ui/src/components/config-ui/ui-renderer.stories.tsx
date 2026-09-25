@@ -4,7 +4,7 @@
  * unauthenticated viewer.
  */
 
-import type { UiSpec } from "@elizaos/shared";
+import type { UiSpec } from "@elizaos/core/config/ui-spec";
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { UiRenderer } from "./ui-renderer";
@@ -72,7 +72,6 @@ const formSpec: UiSpec = {
     },
   },
 };
-
 const dashboardSpec: UiSpec = {
   root: "root",
   state: {},
@@ -128,9 +127,7 @@ const dashboardSpec: UiSpec = {
     },
   },
 };
-
 const emptySpec: UiSpec = { root: "root", state: {}, elements: {} };
-
 const meta = {
   title: "ConfigUi/UiRenderer",
   component: UiRenderer,
@@ -153,20 +150,15 @@ const meta = {
     onAction: () => {},
   },
 } satisfies Meta<typeof UiRenderer>;
-
 export default meta;
 type Story = StoryObj<typeof meta>;
-
 export const Form: Story = {};
-
 export const Dashboard: Story = {
   args: { spec: dashboardSpec },
 };
-
 export const LoadingSkeleton: Story = {
   args: { spec: emptySpec, loading: true },
 };
-
 export const UnauthenticatedVisibility: Story = {
   args: {
     spec: formSpec,

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { initializeTestRuntime } from "@elizaos/testing";
 /**
  * Real-runtime coverage for the SAVED_NOTES provider: a note written through
@@ -23,7 +24,10 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { stage1ResponseStateProviderNames } from "../../plugin-assistant/src/services/message/provider-state.ts";
+import {
+  selectV5PlannerStateProviderNames,
+  stage1ResponseStateProviderNames,
+} from "../../plugin-assistant/src/services/message/provider-state.ts";
 import { notesPlugin } from "./plugin.js";
 import {
   namedNotesProvider,
@@ -81,7 +85,7 @@ async function serviceWithNotes(contents: string[]): Promise<NotesService> {
   });
   await service.initialize();
   for (const content of contents) {
-    await service.createNote(parseNoteContent(content));
+    await service.createNote({ content });
   }
   return service;
 }
@@ -147,6 +151,14 @@ describe("SAVED_NOTES provider", () => {
     const message = recallMessage(runtime, "Change Same title to amber.");
     expect(
       stage1ResponseStateProviderNames(runtime, message, ["OWNER"]),
+    ).not.toContain("NAMED_NOTES");
+    expect(
+      selectV5PlannerStateProviderNames({
+        runtime,
+        message,
+        selectedContexts: ["notes"],
+        userRoles: ["OWNER"],
+      }),
     ).toContain("NAMED_NOTES");
     expect(
       stage1ResponseStateProviderNames(runtime, message, ["USER"]),
@@ -161,7 +173,7 @@ describe("SAVED_NOTES provider", () => {
       true,
       true,
     );
-    expect(before.text).toContain(JSON.stringify(`Same title\n${first.body}`));
+    expect(before.text).toContain(JSON.stringify(`Same title${first.body}`));
     expect(before.text).toContain("Bring it tomorrow.");
     expect(before.text).not.toContain("Private unrelated body");
     const originalSnapshot = service.snapshot();
@@ -257,7 +269,7 @@ describe("SAVED_NOTES provider", () => {
     expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
     expect(
       service.listNotes().find((note) => note.title === "Lookup label")?.body,
-    ).toBe(body);
+    ).toBe(`\n${body}`);
     await service.deleteNote(identities[0].id);
     const after = await notesProvider.get(
       runtime,
@@ -407,12 +419,7 @@ describe("SAVED_NOTES provider", () => {
     );
     const decoded = rows.map(([, content]) => content);
     expect(rows).toEqual(
-      service
-        .listNotes()
-        .map((note) => [
-          note.id,
-          note.body ? `${note.title}\n${note.body}` : note.title,
-        ]),
+      service.listNotes().map((note) => [note.id, `${note.title}${note.body}`]),
     );
     expect(decoded).toContain(content);
     expect(decoded).toContain("Label only");
@@ -434,13 +441,13 @@ describe("SAVED_NOTES provider", () => {
         ...base,
         id: "note-Second",
         title: "Same title",
-        body: "Keep  spaces.\nSecond line.",
+        body: "\nKeep  spaces.\nSecond line.",
       },
       {
         ...base,
         id: "note-first",
         title: "Same title",
-        body: 'Different "quoted" body.',
+        body: '\nDifferent "quoted" body.',
       },
       { ...base, id: "note-label", title: "Label only", body: "" },
     ];
@@ -451,7 +458,7 @@ describe("SAVED_NOTES provider", () => {
         .map((line) => JSON.parse(line.slice(2)));
     const expected = notes.map((note) => [
       note.id,
-      note.body ? `${note.title}\n${note.body}` : note.title,
+      `${note.title}${note.body}`,
     ]);
     expect(decode(notes)).toEqual(expected);
     expect(decode([...notes].reverse())).toEqual([...expected].reverse());

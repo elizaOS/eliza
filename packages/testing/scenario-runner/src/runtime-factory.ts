@@ -13,16 +13,17 @@ import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentRuntime as AgentRuntimeCtor,
   createCharacter,
+  ElizaError,
   logger,
   ModelType,
   NotificationService,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
 import {
   createAssistantPlugin,
   documentsPlugin,
   trajectoriesPlugin,
 } from "@elizaos/plugin-assistant";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   createDeterministicModelPlugin,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
@@ -201,6 +202,7 @@ async function runCleanupStep(
   label: string,
   operation: () => Promise<void>,
   timeoutMs = 5_000,
+  failOnTimeout = false,
 ): Promise<void> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<"timeout">((resolve) => {
@@ -214,6 +216,11 @@ async function runCleanupStep(
     clearTimeout(timeout);
   }
   if (result === "timeout") {
+    if (failOnTimeout) {
+      throw new Error(
+        `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
+      );
+    }
     logger.warn(
       `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
     );
@@ -225,6 +232,34 @@ export async function disposeScenarioProviderPlugin(
   runtime: AgentRuntime,
 ): Promise<void> {
   await plugin?.dispose?.(runtime);
+}
+
+async function cleanupPartiallyInitializedSyntheticRuntime(
+  runtime: AgentRuntime,
+  evidencePath: string,
+  events: Array<SyntheticRuntimeEvent>,
+  initializationError: unknown,
+): Promise<never> {
+  const cleanupErrors: unknown[] = [];
+  for (const [label, operation] of [
+    ["partial runtime.stop()", () => runtime.stop({ fast: true })],
+    ["partial runtime.close()", () => runtime.close()],
+  ] as const) {
+    try {
+      await runCleanupStep(label, operation, 5_000, true);
+    } catch (error) {
+      // error-policy:J1 Synthetic initialization retains every cleanup failure.
+      cleanupErrors.push(error);
+    }
+  }
+  writeSyntheticRuntimeEvidence(evidencePath, events, runtime);
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      [initializationError, ...cleanupErrors],
+      "synthetic runtime initialization and cleanup failed",
+    );
+  }
+  throw initializationError;
 }
 
 function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
@@ -255,6 +290,135 @@ export interface CreateScenarioRuntimeOptions {
   executionProfile?: ScenarioExecutionProfile;
   requiredPlugins?: readonly string[];
   isolateFilesystemState?: boolean;
+}
+
+type SyntheticRuntimeAdmissionEvent = {
+  phase: "admission";
+  resourceKind: "plugin" | "service";
+  resourceName: string;
+  outcome: "denied-undeclared-registration";
+};
+
+type SyntheticRuntimePolicy = {
+  allowedPluginNames: ReadonlySet<string>;
+  allowedServiceTypes: ReadonlySet<string>;
+};
+
+type SyntheticRuntimeServiceSnapshot = {
+  phase: "initialized" | "before-stop" | "after-stop" | "after-close";
+  services: Array<{
+    serviceType: string;
+    constructorName: string;
+    hasStop: boolean;
+  }>;
+};
+
+type SyntheticRuntimeServiceLifecycleEvent = {
+  phase: "service-stop-begin" | "service-stop-complete" | "service-stop-error";
+  serviceType: string;
+  constructorName: string;
+};
+
+type SyntheticRuntimeEvent =
+  | SyntheticRuntimeAdmissionEvent
+  | SyntheticRuntimeServiceSnapshot
+  | SyntheticRuntimeServiceLifecycleEvent;
+
+function syntheticRuntimeEvidencePath(): string | null {
+  const candidate = process.env.ELIZA_SYNTHETIC_RUNTIME_LEDGER?.trim();
+  if (!candidate) return null;
+  if (!path.isAbsolute(candidate) || path.resolve(candidate) !== candidate) {
+    throw new Error(
+      "ELIZA_SYNTHETIC_RUNTIME_LEDGER must be a canonical absolute path",
+    );
+  }
+  return candidate;
+}
+
+function parseSyntheticRuntimePolicy(): SyntheticRuntimePolicy | null {
+  const raw = process.env.ELIZA_SYNTHETIC_RUNTIME_POLICY?.trim();
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("ELIZA_SYNTHETIC_RUNTIME_POLICY must be a JSON object");
+  }
+  const record = parsed as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (
+    JSON.stringify(keys) !==
+    JSON.stringify(["allowedPluginNames", "allowedServiceTypes"])
+  ) {
+    throw new Error("synthetic runtime policy has unknown or missing fields");
+  }
+  const parseNames = (field: string): ReadonlySet<string> => {
+    const value = record[field];
+    if (
+      !Array.isArray(value) ||
+      value.length === 0 ||
+      value.length > 128 ||
+      value.some(
+        (entry) =>
+          typeof entry !== "string" ||
+          entry.length === 0 ||
+          entry.length > 200 ||
+          entry.trim() !== entry,
+      )
+    ) {
+      throw new Error(`synthetic runtime policy ${field} is invalid`);
+    }
+    const names = new Set(value as string[]);
+    if (names.size !== value.length) {
+      throw new Error(`synthetic runtime policy ${field} contains duplicates`);
+    }
+    return names;
+  };
+  return {
+    allowedPluginNames: parseNames("allowedPluginNames"),
+    allowedServiceTypes: parseNames("allowedServiceTypes"),
+  };
+}
+
+function runtimeServiceSnapshot(
+  runtime: AgentRuntime,
+  phase: SyntheticRuntimeServiceSnapshot["phase"],
+): SyntheticRuntimeServiceSnapshot {
+  return {
+    phase,
+    services: [...runtime.getAllServices()].flatMap(([serviceType, services]) =>
+      services.map((service) => ({
+        serviceType: String(serviceType),
+        constructorName:
+          service?.constructor?.name?.slice(0, 160) || "unknown-service",
+        hasStop: typeof service?.stop === "function",
+      })),
+    ),
+  };
+}
+
+function writeSyntheticRuntimeEvidence(
+  evidencePath: string,
+  events: readonly SyntheticRuntimeEvent[],
+  runtime: AgentRuntime,
+): void {
+  const payload = JSON.stringify(
+    {
+      events,
+      reportedErrors: runtime.getRecentReportedErrors().map((entry) => ({
+        scope: entry.scope.slice(0, 200),
+        code: entry.code.slice(0, 200),
+        message: entry.message.slice(0, 1_000),
+      })),
+    },
+    null,
+    2,
+  );
+  if (Buffer.byteLength(payload) > 1024 * 1024) {
+    throw new Error("synthetic runtime evidence exceeded 1 MiB");
+  }
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${evidencePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, payload, { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(temporaryPath, evidencePath);
 }
 
 type LoadedScenarioTestMocks = Awaited<ReturnType<typeof loadTestMocks>>;
@@ -827,6 +991,7 @@ export function scenarioPgliteDirOverride(
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
+  const requestedSyntheticPolicy = parseSyntheticRuntimePolicy();
   const executionProfile =
     options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
   if (executionProfile === "provider-qualified") {
@@ -937,6 +1102,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
+  const skipEmbeddingPlugin =
+    executionProfile === "simulated" &&
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   const character = createCharacter(
     options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
   );
@@ -949,6 +1117,7 @@ export async function createScenarioRuntime(
           ELIZA_IMESSAGE_BACKEND: "none",
           ACTION_CALLBACK_VOICE_REWRITE: "false",
           OUTBOUND_VOICE_REWRITE: "false",
+          ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "false",
           LIFEOPS_INBOX_PRIORITY_SCORING: "false",
         }
       : {};
@@ -957,6 +1126,17 @@ export async function createScenarioRuntime(
     plugins: [],
     logLevel: "warn",
     enableAutonomy: false,
+    ...(requestedSyntheticPolicy
+      ? {
+          advancedCapabilities: false,
+          enableDocuments: false,
+          enableRelationships: false,
+          enableTrajectories: false,
+          enableTrust: false,
+          enableSecretsManager: false,
+          enablePluginManager: false,
+        }
+      : {}),
     // The agent-skills service reads SKILLS_DIR via runtime.getSetting(), which
     // does not consult process.env. Mirror the scenario env into runtime
     // settings so skills storage lands in the throwaway temp directory.
@@ -972,9 +1152,11 @@ export async function createScenarioRuntime(
   };
   await runtime.registerPlugin(pluginSql);
   registeredPluginPackages.add("@elizaos/plugin-sql");
-  await runtime.registerPlugin(trajectoriesPlugin);
-  registeredPluginPackages.add("@elizaos/plugin-trajectories");
-  await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
+  if (!requestedSyntheticPolicy) {
+    await runtime.registerPlugin(trajectoriesPlugin);
+    registeredPluginPackages.add("@elizaos/plugin-trajectories");
+    await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
+  }
 
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
@@ -989,9 +1171,6 @@ export async function createScenarioRuntime(
   // semantic retrieval. AgentRuntime treats an absent embedding provider as an
   // explicit disabled capability, avoiding both model downloads and fabricated
   // vectors. Provider-qualified runs retain the production local provider.
-  const skipEmbeddingPlugin =
-    executionProfile === "simulated" &&
-    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     logger.info(
       "[scenario-runner] Embedding generation is disabled for the simulated profile; " +
@@ -1061,7 +1240,7 @@ export async function createScenarioRuntime(
     await runtime.registerPlugin(providerPlugin);
   }
 
-  if (executionProfile === "simulated") {
+  if (executionProfile === "simulated" && !requestedSyntheticPolicy) {
     const schedulingModule = (await import(
       "@elizaos/plugin-scheduling"
     )) as Record<string, unknown>;
@@ -1132,16 +1311,136 @@ export async function createScenarioRuntime(
     registeredPluginPackages.add(packageName);
   }
 
-  await runtime.initialize();
+  const syntheticPolicy = requestedSyntheticPolicy;
+  const syntheticEvidencePath = syntheticRuntimeEvidencePath();
+  if (Boolean(syntheticPolicy) !== Boolean(syntheticEvidencePath)) {
+    throw new Error(
+      "synthetic runtime policy and evidence path must be configured together",
+    );
+  }
+  const syntheticRuntimeEvents: Array<SyntheticRuntimeEvent> = [];
+  if (syntheticPolicy && syntheticEvidencePath) {
+    const assertAllowed = (
+      resourceKind: SyntheticRuntimeAdmissionEvent["resourceKind"],
+      resourceName: string,
+    ): void => {
+      const authority =
+        resourceKind === "plugin"
+          ? syntheticPolicy.allowedPluginNames
+          : syntheticPolicy.allowedServiceTypes;
+      if (authority.has(resourceName)) return;
+      syntheticRuntimeEvents.push({
+        phase: "admission",
+        resourceKind,
+        resourceName: resourceName.slice(0, 200),
+        outcome: "denied-undeclared-registration",
+      });
+      writeSyntheticRuntimeEvidence(
+        syntheticEvidencePath,
+        syntheticRuntimeEvents,
+        runtime,
+      );
+      throw new Error(
+        `synthetic runtime denied undeclared ${resourceKind}: ${resourceName}`,
+      );
+    };
+    try {
+      for (const plugin of runtime.plugins) {
+        assertAllowed("plugin", plugin.name);
+      }
+      for (const serviceType of runtime.getRegisteredServiceTypes()) {
+        assertAllowed("service", String(serviceType));
+      }
+    } catch (error) {
+      await cleanupPartiallyInitializedSyntheticRuntime(
+        runtime,
+        syntheticEvidencePath,
+        syntheticRuntimeEvents,
+        error,
+      );
+    }
+    const registerPlugin = runtime.registerPlugin.bind(runtime);
+    runtime.registerPlugin = async (plugin: Plugin): Promise<void> => {
+      assertAllowed("plugin", plugin.name);
+      await registerPlugin(plugin);
+    };
+    const registerService = runtime.registerService.bind(runtime);
+    runtime.registerService = async (
+      serviceDef: Parameters<AgentRuntime["registerService"]>[0],
+    ): Promise<void> => {
+      assertAllowed("service", String(serviceDef.serviceType));
+      await registerService(serviceDef);
+    };
+  }
+
+  try {
+    await runtime.initialize();
+    if (!skipEmbeddingPlugin) {
+      const { ensureLocalInferenceHandler } = await import(
+        "@elizaos/plugin-local-inference/runtime"
+      );
+      runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, true, false);
+      await ensureLocalInferenceHandler(runtime);
+      if (!runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+        throw new ElizaError(
+          "Scenario embedding boot did not register a model handler",
+          {
+            code: "SCENARIO_EMBEDDING_UNAVAILABLE",
+            context: { executionProfile },
+          },
+        );
+      }
+      await runtime.ensureEmbeddingDimension();
+    }
+    if (syntheticPolicy) {
+      const serviceTypes = runtime.getRegisteredServiceTypes();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `synthetic runtime service startup did not quiesce: ${serviceTypes.join(",")}`,
+              ),
+            ),
+          30_000,
+        );
+      });
+      try {
+        await Promise.race([
+          Promise.all(
+            serviceTypes.map(async (serviceType) => {
+              await runtime.getServiceLoadPromise(serviceType);
+            }),
+          ),
+          timeoutPromise,
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    }
+  } catch (error) {
+    if (syntheticPolicy && syntheticEvidencePath) {
+      await cleanupPartiallyInitializedSyntheticRuntime(
+        runtime,
+        syntheticEvidencePath,
+        syntheticRuntimeEvents,
+        error,
+      );
+    }
+    throw error;
+  }
   const cleanupRuntimeFixtures =
-    mockedEnvironment && testMocks
+    mockedEnvironment && testMocks && !syntheticPolicy
       ? await mockedEnvironment.applyRuntimeFixtures?.(runtime)
       : undefined;
   if (executionProfile === "simulated" && testMocks) {
-    await testMocks.seedGoogleConnectorGrant(runtime);
-    await testMocks.seedXConnectorGrant(runtime);
-    await testMocks.seedBenchmarkLifeOpsFixtures(runtime);
-    await testMocks.seedLifeOpsSimulatorRuntime(runtime);
+    if (!syntheticPolicy) {
+      await testMocks.seedGoogleConnectorGrant(runtime);
+      await testMocks.seedXConnectorGrant(runtime);
+      await testMocks.seedBenchmarkLifeOpsFixtures(runtime);
+      await testMocks.seedLifeOpsSimulatorRuntime(runtime);
+    }
 
     // The shared simulated runtime treats onboarding as complete so action
     // routing is independent of scenario discovery order.
@@ -1174,37 +1473,131 @@ export async function createScenarioRuntime(
     }
   }
 
+  if (syntheticPolicy && syntheticEvidencePath) {
+    const undeclaredPlugins = runtime.plugins
+      .map((plugin) => plugin.name)
+      .filter((name) => !syntheticPolicy.allowedPluginNames.has(name));
+    const undeclaredServices = [...runtime.getAllServices().keys()]
+      .map(String)
+      .filter((name) => !syntheticPolicy.allowedServiceTypes.has(name));
+    if (undeclaredPlugins.length > 0 || undeclaredServices.length > 0) {
+      throw new Error(
+        `synthetic runtime escaped admission policy: plugins=${undeclaredPlugins.join(",")}; services=${undeclaredServices.join(",")}`,
+      );
+    }
+    syntheticRuntimeEvents.push(runtimeServiceSnapshot(runtime, "initialized"));
+    const instrumented = new WeakSet<object>();
+    for (const [serviceType, services] of runtime.getAllServices()) {
+      for (const service of services) {
+        if (
+          !service ||
+          typeof service !== "object" ||
+          instrumented.has(service) ||
+          typeof service.stop !== "function"
+        ) {
+          continue;
+        }
+        instrumented.add(service);
+        const stop = service.stop.bind(service);
+        const constructorName =
+          service.constructor?.name?.slice(0, 160) || "unknown-service";
+        service.stop = async (): Promise<void> => {
+          syntheticRuntimeEvents.push({
+            phase: "service-stop-begin",
+            serviceType: String(serviceType),
+            constructorName,
+          });
+          try {
+            await stop();
+            syntheticRuntimeEvents.push({
+              phase: "service-stop-complete",
+              serviceType: String(serviceType),
+              constructorName,
+            });
+          } catch (error) {
+            syntheticRuntimeEvents.push({
+              phase: "service-stop-error",
+              serviceType: String(serviceType),
+              constructorName,
+            });
+            throw error;
+          }
+        };
+      }
+    }
+  }
+
   const cleanup = async (): Promise<void> => {
-    await runCleanupStep("runtime fixtures", async () => {
+    const cleanupErrors: unknown[] = [];
+    const cleanupBoundary = async (
+      label: string,
+      operation: () => Promise<void>,
+    ): Promise<void> => {
+      try {
+        await runCleanupStep(label, operation, 5_000, Boolean(syntheticPolicy));
+      } catch (error) {
+        // error-policy:J1 Synthetic cleanup retains failure while later owners still run.
+        if (syntheticPolicy) {
+          cleanupErrors.push(error);
+          return;
+        }
+        throw error;
+      }
+    };
+    await cleanupBoundary("runtime fixtures", async () => {
       try {
         await cleanupRuntimeFixtures?.();
       } catch (err) {
+        if (syntheticPolicy) throw err;
         logger.debug(`[scenario-runner] runtime fixture cleanup error: ${err}`);
       }
     });
     cancelScenarioOnlyLazyServiceStarts(runtime);
-    await runCleanupStep("provider plugin dispose", async () => {
+    await cleanupBoundary("provider plugin dispose", async () => {
       try {
         await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
       } catch (err) {
+        if (syntheticPolicy) throw err;
         // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
         logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
       }
     });
-    await runCleanupStep("runtime.stop()", async () => {
+    if (syntheticEvidencePath) {
+      syntheticRuntimeEvents.push(
+        runtimeServiceSnapshot(runtime, "before-stop"),
+      );
+    }
+    await cleanupBoundary("runtime.stop()", async () => {
       try {
         await runtime.stop();
       } catch (err) {
+        if (syntheticPolicy) throw err;
         logger.debug(`[scenario-runner] runtime.stop() error: ${err}`);
       }
     });
-    await runCleanupStep("runtime.close()", async () => {
+    if (syntheticEvidencePath) {
+      syntheticRuntimeEvents.push(
+        runtimeServiceSnapshot(runtime, "after-stop"),
+      );
+    }
+    await cleanupBoundary("runtime.close()", async () => {
       try {
         await runtime.close();
       } catch (err) {
+        if (syntheticPolicy) throw err;
         logger.debug(`[scenario-runner] runtime.close() error: ${err}`);
       }
     });
+    if (syntheticEvidencePath) {
+      syntheticRuntimeEvents.push(
+        runtimeServiceSnapshot(runtime, "after-close"),
+      );
+      writeSyntheticRuntimeEvidence(
+        syntheticEvidencePath,
+        syntheticRuntimeEvents,
+        runtime,
+      );
+    }
     if (prevPgliteDir !== undefined) {
       process.env.PGLITE_DATA_DIR = prevPgliteDir;
     } else {
@@ -1249,13 +1642,14 @@ export async function createScenarioRuntime(
     } else {
       delete process.env.SKILLS_DIR;
     }
-    await runCleanupStep("mocked environment", async () => {
+    await cleanupBoundary("mocked environment", async () => {
       if (!mockedEnvironment) {
         return;
       }
       try {
         await mockedEnvironment.cleanup();
       } catch (err) {
+        if (syntheticPolicy) throw err;
         logger.debug(
           `[scenario-runner] mocked environment cleanup error: ${err}`,
         );
@@ -1285,6 +1679,12 @@ export async function createScenarioRuntime(
       } catch (err) {
         logger.debug(`[scenario-runner] skills cleanup error: ${err}`);
       }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        cleanupErrors,
+        "synthetic runtime cleanup failed",
+      );
     }
   };
 

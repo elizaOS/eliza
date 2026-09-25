@@ -3,10 +3,9 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
-setDefaultTimeout(120_000);
-
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
+setDefaultTimeout(120_000);
 
 import { sql } from "drizzle-orm";
 import {
@@ -31,6 +30,8 @@ const context = {
   organizationId: ORGANIZATION_ID,
   stewardUserId: "steward-personal",
   lifecycleRevision: 2,
+  phaseReceiptId: "60000000-0000-4000-8000-000000000001",
+  phaseGeneration: 1,
   blob: {},
 } as AccountDeletionProviderContext;
 
@@ -144,7 +145,7 @@ afterAll(async () => {
 });
 
 describe("account deletion restrictive-grant terminal absence", () => {
-  test("executes the same inventory it inspects, including payment and billing rows", async () => {
+  test("removes login grants while retaining financial history and cancellation evidence", async () => {
     const adapter = createAccountDeletionProviderAdapters().other_grants;
 
     await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
@@ -281,7 +282,23 @@ describe("account deletion restrictive-grant terminal absence", () => {
         "SELECT * FROM agent_compute_subjects ORDER BY agent_id",
       )
     ).rows;
-    expect(retiredSubjects[0]).toMatchObject({ retired_at: expect.any(Date) });
+    expect(retiredFunding).toHaveLength(3);
+    expect(retiredSubjects).toHaveLength(2);
+    for (const subject of retiredSubjects)
+      expect(subject).toMatchObject({ retired_at: expect.any(Date) });
+    const reservationsBefore = (
+      await getPgliteClientForTests().query(
+        "SELECT * FROM billing_funding_reservations ORDER BY id",
+      )
+    ).rows;
+    const allocationsBefore = (
+      await getPgliteClientForTests().query("SELECT * FROM billing_funding_allocations ORDER BY id")
+    ).rows;
+    expect(reservationsBefore).toHaveLength(3);
+    expect(allocationsBefore).toHaveLength(1);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM agent_billing_records")).rows,
+    ).toHaveLength(1);
     const recoveryBefore = (
       await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_attempts")
     ).rows;
@@ -320,13 +337,15 @@ describe("account deletion restrictive-grant terminal absence", () => {
     const revisionsBefore = await getPgliteClientForTests().query(
       "SELECT * FROM billing_subscription_revisions",
     );
-    const identityBefore = await getPgliteClientForTests().query(
-      "SELECT * FROM organization_subscription_authorities",
-    );
-    await getPgliteClientForTests().exec(
-      `CREATE TABLE notice_erasure_restrict_probe(notice_id uuid REFERENCES subscription_notice_intents(id) ON DELETE RESTRICT); INSERT INTO notice_erasure_restrict_probe SELECT id FROM subscription_notice_intents;`,
-    );
-    await expect(adapter.execute(context, "blocked-notice-erasure")).rejects.toThrow();
+    // A real restrictive reference catches accidental deletion of retained notices.
+    expect(before.rows).toHaveLength(1);
+    await getPgliteClientForTests().exec(`
+      CREATE TABLE notice_erasure_restrict_probe(
+        notice_id uuid NOT NULL REFERENCES subscription_notice_intents(id) ON DELETE RESTRICT
+      );
+      INSERT INTO notice_erasure_restrict_probe SELECT id FROM subscription_notice_intents;
+    `);
+    await adapter.execute(context, "delete-local-grants-retain-financial-evidence");
     expect(
       (await getPgliteClientForTests().query("SELECT * FROM subscription_notice_intents")).rows,
     ).toEqual(before.rows);
@@ -347,10 +366,6 @@ describe("account deletion restrictive-grant terminal absence", () => {
       ).rows,
     ).toEqual(commandsBefore.rows);
     expect(
-      (await getPgliteClientForTests().query("SELECT * FROM organization_subscription_authorities"))
-        .rows,
-    ).toEqual(identityBefore.rows);
-    expect(
       (await getPgliteClientForTests().query("SELECT * FROM subscription_reconciliation_attempts"))
         .rows,
     ).toEqual(recoveryBefore);
@@ -361,14 +376,31 @@ describe("account deletion restrictive-grant terminal absence", () => {
     expect(
       (await getPgliteClientForTests().query("SELECT * FROM agent_compute_funding ORDER BY id"))
         .rows,
-    ).toEqual(retiredFunding);
+    ).toEqual([]);
     expect(
       (
         await getPgliteClientForTests().query(
           "SELECT * FROM agent_compute_subjects ORDER BY agent_id",
         )
       ).rows,
-    ).toEqual(retiredSubjects);
+    ).toEqual([]);
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM agent_billing_records")).rows,
+    ).toEqual([]);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM billing_funding_reservations ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(reservationsBefore);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT * FROM billing_funding_allocations ORDER BY id",
+        )
+      ).rows,
+    ).toEqual(allocationsBefore);
     await getPgliteClientForTests().exec("DROP TABLE notice_erasure_restrict_probe");
     await adapter.execute(context, "delete-local-grants-once");
     await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });
@@ -384,19 +416,63 @@ describe("account deletion restrictive-grant terminal absence", () => {
       );
       expect(result.rows[0]?.count).toBe(0);
     }
-    for (const table of [
-      "subscription_reconciliation_attempts",
-      "subscription_notice_intents",
-      "subscription_notice_attempts",
-      "billing_subscription_commands",
-      "billing_subscription_revisions",
-    ]) {
-      expect((await getPgliteClientForTests().query(`SELECT id FROM ${table}`)).rows).toEqual([]);
-    }
-    await dbWrite.execute(sql`DELETE FROM organizations WHERE id=${ORGANIZATION_ID}`);
-    const remaining = await dbWrite.execute(
-      sql`SELECT organization_id FROM organization_subscription_authorities WHERE organization_id=${ORGANIZATION_ID}`,
+  });
+  test("a departing actor cannot erase a different account's billing commands", async () => {
+    const commandId = crypto.randomUUID();
+    const sharedOrganizationId = crypto.randomUUID();
+    const sharedSubscriptionId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO users(id) VALUES (${USER_ID}) ON CONFLICT DO NOTHING`);
+    await dbWrite.execute(sql`INSERT INTO organizations(id, account_lifecycle_state)
+      VALUES (${ORGANIZATION_ID}, 'deletion_irreversible'), (${sharedOrganizationId}, 'active') ON CONFLICT DO NOTHING`);
+    await dbWrite.execute(sql`INSERT INTO billing_subscriptions (
+      id, organization_id, provider_environment, stripe_customer_id, stripe_subscription_id,
+      stripe_subscription_item_id, plan_key, catalog_version, status, current_period_start,
+      current_period_end, lifecycle_revision, provider_object_digest)
+      VALUES (${sharedSubscriptionId}, ${sharedOrganizationId}, 'test', 'cus_shared', 'sub_shared',
+        'si_shared', 'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z', 1, ${"a".repeat(64)})`);
+    await dbWrite.execute(sql`
+      INSERT INTO billing_subscription_commands(id, organization_id, requested_by_user_id,
+        kind, target_plan_key, idempotency_key, provider_idempotency_key, request_digest)
+      VALUES (${commandId}, ${sharedOrganizationId}, ${USER_ID}, 'checkout', 'plus_monthly',
+        'shared-checkout-command', 'shared-provider-command', ${"b".repeat(64)})
+    `);
+    const incidentId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO billing_subscription_incidents(
+      id, organization_id, subscription_id, command_id, kind, severity, fingerprint,
+      context, status, resolved_by_user_id, resolution, resolved_at)
+      VALUES (${incidentId}, ${sharedOrganizationId}, ${sharedSubscriptionId}, ${commandId},
+        'reconciliation', 'warning', ${"c".repeat(64)}, '{}', 'resolved', ${USER_ID},
+        'Provider replay inspected and resolved', now())`);
+    const adapter = createAccountDeletionProviderAdapters().other_grants;
+    const membershipId = crypto.randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO app_billing_members(id,user_id) VALUES(${membershipId},${USER_ID})`,
     );
-    expect(remaining.rows).toEqual([]);
+    await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
+    await adapter.execute(context, "delete-personal-grants");
+    const preserved = await dbWrite.execute(sql`
+      SELECT organization_id,requested_by_user_id FROM billing_subscription_commands WHERE id=${commandId}
+    `);
+    expect(preserved.rows).toEqual([
+      { organization_id: sharedOrganizationId, requested_by_user_id: USER_ID },
+    ]);
+    await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });
+    expect(
+      (await dbWrite.execute(sql`SELECT id FROM app_billing_members WHERE id=${membershipId}`))
+        .rows,
+    ).toEqual([]);
+    expect(
+      (
+        await dbWrite.execute(
+          sql`SELECT organization_id,resolved_by_user_id,resolution FROM billing_subscription_incidents WHERE id=${incidentId}`,
+        )
+      ).rows,
+    ).toEqual([
+      {
+        organization_id: sharedOrganizationId,
+        resolved_by_user_id: null,
+        resolution: "Provider replay inspected and resolved",
+      },
+    ]);
   });
 });

@@ -7,7 +7,7 @@
 // android-harness page fixture; run it as its own Playwright invocation
 // (test:e2e:android:lifecycle:reboot), after lifecycle.android.spec.ts.
 //
-// Emulator caveat (same as scripts/android-e2e.mjs): setenforce is runtime
+// Emulator caveat (same as scripts/android-e2e.ts): setenforce is runtime
 // state, so a reboot restores SELinux enforcing and the untrusted_app domain
 // blocks the bun runtime. The spec re-applies root+permissive right after
 // boot, mirroring ensureEmulatorPermissive — branded AOSP devices run the
@@ -21,7 +21,7 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   AGENT_API_PORT,
   APP_ID,
@@ -29,7 +29,7 @@ import {
   MAIN_ACTIVITY,
   resolveAdb,
   resolveSerial,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 
 const ARTIFACT_DIR = path.resolve(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??

@@ -5,9 +5,7 @@
  * notifications) whose true grant state the OS layer can't see. Exposes
  * `useDesktopPermissionsState` to the settings UI.
  */
-
-import { PERMISSION_IDS } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+import { PERMISSION_IDS } from "@elizaos/core/contracts/permissions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,
@@ -20,18 +18,17 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
+import { logger } from "../../logger.ts";
 import { isRendererPermissionAuthoritative } from "../../platform/desktop-permissions-client";
 import { SETTINGS_REFRESH_DELAYS_MS } from "./permission-types";
 
 // ---------------------------------------------------------------------------
 // Media permission helpers (renderer-side probing for camera/microphone)
 // ---------------------------------------------------------------------------
-
 type RendererPermissionId = Extract<
   PermissionId,
   "camera" | "microphone" | "location" | "notifications"
 >;
-
 const RUNTIME_PERMISSION_IDS: readonly PermissionId[] = ["website-blocking"];
 const REQUIRED_PERMISSION_IDS: readonly PermissionId[] = PERMISSION_IDS;
 const RENDERER_PERMISSION_IDS: readonly RendererPermissionId[] = [
@@ -48,11 +45,9 @@ const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "restricted",
   "not-applicable",
 ];
-
 function isRuntimePermissionId(id: PermissionId): boolean {
   return RUNTIME_PERMISSION_IDS.includes(id);
 }
-
 function isRendererPermissionId(id: PermissionId): id is RendererPermissionId {
   return (
     id === "camera" ||
@@ -61,18 +56,15 @@ function isRendererPermissionId(id: PermissionId): id is RendererPermissionId {
     id === "notifications"
   );
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
-
 function isPermissionStatus(value: unknown): value is PermissionStatus {
   return (
     typeof value === "string" &&
     PERMISSION_STATUSES.includes(value as PermissionStatus)
   );
 }
-
 function isPermissionState(
   value: unknown,
   id: PermissionId,
@@ -85,14 +77,12 @@ function isPermissionState(
     typeof value.lastChecked === "number"
   );
 }
-
 function isAllPermissionsState(value: unknown): value is AllPermissionsState {
   return (
     isRecord(value) &&
     REQUIRED_PERMISSION_IDS.every((id) => isPermissionState(value[id], id))
   );
 }
-
 function mapRendererMediaPermissionState(
   state: "granted" | "denied" | "prompt" | "default" | undefined,
 ): PermissionStatus | null {
@@ -107,18 +97,15 @@ function mapRendererMediaPermissionState(
   }
   return null;
 }
-
 async function queryRendererPermission(
   id: RendererPermissionId,
 ): Promise<PermissionStatus | null> {
   if (id === "notifications" && typeof Notification !== "undefined") {
     return mapRendererMediaPermissionState(Notification.permission);
   }
-
   if (typeof navigator === "undefined" || !navigator.permissions?.query) {
     return null;
   }
-
   try {
     const result = await navigator.permissions.query({
       name: (id === "location" ? "geolocation" : id) as PermissionName,
@@ -130,7 +117,6 @@ async function queryRendererPermission(
     return null;
   }
 }
-
 async function inferRendererMediaPermissionFromDevices(
   id: Extract<RendererPermissionId, "camera" | "microphone">,
 ): Promise<PermissionStatus | null> {
@@ -140,13 +126,11 @@ async function inferRendererMediaPermissionFromDevices(
   ) {
     return null;
   }
-
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     if (!Array.isArray(devices)) {
       return null;
     }
-
     const kind = id === "camera" ? "videoinput" : "audioinput";
     return devices.some(
       (device) => device.kind === kind && Boolean(device.label?.trim()),
@@ -159,7 +143,6 @@ async function inferRendererMediaPermissionFromDevices(
     return null;
   }
 }
-
 async function probeRendererMediaPermission(
   id: RendererPermissionId,
 ): Promise<PermissionStatus | null> {
@@ -167,26 +150,21 @@ async function probeRendererMediaPermission(
   if (queriedStatus === "granted" || queriedStatus === "denied") {
     return queriedStatus;
   }
-
   if (id !== "camera" && id !== "microphone") {
     return queriedStatus;
   }
-
   const inferredStatus = await inferRendererMediaPermissionFromDevices(id);
   if (inferredStatus) {
     return inferredStatus;
   }
-
   return queriedStatus;
 }
-
 async function requestRendererPermission(
   id: PermissionId,
 ): Promise<PermissionStatus | null> {
   if (!isRendererPermissionId(id) || typeof navigator === "undefined") {
     return null;
   }
-
   if (id === "camera" || id === "microphone") {
     try {
       const stream = await navigator.mediaDevices?.getUserMedia?.({
@@ -202,7 +180,6 @@ async function requestRendererPermission(
     }
     return probeRendererMediaPermission(id);
   }
-
   if (id === "location" && navigator.geolocation) {
     const requestedStatus = await new Promise<PermissionStatus | null>(
       (resolve) => {
@@ -210,35 +187,30 @@ async function requestRendererPermission(
           () => resolve("granted"),
           (err) =>
             resolve(err.code === err.PERMISSION_DENIED ? "denied" : null),
-          { maximumAge: 0, timeout: 10_000 },
+          { maximumAge: 0, timeout: 10000 },
         );
       },
     );
     return (await probeRendererMediaPermission(id)) ?? requestedStatus;
   }
-
   if (id === "notifications" && typeof Notification !== "undefined") {
     return mapRendererMediaPermissionState(
       await Notification.requestPermission(),
     );
   }
-
   return probeRendererMediaPermission(id);
 }
-
 export interface DesktopPermissionsSnapshot {
   permissions: AllPermissionsState;
   platform: string;
   shellEnabled: boolean;
   nativeBridgeAvailable: boolean;
 }
-
 export async function reconcileRendererMediaPermissions(
   snapshot: DesktopPermissionsSnapshot,
 ): Promise<DesktopPermissionsSnapshot> {
   let nextPermissions = snapshot.permissions;
   let changed = false;
-
   for (const id of RENDERER_PERMISSION_IDS) {
     const current = snapshot.permissions[id];
     if (!current || current.status === "restricted") {
@@ -253,12 +225,10 @@ export async function reconcileRendererMediaPermissions(
     ) {
       continue;
     }
-
     const rendererStatus = await probeRendererMediaPermission(id);
     if (!rendererStatus) {
       continue;
     }
-
     const nextCanRequest = rendererStatus === "not-determined";
     if (
       current.status === rendererStatus &&
@@ -266,12 +236,10 @@ export async function reconcileRendererMediaPermissions(
     ) {
       continue;
     }
-
     if (!changed) {
       nextPermissions = { ...snapshot.permissions };
       changed = true;
     }
-
     nextPermissions[id] = {
       ...current,
       status: rendererStatus,
@@ -279,7 +247,6 @@ export async function reconcileRendererMediaPermissions(
       lastChecked: Date.now(),
     };
   }
-
   return changed
     ? {
         ...snapshot,
@@ -287,13 +254,11 @@ export async function reconcileRendererMediaPermissions(
       }
     : snapshot;
 }
-
 async function mergeRuntimePermissionsIntoSnapshot(
   snapshot: DesktopPermissionsSnapshot,
 ): Promise<DesktopPermissionsSnapshot> {
   let nextPermissions = snapshot.permissions;
   let changed = false;
-
   await Promise.all(
     RUNTIME_PERMISSION_IDS.map(async (id) => {
       try {
@@ -310,7 +275,6 @@ async function mergeRuntimePermissionsIntoSnapshot(
       }
     }),
   );
-
   return changed
     ? {
         ...snapshot,
@@ -318,11 +282,9 @@ async function mergeRuntimePermissionsIntoSnapshot(
       }
     : snapshot;
 }
-
 // ---------------------------------------------------------------------------
 // useDesktopPermissionsState hook
 // ---------------------------------------------------------------------------
-
 export function useDesktopPermissionsState() {
   const [permissions, setPermissions] = useState<AllPermissionsState | null>(
     null,
@@ -332,25 +294,21 @@ export function useDesktopPermissionsState() {
   const [refreshing, setRefreshing] = useState(false);
   const [shellEnabled, setShellEnabled] = useState(true);
   const settingsRefreshTimersRef = useRef<number[]>([]);
-
   const applySnapshot = useCallback((snapshot: DesktopPermissionsSnapshot) => {
     setPermissions(snapshot.permissions);
     setPlatform(snapshot.platform);
     setShellEnabled(snapshot.shellEnabled);
   }, []);
-
   const clearScheduledSettingsRefreshes = useCallback(() => {
     if (typeof window === "undefined") {
       settingsRefreshTimersRef.current = [];
       return;
     }
-
     for (const timerId of settingsRefreshTimersRef.current) {
       window.clearTimeout(timerId);
     }
     settingsRefreshTimersRef.current = [];
   }, []);
-
   const loadPermissionsSnapshot = useCallback(
     async (forceRefresh = false): Promise<DesktopPermissionsSnapshot> => {
       const [bridgedPermissions, bridgedShellEnabled, bridgedPlatform] =
@@ -369,11 +327,9 @@ export function useDesktopPermissionsState() {
             ipcChannel: "permissions:getPlatform",
           }),
         ]);
-
       if (forceRefresh && bridgedPermissions === null) {
         await client.refreshPermissions();
       }
-
       const permissions = bridgedPermissions ?? (await client.getPermissions());
       if (!isAllPermissionsState(permissions)) {
         throw new Error("Invalid permissions payload.");
@@ -382,7 +338,6 @@ export function useDesktopPermissionsState() {
         bridgedShellEnabled === null
           ? await client.isShellEnabled()
           : bridgedShellEnabled;
-
       const snapshot = {
         permissions,
         platform: bridgedPlatform ?? "unknown",
@@ -398,7 +353,6 @@ export function useDesktopPermissionsState() {
     },
     [],
   );
-
   const replaceSnapshot = useCallback(
     async (forceRefresh = false): Promise<DesktopPermissionsSnapshot> => {
       const snapshot = await loadPermissionsSnapshot(forceRefresh);
@@ -407,14 +361,11 @@ export function useDesktopPermissionsState() {
     },
     [applySnapshot, loadPermissionsSnapshot],
   );
-
   const scheduleSettingsRefreshes = useCallback(() => {
     if (typeof window === "undefined") {
       return;
     }
-
     clearScheduledSettingsRefreshes();
-
     for (const delayMs of SETTINGS_REFRESH_DELAYS_MS) {
       let timerId = 0;
       timerId = window.setTimeout(() => {
@@ -427,10 +378,8 @@ export function useDesktopPermissionsState() {
       settingsRefreshTimersRef.current.push(timerId);
     }
   }, [clearScheduledSettingsRefreshes, replaceSnapshot]);
-
   useEffect(() => {
     let cancelled = false;
-
     void (async () => {
       setLoading(true);
       try {
@@ -456,18 +405,15 @@ export function useDesktopPermissionsState() {
         }
       }
     })();
-
     return () => {
       cancelled = true;
     };
   }, [applySnapshot, loadPermissionsSnapshot]);
-
   useEffect(() => {
     return () => {
       clearScheduledSettingsRefreshes();
     };
   }, [clearScheduledSettingsRefreshes]);
-
   useEffect(() => {
     return subscribeDesktopBridgeEvent({
       rpcMessage: "permissionsChanged",
@@ -477,19 +423,16 @@ export function useDesktopPermissionsState() {
       },
     });
   }, [replaceSnapshot]);
-
   useEffect(() => {
     if (typeof document === "undefined" || typeof window === "undefined") {
       return;
     }
-
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "hidden") {
         return;
       }
       void replaceSnapshot(true);
     };
-
     window.addEventListener("focus", handleVisibilityOrFocus);
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);
     return () => {
@@ -497,7 +440,6 @@ export function useDesktopPermissionsState() {
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
     };
   }, [replaceSnapshot]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -511,7 +453,6 @@ export function useDesktopPermissionsState() {
       setRefreshing(false);
     }
   }, [replaceSnapshot]);
-
   const handleRequest = useCallback(
     async (id: PermissionId) => {
       try {
@@ -524,7 +465,6 @@ export function useDesktopPermissionsState() {
           }
           return;
         }
-
         const bridged = await invokeDesktopBridgeRequest<PermissionState>({
           rpcMethod: "permissionsRequest",
           ipcChannel: "permissions:request",
@@ -562,7 +502,6 @@ export function useDesktopPermissionsState() {
     },
     [platform, replaceSnapshot, scheduleSettingsRefreshes],
   );
-
   const handleOpenSettings = useCallback(
     async (id: PermissionId) => {
       try {
@@ -572,7 +511,6 @@ export function useDesktopPermissionsState() {
           scheduleSettingsRefreshes();
           return;
         }
-
         const opened = await invokeDesktopBridgeRequest({
           rpcMethod: "permissionsOpenSettings",
           ipcChannel: "permissions:openSettings",
@@ -591,7 +529,6 @@ export function useDesktopPermissionsState() {
     },
     [replaceSnapshot, scheduleSettingsRefreshes],
   );
-
   const handleToggleShell = useCallback(
     async (enabled: boolean) => {
       try {
@@ -611,7 +548,6 @@ export function useDesktopPermissionsState() {
     },
     [replaceSnapshot],
   );
-
   return {
     handleOpenSettings,
     handleRefresh,

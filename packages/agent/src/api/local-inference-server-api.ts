@@ -8,7 +8,7 @@ import type { AgentRuntime } from "@elizaos/core";
  *
  * The mobile agent bundle null-stubs the plugin's *bare* entry
  * (`@elizaos/plugin-local-inference`, the heavy `Plugin` object) via an exact
- * alias in `scripts/build-mobile-bundle.mjs`, so a bare import yields `undefined`
+ * alias in `scripts/build-mobile-bundle.ts`, so a bare import yields `undefined`
  * handlers and every `/api/local-inference/*`, `/api/status`, and local chat
  * status path fails on-device. The deep route subpaths (`./local-inference-routes`
  * and `./routes`) are matched by the same anchored stub regex and are therefore

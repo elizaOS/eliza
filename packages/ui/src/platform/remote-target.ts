@@ -1,6 +1,6 @@
 /** Native device lifecycle stays on the local host even when the selected agent is remote. */
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import type { RemoteTargetPublicIdentity } from "@elizaos/shared";
+import type { RemoteTargetPublicIdentity } from "@elizaos/core/contracts/remote-control";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 
@@ -112,7 +112,6 @@ export interface RemoteTargetStatus {
   lastPollAt: number | null;
   lastErrorCode: string | null;
 }
-
 export interface RemoteTargetPairingChallenge {
   sessionId: string;
   code: string;
@@ -120,7 +119,6 @@ export interface RemoteTargetPairingChallenge {
   capabilities: string[];
   status: "pending";
 }
-
 export interface RemoteTargetPairingChallengeStatus {
   sessionId: string;
   status: "pending" | "claimed" | "denied" | "expired";
@@ -133,7 +131,6 @@ export interface RemoteTargetPairingChallengeStatus {
     platform: "ios" | "macos" | "windows" | "linux" | "android" | "web";
   };
 }
-
 export async function enrollRemoteTarget(input: {
   apiBaseUrl: string;
   ownerId: string;
@@ -155,7 +152,6 @@ export async function enrollRemoteTarget(input: {
     throw new Error("Desktop remote-target enrollment is unavailable.");
   return result;
 }
-
 export async function getRemoteTargetIdentity(): Promise<{
   enrolled: boolean;
   identity?: RemoteTargetPublicIdentity;
@@ -171,7 +167,6 @@ export async function getRemoteTargetIdentity(): Promise<{
     })) ?? { enrolled: false }
   );
 }
-
 export async function createRemoteTargetPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
   const result = await invokeRemoteTargetRequest<RemoteTargetPairingChallenge>({
     rpcMethod: "remoteTargetCreatePairingChallenge",
@@ -181,7 +176,6 @@ export async function createRemoteTargetPairingChallenge(): Promise<RemoteTarget
   if (!result) throw new Error("Remote pairing challenge is unavailable.");
   return result;
 }
-
 export async function readRemoteTargetPairingChallenge(
   sessionId: string,
 ): Promise<RemoteTargetPairingChallengeStatus> {
@@ -194,7 +188,6 @@ export async function readRemoteTargetPairingChallenge(
   if (!result) throw new Error("Remote pairing status is unavailable.");
   return result;
 }
-
 export async function confirmRemoteTargetPairing(
   sessionId: string,
   browserProfileId?: string,
@@ -209,7 +202,6 @@ export async function confirmRemoteTargetPairing(
   if (!result) throw new Error("Remote pairing confirmation is unavailable.");
   return result;
 }
-
 export async function activateRemoteTarget(input: {
   browserProfileId?: string;
   sessionId?: string;
@@ -257,7 +249,6 @@ export async function activateRemoteTarget(input: {
   if (!result) throw new Error("Remote-target activation is unavailable.");
   return result;
 }
-
 export async function compensateRemoteTargetActivation(
   sessionId: string,
 ): Promise<{
@@ -294,7 +285,6 @@ export async function commitRemoteTargetActivation(
     throw new Error("Remote-target activation commit is unavailable.");
   return result;
 }
-
 export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
   return (
     (await invokeRemoteTargetRequest<RemoteTargetStatus>({
@@ -311,7 +301,6 @@ export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
     }
   );
 }
-
 export async function startRemoteTarget(): Promise<boolean> {
   const result = await invokeRemoteTargetRequest<{ running: true }>({
     rpcMethod: "remoteTargetStart",
@@ -320,7 +309,6 @@ export async function startRemoteTarget(): Promise<boolean> {
   });
   return result?.running ?? false;
 }
-
 export async function stopRemoteTarget(): Promise<boolean> {
   const result = await invokeRemoteTargetRequest<{ running: false }>({
     rpcMethod: "remoteTargetStop",
@@ -329,7 +317,6 @@ export async function stopRemoteTarget(): Promise<boolean> {
   });
   return result ? !result.running : false;
 }
-
 export async function revokeRemoteTargetSession(
   sessionId: string,
 ): Promise<boolean> {
@@ -340,7 +327,6 @@ export async function revokeRemoteTargetSession(
   });
   return result?.revoked ?? false;
 }
-
 export async function finalizeRemoteTargetHostRevoke(
   hostId: string,
 ): Promise<boolean> {

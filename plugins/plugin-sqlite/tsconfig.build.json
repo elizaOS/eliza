@@ -14,7 +14,6 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "sourceMap": true,
-    "typeRoots": ["../../node_modules/@types"],
     "declarationMap": true,
     "composite": false,
     "types": ["node", "bun"]

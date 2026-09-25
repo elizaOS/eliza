@@ -1,13 +1,13 @@
 import { initializeTestRuntime } from "@elizaos/testing";
+
 /**
  * Verifies TRUST action availability against the real runtime service registry,
  * including exact service-name matching and registration transitions.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { AgentRuntime, Service } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
-import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
-import { Service } from "../../../../../../packages/core/src/types/service.ts";
 import { hasTrustEngine } from "./hasTrustEngine.ts";
 
 class CoreTrustEngineService extends Service {

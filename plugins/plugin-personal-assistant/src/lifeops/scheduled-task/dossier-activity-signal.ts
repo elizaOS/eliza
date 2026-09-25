@@ -4,8 +4,7 @@
  * exact user-present broadcast, while foreground events retain their own path.
  * The caller authenticates the reporting owner; this is not OS attestation.
  */
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
-
+import { type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 export function classifyDossierActivitySignal(
   signal: Pick<
     LifeOpsActivitySignal,

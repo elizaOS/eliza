@@ -61,6 +61,6 @@
   "gate": {
     "name": "dstack-pins-check",
     "blockedOn": null,
-    "provingCommand": "node scripts/validate-tee-measurements.mjs --input release/confidential-2026-05-21/manifest.json"
+    "provingCommand": "node scripts/validate-tee-measurements.ts --input release/confidential-2026-05-21/manifest.json"
   }
 }

@@ -26,12 +26,12 @@ import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startChunkedAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   adbDevice,
   resolveAdb,
   resolveSerial,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 import { expect, gotoRoute, test, waitForShellReady } from "./android-harness";
 
 declare global {

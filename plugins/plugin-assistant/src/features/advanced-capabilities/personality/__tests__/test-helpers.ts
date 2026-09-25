@@ -13,7 +13,7 @@ import type {
   IAgentRuntime,
   Memory,
   UUID,
-} from "../../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
 import { PersonalityStore } from "../services/personality-store.ts";
 
 let _seq = 0;

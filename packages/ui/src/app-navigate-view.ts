@@ -3,21 +3,19 @@
  * entry the agent's view actions and the shell use to switch views.
  */
 
-import type { NavigateViewDetail } from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+import type { NavigateViewDetail } from "@elizaos/core/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { logger } from "./logger.ts";
 import { type Tab, tabFromPath } from "./navigation";
 import { shellHistory } from "./surface-realm-channel";
 
 export type { NavigateViewDetail };
-
 export type ActiveViewLayout = {
   mode: "split" | "tile";
   viewIds: string[];
   layout?: string;
   placement?: string;
 };
-
 // Cross-view navigation payload channel.
 //
 // `NavigateViewDetail.payload` is an opaque, view-owned deep-link value:
@@ -29,7 +27,6 @@ export type ActiveViewLayout = {
 // generic: no view id is special-cased here, and the plugin that owns a view
 // ships its own navigate helper that constructs the payload shape it expects.
 const pendingNavigateViewPayloads = new Map<string, unknown>();
-
 export function consumeNavigateViewPayload<T = unknown>(
   viewId: string,
 ): T | null {
@@ -38,32 +35,28 @@ export function consumeNavigateViewPayload<T = unknown>(
   pendingNavigateViewPayloads.delete(viewId);
   return payload;
 }
-
 export function __setNavigateViewPayloadForTests(
   viewId: string,
   payload: unknown,
 ): void {
   pendingNavigateViewPayloads.set(viewId, payload);
 }
-
 function storeNavigateViewPayload(detail: NavigateViewDetail): void {
   if (!detail.viewId || detail.payload === undefined) return;
   pendingNavigateViewPayloads.set(detail.viewId, detail.payload);
 }
-
 export type DesktopTabOpen = (
   view: ViewRegistryEntry,
-  options?: { pinned?: boolean },
+  options?: {
+    pinned?: boolean;
+  },
 ) => void;
-
 export type DesktopTabClose = (viewId: string) => void;
-
 export type DesktopBridgeRequest = <T>(options: {
   rpcMethod: string;
   ipcChannel: string;
   params?: unknown;
 }) => Promise<T | null>;
-
 export function pathForNavigateViewDetail(
   detail: NavigateViewDetail,
   views: readonly ViewRegistryEntry[] = [],
@@ -73,7 +66,6 @@ export function pathForNavigateViewDetail(
   const entry = desktopEntryForDetail(views, detail.viewId);
   return entry?.path ?? `/apps/${detail.viewId}`;
 }
-
 export function directTabForNavigateView(
   detail: NavigateViewDetail,
   path: string,
@@ -84,7 +76,6 @@ export function directTabForNavigateView(
   }
   return null;
 }
-
 export function navigateBrowserPath(path: string): void {
   if (typeof window === "undefined") return;
   try {
@@ -101,14 +92,12 @@ export function navigateBrowserPath(path: string): void {
     logger.warn({ err, path }, "[app-navigate-view] browser navigation failed");
   }
 }
-
 export function desktopEntryForDetail(
   views: readonly ViewRegistryEntry[],
   viewId: string,
 ): ViewRegistryEntry | undefined {
   return views.find((view) => view.id === viewId);
 }
-
 function layoutViewIdsForDetail(detail: NavigateViewDetail): string[] {
   const ids = [
     ...(Array.isArray(detail.views) ? detail.views : []),
@@ -122,7 +111,6 @@ function layoutViewIdsForDetail(detail: NavigateViewDetail): string[] {
     return [trimmed];
   });
 }
-
 export function createNavigateViewHandler({
   availableViewsForDesktopTabs,
   closeDesktopTab,
@@ -137,7 +125,9 @@ export function createNavigateViewHandler({
 }: {
   availableViewsForDesktopTabs: ViewRegistryEntry[];
   closeDesktopTab?: DesktopTabClose;
-  desktopTabs?: Array<{ viewId: string }>;
+  desktopTabs?: Array<{
+    viewId: string;
+  }>;
   invokeDesktopBridgeRequest: DesktopBridgeRequest;
   navigatePath?: (path: string) => void;
   openDesktopTab: DesktopTabOpen;
@@ -151,7 +141,6 @@ export function createNavigateViewHandler({
     const routeTab = tabFromPath(path);
     if (routeTab) activatePathTab(routeTab);
   };
-
   return (event: Event) => {
     const detail = (event as CustomEvent<NavigateViewDetail>).detail;
     if (!detail) return false;
@@ -212,7 +201,9 @@ export function createNavigateViewHandler({
       );
       const viewPath = entry?.path ?? `/apps/${detail.viewId}`;
       const viewLabel = entry?.label ?? detail.viewId;
-      void invokeDesktopBridgeRequest<{ id: string }>({
+      void invokeDesktopBridgeRequest<{
+        id: string;
+      }>({
         rpcMethod: "desktopOpenAppWindow",
         ipcChannel: "desktop:openAppWindow",
         params: {

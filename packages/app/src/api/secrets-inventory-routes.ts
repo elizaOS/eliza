@@ -61,6 +61,7 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteMinRole,
 } from "./auth.ts";
+import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 
 // ── Public dispatcher ──────────────────────────────────────────────
@@ -132,11 +133,8 @@ export async function handleSecretsInventoryRoute(
     }
     if (method === "PUT") {
       if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-      const body = await readJsonBody(req);
-      if (body === null) {
-        sendJsonError(res, 400, "invalid JSON body");
-        return true;
-      }
+      const body = await readCompatJsonBody(req, res);
+      if (body === null) return true;
       const config = (body as { config: unknown }).config;
       if (!config || typeof config !== "object") {
         sendJsonError(res, 400, "missing `config` field");
@@ -166,7 +164,8 @@ export async function handleSecretsInventoryRoute(
       return true;
     }
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-    const body = (await readJsonBody(req)) as { key: unknown } | null;
+    const body = await readCompatJsonBody(req, res);
+    if (body === null) return true;
     const targetKey = typeof body?.key === "string" ? body.key : null;
     if (!targetKey || !KEY_RE.test(targetKey) || isReservedKey(targetKey)) {
       sendJsonError(res, 400, "invalid `key`");
@@ -344,11 +343,8 @@ async function handleKeyRoute(
 
   if (method === "PUT") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-    const body = await readJsonBody(req);
-    if (body === null) {
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const body = await readCompatJsonBody(req, res);
+    if (body === null) return true;
     const v = body as {
       value: unknown;
       label: unknown;
@@ -443,11 +439,8 @@ async function handleProfilesRoute(
 
   if (method === "POST") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-    const body = await readJsonBody(req);
-    if (body === null) {
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const body = await readCompatJsonBody(req, res);
+    if (body === null) return true;
     const v = body as { id: unknown; label: unknown; value: unknown };
     if (typeof v.id !== "string" || !PROFILE_ID_RE.test(v.id)) {
       sendJsonError(res, 400, "`id` must match [A-Za-z0-9_-]+");
@@ -497,11 +490,8 @@ async function handleSingleProfileRoute(
 
   if (method === "PATCH") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-    const body = await readJsonBody(req);
-    if (body === null) {
-      sendJsonError(res, 400, "invalid JSON body");
-      return true;
-    }
+    const body = await readCompatJsonBody(req, res);
+    if (body === null) return true;
     const v = body as { label: unknown; value: unknown };
     if (v.label !== undefined && typeof v.label !== "string") {
       sendJsonError(res, 400, "`label` must be string when set");
@@ -579,11 +569,8 @@ async function handleActiveProfileRoute(
     return true;
   }
   if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-  const body = await readJsonBody(req);
-  if (body === null) {
-    sendJsonError(res, 400, "invalid JSON body");
-    return true;
-  }
+  const body = await readCompatJsonBody(req, res);
+  if (body === null) return true;
   const v = body as { profileId: unknown };
   if (typeof v.profileId !== "string" || !PROFILE_ID_RE.test(v.profileId)) {
     sendJsonError(res, 400, "`profileId` is required");
@@ -628,21 +615,4 @@ async function migrateKeyToProfiles(key: string): Promise<MigrationResult> {
     activeProfile: "default",
   });
   return { migrated: true, profileId: "default" };
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-async function readJsonBody(
-  req: http.IncomingMessage,
-): Promise<unknown | null> {
-  let body = "";
-  for await (const chunk of req) body += chunk;
-  if (!body) return {};
-  try {
-    return JSON.parse(body);
-  } catch {
-    // error-policy:J3 untrusted request body — malformed JSON is an explicit
-    // null "invalid" signal the caller rejects, not a fabricated value.
-    return null;
-  }
 }

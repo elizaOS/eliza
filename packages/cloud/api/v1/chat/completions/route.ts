@@ -77,12 +77,13 @@ import {
 import {
   type AIUsage,
   type BillingContext,
+  type BillingResult,
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
-  recordUsageAnalytics,
+  type recordUsageAnalytics,
 } from "@/lib/services/ai-billing";
-import { aiBillingRecordsService } from "@/lib/services/ai-billing-records";
+import { recordSettledInferenceBilling } from "@/lib/services/ai-billing-settled";
 import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
@@ -94,6 +95,12 @@ import {
   assertInferenceAppAffiliateSupported,
   InferenceAppAffiliateUnsupportedError,
 } from "@/lib/services/app-inference-admission";
+import {
+  type AppInferenceDelegatedActor,
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+  appInferenceErrorResponse,
+} from "@/lib/services/app-subscription-inference-admission";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
 import type {
@@ -128,6 +135,10 @@ import {
   getGatewayModelByIdCacheOnly,
 } from "@/lib/services/model-catalog";
 import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@/lib/services/native-application-inference";
+import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
   InferenceAffiliateCacheUnavailableError,
@@ -135,6 +146,7 @@ import {
   InferencePricingCacheUnavailableError,
   InferencePricingCacheWarmingError,
 } from "@/lib/services/organization-inference-admission";
+import { settlementDigest } from "@/lib/services/settlement-digest";
 import {
   getTeamPoolRegistry,
   type SelectedPooledCredential,
@@ -143,6 +155,44 @@ import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
+
+/**
+ * Write the durable billing ledger row for one settled inference. Credits are
+ * settled before this runs, so the row must exist even when the usage
+ * analytics insert fails (#31112); `recordSettledInferenceBilling` carries that
+ * failure into the row as an explicit marker. A ledger write failure is logged
+ * as before: the response is already delivered and settlement is not rolled
+ * back.
+ */
+async function recordChatBillingLedgerRow(args: {
+  billingContext: BillingContext;
+  billing: BillingResult;
+  reconciliation: CreditReconciliationResult | null;
+  idempotencyKey: string;
+  analytics: Parameters<typeof recordUsageAnalytics>[2];
+}): Promise<void> {
+  try {
+    await recordSettledInferenceBilling({
+      context: args.billingContext,
+      billing: args.billing,
+      reconciliation: args.reconciliation,
+      idempotencyKey: args.idempotencyKey,
+      analytics: args.analytics,
+    });
+  } catch (auditError) {
+    // error-policy:J7 diagnostics must not kill the loop: the failed ledger
+    // write is logged with the idempotency key so it can be replayed.
+    logger.error("[Chat Completions] audit record failed (non-fatal)", {
+      idempotencyKey: args.idempotencyKey,
+      error:
+        auditError instanceof Error ? auditError.message : String(auditError),
+      cause:
+        auditError instanceof Error && auditError.cause
+          ? String((auditError.cause as Error).message ?? auditError.cause)
+          : undefined,
+    });
+  }
+}
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -1179,6 +1229,8 @@ function shouldUsePooledNoopReservation(params: {
 // ============================================================================
 
 interface ChatCompletionsHandlerOptions {
+  /** Registered delegated app customer; this path uses paired funding and no legacy app-credit markup. */
+  appFundingActor?: AppInferenceDelegatedActor;
   skipOrgRateLimit?: boolean;
   /** Require this app scope and bill through its app accounting policy. */
   requiredAppId?: string;
@@ -1223,6 +1275,17 @@ export async function handleChatCompletionsPOST(
   req: Request,
   options: ChatCompletionsHandlerOptions = {},
 ) {
+  if (req.headers.has("X-Eliza-Application-Slot"))
+    return Response.json(
+      {
+        error: {
+          code: "APP_INFERENCE_NATIVE_AUTH_REQUIRED",
+          message:
+            "Native product selection requires the authenticated application route",
+        },
+      },
+      { status: 403 },
+    );
   const startTime = Date.now();
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
@@ -1479,7 +1542,9 @@ export async function handleChatCompletionsPOST(
     }
 
     // 2. Prepare app monetization lookup
-    const requestedAppId = options.requiredAppId ?? req.headers.get("X-App-Id");
+    const requestedAppId = options.appFundingActor
+      ? null
+      : (options.requiredAppId ?? req.headers.get("X-App-Id"));
     if (requestedAppId && appScopeId && appScopeId !== requestedAppId) {
       return addCorsHeaders(
         Response.json(
@@ -1802,14 +1867,56 @@ export async function handleChatCompletionsPOST(
       ) + (webSearchActive ? ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER : 0);
     const estimatedOutputTokens =
       effectiveMaxTokens ?? request.max_tokens ?? 500;
-    const affiliateCode = req.headers.get("X-Affiliate-Code");
+    const affiliateCode = options.appFundingActor
+      ? null
+      : req.headers.get("X-Affiliate-Code");
 
     const tBeforeReserve = performance.now();
     const useMonetizedAppBilling = Boolean(
       useAppCredits && appId && monetizedApp,
     );
     try {
-      if (
+      if (options.appFundingActor) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+        );
+        const admission = await admitAppSubscriptionInference({
+          actor: options.appFundingActor,
+          developerOrganizationId: user.organization_id,
+          developerAppScopeId: await appInferenceDeveloperScope(
+            apiKey?.id ?? null,
+          ),
+          logicalOperationId: req.headers.get("idempotency-key") ?? "",
+          requestDigest: settlementDigest({
+            request,
+            model: normalizedModel,
+            provider,
+            billingSource,
+            estimatedOutputTokens,
+          }),
+          estimatedCostUsd: totalCost,
+          revalidateDeveloperCredential: async () => {
+            if (!apiKey)
+              throw new Error("App infrastructure credential is unavailable");
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              admissionCredential ?? {
+                kind: "api_key",
+                credentialId: apiKey.id,
+                userId: user.id,
+              },
+            );
+          },
+        });
+        appId = options.appFundingActor.appId;
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+      } else if (
         shouldUsePooledNoopReservation({
           pooledCredential,
           useMonetizedAppBilling,
@@ -1909,6 +2016,9 @@ export async function handleChatCompletionsPOST(
         billingReservation = admission.reservation;
       }
     } catch (error) {
+      // error-policy:J1 Typed app funding failures stay explicit at the inference HTTP boundary.
+      const appFundingFailure = appInferenceErrorResponse(error);
+      if (appFundingFailure) return addCorsHeaders(appFundingFailure);
       const failedAt = performance.now();
       preforwardTiming ??= snapshotGatewayPreforwardTiming({
         authMs: tAuth - telemetryStartedAt,
@@ -2194,6 +2304,8 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    const appFundingFailure = appInferenceErrorResponse(error);
+    if (appFundingFailure) return addCorsHeaders(appFundingFailure);
     const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
       route: "chat_completions",
       traceId,
@@ -2460,37 +2572,21 @@ async function settleStreamingAbortReservation(params: {
       params.billingReservation,
     );
     const reconciliation = await params.settleReservation(billing.totalCost);
-    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-      type: "chat",
-      isSuccessful: false,
-      errorMessage: "client_aborted_stream",
-      content: params.deliveredText,
-      systemPrompt: params.systemPrompt,
-      prompt: params.prompt,
-      latencyMs: Date.now() - params.startTime,
+    await recordChatBillingLedgerRow({
+      billingContext,
+      billing,
+      reconciliation,
+      idempotencyKey: params.idempotencyKey,
+      analytics: {
+        type: "chat",
+        isSuccessful: false,
+        errorMessage: "client_aborted_stream",
+        content: params.deliveredText,
+        systemPrompt: params.systemPrompt,
+        prompt: params.prompt,
+        latencyMs: Date.now() - params.startTime,
+      },
     });
-    if (usageRecord) {
-      try {
-        await aiBillingRecordsService.record({
-          context: billingContext,
-          billing,
-          usageRecord,
-          idempotencyKey: params.idempotencyKey,
-          reconciliation,
-        });
-      } catch (auditError) {
-        logger.error("[Chat Completions] audit record failed (non-fatal)", {
-          error:
-            auditError instanceof Error
-              ? auditError.message
-              : String(auditError),
-          cause:
-            auditError instanceof Error && auditError.cause
-              ? String((auditError.cause as Error).message ?? auditError.cause)
-              : undefined,
-        });
-      }
-    }
 
     logger.info(
       "[Chat Completions] Stream aborted; reservation partially settled",
@@ -2892,35 +2988,19 @@ async function tryPassthroughStreamingRequest(params: {
           params.billingReservation,
         );
         const reconciliation = await settleReservation(billing.totalCost);
-        const usageRecord = await recordUsageAnalytics(
+        await recordChatBillingLedgerRow({
           billingContext,
           billing,
-          {
+          reconciliation,
+          idempotencyKey: params.idempotencyKey,
+          analytics: {
             type: "chat",
             content: tail.deliveredText,
             systemPrompt: params.systemPrompt,
             prompt: billingPrompt,
             latencyMs: Date.now() - params.startTime,
           },
-        );
-        if (usageRecord) {
-          try {
-            await aiBillingRecordsService.record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey: params.idempotencyKey,
-              reconciliation,
-            });
-          } catch (auditError) {
-            logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error:
-                auditError instanceof Error
-                  ? auditError.message
-                  : String(auditError),
-            });
-          }
-        }
+        });
         logger.info("[Chat Completions] Passthrough streaming complete", {
           model,
           durationMs: Date.now() - params.startTime,
@@ -3296,45 +3376,19 @@ async function handleStreamingRequest(
             executionCtx,
           );
 
-          const usageRecord = await recordUsageAnalytics(
+          await recordChatBillingLedgerRow({
             billingContext,
             billing,
-            {
+            reconciliation,
+            idempotencyKey: idempotencyKey,
+            analytics: {
               type: "chat",
               content: text,
               systemPrompt,
               prompt: billingPrompt,
               latencyMs: Date.now() - startTime,
             },
-          );
-          if (usageRecord) {
-            try {
-              await aiBillingRecordsService.record({
-                context: billingContext,
-                billing,
-                usageRecord,
-                idempotencyKey,
-                reconciliation,
-              });
-            } catch (auditError) {
-              logger.error(
-                "[Chat Completions] audit record failed (non-fatal)",
-                {
-                  error:
-                    auditError instanceof Error
-                      ? auditError.message
-                      : String(auditError),
-                  cause:
-                    auditError instanceof Error && auditError.cause
-                      ? String(
-                          (auditError.cause as Error).message ??
-                            auditError.cause,
-                        )
-                      : undefined,
-                },
-              );
-            }
-          }
+          });
 
           logger.info("[Chat Completions] Streaming complete", {
             durationMs: Date.now() - startTime,
@@ -3870,41 +3924,19 @@ async function handleNonStreamingRequest(
           executionCtx,
         );
 
-        const usageRecord = await recordUsageAnalytics(
+        await recordChatBillingLedgerRow({
           billingContext,
           billing,
-          {
+          reconciliation,
+          idempotencyKey: idempotencyKey,
+          analytics: {
             type: "chat",
             content: result.text,
             systemPrompt,
             prompt: billingPrompt,
             latencyMs: responseLatencyMs,
           },
-        );
-        if (usageRecord) {
-          try {
-            await aiBillingRecordsService.record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey,
-              reconciliation,
-            });
-          } catch (auditError) {
-            logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error:
-                auditError instanceof Error
-                  ? auditError.message
-                  : String(auditError),
-              cause:
-                auditError instanceof Error && auditError.cause
-                  ? String(
-                      (auditError.cause as Error).message ?? auditError.cause,
-                    )
-                  : undefined,
-            });
-          }
-        }
+        });
 
         logger.info("[Chat Completions] Non-streaming complete", {
           durationMs: Date.now() - startTime,
@@ -4035,12 +4067,16 @@ honoRouter.options("/", async (c) => {
 });
 honoRouter.post("/", async (c) => {
   try {
-    return await handleChatCompletionsPOST(c.req.raw, {
+    const native = await prepareNativeApplicationInference(c);
+    return await handleChatCompletionsPOST(native.request, {
+      appFundingActor: native.actor,
       executionCtx: c.executionCtx,
       traceId: c.get("traceId"),
     });
   } catch (error) {
     // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
+    const nativeError = nativeApplicationInferenceErrorResponse(error);
+    if (nativeError) return nativeError;
     return failureResponse(c, error);
   }
 });

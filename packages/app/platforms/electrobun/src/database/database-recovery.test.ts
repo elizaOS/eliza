@@ -163,23 +163,20 @@ describe("backupPgliteDirectory", () => {
 		).toBe("t");
 	});
 
-	it("merges into an existing timestamped backup without overwriting files", () => {
-		const sourceDir = pgliteDir("no-overwrite");
+	it("refuses a colliding backup before reset can delete current data", () => {
+		const sourceDir = pgliteDir("collision");
 		writeTree(sourceDir, { state: "first" });
 		const first = backupPgliteDirectory(sourceDir, { now: () => FIXED_NOW });
-		expect(first.created).toBe(true);
-
-		fs.writeFileSync(path.join(sourceDir, "state"), "second", "utf8");
-		fs.writeFileSync(path.join(sourceDir, "extra"), "new", "utf8");
-		const second = backupPgliteDirectory(sourceDir, { now: () => FIXED_NOW });
-		expect(second.created).toBe(true);
-		expect(second.backupDir).toBe(first.backupDir);
+		fs.writeFileSync(path.join(sourceDir, "state"), "second");
+		expect(() =>
+			resetPgliteDirectory(sourceDir, { now: () => FIXED_NOW }),
+		).toThrow();
+		expect(fs.readFileSync(path.join(sourceDir, "state"), "utf8")).toBe(
+			"second",
+		);
 		expect(
 			fs.readFileSync(path.join(first.backupDir as string, "state"), "utf8"),
 		).toBe("first");
-		expect(
-			fs.readFileSync(path.join(first.backupDir as string, "extra"), "utf8"),
-		).toBe("new");
 	});
 
 	it("rejects memory://, filesystem root, wrong basename, and app-bundle paths", () => {

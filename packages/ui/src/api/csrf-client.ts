@@ -13,9 +13,10 @@
  * omitted at the client before the Worker enforces the same boundary.
  */
 
-import { getElizaApiToken, resolveApiUrl } from "@elizaos/shared";
+import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
+import { resolveApiUrl } from "../utils/asset-url.js";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
@@ -30,7 +31,6 @@ import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 export { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
 
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
-
 export async function fetchWithCsrf(
   url: string,
   init: RequestInit = {},
@@ -49,14 +49,12 @@ export async function fetchWithCsrf(
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
-
   if (!isDedicatedAgentRequest && STATE_CHANGING_METHODS.has(method)) {
     const csrfToken = readCsrfTokenForUrl(url);
     if (csrfToken) {
       headers.set(CSRF_HEADER_NAME, csrfToken);
     }
   }
-
   if (!headers.has("Authorization")) {
     await hydrateAndroidLocalAgentTokenForUrl(url);
     init.signal?.throwIfAborted();
@@ -66,7 +64,6 @@ export async function fetchWithCsrf(
       headers.set("Authorization", `Bearer ${apiToken}`);
     }
   }
-
   const requestInit: RequestInit = {
     ...init,
     credentials: isDedicatedAgentRequest ? "omit" : "include",
@@ -74,7 +71,6 @@ export async function fetchWithCsrf(
   };
   return requestViaAgentTransport(url, requestInit, context);
 }
-
 /**
  * Route a caller-authenticated request through the canonical platform
  * transport selector without adding cookies, CSRF, or boot-token headers.

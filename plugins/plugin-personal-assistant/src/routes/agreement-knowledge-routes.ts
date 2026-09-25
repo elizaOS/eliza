@@ -6,7 +6,8 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { readRequestBodyBuffer, SELF_ENTITY_ID } from "@elizaos/shared";
+import { readRequestBodyBuffer } from "@elizaos/core/api/http-helpers";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   AgreementKnowledgeError,
   getAgreementKnowledgeService,
@@ -24,10 +25,9 @@ import {
   commitAgreementUpload,
   readAgreementUpload,
 } from "../lifeops/household/agreement-upload-session.js";
-import type { LifeOpsRouteContext } from "./lifeops-routes.js";
+import { type LifeOpsRouteContext } from "./lifeops-routes.js";
 
 type JsonObject = Record<string, unknown>;
-
 function record(value: unknown): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new AgreementKnowledgeError(
@@ -37,7 +37,6 @@ function record(value: unknown): JsonObject {
   }
   return value as JsonObject;
 }
-
 function stringField(body: JsonObject, field: string): string {
   const value = body[field];
   if (typeof value !== "string" || !value.trim()) {
@@ -49,7 +48,6 @@ function stringField(body: JsonObject, field: string): string {
   }
   return value.trim();
 }
-
 function numberField(body: JsonObject, field: string): number {
   const value = body[field];
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
@@ -61,18 +59,15 @@ function numberField(body: JsonObject, field: string): number {
   }
   return value;
 }
-
 function optionalString(body: JsonObject, field: string): string | undefined {
   const value = body[field];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function pathMatch(pathname: string, expression: RegExp): string[] | null {
   const match = expression.exec(pathname);
   if (!match) return null;
   return match.slice(1).map((part) => decodeURIComponent(part ?? ""));
 }
-
 function statusFor(error: { code: string }): number {
   switch (error.code) {
     case "AGREEMENT_ACCESS_DENIED":
@@ -97,7 +92,6 @@ function statusFor(error: { code: string }): number {
       return 400;
   }
 }
-
 export async function handleAgreementKnowledgeRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
@@ -122,7 +116,6 @@ export async function handleAgreementKnowledgeRoutes(
     );
     return true;
   }
-
   try {
     if (
       ctx.method === "GET" &&
@@ -139,7 +132,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { agreements });
       return true;
     }
-
     if (
       ctx.method === "POST" &&
       ctx.pathname === "/api/lifeops/agreement-uploads"
@@ -159,7 +151,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { upload: agreementUploadView(manifest) }, 201);
       return true;
     }
-
     const uploadStatus = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreement-uploads\/([^/]+)$/,
@@ -172,7 +163,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { upload: agreementUploadView(manifest) });
       return true;
     }
-
     const uploadChunk = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreement-uploads\/([^/]+)\/chunks\/(\d+)$/,
@@ -205,7 +195,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { upload: agreementUploadView(manifest) });
       return true;
     }
-
     const uploadCommit = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreement-uploads\/([^/]+)\/commit$/,
@@ -248,7 +237,6 @@ export async function handleAgreementKnowledgeRoutes(
       );
       return true;
     }
-
     const ownerReview = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/review$/,
@@ -266,7 +254,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { review });
       return true;
     }
-
     const artifactExport = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/export$/,
@@ -287,7 +274,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.res.end(file.bytes);
       return true;
     }
-
     const artifactDownload = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/download$/,
@@ -307,7 +293,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.res.end(file.bytes);
       return true;
     }
-
     const sharedRead = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/shared$/,
@@ -333,7 +318,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { agreement });
       return true;
     }
-
     const guestOptions = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/guest-options$/,
@@ -350,7 +334,6 @@ export async function handleAgreementKnowledgeRoutes(
       );
       return true;
     }
-
     const artifactRead = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)$/,
@@ -363,7 +346,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { agreement });
       return true;
     }
-
     const guestProjection = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/guest-projection$/,
@@ -384,7 +366,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { agreement });
       return true;
     }
-
     const obligationCreate = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/obligations$/,
@@ -409,7 +390,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, result, result.created ? 201 : 200);
       return true;
     }
-
     const decision = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/obligations\/([^/]+)\/decision$/,
@@ -433,7 +413,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { obligation });
       return true;
     }
-
     const pins = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/([^/]+)\/pins$/,
@@ -465,7 +444,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { pin }, 201);
       return true;
     }
-
     const unpin = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/pins\/([^/]+)$/,
@@ -478,7 +456,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { pin });
       return true;
     }
-
     if (
       ctx.method === "POST" &&
       ctx.pathname === "/api/lifeops/agreements/grants/preview"
@@ -493,7 +470,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { preview });
       return true;
     }
-
     if (
       ctx.method === "POST" &&
       ctx.pathname === "/api/lifeops/agreements/grants"
@@ -508,7 +484,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { grant }, 201);
       return true;
     }
-
     const revoke = pathMatch(
       ctx.pathname,
       /^\/api\/lifeops\/agreements\/grants\/([^/]+)\/revoke$/,
@@ -523,7 +498,6 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.json(ctx.res, { grant });
       return true;
     }
-
     ctx.json(
       ctx.res,
       {

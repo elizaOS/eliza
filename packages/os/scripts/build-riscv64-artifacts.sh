@@ -15,7 +15,7 @@
 #                       riscv64-linux-musl — every cross-build here is
 #                       zig/musl, so no Android NDK is needed)
 #   - cmake 3.21+      (drives every package's cross-build)
-#   - Node 24.15.0         (drives compile-libllama.mjs)
+#   - Node 24.15.0         (drives compile-libllama.ts)
 #
 # Usage:
 #   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
@@ -64,7 +64,7 @@ if [ -z "$NODE_BIN" ]; then
     echo "[build-riscv64-artifacts] node not on PATH. Install Node 24.15.0." >&2
     exit 2
 fi
-eliza_root="$("$NODE_BIN" "$repo_root/scripts/eliza-source.mjs")"
+eliza_root="$("$NODE_BIN" "$repo_root/scripts/eliza-source.ts")"
 if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
     echo "[build-riscv64-artifacts] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
     exit 2
@@ -98,7 +98,7 @@ if ! command -v cmake >/dev/null 2>&1; then
     exit 2
 fi
 
-RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
 
 remove_path_recursive() {
     "$NODE_BIN" "$RM_PATH_RECURSIVE" "$@"
@@ -204,9 +204,9 @@ build_native_plugin doctr-cpp            ""
 # ── libllama family (MTP) ─────────────────────────────────────────
 echo
 echo "── Step 2: libllama / libggml family (MTP) ──"
-COMPILE_LIBLLAMA="$eliza_root/packages/app/scripts/aosp/compile-libllama.mjs"
+COMPILE_LIBLLAMA="$eliza_root/packages/app/scripts/aosp/compile-libllama.ts"
 if [ ! -f "$COMPILE_LIBLLAMA" ]; then
-    echo "  ✗ compile-libllama.mjs missing at $COMPILE_LIBLLAMA"
+    echo "  ✗ compile-libllama.ts missing at $COMPILE_LIBLLAMA"
     FAIL_N=$((FAIL_N+1))
 else
     # Build the shared dependency family, then the current fused runtime.
@@ -265,9 +265,9 @@ fi
 # ── sigsys-handler-riscv64 ───────────────────────────────────────────
 echo
 echo "── Step 3: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
-COMPILE_SHIM="$eliza_root/packages/app/scripts/aosp/compile-shim.mjs"
+COMPILE_SHIM="$eliza_root/packages/app/scripts/aosp/compile-shim.ts"
 if [ ! -f "$COMPILE_SHIM" ]; then
-    echo "  ✗ compile-shim.mjs missing at $COMPILE_SHIM"
+    echo "  ✗ compile-shim.ts missing at $COMPILE_SHIM"
     FAIL_N=$((FAIL_N+1))
 else
     shim_sentinel="${HOME}/.cache/eliza-android-agent/seccomp-shim/riscv64/libsigsys-handler.so"

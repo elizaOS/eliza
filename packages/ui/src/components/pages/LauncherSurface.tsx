@@ -5,13 +5,14 @@
  * view navigation. `Launcher` itself is pure presentation — one flat grid, no
  * favorites, recents, or section zones.
  */
-import { logger } from "@elizaos/shared/logger";
+
 import * as React from "react";
 import { useSessionAuth } from "../../cloud/lib/use-session-auth";
 import { dispatchChatOpen } from "../../events";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
+import { logger } from "../../logger.ts";
 import { isAospShellEnabled } from "../../navigation";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";

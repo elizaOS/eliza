@@ -1,12 +1,9 @@
 /** Exercises financial reply admission through the real runtime and message service with controlled planner drafts, wallet receipts, and provider observations. */
 
-import { createSQLiteTestRuntime } from "@elizaos/testing";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
   ActionResult,
+  AgentRuntime,
   Content,
   HandlerCallback,
   IAgentRuntime,
@@ -14,9 +11,10 @@ import type {
   State,
   StateData,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
+} from "@elizaos/core";
+import { ChannelType, createCharacter, ModelType } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";
 

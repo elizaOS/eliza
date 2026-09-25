@@ -1,8 +1,8 @@
 # This read-only workflow preserves deterministic macOS and Windows runtime
 # proof. Develop Full remains the sole automatic authority; manual dispatches
 # use the trusted develop definition to test one exact candidate commit.
-name: Platform Smoke
-run-name: Platform Smoke (${{ inputs.source_sha || github.sha }})
+name: Core Platform Tests
+run-name: Core Platform Tests (${{ inputs.source_sha || github.sha }})
 
 on:
   workflow_call:
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   platform-smoke:
-    name: Platform smoke (${{ matrix.os }})
+    name: Core tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -77,13 +77,16 @@ jobs:
           node-version: "24.15.0"
 
       - name: Run batch watchdog process-tree self-test
-        run: node packages/scripts/test-cloud-run-watchdog.self-test.mjs
+        run: node packages/scripts/test-cloud-run-watchdog.self-test.ts
 
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Link workspace packages
+        run: node packages/scripts/ensure-workspace-symlinks.ts
+
       - name: Build core
-        run: bun run build:core
+        run: bun run --cwd packages/core build
 
       - name: Run core tests
         run: bun run test:core

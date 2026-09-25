@@ -9,7 +9,6 @@
  * `lifeops-routes.ts` can trust the caller. Also exports
  * `requireLifeOpsRouteOwnerAdminAccess` for reuse by sibling route modules.
  */
-
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
@@ -23,21 +22,26 @@ import {
 } from "@elizaos/app/api/auth";
 import { isTrustedLocalRequest } from "@elizaos/app/api/compat-route-shared";
 import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
-import type {
-  LegacyRouteHandler,
-  HttpPlugin as Plugin,
-  Route,
-} from "@elizaos/shared";
+import {
+  type AgentRuntime,
+  resolveOwnerEntityIdOrDefault,
+  type UUID,
+} from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
+} from "@elizaos/core/api/http-helpers";
+import {
+  type LegacyRouteHandler,
+  type HttpPlugin as Plugin,
+  type Route,
+} from "@elizaos/core/api/http-plugin";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-  SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {
   AGREEMENT_UPLOAD_CHUNK_BYTES,
   AGREEMENT_UPLOAD_METADATA_BYTES,
@@ -49,30 +53,31 @@ import {
   resolveLifeOpsAuthenticatedPrincipal,
 } from "./authenticated-entity-principal.js";
 import { handleEntityRoutes } from "./entities.js";
-import type { LifeOpsRouteContext } from "./lifeops-routes.js";
-import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import {
+  handleLifeOpsRoutes,
+  type LifeOpsRouteContext,
+} from "./lifeops-routes.js";
 import { handleRelationshipRoutes } from "./relationships.js";
 import {
   DEV_REGISTRIES_ROUTE_PATHS,
   makeScheduledTasksRouteHandler,
 } from "./scheduled-tasks.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
-import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import {
+  handleWebsiteBlockerRoutes,
+  type WebsiteBlockerRouteContext,
+} from "./website-blocker-routes.js";
 
 const requestPrincipals = new WeakMap<
   http.IncomingMessage,
   LifeOpsAuthenticatedPrincipal
 >();
-
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
 }
-
 function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
 }
-
 function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) {
     return firstHeaderValue(value[0]);
@@ -83,7 +88,6 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
   const normalized = value.split(",")[0]?.trim();
   return normalized ? normalized : null;
 }
-
 function requestBaseUrl(req: http.IncomingMessage): string {
   const headers = req.headers;
   const protocol =
@@ -97,7 +101,6 @@ function requestBaseUrl(req: http.IncomingMessage): string {
     "localhost";
   return `${protocol}://${host}`;
 }
-
 function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   if (!runtime) {
     return null;
@@ -105,7 +108,6 @@ function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   // Same derivation as the chat write surface and LifeOps service scope.
   return resolveOwnerEntityIdOrDefault(runtime);
 }
-
 function hasConfiguredOwnerToken(req: http.IncomingMessage): boolean {
   const expectedToken = getCompatApiToken();
   const providedToken = getProvidedApiToken(req);
@@ -115,7 +117,6 @@ function hasConfiguredOwnerToken(req: http.IncomingMessage): boolean {
       tokenMatches(expectedToken, providedToken),
   );
 }
-
 async function requestHasOwnerRouteRole(args: {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -125,26 +126,22 @@ async function requestHasOwnerRouteRole(args: {
   if (isTrustedLocalRequest(req)) {
     return true;
   }
-
   const store = authStoreForRuntime(runtime);
   if (!store) {
     return hasConfiguredOwnerToken(req);
   }
-
   if (
     process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&
     hasConfiguredOwnerToken(req)
   ) {
     return true;
   }
-
   const context = await ensureSessionForRequest(req, res, {
     store,
     allowBootstrapBearer: false,
   });
   return context?.identity?.kind === "owner";
 }
-
 export async function requireLifeOpsRouteOwnerAdminAccess(args: {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -155,7 +152,6 @@ export async function requireLifeOpsRouteOwnerAdminAccess(args: {
     error(res, "Agent runtime is not available", 503);
     return false;
   }
-
   try {
     const authorized = await ensureRouteAuthorized(req, res, {
       current: runtime,
@@ -170,11 +166,9 @@ export async function requireLifeOpsRouteOwnerAdminAccess(args: {
     error(res, "LifeOps route access could not be verified", 403);
     return false;
   }
-
   error(res, "LifeOps routes require OWNER or ADMIN access", 403);
   return false;
 }
-
 function buildLifeOpsContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -201,7 +195,6 @@ function buildLifeOpsContext(
     decodePathComponent,
   };
 }
-
 function buildWebsiteBlockerContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -221,7 +214,6 @@ function buildWebsiteBlockerContext(
     error,
   };
 }
-
 function runtimeSetting(
   runtime: AgentRuntime | null,
   key: string,
@@ -229,7 +221,6 @@ function runtimeSetting(
   const value = runtime?.getSetting?.(key);
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function buildCloudProxyConfig(
   runtime: AgentRuntime | null,
 ): CloudProxyConfigLike {
@@ -275,9 +266,7 @@ function buildCloudProxyConfig(
     },
   };
 }
-
 type HttpRouteType = Exclude<Route["type"], "STATIC">;
-
 interface PrivateRouteSpec {
   type: HttpRouteType;
   path: string;
@@ -285,7 +274,6 @@ interface PrivateRouteSpec {
   access?: "owner" | "authenticated_entity";
   maxBodyBytes?: number;
 }
-
 interface PublicRouteSpec {
   type: HttpRouteType;
   path: string;
@@ -296,9 +284,7 @@ interface PublicRouteSpec {
   publicWrite?: string;
   maxBodyBytes?: number;
 }
-
 type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
-
 const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
@@ -391,41 +377,8 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/definitions/:id/reopen" },
   { type: "GET", path: "/api/lifeops/connectors/health/status" },
   { type: "GET", path: "/api/lifeops/health/summary" },
-  { type: "GET", path: "/api/lifeops/money/dashboard" },
-  { type: "GET", path: "/api/lifeops/money/sources" },
-  { type: "POST", path: "/api/lifeops/money/sources" },
-  { type: "POST", path: "/api/lifeops/money/import-csv" },
-  { type: "GET", path: "/api/lifeops/money/transactions" },
-  { type: "GET", path: "/api/lifeops/money/recurring" },
-  { type: "POST", path: "/api/lifeops/money/plaid/link-token" },
-  { type: "POST", path: "/api/lifeops/money/plaid/complete" },
-  { type: "POST", path: "/api/lifeops/money/plaid/update-link-token" },
-  { type: "POST", path: "/api/lifeops/money/plaid/update-complete" },
-  { type: "POST", path: "/api/lifeops/money/plaid/disconnect" },
-  { type: "POST", path: "/api/lifeops/money/plaid/sync" },
-  {
-    type: "POST",
-    name: "lifeops.money.plaid.webhook",
-    publicReason:
-      "Plaid delivers Item/transaction webhooks directly to the callback URL registered at link time; Plaid cannot hold the local gate token.",
-    publicWrite:
-      "Authenticated out-of-band by the Plaid-Verification ES256 JWT: signature against Plaid's JWK (kid lookup through Eliza Cloud), exact raw-body SHA-256 pinning, and a bounded iat freshness window — all verified before any lookup or state change.",
-    // `path` sits directly above `public` so the public-route audit ledger
-    // attributes this declaration to the webhook path, not a neighbouring route.
-    path: "/api/lifeops/money/plaid/webhook",
-    public: true,
-  },
-  { type: "POST", path: "/api/lifeops/money/paypal/authorize-url" },
-  { type: "POST", path: "/api/lifeops/money/paypal/complete" },
-  { type: "POST", path: "/api/lifeops/money/paypal/sync" },
-  { type: "GET", path: "/api/lifeops/money/bills" },
-  { type: "POST", path: "/api/lifeops/money/bills/mark-paid" },
-  { type: "POST", path: "/api/lifeops/money/bills/snooze" },
   { type: "GET", path: "/api/lifeops/smart-features/settings" },
   { type: "POST", path: "/api/lifeops/smart-features/settings" },
-  { type: "GET", path: "/api/lifeops/subscriptions/playbook-lookup" },
-  { type: "GET", path: "/api/lifeops/subscriptions/playbooks" },
-  { type: "POST", path: "/api/lifeops/subscriptions/cancel" },
   { type: "POST", path: "/api/lifeops/email-unsubscribe/scan" },
   { type: "POST", path: "/api/lifeops/email-unsubscribe/unsubscribe" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
@@ -504,7 +457,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/relationships" },
   { type: "POST", path: "/api/lifeops/relationships/observe" },
 ];
-
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/family-workflows/intake/:id/extract" },
   { type: "POST", path: "/api/lifeops/family-workflows/intake/:id/review" },
@@ -514,7 +466,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     type: "POST",
     path: "/api/lifeops/family-workflows/intake/:id/request-decision",
   },
-
   {
     type: "GET",
     path: "/api/lifeops/family-workflows/school/runs/:runId",
@@ -556,8 +507,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     publicReason:
       "Health connector OAuth success landing must render after provider redirects.",
   },
-  // /api/lifeops/money/sources/:sourceId
-  { type: "DELETE", path: "/api/lifeops/money/sources/:sourceId" },
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
@@ -638,21 +587,17 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "DELETE", path: "/api/lifeops/agreements/pins/:id" },
   { type: "POST", path: "/api/lifeops/agreements/grants/:id/revoke" },
 ];
-
 // ---------------------------------------------------------------------------
 // Sleep routes (history / regularity / baseline)
 // ---------------------------------------------------------------------------
-
 const LIFEOPS_SLEEP_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/sleep/history" },
   { type: "GET", path: "/api/lifeops/sleep/regularity" },
   { type: "GET", path: "/api/lifeops/sleep/baseline" },
 ];
-
 // ---------------------------------------------------------------------------
 // Website-blocker routes
 // ---------------------------------------------------------------------------
-
 const WEBSITE_BLOCKER_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/website-blocker" },
   { type: "GET", path: "/api/website-blocker/status" },
@@ -660,12 +605,10 @@ const WEBSITE_BLOCKER_ROUTES: RouteSpec[] = [
   { type: "PUT", path: "/api/website-blocker" },
   { type: "DELETE", path: "/api/website-blocker" },
 ];
-
 const CLOUD_FEATURE_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/cloud/features" },
   { type: "POST", path: "/api/cloud/features/sync" },
 ];
-
 const TRAVEL_PROVIDER_RELAY_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/cloud/travel-providers/:provider/:providerPath*" },
   {
@@ -673,7 +616,6 @@ const TRAVEL_PROVIDER_RELAY_ROUTES: RouteSpec[] = [
     path: "/api/cloud/travel-providers/:provider/:providerPath*",
   },
 ];
-
 const GOOGLE_CONNECTOR_ACCOUNT_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/connectors/google/accounts" },
   { type: "POST", path: "/api/connectors/google/accounts" },
@@ -704,11 +646,9 @@ const GOOGLE_CONNECTOR_ACCOUNT_ROUTES: RouteSpec[] = [
   },
   { type: "GET", path: "/api/connectors/google/audit/events" },
 ];
-
 // ---------------------------------------------------------------------------
 // Build Plugin Route arrays
 // ---------------------------------------------------------------------------
-
 interface CloudProxyConfigLike {
   cloud?: {
     apiKey?: string;
@@ -716,7 +656,6 @@ interface CloudProxyConfigLike {
     serviceKey?: string;
   };
 }
-
 function withOwnerAdminGate(handler: LegacyRouteHandler): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -746,7 +685,6 @@ function withOwnerAdminGate(handler: LegacyRouteHandler): LegacyRouteHandler {
     }
   };
 }
-
 function withAuthenticatedEntityGate(
   handler: LegacyRouteHandler,
 ): LegacyRouteHandler {
@@ -787,7 +725,6 @@ function withAuthenticatedEntityGate(
     }
   };
 }
-
 function buildRawRoutes(
   specs: readonly RouteSpec[],
   handler: LegacyRouteHandler,
@@ -822,7 +759,6 @@ function buildRawRoutes(
     };
   });
 }
-
 function lifeOpsRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -842,7 +778,6 @@ function lifeOpsRouteHandler(): LegacyRouteHandler {
     await handleLifeOpsRoutes(ctx);
   };
 }
-
 function scheduledTasksRouteHandler(): LegacyRouteHandler {
   // The runner is created per-request because it depends on the
   // runtime which is only available inside the route call. The runtime
@@ -878,7 +813,6 @@ function scheduledTasksRouteHandler(): LegacyRouteHandler {
     }
   };
 }
-
 function sleepRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -895,7 +829,6 @@ function sleepRouteHandler(): LegacyRouteHandler {
     await handleSleepRoutes(ctx);
   };
 }
-
 function websiteBlockerRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -912,7 +845,6 @@ function websiteBlockerRouteHandler(): LegacyRouteHandler {
     await handleWebsiteBlockerRoutes(ctx);
   };
 }
-
 function cloudFeaturesRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -933,7 +865,6 @@ function cloudFeaturesRouteHandler(): LegacyRouteHandler {
     });
   };
 }
-
 function travelProviderRelayRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -960,7 +891,6 @@ function travelProviderRelayRouteHandler(): LegacyRouteHandler {
     );
   };
 }
-
 function googleConnectorAccountRouteHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
@@ -989,7 +919,6 @@ function googleConnectorAccountRouteHandler(): LegacyRouteHandler {
     }
   };
 }
-
 const lifeOpsPluginRoutes: Route[] = [
   ...buildRawRoutes(CLOUD_FEATURE_ROUTES, cloudFeaturesRouteHandler()),
   ...buildRawRoutes(
@@ -1009,11 +938,9 @@ const lifeOpsPluginRoutes: Route[] = [
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];
-
 // ---------------------------------------------------------------------------
 // Plugin export
 // ---------------------------------------------------------------------------
-
 export const personalAssistantRoutesPlugin: Plugin = {
   name: "@elizaos/plugin-personal-assistant-routes",
   description:

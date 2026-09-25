@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
@@ -9,161 +10,26 @@
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
-    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/testing": ["../testing/src/index.ts"],
-      "@elizaos/plugin-assistant": [
-        "../../plugins/plugin-assistant/src/index.ts"
-      ],
-      "@elizaos/plugin-assistant/character-persistence": [
-        "../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/character-persistence.ts"
-      ],
-      "@elizaos/plugin-assistant/actions/generate-media": [
-        "../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/generateMedia.ts"
-      ],
-      "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/core/edge": ["../core/src/index.edge.ts"],
-      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/plugin-personal-assistant": [
-        "../../plugins/plugin-personal-assistant/src/index.ts"
-      ],
-      "@elizaos/plugin-scheduling": [
-        "../../plugins/plugin-scheduling/src/index.ts"
-      ],
-      "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],
-      "@elizaos/plugin-todos/plugin": [
-        "../../plugins/plugin-todos/src/plugin.ts"
-      ],
-      "@elizaos/plugin-todos/edge": ["../../plugins/plugin-todos/src/edge.ts"],
-      "@elizaos/plugin-todos/service": [
-        "../../plugins/plugin-todos/src/service.ts"
-      ],
-      "@elizaos/plugin-todos/db/schema": [
-        "../../plugins/plugin-todos/src/db/schema.ts"
-      ],
-      "@elizaos/plugin-native-phone": [
-        "../../plugins/plugin-native-phone/src/index.ts"
-      ],
       "@elizaos/plugin-native-phone/*": [
         "../../plugins/plugin-native-phone/src/*"
       ],
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
-      "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
-      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/plugin-wallet/diagnostic": [
-        "../../plugins/plugin-wallet/src/diagnostic.ts"
-      ],
-      "@elizaos/plugin-native-wifi": [
-        "../../plugins/plugin-native-wifi/src/index.ts"
-      ],
-      "@elizaos/plugin-native-wifi/plugin": [
-        "../../plugins/plugin-native-wifi/src/plugin.ts"
-      ],
-      "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/plugin-agent-orchestrator": [
-        "../../plugins/plugin-agent-orchestrator/src/index.ts"
-      ],
-      "@elizaos/plugin-agent-orchestrator/ui": [
-        "../../plugins/plugin-agent-orchestrator/src/ui/index.ts"
-      ],
-      "@elizaos/plugin-native-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
-      ],
-      "@elizaos/plugin-native-contacts/plugin": [
-        "../../plugins/plugin-native-contacts/src/plugin.ts"
-      ],
-      "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
-      "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/browser-contracts": [
-        "../cloud/sdk/src/browser-contracts/index.ts"
-      ],
-      "@elizaos/plugin-coding-tools": [
-        "../../plugins/plugin-coding-tools/src/index.ts"
-      ],
-      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
-      "@elizaos/plugin-computeruse": [
-        "../../plugins/plugin-computeruse/src/index.ts"
-      ],
-      "@elizaos/plugin-computeruse/mobile/ocr-provider": [
-        "../../plugins/plugin-computeruse/src/mobile/ocr-provider.ts"
-      ],
-      "@elizaos/plugin-google-workspace": [
-        "../../plugins/plugin-google-workspace/src/index.ts"
-      ],
-      "@elizaos/plugin-workflow": [
-        "../../plugins/plugin-workflow/src/index.ts"
-      ],
-      "@elizaos/agent/api": ["./src/api/index.ts"],
-      "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/auth/auth": ["../auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/local-inference": [
-        "../shared/src/local-inference/index.ts"
-      ],
-      "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
-      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
-      "@elizaos/plugin-elizacloud": [
-        "../../plugins/plugin-elizacloud/src/index.node.ts"
-      ],
-      "@elizaos/plugin-elizacloud/endpoint-config": [
-        "../../plugins/plugin-elizacloud/src/utils/config.ts"
-      ],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
-      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
-      "@elizaos/plugin-video": ["../../plugins/plugin-video/src/index.ts"],
-      "@elizaos/plugin-vision": ["../../plugins/plugin-vision/src/index.ts"],
-      "@elizaos/plugin-notes/plugin": [
-        "../../plugins/plugin-notes/src/plugin.ts"
-      ],
-      "@elizaos/plugin-meetings": [
-        "../../plugins/plugin-meetings/src/index.ts"
-      ],
-      "@elizaos/native-activity-tracker": [
-        "../../plugins/plugin-native-activity-tracker/src/index.ts"
-      ],
-      "@elizaos/capacitor-appblocker": [
-        "../../plugins/plugin-native-appblocker/src/index.ts"
-      ],
-      "@elizaos/capacitor-secure-store": [
-        "../../plugins/plugin-native-secure-store/src/index.ts"
-      ],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-mobile-signals": [
-        "../../plugins/plugin-native-mobile-signals/src/index.ts"
-      ],
-      "@elizaos/plugin-native-wifi/bridge": [
-        "../../plugins/plugin-native-wifi/src/bridge.ts"
-      ],
-      "@elizaos/plugin-native-contacts/bridge": [
-        "../../plugins/plugin-native-contacts/src/bridge.ts"
-      ],
       "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
-      "@elizaos/plugin-native-inference/llama": [
-        "../../plugins/plugin-native-inference/src/llama/index.ts"
-      ],
-      "@elizaos/plugin-native-phone/bridge": [
-        "../../plugins/plugin-native-phone/src/bridge.ts"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],

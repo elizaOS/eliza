@@ -3,12 +3,9 @@
  * implementation keeps selection metadata dependency-injected so the same pool
  * logic can run over Drizzle rows without coupling to self-host runtime state.
  */
-import type { LinkedAccountConfig } from "@elizaos/shared";
-
+import { type LinkedAccountConfig } from "@elizaos/core/contracts/service-routing";
 export type Strategy = "priority" | "round-robin" | "least-used" | "quota-aware";
-
 export type PoolProviderId = LinkedAccountConfig["providerId"];
-
 export interface SelectInput {
   providerId: PoolProviderId;
   sessionKey?: string;
@@ -16,13 +13,11 @@ export interface SelectInput {
   accountIds?: string[];
   exclude?: string[];
 }
-
 export interface AccountPoolDeps {
   readAccounts: () => Record<string, LinkedAccountConfig>;
   writeAccount: (account: LinkedAccountConfig) => Promise<void>;
   deleteAccount?: (providerId: PoolProviderId, accountId: string) => Promise<void>;
 }
-
 export interface AccountPool {
   select(input: SelectInput): Promise<LinkedAccountConfig | null>;
   list(providerId?: PoolProviderId): LinkedAccountConfig[];
@@ -31,12 +26,16 @@ export interface AccountPool {
     accountId: string,
     untilMs: number,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void>;
   markNeedsReauth(
     accountId: string,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void>;
   reprobeFlagged(): Promise<string[]>;
 }

@@ -16,12 +16,12 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
+import { getDefaultStylePreset } from "@elizaos/core/character-presets";
 import {
   classifyMessageAddress,
   messageChallengesPriorAgentReply,
   runV5MessageRuntimeStage1,
 } from "@elizaos/plugin-assistant";
-import { getDefaultStylePreset } from "@elizaos/shared";
 import type { LiveProviderName } from "@elizaos/testing";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 

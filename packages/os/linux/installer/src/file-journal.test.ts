@@ -57,7 +57,10 @@ afterEach(async () => {
   );
 });
 
-describe("durable file install journal", () => {
+const describeLinux = describe.skipIf(process.platform !== "linux");
+
+// Durable descriptor-relative IO relies on Linux /proc/self/fd.
+describeLinux("durable file install journal", () => {
   it("rejects a FIFO without waiting for a writer or retaining the read lock", async () => {
     const directory = await temporaryDirectory();
     const path = join(directory, `${PLAN_ID}.jsonl`);

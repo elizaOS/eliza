@@ -27,3 +27,12 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-browser-surface build  # build
 bun run --cwd plugins/plugin-native-browser-surface test   # tests
 ```
+
+Android device tests exercise ownership, storage isolation, real WebView page
+reads, navigation/back/reload, and visibility after rejected presentation:
+
+```bash
+node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
+```
+
+The bridge fixture exports native screenshots and complete page-read results.

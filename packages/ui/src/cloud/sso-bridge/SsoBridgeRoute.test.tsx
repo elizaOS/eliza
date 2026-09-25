@@ -1,7 +1,7 @@
 /** Behavioral contract for the /auth/bridge route component — role switching by injected hostname, the mint leg's referrer gate + session gate + challenge-bound code mint + cross-origin bounce, and the exchange leg's state-nonce/verifier verification with burn-on-refusal — jsdom + real render, hand-rolled fetch/navigation stubs. */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import {

@@ -8,15 +8,8 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/capacitor-bun-runtime": [
-        "../plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-secure-store": [
-        "../../plugins/plugin-native-secure-store/src/index.ts"
-      ],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"]
     }
   },

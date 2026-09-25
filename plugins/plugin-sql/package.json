@@ -7,20 +7,10 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./schema": {
-      "types": "./dist/schema.d.ts",
-      "import": "./dist/schema.js",
-      "default": "./dist/schema.js"
-    },
-    "./drizzle": {
-      "types": "./dist/drizzle.d.ts",
-      "import": "./dist/drizzle.js",
-      "default": "./dist/drizzle.js"
     },
     "./package.json": "./package.json"
   },
@@ -44,17 +34,15 @@
     "typecheck": "tsc --noEmit -p src/tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write src build.ts",
     "lint:check": "bunx @biomejs/biome check src build.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist src/dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist src/dist .turbo",
     "format": "bunx @biomejs/biome format --write src build.ts",
     "format:check": "bunx @biomejs/biome format src build.ts",
-    "test:live": "bun run test:e2e",
     "test:postgres": "bash ../../packages/scripts/plugins/plugin-sql/run-integration-tests.sh --postgres",
     "test:real": "cd src && vitest run --config vitest.real.config.ts"
   },
   "dependencies": {
     "@noble/hashes": "2.2.0",
     "@electric-sql/pglite": "^0.4.0",
-    "@elizaos/shared": "workspace:*",
     "dotenv": "^17.2.3",
     "drizzle-orm": "0.45.2",
     "pg": "^8.23.0",
@@ -87,6 +75,9 @@
       },
       "devStack": {
         "harnessBuild": true
+      },
+      "contentContextEvidence": {
+        "role": "sql"
       }
     }
   },

@@ -230,10 +230,17 @@ describe("gateway CLI", () => {
     const auditFile = join(directory, "cohort.audit.jsonl");
     const child = spawn(
       "bun",
-      [CLI_PATH, "--ready-file", readyFile, "--audit-file", auditFile],
+      [
+        "--conditions=eliza-source",
+        CLI_PATH,
+        "--ready-file",
+        readyFile,
+        "--audit-file",
+        auditFile,
+      ],
       {
-        cwd: directory,
-        env: withoutApiBillingEnvironment(),
+        cwd: fileURLToPath(new URL("../../../../../", import.meta.url)),
+        env: { ...withoutApiBillingEnvironment(), ELIZA_STATE_DIR: directory },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -306,7 +313,8 @@ describe("gateway CLI", () => {
       }
       await rm(directory, { recursive: true, force: true });
     }
-  });
+    // Readiness has its own 30-second deadline; allow shutdown and cleanup too.
+  }, 40_000);
 
   it("rejects ambient API billing credentials before server startup or readiness", async () => {
     const directory = await mkdtemp(join(tmpdir(), "claude-gateway-policy-"));

@@ -76,6 +76,8 @@ export interface AskResult {
 
 /** Options for `askAboutImage` / `askBatch`. */
 export interface AskOptions {
+  /** Explicit environment for backend resolution; defaults to process.env. */
+  env?: NodeJS.ProcessEnv;
   /** Force a backend; otherwise resolved from env (see `resolveBackend`). */
   backend?: VisionBackend;
   /** Override the model id; otherwise the backend default. */

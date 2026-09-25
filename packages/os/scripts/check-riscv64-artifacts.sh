@@ -62,7 +62,7 @@ if [[ ! "$QEMU_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
     echo "ELIZA_RISCV64_QEMU_TIMEOUT must be a positive integer" >&2; exit 2
 fi
 
-eliza_root="$(node "$repo_root/scripts/eliza-source.mjs")"
+eliza_root="$(node "$repo_root/scripts/eliza-source.ts")"
 if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
     echo "[check-riscv64-artifacts] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
     exit 2
@@ -487,10 +487,10 @@ if [ -n "$s_found" ]; then
 else
     if [ "$REQUIRE_COMPLETE" = "1" ]; then
         emit_record "${SIGSYS_SEARCH[0]}" "shared-library" "FAIL" \
-            "required artifact was not built; run the elizaOS/eliza compile-shim.mjs with --abi riscv64" "0"
+            "required artifact was not built; run the elizaOS/eliza compile-shim.ts with --abi riscv64" "0"
     else
         emit_record "${SIGSYS_SEARCH[0]}" "shared-library" "SKIP" \
-            "not built; run the elizaOS/eliza compile-shim.mjs with --abi riscv64" "0"
+            "not built; run the elizaOS/eliza compile-shim.ts with --abi riscv64" "0"
     fi
 fi
 

@@ -6,7 +6,7 @@
  * Skipped (not faked) when the fused lib is not resolvable. To run them, point
  * `ELIZA_INFERENCE_LIBRARY` (or `ELIZA_INFERENCE_LIB_DIR`) at a built
  * `libelizainference` or build one via
- * `packages/app/scripts/build-llama-cpp-mtp.mjs`.
+ * `packages/app/scripts/build-llama-cpp-mtp.ts`.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";

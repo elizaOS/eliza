@@ -7,19 +7,14 @@
  * runtime over real state maps; useModel throws, so any inference attempt
  * fails the test.
  */
+
+import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
+import {
+  drainPostDeliveryTasks,
+  EventType,
+  TurnControllerRegistry,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
-import type {
-  Room,
-  World,
-} from "../../../../packages/core/src/types/environment.ts";
-import { EventType } from "../../../../packages/core/src/types/events.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
@@ -61,6 +56,10 @@ function makeRuntime(seed: {
     startRun: () => RUN_ID,
     runActionsByMode: async () => undefined,
     getMemoryById: async () => null,
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: async (memory: Memory) => memory.id,
     queueEmbeddingGeneration: async () => undefined,
     getParticipantUserState: async (roomId: UUID, entityId: UUID) =>

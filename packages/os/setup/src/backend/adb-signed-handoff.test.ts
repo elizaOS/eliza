@@ -24,7 +24,7 @@ vi.mock("./signed-install", async (importOriginal) => ({
   executeSignedInstall: vi.fn(async () => "/fixture/journal.jsonl"),
 }));
 vi.mock("./signed-release", () => ({
-  signedInstallerPath: () => "/fixture/install-release.mjs",
+  signedInstallerPath: () => "/fixture/install-release.ts",
   describeSignedRelease: vi.fn(async () => ({
     subjectSha256: "a".repeat(64),
     release: {},

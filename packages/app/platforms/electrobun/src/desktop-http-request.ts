@@ -1,10 +1,13 @@
 /** Implements Electrobun desktop desktop http request ts behavior for app shell integration. */
+
+import {
+	isLoopbackBindHost,
+	isWildcardBindHost,
+} from "@elizaos/core/runtime-env";
 import {
 	isElizaCloudControlPlaneHostname,
 	isElizaDedicatedAgentHostname,
-	isLoopbackBindHost,
-	isWildcardBindHost,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { resolveExternalApiBase } from "./api-base";
 
 function isExternalPlainHttpUrl(parsed: URL): boolean {
@@ -14,7 +17,6 @@ function isExternalPlainHttpUrl(parsed: URL): boolean {
 		!isWildcardBindHost(parsed.hostname)
 	);
 }
-
 function isConfiguredExternalApiBaseUrl(parsed: URL): boolean {
 	if (parsed.protocol !== "http:") return false;
 	const configured = resolveExternalApiBase(
@@ -22,7 +24,6 @@ function isConfiguredExternalApiBaseUrl(parsed: URL): boolean {
 	).base;
 	return Boolean(configured && parsed.origin === configured);
 }
-
 /**
  * Trusted Eliza Cloud HTTPS origins whose CORS policy does not allowlist
  * loopback renderer origins (e.g. http://127.0.0.1:5174). The desktop main
@@ -37,7 +38,6 @@ function isTrustedElizaCloudHttpsUrl(parsed: URL): boolean {
 		isElizaDedicatedAgentHostname(hostname)
 	);
 }
-
 export function normalizeDesktopHttpRequest(params: unknown): {
 	url: string;
 	method: string;
@@ -82,7 +82,6 @@ export function normalizeDesktopHttpRequest(params: unknown): {
 			: undefined;
 	return { url: parsed.toString(), method, headers, body, timeoutMs };
 }
-
 function responseHeadersToRecord(headers: Headers): Record<string, string> {
 	const record: Record<string, string> = {};
 	headers.forEach((value, key) => {
@@ -90,7 +89,6 @@ function responseHeadersToRecord(headers: Headers): Record<string, string> {
 	});
 	return record;
 }
-
 export async function desktopHttpRequest(params: unknown): Promise<{
 	status: number;
 	statusText?: string;
@@ -134,11 +132,9 @@ export async function desktopHttpRequest(params: unknown): Promise<{
 			bodyBase64: null,
 		};
 	})();
-
 	if (!request.timeoutMs) {
 		return operation;
 	}
-
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_, reject) => {
 		timeoutId = setTimeout(() => {
@@ -148,7 +144,6 @@ export async function desktopHttpRequest(params: unknown): Promise<{
 			);
 		}, request.timeoutMs);
 	});
-
 	try {
 		return await Promise.race([operation, timeout]);
 	} finally {

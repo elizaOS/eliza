@@ -7,18 +7,18 @@
  * returned by that API.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
 } from "../api/direct-cloud-endpoints";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const MANAGED_RUNTIME_HOST_PATTERN =

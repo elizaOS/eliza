@@ -198,7 +198,7 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
-# ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
+# ``plugins/plugin-native-inference/src/model-catalog/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
 # host's RAM/SoC class (no silent fallback — AGENTS.md §3).
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {

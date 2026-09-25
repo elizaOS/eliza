@@ -67,8 +67,11 @@ import {
   estimateInputTokens,
   InsufficientCreditsError,
   normalizeUsage,
-  recordUsageAnalytics,
 } from "@/lib/services/ai-billing";
+import {
+  type RecordSettledInferenceBillingInput,
+  recordSettledInferenceBilling,
+} from "@/lib/services/ai-billing-settled";
 import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
@@ -531,6 +534,24 @@ function anthropicError(
  */
 function modelNotAvailableMessage(model: string): string {
   return `model '${model}' is not available on this deployment`;
+}
+
+/** A post-settlement audit failure must not re-enter credit settlement. */
+async function recordMessagesBillingLedgerRow(
+  input: RecordSettledInferenceBillingInput,
+): Promise<void> {
+  try {
+    await recordSettledInferenceBilling(input);
+  } catch (error) {
+    // error-policy:J7 Preserve the already settled charge and delivered response;
+    // report a failed ledger receipt without claiming that bookkeeping succeeded.
+    logger.error("[Messages API] billing ledger record failed", {
+      requestId: input.context.requestId,
+      organizationId: input.context.organizationId,
+      idempotencyKey: input.idempotencyKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 const app = new Hono<AppEnv>();
@@ -1339,20 +1360,24 @@ async function handleNonStream(
           result.usage,
           billingReservation,
         );
-        await settleReservation(billing.totalCost);
+        const reconciliation = await settleReservation(billing.totalCost);
 
-        await recordUsageAnalytics(
-          {
+        await recordMessagesBillingLedgerRow({
+          context: {
             organizationId: user.organization_id,
             userId: user.id,
             apiKeyId: apiKey?.id,
             model,
             provider,
             billingSource,
+            affiliateCode,
+            requestId,
           },
           billing,
-          { type: "chat", content: result.text },
-        );
+          reconciliation,
+          idempotencyKey: requestId,
+          analytics: { type: "chat", content: result.text },
+        });
 
         logger.info("[Messages API] Non-streaming complete", {
           durationMs: Date.now() - startTime,
@@ -1618,23 +1643,27 @@ async function settleStreamingAbortReservation(params: {
     );
     const reconciliation = await params.settleReservation(billing.totalCost);
 
-    await recordUsageAnalytics(
-      {
+    await recordMessagesBillingLedgerRow({
+      context: {
         organizationId: params.user.organization_id,
         userId: params.user.id,
         apiKeyId: params.apiKey?.id,
         model: params.model,
         provider: params.provider,
         billingSource: params.billingSource,
+        affiliateCode: params.affiliateCode,
+        requestId: params.requestId,
       },
       billing,
-      {
+      reconciliation,
+      idempotencyKey: params.requestId,
+      analytics: {
         type: "chat",
         isSuccessful: false,
         errorMessage: "client_aborted_stream",
         content: params.deliveredText,
       },
-    );
+    });
 
     logger.info(
       "[Messages API] Stream aborted; reservation partially settled",
@@ -1826,18 +1855,22 @@ async function handleStream(
           );
           const reconciliation = await settleReservation(billing.totalCost);
 
-          await recordUsageAnalytics(
-            {
+          await recordMessagesBillingLedgerRow({
+            context: {
               organizationId: user.organization_id,
               userId: user.id,
               apiKeyId: apiKey?.id,
               model,
               provider,
               billingSource,
+              affiliateCode,
+              requestId,
             },
             billing,
-            { type: "chat", content: text },
-          );
+            reconciliation,
+            idempotencyKey: requestId,
+            analytics: { type: "chat", content: text },
+          });
 
           logger.info("[Messages API] Streaming complete", {
             durationMs: Date.now() - startTime,

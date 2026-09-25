@@ -13,14 +13,14 @@ export ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL='Eliza Cloud Gateway (+14159611510)
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 export ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools
-node packages/app/scripts/run-mobile-build.mjs android-sms-gateway
+node packages/app/scripts/run-mobile-build.ts android-sms-gateway
 ```
 
 Install and diagnose the current APK once an Android phone is visible in
 `adb devices -l`:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs \
+node packages/app/scripts/install-android-sms-gateway.ts \
   --grant-role \
   --clear-logcat \
   --logcat-lines 200
@@ -35,13 +35,13 @@ installer.
 Check the path that will be installed without requiring a connected device:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs --print-apk
+node packages/app/scripts/install-android-sms-gateway.ts --print-apk
 ```
 
 Check local readiness without requiring a connected phone:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs --doctor
+node packages/app/scripts/install-android-sms-gateway.ts --doctor
 ```
 
 `--doctor` also sends a gateway-shaped smoke payload to the production cloud
@@ -55,7 +55,7 @@ open Android Developer Options > Wireless debugging > Pair device with pairing
 code. Leave that pairing screen open, then run:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs \
+node packages/app/scripts/install-android-sms-gateway.ts \
   --pair auto \
   --wait-pair 300 \
   --connect auto \
@@ -77,7 +77,7 @@ service advertised by Wireless debugging after pairing.
 Wait for a phone to appear, then install, request the SMS role, and watch logs:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs \
+node packages/app/scripts/install-android-sms-gateway.ts \
   --wait-device 300 \
   --grant-role \
   --clear-logcat \
@@ -87,13 +87,13 @@ node packages/app/scripts/install-android-sms-gateway.mjs \
 Capture the current readiness state across Android and BlueBubbles:
 
 ```sh
-node packages/app/scripts/check-sms-gateway-readiness.mjs
+node packages/app/scripts/check-sms-gateway-readiness.ts
 ```
 
 Capture a concise objective-level completion audit without sending SMS:
 
 ```sh
-node packages/app/scripts/check-sms-gateway-completion-audit.mjs
+node packages/app/scripts/check-sms-gateway-completion-audit.ts
 ```
 
 The audit separates proven software/cloud requirements from external gates such
@@ -103,7 +103,7 @@ Wait until either an Android device appears or BlueBubbles outbound becomes
 ready:
 
 ```sh
-node packages/app/scripts/watch-sms-gateway-readiness.mjs
+node packages/app/scripts/watch-sms-gateway-readiness.ts
 ```
 
 Set `ADB=/absolute/path/to/adb` to select the Android executable for both the
@@ -117,13 +117,13 @@ pending-count decrease are both checked.
 To automatically run the Android install/watch flow when one adb device appears:
 
 ```sh
-node packages/app/scripts/watch-sms-gateway-readiness.mjs --run-install
+node packages/app/scripts/watch-sms-gateway-readiness.ts --run-install
 ```
 
 Strict physical verification for the Android path:
 
 ```sh
-node packages/app/scripts/verify-android-sms-gateway-e2e.mjs
+node packages/app/scripts/verify-android-sms-gateway-e2e.ts
 ```
 
 This command only passes after logcat shows an actual inbound SMS delivery,
@@ -145,7 +145,7 @@ If Android does not grant the default SMS role from `cmd role`, set Eliza as the
 default SMS app in Android Settings, then rerun:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs \
+node packages/app/scripts/install-android-sms-gateway.ts \
   --skip-install \
   --clear-logcat \
   --logcat-lines 200
@@ -155,7 +155,7 @@ For a physical end-to-end proof, send a real SMS to `+14159611510` from another
 phone and watch the gateway logs:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs \
+node packages/app/scripts/install-android-sms-gateway.ts \
   --skip-install \
   --watch-logs 60
 ```
@@ -171,7 +171,7 @@ Emulators can exercise the receiver path, but they do not prove the production
 phone number or carrier send path:
 
 ```sh
-node packages/app/scripts/install-android-sms-gateway.mjs \
+node packages/app/scripts/install-android-sms-gateway.ts \
   --grant-role \
   --clear-logcat \
   --simulate +14155550123 \

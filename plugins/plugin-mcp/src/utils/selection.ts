@@ -4,7 +4,6 @@
  * input schema. Both run through withModelRetry, re-prompting with feedback until
  * the output validates or retries are exhausted.
  */
-
 import {
   type HandlerCallback,
   type IAgentRuntime,
@@ -12,11 +11,11 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import {
-  composePromptFromState,
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,
-} from "@elizaos/shared";
+} from "../protocol-utils/prompts.js";
 import type { McpProvider } from "../types";
 import type { ToolSelectionArgument, ToolSelectionName } from "./schemas";
 import {
@@ -25,7 +24,6 @@ import {
   validateToolSelectionName,
 } from "./validation";
 import { withModelRetry } from "./wrapper";
-
 export interface CreateToolSelectionOptions {
   readonly runtime: IAgentRuntime;
   readonly state: State;
@@ -34,7 +32,6 @@ export interface CreateToolSelectionOptions {
   readonly mcpProvider: McpProvider;
   readonly toolSelectionName?: ToolSelectionName;
 }
-
 export async function createToolSelectionName({
   runtime,
   state,
@@ -54,11 +51,9 @@ export async function createToolSelectionName({
     state: stateWithMcp,
     template: toolSelectionNameTemplate,
   });
-
   const toolSelectionName = (await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: toolSelectionPrompt,
   })) as string;
-
   return await withModelRetry<ToolSelectionName>({
     runtime,
     message,
@@ -76,7 +71,6 @@ export async function createToolSelectionName({
     failureMsg: "I'm having trouble figuring out the best way to help with your request.",
   });
 }
-
 export async function createToolSelectionArgument({
   runtime,
   state,
@@ -88,21 +82,16 @@ export async function createToolSelectionArgument({
   if (!toolSelectionName) {
     throw new Error("Tool selection name is required to create tool selection argument");
   }
-
   const { serverName, toolName } = toolSelectionName;
   const serverData = mcpProvider.data.mcp[serverName];
-
   if (!serverData) {
     throw new Error(`Server "${serverName}" not found in MCP provider data`);
   }
-
   const toolData = serverData.tools[toolName];
   if (!toolData) {
     throw new Error(`Tool "${toolName}" not found on server "${serverName}"`);
   }
-
   const toolInputSchema = toolData.inputSchema ?? {};
-
   const toolSelectionArgumentPrompt: string = composePromptFromState({
     state: {
       ...state,
@@ -114,11 +103,9 @@ export async function createToolSelectionArgument({
     },
     template: toolSelectionArgumentTemplate,
   });
-
   const toolSelectionArgument = (await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: toolSelectionArgumentPrompt,
   })) as string;
-
   return await withModelRetry<ToolSelectionArgument>({
     runtime,
     message,

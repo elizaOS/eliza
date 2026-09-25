@@ -11,6 +11,21 @@ import {
   type SendHandlerReceipt,
   type TargetInfo,
 } from "@elizaos/core";
+import { type LifeOpsConnectorDegradation } from "@elizaos/core/contracts/lifeops-connector-degradation";
+import {
+  LIFEOPS_DISCORD_CAPABILITIES,
+  type LifeOpsBrowserSession,
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorSide,
+  type LifeOpsDiscordCapability,
+  type LifeOpsDiscordConnectorStatus,
+  type LifeOpsMessagingConnectorReason,
+  type LifeOpsOwnerBrowserAccessSource,
+  type LifeOpsOwnerBrowserAccessStatus,
+  type LifeOpsOwnerBrowserAuthState,
+  type LifeOpsOwnerBrowserNextAction,
+  type LifeOpsOwnerBrowserTabState,
+} from "@elizaos/core/contracts/personal-assistant";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -32,21 +47,6 @@ import {
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
 } from "@elizaos/plugin-discord";
-import type {
-  LifeOpsBrowserSession,
-  LifeOpsConnectorDegradation,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsDiscordCapability,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsMessagingConnectorReason,
-  LifeOpsOwnerBrowserAccessSource,
-  LifeOpsOwnerBrowserAccessStatus,
-  LifeOpsOwnerBrowserAuthState,
-  LifeOpsOwnerBrowserNextAction,
-  LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
 import type { CreateLifeOpsBrowserSessionRequest } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {

@@ -328,45 +328,36 @@ def _eliza_replay_payload(score: float) -> dict[str, Any]:
 
 
 def _eliza_1_payload(score: float) -> dict[str, Any]:
+    labels = ("RESPOND", "IGNORE", "STOP")
+    total = 6
+    passed = _passed_count(score, total)
+    cases = []
+    for index in range(total):
+        expected = labels[index % len(labels)]
+        output = expected if index < passed else labels[(index + 1) % len(labels)]
+        cases.append({
+            "taskId": "should_respond", "modeId": "synthetic-calibration",
+            "caseId": f"calibration-{index}", "expected_label": expected,
+            "parse_success": True, "schema_valid": True,
+            "label_match": output == expected,
+            "raw_output": json.dumps({"shouldRespond": output}),
+            "first_token_latency_ms": None, "total_latency_ms": 0,
+            "tokens_generated": None, "tokens_per_second": None,
+        })
     return {
         "schemaVersion": "eliza-1-bench-v1",
         "generatedAt": "1970-01-01T00:00:00.000Z",
-        "tasks": ["should_respond"],
-        "modes": ["cerebras"],
-        "skipped": [],
-        "cases": [
-            {
-                "taskId": "should_respond",
-                "modeId": "cerebras",
-                "caseId": "calibration",
-                "parse_success": score > 0,
-                "schema_valid": score > 0,
-                "label_match": score > 0,
-                "raw_output": "synthetic calibration output",
-                "first_token_latency_ms": 0,
-                "total_latency_ms": 1,
-                "tokens_generated": 1,
-                "tokens_per_second": 1000,
-            }
-        ],
-        "summaries": [
-            {
-                "taskId": "should_respond",
-                "modeId": "cerebras",
-                "cases": 2,
-                "parse_success_rate": score,
-                "schema_valid_rate": score,
-                "label_match_rate": score,
-                "first_token_latency_p50_ms": 0,
-                "first_token_latency_p95_ms": 0,
-                "total_latency_p50_ms": 1,
-                "total_latency_p95_ms": 1,
-                "mean_tokens_per_second": 1000,
-            }
-        ],
+        "tasks": ["should_respond"], "modes": ["synthetic-calibration"],
+        "skipped": [], "cases": cases,
+        "summaries": [{
+            "taskId": "should_respond", "modeId": "synthetic-calibration",
+            "cases": total, "parse_success_rate": 1.0, "schema_valid_rate": 1.0,
+            "label_match_rate": passed / total,
+            "first_token_latency_p50_ms": None, "first_token_latency_p95_ms": None,
+            "total_latency_p50_ms": 0, "total_latency_p95_ms": 0,
+            "mean_tokens_per_second": None,
+        }],
     }
-
-
 
 
 def _experience_payload(score: float) -> dict[str, Any]:
@@ -1136,6 +1127,12 @@ def run_synthetic_baseline(
         raise ValueError(f"unknown synthetic harness: {harness}")
 
     strategy = get_strategy(benchmark_id)
+    if benchmark_id in {"framework", "swe_bench_orchestrated"}:
+        return RandomBaselineOutcome(
+            harness=harness, status="incompatible", score=None, result_path=None,
+            strategy_name=strategy.name, is_meaningful=False,
+            note="Runtime throughput and child orchestration require execution receipts, not synthetic correctness calibration.",
+        )
     if benchmark_id == "action-calling":
         action_cli = importlib.import_module("benchmarks.action-calling.cli")
         if not action_cli.DEFAULT_TEST.is_file():

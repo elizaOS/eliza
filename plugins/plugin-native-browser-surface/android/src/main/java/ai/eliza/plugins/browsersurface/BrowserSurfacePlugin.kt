@@ -190,7 +190,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private fun requireIdentity(call: PluginCall, operation: String): NativeOwnerIdentity? {
         val owner = call.getString("owner")
         val session = call.getString("session")
-        val epoch = call.getLong("epoch")
+        // JSON encodes small JavaScript integers as Integer, while Capacitor's
+        // getLong accepts only Long. Validate the numeric boundary explicitly.
+        val number = call.data.opt("epoch") as? Number
+        val numericEpoch = number?.toDouble()
+        val epoch = if (numericEpoch != null && numericEpoch.isFinite() &&
+            numericEpoch >= 1.0 && numericEpoch <= 9_007_199_254_740_991.0 &&
+            numericEpoch == kotlin.math.floor(numericEpoch)) numericEpoch.toLong() else null
         if (owner.isNullOrBlank() || session.isNullOrBlank() || epoch == null || epoch <= 0L) {
             call.reject("$operation requires owner, session, and a positive epoch")
             return null
@@ -618,15 +624,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "presentSurface") ?: return@runOnUiThread
             val owner = identity.owner
+            val selected = id?.let {
+                ownedSurface(call, it, identity, "presentSurface")
+                    ?: return@runOnUiThread
+            }
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
-            }
-            val selected = id?.let {
-                ownedSurface(call, it, identity, "presentSurface")
-                    ?: return@runOnUiThread
             }
             selected?.let { surface ->
                 surface.container.bringToFront()

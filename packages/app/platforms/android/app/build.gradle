@@ -3,7 +3,7 @@ import com.android.build.api.artifact.SingleArtifact
 apply plugin: 'com.android.application'
 
 // Single repo-root resolution shared by the elizavoice header gate and the
-// CMake include-dir argument. patchAndroidGradle() in run-mobile-build.mjs
+// CMake include-dir argument. patchAndroidGradle() in run-mobile-build.ts
 // rewrites the elizaRepoRoot definition below to the absolute checkout root
 // for white-label builds (ELIZA_ANDROID_USE_APP_DIR=1), where the android
 // project lives outside the eliza tree and the relative walk overshoots.
@@ -42,7 +42,7 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
     // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
-    // scripts/elizaos/build-aosp.mjs. AGP 8+ defaults this to false.
+    // scripts/elizaos/build-aosp.ts. AGP 8+ defaults this to false.
     buildFeatures {
         buildConfig true
         aidl true
@@ -75,7 +75,7 @@ android {
         versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // AOSP-only build gate. The ElizaOS AOSP product build sets
-        // -PelizaAospBuild=true via scripts/elizaos/build-aosp.mjs; the
+        // -PelizaAospBuild=true via scripts/elizaos/build-aosp.ts; the
         // Capacitor APK build path (`bun run build:android`) leaves it
         // unset and the field stays false. ElizaAgentService reads this
         // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
@@ -91,7 +91,7 @@ android {
         // Phase 3a fused-voice JNI bridge (libelizavoicejni.so). Built by the
         // NDK (bionic) from src/main/elizavoice-jni; links the prebuilt,
         // self-contained libelizainference.so staged into jniLibs/arm64-v8a by
-        // stage-elizavoice-lib.mjs. Pass the fork FFI header dir to the shim's
+        // stage-elizavoice-lib.ts. Pass the fork FFI header dir to the shim's
         // CMake. arm64-v8a only in Phase 3a (other ABIs build a no-op stub).
         externalNativeBuild {
             cmake {
@@ -152,7 +152,7 @@ android {
     } else if (elizavoiceBridgeSkipped) {
         logger.lifecycle("[elizavoice-jni] skipped for cloud/smoke build")
     } else {
-        logger.warn("[elizavoice-jni] prebuilt libelizainference.so lacks fused-voice symbols (wakeword/speaker/diariz); skipping Phase 3a JNI bridge so the APK still builds. Rebuild via stage-elizavoice-lib.mjs to re-enable.")
+        logger.warn("[elizavoice-jni] prebuilt libelizainference.so lacks fused-voice symbols (wakeword/speaker/diariz); skipping Phase 3a JNI bridge so the APK still builds. Rebuild via stage-elizavoice-lib.ts to re-enable.")
     }
 
     ndkVersion "28.2.13676358"
@@ -351,7 +351,7 @@ def resolveAndroidLibompForAbi = { String abi ->
 // (the Vulkan variant links them dynamically), NOT a separate "fork" of llama.cpp.
 // There is no second inference library. Do NOT delete this task or its siblings —
 // that breaks on-device inference. (libelizainference also folds in MTP, omnivoice
-// TTS/Kokoro, ASR, VAD, vision; see verify-fused-symbols.mjs for the symbol gate.)
+// TTS/Kokoro, ASR, VAD, vision; see verify-fused-symbols.ts for the symbol gate.)
 def assertBionicInferenceLibrary = { File library, String abi ->
     providers.exec {
         commandLine(System.getenv('NODE_BINARY') ?: 'node',
@@ -385,7 +385,7 @@ task copyForkLlamaLib {
                 if (abi == 'arm64-v8a') {
                     // arm64-v8a is the mandatory baseline ABI; missing it (and no
                     // pre-staged lib) is a hard error.
-                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
+                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app/scripts/aosp/compile-libllama.ts --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.ts has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
                 }
                 logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI ${abi}; skipping")
                 return
@@ -473,7 +473,7 @@ afterEvaluate {
 
 // Every Cloud release bundle, including an up-to-date or cache-restored final
 // signed Play artifact, must pass the same bundletool manifest/DEX audit as
-// run-mobile-build.mjs. A non-cacheable finalizer runs after a successful
+// run-mobile-build.ts. A non-cacheable finalizer runs after a successful
 // bundle task and propagates the audit process exit status.
 def cloudBundleReleaseTasks = tasks.matching { it.name == 'bundleRelease' }
 def cloudReleaseAab = objects.fileProperty()
@@ -533,7 +533,7 @@ def auditCloudReleaseAab = tasks.register('auditCloudReleaseAab') {
         } else {
             auditScript = new File(
                 elizaRepoRoot,
-                'packages/app/scripts/run-mobile-build.mjs'
+                'packages/app/scripts/run-mobile-build.ts'
             )
             if (!auditScript.isFile()) {
                 throw new GradleException(

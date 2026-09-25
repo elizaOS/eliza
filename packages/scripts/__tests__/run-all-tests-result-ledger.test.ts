@@ -1,5 +1,5 @@
 /**
- * Pins the run-all-tests.mjs exactly-once result-ledger contract (#16994).
+ * Pins the run-all-tests.ts exactly-once result-ledger contract (#16994).
  *
  * The suite spawns the real runner against temporary workspace fixture
  * packages (real harness, no mocks) and asserts each false-green class fails
@@ -19,9 +19,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
-const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
+const runner = fileURLToPath(new URL("../run-all-tests.ts", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // Each case spawns the real runner (workspace discovery over the whole repo),

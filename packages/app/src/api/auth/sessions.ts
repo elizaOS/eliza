@@ -13,7 +13,6 @@
  * a CSRF mismatch returns false; a session lookup error propagates. We do
  * NOT pretend bad input is good input.
  */
-
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger } from "@elizaos/core";
@@ -21,32 +20,26 @@ import {
   isLoopbackBindHost,
   type RuntimeEnvRecord,
   resolveApiBindHost,
-} from "@elizaos/shared";
-import type {
-  AppendAuditEventInput,
-  AuthRepository,
-  AuthSessionRow,
+} from "@elizaos/core/runtime-env";
+import {
+  type AppendAuditEventInput,
+  type AuthRepository,
+  type AuthSessionRow,
 } from "../../services/auth-store";
 import { appendAuditEvent } from "./audit.js";
 import { tokenMatches } from "./tokens.js";
-
 // ── TTLs (plan §1.3, §4.4) ───────────────────────────────────────────────────
-
 /** Browser session sliding window: 12h. */
 export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 /** Browser session absolute cap when `rememberDevice=true`: 30 days. */
 export const BROWSER_SESSION_REMEMBER_CAP_MS = 30 * 24 * 60 * 60 * 1000;
 /** Machine session absolute TTL: 90 days. */
 export const MACHINE_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-
 // ── Cookie constants ─────────────────────────────────────────────────────────
-
 export const SESSION_COOKIE_NAME = "eliza_session";
 export const CSRF_COOKIE_NAME = "eliza_csrf";
 export const CSRF_HEADER_NAME = "x-eliza-csrf";
-
 // ── Types ────────────────────────────────────────────────────────────────────
-
 export interface CreateBrowserSessionOptions {
   identityId: string;
   ip: string | null;
@@ -57,7 +50,6 @@ export interface CreateBrowserSessionOptions {
   /** Override `Date.now()` for tests. */
   now?: number;
 }
-
 export interface CreateMachineSessionOptions {
   identityId: string;
   scopes: string[];
@@ -67,33 +59,26 @@ export interface CreateMachineSessionOptions {
   /** Override `Date.now()` for tests. */
   now?: number;
 }
-
 export interface SessionWithCsrf {
   session: AuthSessionRow;
   csrfToken: string;
 }
-
 export interface SerializeSessionCookieOptions {
   /** Loopback drop the `Secure` attribute. Detected via runtime-env helpers. */
   env?: RuntimeEnvRecord;
   /** Override absolute Max-Age (ms). Defaults to `expiresAt - now`. */
   maxAgeMs?: number;
 }
-
 // ── ID + secret generation ───────────────────────────────────────────────────
-
 /** 256-bit hex session id. Cookie value. */
 function generateSessionId(): string {
   return crypto.randomBytes(32).toString("hex");
 }
-
 /** 256-bit hex CSRF secret. Per-session, never sent to clients raw. */
 function generateCsrfSecret(): string {
   return crypto.randomBytes(32).toString("hex");
 }
-
 // ── Creation ─────────────────────────────────────────────────────────────────
-
 /**
  * Mint a browser session. Uses sliding TTL (`BROWSER_SESSION_TTL_MS`) capped
  * at 30 days when `rememberDevice` is set; otherwise the cap equals the
@@ -125,7 +110,6 @@ export async function createBrowserSession(
   });
   return { session, csrfToken: deriveCsrfToken(session) };
 }
-
 /**
  * Mint a machine session. Absolute TTL (`MACHINE_SESSION_TTL_MS`); no sliding
  * refresh on access. Scopes are persisted exactly as supplied — caller is
@@ -154,9 +138,7 @@ export async function createMachineSession(
   });
   return { session, csrfToken: deriveCsrfToken(session) };
 }
-
 // ── Lookup with sliding refresh ──────────────────────────────────────────────
-
 /**
  * Route-layer wrapper for the fail-closed handling of an auth-store read
  * rejection. `findActiveSession` / `findIdentity` resolve `null` for a genuine
@@ -196,7 +178,6 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
     return null;
   };
 }
-
 /**
  * Look up an active session by id and slide its expiry forward when it is a
  * browser session. Machine sessions get `lastSeenAt` updated but no expiry
@@ -212,7 +193,6 @@ export async function findActiveSession(
 ): Promise<AuthSessionRow | null> {
   const found = await store.findSession(sessionId, now);
   if (!found) return null;
-
   if (found.kind === "browser") {
     const cap = found.rememberDevice
       ? found.createdAt + BROWSER_SESSION_REMEMBER_CAP_MS
@@ -225,19 +205,15 @@ export async function findActiveSession(
     }
     return { ...found, lastSeenAt: now, expiresAt: nextExpiresAt };
   }
-
   if (found.kind === "machine") {
     if (now !== found.lastSeenAt) {
       await store.touchSession(found.id, now, found.expiresAt);
     }
     return { ...found, lastSeenAt: now };
   }
-
   return found;
 }
-
 // ── Revocation ───────────────────────────────────────────────────────────────
-
 export interface RevokeSessionOptions {
   store: AuthRepository;
   reason: string;
@@ -246,7 +222,6 @@ export interface RevokeSessionOptions {
   userAgent: string | null;
   now?: number;
 }
-
 export async function revokeSession(
   sessionId: string,
   options: RevokeSessionOptions,
@@ -266,7 +241,6 @@ export async function revokeSession(
   await appendAuditEvent(audit, { store: options.store });
   return ok;
 }
-
 export interface RevokeAllSessionsOptions {
   store: AuthRepository;
   identityId: string;
@@ -276,7 +250,6 @@ export interface RevokeAllSessionsOptions {
   userAgent: string | null;
   now?: number;
 }
-
 export async function revokeAllSessionsForIdentity(
   options: RevokeAllSessionsOptions,
 ): Promise<number> {
@@ -303,9 +276,7 @@ export async function revokeAllSessionsForIdentity(
   );
   return count;
 }
-
 // ── CSRF (double-submit) ─────────────────────────────────────────────────────
-
 /**
  * Derive the CSRF token for a session. HMAC-SHA256 over the literal
  * `csrf:<sessionId>` payload using the per-session `csrfSecret` as the key.
@@ -321,22 +292,22 @@ export function deriveCsrfToken(session: {
     .update(`csrf:${session.id}`)
     .digest("hex");
 }
-
 /**
  * Timing-safe compare of an incoming CSRF header against the expected
  * derived token. Empty / missing headers fail closed.
  */
 export function verifyCsrfToken(
-  session: { id: string; csrfSecret: string },
+  session: {
+    id: string;
+    csrfSecret: string;
+  },
   provided: string | null | undefined,
 ): boolean {
   if (typeof provided !== "string" || provided.length === 0) return false;
   const expected = deriveCsrfToken(session);
   return tokenMatches(expected, provided);
 }
-
 // ── Cookie serialize / parse ─────────────────────────────────────────────────
-
 /**
  * Should the cookie carry the `Secure` attribute? Plan §4.1: drop `Secure`
  * only when bound on loopback (the Electrobun shell). Detect via the same
@@ -346,7 +317,6 @@ function shouldEmitSecureFlag(env: RuntimeEnvRecord): boolean {
   const bind = resolveApiBindHost(env);
   return !isLoopbackBindHost(bind);
 }
-
 /**
  * Serialize the `eliza_session` cookie. The value is the opaque session id;
  * attributes follow plan §4.1.
@@ -355,7 +325,10 @@ function shouldEmitSecureFlag(env: RuntimeEnvRecord): boolean {
  * `Set-Cookie:` token). Caller is responsible for `res.setHeader`.
  */
 export function serializeSessionCookie(
-  session: { id: string; expiresAt: number },
+  session: {
+    id: string;
+    expiresAt: number;
+  },
   options: SerializeSessionCookieOptions = {},
 ): string {
   const env = options.env ?? process.env;
@@ -372,14 +345,17 @@ export function serializeSessionCookie(
   if (shouldEmitSecureFlag(env)) parts.push("Secure");
   return parts.join("; ");
 }
-
 /**
  * Serialize the readable companion CSRF cookie. Same lifetime as the
  * session cookie. NOT `HttpOnly` so the SPA can mirror it into the
  * `x-eliza-csrf` header.
  */
 export function serializeCsrfCookie(
-  session: { id: string; csrfSecret: string; expiresAt: number },
+  session: {
+    id: string;
+    csrfSecret: string;
+    expiresAt: number;
+  },
   options: SerializeSessionCookieOptions = {},
 ): string {
   const env = options.env ?? process.env;
@@ -396,7 +372,6 @@ export function serializeCsrfCookie(
   if (shouldEmitSecureFlag(env)) parts.push("Secure");
   return parts.join("; ");
 }
-
 /** Build the cookie that destroys the session client-side (logout). */
 export function serializeSessionExpiryCookie(
   options: SerializeSessionCookieOptions = {},
@@ -412,7 +387,6 @@ export function serializeSessionExpiryCookie(
   if (shouldEmitSecureFlag(env)) parts.push("Secure");
   return parts.join("; ");
 }
-
 /** Companion expiry cookie for `eliza_csrf`. */
 export function serializeCsrfExpiryCookie(
   options: SerializeSessionCookieOptions = {},
@@ -422,7 +396,6 @@ export function serializeCsrfExpiryCookie(
   if (shouldEmitSecureFlag(env)) parts.push("Secure");
   return parts.join("; ");
 }
-
 /**
  * Parse a raw `Cookie:` header into a typed map. Returns `Map<string,string>`
  * — keys are cookie names, values are URL-decoded raw values. Invalid or
@@ -448,7 +421,6 @@ export function parseCookieHeader(
   }
   return out;
 }
-
 /**
  * Read the eliza session id from the request cookie header. Returns null
  * when the cookie is absent or empty.

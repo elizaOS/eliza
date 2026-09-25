@@ -20,7 +20,7 @@ import {
 import {
   getBuildVariant,
   isStoreBuild,
-} from "@elizaos/shared/platform/build-variant";
+} from "@elizaos/core/platform/build-variant";
 import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
 import {
   resolveAuthorizedRouteRole,

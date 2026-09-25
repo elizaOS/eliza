@@ -4,7 +4,7 @@
  * words yields the verified reply the runtime delivers without the evaluator
  * model call; every other shape yields null and keeps the evaluator.
  */
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   parseStatedClockTimes,

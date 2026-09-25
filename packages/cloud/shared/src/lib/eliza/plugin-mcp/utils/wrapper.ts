@@ -8,9 +8,8 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { parseJSON } from "@elizaos/shared";
+import { parseJSON } from "@elizaos/plugin-mcp/protocol-utils/json";
 import { DEFAULT_MAX_RETRIES, type ValidationResult } from "../types";
-
 export interface WithModelRetryOptions<T> {
   runtime: IAgentRuntime;
   message: Memory;
@@ -27,7 +26,6 @@ export interface WithModelRetryOptions<T> {
   failureMsg?: string;
   retryCount?: number;
 }
-
 /**
  * Retries model selection with feedback on parse errors
  */
@@ -43,7 +41,6 @@ export async function withModelRetry<T>({
   retryCount = 0,
 }: WithModelRetryOptions<T>): Promise<T | null> {
   const maxRetries = getMaxRetries(runtime);
-
   try {
     const parsed = typeof input === "string" ? parseJSON<unknown>(input) : input;
     const result = validationFn(parsed);
@@ -52,7 +49,6 @@ export async function withModelRetry<T>({
   } catch (e) {
     const error = e instanceof Error ? e.message : "Parse error";
     logger.error({ error }, "[Retry] Parse failed");
-
     if (retryCount < maxRetries) {
       const feedback = createFeedbackPromptFn(input, error, state, message.content.text || "");
       const retry = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -70,7 +66,6 @@ export async function withModelRetry<T>({
         retryCount: retryCount + 1,
       });
     }
-
     if (callback && failureMsg) {
       await callback({
         text: failureMsg,
@@ -81,7 +76,6 @@ export async function withModelRetry<T>({
     return null;
   }
 }
-
 function getMaxRetries(runtime: IAgentRuntime): number {
   try {
     const mcp = runtime.getSetting("mcp") as

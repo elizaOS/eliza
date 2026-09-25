@@ -18,31 +18,30 @@
 import type http from "node:http";
 import {
   type AgentRuntime,
-  logger,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import {
-  asRecord,
+  asObjectRecord as asRecord,
   type DeploymentTargetConfig,
   getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
+  logger,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   PostFirstRunRequestSchema,
+  type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
-} from "@elizaos/shared";
-import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
   captureDevCloudEnvAuthority,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
+import { prepareFirstRunConnectors } from "../first-run-config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { syncDirectProviderCredentials } from "./accounts-routes.ts";
 import {
@@ -279,7 +278,7 @@ export {
   type BlooioFirstRunResolution,
   type CanonicalBlooioConnectorConfig,
   resolveBlooioFirstRunConfig,
-} from "@elizaos/shared/first-run-config";
+} from "../first-run-config.js";
 
 function restoreProcessEnvironment(
   snapshot: NodeJS.ProcessEnv,

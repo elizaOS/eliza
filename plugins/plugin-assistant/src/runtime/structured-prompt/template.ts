@@ -1,8 +1,8 @@
 /** Compiles dynamic prompts and preserves ordered provider segments for cache planning.
  * The compiled-template cache is shared across runtime instances. */
 
-import type { PromptSegment, State } from "@elizaos/core";
-import { compileTemplate } from "@elizaos/shared";
+import { type PromptSegment, type State } from "@elizaos/core";
+import { compileTemplate } from "../../text/template-engine.js";
 
 const RUNTIME_TEMPLATE_CACHE = new Map<
   string,
@@ -32,7 +32,6 @@ const STABLE_PROMPT_PROVIDER_NAMES = new Set([
   "CHARACTER",
   "PROVIDERS",
 ]);
-
 export function getCompiledRuntimeTemplate(
   template: string,
   alreadyUpgraded = false,
@@ -42,7 +41,6 @@ export function getCompiledRuntimeTemplate(
   if (cached) {
     return cached;
   }
-
   const compiled = compileTemplate(source);
   RUNTIME_TEMPLATE_CACHE.set(source, compiled);
   if (RUNTIME_TEMPLATE_CACHE.size > RUNTIME_TEMPLATE_CACHE_LIMIT) {
@@ -51,10 +49,8 @@ export function getCompiledRuntimeTemplate(
       RUNTIME_TEMPLATE_CACHE.delete(oldestKey);
     }
   }
-
   return compiled;
 }
-
 export function cleanDynamicPromptTemplateOutput(rawOutput: string): string {
   return rawOutput
     .replace(/<output>[\s\S]*?<\/output>\s*/g, "")
@@ -64,7 +60,6 @@ export function cleanDynamicPromptTemplateOutput(rawOutput: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
-
 export function extractTemplatePlaceholderKeys(
   templateChunk: string,
 ): string[] {
@@ -79,48 +74,46 @@ export function extractTemplatePlaceholderKeys(
   }
   return [...keys];
 }
-
 export function isTemplateChunkStable(templateChunk: string): boolean {
   const placeholderKeys = extractTemplatePlaceholderKeys(templateChunk);
   return placeholderKeys.every(
     (key) => key !== "providers" && STABLE_PROMPT_TEMPLATE_KEYS.has(key),
   );
 }
-
 export function getPromptProviderSegments(state: State): PromptSegment[] {
   const providerResults = state.data.providers as
-    | Record<string, { text?: string; providerName?: string }>
+    | Record<
+        string,
+        {
+          text?: string;
+          providerName?: string;
+        }
+      >
     | undefined;
   if (!providerResults) {
     return [];
   }
-
   const providerOrder = Array.isArray(state.data.providerOrder)
     ? (state.data.providerOrder as string[])
     : Object.keys(providerResults).sort((left, right) =>
         left.localeCompare(right),
       );
-
   const segments: PromptSegment[] = [];
   for (const providerName of providerOrder) {
     const result = providerResults[providerName];
     if (!result?.text || result.text.trim() === "") {
       continue;
     }
-
     if (segments.length > 0) {
       segments.push({ content: "\n", stable: false });
     }
-
     segments.push({
       content: result.text,
       stable: STABLE_PROMPT_PROVIDER_NAMES.has(providerName),
     });
   }
-
   return mergePromptSegments(segments);
 }
-
 export function renderPromptTemplateSegments(
   templateStr: string,
   context: Record<string, unknown>,
@@ -138,7 +131,6 @@ export function renderPromptTemplateSegments(
   const renderedWithMarkers = cleanDynamicPromptTemplateOutput(
     templateFunction(context),
   );
-
   if (
     !templateWithMarkers.includes(PROVIDERS_PROMPT_MARKER) ||
     !renderedWithMarkers.includes(PROVIDERS_PROMPT_MARKER)
@@ -150,7 +142,6 @@ export function renderPromptTemplateSegments(
       },
     ];
   }
-
   const providerSegments = getPromptProviderSegments(state);
   if (providerSegments.length === 0) {
     return [
@@ -163,11 +154,9 @@ export function renderPromptTemplateSegments(
       },
     ];
   }
-
   const templateChunks = templateWithMarkers.split(PROVIDERS_PROMPT_MARKER);
   const renderedChunks = renderedWithMarkers.split(PROVIDERS_PROMPT_MARKER);
   const segments: PromptSegment[] = [];
-
   for (let i = 0; i < renderedChunks.length; i += 1) {
     const renderedChunk = renderedChunks[i] ?? "";
     if (renderedChunk.length > 0) {
@@ -176,46 +165,36 @@ export function renderPromptTemplateSegments(
         stable: isTemplateChunkStable(templateChunks[i] ?? ""),
       });
     }
-
     if (i < renderedChunks.length - 1) {
       segments.push(...providerSegments.map((segment) => ({ ...segment })));
     }
   }
-
   return mergePromptSegments(segments);
 }
-
 export function joinPromptSegmentGroups(
   groups: PromptSegment[][],
 ): PromptSegment[] {
   const result: PromptSegment[] = [];
-
   for (const group of groups) {
     const normalized = mergePromptSegments(group);
     if (normalized.length === 0) {
       continue;
     }
-
     if (result.length > 0) {
       result.push({ content: "\n\n", stable: false });
     }
-
     result.push(...normalized.map((segment) => ({ ...segment })));
   }
-
   return result;
 }
-
 export function mergePromptSegments(
   segments: PromptSegment[],
 ): PromptSegment[] {
   const merged: PromptSegment[] = [];
-
   for (const segment of segments) {
     if (segment.content.length === 0) {
       continue;
     }
-
     const previous = merged[merged.length - 1];
     if (previous && previous.stable === segment.stable) {
       previous.content += segment.content;
@@ -223,10 +202,8 @@ export function mergePromptSegments(
       merged.push({ ...segment });
     }
   }
-
   return merged;
 }
-
 export function upgradeDoubleToTriple(tpl: string): string {
   // Pattern breakdown:
   // (?<!\{)      - not preceded by { (avoids matching inside {{{ )
@@ -239,6 +216,5 @@ export function upgradeDoubleToTriple(tpl: string): string {
   // (?!\})       - not followed by } (avoids matching {{{ }}}
   const DOUBLE_BRACE_VAR =
     /(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g;
-
   return tpl.replace(DOUBLE_BRACE_VAR, "{{{$1$2$3}}}");
 }

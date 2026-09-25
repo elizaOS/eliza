@@ -5,10 +5,10 @@
  * documents-detail.helpers; this file owns the fetch/edit/save lifecycle.
  */
 
-import type {
-  Transcript,
-  TranscriptCaptureSharingState,
-} from "@elizaos/shared";
+import {
+  type Transcript,
+  type TranscriptCaptureSharingState,
+} from "@elizaos/core/transcripts";
 import {
   client,
   type DocumentDetail,
@@ -40,14 +40,14 @@ import {
   Share2,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { DocumentAccessPanel } from "./document-access-panel";
-import { DocumentPinsPanel } from "./document-pins-panel";
-import { getDocumentSourceLabel } from "./documents-detail.helpers";
-import { knowledgeReaderKind } from "./knowledge-media-format";
+import { DocumentAccessPanel } from "./document-access-panel.js";
+import { DocumentPinsPanel } from "./document-pins-panel.js";
+import { getDocumentSourceLabel } from "./documents-detail.helpers.js";
+import { knowledgeReaderKind } from "./knowledge-media-format.js";
 
 function formatDocumentTimestamp(value?: number): string | null {
   if (!value) return null;
-  const timestamp = value < 1_000_000_000_000 ? value * 1000 : value;
+  const timestamp = value < 1000000000000 ? value * 1000 : value;
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleDateString(undefined, {
@@ -56,18 +56,20 @@ function formatDocumentTimestamp(value?: number): string | null {
     year: "numeric",
   });
 }
-
 type DocumentLoadIssue = {
   title: string;
   description: string;
   retryable: boolean;
 };
-
 function documentLoadIssue(
   error: unknown,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): DocumentLoadIssue {
-  const status = (error as { status?: number } | null)?.status;
+  const status = (
+    error as {
+      status?: number;
+    } | null
+  )?.status;
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (message.includes("no longer available")) {
     return {
@@ -123,9 +125,7 @@ function documentLoadIssue(
     retryable: true,
   };
 }
-
 /* ── Document Viewer ────────────────────────────────────────────────── */
-
 export function DocumentViewer({
   documentId,
   initialSeekMs,
@@ -152,7 +152,6 @@ export function DocumentViewer({
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [privacySaving, setPrivacySaving] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
-
   useEffect(() => {
     const id = documentId ?? "";
     void reloadToken; // re-run on manual refresh (kept in deps below)
@@ -167,20 +166,15 @@ export function DocumentViewer({
       setDraftText("");
       return;
     }
-
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
-
       const [docRes, fragRes] = await Promise.all([
         client.getDocument(id),
         client.getDocumentFragments(id),
       ]);
-
       if (cancelled) return;
-
       // A well-formed detail response always carries `document`; if the backend
       // returns an empty/malformed body (or the doc was deleted between the list
       // and detail fetch), surface a clean message instead of letting a raw
@@ -193,26 +187,22 @@ export function DocumentViewer({
           }),
         );
       }
-
       setDoc(docRes.document);
       setFragments(fragRes?.fragments ?? []);
       setDraftText(docRes.document.content?.text ?? "");
       setEditing(false);
       setLoading(false);
     }
-
     load().catch((err) => {
       if (!cancelled) {
         setError(documentLoadIssue(err, t));
         setLoading(false);
       }
     });
-
     return () => {
       cancelled = true;
     };
   }, [documentId, reloadToken, t]);
-
   // Load the rich transcript once we know the record mirrors one. Kept out of
   // the main effect so a document without a transcript never pays for it.
   const transcriptId = doc?.transcriptId;
@@ -237,7 +227,6 @@ export function DocumentViewer({
       cancelled = true;
     };
   }, [transcriptId]);
-
   const handleUpdateTranscriptPrivacy = (
     sharing: Partial<TranscriptCaptureSharingState>,
   ) => {
@@ -257,7 +246,6 @@ export function DocumentViewer({
       })
       .finally(() => setPrivacySaving(false));
   };
-
   const handleDeleteTranscriptSourceAudio = async () => {
     if (!transcriptId) return;
     const confirmed = await confirmDesktopAction({
@@ -285,7 +273,6 @@ export function DocumentViewer({
       setPrivacySaving(false);
     }
   };
-
   const previewText = doc?.content?.text?.trim();
   const readerKind = doc
     ? knowledgeReaderKind({
@@ -304,7 +291,6 @@ export function DocumentViewer({
           : null;
   const readableText =
     previewText || fragments.map((fragment) => fragment.text).join("\n\n");
-
   // The original served file (when the backend exposes a fetchable URL for the
   // document, e.g. uploaded binaries / mirrored transcript audio). v1 gates the
   // download/share affordances on this URL existing.
@@ -319,7 +305,6 @@ export function DocumentViewer({
     ? safeAttachmentUrl(resolveAppAssetUrl(servedFileUrl))
     : "";
   const shareSupported = canShareFiles();
-
   const handleDownloadFile = async () => {
     if (!servedFileUrl || !doc) return;
     const filename = doc.filename || filenameForMime(doc.contentType);
@@ -335,7 +320,6 @@ export function DocumentViewer({
       );
     }
   };
-
   const handleShareFile = async () => {
     if (!servedFileUrl || !doc) return;
     const shared = await shareAttachment(servedFileUrl, {
@@ -344,7 +328,6 @@ export function DocumentViewer({
     });
     if (!shared) await handleDownloadFile();
   };
-
   const handleSave = async () => {
     if (!documentId || !doc) return;
     setSaving(true);
@@ -375,7 +358,6 @@ export function DocumentViewer({
       setSaving(false);
     }
   };
-
   // Per-mimeType reader block over the original served bytes (#13594). A
   // transcript-backed record renders the word-synced player; plain media
   // renders by kind; a text/pdf record has no inline media block (its prose /
@@ -453,7 +435,6 @@ export function DocumentViewer({
       );
     }
   }
-
   const hasDocumentActions = Boolean(
     doc &&
       ((mediaUrl && readerKind !== "transcript") ||
@@ -476,7 +457,6 @@ export function DocumentViewer({
         documentCreatedLabel,
       ].filter((value): value is string => Boolean(value))
     : [];
-
   return (
     <PagePanel className="settings-surface flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4">

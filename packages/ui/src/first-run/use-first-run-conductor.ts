@@ -58,11 +58,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/shared/logger";
 import {
   hasStewardAuthedCookie,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import * as React from "react";
 import type {
   ConversationMessage,
@@ -87,6 +86,7 @@ import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import {
   ACCENT_PRESETS,
   useAppSelector,

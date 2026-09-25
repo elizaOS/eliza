@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "build/**"],
+      "outputs": ["setup/dist/**", "usb-installer/dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "package.json",

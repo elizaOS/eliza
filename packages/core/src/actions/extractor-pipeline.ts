@@ -9,8 +9,8 @@
 
 import { ElizaError } from "../errors";
 import { runWithTrajectoryPurpose } from "../trajectory-context";
-import type { IAgentRuntime } from "../types";
-import { ModelType } from "../types";
+import { ModelType } from "../types/model.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType];
 

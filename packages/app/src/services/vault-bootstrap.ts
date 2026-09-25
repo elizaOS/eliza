@@ -25,7 +25,6 @@
 import { persistConfigEnv, readConfigEnv } from "@elizaos/agent/api/config-env";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
-import type { ElizaConfig } from "@elizaos/agent/config/types.eliza";
 import {
   formatVaultRef,
   isVaultRef,
@@ -35,8 +34,8 @@ import {
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/auth/vault";
-import { logger } from "@elizaos/core";
-import { loadRegistry } from "@elizaos/shared/catalog";
+import { type ElizaConfig, loadRegistry, logger } from "@elizaos/core";
+
 import {
   CONNECTOR_SECRET_FIELDS,
   connectorVaultKey,

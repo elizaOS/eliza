@@ -4,12 +4,6 @@
  * stage-navigated inspector. Consumed by the Trajectories list surface when a
  * run is opened.
  */
-
-import {
-  formatTrajectoryDuration,
-  formatTrajectoryTimestamp,
-  formatTrajectoryTokenCount,
-} from "@elizaos/shared";
 import {
   Brain,
   CheckCircle,
@@ -32,6 +26,11 @@ import type {
   TrajectoryProviderAccess,
 } from "../../api/client-types-cloud";
 import { useAppSelector } from "../../state";
+import {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "../../utils/trajectory-format.js";
 import { PagePanel } from "../composites/page-panel";
 import {
   type TrajectoryCacheMetric,
@@ -68,7 +67,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
 // ---------------------------------------------------------------------------
-
 const STEP_TYPE_TO_STAGE: Record<string, PipelineStageId> = {
   should_respond: "should_respond",
   compose_state: "plan",
@@ -81,11 +79,9 @@ const STEP_TYPE_TO_STAGE: Record<string, PipelineStageId> = {
   observation_extraction: "evaluators",
   turn_complete: "evaluators",
 };
-
 function stageForCall(call: TrajectoryLlmCall): PipelineStageId {
   return STEP_TYPE_TO_STAGE[call.stepType ?? ""] ?? "plan";
 }
-
 const PIPELINE_STAGES: Array<{
   id: PipelineStageId;
   label: string;
@@ -97,7 +93,6 @@ const PIPELINE_STAGES: Array<{
   { id: "actions", label: "Actions", icon: Zap },
   { id: "evaluators", label: "Evaluators", icon: CheckCircle },
 ];
-
 function buildPipelineNodes(
   llmCalls: TrajectoryLlmCall[],
   trajectoryStatus: string,
@@ -107,7 +102,6 @@ function buildPipelineNodes(
     const stage = stageForCall(call);
     counts.set(stage, (counts.get(stage) ?? 0) + 1);
   }
-
   return PIPELINE_STAGES.map(({ id, label, icon }) => {
     const count = counts.get(id) ?? 0;
     const status: PipelineNode["status"] =
@@ -121,7 +115,6 @@ function buildPipelineNodes(
     return { id, label, callCount: count, status, icon };
   });
 }
-
 interface TrajectoryDetailViewProps {
   trajectoryId: string;
   /** Refresh an open inspector as recorded calls arrive. */
@@ -129,7 +122,6 @@ interface TrajectoryDetailViewProps {
   /** The chat inspector starts with a compact list of expandable calls. */
   collapsibleCalls?: boolean;
 }
-
 function formatTrajectoryStepLabel(
   value: string | undefined,
   fallback: string,
@@ -138,7 +130,6 @@ function formatTrajectoryStepLabel(
   if (!normalized) return fallback;
   return normalized.replace(/_/g, " ");
 }
-
 function compactCallLabel(
   call: TrajectoryLlmCall,
   detail: TrajectoryDetailResult,
@@ -156,7 +147,6 @@ function compactCallLabel(
         "Model call",
       );
 }
-
 function formatProviderPayload(value: unknown): string {
   if (value == null) {
     return "null";
@@ -173,7 +163,6 @@ function formatProviderPayload(value: unknown): string {
     return String(value);
   }
 }
-
 /**
  * Recorded trajectory payloads arrive as parsed JSON, so an object candidate is
  * either an array or a plain record. Anything else (a Date, a class instance a
@@ -184,7 +173,6 @@ function isPlainRecord(value: object): value is Record<string, unknown> {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
-
 /**
  * A candidate carries content only when it would render something a reader can
  * inspect. Whitespace-only strings and empty collections are blank in the UI,
@@ -202,7 +190,6 @@ function hasRenderableContent(candidate: unknown): boolean {
   }
   return true;
 }
-
 /**
  * Trajectory records are intentionally append-only and may omit prompt fields
  * for provider failures, embeddings, or legacy rows. Normalize those sparse
@@ -216,8 +203,24 @@ export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
   }
   return "";
 }
-
+/** A sole text user message needs no synthetic role prefix in its body. */
+function singleUserMessageText(messages: unknown): string | undefined {
+  if (!Array.isArray(messages) || messages.length !== 1) return undefined;
+  const message = messages[0];
+  if (
+    message &&
+    typeof message === "object" &&
+    message.role === "user" &&
+    typeof message.content === "string" &&
+    Object.keys(message).every((key) => key === "role" || key === "content")
+  ) {
+    return message.content;
+  }
+  return undefined;
+}
 function recordedMessageText(messages: unknown): string {
+  const singleMessage = singleUserMessageText(messages);
+  if (singleMessage !== undefined) return singleMessage;
   if (
     Array.isArray(messages) &&
     messages.length > 0 &&
@@ -234,7 +237,6 @@ function recordedMessageText(messages: unknown): string {
   }
   return normalizeTrajectoryCallText(messages);
 }
-
 /**
  * Line count for a normalized trajectory field. Absent text has zero lines;
  * `"".split("\n").length` would otherwise report a fabricated single line in
@@ -244,13 +246,11 @@ export function countTrajectoryTextLines(text: string): number {
   if (text.length === 0) return 0;
   return text.split("\n").length;
 }
-
 export interface TrajectoryCallText {
   systemPromptText: string;
   inputText: string;
   outputText: string;
 }
-
 /**
  * The single place a recorded call becomes the three panels the card renders.
  * The line badges are derived from exactly these strings, so a panel can never
@@ -270,6 +270,7 @@ export function buildTrajectoryCallText(
   return {
     systemPromptText: normalizeTrajectoryCallText(call.systemPrompt),
     inputText: normalizeTrajectoryCallText(
+      singleUserMessageText(call.messages),
       call.userPrompt,
       call.prompt,
       call.messages,
@@ -277,7 +278,6 @@ export function buildTrajectoryCallText(
     outputText: normalizeTrajectoryCallText(call.response, call.output),
   };
 }
-
 /** Detail responses may omit the list endpoint's usage rollups. Fall back only
  * to complete recorded call usage, never prompt lengths or a partial sum. */
 export function trajectoryDetailTokenCount(
@@ -325,7 +325,6 @@ export function trajectoryDetailTokenCount(
     ? undefined
     : prompt + completion;
 }
-
 function isNativeToolCallEvent(
   event: TrajectoryEvent,
 ): event is NativeToolCallEvent {
@@ -335,23 +334,19 @@ function isNativeToolCallEvent(
     event.type === "tool_error"
   );
 }
-
 function isEvaluationEvent(
   event: TrajectoryEvent,
 ): event is TrajectoryEvaluationEvent {
   return event.type === "evaluation" || event.type === "evaluator";
 }
-
 function isCacheObservation(
   event: TrajectoryEvent,
 ): event is TrajectoryCacheObservation {
   return event.type === "cache_observation" || event.type === "cache";
 }
-
 function isContextDiff(event: TrajectoryEvent): event is TrajectoryContextDiff {
   return event.type === "context_diff";
 }
-
 function formatEventTimestamp(
   timestamp?: number,
   createdAt?: string,
@@ -369,7 +364,6 @@ function formatEventTimestamp(
     second: "2-digit",
   });
 }
-
 function eventSortValue(event: { timestamp?: number; createdAt?: string }) {
   if (typeof event.timestamp === "number" && Number.isFinite(event.timestamp)) {
     return event.timestamp;
@@ -380,7 +374,6 @@ function eventSortValue(event: { timestamp?: number; createdAt?: string }) {
   }
   return Number.POSITIVE_INFINITY;
 }
-
 function timelineStatusForEvent(
   event: TrajectoryEvent,
 ): TrajectoryTimelineEvent["status"] {
@@ -390,7 +383,6 @@ function timelineStatusForEvent(
     if (state === "success") return "success";
     return "running";
   }
-
   const statusValue = (event as Record<string, unknown>).status;
   const status =
     typeof statusValue === "string" ? statusValue.toLowerCase() : "";
@@ -400,7 +392,6 @@ function timelineStatusForEvent(
   if (status === "skipped") return "skipped";
   return "info";
 }
-
 function labelForEvent(event: TrajectoryEvent): string {
   if (isNativeToolCallEvent(event)) return getToolCallName(event);
   if (isEvaluationEvent(event)) {
@@ -412,7 +403,6 @@ function labelForEvent(event: TrajectoryEvent): string {
   if (isContextDiff(event)) return event.label || "context diff";
   return event.type.replace(/_/g, " ");
 }
-
 function descriptionForEvent(event: TrajectoryEvent): string | undefined {
   if (isNativeToolCallEvent(event)) {
     const args = event.args ?? event.input;
@@ -425,16 +415,16 @@ function descriptionForEvent(event: TrajectoryEvent): string | undefined {
     return `${event.hit ? "hit" : "miss"}${event.key ? ` - ${event.key}` : ""}`;
   }
   if (isContextDiff(event)) {
-    return `${event.added ?? 0} added, ${event.removed ?? 0} removed, ${
-      event.changed ?? 0
-    } changed`;
+    return `${event.added ?? 0} added, ${event.removed ?? 0} removed, ${event.changed ?? 0} changed`;
   }
   return undefined;
 }
-
-function dedupeEvents<T extends { id?: string; type?: string }>(
-  events: readonly T[],
-): T[] {
+function dedupeEvents<
+  T extends {
+    id?: string;
+    type?: string;
+  },
+>(events: readonly T[]): T[] {
   const seen = new Set<string>();
   const result: T[] = [];
   events.forEach((event, index) => {
@@ -445,7 +435,6 @@ function dedupeEvents<T extends { id?: string; type?: string }>(
   });
   return result;
 }
-
 function buildTimelineEvents(params: {
   events: readonly TrajectoryEvent[];
   llmCalls: readonly TrajectoryLlmCall[];
@@ -457,7 +446,6 @@ function buildTimelineEvents(params: {
       const diff = eventSortValue(a.event) - eventSortValue(b.event);
       return diff === 0 ? a.index - b.index : diff;
     });
-
   if (explicitEvents.length > 0) {
     return explicitEvents.map(({ event, index }) => ({
       id: event.id || `${event.type}-${index}`,
@@ -470,7 +458,6 @@ function buildTimelineEvents(params: {
       meta: event.stepId,
     }));
   }
-
   return [
     ...params.llmCalls.map<TrajectoryTimelineEvent>((call, index) => ({
       id: call.id,
@@ -501,7 +488,6 @@ function buildTimelineEvents(params: {
     ),
   );
 }
-
 function buildCacheMetrics(
   observations: readonly TrajectoryCacheObservation[],
   stats: TrajectoryDetailResult["cacheStats"] | undefined,
@@ -532,7 +518,6 @@ function buildCacheMetrics(
     },
   ];
 }
-
 function buildContextDiffSummaries(
   diffs: readonly TrajectoryContextDiff[],
 ): TrajectoryContextDiffSummary[] {
@@ -549,13 +534,10 @@ function buildContextDiffSummaries(
     tokenDelta: diff.tokenDelta ?? "—",
     description:
       diff.beforeContextId || diff.afterContextId
-        ? `${diff.beforeContextId ?? "before"} -> ${
-            diff.afterContextId ?? "after"
-          }`
+        ? `${diff.beforeContextId ?? "before"} -> ${diff.afterContextId ?? "after"}`
         : undefined,
   }));
 }
-
 export function TrajectoryDetailView({
   trajectoryId,
   revision,
@@ -573,7 +555,6 @@ export function TrajectoryDetailView({
     "missing" | "restricted" | "offline" | "error" | null
   >(null);
   const [activeStage, setActiveStage] = useState<PipelineStageId | null>(null);
-
   const [retry, setRetry] = useState(0);
   const [inspectionPart, setInspectionPart] = useState("calls");
   const [selectedCallId, setSelectedCallId] = useState<string>();
@@ -592,7 +573,10 @@ export function TrajectoryDetailView({
       .catch((err) => {
         // error-policy:J4 Optional inspection has a visible failure and retry.
         if (controller.signal.aborted) return;
-        const candidate = err as { kind?: unknown; status?: unknown } | null;
+        const candidate = err as {
+          kind?: unknown;
+          status?: unknown;
+        } | null;
         const status =
           typeof candidate?.status === "number" ? candidate.status : 0;
         const kind = typeof candidate?.kind === "string" ? candidate.kind : "";
@@ -613,7 +597,6 @@ export function TrajectoryDetailView({
       });
     return () => controller.abort();
   }, [trajectoryId, revision, retry]);
-
   // Never render an old run under a newly selected id. Refreshes of the same
   // run retain expanded calls and scroll position while new evidence loads.
   const currentDetail = detail?.trajectory.id === trajectoryId ? detail : null;
@@ -707,29 +690,24 @@ export function TrajectoryDetailView({
       shouldShowNativeEventPanels,
     };
   }, [detail, llmCalls, providerAccesses]);
-
   const pipelineNodes = useMemo(
     () => buildPipelineNodes(llmCalls, trajectory?.status ?? "active"),
     [llmCalls, trajectory?.status],
   );
-
   const filteredCalls = useMemo(() => {
     if (collapsibleCalls || !activeStage || activeStage === "input")
       return llmCalls;
     return llmCalls.filter((call) => stageForCall(call) === activeStage);
   }, [llmCalls, activeStage, collapsibleCalls]);
-
   const callIndexMap = useMemo(
     () => new Map(llmCalls.map((call, i) => [call.id, i])),
     [llmCalls],
   );
-
   const handleStageClick = useCallback((stageId: PipelineStageId) => {
     setActiveStage((prev) =>
       prev === stageId || stageId === "input" ? null : stageId,
     );
   }, []);
-
   const clearStageFilter = useAgentElement<HTMLButtonElement>({
     id: `clear-stage-filter-${instanceId}`,
     role: "button",
@@ -739,7 +717,6 @@ export function TrajectoryDetailView({
       "Reset the active pipeline stage filter and show all LLM calls",
     onActivate: () => setActiveStage(null),
   });
-
   if (loading && !currentDetail) {
     return (
       <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
@@ -753,7 +730,6 @@ export function TrajectoryDetailView({
       </div>
     );
   }
-
   if (error) {
     const copy =
       error === "missing"
@@ -801,7 +777,6 @@ export function TrajectoryDetailView({
       </div>
     );
   }
-
   if (!detail || !trajectory) {
     return (
       <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
@@ -817,13 +792,11 @@ export function TrajectoryDetailView({
       </div>
     );
   }
-
   const orchestrator = trajectory.metadata?.orchestrator;
   const orchestratorData =
     orchestrator && typeof orchestrator === "object"
       ? (orchestrator as Record<string, unknown>)
       : null;
-
   const modelCallList = (
     <div
       className={
@@ -920,12 +893,12 @@ export function TrajectoryDetailView({
                   (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
                   { emptyLabel: "—" },
                 )}
-                tokenBreakdownMeta={`${formatTrajectoryTokenCount(
-                  call.promptTokens ?? 0,
-                  { emptyLabel: "—" },
-                )}↑ • ${formatTrajectoryTokenCount(call.completionTokens ?? 0, {
-                  emptyLabel: "—",
-                })} ↓`}
+                tokenBreakdownMeta={`${formatTrajectoryTokenCount(call.promptTokens ?? 0, { emptyLabel: "—" })}↑ • ${formatTrajectoryTokenCount(
+                  call.completionTokens ?? 0,
+                  {
+                    emptyLabel: "—",
+                  },
+                )} ↓`}
                 temperatureLabel={t("trajectorydetailview.Temp")}
                 temperatureValue={call.temperature}
                 maxLabel={t("trajectorydetailview.Max")}
@@ -935,9 +908,7 @@ export function TrajectoryDetailView({
                 }
                 systemPromptButtonLabel={t("trajectorydetailview.SystemPrompt")}
                 systemLabel={t("trajectorydetailview.System")}
-                systemLinesLabel={`${countTrajectoryTextLines(
-                  systemPromptText,
-                )} ${linesLabel}`}
+                systemLinesLabel={`${countTrajectoryTextLines(systemPromptText)} ${linesLabel}`}
                 systemCollapseLabel={t("common.collapse", {
                   defaultValue: "Collapse",
                 })}
@@ -946,12 +917,8 @@ export function TrajectoryDetailView({
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}
                 outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${countTrajectoryTextLines(
-                  inputText,
-                )} ${linesLabel}`}
-                outputLinesLabel={`${countTrajectoryTextLines(
-                  outputText,
-                )} ${linesLabel}`}
+                inputLinesLabel={`${countTrajectoryTextLines(inputText)} ${linesLabel}`}
+                outputLinesLabel={`${countTrajectoryTextLines(outputText)} ${linesLabel}`}
                 tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
                 userPrompt={inputText}
                 response={outputText}
@@ -968,7 +935,6 @@ export function TrajectoryDetailView({
       </div>
     </div>
   );
-
   return (
     <div
       className={

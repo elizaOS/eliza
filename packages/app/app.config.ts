@@ -4,14 +4,14 @@
  * Single source of truth for app identity. Used by:
  * - capacitor.config.ts (mobile builds)
  * - main.tsx (React boot)
- * - run-mobile-build.mjs (native overlay — reads appId/appName via regex)
+ * - run-mobile-build.ts (native overlay — reads appId/appName via regex)
  * - Electrobun desktop shell (via ELIZA_APP_NAME / ELIZA_APP_ID env vars)
  *
  * To create a new app, copy this file and change the values below.
  */
 
-import type { AppConfig } from "@elizaos/shared";
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import type { AppConfig } from "@elizaos/core/config/app-config";
+import { EXTERNAL_URLS } from "@elizaos/core/config/public-endpoints";
 
 interface AppWebConfig {
   shortName: string;
@@ -20,30 +20,25 @@ interface AppWebConfig {
   shareImagePath: string;
   iconBackgroundColor?: string;
 }
-
 interface AppIdentityEnv {
   readonly [key: string]: string | undefined;
   ELIZA_ANDROID_VPS_SIDECAR?: string;
 }
-
 function isEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/i.test((value ?? "").trim());
 }
-
 const CANONICAL_IDENTITY = {
   appName: "Eliza",
   appId: "ai.elizaos.app",
   namespace: "eliza",
   urlScheme: "elizaos",
 } as const;
-
 const VPS_SIDECAR_IDENTITY = {
   appName: "Eliza VPS",
   appId: "ai.elizaos.app.vps",
   namespace: "eliza-vps",
   urlScheme: "elizavps",
 } as const;
-
 /**
  * Resolve the one alternate Android identity that intentionally installs next
  * to the canonical Cloud app. All ordinary builds retain the canonical app
@@ -53,7 +48,6 @@ const VPS_SIDECAR_IDENTITY = {
 export function resolveAppConfig(env: AppIdentityEnv = process.env) {
   const vpsSidecar = isEnabled(env.ELIZA_ANDROID_VPS_SIDECAR);
   const identity = vpsSidecar ? VPS_SIDECAR_IDENTITY : CANONICAL_IDENTITY;
-
   return {
     appName: identity.appName,
     appId: identity.appId,
@@ -65,12 +59,10 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
     envPrefix: "ELIZA",
     namespace: identity.namespace,
     defaultApps: ["@elizaos/plugin-personal-assistant"],
-
     desktop: {
       bundleId: identity.appId,
       urlScheme: identity.urlScheme,
     },
-
     web: {
       shortName: identity.appName,
       ...(vpsSidecar ? { iconBackgroundColor: "#202124" } : {}),
@@ -89,7 +81,6 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
       // not render SVG share images.
       shareImagePath: "/brand/ogembeds/eliza_ogembed.png",
     },
-
     branding: {
       appName: identity.appName,
       orgName: "elizaos",
@@ -101,9 +92,9 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
       fileExtension: ".eliza-agent",
       packageScope: "elizaos",
     },
-  } satisfies AppConfig & { web: AppWebConfig };
+  } satisfies AppConfig & {
+    web: AppWebConfig;
+  };
 }
-
 const config = resolveAppConfig();
-
 export default config;

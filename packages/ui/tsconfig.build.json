@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": true,
@@ -12,12 +13,6 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
       "@elizaos/ui": ["./src/index.ts"],
-      "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
-      "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
-      "@elizaos/plugin-coding-tools": [
-        "../../plugins/plugin-coding-tools/dist/index.d.ts"
-      ],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
@@ -25,12 +20,8 @@
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
-      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/capacitor-*": [
         "../../plugins/plugin-native-*/dist/esm/index.d.ts"
-      ],
-      "@elizaos/native-activity-tracker": [
-        "../../plugins/plugin-native-activity-tracker/dist/index.d.ts"
       ]
     }
   },

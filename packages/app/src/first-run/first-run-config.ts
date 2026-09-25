@@ -10,25 +10,24 @@
  * resolved no LLM route). Side-effect free; callers apply the result.
  */
 
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountFlagsConfig,
-  ServiceRouteConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared";
 import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
   type FirstRunCredentialInputs,
   type FirstRunLocalProviderId,
   normalizeFirstRunProviderId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
+import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  type DeploymentTargetConfig,
+  type LinkedAccountFlagsConfig,
+  type ServiceRouteConfig,
+  type ServiceRoutingConfig,
+} from "@elizaos/core/contracts/service-routing";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,
 } from "./runtime-target";
-
 export interface BuildFirstRunConnectionArgs {
   firstRunRuntimeTarget?: FirstRunRuntimeTarget;
   firstRunCloudApiKey: string;
@@ -57,12 +56,15 @@ export interface BuildFirstRunConnectionArgs {
   firstRunFeatureBrowser?: boolean;
   firstRunFeatureComputerUse?: boolean;
 }
-
 /** Feature selections from the first-run capabilities step. */
 export interface FirstRunCapabilitySetup {
   connectors: {
-    telegram?: { managed: boolean };
-    discord?: { managed: boolean };
+    telegram?: {
+      managed: boolean;
+    };
+    discord?: {
+      managed: boolean;
+    };
   };
   capabilities: {
     crypto?: boolean;
@@ -70,7 +72,6 @@ export interface FirstRunCapabilitySetup {
     computeruse?: boolean;
   };
 }
-
 export interface BuildFirstRunRuntimeConfigResult {
   deploymentTarget: DeploymentTargetConfig;
   linkedAccounts: LinkedAccountFlagsConfig | undefined;
@@ -79,7 +80,6 @@ export interface BuildFirstRunRuntimeConfigResult {
   needsProviderSetup: boolean;
   featureSetup: FirstRunCapabilitySetup | undefined;
 }
-
 function trimToUndefined(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -87,20 +87,17 @@ function trimToUndefined(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function resolveLocalProviderId(
   provider: string,
 ): FirstRunLocalProviderId | null {
   const normalized = normalizeFirstRunProviderId(provider);
   return normalized && normalized !== "elizacloud" ? normalized : null;
 }
-
 function resolveArgsServerTarget(
   args: Pick<BuildFirstRunConnectionArgs, "firstRunRuntimeTarget">,
 ): FirstRunRuntimeTarget {
   return args.firstRunRuntimeTarget ?? "";
 }
-
 function resolveFirstRunPrimaryModel(args: {
   providerId: string;
   firstRunPrimaryModel: string;
@@ -111,7 +108,6 @@ function resolveFirstRunPrimaryModel(args: {
   }
   return trimToUndefined(args.firstRunPrimaryModel);
 }
-
 export function buildFirstRunRuntimeConfig(
   args: BuildFirstRunConnectionArgs,
 ): BuildFirstRunRuntimeConfigResult {
@@ -138,7 +134,6 @@ export function buildFirstRunRuntimeConfig(
       source: "api-key",
     };
   }
-
   const localProviderId = resolveLocalProviderId(args.firstRunProvider);
   if (
     localProviderId === "anthropic-subscription" ||
@@ -149,7 +144,6 @@ export function buildFirstRunRuntimeConfig(
       source: "subscription",
     };
   }
-
   const deploymentTarget: DeploymentTargetConfig =
     persistRuntimeOnConnectedRemote
       ? { runtime: "local" }
@@ -170,13 +164,11 @@ export function buildFirstRunRuntimeConfig(
               provider: "elizacloud",
             }
           : { runtime: "local" };
-
   const serviceRouting: ServiceRoutingConfig = {};
   let llmTextRoute: ServiceRouteConfig | undefined;
   const shouldConfigureRuntimeProvider =
     !args.omitRuntimeProvider &&
     !requiresAdditionalRuntimeProvider(args.firstRunProvider);
-
   if (
     args.firstRunProvider === "elizacloud" &&
     shouldConfigureRuntimeProvider
@@ -210,11 +202,9 @@ export function buildFirstRunRuntimeConfig(
             ...(primaryModel ? { primaryModel } : {}),
           };
   }
-
   if (llmTextRoute) {
     serviceRouting.llmText = llmTextRoute;
   }
-
   const cloudDefaultsSelected =
     args.firstRunProvider === "elizacloud" ||
     (deploymentTarget.runtime === "cloud" &&
@@ -242,15 +232,12 @@ export function buildFirstRunRuntimeConfig(
       }),
     );
   }
-
   const hasLinkedAccounts = Object.keys(linkedAccounts).length > 0;
   const hasServiceRouting = Object.keys(serviceRouting).length > 0;
   const credentialInputs: FirstRunCredentialInputs = {};
-
   if (cloudApiKey) {
     credentialInputs.cloudApiKey = cloudApiKey;
   }
-
   const llmApiKey = trimToUndefined(args.firstRunApiKey);
   if (
     llmApiKey &&
@@ -259,9 +246,7 @@ export function buildFirstRunRuntimeConfig(
   ) {
     credentialInputs.llmApiKey = llmApiKey;
   }
-
   const hasCredentialInputs = Object.keys(credentialInputs).length > 0;
-
   // Build feature setup from first-run capability toggles
   const hasFeatures =
     args.firstRunFeatureTelegram ||
@@ -269,7 +254,6 @@ export function buildFirstRunRuntimeConfig(
     args.firstRunFeatureCrypto ||
     args.firstRunFeatureBrowser ||
     args.firstRunFeatureComputerUse;
-
   const featureSetup: FirstRunCapabilitySetup | undefined = hasFeatures
     ? {
         connectors: {
@@ -287,7 +271,6 @@ export function buildFirstRunRuntimeConfig(
         },
       }
     : undefined;
-
   return {
     deploymentTarget,
     linkedAccounts: hasLinkedAccounts ? linkedAccounts : undefined,

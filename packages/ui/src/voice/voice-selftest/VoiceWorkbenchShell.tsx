@@ -17,7 +17,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
+import { ElizaError } from "@elizaos/core/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
@@ -46,7 +46,7 @@ declare global {
     /** e2e automation hook — drives a WorkbenchScenario and returns its report. */
     __voiceWorkbench?: (
       scenario: WorkbenchScenario,
-      options?: { playback?: boolean },
+      options?: { playback?: boolean; streaming?: boolean },
     ) => Promise<VoiceWorkbenchReport>;
   }
 }
@@ -121,9 +121,13 @@ export function VoiceWorkbenchShell() {
     return () => URL.revokeObjectURL(url);
   }, [report]);
   const runningRef = useRef(false);
+  const runControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => runControllerRef.current?.abort(), []);
   const playbackRef = useRef<{
     messageId: string;
-    taskId: string | null;
+    tasks: Set<string>;
+    active: Set<string>;
+    finalized: boolean;
     events: VoicePlaybackEvidenceEvent[];
     resolve: (events: VoicePlaybackEvidenceEvent[]) => void;
   } | null>(null);
@@ -144,13 +148,15 @@ export function VoiceWorkbenchShell() {
       if (!pending) return;
       if (
         event.kind === "queued" &&
-        event.telemetry?.messageId === pending.messageId &&
-        pending.taskId === null
-      )
-        pending.taskId = event.taskId;
-      if (event.taskId !== pending.taskId) return;
+        event.telemetry?.messageId === pending.messageId
+      ) {
+        pending.tasks.add(event.taskId);
+        pending.active.add(event.taskId);
+      }
+      if (!pending.tasks.has(event.taskId)) return;
       pending.events.push(event);
-      if (event.kind === "terminal") {
+      if (event.kind === "terminal") pending.active.delete(event.taskId);
+      if (pending.finalized && pending.active.size === 0) {
         playbackRef.current = null;
         pending.resolve(pending.events);
       }
@@ -172,7 +178,14 @@ export function VoiceWorkbenchShell() {
           code: "VOICE_WORKBENCH_PLAYBACK_BUSY",
         });
       return new Promise<VoicePlaybackEvidenceEvent[]>((resolve) => {
-        playbackRef.current = { messageId, taskId: null, events: [], resolve };
+        playbackRef.current = {
+          messageId,
+          tasks: new Set(),
+          active: new Set(),
+          finalized: true,
+          events: [],
+          resolve,
+        };
         try {
           voice.speak(reply, { telemetry: { messageId } });
         } catch (error) {
@@ -185,16 +198,75 @@ export function VoiceWorkbenchShell() {
     [voice.speak],
   );
 
+  const beginStreamingReply = useCallback(
+    (messageId: string) => {
+      if (Capacitor.isNativePlatform())
+        throw new ElizaError(
+          "Streaming playback evidence is unavailable for the native speech engine",
+          {
+            code: "VOICE_WORKBENCH_PLAYBACK_UNAVAILABLE",
+          },
+        );
+      if (playbackRef.current)
+        throw new ElizaError("A workbench playback is already active", {
+          code: "VOICE_WORKBENCH_PLAYBACK_BUSY",
+        });
+      let resolve!: (events: VoicePlaybackEvidenceEvent[]) => void;
+      const completion = new Promise<VoicePlaybackEvidenceEvent[]>((done) => {
+        resolve = done;
+      });
+      const pending = {
+        messageId,
+        tasks: new Set<string>(),
+        active: new Set<string>(),
+        finalized: false,
+        events: [] as VoicePlaybackEvidenceEvent[],
+        resolve,
+      };
+      playbackRef.current = pending;
+      const settle = () => {
+        pending.finalized = true;
+        if (pending.active.size === 0) {
+          if (playbackRef.current === pending) playbackRef.current = null;
+          pending.resolve(pending.events);
+        }
+        return completion;
+      };
+      return {
+        update(text: string) {
+          if (!pending.finalized)
+            voice.queueAssistantSpeech(messageId, text, false, {
+              telemetry: { messageId },
+            });
+        },
+        finish(text: string) {
+          if (!pending.finalized)
+            voice.queueAssistantSpeech(messageId, text, true, {
+              telemetry: { messageId },
+            });
+          return settle();
+        },
+        cancel() {
+          voice.stopSpeaking();
+          return settle();
+        },
+      };
+    },
+    [voice.queueAssistantSpeech, voice.stopSpeaking],
+  );
+
   const run = useCallback(
     async (
       scenario: WorkbenchScenario,
-      options?: { playback?: boolean },
+      options?: { playback?: boolean; streaming?: boolean },
     ): Promise<VoiceWorkbenchReport> => {
       if (runningRef.current)
         throw new ElizaError("A voice scenario is already running", {
           code: "VOICE_WORKBENCH_BUSY",
         });
       runningRef.current = true;
+      const controller = new AbortController();
+      runControllerRef.current = controller;
       setRunning(true);
       try {
         clientRef.current ??= new ElizaClient();
@@ -206,7 +278,13 @@ export function VoiceWorkbenchShell() {
         }
         const result = await runVoiceWorkbench({
           scenario,
-          playReply: options?.playback ? playReply : undefined,
+          signal: controller.signal,
+          playReply:
+            options?.playback && !options.streaming ? playReply : undefined,
+          beginStreamingReply:
+            options?.playback && options.streaming
+              ? beginStreamingReply
+              : undefined,
           platform,
           ttsRoute,
           ttsExtraBody:
@@ -234,11 +312,13 @@ export function VoiceWorkbenchShell() {
         setReport(result);
         return result;
       } finally {
+        if (runControllerRef.current === controller)
+          runControllerRef.current = null;
         runningRef.current = false;
         setRunning(false);
       }
     },
-    [platform, ttsRoute, playReply],
+    [platform, ttsRoute, playReply, beginStreamingReply],
   );
 
   // Expose the player to automation. There is no default scenario — the runner

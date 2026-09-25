@@ -3,34 +3,25 @@
  * local to avoid a root-barrel cycle during the subpath API migration.
  */
 
+export {
+  getAppDetailExtension,
+  registerDetailExtension,
+} from "../apps/detail-extension-registry.js";
 export type {
   AppDetailExtensionComponent,
   AppDetailExtensionProps,
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/shared";
+} from "../apps/detail-extension-types.js";
+export type { OverlayApp, OverlayAppContext } from "../apps/overlay-app-api.js";
 export {
-  autoLabel,
-  type DocumentImageCompressionPlatform,
-  type DocumentImageUploadFile,
-  ENV_KEY_ACRONYMS,
-  formatTrajectoryDuration,
-  formatTrajectoryTimestamp,
-  formatTrajectoryTokenCount,
   getAllOverlayApps,
-  getAppDetailExtension,
   getAvailableOverlayApps,
   getOverlayApp,
   isAospAndroid,
-  isDocumentImageFile,
   isOverlayApp,
-  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
-  maybeCompressDocumentUploadImage,
   type OverlayAppAvailabilityContext,
   overlayAppToRegistryInfo,
-  registerDetailExtension,
   registerOverlayApp,
-} from "@elizaos/shared";
+} from "../apps/overlay-app-registry.js";
 export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,
@@ -42,10 +33,7 @@ export {
   ExportButton,
   type ExportButtonProps,
 } from "../cloud-ui/components/analytics";
-export type {
-  KeyMetric,
-  TabItem,
-} from "../cloud-ui/components/brand";
+export type { KeyMetric, TabItem } from "../cloud-ui/components/brand";
 export {
   AgentCard,
   BrandTabs,
@@ -182,6 +170,19 @@ export {
   DashboardRouteError,
   formatDashboardRouteErrorMessage,
 } from "../cloud-ui/components/primitives";
+export {
+  type DocumentImageCompressionPlatform,
+  type DocumentImageUploadFile,
+  isDocumentImageFile,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+} from "../utils/documents-upload-image.js";
+export { autoLabel, ENV_KEY_ACRONYMS } from "../utils/labels.js";
+export {
+  formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
+  formatTrajectoryTokenCount,
+} from "../utils/trajectory-format.js";
 export * from "./accounts/EditableAccountLabel";
 export * from "./apps/extensions/surface";
 export * from "./apps/extensions/surface.helpers";

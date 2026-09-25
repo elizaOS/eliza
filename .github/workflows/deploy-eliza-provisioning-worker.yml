@@ -7,7 +7,7 @@ run-name: Provisioning worker ${{ inputs.mode == 'diagnose' && 'diagnostic ' || 
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
-#   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs
+#   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts
 
 on:
   workflow_dispatch:
@@ -187,7 +187,7 @@ jobs:
         id: diagnostic
         run: |
           set -euo pipefail
-          source_base64=$(base64 -w0 packages/cloud/scripts/admin/staging-worker-diagnostic.mjs)
+          source_base64=$(base64 -w0 packages/cloud/scripts/admin/staging-worker-diagnostic.ts)
           echo "source_base64=$source_base64" >> "$GITHUB_OUTPUT"
       - name: Read source-locked worker state
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -471,7 +471,7 @@ jobs:
             exit 1
           }
           helper_sha256=$(sha256sum \
-            packages/cloud/scripts/admin/systemd-environment-line.mjs | awk '{print $1}')
+            packages/cloud/scripts/admin/systemd-environment-line.ts | awk '{print $1}')
           backup_unit_sha256=$(sha256sum \
             packages/cloud/scripts/admin/eliza-backup-catalog-worker.service | awk '{print $1}')
           [[ "$helper_sha256" =~ ^[0-9a-f]{64}$ ]] || {
@@ -550,7 +550,7 @@ jobs:
             exit 1
           }
           if [ "$DEPLOY_BRANCH" = main ]; then
-            node packages/cloud/scripts/production-effect-certification.mjs "$DEPLOY_SHA"
+            node packages/cloud/scripts/production-effect-certification.ts "$DEPLOY_SHA"
           fi
           bun run db:cloud:migrate
 
@@ -574,7 +574,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
-        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+        run: node packages/cloud/scripts/production-effect-certification.ts "$SOURCE_SHA"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
@@ -930,8 +930,8 @@ jobs:
               echo "::error::The canonical root-owned Node 24 binary is unavailable"
               exit 1
             fi
-            ENV_SERIALIZER_SOURCE=/opt/eliza/packages/cloud/scripts/admin/systemd-environment-line.mjs
-            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
+            ENV_SERIALIZER_SOURCE=/opt/eliza/packages/cloud/scripts/admin/systemd-environment-line.ts
+            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.ts
             install_root_verified_file \
               "$ENV_SERIALIZER_SOURCE" \
               "$ENV_SERIALIZER" \
@@ -976,7 +976,7 @@ jobs:
             bun run build:core
             timeout --signal=TERM --kill-after=5s 30s \
               node --import tsx --input-type=module \
-              -e 'await import("@elizaos/core"); await import("@elizaos/shared/text/template-rendering")'
+              -e 'await import("@elizaos/core"); await import("@elizaos/plugin-assistant/text/template-rendering")'
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
@@ -1748,7 +1748,7 @@ jobs:
             fi
 
             ENV_FILE=/opt/eliza/cloud/.env.local
-            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
+            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.ts
             NODE_BIN=/usr/bin/node
             SAFE_CHILD_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
             if [ ! -x "$NODE_BIN" ] || [[ "$("$NODE_BIN" --version)" != v24.* ]]; then

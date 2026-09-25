@@ -10,7 +10,7 @@
  * to the declarative UiRenderer for uiSpec widgets.
  */
 
-import { isViewVisible } from "@elizaos/shared/views/view-kind";
+import { isViewVisible } from "@elizaos/core/views/view-kind";
 import type * as React from "react";
 import {
   Component,
@@ -133,7 +133,6 @@ const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
 const FULL_APP_SHELL_WIDGET_PLUGIN_IDS: ReadonlySet<string> = new Set([
   "agent-orchestrator",
   "calendar",
-  "finances",
   "goals",
   "health",
   "inbox",

@@ -10,29 +10,29 @@
  * independent round-trips. Current-room messages are filtered out to avoid
  * echo, and hash-memory hits win on id overlap. Gated to USER.
  */
-import type {
-  AccessContext,
-  CanonicalRecallResult,
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  Room,
-  State,
-  UUID,
-} from "@elizaos/core";
 import {
+  type AccessContext,
   buildAccessContext,
+  type CanonicalRecallResult,
   ChannelType,
   filterByAccessContext,
   getUserMessageText,
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  type Memory,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type Provider,
+  type ProviderResult,
+  type Room,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
+  type State,
   searchCanonicalConversationMemories,
   stringToUuid,
+  type UUID,
 } from "@elizaos/core";
+
 import {
   embedRecallQuery,
   getEvaluatorProgressState,
@@ -43,7 +43,6 @@ import {
   renderProviderOriginalMessages,
   visibleHistoryEventIds,
 } from "@elizaos/plugin-assistant";
-import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,

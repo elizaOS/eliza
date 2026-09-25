@@ -4,9 +4,10 @@
  * RUN_ENDED / RUN_TIMEOUT end it with the right final status, and a runtime
  * without the service degrades to a traced no-op instead of throwing.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createUniqueUuid } from "../../../../../packages/core/src/entities.ts";
-import type { IAgentRuntime } from "../../../../../packages/core/src/types/index.ts";
 import { trajectoriesPlugin } from "./index.ts";
 import { TrajectoriesService } from "./TrajectoriesService";
 

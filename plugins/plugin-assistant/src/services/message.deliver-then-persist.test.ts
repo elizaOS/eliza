@@ -11,28 +11,23 @@
  * adapter transaction begins, and delegates real writes to the real adapter.
  */
 
+import type { Content, Memory } from "@elizaos/core";
+import {
+  AgentRuntime,
+  asUUID,
+  attestDeliveryAudienceFromCanonicalRoom,
+  authorizeOwnerExclusiveDisclosure,
+  ChannelType,
+  createCharacter,
+  EventType,
+  inferenceTimingRegistry,
+  ModelType,
+  PRIVACY_DENIED_TEXT,
+  type UUID,
+} from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { inferenceTimingRegistry } from "../../../../packages/core/src/inference-timing.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import {
-  attestDeliveryAudienceFromCanonicalRoom,
-  authorizeOwnerExclusiveDisclosure,
-  PRIVACY_DENIED_TEXT,
-} from "../../../../packages/core/src/security/index.ts";
-import type {
-  Content,
-  Memory,
-} from "../../../../packages/core/src/types/index.ts";
-import { EventType } from "../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../packages/core/src/types/model.ts";
-import {
-  asUUID,
-  ChannelType,
-  type UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
 import { createAssistantPlugin } from "../index.ts";
 import {
   DefaultMessageService,
@@ -145,19 +140,17 @@ async function createHarness(opts: HarnessOptions = {}) {
   // Observation-only storage seam: records when the agent-reply row write
   // COMPLETES relative to the delivery callback, and optionally injects
   // latency, a hold-open gate, or a fault for the failure/race tests. Real
-  // writes always reach the real in-memory adapter.
+  // writes always reach the real SQLite adapter.
   let releaseReplyPersist: () => void = () => {};
   const replyPersistGate = new Promise<void>((resolve) => {
     releaseReplyPersist = resolve;
   });
   releasePersistenceGates.push(releaseReplyPersist);
   // Hold before SQLite's transaction queue so unrelated rooms can still write.
-  const realCreateMemory = runtime.createMemory.bind(runtime);
-  runtime.createMemory = async (memory, tableName, unique) => {
+  const realCreateMessageMemory = runtime.createMessageMemory.bind(runtime);
+  runtime.createMessageMemory = async (memory, unique) => {
     const isReplyWrite =
-      tableName === "messages" &&
-      memory.entityId === runtime.agentId &&
-      memory.content?.text === replyText;
+      memory.entityId === runtime.agentId && memory.content?.text === replyText;
     if (isReplyWrite && opts.persistDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, opts.persistDelayMs));
     }
@@ -167,7 +160,7 @@ async function createHarness(opts: HarnessOptions = {}) {
     if (isReplyWrite && opts.failReplyPersist) {
       throw new Error("injected reply-persist failure");
     }
-    const id = await realCreateMemory(memory, tableName, unique);
+    const id = await realCreateMessageMemory(memory, unique);
     if (isReplyWrite) {
       order.push("persist:reply");
     }

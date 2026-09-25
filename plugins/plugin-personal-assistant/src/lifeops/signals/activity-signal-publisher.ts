@@ -6,7 +6,7 @@
  * their own publisher because they are produced from circadian transitions.
  */
 
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
+import { type LifeOpsActivitySignal } from "@elizaos/core/contracts/personal-assistant";
 import type { SignalSourceRegistry } from "../registries/signal-source-registry.js";
 import type { ActivitySignalBus } from "./bus.js";
 

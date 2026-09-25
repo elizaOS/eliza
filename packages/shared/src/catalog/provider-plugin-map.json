@@ -1,8 +1,0 @@
-{
-  "ANTHROPIC_API_KEY": "@elizaos/plugin-anthropic",
-  "CEREBRAS_API_KEY": "@elizaos/plugin-openai",
-  "ELIZAOS_CLOUD_API_KEY": "@elizaos/plugin-elizacloud",
-  "ELIZAOS_CLOUD_ENABLED": "@elizaos/plugin-elizacloud",
-  "NEARAI_API_KEY": "@elizaos/plugin-nearai",
-  "OPENAI_API_KEY": "@elizaos/plugin-openai"
-}

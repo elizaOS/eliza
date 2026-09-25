@@ -6,14 +6,10 @@
  * database.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../packages/core/src/utils.ts";
 import { adminChatProvider, autonomyStatusProvider } from "./providers.ts";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
 

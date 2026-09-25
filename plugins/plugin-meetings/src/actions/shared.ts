@@ -17,7 +17,7 @@ import {
   type MeetingSession,
   type ParsedMeetingUrl,
   parseMeetingUrl,
-} from "@elizaos/shared";
+} from "@elizaos/core/meetings";
 import type { MeetingService } from "../service.js";
 
 export function messageText(message: Memory | null | undefined): string {

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
-RM_PATH_RECURSIVE="$REPO_ROOT/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$REPO_ROOT/scripts/rm-path-recursive.ts"
 TMP_DIR="$(mktemp -d)"
 cleanup() {
   node "$RM_PATH_RECURSIVE" "$TMP_DIR"
@@ -306,7 +306,7 @@ assert_contains "$UNSAFE_HEALTH_OUT" "must be an explicit http://127.0.0.1:PORT/
 pass "post-flash validator rejects non-local health endpoints"
 
 MANIFEST_OUT="$TMP_DIR/manifest.out"
-node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
+node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.ts" \
   "$ROOT/manifests/android-release-manifest.example.json" \
   >"$MANIFEST_OUT"
 assert_contains "$MANIFEST_OUT" "manifest ok: elizaos-android-example-2026.05.0"
@@ -321,7 +321,7 @@ manifest.supportedDevices[0].tier = 'lab-validated';
 writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 INELIGIBLE_OUT="$TMP_DIR/ineligible-lab.out"
-if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
+if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.ts" \
   "$INELIGIBLE_MANIFEST" >"$INELIGIBLE_OUT" 2>&1; then
   fail "manifest validator promoted an installer-ineligible hardware target"
 fi
@@ -339,7 +339,7 @@ delete manifest.rollback.previousReleaseId;
 writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 INCOMPLETE_EVIDENCE_OUT="$TMP_DIR/incomplete-evidence.out"
-if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
+if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.ts" \
   "$INCOMPLETE_EVIDENCE_MANIFEST" >"$INCOMPLETE_EVIDENCE_OUT" 2>&1; then
   fail "manifest validator accepted incomplete runtime/rollback evidence"
 fi
@@ -365,7 +365,7 @@ writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 
 ARTIFACT_VALIDATE_OUT="$TMP_DIR/artifact-validate.out"
-node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
+node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.ts" \
   "$ARTIFACT_MANIFEST" \
   --artifact-dir "$ARTIFACT_DIR" \
   >"$ARTIFACT_VALIDATE_OUT"
@@ -380,7 +380,7 @@ cp "$ARTIFACT_DIR/vendor_kernel_boot.img" "$EXTRA_ARTIFACT_DIR/vendor_kernel_boo
 cp "$ARTIFACT_DIR/super.img" "$EXTRA_ARTIFACT_DIR/super.img"
 printf 'undeclared-dtbo-image\n' >"$EXTRA_ARTIFACT_DIR/dtbo.img"
 EXTRA_ARTIFACT_OUT="$TMP_DIR/extra-artifact.out"
-if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.mjs" \
+if node "$REPO_ROOT/scripts/android-installer/validate-release-manifest.ts" \
   "$ARTIFACT_MANIFEST" \
   --artifact-dir "$EXTRA_ARTIFACT_DIR" >"$EXTRA_ARTIFACT_OUT" 2>&1; then
   fail "manifest validator accepted an undeclared image that the installer would flash"

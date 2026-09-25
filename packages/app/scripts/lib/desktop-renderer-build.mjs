@@ -16,7 +16,7 @@ export function buildDesktopRenderer({ appDir, env, label, runBun }) {
   // Keep Bun's runtime, but never let bunx select a different Vite major whose
   // chunking options differ from the app's Rollup manualChunks contract.
   runBun([viteCli, "build"], { cwd: appDir, env, label });
-  for (const guard of ["verify-chunk-safety.mjs", "verify-viewport-meta.mjs"]) {
+  for (const guard of ["verify-chunk-safety.ts", "verify-viewport-meta.ts"]) {
     runBun([path.join(appDir, "scripts", guard)], {
       cwd: appDir,
       env,

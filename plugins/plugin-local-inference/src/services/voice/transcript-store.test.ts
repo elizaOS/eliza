@@ -1,6 +1,7 @@
 /** Covers `TranscriptStore` persistence. Deterministic, temp store. */
+
 import type { Memory, UUID } from "@elizaos/core";
-import type { Transcript } from "@elizaos/shared";
+import type { Transcript } from "@elizaos/core/transcripts";
 import { describe, expect, it } from "vitest";
 import {
 	TRANSCRIPTS_TABLE,
@@ -33,9 +34,10 @@ function makeTranscript(over: Partial<Transcript> = {}): Transcript {
 		...over,
 	};
 }
-
 /** In-memory fake runtime backing the memory partition. */
-function fakeRuntime(): TranscriptStoreRuntime & { rows: Map<string, Memory> } {
+function fakeRuntime(): TranscriptStoreRuntime & {
+	rows: Map<string, Memory>;
+} {
 	const rows = new Map<string, Memory>();
 	const tables = new Map<string, string>();
 	return {
@@ -73,17 +75,14 @@ function fakeRuntime(): TranscriptStoreRuntime & { rows: Map<string, Memory> } {
 		},
 	};
 }
-
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
-
 describe("TranscriptStore", () => {
 	it("persists into the transcripts partition and round-trips the full record", async () => {
 		const rt = fakeRuntime();
 		const store = new TranscriptStore(rt);
 		const t = makeTranscript();
 		await store.create({ roomId: ROOM, entityId: ENTITY, transcript: t });
-
 		// Stored as one memory row with the full transcript in content.transcript.
 		const row = rt.rows.get(t.id) as Memory;
 		expect(row.roomId).toBe(ROOM);
@@ -91,17 +90,19 @@ describe("TranscriptStore", () => {
 		expect(row.metadata?.type).toBe("custom");
 		expect(row.metadata?.source).toBe("transcript");
 		// The full record is stored as a JSON blob in content.transcript.
-		expect(typeof (row.content as { transcript: string }).transcript).toBe(
-			"string",
-		);
+		expect(
+			typeof (
+				row.content as {
+					transcript: string;
+				}
+			).transcript,
+		).toBe("string");
 		// A text preview body is present for generic memory consumers.
 		expect(row.content.text).toBe("hello world");
-
 		// store.get parses the blob back into the exact record.
 		const got = await store.get(t.id as UUID);
 		expect(got).toEqual(t);
 	});
-
 	it("lists newest-first summaries scoped to a room", async () => {
 		const rt = fakeRuntime();
 		const store = new TranscriptStore(rt);
@@ -133,7 +134,6 @@ describe("TranscriptStore", () => {
 				createdAt: 3000,
 			}),
 		});
-
 		const list = await store.list(ROOM);
 		expect(list.map((s) => s.title)).toEqual(["Newer", "Older"]);
 		expect(list[0]).toMatchObject({
@@ -142,7 +142,6 @@ describe("TranscriptStore", () => {
 			status: "ready",
 		});
 	});
-
 	it("returns null for a missing id and deletes a record", async () => {
 		const rt = fakeRuntime();
 		const store = new TranscriptStore(rt);
@@ -154,13 +153,11 @@ describe("TranscriptStore", () => {
 		await store.delete(t.id as UUID);
 		expect(await store.get(t.id as UUID)).toBeNull();
 	});
-
 	it("updates a record in place and re-derives the preview + metadata", async () => {
 		const rt = fakeRuntime();
 		const store = new TranscriptStore(rt);
 		const t = makeTranscript();
 		await store.create({ roomId: ROOM, entityId: ENTITY, transcript: t });
-
 		const edited: Transcript = {
 			...t,
 			title: "Standup (edited)",
@@ -169,7 +166,6 @@ describe("TranscriptStore", () => {
 		};
 		const returned = await store.update(edited);
 		expect(returned).toEqual(edited);
-
 		// Same row id, overwritten content + re-derived preview text.
 		const row = rt.rows.get(t.id) as Memory;
 		expect(rt.rows.size).toBe(1);
@@ -178,23 +174,19 @@ describe("TranscriptStore", () => {
 		// store.get round-trips the edited record exactly.
 		expect(await store.get(t.id as UUID)).toEqual(edited);
 	});
-
 	it("throws when updating a record that does not exist", async () => {
 		const rt = fakeRuntime();
 		const store = new TranscriptStore(rt);
 		await expect(store.update(makeTranscript())).rejects.toThrow(/not found/);
 	});
-
 	it("exposes the partition name", () => {
 		expect(TRANSCRIPTS_TABLE).toBe("transcripts");
 	});
-
 	describe("per-viewer disclosure selection (#14781)", () => {
 		const VIEWER = "44444444-4444-4444-4444-444444444444" as UUID;
 		const STRANGER = "55555555-5555-5555-5555-555555555555" as UUID;
 		const ORIGINAL_ID = "00000000-0000-0000-0000-00000000or11";
 		const VARIANT_ID = "00000000-0000-0000-0000-00000000va22";
-
 		/** Original (owner-private, with audio) + linked redacted variant. */
 		async function seed(rt: ReturnType<typeof fakeRuntime>) {
 			const store = new TranscriptStore(rt);
@@ -261,14 +253,11 @@ describe("TranscriptStore", () => {
 			});
 			return { store, original, variant };
 		}
-
 		it("OWNER boundary (no context) and ADMIN rank see the full original", async () => {
 			const rt = fakeRuntime();
 			const { store, original } = await seed(rt);
-
 			// No access context: single-owner boundary, full record.
 			expect(await store.get(ORIGINAL_ID as UUID)).toEqual(original);
-
 			// ADMIN rank context: full record with audio.
 			const admin = { requesterEntityId: STRANGER, role: "ADMIN" as const };
 			const got = await store.get(ORIGINAL_ID as UUID, admin);
@@ -278,12 +267,10 @@ describe("TranscriptStore", () => {
 			expect(list[0]).toMatchObject({ id: ORIGINAL_ID, hasAudio: true });
 			expect(list[0].redacted).toBeUndefined();
 		});
-
 		it("USER with a redacted grant gets an audio-less variant under the ORIGINAL id", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
 			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
-
 			const got = await store.get(ORIGINAL_ID as UUID, viewer);
 			expect(got).not.toBeNull();
 			expect(got?.id).toBe(ORIGINAL_ID);
@@ -294,7 +281,6 @@ describe("TranscriptStore", () => {
 			expect(got?.title).toBe("Payroll sync (redacted)");
 			// Identity comes from the original, content from the variant.
 			expect(got?.createdAt).toBe(1000);
-
 			const list = await store.list(ROOM, 100, viewer);
 			expect(list).toHaveLength(1);
 			expect(list[0]).toMatchObject({
@@ -305,7 +291,6 @@ describe("TranscriptStore", () => {
 			expect(list[0].preview).toContain("[REDACTED]");
 			expect(list[0].preview).not.toContain("123-45-6789");
 		});
-
 		it("USER with a full grant sees transcript text but not owner-private artifacts", async () => {
 			const rt = fakeRuntime();
 			const { store, original } = await seed(rt);
@@ -323,7 +308,6 @@ describe("TranscriptStore", () => {
 			expect(granted?.audioUrl).toBeUndefined();
 			expect((await store.list(ROOM, 100, viewer))[0]?.hasAudio).toBe(false);
 		});
-
 		it("projects source audio, notes, and generated artifacts independently", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
@@ -358,7 +342,6 @@ describe("TranscriptStore", () => {
 					},
 				},
 			});
-
 			const viewer = await store.get(ORIGINAL_ID as UUID, {
 				requesterEntityId: VIEWER,
 				role: "USER",
@@ -381,7 +364,6 @@ describe("TranscriptStore", () => {
 				"notes",
 			);
 		});
-
 		it("ungranted USER and GUEST see nothing: omitted from list, null on get", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
@@ -392,14 +374,12 @@ describe("TranscriptStore", () => {
 				expect(await store.list(ROOM, 100, ctx)).toEqual([]);
 			}
 		});
-
 		it("variant rows never appear as standalone list rows", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
 			const list = await store.list(ROOM);
 			expect(list.map((s) => s.id)).toEqual([ORIGINAL_ID]);
 		});
-
 		it("a redacted grant with a missing variant discloses NOTHING (fail closed)", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
@@ -408,7 +388,6 @@ describe("TranscriptStore", () => {
 			expect(await store.get(ORIGINAL_ID as UUID, viewer)).toBeNull();
 			expect(await store.list(ROOM, 100, viewer)).toEqual([]);
 		});
-
 		it("share grants and variant links survive a text edit (update preserves metadata)", async () => {
 			const rt = fakeRuntime();
 			const { store, original } = await seed(rt);
@@ -429,7 +408,6 @@ describe("TranscriptStore", () => {
 				true,
 			);
 		});
-
 		it("creates a deterministic redacted variant without mutating the original or audio", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);
@@ -470,7 +448,6 @@ describe("TranscriptStore", () => {
 				entityId: ENTITY,
 				transcript: original,
 			});
-
 			const first = await store.createRedactedVariant({
 				originalId: ORIGINAL_ID as UUID,
 				redactedBy: VIEWER,
@@ -483,7 +460,6 @@ describe("TranscriptStore", () => {
 				seed: "fixed",
 				nowMs: 3000,
 			});
-
 			expect(second.id).toBe(first.id);
 			expect(second.segments).toEqual(first.segments);
 			expect(first.audioUrl).toBeUndefined();
@@ -504,7 +480,6 @@ describe("TranscriptStore", () => {
 			expect(first.segments[0]?.speakerLabel).not.toBe("Alice");
 			expect(first.segments[0]?.speakerEntityId).toBeUndefined();
 			expect(first.segments[0]?.words[0]?.text).toBe("[EMAIL]");
-
 			const originalAfter = await store.get(ORIGINAL_ID as UUID);
 			expect(originalAfter).toEqual(original);
 			const originalMeta = (rt.rows.get(ORIGINAL_ID) as Memory)
@@ -517,7 +492,6 @@ describe("TranscriptStore", () => {
 			expect(variantMeta.redactionOf).toBe(ORIGINAL_ID);
 			expect(variantMeta.redactedBy).toBe(VIEWER);
 		});
-
 		it("serves only the verified variant audio to a redacted-grant viewer", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);
@@ -543,7 +517,6 @@ describe("TranscriptStore", () => {
 				entityId: VIEWER,
 				mode: "redacted",
 			});
-
 			const viewer = await store.get(ORIGINAL_ID as UUID, {
 				requesterEntityId: VIEWER,
 				role: "USER",
@@ -557,7 +530,6 @@ describe("TranscriptStore", () => {
 			});
 			expect(owner?.audioUrl).toBe(originalAudioUrl);
 		});
-
 		it("keeps seeded redacted variant ids scoped to the original transcript", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);
@@ -573,7 +545,6 @@ describe("TranscriptStore", () => {
 				entityId: ENTITY,
 				transcript: makeTranscript({ id: secondId }),
 			});
-
 			const first = await store.createRedactedVariant({
 				originalId: firstId as UUID,
 				seed: "same-seed",
@@ -584,7 +555,6 @@ describe("TranscriptStore", () => {
 				seed: "same-seed",
 				nowMs: 3000,
 			});
-
 			expect(first.id).not.toBe(second.id);
 			expect((rt.rows.get(firstId) as Memory).metadata).toMatchObject({
 				redactedVariantId: first.id,
@@ -593,7 +563,6 @@ describe("TranscriptStore", () => {
 				redactedVariantId: second.id,
 			});
 		});
-
 		it("adds and replaces transcript share grants on the original row", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);
@@ -602,7 +571,6 @@ describe("TranscriptStore", () => {
 				entityId: ENTITY,
 				transcript: makeTranscript({ id: ORIGINAL_ID }),
 			});
-
 			await store.share({
 				transcriptId: ORIGINAL_ID as UUID,
 				entityId: VIEWER,
@@ -617,7 +585,6 @@ describe("TranscriptStore", () => {
 				grantedBy: ENTITY,
 				grantedAtMs: 5000,
 			});
-
 			const row = rt.rows.get(ORIGINAL_ID) as Memory;
 			expect((row.metadata as Record<string, unknown>).share).toEqual({
 				grants: [
@@ -630,7 +597,6 @@ describe("TranscriptStore", () => {
 				],
 			});
 		});
-
 		it("persists delete-pending and finalized source-audio retention states", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);
@@ -639,7 +605,6 @@ describe("TranscriptStore", () => {
 				entityId: ENTITY,
 				transcript: makeTranscript({ id: ORIGINAL_ID }),
 			});
-
 			const pending = await store.markSourceAudioDeletePending({
 				transcriptId: ORIGINAL_ID as UUID,
 				fileName: `${"a".repeat(64)}.wav`,
@@ -653,7 +618,6 @@ describe("TranscriptStore", () => {
 					sourceAudioFileName: `${"a".repeat(64)}.wav`,
 				},
 			});
-
 			const finalized = await store.markSourceAudioDeleted(ORIGINAL_ID as UUID);
 			expect(finalized.metadata).toMatchObject({
 				retention: {
@@ -664,7 +628,6 @@ describe("TranscriptStore", () => {
 			expect(JSON.stringify(finalized)).not.toContain("sourceAudioFileName");
 			expect(finalized.segments).toEqual(makeTranscript().segments);
 		});
-
 		it("captures a room snapshot and grants only its resolved roster", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);
@@ -673,7 +636,6 @@ describe("TranscriptStore", () => {
 				entityId: ENTITY,
 				transcript: makeTranscript({ id: ORIGINAL_ID }),
 			});
-
 			await store.shareRoomSnapshot({
 				transcriptId: ORIGINAL_ID as UUID,
 				roomId: ROOM,
@@ -682,7 +644,6 @@ describe("TranscriptStore", () => {
 				grantedBy: ENTITY,
 				grantedAtMs: 6000,
 			});
-
 			const row = rt.rows.get(ORIGINAL_ID) as Memory;
 			expect((row.metadata as Record<string, unknown>).share).toEqual({
 				grants: [
@@ -706,7 +667,6 @@ describe("TranscriptStore", () => {
 				},
 			});
 		});
-
 		it("rejects share writes for missing, denied, or revoked consent", async () => {
 			for (const state of [undefined, "denied", "revoked"] as const) {
 				const rt = fakeRuntime();
@@ -734,7 +694,6 @@ describe("TranscriptStore", () => {
 				expect(metadata?.share).toBeUndefined();
 			}
 		});
-
 		it("refuses to attach grants to a redacted variant row", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);

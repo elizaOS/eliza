@@ -6,9 +6,9 @@ import { expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
-const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
+const runner = fileURLToPath(new URL("../run-all-tests.ts", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const fixtureDir = join(
   repoRoot,
@@ -57,7 +57,7 @@ test("parallel package failures retain a complete file inventory after truncatio
         cwd: repoRoot,
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024,
-        env: process.env,
+        env: { ...process.env, TEST_LANE: "pr" },
       },
     );
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;

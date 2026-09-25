@@ -24,13 +24,9 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
-
 import { getNotesService, type NotesService } from "./service.js";
-import {
-  parseNoteContent,
-  parseNoteDateRange,
-  parseNoteFieldPatch,
-} from "./validation.js";
+import { reconstructNoteContent } from "./types.js";
+import { parseNoteDateRange, parseNoteFieldPatch } from "./validation.js";
 
 const NOTES_OPS = [
   "create",
@@ -67,7 +63,7 @@ function readAlternatives(
     if (value === undefined) value = candidate;
     else if (candidate !== value) conflicts.push(name);
   }
-  return { value: readString(value), conflicts };
+  return { value, conflicts };
 }
 
 function conflictingAlternatives(names: string[]): ActionResult {
@@ -262,6 +258,7 @@ export const notesAction: Action = {
   name: "NOTES",
   tags: [
     "resource:tracked-work",
+    "resource:notes",
     "capability:read",
     "capability:write",
     "capability:update",
@@ -401,7 +398,7 @@ export const notesAction: Action = {
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
-              `${note.title}\n${note.body}`
+              reconstructNoteContent(note)
                 .toLocaleLowerCase()
                 .includes(normalizedTopic),
             )
@@ -415,7 +412,13 @@ export const notesAction: Action = {
             );
           })
         : candidates;
-      return committed({
+      const emptyInventory =
+        op === "list" &&
+        notes.length === 0 &&
+        noteId === undefined &&
+        topic === undefined &&
+        dateRange === undefined;
+      const result = committed({
         op,
         readOnlyOperation: true,
         count: matches.length,
@@ -434,9 +437,24 @@ export const notesAction: Action = {
         ...(noteId ? { requestedNoteId: noteId } : {}),
         ...(topic ? { topic } : {}),
         ...(dateRange ? { dateRange } : {}),
-        notes: matches,
+        notes: matches.map((note) => ({
+          ...note,
+          sourceNote: service.sourceReference(note),
+        })),
         notesRevision: snapshot.revision,
       });
+      return emptyInventory
+        ? {
+            ...result,
+            emptyTrackedState: {
+              resource: "notes",
+              scope: "entire_current_inventory",
+              count: 0,
+              revision: snapshot.revision,
+              observedAt: new Date().toISOString(),
+            },
+          }
+        : result;
     }
 
     // The service still receives one user-authored content value. Providers
@@ -467,12 +485,16 @@ export const notesAction: Action = {
     }
 
     if (op === "create") {
-      const body = readString(params.body);
+      const body = typeof params.body === "string" ? params.body : undefined;
       const separateBody = body !== undefined && !target.includes("\n");
-      const noteContent = parseNoteContent(
-        separateBody ? `${target}\n${body}` : target,
-      );
-      if (body && !separateBody && noteContent.body !== body) {
+      const noteContent = {
+        content: separateBody ? `${target}\n${body}` : target,
+      };
+      if (
+        body &&
+        !separateBody &&
+        target.slice(target.indexOf("\n") + 1) !== body
+      ) {
         // Two different complete bodies are ambiguous; reject before writing
         // rather than appending them or silently selecting one.
         return failure(
@@ -528,7 +550,7 @@ export const notesAction: Action = {
     }
     const patch = hasTextEdit
       ? { textEdit: params.textEdit }
-      : parseNoteContent(replacement);
+      : { content: replacement };
     return updateNoteResult(
       () =>
         noteId

@@ -4,13 +4,14 @@
  * active-server records and clearing chat drafts, without wiping persisted
  * state. Consumed by the runtime picker and connect deep-links.
  */
-import { logger } from "@elizaos/shared/logger";
+
 import { client } from "../api";
 import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
 import { activeServerKindToFirstRunRuntimeTarget } from "../first-run/runtime-target";
+import { logger } from "../logger.ts";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import type { AgentProfile } from "./agent-profile-types";
 import {

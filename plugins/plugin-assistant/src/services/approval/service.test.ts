@@ -7,8 +7,8 @@
  * tests own the pause/claim serialization boundary. This suite exercises
  * service wiring, notifications, and approval state transitions.
  *
- * The drizzle `sql.raw` shim hands the store our raw SQL text directly; the
- * fake `adapter.db.execute` interprets it against an in-memory row map. We only
+ * The fake `adapter.db.execute` renders real Drizzle SQL with the PostgreSQL
+ * dialect and interprets it against an in-memory row map. We only
  * model the query shapes the store emits — not a general SQL engine.
  */
 
@@ -21,6 +21,8 @@ import type {
 } from "@elizaos/core";
 import { ServiceType } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
+import { type SQL, sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ApprovalEnqueueInput,
@@ -32,11 +34,7 @@ import {
   resolveApprovalService,
 } from "./index.ts";
 
-vi.mock("drizzle-orm", () => ({
-  sql: {
-    raw: (text: string) => ({ __sql: text, queryChunks: [text] }),
-  },
-}));
+const dialect = new PgDialect();
 
 const SELECT_COLUMNS = [
   "id",
@@ -324,8 +322,7 @@ function createApprovalTableRuntime(
     agentId,
     adapter: {
       db: {
-        execute: async (chunks: { __sql?: string }) =>
-          execute(chunks.__sql ?? ""),
+        execute: async (chunks: SQL) => execute(dialect.sqlToQuery(chunks).sql),
       },
     },
     // The store resolves the NotificationService via ServiceType.NOTIFICATION;
@@ -944,14 +941,14 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
     const db = (
       runtime as unknown as {
         adapter: {
-          db: { execute: (c: { __sql?: string }) => Promise<unknown> };
+          db: { execute: (c: SQL) => Promise<unknown> };
         };
       }
     ).adapter.db;
     const rawExecute = db.execute.bind(db);
     let interleaved = false;
-    db.execute = async (chunks: { __sql?: string }) => {
-      const sqlText = chunks.__sql ?? "";
+    db.execute = async (chunks: SQL) => {
+      const sqlText = dialect.sqlToQuery(chunks).sql;
       if (
         !interleaved &&
         /UPDATE\s+approval_requests/i.test(sqlText) &&
@@ -959,12 +956,12 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
         sqlText.includes(`'${enqueued.id}'`)
       ) {
         interleaved = true;
-        await rawExecute({
-          __sql: `UPDATE approval_requests
+        await rawExecute(
+          sql.raw(`UPDATE approval_requests
       SET state = 'expired', updated_at = '2026-07-01T00:00:00.000Z'
       WHERE id = '${enqueued.id}' AND agent_id = 'agent-race' AND state = 'pending'
-      RETURNING id`,
-        });
+      RETURNING id`),
+        );
       }
       return rawExecute(chunks);
     };
@@ -995,14 +992,14 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
     const db = (
       runtime as unknown as {
         adapter: {
-          db: { execute: (c: { __sql?: string }) => Promise<unknown> };
+          db: { execute: (c: SQL) => Promise<unknown> };
         };
       }
     ).adapter.db;
     const rawExecute = db.execute.bind(db);
     let interleaved = false;
-    db.execute = async (chunks: { __sql?: string }) => {
-      const sqlText = chunks.__sql ?? "";
+    db.execute = async (chunks: SQL) => {
+      const sqlText = dialect.sqlToQuery(chunks).sql;
       if (
         !interleaved &&
         /UPDATE\s+approval_requests/i.test(sqlText) &&
@@ -1010,12 +1007,12 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
         sqlText.includes(`'${enqueued.id}'`)
       ) {
         interleaved = true;
-        await rawExecute({
-          __sql: `UPDATE approval_requests
+        await rawExecute(
+          sql.raw(`UPDATE approval_requests
       SET state = 'rejected', updated_at = '2026-07-01T00:00:00.000Z'
       WHERE id = '${enqueued.id}' AND agent_id = 'agent-race2' AND state = 'approved'
-      RETURNING id`,
-        });
+      RETURNING id`),
+        );
       }
       return rawExecute(chunks);
     };

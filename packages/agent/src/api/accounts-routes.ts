@@ -62,30 +62,30 @@ import {
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/auth/types";
-import type { AccountPoolBrokerSnapshot, IAgentRuntime } from "@elizaos/core";
 import {
-  ElizaError,
-  logger,
-  resolveStateDir,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import {
+  type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
+  type ElizaConfig,
+  ElizaError,
+  type IAgentRuntime,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
+  logger,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
+  type RouteRequestContext,
   resolveServiceRoutingInConfig,
+  resolveStateDir,
   type ServiceRouteAccountStrategy,
-} from "@elizaos/shared";
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+
 import * as zod from "zod";
-import type { ElizaConfig } from "../config/types.eliza.ts";
 import {
   runSubscriptionCliNpm,
   subscriptionCliCommandAvailable,

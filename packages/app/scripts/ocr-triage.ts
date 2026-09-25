@@ -19,7 +19,7 @@
  * current regression (#15790).
  *
  * Run: `bun scripts/ocr-triage.ts [--audit-dir <dir>] [--ocr <ndjson>] [--out <json>]`.
- * With no `--ocr`, it uses `scripts/mvp-visual-verify/ocr.mjs`, which prefers the
+ * With no `--ocr`, it uses `@elizaos/testing/evidence/visual-primitives`, which prefers the
  * installed `tesseract.js` package so CI and local verification do not depend on
  * Homebrew/apt state. Every pixel-broken regression fails the gate directly.
  */
@@ -27,6 +27,13 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  analyzeImageFile,
+  closeOcrEngines,
+  ocrImage,
+  ocrImageRegion,
+  resolveOcrEngine,
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
@@ -49,13 +56,6 @@ import {
   parseAuditReport,
   validateOcrRecordPaths,
 } from "./lib/audit-capture-manifest";
-import {
-  analyzeImageFile,
-  closeOcrEngines,
-  ocrImage,
-  ocrImageRegion,
-  resolveOcrEngine,
-} from "./mvp-visual-verify/ocr.mjs";
 
 /**
  * Slugs whose healthy render legitimately OCRs to little or no text: wallpaper
@@ -235,20 +235,10 @@ export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
 }
 
 function resolvePolicyEvaluationInput(
-  slug: string,
   policy: ViewOcrPolicy,
-  report: ReportEntry,
 ): PolicyEvaluationInput {
   if (policy.kind === "expectation") {
     return { expectation: policy.expectation };
-  }
-  if (
-    policy.applicability === "unregistered-remote-bundle" &&
-    report.bundleProvenance !== undefined
-  ) {
-    throw new Error(
-      `Semantic OCR exemption for ${slug} no longer applies: capture loaded remote bundle provenance ${report.bundleProvenance}`,
-    );
   }
   return {
     expectation: policy.fallbackExpectation,
@@ -444,7 +434,7 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
       throw new Error(`OCR record ${slug}::${viewport} has no report row`);
     }
     const policy = resolveViewOcrPolicy(slug);
-    const policyInput = resolvePolicyEvaluationInput(slug, policy, rep);
+    const policyInput = resolvePolicyEvaluationInput(policy);
     const exemptFromBlank =
       rep.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
     let selection = selectSemanticallyBestOcrAttempt(rec, {

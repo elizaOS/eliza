@@ -30,11 +30,8 @@ jobs:
     outputs:
       run_canonical: ${{ steps.resolve.outputs.run_canonical }}
       run_cloud: ${{ steps.resolve.outputs.run_cloud }}
-      run_dev_smoke: ${{ steps.resolve.outputs.run_dev_smoke }}
       run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
       run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
-      run_ui_stories: ${{ steps.resolve.outputs.run_ui_stories }}
-      run_cloud_gateway_discord: ${{ steps.resolve.outputs.run_cloud_gateway_discord }}
     steps:
       - name: Validate promoted dispatch authority
         if: github.event_name == 'workflow_dispatch'
@@ -78,10 +75,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_SHA: ${{ github.sha }}
-        run: node packages/scripts/develop-impact-evidence.mjs plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json --github-output "$GITHUB_OUTPUT"
+        run: node packages/scripts/develop-impact-evidence.ts plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json --github-output "$GITHUB_OUTPUT"
       - name: Select current-run validation
         id: resolve
-        run: node packages/scripts/develop-impact-evidence.mjs resolve --expected .develop-evidence/expected.json --evidence .develop-evidence/current --github-output "$GITHUB_OUTPUT"
+        run: node packages/scripts/develop-impact-evidence.ts resolve --expected .develop-evidence/expected.json --evidence .develop-evidence/current --github-output "$GITHUB_OUTPUT"
   canonical:
     needs: plan
     if: needs.plan.outputs.run_canonical == 'true'
@@ -93,13 +90,6 @@ jobs:
     uses: ./.github/workflows/cloud-tests.yml
     with:
       source_checks_in_canonical_ci: true
-    secrets: inherit
-  dev-smoke:
-    needs: plan
-    if: needs.plan.outputs.run_dev_smoke == 'true'
-    uses: ./.github/workflows/dev-smoke.yml
-    with:
-      concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
   platform-smoke:
     needs: plan
@@ -113,13 +103,6 @@ jobs:
       publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' }}
       concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
-  ui-stories:
-    needs: plan
-    if: needs.plan.outputs.run_ui_stories == 'true'
-    uses: ./.github/workflows/ui-story-gate.yml
-    with:
-      publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' && needs.plan.outputs.run_ui_core != 'true' }}
-    secrets: inherit
   complete:
     name: Complete manifest
     if: ${{ always() && !cancelled() && needs.plan.result == 'success' }}
@@ -127,15 +110,12 @@ jobs:
       - plan
       - canonical
       - cloud
-      - cloud-gateway-discord
-      - dev-smoke
       - platform-smoke
       - ui-core
-      - ui-stories
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
+      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}"}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -161,9 +141,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_SHA: ${{ github.sha }}
-        run: node packages/scripts/develop-impact-evidence.mjs plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json
+        run: node packages/scripts/develop-impact-evidence.ts plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json
       - name: Require one current green row per surface
-        run: node packages/scripts/develop-impact-evidence.mjs record --expected .develop-evidence/expected.json --evidence .develop-evidence/current --observed .develop-evidence/observed.json --results-env SURFACE_RESULTS
+        run: node packages/scripts/develop-impact-evidence.ts record --expected .develop-evidence/expected.json --evidence .develop-evidence/current --observed .develop-evidence/observed.json --results-env SURFACE_RESULTS
       - name: Upload exact manifest evidence
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -204,7 +184,3 @@ jobs:
           )"
           reconcile_run_id="$(jq -er '.workflow_run_id | select(type == "number" and . > 0)' <<< "$response")"
           echo "Handed $SOURCE_SHA to reconciliation run $reconcile_run_id"
-  cloud-gateway-discord:
-    needs: plan
-    if: needs.plan.outputs.run_cloud_gateway_discord == 'true'
-    uses: ./.github/workflows/cloud-gateway-discord.yml

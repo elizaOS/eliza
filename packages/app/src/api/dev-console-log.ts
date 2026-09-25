@@ -44,6 +44,11 @@ export function readDevConsoleLogTail(
   absPath: string,
   options: { maxLines?: number; maxBytes?: number } = {},
 ): ReadDevConsoleLogResult {
+  for (const [name, value] of Object.entries(options)) {
+    if (value !== undefined && !Number.isSafeInteger(value)) {
+      return { ok: false, error: `${name} must be a finite safe integer` };
+    }
+  }
   const maxLines = Math.min(
     Math.max(1, options.maxLines ?? DEFAULT_MAX_LINES),
     ABS_CAP_LINES,
@@ -57,17 +62,36 @@ export function readDevConsoleLogTail(
     if (!fs.existsSync(absPath)) {
       return { ok: false, error: "log file not found" };
     }
-    const st = fs.statSync(absPath);
-    if (!st.isFile()) {
-      return { ok: false, error: "not a file" };
+    const canonicalPath = fs.realpathSync(absPath);
+    const canonicalStateDir = fs.realpathSync(resolveStateDir());
+    const relative = path.relative(canonicalStateDir, canonicalPath);
+    if (
+      path.basename(absPath) !== "desktop-dev-console.log" ||
+      relative.length === 0 ||
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) {
+      return { ok: false, error: "log path is outside the state directory" };
     }
-    const readSize = Math.min(st.size, maxBytes);
-    const start = st.size - readSize;
-    const fd = fs.openSync(absPath, "r");
+    const fd = fs.openSync(canonicalPath, "r");
     try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) return { ok: false, error: "not a file" };
+      const readSize = Math.min(st.size, maxBytes);
+      const start = st.size - readSize;
       const buf = Buffer.alloc(readSize);
-      fs.readSync(fd, buf, 0, readSize, start);
-      const text = buf.toString("utf8");
+      let bytesRead = 0;
+      while (bytesRead < readSize) {
+        const count = fs.readSync(fd, buf, {
+          offset: bytesRead,
+          length: readSize - bytesRead,
+          position: start + bytesRead,
+        });
+        if (count === 0) break;
+        bytesRead += count;
+      }
+      const text = buf.toString("utf8", 0, bytesRead);
       const lines = text.split("\n");
       while (lines.length > 0 && lines[lines.length - 1] === "") {
         lines.pop();

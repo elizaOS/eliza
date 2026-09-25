@@ -13,7 +13,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OUT=""
 KEEP_BUILD=0
-RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.mjs"
+RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,7 +42,7 @@ if [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
-eliza_root="$(node "$repo_root/scripts/eliza-source.mjs")"
+eliza_root="$(node "$repo_root/scripts/eliza-source.ts")"
 if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
     echo "[verify-riscv64] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
     exit 2

@@ -1,82 +1,42 @@
-/**
- * Entry point for the web-search plugin.
- *
- * Exports the `webSearchPlugin` object and the `"web"` search-category
- * definition (`WEB_SEARCH_CATEGORY`). Registering the plugin adds the
- * Tavily-backed `WebSearchService` and registers the category with core's search
- * dispatch (via `runtime.registerSearchCategory`) so web/news queries route
- * here. Opt-in, and registers no actions/providers/evaluators/routes.
- */
+/** Host web search uses the selected Chromium profile before public-network fallback. */
+import type { Action, Plugin } from "@elizaos/core";
+import { searchBrowserFirstWeb } from "./browser-web-search";
+import { createWebSearchEdgePlugin, runWebSearchWith, webSearchEdgeAction } from "./edge";
 
-import type { IAgentRuntime, Plugin, SearchCategoryRegistration } from "@elizaos/core";
-import { ServiceType } from "@elizaos/core";
-
-import { WebSearchService } from "./services/webSearchService";
-
-export const WEB_SEARCH_CATEGORY: SearchCategoryRegistration = {
-    category: "web",
-    label: "Web",
-    description: "Search current web pages through plugin-web-search.",
-    contexts: ["knowledge", "browser"],
-    filters: [
-        {
-            name: "topic",
-            label: "Topic",
-            description: "Tavily search topic.",
-            type: "enum",
-            options: [
-                { label: "General", value: "general" },
-                { label: "News", value: "news" },
-            ],
-        },
-        {
-            name: "searchDepth",
-            label: "Search depth",
-            description: "Tavily search depth.",
-            type: "enum",
-            options: [
-                { label: "Basic", value: "basic" },
-                { label: "Advanced", value: "advanced" },
-            ],
-        },
-        {
-            name: "includeImages",
-            label: "Include images",
-            description: "Include image results when available.",
-            type: "boolean",
-        },
-    ],
-    resultSchemaSummary:
-        "SearchResponse with query, answer, results containing title/url/description/content/score, and optional images.",
-    capabilities: ["web", "news", "current-information"],
-    source: "plugin-web-search",
-    serviceType: ServiceType.WEB_SEARCH,
+export const webSearchAction: Action = {
+    ...webSearchEdgeAction,
+    description:
+        "Search the current web using the agent's explicitly authorized Chromium profile. Uses public keyless search only when no eligible browser is available before dispatch. Dispatched searches are never replayed through another provider.",
+    handler: async (runtime, message, state, options, callback) => {
+        const action = createWebSearchEdgePlugin((query) =>
+            runWebSearchWith(query, (value) => searchBrowserFirstWeb(runtime, value))
+        ).actions?.[0];
+        if (!action) throw new Error("WEB_SEARCH action is missing");
+        return action.handler(runtime, message, state, options, callback);
+    },
 };
-
-export function registerWebSearchCategory(runtime: IAgentRuntime): void {
-    try {
-        runtime.getSearchCategory(WEB_SEARCH_CATEGORY.category, {
-            includeDisabled: true,
-        });
-        return;
-    } catch {
-        runtime.registerSearchCategory(WEB_SEARCH_CATEGORY);
-    }
-}
-
 export const webSearchPlugin: Plugin = {
     name: "webSearch",
-    description: "Search the web and get news",
-    init: async (_config, runtime) => {
-        registerWebSearchCategory(runtime);
-    },
-    async dispose(runtime) {
-        const svc = runtime.getService<WebSearchService>(WebSearchService.serviceType);
-        await svc?.stop();
-    },
-    actions: [],
-    providers: [],
-    services: [WebSearchService],
+    description: "Authorized browser-first web search with public keyless fallback.",
+    actions: [webSearchAction],
 };
-
 export default webSearchPlugin;
+
+export {
+    createWebSearchEdgePlugin,
+    runWebSearchEdge,
+    WEB_SEARCH_EDGE_COMPATIBILITY,
+    type WebSearchEdgeRunner,
+    type WebSearchSourceEvidence,
+    webSearchEdgeAction,
+    webSearchEdgePlugin,
+    webSearchSourceEvidence,
+    webSearchSourceUrls,
+} from "./edge";
+export {
+    type KeylessWebSearchFetch,
+    type KeylessWebSearchOptions,
+    type KeylessWebSearchProvider,
+    type KeylessWebSearchResult,
+    searchKeylessWeb,
+} from "./keyless-web-search";

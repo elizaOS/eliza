@@ -4,18 +4,10 @@
  * with a typed runtime boundary harness.
  */
 import { Buffer } from "node:buffer";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ElizaError, MemoryType, ModelType } from "@elizaos/core";
 import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
-import { ElizaError } from "../../../../../packages/core/src/errors.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import {
-  MemoryType,
-  ModelType,
-} from "../../../../../packages/core/src/types/index.ts";
 import {
   createDocumentMemory,
   extractTextFromDocument,

@@ -16,5 +16,7 @@ export {
 export { KnowledgeDocumentsView } from "./components/documents/KnowledgeDocumentsView.js";
 export { KnowledgeView } from "./components/documents/KnowledgeView.js";
 export * from "./plugin.js";
+export { knowledgePlugin as default } from "./plugin.js";
+export { registerKnowledgeApp } from "./register.js";
 export * from "./routes.js";
 export * from "./service-loader.js";

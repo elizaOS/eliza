@@ -6,8 +6,10 @@ import {
   ApprovalDispatchControlStore,
   createApprovalQueue,
 } from "@elizaos/plugin-assistant";
-import { CalendarService } from "@elizaos/plugin-calendar";
-import { LinkedCalendarRepository } from "@elizaos/plugin-calendar/service/linked-calendar-sync";
+import {
+  CalendarService,
+  LinkedCalendarRepository,
+} from "@elizaos/plugin-calendar";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

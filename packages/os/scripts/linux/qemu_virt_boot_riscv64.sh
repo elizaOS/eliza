@@ -138,7 +138,7 @@ esac
 [ "${TIMEOUT_SECS}" -ge 1 ] || die "--timeout must be >= 1"
 
 if [ -z "$EVIDENCE_PATH" ] || [ -z "$TRANSCRIPT_PATH" ]; then
-    eliza_root="$(node "${HERE}/../eliza-source.mjs")"
+    eliza_root="$(node "${HERE}/../eliza-source.ts")"
     output_root="$(node --input-type=module -e '
         const { testOutputPath } = await import(process.argv[1]);
         console.log(testOutputPath("os-riscv64-boot"));

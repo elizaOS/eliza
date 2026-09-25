@@ -11,6 +11,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { BenchmarkEmbeddingCapability } from "./embedding-capability.js";
 import type { BenchmarkContext, CapturedAction } from "./plugin";
 
 export { coerceParams } from "./params";
@@ -90,6 +91,7 @@ export interface BenchmarkOutboxEntry {
  */
 export interface BenchmarkLlmCallUsage {
   modelType: string;
+  model?: string;
   provider?: string;
   source?: string;
   promptTokens: number;
@@ -181,6 +183,7 @@ export interface BenchmarkTurnMetadata {
   release_evidence: boolean;
   embedding_mode: "disabled-text-only" | "runtime-provider" | "stand-in";
   semantic_memory_enabled: boolean;
+  embedding_capability: BenchmarkEmbeddingCapability;
   benchmark: string;
   task_id: string;
   room_id: UUID;
@@ -391,6 +394,11 @@ export function normalizeBenchmarkModelUsage(
 
   return {
     modelType,
+    ...(typeof payload.model === "string" && payload.model.trim()
+      ? { model: payload.model.trim() }
+      : typeof payload.modelName === "string" && payload.modelName.trim()
+        ? { model: payload.modelName.trim() }
+        : {}),
     ...(provider ? { provider } : {}),
     ...(typeof payload.source === "string" && payload.source.trim().length > 0
       ? { source: payload.source.trim() }
@@ -976,6 +984,7 @@ function benchmarkToolName(tool: Record<string, unknown>): string {
 }
 
 export function benchmarkTurnMetadata(params: {
+  embeddingCapability?: BenchmarkEmbeddingCapability;
   session: BenchmarkSession;
   step: number;
   context?: Record<string, unknown>;
@@ -1021,7 +1030,12 @@ export function benchmarkTurnMetadata(params: {
     stand_in: standIn,
     release_evidence: !standIn,
     embedding_mode: embeddingMode,
-    semantic_memory_enabled: embeddingMode === "runtime-provider",
+    semantic_memory_enabled:
+      embeddingMode === "runtime-provider" &&
+      params.embeddingCapability?.status === "available",
+    embedding_capability: params.embeddingCapability ?? {
+      status: "unverified",
+    },
     benchmark: params.session.benchmark,
     task_id: params.session.taskId,
     room_id: params.session.roomId,

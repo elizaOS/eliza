@@ -9,10 +9,12 @@ import {
   type CreateLifeOpsCalendarEventRequest,
   LIFEOPS_CALENDAR_WINDOW_PRESETS,
   type LifeOpsCalendarEvent,
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/core/contracts/calendar";
+import {
   type LifeOpsConnectorGrant,
   type LifeOpsGmailMessageSummary,
-  type LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/personal-assistant";
 import {
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
   GOOGLE_GMAIL_READ_SCOPE,
@@ -86,6 +88,7 @@ export function normalizeCalendarDateTimeInTimeZone(
   value: unknown,
   field: string,
   timeZone: string,
+  disambiguation: "compatible" | "reject" = "compatible",
 ): string | undefined {
   if (value === undefined || value === null || value === "") {
     return undefined;
@@ -117,12 +120,16 @@ export function normalizeCalendarDateTimeInTimeZone(
     if (hour > 23 || minute > 59 || second > 59) {
       fail(400, `${field} must be a valid ISO datetime`);
     }
-    const localized = buildUtcDateFromLocalParts(timeZone, {
-      ...date,
-      hour,
-      minute,
-      second,
-    });
+    const localized = buildUtcDateFromLocalParts(
+      timeZone,
+      {
+        ...date,
+        hour,
+        minute,
+        second,
+      },
+      disambiguation,
+    );
     localized.setUTCMilliseconds(millisecond);
     return localized.toISOString();
   }
@@ -426,13 +433,18 @@ export function resolveCalendarEventRange(
     request.startAt,
     "startAt",
     timeZone,
+    "reject",
   );
   if (!startAt) {
     fail(400, "startAt is required when windowPreset is not provided");
   }
   const endAt =
-    normalizeCalendarDateTimeInTimeZone(request.endAt, "endAt", timeZone) ??
-    addMinutes(new Date(startAt), durationMinutes).toISOString();
+    normalizeCalendarDateTimeInTimeZone(
+      request.endAt,
+      "endAt",
+      timeZone,
+      "reject",
+    ) ?? addMinutes(new Date(startAt), durationMinutes).toISOString();
   if (Date.parse(endAt) <= Date.parse(startAt)) {
     fail(400, "endAt must be later than startAt");
   }

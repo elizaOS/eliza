@@ -7,33 +7,19 @@
  * Environment variables always override persisted values.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
+import {
+  deriveAgentVaultId,
+  resolveCanonicalStateDir,
+} from "../security/agent-vault-id";
 import type {
   PlatformSecureStore,
   SecureStoreSecretKind,
 } from "../security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../security/platform-secure-store-node";
-
-// Inlined copy of @elizaos/core's state-dir helper so this module doesn't pull
-// the heavier core runtime-composition graph. Env reads go through the
-// alias-aware `readAliasedEnv` so branded prefixes (e.g. `MILADY_STATE_DIR`)
-// resolve from the alias table, with no `process.env` mirror involved.
-function resolveStateDir(): string {
-  const explicit = readAliasedEnv("ELIZA_STATE_DIR");
-  if (explicit) return explicit;
-  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
-  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
-  const stateHome = xdgStateHome
-    ? path.isAbsolute(xdgStateHome)
-      ? xdgStateHome
-      : path.join(homedir(), xdgStateHome)
-    : path.join(homedir(), ".local", "state");
-  return path.join(stateHome, namespace);
-}
 
 export interface PersistedStewardCredentials {
   apiUrl: string;
@@ -70,20 +56,7 @@ interface StewardCredentialPersistenceOptions {
 }
 
 function resolveCredentialsPath(): string {
-  return path.join(resolveStateDir(), CREDENTIALS_FILENAME);
-}
-
-function deriveStewardVaultId(): string {
-  const resolved = path.resolve(resolveStateDir());
-  let canonicalStateDir = resolved;
-  try {
-    canonicalStateDir = fs.realpathSync(resolved);
-  } catch {
-    // Directory may not exist before first save.
-  }
-  const hash = createHash("sha256").update(canonicalStateDir, "utf8").digest();
-  const token = Buffer.from(hash).toString("base64url").slice(0, 16);
-  return `mldy1-${token}`;
+  return path.join(resolveCanonicalStateDir(), CREDENTIALS_FILENAME);
 }
 
 function createStewardSecureStore(
@@ -299,7 +272,7 @@ export async function loadStewardCredentials(
     return typeof value === "string" && value.trim().length > 0;
   });
   if (await store.isAvailable()) {
-    const vaultId = deriveStewardVaultId();
+    const vaultId = deriveAgentVaultId();
     await migrateLegacyFileSecrets(store, vaultId, parsed);
 
     const secureValues: Partial<
@@ -368,7 +341,7 @@ export async function saveStewardCredentials(
       "platform secure store is unavailable; Steward credentials were not persisted",
     );
   }
-  const vaultId = deriveStewardVaultId();
+  const vaultId = deriveAgentVaultId();
   const snapshot = await snapshotStewardSecrets(store, vaultId);
   const attempted: StewardCredentialSecretField[] = [];
   try {

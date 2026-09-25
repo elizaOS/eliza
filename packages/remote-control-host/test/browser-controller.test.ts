@@ -5,7 +5,7 @@ import {
   copyRemoteCommandBinding,
   type RemoteControllerPublicIdentity,
   type SignedRemoteCommand,
-} from "@elizaos/shared/contracts/remote-control";
+} from "@elizaos/core/contracts/remote-control";
 import type { BrowserTarget } from "../../../plugins/plugin-browser/src/browser-service";
 import {
   AgentRemoteBrowserController,
@@ -54,6 +54,7 @@ function fixture() {
   let status = "active",
     revision = 1,
     enqueues = 0,
+    pairings = 0,
     forged = false;
   let command: SignedRemoteCommand;
   const host = {
@@ -78,6 +79,7 @@ function fixture() {
       let result: unknown;
       if (path.endsWith("/hosts")) result = { ownerId, hosts: [host] };
       else if (path.endsWith("/pair")) {
+        pairings++;
         controller = JSON.parse(String(init.body)).controller;
         result = {
           ownerId,
@@ -192,6 +194,9 @@ function fixture() {
     secureStore,
     cloud,
     sessionId,
+    get pairings() {
+      return pairings;
+    },
     get enqueues() {
       return enqueues;
     },
@@ -224,6 +229,41 @@ async function pair(f: ReturnType<typeof fixture>) {
   return target;
 }
 describe("agent remote browser controller", () => {
+  it("rejects a different managed cloud owner before pairing or storing authority", async () => {
+    const f = fixture();
+    await expect(
+      f.instance.pair(
+        {
+          apiBaseUrl: "https://cloud.example",
+          authToken: "other-owner-token",
+          deviceId: "android-device",
+          profileId: "profile-1",
+          preferred: true,
+        },
+        randomUUID(),
+      ),
+    ).rejects.toThrow("authenticated agent owner");
+    expect(f.pairings).toBe(0);
+    expect(f.slots.size).toBe(0);
+    expect(f.targets.size).toBe(0);
+    expect(f.instance.status()).toEqual({ configured: false });
+    expect(f.enqueues).toBe(0);
+  });
+  it("refuses persisted authority for a different managed owner before registering a target", async () => {
+    const f = fixture();
+    await pair(f);
+    f.targets.clear();
+    const restored = new AgentRemoteBrowserController(
+      f.runtime,
+      f.secureStore,
+      () => f.cloud,
+    );
+    await expect(restored.restore(randomUUID())).rejects.toThrow(
+      "different agent owner",
+    );
+    expect(f.targets.size).toBe(0);
+    expect(restored.status()).toEqual({ configured: false });
+  });
   it("pairs persisted exact profile, dispatches encrypted once, verifies full signed result, and restores preference", async () => {
     const f = fixture(),
       target = await pair(f);

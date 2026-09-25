@@ -3,13 +3,15 @@
  * adapter, including repeated updates after the persisted revision advances.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "./errors";
 import { AgentRuntime } from "./runtime";
-import type { Character, UUID, World } from "./types";
+import type { Character } from "./types/agent.js";
+import type { World } from "./types/environment.js";
+import type { UUID } from "./types/primitives.js";
 import { stringToUuid } from "./utils";
+import { stringToUuid as sqliteTestAgentId } from "./utils.js";
 
 describe("AgentRuntime.ensureWorldExists", () => {
 	it("rereads and merges after a concurrent creator wins the unique insert", async () => {

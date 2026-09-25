@@ -4,12 +4,9 @@
  * Centralises token extraction from multiple header formats and
  * timing-safe comparison so route handlers don't reimplement it.
  */
-
 import type http from "node:http";
 import { type RoleGateRole, roleRank } from "@elizaos/core";
-import { resolveApiToken } from "@elizaos/shared";
-// AuthStore is statically imported elsewhere in the package; the dynamic
-// import below was INEFFECTIVE_DYNAMIC_IMPORT.
+import { resolveApiToken } from "@elizaos/core/runtime-env";
 import {
   type AuthIdentityRow,
   type AuthRepository,
@@ -37,6 +34,8 @@ import {
 import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
 
+// AuthStore is statically imported elsewhere in the package; the dynamic
+// import below was INEFFECTIVE_DYNAMIC_IMPORT.
 export {
   type AuthContextSource,
   type EnsureSessionOptions,
@@ -48,11 +47,9 @@ export {
   getProvidedApiToken,
   tokenMatches,
 } from "./auth/tokens.js";
-
 export interface CompatStateLike {
   current: (EmbedSessionSecretRuntime & AuthRuntimeSource) | null;
 }
-
 /**
  * Read the configured API token from env (`ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`).
  * Returns `null` when no token is configured (open access).
@@ -60,7 +57,6 @@ export interface CompatStateLike {
 export function getCompatApiToken(): string | null {
   return resolveApiToken(process.env);
 }
-
 /**
  * Resolve a request's embed session principal (#9947), or `null`.
  *
@@ -83,7 +79,6 @@ export function resolveEmbedPrincipal(
   if (!provided) return null;
   return verifyEmbedSessionToken(provided, secret, now);
 }
-
 /**
  * Map a verified embed principal to a boundary role. OWNER→OWNER; ADMIN→USER —
  * non-escalating, because the HTTP boundary has no ADMIN tier and ADMIN ranks
@@ -95,17 +90,20 @@ export function embedBoundaryRole(
   if (!claims) return null;
   return claims.role === "OWNER" ? "OWNER" : "USER";
 }
-
 // ── Auth attempt rate limiter ─────────────────────────────────────────────────
 const AUTH_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const AUTH_RATE_LIMIT_MAX = 20; // max failed attempts per window per IP
-const authAttempts = new Map<string, { count: number; resetAt: number }>();
-
+const authAttempts = new Map<
+  string,
+  {
+    count: number;
+    resetAt: number;
+  }
+>();
 /** Clear all auth rate limit state. Exported for test use only. */
 export function _resetAuthRateLimiter(): void {
   authAttempts.clear();
 }
-
 const authSweepTimer = setInterval(
   () => {
     const now = Date.now();
@@ -118,7 +116,6 @@ const authSweepTimer = setInterval(
 if (typeof authSweepTimer === "object" && "unref" in authSweepTimer) {
   authSweepTimer.unref();
 }
-
 function isAuthRateLimited(ip: string | null): boolean {
   const key = ip ?? "unknown";
   const now = Date.now();
@@ -126,7 +123,6 @@ function isAuthRateLimited(ip: string | null): boolean {
   if (!entry || now > entry.resetAt) return false;
   return entry.count >= AUTH_RATE_LIMIT_MAX;
 }
-
 function recordFailedAuth(ip: string | null): void {
   const key = ip ?? "unknown";
   const now = Date.now();
@@ -140,7 +136,6 @@ function recordFailedAuth(ip: string | null): void {
     entry.count += 1;
   }
 }
-
 /**
  * Gate a request behind the configured API token (sync, bearer-only).
  *
@@ -155,30 +150,24 @@ export function ensureCompatApiAuthorized(
   res: http.ServerResponse,
 ): boolean {
   if (isTrustedLocalRequest(req)) return true;
-
   const expectedToken = getCompatApiToken();
   if (!expectedToken) {
     sendJsonError(res, 401, "Unauthorized");
     return false;
   }
-
   const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     sendJsonError(res, 429, "Too many authentication attempts");
     return false;
   }
-
   const providedToken = getProvidedApiToken(req);
   if (providedToken && tokenMatches(expectedToken, providedToken)) return true;
-
   recordFailedAuth(ip);
   sendJsonError(res, 401, "Unauthorized");
   return false;
 }
-
 /** State-changing HTTP verbs that require CSRF enforcement on cookie auth. */
 const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
 /**
  * Cookie-aware authorisation gate. Tries (in order):
  *   1. valid `eliza_session` cookie → session in DB → authorised.
@@ -223,22 +212,17 @@ export async function ensureCompatApiAuthorizedAsync(
   }
   return true;
 }
-
 /** Returns true when NODE_ENV indicates a local development environment. */
 export function isDevEnvironment(): boolean {
   const env = process.env.NODE_ENV?.trim().toLowerCase();
   return env === "development" || env === "dev";
 }
-
 // ── Cookie / session helpers ──────────────────────────────────────────────────
-
 const SESSION_COOKIE_NAME = "eliza_session";
-
 /** Cookie name used by the session model. Exported for tests + UI client. */
 export function getSessionCookieName(): string {
   return SESSION_COOKIE_NAME;
 }
-
 /**
  * Read the named cookie from the `cookie` header. Returns `null` when the
  * header is missing or the cookie is not set.
@@ -269,7 +253,6 @@ export function readCookie(
   }
   return null;
 }
-
 /**
  * Resolved auth context for a sensitive request.
  *
@@ -285,10 +268,20 @@ export function readCookie(
  * per `status` and not proceed.
  */
 export type AuthSessionOrBootstrapResult =
-  | { kind: "session"; sessionId: string }
-  | { kind: "bootstrap"; token: string; bearer: string }
-  | { kind: "denied"; status: 401 | 403 | 429; reason: string };
-
+  | {
+      kind: "session";
+      sessionId: string;
+    }
+  | {
+      kind: "bootstrap";
+      token: string;
+      bearer: string;
+    }
+  | {
+      kind: "denied";
+      status: 401 | 403 | 429;
+      reason: string;
+    };
 /**
  * Decide whether a request carries a valid session cookie or a bootstrap
  * bearer eligible for exchange.
@@ -307,7 +300,6 @@ export function ensureAuthSessionOrBootstrap(
   if (isAuthRateLimited(ip)) {
     return { kind: "denied", status: 429, reason: "rate_limited" };
   }
-
   const cookie = readCookie(req, SESSION_COOKIE_NAME);
   if (cookie) {
     // Caller is expected to look up the session by id and confirm it is
@@ -315,16 +307,13 @@ export function ensureAuthSessionOrBootstrap(
     // DB lookup happens in the route handler with `AuthStore.findSession`.
     return { kind: "session", sessionId: cookie };
   }
-
   const bearer = getProvidedApiToken(req);
   if (bearer) {
     return { kind: "bootstrap", token: bearer, bearer };
   }
-
   recordFailedAuth(ip);
   return { kind: "denied", status: 401, reason: "auth_required" };
 }
-
 // ── Role-aware boundary helpers ───────────────────────────────────────────────
 //
 // The HTTP boundary is binary today: `ensureCompatApiAuthorized` /
@@ -333,7 +322,6 @@ export function ensureAuthSessionOrBootstrap(
 // no new auth scheme — so callers can express a *minimum* role instead of just
 // "authenticated". The role vocabulary + ranking is owned by `@elizaos/core`
 // (`roleRank` over the canonical rank table); we never define ranks here.
-
 /**
  * Classify the caller into a canonical boundary role using the existing trust
  * + token primitives in this module.
@@ -355,7 +343,6 @@ function resolveBoundaryRole(
   if (isTrustedLocalRequest(req)) {
     return "OWNER";
   }
-
   // #12087 Item 29: a presented API token only elevates a remote caller to OWNER
   // when ELIZA_REQUIRE_LOCAL_AUTH=1, matching the async ensureRouteMinRole DB
   // path. Without that flag the sync helper would grant OWNER for a bare token
@@ -369,10 +356,8 @@ function resolveBoundaryRole(
       }
     }
   }
-
   return "NONE";
 }
-
 /**
  * Returns `true` iff the caller's boundary role ranks at or above `minRole`.
  *
@@ -391,7 +376,6 @@ function ensureMinRole(
 ): boolean {
   return roleRank(resolveBoundaryRole(req, env)) >= roleRank(minRole);
 }
-
 export type RouteRoleResolution =
   | {
       ok: true;
@@ -399,8 +383,11 @@ export type RouteRoleResolution =
       identityId?: string;
       principal?: string;
     }
-  | { ok: false; status: 401 | 403 | 429; reason: string };
-
+  | {
+      ok: false;
+      status: 401 | 403 | 429;
+      reason: string;
+    };
 type AuthorizedRouteRoleOptions =
   | {
       state: CompatStateLike;
@@ -422,7 +409,6 @@ type AuthorizedRouteRoleOptions =
       now?: number;
       readSetting?: (key: string) => unknown;
     };
-
 /**
  * #12087 Item 15: the single identity-kind → canonical role mapper. Both the
  * session-route response (auth-session-routes) and server-side route-role
@@ -436,7 +422,6 @@ export function roleForIdentityKind(
   if (kind === "machine") return "USER";
   return "NONE";
 }
-
 async function resolveSessionRole(
   store: AuthRepository,
   identityId: string,
@@ -446,7 +431,6 @@ async function resolveSessionRole(
     .catch(denyOnAuthStoreError("resolveSessionRole/findIdentity"));
   return roleForIdentityKind(identity?.kind);
 }
-
 export interface SessionTokenRoleOptions {
   /** Session store; wins over `state` when both are supplied. */
   store?: AuthRepository | null;
@@ -456,7 +440,6 @@ export interface SessionTokenRoleOptions {
   /** `[Auth]` log scope for the fail-closed store-read denial. */
   scope?: string;
 }
-
 /**
  * Resolve a bare session-id bearer to its boundary role — the bearer-session
  * branch of {@link resolveAuthorizedRouteRole}, shared so non-HTTP entry
@@ -471,24 +454,26 @@ export interface SessionTokenRoleOptions {
 export async function resolveSessionTokenRole(
   provided: string,
   options: SessionTokenRoleOptions,
-): Promise<Extract<RouteRoleResolution, { ok: true }> | null> {
+): Promise<Extract<
+  RouteRoleResolution,
+  {
+    ok: true;
+  }
+> | null> {
   const store = options.store ?? authStoreForRuntime(options.state?.current);
   if (!store) return null;
-
   const session = await findActiveSession(store, provided, options.now).catch(
     denyOnAuthStoreError(
       options.scope ?? "resolveSessionTokenRole/bearerSession",
     ),
   );
   if (!session) return null;
-
   return {
     ok: true,
     role: await resolveSessionRole(store, session.identityId),
     identityId: session.identityId,
   };
 }
-
 export async function resolveAuthorizedRouteRole(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   options: AuthorizedRouteRoleOptions,
@@ -499,17 +484,14 @@ export async function resolveAuthorizedRouteRole(
   if (options.allowTrustedLocalBypass !== false && isTrustedLocalRequest(req)) {
     return { ok: true, role: "OWNER" };
   }
-
   const ip = req.socket.remoteAddress ?? null;
   const state = "state" in options ? options.state : undefined;
   const store =
     "store" in options && options.store
       ? options.store
       : authStoreForRuntime(state?.current);
-
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
-
   const sessionCookie =
     !store || options.allowCookieAuth === false
       ? null
@@ -536,7 +518,6 @@ export async function resolveAuthorizedRouteRole(
       };
     }
   }
-
   const provided =
     options.allowBearerAuth === false ? null : getProvidedApiToken(req);
   if (store && provided) {
@@ -549,7 +530,6 @@ export async function resolveAuthorizedRouteRole(
       return sessionFromBearer;
     }
   }
-
   // A known, active session is not a failed authentication attempt. Resolve
   // it before consulting the failure bucket so a newly paired device cannot
   // remain locked out by the shell's pre-pairing API probes (especially when
@@ -562,22 +542,18 @@ export async function resolveAuthorizedRouteRole(
       reason: "Too many authentication attempts",
     };
   }
-
   if (!store) {
     const expectedToken = getCompatApiToken();
     if (!expectedToken) {
       recordFailedAuth(ip);
       return { ok: false, status: 401, reason: "Unauthorized" };
     }
-
     if (provided && tokenMatches(expectedToken, provided)) {
       return { ok: true, role: "OWNER" };
     }
-
     recordFailedAuth(ip);
     return { ok: false, status: 401, reason: "Unauthorized" };
   }
-
   if (provided) {
     const expectedToken = getCompatApiToken();
     if (
@@ -587,7 +563,6 @@ export async function resolveAuthorizedRouteRole(
     ) {
       return { ok: true, role: "OWNER" };
     }
-
     // Embed session token → its verified boundary role (OWNER→OWNER,
     // ADMIN→USER). Fails closed on a tampered/expired token or no secret.
     const embedPrincipal = resolveEmbedPrincipal(
@@ -606,11 +581,9 @@ export async function resolveAuthorizedRouteRole(
       };
     }
   }
-
   recordFailedAuth(ip);
   return { ok: false, status: 401, reason: "Unauthorized" };
 }
-
 /**
  * Cookie/session-aware route guard with a canonical minimum role.
  *
@@ -624,22 +597,22 @@ export async function ensureRouteMinRole(
   res: http.ServerResponse,
   state: CompatStateLike,
   minRole: RoleGateRole,
-  options: { skipCsrf?: boolean; now?: number } = {},
+  options: {
+    skipCsrf?: boolean;
+    now?: number;
+  } = {},
 ): Promise<boolean> {
   const resolved = await resolveAuthorizedRouteRole(req, { ...options, state });
   if (!resolved.ok) {
     sendJsonError(res, resolved.status, resolved.reason);
     return false;
   }
-
   if (roleRank(resolved.role) < roleRank(minRole)) {
     sendJsonError(res, 403, "Insufficient role");
     return false;
   }
-
   return true;
 }
-
 /**
  * Gate a sensitive route. Without a configured token, only trusted same-machine
  * dashboard requests are allowed. Remote callers need a real auth method.
@@ -665,7 +638,6 @@ export function ensureCompatSensitiveRouteAuthorized(
   }
   return ensureCompatApiAuthorized(req, res);
 }
-
 /**
  * Canonical async route guard.
  *
@@ -682,7 +654,10 @@ export async function ensureRouteAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   res: http.ServerResponse,
   state: CompatStateLike,
-  options: { skipCsrf?: boolean; now?: number } = {},
+  options: {
+    skipCsrf?: boolean;
+    now?: number;
+  } = {},
 ): Promise<boolean> {
   return ensureRouteMinRole(req, res, state, "USER", options);
 }

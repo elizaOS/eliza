@@ -66,7 +66,7 @@ describe("root app registration", () => {
       export function registerApp() { appendFileSync(new URL('./receipt', import.meta.url), 'registered'); }
     `,
     );
-    const runner = path.join(directory, "runner.mjs");
+    const runner = path.join(directory, "runner.ts");
     writeFileSync(
       runner,
       `
@@ -93,7 +93,7 @@ describe("root app registration", () => {
       { export: "registerApp" },
       "export const registerApp = 42;",
     );
-    const runner = path.join(directory, "runner.mjs");
+    const runner = path.join(directory, "runner.ts");
     writeFileSync(
       runner,
       `

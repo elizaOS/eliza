@@ -12,6 +12,18 @@ import { Miniflare } from "miniflare";
 import { z } from "zod";
 import { createPrivateWorkerdFailureCapture } from "../test/workerd-failure-capture";
 
+function modelSystemContent(requests: Array<Record<string, unknown>>): string {
+  return requests
+    .flatMap((request) =>
+      z
+        .array(z.object({ role: z.string(), content: z.unknown() }))
+        .parse(request.messages),
+    )
+    .filter((message) => message.role === "system")
+    .map((message) => z.string().parse(message.content))
+    .join("\n\n");
+}
+
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
@@ -590,15 +602,22 @@ describe("Shared Eliza runtime in Workerd", () => {
                 index: 0,
                 message: {
                   role: "assistant",
-                  content: JSON.stringify({
-                    success: true,
-                    decision: "FINISH",
-                    thought: "The untrusted sender cannot use a USER action.",
-                    messageToUser:
-                      "Image generation requires an authenticated Personal Shared user.",
-                  }),
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `workerd-image-${probe}-refusal`,
+                      type: "function",
+                      function: {
+                        name: "REPLY",
+                        arguments: JSON.stringify({
+                          text: "Image generation requires an authenticated Personal Shared user.",
+                          eliza_turn_scope: "final",
+                        }),
+                      },
+                    },
+                  ],
                 },
-                finish_reason: "stop",
+                finish_reason: "tool_calls",
               },
             ],
             usage: {
@@ -1072,7 +1091,7 @@ describe("Shared Eliza runtime in Workerd", () => {
 
     const imageRequests = modelRequests.slice(requestsBefore);
     expect(imageRequests).toHaveLength(2);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nUSER:");
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1171,8 +1190,10 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.mediaRequests).toEqual([]);
 
     const imageRequests = modelRequests.slice(requestsBefore);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(imageRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nGUEST:");
+    expect(modelSystemContent(imageRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1227,8 +1248,12 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(toolNames).not.toContain("WEB_SEARCH");
     expect(toolNames).not.toContain("REMINDERS");
     expect(toolNames).not.toContain("TODO");
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     expect(systemLifecyclePlannerRequests).toBeGreaterThanOrEqual(2);
   }, 120_000);
 
@@ -1250,14 +1275,19 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(result.actionResults).toBeUndefined();
     const lifecycleRequests = modelRequests.slice(requestsBefore);
     expect(lifecycleRequests).toHaveLength(1);
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = (
       (lifecycleRequests[0]?.tools as
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
-    expect(toolNames).toEqual(["HANDLE_RESPONSE", "READ_CONTEXT"]);
+    // This first lifecycle turn has no authorized context references to read.
+    expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(

@@ -268,8 +268,8 @@ class OpenClawTerminalAgent:
                 feedback = (
                     f"$ {command}\n"
                     f"exit={cmd_result.exit_code}\n"
-                    f"stdout={cmd_result.stdout[:2000]}\n"
-                    f"stderr={cmd_result.stderr[:1000]}"
+                    f"stdout={cmd_result.stdout}\n"
+                    f"stderr={cmd_result.stderr}"
                 )
                 self._record("user", f"Previous command result:\n{feedback}")
 

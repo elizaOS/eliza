@@ -12,23 +12,16 @@
  * Fake runtime over real service code, no live model; the turn runs the
  * deterministic no-model reply path.
  */
-import { describe, expect, it, vi } from "vitest";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
-import { getTrajectoryContext } from "../../../../packages/core/src/trajectory-context.ts";
-import type {
-  Room,
-  World,
-} from "../../../../packages/core/src/types/environment.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
+
+import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import {
+  drainPostDeliveryTasks,
   EventType,
+  getTrajectoryContext,
   ModelType,
-} from "../../../../packages/core/src/types/index.ts";
+  TurnControllerRegistry,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { embedRecallQuery } from "../features/documents/recall-embed.ts";
 import { DefaultMessageService } from "./message.ts";
 
@@ -149,6 +142,10 @@ function makeRuntime(opts: RuntimeOptions = {}) {
     getModel: vi.fn(() => null),
     isCheckShouldRespondEnabled: vi.fn(() => false),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     getMemories: vi.fn(async () => []),
     getRoomsByIds: vi.fn(async () => [room]),
     createMemory: vi.fn(async (memory: Memory) => memory.id),

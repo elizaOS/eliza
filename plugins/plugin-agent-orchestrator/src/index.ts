@@ -8,62 +8,23 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
-import type {
-  Character,
-  IAgentRuntime,
-  Memory,
-  ServiceClass,
-  TargetInfo,
-  ThreadHandle,
-  UUID,
-} from "@elizaos/core";
 import {
+  type Character,
   createUniqueUuid,
   EventType,
+  type IAgentRuntime,
+  type Memory,
   ModelType,
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
+  type ServiceClass,
+  type TargetInfo,
+  type ThreadHandle,
   toWellFormedUnicode,
+  type UUID,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
-import { taskCoordinatorPlugin as taskCoordinatorViews } from "./ui/plugin.js";
-
-// Register coding-agent HTTP routes with the runtime route registry.
-// Re-exporting the registration sentinel (rather than a side-effect-only
-// `import "./register-routes.js"`) keeps Bun.build's node-target
-// tree-shaker from dropping the module — a public re-export is a
-// value-flow edge no bundler can prune, and the registration runs as a
-// side-effect of evaluating that module. Without this the entire
-// `/api/coding-agents/*` surface 404s on the node bundle.
-export { codingAgentRouteRegistration } from "./register-routes.js";
-export {
-  cloneLanePlan,
-  collisionProviderFromWorkspaceService,
-  createDeterministicLanePlan,
-  type ExternalCollision,
-  extractScopePaths,
-  type LaneCollision,
-  type LaneCollisionProvider,
-  type LanePlan,
-  type LanePlannerInput,
-  LanePlannerService,
-  type LaneReadiness,
-  type LaneSpec,
-  laneReadiness,
-  sanitizeLaneBranchName,
-  scopeSetsOverlap,
-  shouldUseLanePlanner,
-  validateLaneDependencyGraph,
-} from "./services/lane-planner.js";
-// Shared relay sanitizer (issue elizaOS/eliza#11578). Re-exported from the
-// package root so packages/agent's swarm-synthesis path can strip captured
-// tool-output envelopes with the SAME implementation the sub-agent router uses.
-export {
-  sanitizeCompletionRelay,
-  stripToolTranscript,
-} from "./services/transcript-sanitizer.js";
-
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { isLocalCodeExecutionAllowed } from "@elizaos/core/platform/sandbox-policy";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
@@ -102,14 +63,49 @@ import {
 import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
+import { taskCoordinatorPlugin as taskCoordinatorViews } from "./ui/plugin.js";
 import { AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS } from "./widget-manifest.js";
+
+// Register coding-agent HTTP routes with the runtime route registry.
+// Re-exporting the registration sentinel (rather than a side-effect-only
+// `import "./register-routes.js"`) keeps Bun.build's node-target
+// tree-shaker from dropping the module — a public re-export is a
+// value-flow edge no bundler can prune, and the registration runs as a
+// side-effect of evaluating that module. Without this the entire
+// `/api/coding-agents/*` surface 404s on the node bundle.
+export { codingAgentRouteRegistration } from "./register-routes.js";
+export {
+  cloneLanePlan,
+  collisionProviderFromWorkspaceService,
+  createDeterministicLanePlan,
+  type ExternalCollision,
+  extractScopePaths,
+  type LaneCollision,
+  type LaneCollisionProvider,
+  type LanePlan,
+  type LanePlannerInput,
+  LanePlannerService,
+  type LaneReadiness,
+  type LaneSpec,
+  laneReadiness,
+  sanitizeLaneBranchName,
+  scopeSetsOverlap,
+  shouldUseLanePlanner,
+  validateLaneDependencyGraph,
+} from "./services/lane-planner.js";
+// Shared relay sanitizer (issue elizaOS/eliza#11578). Re-exported from the
+// package root so packages/agent's swarm-synthesis path can strip captured
+// tool-output envelopes with the SAME implementation the sub-agent router uses.
+export {
+  sanitizeCompletionRelay,
+  stripToolTranscript,
+} from "./services/transcript-sanitizer.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
     value !== null && (typeof value === "object" || typeof value === "function")
   );
 }
-
 function assertServiceClass(service: unknown): asserts service is ServiceClass {
   if (
     !isRecord(service) ||
@@ -119,17 +115,14 @@ function assertServiceClass(service: unknown): asserts service is ServiceClass {
     throw new TypeError("Invalid orchestrator service class");
   }
 }
-
 function serviceClass(service: unknown): ServiceClass {
   assertServiceClass(service);
   return service;
 }
-
 export function createAgentOrchestratorPlugin(): Plugin {
   const terminalSupport = detectOrchestratorTerminalSupport();
   const localCodeAllowed = isLocalCodeExecutionAllowed();
   const codeExecutionAllowed = localCodeAllowed && terminalSupport.supported;
-
   // Store-distributed builds cannot fork user-installed CLIs. Drop the host-CLI
   // services and the spawn-bearing actions; expose a single user-facing
   // unavailable action so reaches for SPAWN_AGENT / CREATE_TASK / etc. surface a
@@ -152,7 +145,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(SwarmCoordinatorService),
       ]
     : [];
-
   const orchestratorActions = codeExecutionAllowed
     ? [
         ...promoteSubactionsToActions(tasksAction, {
@@ -172,6 +164,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // delegation surface.
           overrides: {
             spawn_agent: {
+              parameters: tasksAction.parameters?.map((parameter) =>
+                parameter.name === "task"
+                  ? { ...parameter, required: true }
+                  : parameter,
+              ),
               description:
                 "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A
@@ -190,7 +187,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
           ? createTerminalUnsupportedTasksAction(terminalSupport)
           : tasksSandboxStubAction,
       ];
-
   const orchestratorProviders = codeExecutionAllowed
     ? [
         availableAgentsProvider, // Adapter inventory + raw session list
@@ -200,12 +196,13 @@ export function createAgentOrchestratorPlugin(): Plugin {
         codingSessionChangesProvider, // Real git change set for "show me the diff"
       ]
     : [];
-
   // Captured so dispose() can unregister on hot-reload (otherwise listeners
   // stack and fan out to N orphaned closures per reload).
   let taskAuditHandler:
     | ((
-        payload: TaskAuditPayload & { runtime: IAgentRuntime },
+        payload: TaskAuditPayload & {
+          runtime: IAgentRuntime;
+        },
       ) => Promise<void>)
     | undefined;
   let disposeProgressHook: (() => void) | undefined;
@@ -222,7 +219,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
   // sub-agent is mid-turn) or that survive an INTERRUPT cancel, until the
   // session next goes idle and they can be flushed without derailing a turn.
   const subAgentInbox = new SubAgentInbox();
-
   return {
     name: "@elizaos/plugin-agent-orchestrator",
     description: codeExecutionAllowed
@@ -269,10 +265,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
           ),
         );
       };
-      runtime.registerEvent<TaskAuditPayload & { runtime: IAgentRuntime }>(
-        TASK_AUDIT_EVENT,
-        taskAuditHandler,
-      );
+      runtime.registerEvent<
+        TaskAuditPayload & {
+          runtime: IAgentRuntime;
+        }
+      >(TASK_AUDIT_EVENT, taskAuditHandler);
       // An inbox overflow discards a queued USER message. That must never be
       // silent (repo error-policy: a dropped input reads as a healthy pipeline)
       // — warn with the counts and raise through the diagnostic boundary so
@@ -355,7 +352,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // events (tool_running / task_complete / heartbeat) flow into the
           // hook's listener instead of being dropped on the floor.
           const acp = runtime.getService<AcpService>(AcpService.serviceType);
-
           // Flush the interruption-decider inbox when a sub-agent finishes its
           // turn: queued room messages are delivered to the now-idle session
           // without ever having derailed the work mid-turn. A short settle poll
@@ -459,7 +455,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
     async dispose(runtime) {
       if (taskAuditHandler) {
         runtime.unregisterEvent?.<
-          TaskAuditPayload & { runtime: IAgentRuntime }
+          TaskAuditPayload & {
+            runtime: IAgentRuntime;
+          }
         >(TASK_AUDIT_EVENT, taskAuditHandler);
         taskAuditHandler = undefined;
       }
@@ -524,7 +522,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
     },
   };
 }
-
 // Defensive: the planner LLM repeatedly paraphrases obsolete "restart the
 // acpx daemon" / "clear stale sessions" advice that lived in past Discord
 // messages, even though the provider rule says self-healing is automatic.
@@ -534,7 +531,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
 // the user never sees instructions to do something the runtime already does.
 const SELF_HEAL_REPLACEMENT =
   "(Sub-agent state self-heals; respawning a fresh one automatically.)";
-
 function containsWord(value: string, word: string): boolean {
   let cursor = 0;
   while (cursor < value.length) {
@@ -548,7 +544,6 @@ function containsWord(value: string, word: string): boolean {
   }
   return false;
 }
-
 function isForbiddenCleanupSentence(sentence: string): boolean {
   const lower = sentence.toLowerCase();
   const hasRecoveryVerb =
@@ -573,7 +568,6 @@ function isForbiddenCleanupSentence(sentence: string): boolean {
     (containsWord(lower, "session") || containsWord(lower, "sessions"))
   );
 }
-
 function stripForbiddenCleanupSentences(text: string): string {
   const out: string[] = [];
   let segmentStart = 0;
@@ -595,7 +589,6 @@ function stripForbiddenCleanupSentences(text: string): string {
   }
   return out.join("");
 }
-
 function collapseWhitespaceRuns(text: string): string {
   const out: string[] = [];
   let cursor = 0;
@@ -611,7 +604,6 @@ function collapseWhitespaceRuns(text: string): string {
   }
   return out.join("");
 }
-
 /**
  * Strip the `<emoji> [label] ` prefix from a progress line so it reads
  * cleanly when posted into a per-label thread (the thread name already
@@ -625,15 +617,12 @@ const PROGRESS_EMOJI_PREFIX_REGEX = /^(💬|⏳|⚠️|⏸️|✅|❌|🚀)\s+/u
 export function stripProgressLabelPrefix(text: string): string {
   return text.replace(PROGRESS_PREFIX_REGEX, "$1 ");
 }
-
 type SubAgentProgressMode = "compact" | "threaded" | "silent" | "ack";
-
 interface SubAgentProgressPolicy {
   mode: SubAgentProgressMode;
   reactions: boolean;
   delayMs: number;
 }
-
 function readProgressSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -649,7 +638,6 @@ function readProgressSetting(
     ? value.trim()
     : undefined;
 }
-
 function parseProgressMode(value: string | undefined): SubAgentProgressMode {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -669,19 +657,16 @@ function parseProgressMode(value: string | undefined): SubAgentProgressMode {
   if (normalized === "thread" || normalized === "threaded") return "threaded";
   return "compact";
 }
-
 function parseProgressDelayMs(value: string | undefined): number {
-  if (!value) return 15_000;
+  if (!value) return 15000;
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 15_000;
-  return Math.min(parsed, 120_000);
+  if (!Number.isFinite(parsed) || parsed < 0) return 15000;
+  return Math.min(parsed, 120000);
 }
-
 function parseProgressReactions(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
-
 // Exported for unit tests; not part of the plugin's public API contract.
 export function resolveSubAgentProgressPolicy(
   runtime: IAgentRuntime,
@@ -710,7 +695,6 @@ export function resolveSubAgentProgressPolicy(
           ),
   };
 }
-
 // Exported for unit tests; not part of the plugin's public API contract.
 export function compactProgressText(text: string): string {
   const stripped = stripProgressLabelPrefix(text)
@@ -718,7 +702,6 @@ export function compactProgressText(text: string): string {
     .trim();
   return stripped || "Working.";
 }
-
 /**
  * Decide whether the planner already acknowledged a spawn turn, so the
  * orchestrator's spawn ACK can be suppressed (avoiding two back-to-back acks:
@@ -739,7 +722,6 @@ export function plannerAlreadyAckedSpawn(
   if (plannerReplyAtMs === undefined) return false;
   return plannerReplyAtMs >= sessionCreatedAtMs - lookbackMs;
 }
-
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
@@ -750,7 +732,6 @@ export function sanitizePlannerText(text: string): string {
     ? `${cleaned} ${SELF_HEAL_REPLACEMENT}`
     : SELF_HEAL_REPLACEMENT;
 }
-
 // ── LLM-generated spawn acknowledgement ──────────────────────────────────────
 // In "ack" mode the orchestrator posts ONE short line when it kicks off a coding
 // sub-agent. A single hardcoded literal ("working on it now.") read identically
@@ -764,18 +745,19 @@ export function sanitizePlannerText(text: string): string {
 // sanitize the output (unit-tested); the single `useModel` call in the progress
 // hook is the only impure part, and it falls back to SPAWN_ACK_FALLBACK so the
 // ack can never become silence.
-
 // Minimal degraded fallback, used ONLY when the model call fails or returns
 // nothing usable — never the primary path. Kept short and neutral on purpose.
 export const SPAWN_ACK_FALLBACK = "On it.";
-
 const SPAWN_ACK_TIMEOUT_MS = 750;
-
 function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<T>((resolve) => {
     timer = setTimeout(() => resolve(fallback), SPAWN_ACK_TIMEOUT_MS);
-    (timer as { unref?: () => void }).unref?.();
+    (
+      timer as {
+        unref?: () => void;
+      }
+    ).unref?.();
   });
   // error-policy:J4 spawn-ack model rejection/timeout degrades to the neutral
   // literal ack; a cosmetic UX line, never fabricated data.
@@ -783,7 +765,6 @@ function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
     if (timer) clearTimeout(timer);
   });
 }
-
 /**
  * System prompt for spawn-ack generation. Carries the character's own voice —
  * derived from the configured character, never hardcoded — plus the hard
@@ -816,7 +797,6 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
     .filter((part) => part.length > 0)
     .join(" ");
 }
-
 /**
  * User-turn prompt for spawn-ack generation: the task being started. The task
  * text doubles as the language signal — the model replies in whatever language
@@ -827,7 +807,6 @@ export function buildSpawnAckUserPrompt(task: string): string {
   const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
   return `The task you're starting:\n${toWellFormedUnicode(what)}\n\nYour one-line acknowledgement:`;
 }
-
 /**
  * Preserve a model-produced acknowledgement as complete well-formed text.
  * The prompt requests one line, but an overlong or multiline response remains
@@ -836,12 +815,10 @@ export function buildSpawnAckUserPrompt(task: string): string {
 export function sanitizeSpawnAck(raw: string): string {
   return toWellFormedUnicode(raw.trim());
 }
-
 export function extractCompletionSummary(raw: string): string {
   if (!raw.trim()) return "done";
   return toWellFormedUnicode(raw.trim());
 }
-
 /**
  * Prompt for the LLM-driven progress heartbeat. The model gets the
  * complete captured session output and must reply with one short sentence
@@ -865,7 +842,6 @@ Rules:
 
 Complete captured activity:
 {tail}`;
-
 /**
  * Normalize a raw ACP `title` into either an informative noun or the empty
  * string. The upstream `stringifyMaybe` serializer turns a missing title
@@ -895,7 +871,6 @@ function sanitizeToolTitle(raw: string | undefined): string {
   if (!/[\p{L}\p{N}]/u.test(t)) return "";
   return t;
 }
-
 function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
   if (!tc) return "tool";
   const title = sanitizeToolTitle(tc.title);
@@ -940,7 +915,6 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
   // window so this doesn't spam.
   return noun;
 }
-
 /**
  * Subscribe to AcpService session events and post a tight, human-readable
  * progress update to the *origin* room of each sub-agent session (Discord
@@ -1002,7 +976,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // toolCallId.
   const toolHistory = new Map<
     string,
-    Array<{ id: string; formatted: string }>
+    Array<{
+      id: string;
+      formatted: string;
+    }>
   >();
   // Capability-aware UX state per session. When the connector supports
   // `edit_message`, the orchestrator captures the platform message id of
@@ -1063,7 +1040,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // within this window collapses one turn to a single ACK; a genuinely new
   // request after the window still gets its own.
   const roomAckAt = new Map<string, number>();
-  const ACK_ROOM_DEDUP_MS = 60_000;
+  const ACK_ROOM_DEDUP_MS = 60000;
   // Resolved outbound target (channelId/serverId) cache, keyed by
   // `${source}::${roomId}`. emitProgress is a hot recursive path; resolving the
   // room's connector channel once per (source,roomId) avoids a getRoom lookup on
@@ -1117,7 +1094,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // lookback reliably attributes the reply to this spawn without catching an
   // unrelated earlier chat reply.
   const PLANNER_ACK_LOOKBACK_MS = 8000;
-
   // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
   // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
   // target where the orchestrator has an active per-label thread, redirect
@@ -1149,8 +1125,16 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     ]);
     const wrapped: SendMessageFn = async (target, content) => {
       const contentSource =
-        typeof (content as { source?: unknown })?.source === "string"
-          ? (content as { source: string }).source
+        typeof (
+          content as {
+            source?: unknown;
+          }
+        )?.source === "string"
+          ? (
+              content as {
+                source: string;
+              }
+            ).source
           : undefined;
       if (contentSource && INTERNAL_SOURCES.has(contentSource)) {
         return originalSend(target, content);
@@ -1214,13 +1198,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // summary call (~$0.001) edited onto the same message, so frequent updates
   // do not spam the channel. Post-only targets fall back to the slow cadence
   // because every tick is a fresh message.
-  const HEARTBEAT_INTERVAL_FAST_MS = 10_000;
-  const HEARTBEAT_INTERVAL_SLOW_MS = 30_000;
+  const HEARTBEAT_INTERVAL_FAST_MS = 10000;
+  const HEARTBEAT_INTERVAL_SLOW_MS = 30000;
   // Slack on the per-session post-debounce window so a heartbeat that
   // fires a few hundred ms early (timer drift) still considers the
   // window elapsed.
   const HEARTBEAT_DEBOUNCE_MS = 500;
-
   const startHeartbeat = (
     sessionId: string,
     label: string,
@@ -1308,7 +1291,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     }, intervalMs);
     heartbeatTimers.set(sessionId, timer);
   };
-
   const stopHeartbeat = (sessionId: string): void => {
     const t = heartbeatTimers.get(sessionId);
     if (t) {
@@ -1318,7 +1300,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     lastHeartbeatPostAt.delete(sessionId);
     lastHeartbeatSummary.delete(sessionId);
   };
-
   // Generate the one-line "ack"-mode spawn acknowledgement via the small text
   // model — in the character's own voice and the user's language (see
   // buildSpawnAckSystemPrompt). The task text (the language signal) is read from
@@ -1358,7 +1339,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       return SPAWN_ACK_FALLBACK;
     }
   };
-
   // Generic capability probe — multi-integration aware. The orchestrator
   // routes UX through whichever surface the target connector supports,
   // falling back gracefully when a capability is missing (e.g. Twitter/X
@@ -1373,10 +1353,15 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   function transientContent(
     text: string,
     source: "sub_agent_progress" | "sub_agent_complete",
-  ): { text: string; source: string; metadata: { transient: true } } {
+  ): {
+    text: string;
+    source: string;
+    metadata: {
+      transient: true;
+    };
+  } {
     return { text, source, metadata: { transient: true } };
   }
-
   function hasCap(source: string, capability: string): boolean {
     const connectors = runtime.getMessageConnectors?.();
     if (!Array.isArray(connectors)) return false;
@@ -1393,7 +1378,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     progressPolicy.mode === "threaded" &&
     hasCap(source, "create_thread") &&
     hasCap(source, "post_to_thread");
-
   async function bestEffortReact(
     target: TargetInfo,
     messageId: string,
@@ -1407,7 +1391,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       // degrades silently and must not block the flow.
     }
   }
-
   function clearDelayedProgress(sessionId: string): void {
     const timer = delayedProgressTimers.get(sessionId);
     if (timer) clearTimeout(timer);
@@ -1415,7 +1398,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     delayedProgressPayloads.delete(sessionId);
     delayedProgressFirstSeenAt.delete(sessionId);
   }
-
   // Resolve the outbound connector target for a `{ source, roomId }` pair the
   // SAME way the swarm-synthesis completion router does
   // (packages/agent/.../server-helpers-swarm.ts routeSynthesisToConnector):
@@ -1472,7 +1454,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     }
     return resolved;
   }
-
   // emitProgress is the single hot path for sub-agent narration + hb_signal.
   // Routing ladder (capability-aware):
   //   1. THREAD exists (or can be created) → all narration goes in thread.
@@ -1815,7 +1796,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       }
     }
   }
-
   async function markTaskComplete(
     sessionId: string,
     target: TargetInfo,
@@ -1877,7 +1857,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       void bestEffortReact(sendTarget, state.mainMessageId, "✅");
     }
   }
-
   async function markTaskFailed(
     sessionId: string,
     target: TargetInfo,
@@ -1918,7 +1897,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       }
     }
   }
-
   // Helper: post a message chunk buffer after silence detected.
   async function flushMessageBuffer(
     sessionId: string,
@@ -2064,8 +2042,16 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           clearDelayedProgress(sessionId);
           if (evName === "task_complete") {
             const rawResponse =
-              typeof (data as { response?: unknown })?.response === "string"
-                ? (data as { response: string }).response
+              typeof (
+                data as {
+                  response?: unknown;
+                }
+              )?.response === "string"
+                ? (
+                    data as {
+                      response: string;
+                    }
+                  ).response
                 : "";
             const summary = extractCompletionSummary(rawResponse);
             // await so the state lookup happens BEFORE progressBySession.delete
@@ -2129,7 +2115,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // autonomous mode (no narration between tools). Bare titles like
         // `Read`/`Bash` aren't specific enough to yield a useful summary.
         if (evName === "tool_running") {
-          const tc = (data as { toolCall?: AcpToolCall })?.toolCall;
+          const tc = (
+            data as {
+              toolCall?: AcpToolCall;
+            }
+          )?.toolCall;
           const formatted = formatToolCallForHuman(tc);
           const id = tc?.id?.trim() ?? "";
           // Only record entries that carry signal. Reject:
@@ -2172,8 +2162,16 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             // for MESSAGE_SILENCE_FLUSH_MS) — posts a complete narrative
             // segment at natural pauses between thoughts.
             const chunk =
-              typeof (data as { text?: string })?.text === "string"
-                ? (data as { text: string }).text
+              typeof (
+                data as {
+                  text?: string;
+                }
+              )?.text === "string"
+                ? (
+                    data as {
+                      text: string;
+                    }
+                  ).text
                 : "";
             if (!chunk) return;
             const prev = messageBuffers.get(sessionId) ?? "";
@@ -2194,7 +2192,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             // post would only pollute conversation memory with phrasings the
             // LLM paraphrases as obsolete "restart / reconnect" advice on
             // subsequent turns.
-            const failureKind = (data as { failureKind?: string })?.failureKind;
+            const failureKind = (
+              data as {
+                failureKind?: string;
+              }
+            )?.failureKind;
             const USER_ACTION_KINDS = new Set([
               "auth",
               "login_required",
@@ -2202,7 +2204,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
               "rate_limit",
             ]);
             if (!failureKind || !USER_ACTION_KINDS.has(failureKind)) return;
-            const msg = (data as { message?: string })?.message ?? "error";
+            const msg =
+              (
+                data as {
+                  message?: string;
+                }
+              )?.message ?? "error";
             text = `⚠️ [${label}] ${msg}`;
             break;
           }
@@ -2224,7 +2231,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           evName === "error" ||
           evName === "blocked" ||
           evName === "login_required"
-            ? 30_000
+            ? 30000
             : POST_DEBOUNCE_MS;
         const now = Date.now();
         const last = lastPostByKey.get(dedupeKey);
@@ -2289,16 +2296,13 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     }
   };
 }
-
 const runtimeOrchestrator = createAgentOrchestratorPlugin();
 export const agentOrchestratorPlugin: Plugin = {
   ...runtimeOrchestrator,
   ...taskCoordinatorViews,
   description: runtimeOrchestrator.description,
 };
-
 export default agentOrchestratorPlugin;
-
 // Re-export coding agent adapter types.
 export type {
   AdapterType,

@@ -13,6 +13,16 @@ import org.json.JSONObject;
 final class ElizaAgentWatchdogPolicy {
     private ElizaAgentWatchdogPolicy() {}
 
+    /** Matches the host bootstrap policy: these errors need intervention, not retry. */
+    static boolean isTerminalStartupFailure(String fatal) {
+        if (fatal == null) return false;
+        String normalized = fatal.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("destructive migration blocked")
+            || normalized.contains("eliza_pglite_data_dir_in_use")
+            || normalized.contains("eliza_pglite_corrupt_data")
+            || normalized.contains("eliza_pglite_manual_reset_required");
+    }
+
     enum ProbeResult {
         OK,
         BUSY,

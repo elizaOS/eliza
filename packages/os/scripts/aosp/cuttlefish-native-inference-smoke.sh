@@ -26,7 +26,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ELIZA_ROOT="$(node "$OS_ROOT/scripts/eliza-source.mjs")"
+ELIZA_ROOT="$(node "$OS_ROOT/scripts/eliza-source.ts")"
 SOURCE_VERIFY_DIR="$ELIZA_ROOT/plugins/plugin-local-inference/native/verify"
 if [[ -z "$ELIZA_ROOT" || ! -d "$SOURCE_VERIFY_DIR" ]]; then
   echo "[cuttlefish-x86_64-smoke] FAIL: set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout" >&2
@@ -83,7 +83,7 @@ ABI="$("$ADB" -s "$ANDROID_SERIAL" shell getprop ro.product.cpu.abi | tr -d '\r'
 
 [[ "$REMOTE_DIR" =~ ^/data/local/tmp/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*$ ]] || fail "remote fixture path must be beneath /data/local/tmp with safe characters"
 [[ ! -e "$EVIDENCE_OUT" && ! -L "$EVIDENCE_OUT" ]] || fail "evidence output already exists; choose a fresh run path"
-node "$SCRIPT_DIR/kernel-parity-evidence.mjs" begin "$ELIZA_ROOT" "$OUT_DIR"
+node "$SCRIPT_DIR/kernel-parity-evidence.ts" begin "$ELIZA_ROOT" "$OUT_DIR"
 "$CC" --version > "$OUT_DIR/compiler-version.txt"
 cp "$NDK/source.properties" "$OUT_DIR/ndk.properties"
 
@@ -172,6 +172,6 @@ if [[ "$SKIP_VULKAN_DIAG" != "1" ]]; then
 fi
 
 # 7. Emit a fresh report only after every requested check has succeeded.
-ANDROID_SERIAL="$ANDROID_SERIAL" node "$SCRIPT_DIR/kernel-parity-evidence.mjs" \
+ANDROID_SERIAL="$ANDROID_SERIAL" node "$SCRIPT_DIR/kernel-parity-evidence.ts" \
   finish "$ELIZA_ROOT" "$OUT_DIR" "$EVIDENCE_OUT"
 log "OK — Android x86_64 CPU kernel-reference parity verified; evidence: $EVIDENCE_OUT"

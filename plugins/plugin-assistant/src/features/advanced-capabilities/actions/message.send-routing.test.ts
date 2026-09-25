@@ -6,15 +6,15 @@
  * model, no DB.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,
   Component,
   IAgentRuntime,
   Memory,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { ServiceType } from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { messageAction } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";

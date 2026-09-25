@@ -1,20 +1,13 @@
-/**
- * Guards the boot-registration contract for the Todos dashboard view. The agent
- * boot loader imports `@elizaos/plugin-todos/plugin` (this package's `./plugin`
- * subpath, i.e. `src/plugin.ts`) and feeds its default export to
- * `registerPluginViews`, which registers nothing when `views` is empty. If the
- * view metadata lives only on the `index.ts` wrapper the boot path never
- * imports, the "todos" view is absent from `/api/views` and VIEWS(view="todos")
- * fails with "No view matches todos". This test asserts the boot-imported
- * export carries the "todos" view with the bundle metadata the registry
- * consumes, mirroring how notes/calendar ship their views on the same export.
- */
+/** Verifies the root plugin descriptor retains the host-discoverable dashboard bundle. */
 
+import bootPlugin, {
+  todosPlugin,
+  todosRuntimePlugin,
+} from "@elizaos/plugin-todos";
 import { describe, expect, test } from "vitest";
-import bootPlugin, { todosPlugin, todosRuntimePlugin } from "../src/plugin.js";
 
 describe("Todos boot-registration view contract", () => {
-  test("the boot-imported `/plugin` default export declares the todos view", () => {
+  test("the boot-imported root default export declares the todos view", () => {
     expect(bootPlugin).toBe(todosPlugin);
     expect(todosRuntimePlugin.views ?? []).toHaveLength(0);
     expect(bootPlugin.views).toHaveLength(1);

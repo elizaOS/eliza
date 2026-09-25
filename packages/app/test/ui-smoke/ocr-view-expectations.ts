@@ -14,7 +14,6 @@ export interface SemanticOcrExpectationPolicy {
 
 export interface SemanticOcrExemptionPolicy {
   kind: "semantic-exemption";
-  applicability: "native-platform-gated" | "unregistered-remote-bundle";
   reason: string;
   /** Observable browser fallback that must still render without semantic drift. */
   fallbackExpectation: OcrExpectation;
@@ -29,13 +28,11 @@ function expected(expectation: OcrExpectation): SemanticOcrExpectationPolicy {
 }
 
 function exempt(
-  applicability: SemanticOcrExemptionPolicy["applicability"],
   reason: string,
   fallbackExpectation: OcrExpectation,
 ): SemanticOcrExemptionPolicy {
   return {
     kind: "semantic-exemption",
-    applicability,
     reason,
     fallbackExpectation,
   };
@@ -65,7 +62,6 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-camera": exempt(
-    "native-platform-gated",
     "The camera is an AOSP-native surface, so the browser audit intentionally renders the truthful unavailable state.",
     VIEW_UNAVAILABLE_FALLBACK,
   ),
@@ -166,6 +162,10 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-trajectories": expected({
     requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
+  }),
+  "builtin-context-inspector": expected({
+    requireAll: ["Context inspector", "Model request budgets"],
+    requireAny: ["partial-recoverable", "token-budget", "Retention"],
   }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],

@@ -41,3 +41,12 @@ def test_subscription_hermes_delegate_prefers_openai_base_over_gateway_origin(
     assert captured["model"] == "claude-sonnet-4-6"
     assert captured["base_url"] == "http://127.0.0.1:43123/v1"
     assert captured["workspace_path"] == tmp_path.resolve()
+
+
+@pytest.mark.parametrize("harness", ["smithers", "unknown-harness", "codex"])
+def test_unsupported_delegate_does_not_fall_back_to_eliza(
+    monkeypatch: pytest.MonkeyPatch, harness: str
+) -> None:
+    monkeypatch.setenv("ELIZA_BENCH_HARNESS", harness)
+    with pytest.raises(ValueError, match="Unsupported benchmark harness"):
+        _build_delegate_client()

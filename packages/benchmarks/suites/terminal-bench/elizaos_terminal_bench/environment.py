@@ -15,9 +15,10 @@ import subprocess
 import tarfile
 import tempfile
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 from uuid import uuid4
 
 try:
@@ -37,6 +38,18 @@ from elizaos_terminal_bench.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def task_build_context(task_dir: Path) -> Iterator[Path]:
+    """Materialize linked corpus sources before Docker archives the context."""
+    if not any(path.is_symlink() for path in task_dir.rglob("*")):
+        yield task_dir
+        return
+    with tempfile.TemporaryDirectory(prefix="terminal-build-context-") as directory:
+        context = Path(directory) / "task"
+        shutil.copytree(task_dir, context)
+        yield context
 
 
 class TerminalEnvironmentError(Exception):
@@ -830,14 +843,15 @@ class TmuxDockerEnvironment(TerminalEnvironment):
         image_tag = f"elizaos-tbench/{tag_safe}:latest"
         logger.info("Building per-task image %s from %s", image_tag, df_path)
         try:
-            self._client.images.build(
-                path=str(df_path.parent),
-                dockerfile=df_path.name,
-                tag=image_tag,
-                rm=True,
-                forcerm=True,
-                pull=False,
-            )
+            with task_build_context(df_path.parent) as context:
+                self._client.images.build(
+                    path=str(context),
+                    dockerfile=df_path.name,
+                    tag=image_tag,
+                    rm=True,
+                    forcerm=True,
+                    pull=False,
+                )
             self._image_built = image_tag
             return image_tag
         except Exception as exc:

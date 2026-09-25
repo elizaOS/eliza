@@ -56,7 +56,7 @@ import XCTest
 /// is a HARD failure (broken channel), never a silent skip.
 ///
 /// Runs in the same AppUITests target / lane as the boot suite:
-///   node scripts/ios-device-capture.mjs --platform sim   (packages/app)
+///   node scripts/ios-device-capture.ts --platform sim   (packages/app)
 final class GestureSemanticsUITests: XCTestCase {
 
     private static let detentPrefix = "chat-detent:"

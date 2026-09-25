@@ -17,11 +17,8 @@
  *     staging so a stale/missing/partial renderer FAILS THE BUILD LOUDLY instead
  *     of shipping old code.
  *
- * `buildId` is a sha256 over `index.html` + the sorted set of emitted asset
- * file names (vite embeds each asset's content hash in its name) and their
- * sizes. Two different source states therefore produce two different buildIds,
- * which is exactly the freshness signal the issue asks for ("a real freshness
- * check that fails the build when an input changed but the artifact didn't").
+ * `buildId` hashes index.html and the sorted asset paths, sizes, and content
+ * digests. A copied stamp cannot conceal changed bytes under an unchanged name.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -81,11 +78,17 @@ export function computeRendererFingerprint(distDir: string) {
       for (const name of fs.readdirSync(dir).sort()) {
         const full = path.join(dir, name);
         const relName = rel ? `${rel}/${name}` : name;
-        const stat = fs.statSync(full);
+        const stat = fs.lstatSync(full);
         if (stat.isDirectory()) {
           walk(full, relName);
+        } else if (stat.isFile()) {
+          assetEntries.push(
+            `${relName}:${stat.size}:${sha256(fs.readFileSync(full))}`,
+          );
         } else {
-          assetEntries.push(`${relName}:${stat.size}`);
+          throw new Error(
+            `[renderer-build-manifest] non-regular asset: ${full}`,
+          );
         }
       }
     };
@@ -244,6 +247,11 @@ export function assertStagedRendererMatchesBuild(
         `did not run — refusing to ship an unverifiable bundle.`,
     );
   }
+  if (!rendererBuildManifestMatchesDist(freshDistDir, fresh)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: fresh renderer manifest does not match its files.`,
+    );
+  }
   const staged = readRendererBuildManifest(stagedDir);
   if (!staged) {
     throw new Error(
@@ -275,6 +283,11 @@ export function assertStagedRendererMatchesBuild(
         `freshly built ${fresh.indexHtmlSha256} — partial or stale copy. Failing the build.`,
     );
   }
+  if (!rendererBuildManifestMatchesDist(stagedDir, staged)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: staged assets are missing or changed — partial or stale copy.`,
+    );
+  }
   return fresh;
 }
 
@@ -302,6 +315,44 @@ export function overlayFreshRendererIntoPublic(
     throw new Error(
       `[renderer-build-manifest] ${label}: no freshly built renderer at ${freshDistDir} ` +
         `(missing index.html). Refusing to stage a missing/stale UI.`,
+    );
+  }
+  const freshRoot = fs.realpathSync(freshDistDir);
+  let existingTarget = path.resolve(targetPublicDir);
+  const missingSegments: string[] = [];
+  while (!fs.existsSync(existingTarget)) {
+    missingSegments.unshift(path.basename(existingTarget));
+    const parent = path.dirname(existingTarget);
+    if (parent === existingTarget)
+      throw new Error(`Cannot resolve staging directory ${targetPublicDir}`);
+    existingTarget = parent;
+  }
+  const targetRoot = path.join(
+    fs.realpathSync(existingTarget),
+    ...missingSegments,
+  );
+  const overlaps = (parent: string, child: string) => {
+    const relative = path.relative(parent, child);
+    return (
+      relative === "" ||
+      (relative !== ".." &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative))
+    );
+  };
+  if (overlaps(freshRoot, targetRoot) || overlaps(targetRoot, freshRoot)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: source and staged renderer directories overlap.`,
+    );
+  }
+  if (
+    !rendererBuildManifestMatchesDist(
+      freshDistDir,
+      readRendererBuildManifest(freshDistDir),
+    )
+  ) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: fresh renderer manifest does not match its files.`,
     );
   }
   fs.mkdirSync(targetPublicDir, { recursive: true });
@@ -340,6 +391,11 @@ export function assertRendererRebuiltSince(
         `after the renderer build. The build did not produce a verifiable renderer.`,
     );
   }
+  if (!rendererBuildManifestMatchesDist(distDir, manifest)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: renderer manifest does not match its files.`,
+    );
+  }
   const builtAtMs = Date.parse(manifest.builtAt);
   if (!Number.isFinite(builtAtMs) || builtAtMs < notBefore) {
     throw new Error(
@@ -348,11 +404,7 @@ export function assertRendererRebuiltSince(
         `A cached/stale dist was reused instead of a fresh build — failing.`,
     );
   }
-  if (
-    expectVariant != null &&
-    manifest.variant != null &&
-    manifest.variant !== expectVariant
-  ) {
+  if (expectVariant != null && manifest.variant !== expectVariant) {
     throw new Error(
       `[renderer-build-manifest] ${label}: renderer built for variant '${manifest.variant}' ` +
         `but this build targets '${expectVariant}'. A wrong-variant dist was reused — failing.`,

@@ -36,7 +36,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HERE="$(cd "$SCRIPT_DIR/../../services/gateway-discord" && pwd)"
 PACKAGES_DIR="$(cd "$HERE/../../.." && pwd)"
-CLEANUP_HELPER="$PACKAGES_DIR/scripts/rm-path-recursive.mjs"
+CLEANUP_HELPER="$PACKAGES_DIR/scripts/rm-path-recursive.ts"
 STAGE="$(mktemp -d)"
 cleanup_stage() {
   node "$CLEANUP_HELPER" "$STAGE"

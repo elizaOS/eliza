@@ -1,13 +1,13 @@
 /** Implements Electrobun desktop subscription rpc ts behavior for app shell integration. */
+
 import type {
 	SubscriptionProviderStatus,
 	SubscriptionStatusResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/first-run-options";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord, optionalString } from "./rpc-parse-utils";
 
-const DEFAULT_TIMEOUT_MS = 4_000;
-
+const DEFAULT_TIMEOUT_MS = 4000;
 const SUBSCRIPTION_CREDENTIAL_SOURCES = [
 	"app",
 	"claude-code-cli",
@@ -17,7 +17,6 @@ const SUBSCRIPTION_CREDENTIAL_SOURCES = [
 	"coding-plan-key",
 	"unavailable",
 ] as const;
-
 function isSubscriptionCredentialSource(
 	value: unknown,
 ): value is SubscriptionProviderStatus["source"] {
@@ -27,7 +26,6 @@ function isSubscriptionCredentialSource(
 		SUBSCRIPTION_CREDENTIAL_SOURCES.some((source) => source === value)
 	);
 }
-
 function optionalStringField(
 	body: Record<string, unknown>,
 	key: string,
@@ -35,21 +33,18 @@ function optionalStringField(
 	if (!(key in body)) return undefined;
 	return optionalString(body[key]);
 }
-
 function optionalBoolean(
 	body: Record<string, unknown>,
 	key: string,
-): boolean | undefined | false {
+): boolean | undefined | null {
 	if (!(key in body)) return undefined;
 	const value = body[key];
-	return typeof value === "boolean" ? value : false;
+	return typeof value === "boolean" ? value : null;
 }
-
 function parseExpiresAt(value: unknown): number | null | false {
 	if (value === null) return null;
 	return typeof value === "number" && Number.isFinite(value) ? value : false;
 }
-
 type SubscriptionProviderBase = Pick<
 	SubscriptionProviderStatus,
 	| "accountId"
@@ -60,11 +55,9 @@ type SubscriptionProviderBase = Pick<
 	| "source"
 	| "valid"
 >;
-
 type SubscriptionBillingMode = NonNullable<
 	SubscriptionProviderStatus["billingMode"]
 >;
-
 function parseSubscriptionProviderBase(
 	value: Record<string, unknown>,
 ): SubscriptionProviderBase | null {
@@ -86,7 +79,6 @@ function parseSubscriptionProviderBase(
 		source: value.source,
 	};
 }
-
 function parseBillingMode(
 	value: string | undefined | false,
 ): SubscriptionBillingMode | undefined | false {
@@ -96,7 +88,6 @@ function parseBillingMode(
 		? value
 		: false;
 }
-
 function parseSubscriptionProviderOptionals(
 	value: Record<string, unknown>,
 ): Pick<
@@ -115,7 +106,7 @@ function parseSubscriptionProviderOptionals(
 		optionalStringField(value, "billingMode"),
 	);
 	if (
-		available === false ||
+		available === null ||
 		availabilityReason === false ||
 		allowedClient === false ||
 		loginHint === false ||
@@ -131,7 +122,6 @@ function parseSubscriptionProviderOptionals(
 		...(billingMode === undefined ? {} : { billingMode }),
 	};
 }
-
 function parseSubscriptionProviderStatus(
 	value: unknown,
 ): SubscriptionProviderStatus | null {
@@ -140,13 +130,11 @@ function parseSubscriptionProviderStatus(
 	if (base === null) return null;
 	const optionals = parseSubscriptionProviderOptionals(value);
 	if (optionals === null) return null;
-
 	return {
 		...base,
 		...optionals,
 	};
 }
-
 function parseSubscriptionStatusResponse(
 	body: unknown,
 ): SubscriptionStatusResponse | null {
@@ -159,11 +147,9 @@ function parseSubscriptionStatusResponse(
 	}
 	return { providers };
 }
-
 export type SubscriptionStatusReader = (
 	port: number,
 ) => Promise<SubscriptionStatusResponse | null>;
-
 export const readSubscriptionStatusViaHttp: SubscriptionStatusReader = async (
 	port,
 ) => {
@@ -181,7 +167,6 @@ export const readSubscriptionStatusViaHttp: SubscriptionStatusReader = async (
 		return null;
 	}
 };
-
 export async function composeSubscriptionStatusSnapshot(
 	port: number | null,
 	read: SubscriptionStatusReader,

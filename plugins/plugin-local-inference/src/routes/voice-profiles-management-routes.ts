@@ -28,13 +28,16 @@
  * materialised separately via the `VOICE_TURN_OBSERVED` → merge-engine seam
  * (see runtime/voice-entity-binding.ts and the IDENTIFY_SPEAKER action).
  */
-
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { readJsonBody, sendJson, sendJsonError } from "@elizaos/shared";
+import {
+	readJsonBody,
+	sendJson,
+	sendJsonError,
+} from "@elizaos/core/api/http-helpers";
 import {
 	type VoiceProfileRecord,
 	VoiceProfileStore,
@@ -43,38 +46,30 @@ import {
 // ---------------------------------------------------------------------------
 // Store wiring (injectable for tests)
 // ---------------------------------------------------------------------------
-
 let profileStoreOverride: VoiceProfileStore | null = null;
-
 export function setVoiceProfilesManagementStore(
 	store: VoiceProfileStore | null,
 ): void {
 	profileStoreOverride = store;
 }
-
 function voiceProfilesRoot(): string {
 	return path.join(resolveStateDir(process.env), "voice-profiles");
 }
-
 async function getStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
 	const store = new VoiceProfileStore({ rootDir: voiceProfilesRoot() });
 	await store.init();
 	return store;
 }
-
 function ownerEntityId(): string | null {
 	const raw = process.env.ELIZA_ADMIN_ENTITY_ID;
 	return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
-
 // ---------------------------------------------------------------------------
 // DTO mapping
 // ---------------------------------------------------------------------------
-
 type Cohort = "owner" | "family" | "guest" | "unknown";
 type Source = "first-run" | "auto-clustered" | "manual";
-
 export interface VoiceProfileDto {
 	id: string;
 	entityId: string | null;
@@ -94,7 +89,6 @@ export interface VoiceProfileDto {
 		recordedAt: string;
 	}>;
 }
-
 function metaString(
 	meta: Record<string, unknown> | undefined,
 	key: string,
@@ -102,7 +96,6 @@ function metaString(
 	const v = meta?.[key];
 	return typeof v === "string" && v.length > 0 ? v : null;
 }
-
 function asCohort(value: unknown): Cohort | null {
 	return value === "owner" ||
 		value === "family" ||
@@ -111,7 +104,6 @@ function asCohort(value: unknown): Cohort | null {
 		? value
 		: null;
 }
-
 function asSource(value: unknown): Source | null {
 	return value === "first-run" ||
 		value === "auto-clustered" ||
@@ -119,7 +111,6 @@ function asSource(value: unknown): Source | null {
 		? value
 		: null;
 }
-
 function sampleWavPath(rootDir: string, profileId: string): string | null {
 	const dir = path.join(rootDir, "audio", profileId);
 	if (!fs.existsSync(dir)) return null;
@@ -133,7 +124,6 @@ function sampleWavPath(rootDir: string, profileId: string): string | null {
 		return null;
 	}
 }
-
 function toDto(
 	record: VoiceProfileRecord,
 	owner: string | null,
@@ -174,19 +164,15 @@ function toDto(
 		})),
 	};
 }
-
 // ---------------------------------------------------------------------------
 // Routing
 // ---------------------------------------------------------------------------
-
 const PROFILE_ID_RE = /^[A-Za-z0-9._-]+$/;
 const ID_SUB =
 	/^\/api\/voice\/profiles\/([^/]+)(?:\/(merge|split|bind|unbind|sample))?$/;
-
 function validId(id: string): boolean {
 	return PROFILE_ID_RE.test(id);
 }
-
 function decodeProfileId(raw: string): string | null {
 	try {
 		return decodeURIComponent(raw);
@@ -195,7 +181,6 @@ function decodeProfileId(raw: string): string | null {
 		return null;
 	}
 }
-
 export async function handleVoiceProfilesManagementRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -203,9 +188,7 @@ export async function handleVoiceProfilesManagementRoutes(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
-
 	if (!pathname.startsWith("/api/voice/profiles")) return false;
-
 	// Collection-level routes.
 	if (pathname === "/api/voice/profiles") {
 		if (method === "GET") return listProfiles(res);
@@ -233,7 +216,6 @@ export async function handleVoiceProfilesManagementRoutes(
 	if (pathname === "/api/voice/profiles/export" && method === "POST") {
 		return exportAll(res);
 	}
-
 	const m = ID_SUB.exec(pathname);
 	if (!m) return false;
 	const id = decodeProfileId(m[1] ?? "");
@@ -246,7 +228,6 @@ export async function handleVoiceProfilesManagementRoutes(
 		sendJsonError(res, `invalid profile id: ${id}`, 400);
 		return true;
 	}
-
 	if (!sub) {
 		if (method === "PATCH") return patchProfile(req, res, id);
 		if (method === "DELETE") return deleteProfile(res, id);
@@ -259,11 +240,9 @@ export async function handleVoiceProfilesManagementRoutes(
 	if (sub === "unbind" && method === "POST") return unbindProfile(res, id);
 	return false;
 }
-
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
-
 async function listProfiles(res: http.ServerResponse): Promise<true> {
 	const store = await getStore();
 	const owner = ownerEntityId();
@@ -272,7 +251,6 @@ async function listProfiles(res: http.ServerResponse): Promise<true> {
 	sendJson(res, { profiles: records.map((r) => toDto(r, owner, root)) });
 	return true;
 }
-
 async function patchProfile(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -307,7 +285,6 @@ async function patchProfile(
 	sendJson(res, toDto(updated, ownerEntityId(), voiceProfilesRoot()));
 	return true;
 }
-
 async function deleteProfile(
 	res: http.ServerResponse,
 	id: string,
@@ -327,7 +304,6 @@ async function deleteProfile(
 	sendJson(res, { deleted: id });
 	return true;
 }
-
 async function deleteAll(
 	res: http.ServerResponse,
 	includeOwner: boolean,
@@ -347,7 +323,6 @@ async function deleteAll(
 	sendJson(res, { deleted });
 	return true;
 }
-
 async function mergeProfile(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -393,7 +368,6 @@ async function mergeProfile(
 	sendJson(res, toDto(merged, ownerEntityId(), voiceProfilesRoot()));
 	return true;
 }
-
 async function splitProfile(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -461,7 +435,6 @@ async function splitProfile(
 	});
 	return true;
 }
-
 async function bindProfile(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -498,7 +471,6 @@ async function bindProfile(
 	sendJson(res, toDto(updated, ownerEntityId(), voiceProfilesRoot()));
 	return true;
 }
-
 async function unbindProfile(
 	res: http.ServerResponse,
 	id: string,
@@ -522,7 +494,6 @@ async function unbindProfile(
 	sendJson(res, toDto(updated, ownerEntityId(), voiceProfilesRoot()));
 	return true;
 }
-
 async function exportAll(res: http.ServerResponse): Promise<true> {
 	const store = await getStore();
 	const owner = ownerEntityId();
@@ -540,7 +511,6 @@ async function exportAll(res: http.ServerResponse): Promise<true> {
 	sendJson(res, { downloadUrl });
 	return true;
 }
-
 async function serveSample(
 	res: http.ServerResponse,
 	id: string,

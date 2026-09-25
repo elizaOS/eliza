@@ -10,12 +10,12 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertReviewedAppleStoreEntitlements } from "./lib/apple-entitlement-audit.mjs";
+import { assertReviewedAppleStoreEntitlements } from "./lib/apple-entitlement-audit.ts";
 import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
 } from "./lib/release-check-pack-dry-run";
-import { validateStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
+import { validateStaticAssetManifest } from "./lib/static-asset-manifest.ts";
 
 type PackFile = { path: string };
 type PackResult = { files?: PackFile[] };
@@ -25,8 +25,8 @@ const requiredPaths = [
   "dist/entry.js",
   "dist/build-info.json",
   "packages/app/scripts",
-  "packages/app/scripts/setup-upstreams.mjs",
-  "packages/app/scripts/init-submodules.mjs",
+  "packages/app/scripts/setup-upstreams.ts",
+  "packages/app/scripts/init-submodules.ts",
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
@@ -51,13 +51,13 @@ const autonomousElizaPathCandidates = [
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const cdnValidationScriptPathCandidates = [
-  "packages/app/scripts/validate-cdn-assets.mjs",
-  "scripts/validate-cdn-assets.mjs",
-  "eliza/packages/app/scripts/validate-cdn-assets.mjs",
+  "packages/app/scripts/validate-cdn-assets.ts",
+  "scripts/validate-cdn-assets.ts",
+  "eliza/packages/app/scripts/validate-cdn-assets.ts",
 ] as const;
 const patchedElectrobunCliHelperPathCandidates = [
-  "packages/app/scripts/build-patched-electrobun-cli.mjs",
-  "eliza/packages/app/scripts/build-patched-electrobun-cli.mjs",
+  "packages/app/scripts/build-patched-electrobun-cli.ts",
+  "eliza/packages/app/scripts/build-patched-electrobun-cli.ts",
 ] as const;
 const cloudAgentTemplatePackageJsonPathCandidates = [
   "packages/app/deploy/cloud-agent-template/package.json",
@@ -89,7 +89,7 @@ const requiredWorkflowSnippets = [
   "name: Validate Release Inputs",
   "bun-version: $" + "{{ env.BUN_VERSION }}",
   "name: Regression matrix contract",
-  "run: node packages/app/scripts/validate-regression-matrix.mjs --workflow release",
+  "run: node packages/app/scripts/validate-regression-matrix.ts --workflow release",
   "name: Run heavy E2E regression suite",
   "run: bun run test:e2e:heavy",
   "name: Run optional cloud live regression suite",
@@ -103,7 +103,7 @@ const requiredWorkflowSnippets = [
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
-  "node packages/app/scripts/ensure-avatars.mjs",
+  "node packages/app/scripts/ensure-avatars.ts",
   "Install quiet macOS packaging wrappers",
   "packages/app/scripts/electrobun/hdiutil-wrapper.sh",
   "packages/app/scripts/electrobun/xcrun-wrapper.sh",
@@ -112,7 +112,7 @@ const requiredWorkflowSnippets = [
   "ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun",
   "ELECTROBUN_REAL_ZIP: /usr/bin/zip",
   "Stage desktop bundle inputs",
-  "node packages/app/scripts/desktop-build.mjs stage --variant=base",
+  "node packages/app/scripts/desktop-build.ts stage --variant=base",
   "Inject version.json into bundle (Windows)",
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
@@ -169,10 +169,10 @@ const requiredWorkflowSnippets = [
   'echo "cache-dir=$package_dir/.cache"',
   "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
   "name: Build patched Electrobun CLI",
-  'node packages/app/scripts/build-patched-electrobun-cli.mjs "$' +
+  'node packages/app/scripts/build-patched-electrobun-cli.ts "$' +
     '{{ steps.resolve-electrobun.outputs.package-dir }}"',
   '"${{ matrix.platform.artifact-name }}"',
-  "node packages/app/scripts/desktop-build.mjs package --env=$" +
+  "node packages/app/scripts/desktop-build.ts package --env=$" +
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
@@ -333,7 +333,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "name: Release Workflow Contract",
   "bun install --frozen-lockfile --ignore-scripts",
   'run-postinstall: "true"',
-  "node packages/app/scripts/validate-regression-matrix.mjs --workflow release-contract",
+  "node packages/app/scripts/validate-regression-matrix.ts --workflow release-contract",
   "bun run test:release:contract",
 ];
 const forbiddenElectrobunPrWorkflowSnippets = [
@@ -344,11 +344,11 @@ const forbiddenElectrobunPrWorkflowSnippets = [
   "secrets: inherit",
   "packages: write",
   "not yet ported from eliza; skipping",
-  "validate-regression-matrix.mjs --workflow release-contract --help",
+  "validate-regression-matrix.ts --workflow release-contract --help",
   "test:release:contract --help",
 ];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
-  "release:check": ["scripts/run-release-check.mjs"],
+  "release:check": ["scripts/run-release-check.ts"],
   "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
 };
 const requiredElectrobunConfigSnippets = [
@@ -1034,8 +1034,8 @@ function assertRequiredRootPackageScripts() {
 
 function assertAppleStoreSandboxAuditPasses() {
   const auditScriptPath = resolveExistingPath([
-    "packages/app/scripts/audit-apple-store-sandbox.mjs",
-    "eliza/packages/app/scripts/audit-apple-store-sandbox.mjs",
+    "packages/app/scripts/audit-apple-store-sandbox.ts",
+    "eliza/packages/app/scripts/audit-apple-store-sandbox.ts",
   ]);
   if (!auditScriptPath) {
     console.error(
@@ -1485,7 +1485,7 @@ function assertStaticAssetManifestIsCurrent() {
   }
 
   console.error(
-    `release-check: static asset manifest is ${result.reason}. Run node packages/app/scripts/generate-static-asset-manifest.mjs.`,
+    `release-check: static asset manifest is ${result.reason}. Run node packages/app/scripts/generate-static-asset-manifest.ts.`,
   );
   console.error(`  - ${result.manifestPath}`);
   process.exit(1);

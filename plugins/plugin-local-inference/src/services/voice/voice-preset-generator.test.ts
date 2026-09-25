@@ -22,12 +22,12 @@ const SCRIPT = path.join(
 	APP_CORE_ROOT,
 	"scripts",
 	"voice-preset",
-	"build-default-voice-preset.mjs",
+	"build-default-voice-preset.ts",
 );
 const MAX_PLACEHOLDER_DIM = 1_073_741_817;
 
 function runGenerator(args: string[]): string {
-	return execFileSync("bun", [SCRIPT, ...args], {
+	return execFileSync("bun", ["--conditions=eliza-source", SCRIPT, ...args], {
 		cwd: APP_CORE_ROOT,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
@@ -42,11 +42,15 @@ type CliFailure = {
 
 function runGeneratorExpectFailure(args: string[]): CliFailure {
 	try {
-		const stdout = execFileSync("bun", [SCRIPT, ...args], {
-			cwd: APP_CORE_ROOT,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
+		const stdout = execFileSync(
+			"bun",
+			["--conditions=eliza-source", SCRIPT, ...args],
+			{
+				cwd: APP_CORE_ROOT,
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		);
 		return { status: 0, stdout, stderr: "" };
 	} catch (err) {
 		const e = err as {
@@ -62,7 +66,7 @@ function runGeneratorExpectFailure(args: string[]): CliFailure {
 	}
 }
 
-describe("build-default-voice-preset.mjs", () => {
+describe("build-default-voice-preset.ts", () => {
 	let dir: string;
 
 	beforeEach(() => {

@@ -3,26 +3,25 @@
  * real `/v1/trade` route envelopes while avoiding live credentials or venue
  * funds; these tests pin the Eliza-side retry, outcome, and method boundary.
  */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime } from "@elizaos/core";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core", async () => {
-  return await import("../__tests__/core-vitest-mock.js");
-});
-
 import { stewardFixtures } from "./__fixtures__/steward-trade-responses.js";
 import {
   STEWARD_TRADING_SERVICE_TYPE,
   StewardTradingService,
 } from "./steward-trading-service.js";
 
+vi.mock("@elizaos/core", async () => {
+  return await import("../__tests__/core-vitest-mock.js");
+});
 function jsonResponse(
   status: number,
   body: unknown,
@@ -33,7 +32,6 @@ function jsonResponse(
     headers: { "Content-Type": "application/json", ...headers },
   });
 }
-
 function runtime(
   settings: Record<string, string | undefined> = {},
 ): IAgentRuntime {
@@ -48,7 +46,6 @@ function runtime(
     },
   } as unknown as IAgentRuntime;
 }
-
 function configuredService(
   fetchMock: typeof fetch,
   maxRetries = 3,
@@ -67,7 +64,6 @@ function configuredService(
     },
   );
 }
-
 describe("StewardTradingService", () => {
   it("registers under the intended service type and reports configured capability", () => {
     const service = new StewardTradingService(
@@ -77,7 +73,6 @@ describe("StewardTradingService", () => {
         STEWARD_AGENT_TOKEN: "token-fixture",
       }),
     );
-
     expect(StewardTradingService.serviceType).toBe(
       STEWARD_TRADING_SERVICE_TYPE,
     );
@@ -88,7 +83,6 @@ describe("StewardTradingService", () => {
       apiUrl: "https://steward.local",
     });
   });
-
   it("allows bracketed IPv6 loopback Steward sidecar URLs", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(200, stewardFixtures.tokenStatusObserved),
@@ -98,21 +92,17 @@ describe("StewardTradingService", () => {
       3,
       "http://[::1]:8787",
     );
-
     expect(service.capability()).toMatchObject({
       kind: "steward-self",
       canTrade: true,
       agentId: "agent-fixture",
       apiUrl: "http://[::1]:8787",
     });
-
     await service.tokenStatus();
-
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "http://[::1]:8787/v1/trade/token-status?agentId=agent-fixture",
     );
   });
-
   it("sends tenant API key alongside the agent bearer when both are configured", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(200, stewardFixtures.tokenStatusObserved),
@@ -130,9 +120,7 @@ describe("StewardTradingService", () => {
         sleep: async () => undefined,
       },
     );
-
     await service.tokenStatus();
-
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
       string,
       string
@@ -141,13 +129,11 @@ describe("StewardTradingService", () => {
     expect(headers["X-Steward-Key"]).toBe("tenant-key-fixture");
     expect(headers["X-Steward-Tenant"]).toBe("tenant-fixture");
   });
-
   it("opens sessions through the versioned route with Steward request names", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(201, stewardFixtures.openHyperliquidSession),
     );
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     const result = await service.openSession({
       venue: "hyperliquid",
       dailyCapUsd: 300,
@@ -156,7 +142,6 @@ describe("StewardTradingService", () => {
       allowedAssets: ["BTC", "ETH"],
       ttlSeconds: 3600,
     });
-
     expect(result).toEqual({
       ok: true,
       data: {
@@ -179,7 +164,6 @@ describe("StewardTradingService", () => {
     });
     expect(request.allowedAssets).toEqual(["BTC", "ETH"]);
   });
-
   it("uses only versioned trade routes for session lifecycle and token status", async () => {
     const fetchMock = vi
       .fn()
@@ -193,22 +177,18 @@ describe("StewardTradingService", () => {
         jsonResponse(200, { ok: true, data: { revoked: true } }),
       );
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     await service.tokenStatus();
     await service.getSession("sess_hl_fixture");
     await service.revokeSession("sess_hl_fixture");
-
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "https://steward.local/v1/trade/token-status?agentId=agent-fixture",
       "https://steward.local/v1/trade/sessions/sess_hl_fixture",
       "https://steward.local/v1/trade/sessions/sess_hl_fixture/revoke",
     ]);
   });
-
   it("requires caller-supplied idempotency keys for submitted orders", async () => {
     const fetchMock = vi.fn();
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     const result = await service.submitOrder({
       venue: "hyperliquid",
       sessionId: "sess_hl_fixture",
@@ -216,7 +196,6 @@ describe("StewardTradingService", () => {
       side: "buy",
       size: 0.01,
     });
-
     expect(result).toMatchObject({
       ok: false,
       outcome: "not_attempted",
@@ -225,7 +204,6 @@ describe("StewardTradingService", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
   it("submits Hyperliquid orders with one idempotency key reused across retries", async () => {
     const fetchMock = vi
       .fn()
@@ -239,19 +217,17 @@ describe("StewardTradingService", () => {
         jsonResponse(200, stewardFixtures.hyperliquidOrderAccepted),
       );
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     const result = await service.submitOrder({
       venue: "hyperliquid",
       sessionId: "sess_hl_fixture",
       coin: "BTC",
       side: "buy",
       size: 0.01,
-      limitPx: 61_000,
+      limitPx: 61000,
       leverage: 2,
       tif: "Ioc",
       idempotencyKey: "idem-fixture",
     });
-
     expect(result).toMatchObject({
       ok: true,
       data: {
@@ -274,13 +250,11 @@ describe("StewardTradingService", () => {
       expect(body.idempotencyKey).toBe("idem-fixture");
     }
   });
-
   it("does not retry status-unknown submit responses", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(502, stewardFixtures.unknownSubmit),
     );
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     const result = await service.submitOrder({
       venue: "polymarket",
       sessionId: "sess_pm_fixture",
@@ -290,7 +264,6 @@ describe("StewardTradingService", () => {
       price: "0.42",
       idempotencyKey: "idem-fixture",
     });
-
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       ok: false,
@@ -299,13 +272,11 @@ describe("StewardTradingService", () => {
       retryable: false,
     });
   });
-
   it("reports exhausted 5xx retries as an unknown submission", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(503, { ok: false, error: "transient upstream failure" }),
     );
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     const result = await service.submitOrder({
       venue: "hyperliquid",
       sessionId: "sess_hl_fixture",
@@ -314,7 +285,6 @@ describe("StewardTradingService", () => {
       size: 0.01,
       idempotencyKey: "idem-fixture",
     });
-
     expect(fetchMock).toHaveBeenCalledTimes(3);
     for (const call of fetchMock.mock.calls) {
       const headers = call[1]?.headers as Record<string, string>;
@@ -329,13 +299,11 @@ describe("StewardTradingService", () => {
       retryable: false,
     });
   });
-
   it("reports exhausted transport retries as unknown and preserves the idempotency key", async () => {
     const fetchMock = vi.fn(async () => {
       throw new TypeError("socket closed after write");
     });
     const service = configuredService(fetchMock as unknown as typeof fetch);
-
     const result = await service.submitOrder({
       venue: "hyperliquid",
       sessionId: "sess_hl_fixture",
@@ -344,7 +312,6 @@ describe("StewardTradingService", () => {
       size: 0.01,
       idempotencyKey: "idem-fixture",
     });
-
     expect(fetchMock).toHaveBeenCalledTimes(3);
     for (const call of fetchMock.mock.calls) {
       const headers = call[1]?.headers as Record<string, string>;
@@ -357,12 +324,10 @@ describe("StewardTradingService", () => {
       retryable: false,
     });
   });
-
   it("does not translate missing configuration into a retryable outage", async () => {
     const service = new StewardTradingService(runtime(), {
       fetch: vi.fn() as unknown as typeof fetch,
     });
-
     await expect(
       service.submitOrder({
         venue: "hyperliquid",
@@ -374,7 +339,6 @@ describe("StewardTradingService", () => {
       }),
     ).rejects.toThrow("Steward trading is not configured");
   });
-
   it("maps critical Steward failures into outcome classes and retry flags", async () => {
     const cases = [
       {
@@ -461,7 +425,6 @@ describe("StewardTradingService", () => {
         },
       },
     ] as const;
-
     for (const c of cases) {
       const fetchMock = vi.fn(async () =>
         jsonResponse(c.status, c.body, { "Retry-After": "0" }),
@@ -470,7 +433,6 @@ describe("StewardTradingService", () => {
         fetchMock as unknown as typeof fetch,
         1,
       );
-
       const result = await service.submitOrder({
         venue: "polymarket",
         sessionId: "sess_pm_fixture",
@@ -480,17 +442,14 @@ describe("StewardTradingService", () => {
         price: "0.42",
         idempotencyKey: "idem-fixture",
       });
-
       expect(result).toMatchObject({ ok: false, ...c.expected });
     }
   });
-
   it("keeps venue instrument token rejections out of credential handling", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(400, { ok: false, error: "token not supported" }),
     );
     const service = configuredService(fetchMock as unknown as typeof fetch, 1);
-
     const result = await service.submitOrder({
       venue: "polymarket",
       sessionId: "sess_pm_fixture",
@@ -500,7 +459,6 @@ describe("StewardTradingService", () => {
       price: "0.42",
       idempotencyKey: "idem-fixture",
     });
-
     expect(result).toMatchObject({
       ok: false,
       outcome: "rejected",
@@ -509,7 +467,6 @@ describe("StewardTradingService", () => {
       retryable: false,
     });
   });
-
   it("resolves an active governed account from token and session state", async () => {
     const fetchMock = vi
       .fn()
@@ -528,7 +485,6 @@ describe("StewardTradingService", () => {
       }),
       { fetch: fetchMock as unknown as typeof fetch },
     );
-
     await expect(service.resolveAccount("hyperliquid")).resolves.toEqual({
       ok: true,
       data: {
@@ -546,7 +502,6 @@ describe("StewardTradingService", () => {
       "https://steward.local/v1/trade/sessions/sess_hl_fixture",
     ]);
   });
-
   it("preserves Steward outages while resolving governed accounts", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(503, { ok: false, error: "transient upstream failure" }),
@@ -560,7 +515,6 @@ describe("StewardTradingService", () => {
       }),
       { fetch: fetchMock as unknown as typeof fetch },
     );
-
     await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
       ok: false,
       outcome: "not_attempted",
@@ -568,16 +522,13 @@ describe("StewardTradingService", () => {
       retryable: true,
     });
   });
-
   it("exposes exact neutral methods and fail-closed unavailable routes", async () => {
     const service = configuredService(vi.fn() as unknown as typeof fetch);
-
     expect(typeof service.resolveAccount).toBe("function");
     expect(typeof service.listOrders).toBe("function");
     expect(typeof service.cancelOrder).toBe("function");
     expect(typeof service.listPositions).toBe("function");
     expect("listOpenOrders" in service).toBe(false);
-
     await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
       ok: false,
       outcome: "policy_denied",
@@ -606,7 +557,6 @@ describe("StewardTradingService", () => {
     });
   });
 });
-
 const AUTHORITY_ENV_KEYS = [
   "ELIZA_STATE_DIR",
   "ELIZA_DEV_SOURCE",
@@ -621,11 +571,9 @@ const AUTHORITY_ENV_KEYS = [
   "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
   "STEWARD_POLYMARKET_TRADE_SESSION_ID",
 ] as const;
-
 describe("StewardTradingService dev launcher authority", () => {
   let saved: Record<(typeof AUTHORITY_ENV_KEYS)[number], string | undefined>;
   let stateDir: string;
-
   beforeEach(() => {
     resetDevCloudEnvAuthorityForTests();
     saved = Object.fromEntries(
@@ -637,7 +585,6 @@ describe("StewardTradingService dev launcher authority", () => {
     );
     process.env.ELIZA_STATE_DIR = stateDir;
   });
-
   afterEach(() => {
     for (const key of AUTHORITY_ENV_KEYS) {
       const value = saved[key];
@@ -647,7 +594,6 @@ describe("StewardTradingService dev launcher authority", () => {
     resetDevCloudEnvAuthorityForTests();
     rmSync(stateDir, { force: true, recursive: true });
   });
-
   it("does not trade from persisted or runtime production credentials in default staging", async () => {
     writeFileSync(
       path.join(stateDir, "steward-credentials.json"),
@@ -672,7 +618,6 @@ describe("StewardTradingService dev launcher authority", () => {
       }),
       { fetch: fetchMock as unknown as typeof fetch },
     );
-
     expect(service.capability()).toMatchObject({ canTrade: false });
     await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
       ok: false,
@@ -690,7 +635,6 @@ describe("StewardTradingService dev launcher authority", () => {
     ).rejects.toThrow(/not configured/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
   it("does not let late runtime URL, token, and session values complete an explicit tuple", async () => {
     process.env.ELIZA_DEV_SOURCE = "1";
     process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
@@ -698,7 +642,6 @@ describe("StewardTradingService dev launcher authority", () => {
     process.env.STEWARD_TENANT_ID = "elizacloud-staging";
     process.env.STEWARD_AGENT_ID = "staging-agent";
     captureDevCloudEnvAuthoritySnapshot();
-
     process.env.STEWARD_API_URL = "https://eliza.app/steward";
     process.env.STEWARD_AGENT_TOKEN = "late-production-token";
     process.env.STEWARD_HYPERLIQUID_TRADE_SESSION_ID = "late-session";
@@ -712,7 +655,6 @@ describe("StewardTradingService dev launcher authority", () => {
       }),
       { fetch: fetchMock as unknown as typeof fetch },
     );
-
     expect(service.capability()).toMatchObject({ canTrade: false });
     await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
       ok: false,
@@ -730,7 +672,6 @@ describe("StewardTradingService dev launcher authority", () => {
     ).rejects.toThrow(/not configured/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
-
   it("uses the frozen explicit URL, token, and governed session after late overrides", async () => {
     process.env.ELIZA_DEV_SOURCE = "1";
     process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
@@ -740,7 +681,6 @@ describe("StewardTradingService dev launcher authority", () => {
     process.env.STEWARD_AGENT_TOKEN = "staging-token";
     process.env.STEWARD_HYPERLIQUID_TRADE_SESSION_ID = "sess_hl_fixture";
     captureDevCloudEnvAuthoritySnapshot();
-
     process.env.STEWARD_API_URL = "https://eliza.app/steward";
     process.env.STEWARD_AGENT_TOKEN = "production-token";
     process.env.STEWARD_HYPERLIQUID_TRADE_SESSION_ID = "production-session";
@@ -761,7 +701,6 @@ describe("StewardTradingService dev launcher authority", () => {
       }),
       { fetch: fetchMock as unknown as typeof fetch },
     );
-
     await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
       ok: true,
       audit: { sessionId: "sess_hl_fixture" },

@@ -12,16 +12,18 @@
  * models, database); provider API keys are synced into process.env.
  */
 import type http from "node:http";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  type AgentRuntime,
   isElizaSettingsDebugEnabled,
+  logger,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+  type ReadJsonBodyOptions,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
@@ -30,6 +32,7 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import { reconcileDirectTextModelSettings } from "../runtime/runtime-settings.ts";
 import {
   hasBlockedObjectKeyDeep,
   MAX_BLOCKED_OBJECT_DEPTH,
@@ -246,6 +249,8 @@ async function applyReloadedConfig(params: {
 }): Promise<void> {
   const { state, next, runtime, isBlockedEnvKey } = params;
 
+  const previous = structuredClone(state);
+
   // Replace top-level keys in the live state.config with the loaded values.
   replaceConfigInPlace(state, next);
   const nextRecord = asConfigRecord(next);
@@ -297,6 +302,7 @@ async function applyReloadedConfig(params: {
         character[field as string] = value;
       }
     }
+    reconcileDirectTextModelSettings(runtime, previous, next);
   }
 }
 
@@ -710,6 +716,7 @@ export async function handleConfigRoutes(
       return true;
     }
 
+    const previousConfig = structuredClone(config);
     replaceConfigInPlace(config, nextConfig);
 
     // Synchronise env only after persistence succeeds so a failed write cannot
@@ -755,6 +762,9 @@ export async function handleConfigRoutes(
         if (v.trim()) process.env[k] = v;
         else delete process.env[k];
       }
+    }
+    if (runtime) {
+      reconcileDirectTextModelSettings(runtime, previousConfig, config);
     }
     json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;

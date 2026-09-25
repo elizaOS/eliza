@@ -2,6 +2,7 @@
  * Exercises the shared tsup/esbuild source transformer through a real unbundled build and imported output.
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -39,11 +40,22 @@ describe("shared plugin tsup source rewriting", () => {
       "export const value = 7;\n",
     );
     writeFileSync(
+      path.join(root, "src", "document.helpers.ts"),
+      "export const helperValue = 11;\n",
+    );
+    mkdirSync(path.join(root, "src", "document.parts"));
+    writeFileSync(
+      path.join(root, "src", "document.parts", "index.ts"),
+      "export const partValue = 13;\n",
+    );
+    writeFileSync(
       path.join(root, "src", "index.ts"),
       [
         'import { value } from "./sibling";',
+        'import { helperValue } from "./document.helpers";',
+        'import { partValue } from "./document.parts";',
         "export const guidance = 'Read from \"./sibling\" for help.';",
-        "export const result = value;",
+        "export const result = value + helperValue + partValue;",
       ].join("\n"),
     );
 
@@ -70,12 +82,18 @@ describe("shared plugin tsup source rewriting", () => {
     const emitted = readFileSync(path.join(root, "dist", "index.js"), "utf8");
     expect(emitted).toContain('from "./sibling.js"');
     expect(emitted).toContain('Read from "./sibling" for help.');
-    const runtime = await import(
-      `${pathToFileURL(path.join(root, "dist", "index.js")).href}?run=${Date.now()}`
+    const runtime = execFileSync(
+      "node",
+      [
+        "--input-type=module",
+        "--eval",
+        'import * as result from "./dist/index.js"; process.stdout.write(JSON.stringify(result));',
+      ],
+      { cwd: root, encoding: "utf8" },
     );
-    expect(runtime).toMatchObject({
+    expect(JSON.parse(runtime)).toEqual({
       guidance: 'Read from "./sibling" for help.',
-      result: 7,
+      result: 31,
     });
   });
 });

@@ -1,23 +1,23 @@
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 
 import { PGlite } from "@electric-sql/pglite";
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
-import { drizzle } from "drizzle-orm/pglite";
-import { describe, expect, it, vi } from "vitest";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import { TaskService } from "../../../../packages/core/src/services/task.ts";
 import {
+  AgentRuntime,
   ChannelType,
   type Character,
   type EvaluatorProcessorContext,
+  isActiveMemoryEvidence,
   type Memory,
   type RegisteredEvaluator,
   type State,
+  stringToUuid as sqliteTestAgentId,
+  stringToUuid,
   type Task,
-} from "../../../../packages/core/src/types/index.ts";
-import { isActiveMemoryEvidence } from "../../../../packages/core/src/utils/extraction-evidence.ts";
-import { stringToUuid } from "../../../../packages/core/src/utils.ts";
+  TaskService,
+} from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { drizzle } from "drizzle-orm/pglite";
+import { describe, expect, it, vi } from "vitest";
 import { getEntityDetails } from "../entities";
 import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
 import {
@@ -612,7 +612,7 @@ describe("durable background memory", () => {
     [ChannelType.SELF, true],
     [ChannelType.GROUP, true],
     [ChannelType.VOICE_DM, true],
-    [ChannelType.VOICE_GROUP, false],
+    [ChannelType.VOICE_GROUP, true],
   ] as const)(
     "indexes supported progressive-context sources: %s",
     async (channelType, enabled) => {

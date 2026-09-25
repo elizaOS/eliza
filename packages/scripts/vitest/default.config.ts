@@ -13,193 +13,19 @@
  * Test locations: src/, __tests__/, test/ — all are auto-discovered.
  * Cloud subsystems use their own runners.
  */
-import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
-import {
-  getAppCoreSourceRoot,
-  getAutonomousSourceRoot,
-  getElizaCoreEntry,
-  getSharedSourceRoot,
-  getUiSourceRoot,
-} from "@elizaos/testing";
 import { defineConfig } from "vitest/config";
 import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.ts";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import { buildWorkspaceSourceAliases } from "./source-aliases";
-import {
-  getAgentSourceAliases,
-  getAppCoreBridgeStubPath,
-  getAppCoreModuleFallbackPath,
-  getAppCorePluginFallbackPath,
-  getAppCoreSourceAliases,
-  getElizaWorkspaceRoot,
-  getOptionalInstalledPackageAliases,
-  getOptionalPluginSdkAliases,
-  getSharedSourceAliases,
-  getUiSourceAliases,
-  getWorkspaceAppAliases,
-  getWorkspacePluginAliases,
-  type ModuleAlias,
-} from "./workspace-aliases";
-
-interface RootPackageManifest {
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-}
+import { getElizaWorkspaceRoot, type ModuleAlias } from "./workspace-aliases";
 
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
-const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
-const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-const sharedSourceRoot = getSharedSourceRoot(repoRoot);
-const uiSourceRoot = getUiSourceRoot(repoRoot);
-const cloudRoutingSourceRoot = path.join(
-  elizaWorkspaceRoot,
-  "packages/cloud/routing/src",
-);
-const cloudSdkSourceRoot = path.join(
-  elizaWorkspaceRoot,
-  "packages/cloud/sdk/src",
-);
-const packageManifest: RootPackageManifest = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
-);
-
-function resolveInstalledPackageRoot(
-  packageName: string,
-  workspacePackageRoot = repoRoot,
-): string {
-  const requireFromWorkspace = createRequire(
-    path.join(workspacePackageRoot, "package.json"),
-  );
-  return path.dirname(
-    requireFromWorkspace.resolve(`${packageName}/package.json`),
-  );
-}
-
-// Bun isolates workspace-only development dependencies on clean installs.
-// Resolve each singleton from the package that declares it rather than relying
-// on an incidental root hoist that disappears when the lockfile is rebuilt.
-const uiPackageRoot = path.join(elizaWorkspaceRoot, "packages", "ui");
-const corePackageRoot = path.join(elizaWorkspaceRoot, "packages", "core");
-const workspaceReactDir = resolveInstalledPackageRoot("react", uiPackageRoot);
-const workspaceReactDomDir = resolveInstalledPackageRoot(
-  "react-dom",
-  uiPackageRoot,
-);
-const workspaceReactTestRendererDir = resolveInstalledPackageRoot(
-  "react-test-renderer",
-  corePackageRoot,
-);
-const workspaceAdzeDir = resolveInstalledPackageRoot("adze", corePackageRoot);
-const workspaceReactEntry = path.join(workspaceReactDir, "index.js");
-const workspaceReactJsxRuntimeEntry = path.join(
-  workspaceReactDir,
-  "jsx-runtime.js",
-);
-const workspaceReactJsxDevRuntimeEntry = path.join(
-  workspaceReactDir,
-  "jsx-dev-runtime.js",
-);
-const workspaceReactDomEntry = path.join(workspaceReactDomDir, "index.js");
-const workspaceReactDomClientEntry = path.join(
-  workspaceReactDomDir,
-  "client.js",
-);
-const workspaceReactDomServerEntry = path.join(
-  workspaceReactDomDir,
-  "server.js",
-);
-const workspaceReactDomTestUtilsEntry = path.join(
-  workspaceReactDomDir,
-  "test-utils.js",
-);
-const workspaceReactTestRendererEntry = path.join(
-  workspaceReactTestRendererDir,
-  "index.js",
-);
-const workspaceAdzeEntry = path.join(workspaceAdzeDir, "dist", "index.js");
-// Vite's `/@fs/` protocol expects a POSIX, forward-slash absolute path. On
-// POSIX `path.join(...)` already yields `/abs/...` so `/@fs` + that gives
-// `/@fs/abs/...`. On Windows it yields `C:\abs\...` (backslashes, no leading
-// slash), so a naive `/@fs${p}` produces `/@fsC:\abs\...` which vite's
-// `/@fs/`-prefix check never matches → "Cannot find package". Normalize
-// backslashes to `/` and ensure exactly one separator after `/@fs`.
-const asViteFsPath = (targetPath: string) =>
-  `/@fs/${targetPath.split("\\").join("/").replace(/^\/+/, "")}`;
-const workspacePluginPackageNames = Object.keys({
-  ...(packageManifest.dependencies ?? {}),
-  ...(packageManifest.devDependencies ?? {}),
-})
-  .filter((packageName) => packageName.startsWith("@elizaos/plugin-"))
-  .sort();
-const resolvedPluginNames = new Set<string>();
-const elizaPluginAliases = workspacePluginPackageNames.flatMap(
-  (packageName) => {
-    const aliases = getOptionalInstalledPackageAliases(repoRoot, [
-      {
-        find: `${packageName}/node`,
-        packageName,
-        options: {
-          entryKind: "node",
-        },
-      },
-      {
-        find: packageName,
-        packageName,
-      },
-    ]);
-
-    if (aliases.some((alias) => alias.find === packageName)) {
-      resolvedPluginNames.add(packageName);
-    }
-
-    return aliases;
-  },
-);
-const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
-  "plugin-agent-orchestrator",
-  "plugin-anthropic",
-  "plugin-assistant",
-  "plugin-browser",
-  "plugin-native-inference",
-  "plugin-coding-tools",
-  "plugin-computeruse",
-  "plugin-native-contacts",
-  "plugin-discord",
-  "plugin-elizacloud",
-  "plugin-health",
-  "plugin-imessage",
-  "plugin-inbox",
-  "plugin-local-inference",
-  "plugin-mcp",
-  "plugin-native-filesystem",
-  "plugin-openai",
-  "plugin-native-phone",
-  "plugin-pty",
-  "plugin-scheduling",
-  "plugin-video",
-  "plugin-vision",
-  "plugin-native-wifi",
-  "plugin-workflow",
-]);
-const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
-// Fall back to a stub when an optional plugin tarball has a broken entry point.
-const unresolvedPluginStubs = workspacePluginPackageNames
-  .filter((name) => !resolvedPluginNames.has(name))
-  .map((name) => ({
-    find: name,
-    replacement: getAppCorePluginFallbackPath(repoRoot),
-  }));
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 const isWindows = process.platform === "win32";
 const localWorkers = 2;
 const ciWorkers = isWindows ? 2 : 3;
-const appCoreModuleFallbackPath = getAppCoreModuleFallbackPath(repoRoot);
-const appCoreBridgeStubPath = getAppCoreBridgeStubPath(repoRoot);
-const appCorePluginFallbackPath = getAppCorePluginFallbackPath(repoRoot);
 const vitestInlineDeps = [
   "@testing-library/react",
   "@elizaos/core",
@@ -208,10 +34,8 @@ const vitestInlineDeps = [
   "react",
   "react-dom",
   "react-test-renderer",
-  /^@elizaai\/shared/,
   /^@elizaos\/plugin-/,
   /^@elizaos\/app-/,
-  /^@elizaos\/shared/,
   "zod",
 ];
 
@@ -220,7 +44,9 @@ const vitestResolveAlias: ModuleAlias[] = buildWorkspaceSourceAliases(repoRoot);
 export default defineConfig({
   plugins: [dependencySourcemapLoggerPlugin()],
   resolve: {
-    preserveSymlinks: true,
+    // Bun's isolated dependency store keeps transitive dependencies beside the
+    // real package. Resolving through a workspace symlink loses that lookup root.
+    preserveSymlinks: false,
     dedupe: ["react", "react-dom", "ethers", "@elizaos/core"],
     alias: vitestResolveAlias,
   },

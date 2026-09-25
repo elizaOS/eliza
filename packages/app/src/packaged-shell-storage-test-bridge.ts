@@ -69,18 +69,6 @@ function labelForApiBase(apiBase: string): string {
   }
 }
 
-function readSeededState(win: Window): ReturningInstallSeedResult {
-  // `shellLocalStorage` is a write-only privilege channel (no `getItem`); reads
-  // are unguarded, so read the seeded keys back off the global directly.
-  return {
-    ok: true,
-    firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
-    setupStep: win.localStorage.getItem("eliza:setup:step"),
-    uiShellMode: win.localStorage.getItem("eliza:ui-shell-mode"),
-    activeServer: win.localStorage.getItem("elizaos:active-server"),
-  };
-}
-
 export async function seedReturningInstallStateForPackagedTests(
   apiBase: string,
   chatOverlayHotkey?: string,
@@ -105,7 +93,7 @@ export async function seedReturningInstallStateForPackagedTests(
       apiBase,
     }),
   );
-  return readSeededState(win);
+  return readReturningInstallStateForPackagedTests(win);
 }
 
 export async function seedResettableStateForPackagedTests(
@@ -123,7 +111,7 @@ export async function seedResettableStateForPackagedTests(
   return {
     ok: true,
     firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
-    activeServer: win.localStorage.getItem("elizaos:active-server"),
+    activeServer: (await getStorageValue("elizaos:active-server")) ?? null,
   };
 }
 

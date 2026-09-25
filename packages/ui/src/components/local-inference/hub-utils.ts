@@ -2,8 +2,7 @@
  * Pure helpers used by the Model Hub UI. Kept separate from components so
  * they can be covered by unit tests without a DOM.
  */
-
-import { MODEL_CATALOG } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import type {
   CatalogModel,
   DownloadJob,
@@ -13,19 +12,15 @@ import type {
 } from "../../api/client-local-inference";
 import { assessCatalogModelFit } from "../../services/local-inference/recommendation";
 import { formatByteSize } from "../../utils/format";
-
 export type FitLevel = "fits" | "tight" | "wontfit";
-
 export const formatBytes = (bytes: number): string =>
   formatByteSize(bytes, { unknownLabel: "—" });
-
 const ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-2b": "eliza-1-2b",
   "eliza-1-4b": "eliza-1-4b",
   "eliza-1-9b": "eliza-1-9b",
   "eliza-1-27b": "eliza-1-27b",
 };
-
 export function displayModelName(model: {
   id: string;
   displayName?: string;
@@ -37,7 +32,6 @@ export function displayModelName(model: {
   }
   return ELIZA_1_DISPLAY_NAMES[model.id] ?? model.displayName ?? model.id;
 }
-
 export function formatEta(ms: number | null): string {
   if (ms == null || !Number.isFinite(ms) || ms <= 0) return "";
   const totalSec = Math.ceil(ms / 1000);
@@ -48,36 +42,30 @@ export function formatEta(ms: number | null): string {
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
 }
-
 export function progressPercent(job: DownloadJob | undefined): number {
   if (!job || job.total <= 0) return 0;
   return Math.min(100, Math.round((job.received / job.total) * 100));
 }
-
 const BUCKET_LABEL: Record<ModelBucket, string> = {
   small: "Fast",
   mid: "Balanced",
   large: "High quality",
   xl: "Premium",
 };
-
 export function bucketLabel(bucket: ModelBucket): string {
   return BUCKET_LABEL[bucket];
 }
-
 export function fitLabel(fit: FitLevel): string {
   if (fit === "fits") return "Runs smoothly";
   if (fit === "tight") return "Slow on your device";
   return "Not enough memory";
 }
-
 export function computeFit(
   model: CatalogModel,
   hardware: HardwareProbe,
 ): FitLevel {
   return assessCatalogModelFit(hardware, model, MODEL_CATALOG);
 }
-
 /**
  * Decide whether a catalog model is already installed.
  * External models show up with ids like `external-<origin>-<hash>` so we
@@ -97,14 +85,12 @@ export function findInstalled(
       m.path.toLowerCase().endsWith(`\\${target}`),
   );
 }
-
 export function findDownload(
   modelId: string,
   downloads: DownloadJob[],
 ): DownloadJob | undefined {
   return downloads.find((d) => d.modelId === modelId);
 }
-
 /**
  * Client-side lookup of a catalog entry by id. Accepts the catalog as an
  * argument so the hub UI can mix curated + HF-search results without
@@ -116,7 +102,6 @@ export function findCatalogModel(
 ): CatalogModel | undefined {
   return catalog.find((m) => m.id === id);
 }
-
 export function groupByBucket(
   models: CatalogModel[],
 ): Map<ModelBucket, CatalogModel[]> {

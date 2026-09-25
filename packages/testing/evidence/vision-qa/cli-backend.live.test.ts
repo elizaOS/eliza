@@ -4,7 +4,7 @@
  * the full askAboutImage pipeline (stage image, spawn CLI, parse strict JSON, real
  * usage provenance) runs end to end. Gated behind ELIZA_VISION_QA_CLI_LIVE=1
  * (deliberate opt-in: it spends real tokens through the operator's authed CLI);
- * registered in packages/scripts/lib/real-live-suites.mjs so the post-merge
+ * registered in packages/scripts/lib/real-live-suites.ts so the post-merge
  * accounting names it instead of a silent green. ELIZA_VISION_QA_CLI selects
  * claude (default) or codex. Renders a solid-red fixture via sharp and asserts
  * the model reports red with real token-usage provenance.

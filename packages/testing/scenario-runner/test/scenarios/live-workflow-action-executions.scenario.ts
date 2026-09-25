@@ -10,35 +10,37 @@
  * `live-only`: it needs a live model and is excluded from the pr-deterministic
  * lane.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
-import type { ScenarioContext, ScenarioTurnExecution } from "@elizaos/testing";
-import { scenario } from "@elizaos/testing";
+
+import { type IAgentRuntime } from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import {
+  type ScenarioContext,
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/testing";
 import workflowPlugin from "../../../../../plugins/plugin-workflow/src/index.ts";
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
 } from "../../../../../plugins/plugin-workflow/src/services/index.ts";
-import type { WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
+import { type WorkflowDefinition } from "../../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../../plugins/plugin-workflow/src/utils/context.ts";
 
 const WORKFLOW_ID = "live-workflow-action-executions";
 const WORKFLOW_NAME = "Morning digest";
-
 type RuntimeWithWorkflow = IAgentRuntime & {
   db?: unknown;
   plugins?: Plugin[];
   registerPlugin?: (plugin: Plugin) => Promise<void>;
   getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
   routes?: Array<
-    { path: string; __scenarioWorkflowRoute?: boolean } & Record<
-      string,
-      unknown
-    >
+    {
+      path: string;
+      __scenarioWorkflowRoute?: boolean;
+    } & Record<string, unknown>
   >;
 };
-
 const workflowDefinition: WorkflowDefinition = {
   id: WORKFLOW_ID,
   name: WORKFLOW_NAME,
@@ -55,9 +57,7 @@ export default smithers(() => <Workflow name="Morning digest" />);`,
   steps: [],
   widgets: [],
 };
-
 let seededExecutionId: string | null = null;
-
 async function embeddedService(
   runtime: RuntimeWithWorkflow,
 ): Promise<EmbeddedWorkflowService> {
@@ -69,7 +69,6 @@ async function embeddedService(
   if (!embedded) throw new Error("EmbeddedWorkflowService was not registered");
   return embedded;
 }
-
 async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithWorkflow | undefined;
   if (!runtime?.db) return "scenario runtime db was not available";
@@ -89,7 +88,6 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
       __scenarioWorkflowRoute: true,
     });
   }
-
   // The ACTIVE_WORKFLOWS provider scopes by a per-user tag
   // (`WorkflowService.listWorkflows(userId)` filters by `getUserTagName`), so a
   // workflow created straight on the embedded engine is invisible to the model.
@@ -100,20 +98,16 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
     | string
     | undefined;
   if (!ownerId) return "scenario owner entity id was not available";
-
   const embedded = await embeddedService(runtime);
   await embedded.deleteWorkflow(WORKFLOW_ID).catch(() => undefined);
   await embedded.createWorkflow(workflowDefinition);
-
   const tagName = await getUserTagName(runtime, ownerId);
   const userTag = await embedded.getOrCreateTag(tagName);
   await embedded.updateWorkflowTags(WORKFLOW_ID, [userTag.id]);
-
   const execution = await embedded.executeWorkflow(WORKFLOW_ID);
   seededExecutionId = execution.id;
   return undefined;
 }
-
 /** The action must have run and returned the real seeded execution. */
 function expectWorkflowExecutionsAction(
   execution: ScenarioTurnExecution,
@@ -122,12 +116,15 @@ function expectWorkflowExecutionsAction(
     (candidate) => candidate.actionName === "WORKFLOW",
   );
   if (!action) {
-    return `expected the WORKFLOW action to be selected, saw ${
-      execution.actionsCalled.map((c) => c.actionName).join(", ") || "none"
-    }`;
+    return `expected the WORKFLOW action to be selected, saw ${execution.actionsCalled.map((c) => c.actionName).join(", ") || "none"}`;
   }
   const result = action.result as
-    | { success?: boolean; data?: { executions?: unknown[] } }
+    | {
+        success?: boolean;
+        data?: {
+          executions?: unknown[];
+        };
+      }
     | undefined;
   if (result?.success !== true) {
     return `expected WORKFLOW result.success=true, saw ${JSON.stringify(result)}`;
@@ -138,7 +135,6 @@ function expectWorkflowExecutionsAction(
   }
   return undefined;
 }
-
 async function finalWorkflowState(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
@@ -156,7 +152,6 @@ async function finalWorkflowState(
   await embedded.deleteWorkflow(WORKFLOW_ID).catch(() => undefined);
   return undefined;
 }
-
 export default scenario({
   id: "live-workflow-action-executions",
   lane: "live-only",

@@ -3,9 +3,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import { todoMutationsTable, todosTable } from "@elizaos/plugin-todos";
 import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { todoMutationsTable, todosTable } from "../../../../../plugins/plugin-todos/src/db/schema";
 
 describe("0206-0207 Shared Todos", () => {
   const databases: PGlite[] = [];

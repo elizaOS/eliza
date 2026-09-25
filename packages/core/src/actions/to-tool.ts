@@ -12,7 +12,7 @@
  */
 import { ElizaError } from "../errors";
 import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context";
-import type { Action } from "../types";
+import type { Action } from "../types/components.js";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
 	type ActionParametersJsonSchema,
@@ -39,7 +39,17 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
 /** Reserved planner protocol for loading authorized schemas without domain effects. */
+export const DISCOVER_ACTIONS_NAME = "DISCOVER_ACTIONS" as const;
+/** Legacy discovery name retained as the canonical action's declared simile. */
 export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
+
+/** Recognize current and persisted legacy planner discovery calls. */
+export function isDiscoveryActionName(name: string): boolean {
+	const normalized = name.trim().toUpperCase();
+	return (
+		normalized === DISCOVER_ACTIONS_NAME || normalized === DISCOVER_TOOLS_NAME
+	);
+}
 
 /** Shared should-respond contract for static and registry-composed schemas. */
 export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =
@@ -82,7 +92,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome with no work remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
 		},
 		candidateActionNames: {
 			type: "array",

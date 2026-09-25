@@ -5,9 +5,13 @@
  * ConnectorAccountManager provider, the DM sensitive-request adapter, and the
  * cross-connector triage adapter. Auto-enables on the `telegram` connector key.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { getConnectorAccountManager, logger } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared";
+
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
+import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import { TelegramAccountService } from "./account-client-service";
 import {
   stopTelegramAccountAuthSession,
@@ -83,11 +87,9 @@ const telegramPlugin: Plugin = {
         "Failed to register Telegram provider with ConnectorAccountManager",
       );
     }
-
     // Deliver secret / OAuth requests as a DM link-out (the value never transits
     // the chat transport). Mirrors the Discord DM adapter.
     registerTelegramDmSensitiveRequestAdapter(runtime);
-
     // Register the cross-connector triage adapter for the "telegram" source.
     registerTelegramTriageAdapter();
   },

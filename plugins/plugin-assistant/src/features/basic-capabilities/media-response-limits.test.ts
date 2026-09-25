@@ -3,14 +3,15 @@
  * path, including declared oversize rejection before reading and cancellation of
  * a chunked response as soon as its running byte total crosses the cap.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+
 import {
   ContentType,
   type IAgentRuntime,
   type Media,
+  MediaFetchError,
   type UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { MediaFetchError } from "../../../../../packages/shared/src/media/index.ts";
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { processAttachments } from "./index.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000ab" as UUID;

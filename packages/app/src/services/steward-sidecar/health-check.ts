@@ -2,8 +2,8 @@
  * Steward Sidecar - health check polling.
  */
 
+import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "@elizaos/core";
-import { sleep } from "./helpers";
 import { HEALTH_CHECK_INTERVAL_MS, HEALTH_CHECK_TIMEOUT_MS } from "./types";
 
 /**
@@ -17,13 +17,11 @@ export async function waitForHealthy(
   const startTime = Date.now();
 
   while (Date.now() - startTime < HEALTH_CHECK_TIMEOUT_MS) {
-    if (abort.signal.aborted) {
-      throw new Error("Health check aborted");
-    }
+    abort.signal.throwIfAborted();
 
     try {
       const response = await fetch(`${apiBase}/health`, {
-        signal: AbortSignal.timeout(2_000),
+        signal: AbortSignal.any([abort.signal, AbortSignal.timeout(2_000)]),
       });
 
       if (response.ok) {
@@ -36,10 +34,11 @@ export async function waitForHealthy(
         }
       }
     } catch {
-      // Not ready yet
+      abort.signal.throwIfAborted();
+      // A failed probe may recover before the overall readiness deadline.
     }
 
-    await sleep(HEALTH_CHECK_INTERVAL_MS);
+    await sleep(HEALTH_CHECK_INTERVAL_MS, undefined, { signal: abort.signal });
   }
 
   throw new Error(

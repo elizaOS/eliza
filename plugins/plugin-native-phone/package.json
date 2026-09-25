@@ -2,44 +2,32 @@
   "name": "@elizaos/plugin-native-phone",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+  "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
+      "eliza-source": "./src/plugin.ts",
       "types": "./dist/plugin.d.ts",
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./bridge": {
-      "types": "./dist/bridge.d.ts",
       "eliza-source": "./src/bridge.ts",
+      "types": "./dist/bridge.d.ts",
       "import": "./dist/bridge.js",
       "default": "./dist/bridge.js"
     }
@@ -48,8 +36,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-phone -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-phone -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
@@ -66,7 +54,6 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
@@ -102,7 +89,7 @@
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "bun-types": "^1.3.14",
+    "bun-types": "1.3.14",
     "jsdom": "^29.0.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -113,5 +100,18 @@
     "android": {
       "src": "android"
     }
-  }
+  },
+  "sideEffects": [
+    "./src/register.ts",
+    "./src/register-phone-page.ts",
+    "./src/register-companion-page.ts",
+    "./src/bridge.ts",
+    "./src/companion/services/eliza-intent.ts",
+    "./dist/register.js",
+    "./dist/register-phone-page.js",
+    "./dist/register-companion-page.js",
+    "./dist/bridge.js",
+    "./dist/companion/services/eliza-intent.js",
+    "**/*.css"
+  ]
 }

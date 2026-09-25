@@ -6,20 +6,20 @@
  */
 import { createHash } from "node:crypto";
 import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
-import {
-  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
-  type CalendarOwnerMutationGateway,
-  CalendarService,
-  CalendarServiceError,
-} from "@elizaos/plugin-calendar";
-import { resolveCalendarEventRange } from "@elizaos/plugin-calendar/internal/calendar-normalize";
 import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsCalendarEventResponse,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventCancellationResult,
-} from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/core/contracts/calendar";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  type CalendarOwnerMutationGateway,
+  CalendarService,
+  CalendarServiceError,
+  resolveCalendarEventRange,
+} from "@elizaos/plugin-calendar";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalEnqueueInput,
@@ -465,6 +465,9 @@ export class OwnerCalendarMutationGatewayService
     const requestSha256 = sha256({ operation: "create", request });
     const payload: CalendarEditorPayload = {
       action: "schedule_event",
+      ...(request.sourceNote !== undefined
+        ? { sourceNote: structuredClone(request.sourceNote) }
+        : {}),
       side: request.side ?? "owner",
       grantId: request.grantId ?? null,
       calendarId: request.calendarId ?? "primary",

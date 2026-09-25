@@ -1,9 +1,9 @@
 /** Exercises actual recovery and receipt validation with controlled model verdicts. */
 
 import type { ActionResult, Memory } from "@elizaos/core";
+import { hashString } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
-import { hashString } from "../../../../../packages/core/src/runtime/context-hash";
 import { resolvePlannedReplyEgress } from "./egress-policy";
 
 const message: Memory = {

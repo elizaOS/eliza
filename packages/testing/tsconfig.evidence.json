@@ -11,15 +11,14 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "paths": {
+      "@elizaos/testing": ["../testing/src/progressive-content-target.ts"]
+    },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node"],
-    "typeRoots": [
-      "../../node_modules/@types",
-      "../../node_modules/.bun/node_modules/@types"
-    ]
+    "types": ["node"]
   },
   "include": ["evidence"]
 }

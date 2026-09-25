@@ -20,10 +20,11 @@ FROM node:24.15.0-bookworm-slim AS entrypoint-build
 WORKDIR /build
 COPY eliza/packages/app/deploy/cloud-agent-entrypoint.ts ./cloud-agent-entrypoint.ts
 COPY eliza/packages/app/deploy/cloud-agent-shared.ts ./cloud-agent-shared.ts
-# cloud-agent-shared.ts imports this via ../../shared/... in the repo layout.
+# cloud-agent-shared.ts imports this via ../../core/... in the repo layout.
 # The builder copies TS files into /build, so mirror that relative path here for
-# esbuild's resolver without adding a runtime dependency on @elizaos/shared.
-COPY eliza/packages/shared/src/restart-exit-code.json /shared/src/restart-exit-code.json
+# esbuild's resolver without adding a runtime dependency on @elizaos/core.
+COPY eliza/packages/core/src/restart-exit-code.json /core/src/restart-exit-code.json
+COPY eliza/packages/core/src/errors.ts /core/src/errors.ts
 RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --bundle --platform=node --format=esm --target=node24 \
       --packages=external \
@@ -43,7 +44,6 @@ COPY eliza/packages/cloud/sdk packages/cloud/sdk
 COPY eliza/packages/cloud/services/_common packages/cloud/services/_common
 COPY eliza/packages/core packages/core
 COPY eliza/packages/remote-control-host packages/remote-control-host
-COPY eliza/packages/shared packages/shared
 COPY eliza/plugins/plugin-assistant plugins/plugin-assistant
 COPY eliza/plugins/plugin-browser plugins/plugin-browser
 COPY eliza/plugins/plugin-elizacloud plugins/plugin-elizacloud
@@ -51,7 +51,7 @@ COPY eliza/plugins/plugin-openai plugins/plugin-openai
 COPY eliza/plugins/plugin-sql plugins/plugin-sql
 COPY eliza/plugins/plugin-web-search plugins/plugin-web-search
 COPY eliza/plugins/plugin-workflow plugins/plugin-workflow
-RUN printf '{"name":"cloud-agent-runtime","private":true,"workspaces":["packages/auth","packages/cloud/sdk","packages/cloud/services/_common","packages/core","packages/remote-control-host","packages/shared","plugins/plugin-assistant","plugins/plugin-browser","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-web-search","plugins/plugin-workflow"],"dependencies":{"@elizaos/core":"workspace:*","@elizaos/plugin-openai":"workspace:*","@elizaos/plugin-sql":"workspace:*","@elizaos/plugin-elizacloud":"workspace:*","@elizaos/plugin-workflow":"workspace:*","@elizaos/plugin-assistant":"workspace:*","@elizaos/plugin-browser":"workspace:*","@elizaos/plugin-web-search":"workspace:*","@elizaos/remote-control-host":"workspace:*","drizzle-orm":"0.45.2"}}\n' > package.json \
+RUN printf '{"name":"cloud-agent-runtime","private":true,"workspaces":["packages/auth","packages/cloud/sdk","packages/cloud/services/_common","packages/core","packages/remote-control-host","plugins/plugin-assistant","plugins/plugin-browser","plugins/plugin-elizacloud","plugins/plugin-openai","plugins/plugin-sql","plugins/plugin-web-search","plugins/plugin-workflow"],"dependencies":{"@elizaos/core":"workspace:*","@elizaos/plugin-openai":"workspace:*","@elizaos/plugin-sql":"workspace:*","@elizaos/plugin-elizacloud":"workspace:*","@elizaos/plugin-workflow":"workspace:*","@elizaos/plugin-assistant":"workspace:*","@elizaos/plugin-browser":"workspace:*","@elizaos/plugin-web-search":"workspace:*","@elizaos/remote-control-host":"workspace:*","drizzle-orm":"0.45.2"}}\n' > package.json \
     && bun -e 'const root = await Bun.file("package.json").json(); for (const dir of root.workspaces) { const path = `${dir}/package.json`; const manifest = await Bun.file(path).json(); delete manifest.devDependencies; for (const [name, meta] of Object.entries(manifest.peerDependenciesMeta ?? {})) { if (meta.optional) delete manifest.peerDependencies?.[name]; } await Bun.write(path, JSON.stringify(manifest)); }' \
     && bun install --production
 

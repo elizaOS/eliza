@@ -18,8 +18,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/plugin-browser": "workspace:*"
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",

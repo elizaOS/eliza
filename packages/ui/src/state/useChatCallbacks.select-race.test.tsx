@@ -25,7 +25,6 @@
 // getConversationMessages resolves on command — reproducing the exact race.
 
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +35,7 @@ import type {
   ImageAttachment,
 } from "../api";
 import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import { readChatDraft } from "./ChatComposerContext.hooks";
 import type { LifecycleAction } from "./internal";

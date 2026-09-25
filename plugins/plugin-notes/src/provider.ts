@@ -1,3 +1,4 @@
+import { reconstructNoteContent } from "./types.js";
 /**
  * SAVED_NOTES — the read seam that makes a saved note recallable in chat.
  *
@@ -36,8 +37,7 @@ const UNAVAILABLE: ProviderResult = {
 
 /** Bind each exact ID to its complete text without a positional lookup. */
 function noteLine(note: StickyNote): string {
-  const full =
-    note.body.length > 0 ? `${note.title}\n${note.body}` : note.title;
+  const full = reconstructNoteContent(note);
   return JSON.stringify([note.id, toWellFormedUnicode(full)]);
 }
 

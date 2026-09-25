@@ -4,7 +4,7 @@
 // `requiresOnDeviceRecognition = true` (the ANE-backed "Stage-B confirm" path
 // claimed in VOICE_UX.md §7), and reports per-utterance recognition latency,
 // real-time factor, and the recognised hypothesis. The Node driver
-// (`packages/scripts/stage-b-stt-bench.mjs`) scores WER from the hypotheses so
+// (`packages/scripts/stage-b-stt-bench.ts`) scores WER from the hypotheses so
 // the metric matches the repo's existing `asr_bench.ts` word-edit distance.
 //
 // Output is a single JSON document on stdout (and optionally `--out <file>`).

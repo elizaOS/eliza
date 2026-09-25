@@ -9,14 +9,17 @@
  */
 import process from "node:process";
 import {
-  type DevSettingsRow,
   ELIZA_RUNTIME_ENV_KEYS,
   firstWinningEnvString,
-  formatDevSettingsTable,
   isElizaSettingsDebugEnabled,
   resolveApiSecurityConfig,
   resolveApiToken,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
+import {
+  type DevSettingsRow,
+  formatDevSettingsTable,
+} from "../dev-settings-table.js";
 import { prependDevSubsystemFigletHeading } from "./dev-settings-figlet-heading";
 
 function summarizeList(label: string, items: string[], maxLen: number): string {
@@ -25,7 +28,6 @@ function summarizeList(label: string, items: string[], maxLen: number): string {
   if (joined.length <= maxLen) return `${label}: ${joined}`;
   return `${label}: ${joined.slice(0, maxLen - 1)}…`;
 }
-
 /** Whether the full effective-settings table was explicitly requested. */
 export function shouldShowApiDevSettingsBanner(
   env: Record<string, string | undefined> = process.env,
@@ -41,19 +43,19 @@ export function shouldShowApiDevSettingsBanner(
     isElizaSettingsDebugEnabled({ env })
   );
 }
-
 /**
  * After `startApiServer` resolves — uses actual listen port and post-start env (token may be generated).
  */
 export function formatApiDevSettingsBannerText(
   actualPort: number,
-  options?: { hadUserApiTokenInEnv: boolean },
+  options?: {
+    hadUserApiTokenInEnv: boolean;
+  },
 ): string {
   const env = process.env as Record<string, string | undefined>;
   const sec = resolveApiSecurityConfig(env);
   const token = resolveApiToken(env);
   const hadUser = options?.hadUserApiTokenInEnv ?? false;
-
   const bindWin = firstWinningEnvString(env, ELIZA_RUNTIME_ENV_KEYS.apiBind);
   const originsWin = firstWinningEnvString(
     env,
@@ -63,7 +65,6 @@ export function formatApiDevSettingsBannerText(
     env,
     ELIZA_RUNTIME_ENV_KEYS.allowedHosts,
   );
-
   const rows: DevSettingsRow[] = [
     {
       setting: "Listen (actual)",
@@ -140,7 +141,6 @@ export function formatApiDevSettingsBannerText(
       change: `GET http://127.0.0.1:${actualPort}/api/dev/stack etc.; docs/apps/desktop-local-development.md`,
     },
   ];
-
   return prependDevSubsystemFigletHeading(
     "api",
     formatDevSettingsTable("API — effective settings (after listen)", rows),

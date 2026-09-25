@@ -26,6 +26,16 @@ if TYPE_CHECKING:
         VisualWebBenchTask,
     )
 
+def _image_media_type(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("VisualWebBench requires PNG, JPEG, or WebP image bytes")
+
+
 logger = logging.getLogger(__name__)
 
 _META_DESCRIPTION_RE = re.compile(
@@ -66,25 +76,18 @@ class ElizaVisualWebBenchAgent:
         started = time.time()
         self._client.reset(task_id=task.id, benchmark="visualwebbench")
 
-        # Attach the screenshot by path. Inline base64 screenshots are often
-        # megabytes long in the HF corpus; passing them through text-only or
-        # OpenAI-compatible benchmark bridges blows provider context limits.
-        # Enable VISUALWEBBENCH_INLINE_IMAGES=1 only for a known vision path.
-        attachments: list[dict[str, object]] = []
-        if task.image_path:
-            attachments.append({
-                "kind": "image",
-                "path": task.image_path,
-                "media_type": "image/png",
-            })
-        if task.image_bytes and _env_enabled("VISUALWEBBENCH_INLINE_IMAGES"):
-            import base64
+        import base64
 
-            attachments.append({
-                "kind": "image",
-                "media_type": "image/png",
-                "data_base64": base64.b64encode(task.image_bytes).decode("ascii"),
-            })
+        image_bytes = task.image_bytes
+        if not image_bytes and task.image_path:
+            image_bytes = Path(task.image_path).read_bytes()
+        if not image_bytes:
+            raise ValueError("VisualWebBench requires actual image bytes")
+        attachments: list[dict[str, object]] = [{
+            "kind": "image",
+            "media_type": _image_media_type(image_bytes),
+            "data_base64": base64.b64encode(image_bytes).decode("ascii"),
+        }]
 
         context: dict[str, object] = {
             "benchmark": "visualwebbench",
@@ -516,27 +519,23 @@ def _read_json(path: Path) -> object:
 
 
 def _repo_root() -> Path:
-    """Locate the eliza app checkout that carries the browser harness script.
+    """Resolve the checkout independently of optional browser-harness scripts."""
+    from benchmarks.lib.repository import monorepo_root
 
-    The script lives in the elizaOS monorepo, not this benchmarks repo:
-    resolve via ELIZA_MONOREPO_ROOT, falling back to an ancestor scan for
-    in-monorepo runs.
-    """
     override = os.environ.get("ELIZA_MONOREPO_ROOT", "")
     if override:
         return Path(override).resolve()
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "scripts" / "eliza-browser-app-harness.mjs").exists():
-            return parent
-    raise FileNotFoundError(
-        "eliza-browser-app-harness.mjs not found in any ancestor; set "
-        "ELIZA_MONOREPO_ROOT to an eliza checkout or pass app_harness_script"
-    )
+    return monorepo_root(Path(__file__).resolve().parents[3])
 
 
 def _default_harness_script() -> Path:
-    return _repo_root() / "scripts" / "eliza-browser-app-harness.mjs"
+    script = _repo_root() / "scripts" / "eliza-browser-app-harness.mjs"
+    if not script.is_file():
+        raise FileNotFoundError(
+            "No bundled browser app harness is available; supply app_harness_script "
+            "for a real browser runner. This route cannot publish without execution evidence."
+        )
+    return script
 
 
 def _make_harness_run_id(task_id: str) -> str:

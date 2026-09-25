@@ -1,6 +1,6 @@
 # elizaOS Android build targets
 
-The build orchestrator at [`packages/app/scripts/run-mobile-build.mjs`](../../scripts/run-mobile-build.mjs) ships four Android targets.
+The build orchestrator at [`packages/app/scripts/run-mobile-build.ts`](../../scripts/run-mobile-build.ts) ships four Android targets.
 
 This directory is part of `packages/app`.
 

@@ -3,16 +3,20 @@
  * Callers own domain records and assistant composition; this helper supplies
  * isolated storage, provider settings, credential gates and runtime teardown.
  */
+
 import { randomUUID } from "node:crypto";
-import type { UUID } from "@elizaos/core";
-import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+import {
+  AgentRuntime,
+  type Character,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, it } from "vitest";
 
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
-
 export type LiveProviderId =
   | "openai"
   | "anthropic"
@@ -21,7 +25,6 @@ export type LiveProviderId =
   | "xai"
   | "elizacloud"
   | "cerebras";
-
 export interface LiveAgentTestOptions {
   /** Required env vars. If any is missing, the suite skips with a warning. */
   requiredEnv: string[];
@@ -30,27 +33,29 @@ export interface LiveAgentTestOptions {
   /** Character system prompt override. */
   systemPrompt?: string;
   /** Plugins to load in addition to the provider plugin. Workspace path or bare specifier. */
-  extraPlugins?: Array<string | { path: string; name?: string }>;
+  extraPlugins?: Array<
+    | string
+    | {
+        path: string;
+        name?: string;
+      }
+  >;
 }
-
 export interface LiveAgentHarness {
   agentId: string;
   runtime: AgentRuntime;
   /** Stop the runtime and clean up. */
   close(): Promise<void>;
 }
-
 const DEFAULT_SYSTEM_PROMPT =
   "Concise, helpful assistant for end-to-end testing. " +
   "Always respond in plain text. Keep answers short (1-3 sentences) unless asked otherwise.";
-
 interface ProviderConfig {
   pluginPath: string;
   bareSpecifier: string;
   pluginExportNames: string[];
   defaultRequiredEnv: string[];
 }
-
 const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
   openai: {
     pluginPath: "../../../../plugins/plugin-openai/index.ts",
@@ -98,7 +103,6 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
     defaultRequiredEnv: ["CEREBRAS_API_KEY"],
   },
 };
-
 /**
  * Resolve the workspace plugin via explicit relative file import first, falling
  * back to the bare specifier (which may point at a published copy hoisted in
@@ -122,7 +126,6 @@ async function importWorkspacePlugin(
     }
   }
 }
-
 async function resolveProviderPlugin(
   provider: LiveProviderId,
 ): Promise<Plugin | null> {
@@ -135,9 +138,13 @@ async function resolveProviderPlugin(
   }
   return null;
 }
-
 async function loadExtraPlugin(
-  entry: string | { path: string; name?: string },
+  entry:
+    | string
+    | {
+        path: string;
+        name?: string;
+      },
 ): Promise<Plugin | null> {
   const path = typeof entry === "string" ? entry : entry.path;
   const named = typeof entry === "string" ? undefined : entry.name;
@@ -151,7 +158,6 @@ async function loadExtraPlugin(
     return null;
   }
 }
-
 function applyProviderSettings(
   runtime: AgentRuntime,
   provider: LiveProviderId,
@@ -333,10 +339,9 @@ function applyProviderSettings(
     }
   }
 }
-
 /**
  * Apply the Cerebras alias for OpenAI-provider live tests. Mirrors the logic
- * in `scripts/test-env.mjs`: when CEREBRAS_API_KEY is present and OPENAI_API_KEY
+ * in `scripts/test-env.ts`: when CEREBRAS_API_KEY is present and OPENAI_API_KEY
  * isn't, populate OPENAI_* env vars so plugin-openai talks to Cerebras.
  *
  * Returns a disposer that restores the previous values.
@@ -346,7 +351,6 @@ function maybeApplyCerebrasAlias(provider: LiveProviderId): () => void {
   const cerebras = process.env.CEREBRAS_API_KEY?.trim();
   if (!cerebras) return () => {};
   if (process.env.OPENAI_API_KEY?.trim()) return () => {};
-
   const previous = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
@@ -356,7 +360,6 @@ function maybeApplyCerebrasAlias(provider: LiveProviderId): () => void {
     OPENAI_ACTION_PLANNER_MODEL: process.env.OPENAI_ACTION_PLANNER_MODEL,
     OPENAI_PLANNER_MODEL: process.env.OPENAI_PLANNER_MODEL,
   };
-
   process.env.OPENAI_API_KEY = cerebras;
   process.env.OPENAI_BASE_URL ||= "https://api.cerebras.ai/v1";
   process.env.OPENAI_LARGE_MODEL ||= DEFAULT_CEREBRAS_TEXT_MODEL;
@@ -364,7 +367,6 @@ function maybeApplyCerebrasAlias(provider: LiveProviderId): () => void {
   process.env.OPENAI_SMALL_MODEL ||= DEFAULT_CEREBRAS_TEXT_MODEL;
   process.env.OPENAI_ACTION_PLANNER_MODEL ||= process.env.OPENAI_LARGE_MODEL;
   process.env.OPENAI_PLANNER_MODEL ||= process.env.OPENAI_ACTION_PLANNER_MODEL;
-
   return () => {
     for (const [k, v] of Object.entries(previous)) {
       if (v === undefined) delete process.env[k];
@@ -372,7 +374,6 @@ function maybeApplyCerebrasAlias(provider: LiveProviderId): () => void {
     }
   };
 }
-
 function effectiveRequiredEnv(opts: LiveAgentTestOptions): {
   missing: string[];
   hasCerebrasFallback: boolean;
@@ -380,21 +381,17 @@ function effectiveRequiredEnv(opts: LiveAgentTestOptions): {
   const provider = opts.provider ?? "openai";
   const required = [...opts.requiredEnv];
   const missing = required.filter((k) => !process.env[k]?.trim());
-
   // Cerebras fallback: if missing list mentions OPENAI_API_KEY but
   // CEREBRAS_API_KEY is set, that satisfies the requirement.
   const hasCerebrasFallback =
     provider === "openai" &&
     missing.includes("OPENAI_API_KEY") &&
     Boolean(process.env.CEREBRAS_API_KEY?.trim());
-
   const filtered = hasCerebrasFallback
     ? missing.filter((k) => k !== "OPENAI_API_KEY")
     : missing;
-
   return { missing: filtered, hasCerebrasFallback };
 }
-
 /**
  * Ping the Ollama server's `/api/tags` endpoint with a 2-second timeout.
  * Returns true if the server responds 2xx, false otherwise. Used to skip
@@ -414,13 +411,11 @@ export async function pingOllamaReachable(endpoint: string): Promise<boolean> {
     return false;
   }
 }
-
 export async function buildLiveHarness(
   opts: LiveAgentTestOptions,
 ): Promise<LiveAgentHarness> {
   const provider = opts.provider ?? "openai";
   const restoreEnv = maybeApplyCerebrasAlias(provider);
-
   const providerPlugin = await resolveProviderPlugin(provider);
   if (!providerPlugin) {
     restoreEnv();
@@ -428,20 +423,16 @@ export async function buildLiveHarness(
       `[live-agent-test] failed to resolve provider plugin for ${provider}`,
     );
   }
-
   const plugins: Plugin[] = [providerPlugin];
   for (const entry of opts.extraPlugins ?? []) {
     const extra = await loadExtraPlugin(entry);
     if (!extra) {
       throw new Error(
-        `[live-agent-test] failed to load extra plugin: ${
-          typeof entry === "string" ? entry : entry.path
-        }`,
+        `[live-agent-test] failed to load extra plugin: ${typeof entry === "string" ? entry : entry.path}`,
       );
     }
     plugins.push(extra);
   }
-
   const agentId = randomUUID() as UUID;
   const character: Character = {
     id: agentId,
@@ -458,11 +449,9 @@ export async function buildLiveHarness(
     secrets: {},
     settings: {},
   };
-
   const runtime = new AgentRuntime({
     agentId,
     character,
-
     plugins,
     checkShouldRespond: false,
     logLevel: "warn",
@@ -470,10 +459,8 @@ export async function buildLiveHarness(
   const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
   runtime.registerDatabaseAdapter(adapter);
   await adapter.init();
-
   applyProviderSettings(runtime, provider);
   await runtime.initialize();
-
   const close = async (): Promise<void> => {
     try {
       await runtime.stop();
@@ -481,10 +468,8 @@ export async function buildLiveHarness(
       restoreEnv();
     }
   };
-
   return { agentId, runtime, close };
 }
-
 /**
  * Resolve the auto-defaulted required env for a provider. Callers may pass
  * `requiredEnv: []` to fall back entirely on the provider's defaults.
@@ -494,7 +479,6 @@ function defaultedRequiredEnv(opts: LiveAgentTestOptions): string[] {
   if (opts.requiredEnv.length > 0) return opts.requiredEnv;
   return PROVIDER_CONFIG[provider].defaultRequiredEnv;
 }
-
 function emitSkip(name: string, reason: string): void {
   process.env.SKIP_REASON ||= reason;
   console.warn(
@@ -504,7 +488,6 @@ function emitSkip(name: string, reason: string): void {
     it.skip(`[live] suite skipped — ${reason}`, () => {});
   });
 }
-
 /**
  * Register a vitest `describe` block that boots a real AgentRuntime against a
  * live LLM provider. When required env is missing, the suite is skipped with
@@ -526,13 +509,11 @@ export async function describeLive(
     requiredEnv: opts.requiredEnv,
   });
   const { missing } = effectiveRequiredEnv({ ...opts, requiredEnv: required });
-
   if (missing.length > 0) {
     const reason = `missing required env: ${missing.join(", ")} (set ${missing.join(", ")} to enable)`;
     emitSkip(name, reason);
     return;
   }
-
   // Ollama-specific: env is set, but the server might not be running.
   // Do a 2s reachability ping before registering tests so unreachable
   // servers produce a clean skip instead of long timeouts.
@@ -548,12 +529,11 @@ export async function describeLive(
       return;
     }
   }
-
   describe(name, () => {
     let harness: LiveAgentHarness | null = null;
     beforeAll(async () => {
       harness = await buildLiveHarness(opts);
-    }, 120_000);
+    }, 120000);
     afterAll(async () => {
       if (harness) {
         await harness.close();

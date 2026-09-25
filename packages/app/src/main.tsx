@@ -39,6 +39,7 @@ import { registerRelationshipsApp } from "@elizaos/plugin-relationships";
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
 // the same surfaces.
 import "./cloud-apps-view";
+import "./context-inspector-page";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
@@ -54,21 +55,20 @@ import {
 } from "@elizaos/app/api/ios-local-agent-transport";
 import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
-import type {
-  AppBlockerSettingsCardProps,
-  WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/core/character-presets";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
-  getStylePresets,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-  isElizaDedicatedAgentHostname,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
-import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
+} from "@elizaos/core/contracts/cloud-pair";
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/core/contracts/personal-assistant";
+import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";
@@ -87,10 +87,7 @@ import {
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
-import type {
-  BrandingConfig,
-  CodingAgentTasksPanelProps,
-} from "@elizaos/ui/config";
+import type { BrandingConfig } from "@elizaos/ui/config";
 import {
   type AppBootConfig,
   getBootConfig,
@@ -126,6 +123,7 @@ import {
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
 import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
 import { createTranslator } from "@elizaos/ui/i18n";
+import { logger } from "@elizaos/ui/logger";
 import {
   getWindowNavigationPath,
   isAppWindowRoute,
@@ -207,10 +205,10 @@ import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
-import { isTrustedAppLink } from "./deep-link-handler";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
+  isTrustedAppLink,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
@@ -260,7 +258,10 @@ import {
 } from "./runtime-chooser-override";
 import {
   isElizaCloudSharedHost,
+  isLoopbackApiHost,
+  isPrivateOrLoopbackApiHost,
   isTrustedCloudOnlyApiBaseUrl,
+  isTrustedPrivateHttpHost,
 } from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -318,22 +319,15 @@ registerAppHostExternalImporters();
 function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
-    () => import("@elizaos/plugin-personal-assistant"),
+    () => import("@elizaos/plugin-personal-assistant/ui"),
   );
 }
 
 function importAppPhone() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-native-phone",
-    () => import("@elizaos/plugin-native-phone"),
-  );
-}
-
-function importAppTaskCoordinator() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-agent-orchestrator",
-    () => import("@elizaos/plugin-agent-orchestrator/ui"),
-  );
+  return cachedDynamicImport("@elizaos/plugin-native-phone", async () => {
+    const { PhoneCompanionApp } = await import("@elizaos/plugin-native-phone");
+    return { PhoneCompanionApp };
+  });
 }
 
 function importAppTaskCoordinatorRegister() {
@@ -420,15 +414,6 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
-);
-const CodingAgentSettingsSection = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppTaskCoordinator()).CodingAgentSettingsSection,
-);
-const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
-  async () => (await importAppTaskCoordinator()).CodingAgentTasksPanel,
-);
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
@@ -899,12 +884,10 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    applicationBillingSlot: import.meta.env.VITE_ELIZA_APPLICATION_SLOT,
     autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
-    codingAgentTasksPanel: CodingAgentTasksPanel,
-    codingAgentSettingsSection: CodingAgentSettingsSection,
-    codingAgentControlChip: CodingAgentControlChip,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
@@ -933,14 +916,9 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       load: importPersonalAssistant,
     },
     {
-      key: "@elizaos/plugin-agent-orchestrator",
-      load: importAppTaskCoordinator,
-    },
-    {
       key: "@elizaos/plugin-agent-orchestrator/ui/register",
       load: importAppTaskCoordinatorRegister,
     },
-    { key: "@elizaos/plugin-native-phone", load: importAppPhone },
   ];
 
 function initializeAppModules(): Promise<void> {
@@ -1916,6 +1894,9 @@ async function initializePlatform(): Promise<void> {
   void getMobileLifecycle().initializeNetworkListener();
 
   if (isIOS || isAndroid) {
+    void import("@elizaos/capacitor-network-policy")
+      .then(({ installNetworkPolicyGlobal }) => installNetworkPolicyGlobal())
+      .catch((error) => logNativePluginUnavailable("Network policy", error));
     await initializeStatusBar();
     await getMobileLifecycle().initializeKeyboard();
     initializeMobileRuntimeModeListener();
@@ -2800,6 +2781,14 @@ const CloudRouterShell = lazy(async () => {
   return { default: mod.CloudRouterShell };
 });
 
+/** Account management follows the Cloud session independently of agent boot. */
+const ManagedCloudPage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("ManagedCloudPage is web-build-only");
+  }
+  return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
+});
+
 /**
  * Simulator-only production chat gallery. Keeping this behind the literal
  * build flag makes the harness (and its fixture providers) unreachable from
@@ -2882,6 +2871,7 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+        cloudManagementElement={<ManagedCloudPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
@@ -2931,34 +2921,6 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-function isTrustedPrivateHttpHost(host: string): boolean {
-  return (
-    host === "0.0.0.0" ||
-    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    host === "local" ||
-    host === "internal" ||
-    host === "lan" ||
-    host === "ts.net" ||
-    host.endsWith(".local") ||
-    host.endsWith(".lan") ||
-    host.endsWith(".internal") ||
-    host.endsWith(".ts.net")
-  );
-}
-
-function isLoopbackApiHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host === "::1"
-  );
-}
-
 /**
  * Dedicated Cloud agents serve their runtime on the canonical managed-agent
  * hostname family. The shared classifier also recognizes legacy agent hosts
@@ -2974,18 +2936,6 @@ function isNativeIosStoreBuild(): boolean {
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
   return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
-}
-
-function isPrivateOrLoopbackApiHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
-  return (
-    isLoopbackApiHost(normalized) ||
-    (normalized.includes(":") &&
-      (normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
-        normalized.startsWith("fe80:"))) ||
-    isTrustedPrivateHttpHost(normalized)
-  );
 }
 
 function isNativeIosCloudRuntimeMode(): boolean {

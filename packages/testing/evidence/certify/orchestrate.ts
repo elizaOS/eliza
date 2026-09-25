@@ -46,7 +46,11 @@ import {
   writeOwnedFileAtomic,
 } from "../bundle.ts";
 import { EvidenceError, EvidenceValidationError } from "../errors.ts";
-import { ingestAllSilos } from "../ingest.ts";
+import {
+  assertSafeBundleOutput,
+  captureSiloSnapshot,
+  ingestAllSilos,
+} from "../ingest.ts";
 import {
   buildEnvFingerprint,
   collectGitProvenance,
@@ -57,7 +61,6 @@ import { FileJobQueue } from "../queue/file-queue.ts";
 import { parseMeta, type Tier } from "../schema.ts";
 import {
   askBatch,
-  buildQaRecord,
   resolveBackend,
   VISION_QA_ENV,
   type VisionQuestion,
@@ -191,6 +194,8 @@ export interface CertifyOptions {
   existingBundleDir?: string;
   /** Skip the test matrix; lane verdicts then come only from ingested silos. */
   skipMatrix?: boolean;
+  /** Opt in to model-based screenshot review; credentials alone never enable it. */
+  visionQa?: boolean;
   /** Reviewer overrides/additions folded onto the mechanical rollup. */
   reviewerVerdicts?: ReviewerVerdictsDocument;
   /** Reviewer identity; required unless supplied by the reviewer-verdicts file. */
@@ -213,7 +218,7 @@ export interface CertifyOptions {
   gpuQueueRoot?: string;
   /** How long the queue executor waits for a worker result before an honest skip. */
   gpuQueueTimeoutMs?: number;
-  /** Test matrix runner; default spawns `packages/scripts/run-all-tests.mjs`. */
+  /** Test matrix runner; default spawns `packages/scripts/run-all-tests.ts`. */
   runMatrix?: MatrixRunner;
   /** Extra argv forwarded to the matrix runner (`--matrix-arg` on the CLI). */
   matrixArgs?: readonly string[];
@@ -253,12 +258,7 @@ const CERTIFY_QUESTION: VisionQuestion = {
  * lane log so a reviewer can read what failed.
  */
 export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
-  const script = path.join(
-    repoRoot,
-    "packages",
-    "scripts",
-    "run-all-tests.mjs",
-  );
+  const script = path.join(repoRoot, "packages", "scripts", "run-all-tests.ts");
   const command = [`node ${path.relative(repoRoot, script)}`, ...args].join(
     " ",
   );
@@ -402,6 +402,7 @@ async function runVisionQaPass(
     entries.map(({ imagePath, questions }) => ({ imagePath, questions })),
     {
       backend,
+      env,
       cacheDir: bundle.dir,
       ...(backend === "local" && env[VISION_QA_ENV.baseUrl] !== undefined
         ? { baseUrl: env[VISION_QA_ENV.baseUrl] }
@@ -421,8 +422,6 @@ async function runVisionQaPass(
   for (let index = 0; index < results.length; index += 1) {
     const entry = entries[index];
     const { result } = results[index];
-    // buildQaRecord is called for its validation side; writeQaRecord persists.
-    void buildQaRecord(entry.bundlePath, entry.questions, result);
     await writeQaRecord(bundle, entry.bundlePath, entry.questions, result);
   }
   io.out(`  vision-qa: ${backend}, ${results.length} screenshot(s) reviewed`);
@@ -568,6 +567,11 @@ export async function orchestrateCertify(
     const rootDir = path.resolve(
       options.outDir ?? path.join(options.repoRoot, "evidence", "runs"),
     );
+    assertSafeBundleOutput(options.repoRoot, rootDir);
+    const baseline =
+      options.skipMatrix === true
+        ? undefined
+        : captureSiloSnapshot(options.repoRoot);
     const bundle = createBundle({
       rootDir,
       provenance: {
@@ -606,7 +610,18 @@ export async function orchestrateCertify(
       });
     }
 
-    const ingest = await ingestAllSilos(bundle, options.repoRoot);
+    if (baseline !== undefined) {
+      await addJsonArtifact(
+        bundle,
+        "certify/pre-run-inventory.json",
+        baseline,
+        {
+          kind: "report",
+          source: "evidence:certify",
+        },
+      );
+    }
+    const ingest = await ingestAllSilos(bundle, options.repoRoot, baseline);
     const ingestedCount = ingest.reduce(
       (sum, result) => sum + result.artifactCount,
       0,
@@ -640,7 +655,17 @@ export async function orchestrateCertify(
       `  analyze: ${analysis.subjects.length} subject(s) at tier ${tier}${analyzeVia}`,
     );
 
-    steps.push(await runVisionQaPass(bundle, env, io));
+    if (options.visionQa === true) {
+      steps.push(await runVisionQaPass(bundle, env, io));
+    } else {
+      steps.push({
+        step: "vision-qa",
+        status: "skipped",
+        detail:
+          "not requested; review raw artifacts or opt in with --vision-qa",
+      });
+      io.out("  vision-qa: skipped (not requested)");
+    }
 
     await addJsonArtifact(
       bundle,

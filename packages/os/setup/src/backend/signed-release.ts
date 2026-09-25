@@ -32,8 +32,8 @@ export interface SignedReleaseDescription {
 
 export function signedInstallerPath(): string {
   for (const relative of [
-    "../../../scripts/android/install-release.mjs",
-    "../scripts/android/install-release.mjs",
+    "../../../scripts/android/install-release.ts",
+    "../scripts/android/install-release.ts",
   ]) {
     const path = fileURLToPath(new URL(relative, import.meta.url));
     if (existsSync(path)) return path;

@@ -6,9 +6,9 @@
  * invisible).
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { useEffect, useState } from "react";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { logger } from "../../logger.ts";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,

@@ -8,17 +8,16 @@
  * listing is annotated (truncated + channelCount) rather than posing as
  * complete. Map-backed runtime + mock connectors.
  */
-import { describe, expect, it } from "vitest";
-import type {
-  Room,
-  World,
-} from "../../../../../../packages/core/src/types/environment.ts";
+
 import type {
   ActionResult,
   IAgentRuntime,
   Memory,
+  Room,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+  World,
+} from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { messageAction } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;

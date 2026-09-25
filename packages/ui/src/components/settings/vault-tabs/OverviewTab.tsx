@@ -4,8 +4,6 @@
  * fetching and the save flow; this component only renders the rows + the
  * editable preference state.
  */
-
-import { resolveApiUrl } from "@elizaos/shared";
 import {
   AlertCircle,
   CheckCircle2,
@@ -26,12 +24,9 @@ import {
   useState,
 } from "react";
 import { useAgentElement } from "../../../agent-surface";
-// All requests go through the shared client (never bare `fetch`) so they hit
-// the configured apiBase and carry the injected auth token — a bare relative
-// fetch targets the page origin unauthenticated, which breaks remote/token-
-// authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { resolveApiUrl } from "../../../utils/asset-url.js";
 import { openEventSource } from "../../../utils/event-source";
 import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { Badge, type BadgeProps } from "../../ui/badge";
@@ -49,13 +44,16 @@ import type {
   VaultProtectionStatus,
 } from "./types";
 
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
 const BACKEND_ORDER: BackendId[] = [
   "in-house",
   "1password",
   "bitwarden",
   "protonpass",
 ];
-
 export interface OverviewTabProps {
   backends: BackendStatus[];
   preferences: ManagerPreferences;
@@ -70,7 +68,6 @@ export interface OverviewTabProps {
   onSigninComplete: () => void;
   onSignout: (backendId: InstallableBackendId) => void;
 }
-
 export function OverviewTab(props: OverviewTabProps) {
   const {
     backends,
@@ -87,14 +84,12 @@ export function OverviewTab(props: OverviewTabProps) {
     onSignout,
   } = props;
   const { t } = useTranslation();
-
   const [installSheet, setInstallSheet] = useState<InstallableBackendId | null>(
     null,
   );
   const [signinSheet, setSigninSheet] = useState<InstallableBackendId | null>(
     null,
   );
-
   const { ref: redetectRef, agentProps: redetectAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "vault-overview-redetect",
@@ -113,13 +108,11 @@ export function OverviewTab(props: OverviewTabProps) {
       description: "Persist the enabled backends and their routing order",
       onActivate: onSave,
     });
-
   const isEnabled = useCallback(
     (id: BackendId): boolean =>
       preferences.enabled.includes(id) || id === "in-house",
     [preferences],
   );
-
   const setEnabled = useCallback(
     (id: BackendId, on: boolean) => {
       const next = new Set(preferences.enabled);
@@ -134,7 +127,6 @@ export function OverviewTab(props: OverviewTabProps) {
     },
     [preferences, onPreferencesChange],
   );
-
   const moveUp = useCallback(
     (id: BackendId) => {
       const idx = preferences.enabled.indexOf(id);
@@ -149,7 +141,6 @@ export function OverviewTab(props: OverviewTabProps) {
     },
     [preferences, onPreferencesChange],
   );
-
   const moveDown = useCallback(
     (id: BackendId) => {
       const idx = preferences.enabled.indexOf(id);
@@ -164,7 +155,6 @@ export function OverviewTab(props: OverviewTabProps) {
     },
     [preferences, onPreferencesChange],
   );
-
   return (
     <div className="w-full space-y-4">
       <p
@@ -277,7 +267,6 @@ export function OverviewTab(props: OverviewTabProps) {
     </div>
   );
 }
-
 export function ProtectionCard({
   protection,
 }: {
@@ -330,7 +319,6 @@ export function ProtectionCard({
     </Card>
   );
 }
-
 function orderedBackends(
   backends: BackendStatus[],
   preferences: ManagerPreferences,
@@ -346,7 +334,6 @@ function orderedBackends(
   ).filter((b): b is BackendStatus => b !== undefined);
   return [...enabledList, ...sortedDisabled];
 }
-
 interface BackendRowProps {
   backend: BackendStatus;
   enabled: boolean;
@@ -366,7 +353,6 @@ interface BackendRowProps {
   onSigninComplete: () => void;
   onSignout: () => void;
 }
-
 export function BackendRow(props: BackendRowProps) {
   const {
     backend,
@@ -456,7 +442,6 @@ export function BackendRow(props: BackendRowProps) {
   const showSignoutButton =
     isInstallable && backend.available && backend.signedIn === true;
   const installableId = backend.id as InstallableBackendId;
-
   return (
     <div className={enabled ? "p-3 sm:p-4" : "p-3 opacity-70 sm:p-4"}>
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
@@ -614,7 +599,6 @@ export function BackendRow(props: BackendRowProps) {
     </div>
   );
 }
-
 function StatusPill({
   tone,
   text,
@@ -639,9 +623,7 @@ function StatusPill({
     </Badge>
   );
 }
-
 // ── Install sheet ──────────────────────────────────────────────────
-
 interface InstallSheetProps {
   backendId: InstallableBackendId;
   backendLabel: string;
@@ -649,7 +631,6 @@ interface InstallSheetProps {
   onCancel: () => void;
   onComplete: () => void;
 }
-
 export function InstallSheet({
   backendId,
   backendLabel,
@@ -663,7 +644,6 @@ export function InstallSheet({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
-
   const { ref: closeRef, agentProps: closeAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `vault-install-close-${backendId}`,
@@ -679,20 +659,17 @@ export function InstallSheet({
       group: "vault-install",
       onActivate: onComplete,
     });
-
   const close = useCallback(() => {
     sourceRef.current?.close();
     sourceRef.current = null;
     onCancel();
   }, [onCancel]);
-
   useEffect(() => {
     return () => {
       sourceRef.current?.close();
       sourceRef.current = null;
     };
   }, []);
-
   const start = useCallback(
     async (method: InstallMethod) => {
       if (method.kind === "manual") {
@@ -716,15 +693,13 @@ export function InstallSheet({
       setError(null);
       setDone(false);
       try {
-        const { jobId } = await client.fetch<{ jobId: string }>(
-          "/api/secrets/manager/install",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ backendId, method }),
-          },
-        );
-
+        const { jobId } = await client.fetch<{
+          jobId: string;
+        }>("/api/secrets/manager/install", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ backendId, method }),
+        });
         // EventSource cannot carry the client's Authorization header (browser
         // limitation), but it must at least target the configured apiBase —
         // a bare relative URL would open the stream against the page origin.
@@ -741,10 +716,23 @@ export function InstallSheet({
         }
         source.onmessage = (event) => {
           let data:
-            | { type: "log"; stream: "stdout" | "stderr"; line: string }
-            | { type: "status"; status: string }
-            | { type: "done"; exitCode: number }
-            | { type: "error"; message: string };
+            | {
+                type: "log";
+                stream: "stdout" | "stderr";
+                line: string;
+              }
+            | {
+                type: "status";
+                status: string;
+              }
+            | {
+                type: "done";
+                exitCode: number;
+              }
+            | {
+                type: "error";
+                message: string;
+              };
           try {
             data = JSON.parse(event.data);
           } catch {
@@ -791,9 +779,7 @@ export function InstallSheet({
     },
     [backendId, done, error, t],
   );
-
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
-
   return (
     <Card variant="vaultInset" stack="compact" className="mt-3">
       <div className="flex items-center justify-between gap-2">
@@ -883,7 +869,6 @@ export function InstallSheet({
     </Card>
   );
 }
-
 function methodKey(method: InstallMethod): string {
   if (method.kind === "brew") {
     return `brew:${method.cask ? "cask" : "formula"}:${method.package}`;
@@ -893,7 +878,6 @@ function methodKey(method: InstallMethod): string {
   }
   return `manual:${method.url}`;
 }
-
 function describeMethod(method: InstallMethod): string {
   if (method.kind === "brew") {
     return method.cask
@@ -905,7 +889,6 @@ function describeMethod(method: InstallMethod): string {
   }
   return `Open docs: ${method.url}`;
 }
-
 function InstallMethodButton({
   backendId,
   method,
@@ -942,16 +925,13 @@ function InstallMethodButton({
     </Button>
   );
 }
-
 // ── Sign-in sheet ──────────────────────────────────────────────────
-
 interface SigninSheetProps {
   backendId: InstallableBackendId;
   backendLabel: string;
   onCancel: () => void;
   onComplete: () => void;
 }
-
 export function SigninSheet({
   backendId,
   backendLabel,
@@ -961,14 +941,12 @@ export function SigninSheet({
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [email, setEmail] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [signInAddress, setSignInAddress] = useState("");
   const [masterPassword, setMasterPassword] = useState("");
   const [bwClientId, setBwClientId] = useState("");
   const [bwClientSecret, setBwClientSecret] = useState("");
-
   const { ref: emailRef, agentProps: emailAgentProps } =
     useAgentElement<HTMLInputElement>({
       id: `vault-signin-email-${backendId}`,
@@ -1038,7 +1016,6 @@ export function SigninSheet({
       label: `Sign in to ${backendLabel}`,
       group: "vault-signin",
     });
-
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSubmitting(true);
@@ -1083,7 +1060,6 @@ export function SigninSheet({
       setSubmitting(false);
     }
   };
-
   return (
     <Card asChild variant="vaultInset">
       <form onSubmit={onSubmit} className="mt-3 space-y-2">

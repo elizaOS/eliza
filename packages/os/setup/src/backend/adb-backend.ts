@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import hardwareInventory from "../../../android/hardware-targets.json";
-import { syncDirectoryTree } from "../../../scripts/android/install-lock.mjs";
+import { syncDirectoryTree } from "../../../scripts/android/install-lock.ts";
 import { findHostTool } from "../dependencies/host-tools";
 import { executeSignedInstall, SignedInstallError } from "./signed-install";
 import {

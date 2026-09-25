@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 from dataclasses import dataclass
@@ -265,59 +266,38 @@ def run_benchmark_batch(
 
 
 def extract_score(result_path: str) -> dict[str, Any]:
-    """
-    Extract a normalized score from benchmark results.
-
-    Compatible with the elizaOS benchmarks ScoreExtraction format.
-    """
-    with open(result_path) as f:
+    """Read an evaluated report; CLI response completion is not a task grade."""
+    with open(result_path, encoding="utf-8") as f:
         data = json.load(f)
-
-    if isinstance(data, list):
-        total = len(data)
-        passed = sum(1 for r in data if r.get("success"))
-        score = passed / total if total > 0 else 0.0
-        return {
-            "score": score,
-            "unit": "ratio",
-            "higher_is_better": True,
-            "metrics": {
-                "total_tasks": total,
-                "passed_tasks": passed,
-                "failed_tasks": total - passed,
-                "overall_success_rate": score,
-            },
-        }
-    elif isinstance(data, dict):
-        if isinstance(data.get("overall_score"), (int, float)):
-            raw_score = float(data["overall_score"])
-            score = max(0.0, min(raw_score / 10.0, 1.0))
-            return {
-                "score": score,
-                "unit": "ratio",
-                "higher_is_better": True,
-                "metrics": {
-                    "overall_score": raw_score,
-                    "total_tasks": data.get("total_tasks", 0),
-                    "completed": data.get("completed", 0),
-                    "failed": data.get("failed", 0),
-                    "timed_out": data.get("timed_out", 0),
-                    "avg_duration_ms": data.get("avg_duration_ms", 0),
-                },
-            }
-
-        return {
-            "score": 1.0 if data.get("success") else 0.0,
-            "unit": "ratio",
-            "higher_is_better": True,
-            "metrics": {
-                "success": data.get("success", False),
-                "duration_ms": data.get("duration_ms", 0),
-                "actions_taken": len(data.get("actions_taken", [])),
-            },
-        }
-
-    return {"score": 0.0, "unit": "ratio", "higher_is_better": True, "metrics": {}}
+    if not isinstance(data, dict) or "overall_score" not in data:
+        raise ValueError(
+            "App Eval requires an evaluated report with overall_score; "
+            "raw agent success flags measure response completion, not task quality"
+        )
+    raw_score = data["overall_score"]
+    total = data.get("total_tasks")
+    if (
+        isinstance(raw_score, bool)
+        or not isinstance(raw_score, (int, float))
+        or not math.isfinite(raw_score)
+        or not 0 <= raw_score <= 10
+    ):
+        raise ValueError("App Eval overall_score must be finite and within 0..10")
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+        raise ValueError("App Eval requires a positive evaluated task count")
+    return {
+        "score": float(raw_score) / 10.0,
+        "unit": "ratio",
+        "higher_is_better": True,
+        "metrics": {
+            "overall_score": raw_score,
+            "total_tasks": total,
+            "completed": data.get("completed", 0),
+            "failed": data.get("failed", 0),
+            "timed_out": data.get("timed_out", 0),
+            "avg_duration_ms": data.get("avg_duration_ms", 0),
+        },
+    }
 
 
 # Adapter registration for elizaOS benchmarks orchestrator

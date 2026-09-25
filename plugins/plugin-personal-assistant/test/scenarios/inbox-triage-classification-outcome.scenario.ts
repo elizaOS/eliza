@@ -51,9 +51,7 @@ async function seedAndRunTriage(
   }
   // Narrow service subpath: avoids pulling the inbox React view / register
   // side-effect that the package root (`@elizaos/plugin-inbox`) imports.
-  const { InboxService } = (await import(
-    "@elizaos/plugin-inbox/inbox/service"
-  )) as {
+  const { InboxService } = (await import("@elizaos/plugin-inbox")) as {
     InboxService: new (
       rt: unknown,
     ) => {
@@ -132,9 +130,7 @@ async function assertPersistedClassifications(
   if (!runtime) {
     return "inbox-triage outcome: scenario runtime unavailable";
   }
-  const { InboxRepository } = (await import(
-    "@elizaos/plugin-inbox/inbox/repository"
-  )) as {
+  const { InboxRepository } = (await import("@elizaos/plugin-inbox")) as {
     InboxRepository: new (
       rt: unknown,
     ) => {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "graphVersion": "2026-09-16.1",
+  "graphVersion": "2026-09-24.1",
   "evidenceTtlHours": 168,
   "reusePolicy": "current-run-only",
   "environment": {
@@ -22,8 +22,8 @@
     "turbo.json",
     "tsconfig.json",
     "tsconfig.base.json",
-    "packages/scripts/develop-effect-ledger.mjs",
-    "packages/scripts/develop-impact-evidence.mjs"
+    "packages/scripts/develop-effect-ledger.ts",
+    "packages/scripts/develop-impact-evidence.ts"
   ],
   "surfaces": [
     {
@@ -33,7 +33,6 @@
         "packages/core",
         "packages/agent",
         "packages/auth",
-        "packages/shared",
         "packages/testing/synthetic-world",
         "plugins/**",
         "packages/app",
@@ -47,9 +46,9 @@
         "packages/scripts/**",
         "*.md",
         "**/*.md",
-        "packages/scripts/audit-*.mjs",
+        "packages/scripts/audit-*.ts",
         "packages/testing/scenario-runner/test/**",
-        "packages/scripts/run-all-tests.mjs",
+        "packages/scripts/run-all-tests.ts",
         "vitest*.ts",
         "vitest*.mts"
       ]
@@ -62,35 +61,11 @@
       "dependsOn": ["canonical"]
     },
     {
-      "id": "cloud-gateway-discord",
-      "workflow": ".github/workflows/cloud-gateway-discord.yml",
-      "workspacePatterns": [
-        "packages/cloud/shared",
-        "packages/cloud/services/gateway-discord",
-        "plugins/plugin-discord"
-      ],
-      "inputs": ["packages/cloud/scripts/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "dev-smoke",
-      "workflow": ".github/workflows/dev-smoke.yml",
-      "workspacePatterns": [
-        "packages/agent",
-        "packages/app",
-        "packages/core",
-        "packages/shared",
-        "packages/ui"
-      ],
-      "inputs": ["packages/app/test/ui-smoke/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
-      "workspacePatterns": ["packages/core", "packages/shared"],
+      "workspacePatterns": ["packages/core"],
       "inputs": [
-        "packages/scripts/test-cloud-run-watchdog.self-test.mjs",
+        "packages/scripts/test-cloud-run-watchdog.self-test.ts",
         ".github/ci-windows-command-inventory.json"
       ],
       "dependsOn": ["canonical"]
@@ -98,25 +73,13 @@
     {
       "id": "ui-core",
       "workflow": ".github/workflows/ui-e2e-gate.yml",
-      "workspacePatterns": [
-        "packages/app",
-        "packages/core",
-        "packages/shared",
-        "packages/ui"
-      ],
+      "workspacePatterns": ["packages/app", "packages/core", "packages/ui"],
       "inputs": [
         "packages/ui/src/**",
         "packages/ui/test/**",
         "packages/ui/src/testing/**"
       ],
       "dependsOn": ["canonical"]
-    },
-    {
-      "id": "ui-stories",
-      "workflow": ".github/workflows/ui-story-gate.yml",
-      "workspacePatterns": ["packages/app", "packages/shared", "packages/ui"],
-      "inputs": ["packages/ui/src/**/*.stories.*", ".storybook/**"],
-      "dependsOn": ["ui-core"]
     }
   ]
 }

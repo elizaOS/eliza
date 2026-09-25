@@ -20,7 +20,7 @@ import {
 
 import { RipgrepService } from "../services/ripgrep-service.js";
 import { RIPGREP_SERVICE } from "../types.js";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { grepHandler } from "./grep.js";
 
 let env: TestEnv;

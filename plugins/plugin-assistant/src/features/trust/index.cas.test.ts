@@ -3,17 +3,17 @@
  * producing the same committed authority audit as interactive role changes.
  */
 
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
-import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../../../../../packages/core/src/types/database.ts";
 import {
+  AgentRuntime,
   ChannelType,
   type Character,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
+  stringToUuid as sqliteTestAgentId,
+  stringToUuid,
   type UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../packages/core/src/utils.ts";
+} from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { describe, expect, it } from "vitest";
 import { ensureAdminRoleOnInit } from "./index.ts";
 
 describe("trust admin role bootstrap CAS", () => {

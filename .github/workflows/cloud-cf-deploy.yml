@@ -246,7 +246,7 @@ jobs:
           set -euo pipefail
           secret_inventory="$(bunx wrangler@4.116.0 secret list --env staging --format json)"
           printf '%s' "$secret_inventory" | node \
-            ../scripts/verify-worker-secret-binding-names.mjs \
+            ../scripts/verify-worker-secret-binding-names.ts \
             ELIZA_APP_TELEGRAM_BOT_TOKEN \
             ELIZA_APP_TELEGRAM_WEBHOOK_SECRET
           printf 'runtime_authority=staging-protected-receipt-and-existing-bindings\n' >> "$GITHUB_OUTPUT"
@@ -396,7 +396,7 @@ jobs:
             )"
           fi
 
-          node packages/cloud/scripts/release-admission-cli.mjs \
+          node packages/cloud/scripts/release-admission-cli.ts \
             "--event=$EVENT_NAME" \
             "--environment=$TARGET_ENVIRONMENT" \
             "--ref=$GITHUB_REF" \
@@ -624,7 +624,7 @@ jobs:
           fi
 
           result="$(
-            node packages/cloud/scripts/staging-release-certification.mjs verify \
+            node packages/cloud/scripts/staging-release-certification.ts verify \
               --cert "${files[0]}" \
               --run-json "${RUNNER_TEMP}/staging-certification-run.json" \
               --artifact-json "${RUNNER_TEMP}/staging-certification-artifact.json" \
@@ -732,10 +732,10 @@ jobs:
           policy_workflow="${RUNNER_TEMP}/trusted-policy-cloud-cf-deploy.yml"
           trusted_admission="${RUNNER_TEMP}/trusted-production-hyperdrive-binding-admission.mjs"
           git show "${POLICY_SHA}:.github/workflows/cloud-cf-deploy.yml" > "$policy_workflow"
-          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" > "$trusted_admission"
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.ts" > "$trusted_admission"
           chmod 0500 "$trusted_admission"
           result="$(
-            node packages/cloud/scripts/staging-release-certification.mjs verify \
+            node packages/cloud/scripts/staging-release-certification.ts verify \
               --cert "${files[0]}" \
               --run-json "${RUNNER_TEMP}/recovery-policy-certification-run.json" \
               --artifact-json "${RUNNER_TEMP}/recovery-policy-certification-artifact.json" \
@@ -790,7 +790,7 @@ jobs:
           expected_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
           TELEGRAM_EXPECTED_BOT_ID="$expected_bot_id" \
             TELEGRAM_EXPECTED_BOT_USERNAME="$expected_bot_username" \
-            node packages/cloud/scripts/verify-telegram-bot-identity.mjs
+            node packages/cloud/scripts/verify-telegram-bot-identity.ts
           printf 'runtime_authority=production-live-attested\n' >> "$GITHUB_OUTPUT"
 
       - if: ${{ inputs.production_binding_only_recovery == true }}
@@ -878,7 +878,7 @@ jobs:
             exit 1
           }
           trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
-          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" \
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.ts" \
             > "$trusted_admission"
           chmod 0500 "$trusted_admission"
           bun "$trusted_admission" \
@@ -953,7 +953,7 @@ jobs:
           evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
           report="$evidence_dir/report.json"
           if ! GITHUB_TOKEN='${{ github.token }}' \
-            node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
@@ -989,7 +989,7 @@ jobs:
             bunx wrangler deploy --env production --dry-run \
               --outdir "$output_dir/bundle"
           ) > "$output_dir/dry-run.stdout" 2> "$output_dir/dry-run.stderr"
-          node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+          node packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$output_dir/freshness.stdout" \
@@ -1137,7 +1137,7 @@ jobs:
           }
           tree_sha="$(git rev-parse 'HEAD^{tree}')"
           artifact_name="cloud-staging-certification-v1-${tree_sha}"
-          node packages/cloud/scripts/staging-release-certification.mjs create \
+          node packages/cloud/scripts/staging-release-certification.ts create \
             --out staging-cloud-certification.json \
             --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" \

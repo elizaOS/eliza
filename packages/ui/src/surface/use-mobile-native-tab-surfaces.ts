@@ -27,9 +27,9 @@
  */
 
 import type { SurfaceLifecyclePolicy } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import { isNativeSurfaceCapabilityDenial } from "./native-surface-capability";
 import type {

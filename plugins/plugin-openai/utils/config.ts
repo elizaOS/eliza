@@ -5,15 +5,14 @@
  * their documented fallback chains. Also home to provider-mode detection
  * (Cerebras / EvoLink / authenticated host proxy).
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
+
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
 
 function getEnvValue(key: string): string | undefined {
   const value = process.env[key];
   return value === undefined ? undefined : String(value);
 }
-
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -36,7 +35,6 @@ export function getRequiredSetting(
   }
   return value;
 }
-
 export function getNumericSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -54,7 +52,6 @@ export function getNumericSetting(
   }
   return parsed;
 }
-
 export function getBooleanSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -67,6 +64,37 @@ export function getBooleanSetting(
   const normalized = value.toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
+function compatibleProvider(value: string | undefined): string | undefined {
+  const provider = value?.trim().toLowerCase();
+  return provider === "openai" || provider === "cerebras" || provider === "evolink"
+    ? provider
+    : undefined;
+}
+
+function explicitCompatibleBase(
+  baseURL: string | undefined,
+  provider: string | undefined
+): string | undefined {
+  if (!baseURL || !provider) return baseURL;
+  // Retain deliberate custom gateways. A stale first-party endpoint belonging
+  // to a different selected provider must not receive the selected credential.
+  let hostname: string;
+  try {
+    hostname = new URL(baseURL).hostname;
+  } catch {
+    // error-policy:J3 Endpoint validation remains with the request boundary.
+    return baseURL;
+  }
+  const owner =
+    hostname === "api.openai.com"
+      ? "openai"
+      : hostname === "api.cerebras.ai"
+        ? "cerebras"
+        : hostname === "direct.evolink.ai"
+          ? "evolink"
+          : undefined;
+  return owner && owner !== provider ? undefined : baseURL;
+}
 
 /**
  * True when the resolved base URL or `ELIZA_PROVIDER` setting marks the
@@ -74,10 +102,8 @@ export function getBooleanSetting(
  * the `CEREBRAS_API_KEY` alias so OpenAI users are not affected.
  */
 export function isCerebrasMode(runtime: IAgentRuntime): boolean {
-  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
-  if (explicitProvider && explicitProvider.toLowerCase() === "cerebras") {
-    return true;
-  }
+  const explicitProvider = compatibleProvider(getSetting(runtime, "ELIZA_PROVIDER"));
+  if (explicitProvider) return explicitProvider === "cerebras";
   const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
   if (baseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(baseURL)) {
     return true;
@@ -92,17 +118,14 @@ export function isCerebrasMode(runtime: IAgentRuntime): boolean {
   }
   return false;
 }
-
 /**
  * True when the resolved base URL or `ELIZA_PROVIDER` setting marks the
  * runtime as using EvoLink's OpenAI-compatible endpoint. Used to scope the
  * `EVOLINK_API_KEY` alias so OpenAI users are not affected.
  */
 export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
-  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
-  if (explicitProvider && explicitProvider.toLowerCase() === "evolink") {
-    return true;
-  }
+  const explicitProvider = compatibleProvider(getSetting(runtime, "ELIZA_PROVIDER"));
+  if (explicitProvider) return explicitProvider === "evolink";
   const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
   if (baseURL && /(^|\.)evolink\.ai(\/|$)/i.test(baseURL)) {
     return true;
@@ -117,7 +140,6 @@ export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
   }
   return false;
 }
-
 /**
  * Identifies the backend selected by this OpenAI-compatible plugin. Telemetry
  * must distinguish the transport implementation from the service that
@@ -134,7 +156,6 @@ export function getUsageProvider(
   }
   return "openai";
 }
-
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   // Cerebras serves an OpenAI-compatible API. When the runtime is pointed at
   // Cerebras (either via `ELIZA_PROVIDER=cerebras` or an `OPENAI_BASE_URL`
@@ -155,7 +176,6 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
   }
   return getSetting(runtime, "OPENAI_API_KEY");
 }
-
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
   const embeddingApiKey = getSetting(runtime, "OPENAI_EMBEDDING_API_KEY");
   if (embeddingApiKey) {
@@ -165,7 +185,6 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
   logger.debug("[OpenAI] Falling back to general API key for embeddings");
   return getApiKey(runtime);
 }
-
 export function getAuthHeader(
   runtime: IAgentRuntime,
   forEmbedding = false
@@ -173,19 +192,15 @@ export function getAuthHeader(
   const key = forEmbedding ? getEmbeddingApiKey(runtime) : getApiKey(runtime);
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
-
 function authHeaderForKey(key: string | undefined): Record<string, string> {
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
-
 /** Provides setting values to the pure endpoint resolver. */
 export type EndpointSettingReader = (key: string) => string | undefined;
-
 function normalizeEndpointSetting(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
 }
-
 /**
  * Resolve the text API endpoint from an injected setting reader. Keeping this
  * pure lets diagnostics use the exact provider policy without constructing a
@@ -194,24 +209,25 @@ function normalizeEndpointSetting(value: string | undefined): string | undefined
  */
 export function resolveOpenAIBaseURL(
   readSetting: EndpointSettingReader,
-  options: { mockBaseURL?: string } = {}
+  options: {
+    mockBaseURL?: string;
+  } = {}
 ): string {
   const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key));
-  const explicitProvider = read("ELIZA_PROVIDER")?.toLowerCase();
-  const openAIBaseURL = read("OPENAI_BASE_URL");
-  const cerebrasMode =
-    explicitProvider === "cerebras" ||
-    (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL)) ||
-    (read("CEREBRAS_API_KEY") !== undefined &&
-      read("OPENAI_API_KEY") === undefined &&
-      openAIBaseURL === undefined);
-  const evolinkMode =
-    explicitProvider === "evolink" ||
-    (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL)) ||
-    (read("EVOLINK_API_KEY") !== undefined &&
-      read("OPENAI_API_KEY") === undefined &&
-      openAIBaseURL === undefined);
-
+  const explicitProvider = compatibleProvider(read("ELIZA_PROVIDER"));
+  const openAIBaseURL = explicitCompatibleBase(read("OPENAI_BASE_URL"), explicitProvider);
+  const cerebrasMode = explicitProvider
+    ? explicitProvider === "cerebras"
+    : (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL)) ||
+      (read("CEREBRAS_API_KEY") !== undefined &&
+        read("OPENAI_API_KEY") === undefined &&
+        openAIBaseURL === undefined);
+  const evolinkMode = explicitProvider
+    ? explicitProvider === "evolink"
+    : (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL)) ||
+      (read("EVOLINK_API_KEY") !== undefined &&
+        read("OPENAI_API_KEY") === undefined &&
+        openAIBaseURL === undefined);
   return (
     normalizeEndpointSetting(options.mockBaseURL) ??
     openAIBaseURL ??
@@ -220,7 +236,6 @@ export function resolveOpenAIBaseURL(
     "https://api.openai.com/v1"
   );
 }
-
 export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL = resolveOpenAIBaseURL(
     (key) => {
@@ -236,18 +251,14 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   );
   return baseURL;
 }
-
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
   const embeddingURL = getSetting(runtime, "OPENAI_EMBEDDING_URL");
-
   if (embeddingURL) {
     return embeddingURL;
   }
-
   logger.debug("[OpenAI] Falling back to general base URL for embeddings");
   return getBaseURL(runtime);
 }
-
 export function getImageDescriptionApiKey(runtime: IAgentRuntime): string | undefined {
   const imageDescriptionApiKey = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_API_KEY");
   if (imageDescriptionApiKey) {
@@ -259,11 +270,9 @@ export function getImageDescriptionApiKey(runtime: IAgentRuntime): string | unde
   }
   return getApiKey(runtime);
 }
-
 export function getImageDescriptionAuthHeader(runtime: IAgentRuntime): Record<string, string> {
   return authHeaderForKey(getImageDescriptionApiKey(runtime));
 }
-
 export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
   const imageDescriptionURL = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL");
   if (imageDescriptionURL) {
@@ -271,25 +280,21 @@ export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
   }
   return getBaseURL(runtime);
 }
-
 function getCerebrasSmallModel(runtime: IAgentRuntime): string | undefined {
   return isCerebrasMode(runtime)
     ? (getSetting(runtime, "CEREBRAS_SMALL_MODEL") ??
         getSetting(runtime, "CEREBRAS_MODEL", DEFAULT_CEREBRAS_TEXT_MODEL))
     : undefined;
 }
-
 function getCerebrasLargeModel(runtime: IAgentRuntime): string | undefined {
   return isCerebrasMode(runtime)
     ? (getSetting(runtime, "CEREBRAS_LARGE_MODEL") ??
         getSetting(runtime, "CEREBRAS_MODEL", DEFAULT_CEREBRAS_TEXT_MODEL))
     : undefined;
 }
-
 function getEvoLinkModel(runtime: IAgentRuntime): string | undefined {
   return isEvoLinkMode(runtime) ? (getSetting(runtime, "EVOLINK_MODEL") ?? "gpt-5.2") : undefined;
 }
-
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_SMALL_MODEL") ??
@@ -299,7 +304,6 @@ export function getSmallModel(runtime: IAgentRuntime): string {
     "gpt-5.6-luna"
   );
 }
-
 export function getNanoModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_NANO_MODEL") ??
@@ -309,7 +313,6 @@ export function getNanoModel(runtime: IAgentRuntime): string {
     getSmallModel(runtime)
   );
 }
-
 export function getMediumModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_MEDIUM_MODEL") ??
@@ -319,7 +322,6 @@ export function getMediumModel(runtime: IAgentRuntime): string {
     getSmallModel(runtime)
   );
 }
-
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_LARGE_MODEL") ??
@@ -329,7 +331,6 @@ export function getLargeModel(runtime: IAgentRuntime): string {
     "gpt-5.6-sol"
   );
 }
-
 export function getMegaModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_MEGA_MODEL") ??
@@ -337,7 +338,6 @@ export function getMegaModel(runtime: IAgentRuntime): string {
     getLargeModel(runtime)
   );
 }
-
 export function getResponseHandlerModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_RESPONSE_HANDLER_MODEL") ??
@@ -349,7 +349,6 @@ export function getResponseHandlerModel(runtime: IAgentRuntime): string {
     getSmallModel(runtime)
   );
 }
-
 export function getActionPlannerModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_ACTION_PLANNER_MODEL") ??
@@ -361,47 +360,36 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
     getMediumModel(runtime)
   );
 }
-
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
 }
-
 export function getImageDescriptionModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_MODEL") ?? "gpt-5-mini";
 }
-
 export function getTranscriptionModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_TRANSCRIPTION_MODEL") ?? "gpt-5-mini-transcribe";
 }
-
 export function getTTSModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_TTS_MODEL") ?? "gpt-5-mini-tts";
 }
-
 export function getTTSVoice(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_TTS_VOICE") ?? "nova";
 }
-
 export function getTTSInstructions(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_TTS_INSTRUCTIONS") ?? "";
 }
-
 export function getImageModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_IMAGE_MODEL") ?? "dall-e-3";
 }
-
 export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
   return getBooleanSetting(runtime, "OPENAI_EXPERIMENTAL_TELEMETRY", false);
 }
-
 export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", 1536);
 }
-
 export function getResearchModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_RESEARCH_MODEL") ?? "o3-deep-research";
 }
-
 export function getResearchTimeout(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "OPENAI_RESEARCH_TIMEOUT", 3600000);
 }

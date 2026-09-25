@@ -151,11 +151,23 @@ async function slowDrag(
   }
 }
 
-/** A fast flick (synchronous events → huge velocity). */
+/** A fast flick with fixed sample times, independent of test-runner load. */
 function flick(el: Element, fromY: number, toY: number, pointerId = 42): void {
-  fireEvent.pointerDown(el, { clientY: fromY, pointerId });
-  fireEvent.pointerMove(el, { clientY: toY, pointerId });
-  fireEvent.pointerUp(el, { clientY: toY, pointerId });
+  const now = vi.spyOn(performance, "now");
+  const ts = vi
+    .spyOn(Event.prototype, "timeStamp", "get")
+    .mockImplementation(() => performance.now());
+  try {
+    now.mockReturnValue(1000);
+    fireEvent.pointerDown(el, { clientY: fromY, pointerId });
+    now.mockReturnValue(1016);
+    fireEvent.pointerMove(el, { clientY: toY, pointerId });
+    now.mockReturnValue(1032);
+    fireEvent.pointerUp(el, { clientY: toY, pointerId });
+  } finally {
+    ts.mockRestore();
+    now.mockRestore();
+  }
 }
 
 /**

@@ -2,8 +2,7 @@
  * Verifies the slow provider I/O plans by observing when real provider calls
  * start, without wall-clock thresholds or substituted provider implementations.
  */
-import { describe, expect, it, vi } from "vitest";
-import { runWithTrajectoryContext } from "../../../../packages/core/src/trajectory-context.ts";
+
 import type {
   Entity,
   IAgentRuntime,
@@ -11,11 +10,13 @@ import type {
   Relationship,
   State,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
 import {
   ChannelType,
   MemoryType,
-} from "../../../../packages/core/src/types/index.ts";
+  runWithTrajectoryContext,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { factsProvider } from "./advanced-capabilities/providers/facts.ts";
 import { relationshipsProvider } from "./advanced-capabilities/providers/relationships.ts";
 import { worldProvider } from "./basic-capabilities/providers/world.ts";
@@ -195,7 +196,7 @@ describe("provider database I/O concurrency", () => {
 
     for (const pending of candidatePools.values()) pending.resolve([]);
     await expect(resultPromise).resolves.toMatchObject({
-      text: "No facts available.",
+      text: "",
     });
   });
 

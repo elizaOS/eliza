@@ -1,6 +1,6 @@
 /** Requires a semantically current immutable source and derived entitlement before acknowledging a lifecycle observation without publication. */
 import { ElizaError } from "@elizaos/core";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {
   type BillingSubscription,
@@ -31,7 +31,13 @@ export async function requireReconciliationProjection(
   const [projection] = await tx
     .select()
     .from(organizationEntitlements)
-    .where(eq(organizationEntitlements.organization_id, source.organization_id))
+    .where(
+      and(
+        isNull(organizationEntitlements.billing_scope_id),
+        eq(organizationEntitlements.organization_id, source.organization_id),
+        isNull(organizationEntitlements.billing_scope_id),
+      ),
+    )
     .for("update");
   const fail = (): never => {
     throw new ElizaError(

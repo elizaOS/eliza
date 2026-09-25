@@ -9,20 +9,15 @@
  * tags}` routed through the sub-planner before MEMORY_CREATE ran).
  */
 
-import { type ContextObject, completionContextSources } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Action, IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import {
+  type ContextObject,
+  completionContextSources,
+  createContextObject,
   pinnedDiscriminatorForPromotedChild,
   promoteSubactionsToActions,
-} from "../../../../packages/core/src/actions/promote-subactions.ts";
-import { createContextObject } from "../../../../packages/core/src/runtime/context-object.ts";
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  State,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PlannerRuntime,
   PlannerToolCall,

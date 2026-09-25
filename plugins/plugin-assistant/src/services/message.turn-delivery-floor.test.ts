@@ -18,22 +18,19 @@
  * outcomes are deterministic HANDLE_RESPONSE envelopes or provider errors.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { v4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
-import type { Room } from "../../../../packages/core/src/types/environment.ts";
-import type { Memory } from "../../../../packages/core/src/types/memory.ts";
+import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import {
   asUUID,
   ChannelType,
   type Content,
+  drainPostDeliveryTasks,
+  ResponseHandlerFieldRegistry,
+  TurnControllerRegistry,
   type UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
-import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
-import type { State } from "../../../../packages/core/src/types/state.ts";
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { v4 } from "uuid";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import {
   DefaultMessageService,
@@ -168,6 +165,10 @@ function createHarness(
     getCurrentRunId: vi.fn(() => runId),
     endRun: vi.fn(),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory: vi.fn(async (memory: Memory) => {
       persisted.push(memory);
       return asUUID(v4());
@@ -385,6 +386,62 @@ describe("MESSAGE_SENT commits only after the delivery boundary succeeds", () =>
       messageSentTexts(h).filter((text) => text === replyText),
     ).toHaveLength(1);
   });
+});
+
+describe("terminal action fulfillment", () => {
+  it.each([false, true])(
+    "preserves terminal action success=%s without inventing an evaluation",
+    async (success) => {
+      const actionName = "TEST_TERMINAL_HANDOFF";
+      const reply = success
+        ? "The child was started."
+        : "The child could not start.";
+      const h = createHarness(async (_getHarness, modelType) => {
+        if (modelType === "RESPONSE_HANDLER")
+          return stage1ActionPlan(actionName);
+        if (modelType === "ACTION_PLANNER")
+          return {
+            thought: "Start the requested child.",
+            toolCalls: [
+              { id: "terminal-handoff", name: actionName, arguments: {} },
+            ],
+          };
+        throw new Error(
+          `Unexpected model call after terminal handoff: ${modelType}`,
+        );
+      });
+      const handler = vi.fn(async () => ({
+        success,
+        text: reply,
+        userFacingText: reply,
+        continueChain: false,
+      }));
+      h.runtime.actions = [
+        {
+          name: actionName,
+          similes: [],
+          description: "Start a child.",
+          examples: [],
+          validate: async () => true,
+          handler,
+        },
+      ] as never;
+      const deliveries: Content[] = [];
+      const result = await h.service.handleMessage(
+        h.runtime,
+        h.makeMessage("Start the requested child"),
+        async (content) => {
+          deliveries.push(content);
+          return [];
+        },
+      );
+      await drainPostDeliveryTasks(h.runtime);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(result.didRespond).toBe(true);
+      expect(visibleTexts(deliveries)).toEqual([reply]);
+      expect(result.requestFulfilled).toBe(success ? undefined : false);
+    },
+  );
 });
 
 describe("race-superseded turns keep addressed responses", () => {

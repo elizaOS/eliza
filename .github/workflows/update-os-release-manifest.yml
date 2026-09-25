@@ -122,7 +122,7 @@ jobs:
           ' "$release_pre")"
           gh api --paginate --slurp \
             "repos/${REPOSITORY}/releases/${release_id}/assets?per_page=100" > "$assets_pre"
-          node packages/os/scripts/release-asset-inventory.mjs capture \
+          node packages/os/scripts/release-asset-inventory.ts capture \
             --repository "$REPOSITORY" \
             --release "$release_pre" \
             --assets "$assets_pre" \
@@ -153,7 +153,7 @@ jobs:
         run: |
           set -euo pipefail
           download_plan="${RECOVERY_DIR}/download-plan.tsv"
-          node packages/os/scripts/release-asset-inventory.mjs plan \
+          node packages/os/scripts/release-asset-inventory.ts plan \
             --inventory "$INVENTORY_PRE" > "$download_plan"
           while IFS=$'\t' read -r asset_id asset_name; do
             printf 'download asset_id=%s name=%s\n' "$asset_id" "$asset_name" | tee -a "$RECOVERY_LOG"
@@ -161,7 +161,7 @@ jobs:
               -H "Accept: application/octet-stream" \
               "repos/${REPOSITORY}/releases/assets/${asset_id}" > "$ARTIFACT_DIR/$asset_name"
           done < "$download_plan"
-          node packages/os/scripts/release-asset-inventory.mjs verify \
+          node packages/os/scripts/release-asset-inventory.ts verify \
             --inventory "$INVENTORY_PRE" \
             --artifact-root "$ARTIFACT_DIR" \
             --receipt "$DOWNLOAD_RECEIPT" \
@@ -175,18 +175,18 @@ jobs:
           set -euo pipefail
           checksums="${RECOVERY_DIR}/SHA256SUMS"
           {
-            echo '$ node packages/os/scripts/generate-release-checksums.mjs --update-manifest'
-            node packages/os/scripts/generate-release-checksums.mjs \
+            echo '$ node packages/os/scripts/generate-release-checksums.ts --update-manifest'
+            node packages/os/scripts/generate-release-checksums.ts \
               --manifest "$MANIFEST_PATH" \
               --artifact-root "$ARTIFACT_DIR" \
               --output "$checksums" \
               --update-manifest
-            echo '$ node packages/os/scripts/validate-release-manifest.mjs --require-publishable-checksums'
-            node packages/os/scripts/validate-release-manifest.mjs \
+            echo '$ node packages/os/scripts/validate-release-manifest.ts --require-publishable-checksums'
+            node packages/os/scripts/validate-release-manifest.ts \
               --manifest "$MANIFEST_PATH" \
               --require-publishable-checksums
-            echo '$ node packages/os/scripts/verify-release-checksums.mjs'
-            node packages/os/scripts/verify-release-checksums.mjs \
+            echo '$ node packages/os/scripts/verify-release-checksums.ts'
+            node packages/os/scripts/verify-release-checksums.ts \
               --manifest "$MANIFEST_PATH" \
               --artifact-root "$ARTIFACT_DIR" \
               --checksums "$checksums"
@@ -224,12 +224,12 @@ jobs:
           ' "$release_post")"
           gh api --paginate --slurp \
             "repos/${REPOSITORY}/releases/${post_release_id}/assets?per_page=100" > "$assets_post"
-          node packages/os/scripts/release-asset-inventory.mjs capture \
+          node packages/os/scripts/release-asset-inventory.ts capture \
             --repository "$REPOSITORY" \
             --release "$release_post" \
             --assets "$assets_post" \
             --output "$INVENTORY_POST" | tee -a "$RECOVERY_LOG"
-          node packages/os/scripts/release-asset-inventory.mjs compare \
+          node packages/os/scripts/release-asset-inventory.ts compare \
             --expected "$INVENTORY_PRE" \
             --observed "$INVENTORY_POST" | tee -a "$RECOVERY_LOG"
 
@@ -273,7 +273,7 @@ jobs:
 
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
           pr_body="${RECOVERY_DIR}/pull-request-body.md"
-          node packages/os/scripts/release-asset-inventory.mjs render-pr \
+          node packages/os/scripts/release-asset-inventory.ts render-pr \
             --inventory "$INVENTORY_PRE" \
             --receipt "$DOWNLOAD_RECEIPT" \
             --base-sha "$BASE_SHA" \
@@ -300,7 +300,7 @@ jobs:
           - Attribution status: self-reported
           EOF
           node packages/scripts/check-pr-evidence.ts --body-file "$pr_body"
-          node packages/os/scripts/check-pr-agent-attribution.mjs --body-file "$pr_body"
+          node packages/os/scripts/check-pr-agent-attribution.ts --body-file "$pr_body"
 
           git switch -c "$BRANCH"
           git config user.name "elizaOS CI"

@@ -22,8 +22,7 @@ import type {
 import {
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
-} from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/types/notification";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
@@ -39,6 +38,7 @@ import {
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
 import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
+import { logger } from "../../logger.ts";
 import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,

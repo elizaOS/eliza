@@ -2,7 +2,7 @@
  * Validate-time predicates for non-actionable / cross-domain requests.
  *
  * These are i18n + greedy: they pull keyword sets from the shared
- * @elizaos/shared/validation-keywords loader so matching works across all
+ * @elizaos/core/validation-keywords loader so matching works across all
  * supported locales, and they err on the side of matching more (declining
  * the action and letting routing fall through to a better fit).
  */
@@ -10,7 +10,7 @@
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/shared";
+} from "@elizaos/core/i18n/keyword-matching";
 
 /**
  * Build-an-app / coding-task requests. Owner task/routine creation shares verbs

@@ -7,7 +7,7 @@
  *
  * Fixtures are throwaway temp repos passed to the real resolvers via
  * `{ repoRoot }`, and the coupling gate is exercised by spawning the real
- * `audit-scripts.mjs --root <fixture>`. Deterministic; no network.
+ * `audit-scripts.ts --root <fixture>`. Deterministic; no network.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -16,16 +16,18 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  resolveBuildOnInstallPackages,
+  resolveContentContextEvidencePackages,
   resolveCoreBuildPackages,
   resolveDevAllSkipPlugins,
   resolveTestLaneDirs,
   resolveTestSerialPackages,
 } from "../lib/script-metadata.ts";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
-const AUDIT_SCRIPT = path.join(SCRIPT_DIR, "..", "audit-scripts.mjs");
+const AUDIT_SCRIPT = path.join(SCRIPT_DIR, "..", "audit-scripts.ts");
 
 const tempRoots: string[] = [];
 
@@ -79,7 +81,7 @@ function writePlugin(
   );
 }
 
-/** Discover the `test/scenarios` roots the way build-manifest.mjs now does. */
+/** Discover the `test/scenarios` roots the way build-manifest.ts now does. */
 function discoverScenarioRoots(root: string): Promise<string[]> {
   return import(
     path.join(REPO_ROOT, "packages/scripts/lib/workspaces.ts")
@@ -244,5 +246,38 @@ describe("plugin discovery is zero-edit", () => {
     expect(stale.failures.some((f) => f.includes("[coupling-stale]"))).toBe(
       true,
     );
+  });
+
+  test("progressive-content evidence roles are package-owned and unique", () => {
+    const root = makeRepo();
+    writePlugin(root, "@elizaos/plugin-reader", {
+      contentContextEvidence: { role: "coding-tools" },
+    });
+    writePlugin(root, "@elizaos/plugin-storage", {
+      contentContextEvidence: { role: "sql" },
+    });
+
+    const discovered = resolveContentContextEvidencePackages({
+      repoRoot: root,
+    });
+    expect(discovered.invalid).toEqual([]);
+    expect(discovered.packages.get("coding-tools")?.name).toBe(
+      "@elizaos/plugin-reader",
+    );
+    expect(discovered.packages.get("sql")?.name).toBe(
+      "@elizaos/plugin-storage",
+    );
+
+    writePlugin(root, "@elizaos/plugin-duplicate", {
+      contentContextEvidence: { role: "sql" },
+    });
+    writePlugin(root, "@elizaos/plugin-invalid", {
+      contentContextEvidence: { role: "other" },
+    });
+    const invalid = resolveContentContextEvidencePackages({ repoRoot: root });
+    expect(invalid.invalid).toEqual([
+      "@elizaos/plugin-invalid: contentContextEvidence.role must be coding-tools or sql",
+      "@elizaos/plugin-storage: duplicate contentContextEvidence role sql",
+    ]);
   });
 });

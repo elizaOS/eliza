@@ -8,21 +8,24 @@
  * server's auth layer.
  */
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { PutUpdateChannelRequestSchema } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+import {
+  PutUpdateChannelRequestSchema,
+  type ReadJsonBodyOptions,
+} from "@elizaos/core";
 
+import type { ElizaConfig } from "../config/config.ts";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 export interface UpdateRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
   method: string;
   pathname: string;
   url: URL;
-  state: { config: ElizaConfig };
+  state: {
+    config: ElizaConfig;
+  };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   readJsonBody: <T extends object>(
@@ -32,16 +35,13 @@ export interface UpdateRouteContext {
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
 }
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 export async function handleUpdateRoutes(
   ctx: UpdateRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, state, json, error, readJsonBody } = ctx;
-
   // ── GET /api/update/status ───────────────────────────────────────────
   if (method === "GET" && pathname === "/api/update/status") {
     const { VERSION } = await import("../runtime/version.ts");
@@ -60,12 +60,10 @@ export async function handleUpdateRoutes(
     const updatePlan = getUpdateActionPlan(installMethod, channel, {
       remoteDisplay: !isTrustedLocalRequest(req),
     });
-
     const [check, versions] = await Promise.all([
       checkForUpdate({ force: req.url?.includes("force=true") }),
       fetchAllChannelVersions(),
     ]);
-
     json(res, {
       currentVersion: VERSION,
       channel,
@@ -90,7 +88,6 @@ export async function handleUpdateRoutes(
     });
     return true;
   }
-
   // ── PUT /api/update/channel ────────────────────────────────────────────
   if (method === "PUT" && pathname === "/api/update/channel") {
     const rawCh = await readJsonBody<Record<string, unknown>>(req, res);
@@ -115,6 +112,5 @@ export async function handleUpdateRoutes(
     json(res, { channel: ch });
     return true;
   }
-
   return false;
 }

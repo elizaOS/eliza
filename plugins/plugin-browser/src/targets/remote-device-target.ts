@@ -1,6 +1,6 @@
 /** Adapts a granted encrypted remote host session to one immutable device Chromium profile. */
-import type { RemoteBrowserCommandPayload } from "@elizaos/shared/contracts/remote-control";
-import { parseRemoteBrowserCommandPayload } from "@elizaos/shared/contracts/remote-control";
+import type { RemoteBrowserCommandPayload } from "@elizaos/core/contracts/remote-control";
+import { parseRemoteBrowserCommandPayload } from "@elizaos/core/contracts/remote-control";
 import type { BrowserTarget } from "../browser-service.js";
 import { BrowserDispatchFailure } from "../dispatch-types.js";
 import type {

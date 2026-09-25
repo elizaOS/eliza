@@ -56,15 +56,15 @@ import {
   resolveStateDir,
   setAnthropicAccountPoolBridge,
 } from "@elizaos/core";
-import type {
-  LinkedAccountConfig,
-  LinkedAccountHealth,
-  LinkedAccountHealthDetail,
-  LinkedAccountProviderId,
-  LinkedAccountsConfig,
-  LinkedAccountUsage,
-} from "@elizaos/shared";
-import { isLinkedAccountProviderId } from "@elizaos/shared";
+import {
+  isLinkedAccountProviderId,
+  type LinkedAccountConfig,
+  type LinkedAccountHealth,
+  type LinkedAccountHealthDetail,
+  type LinkedAccountProviderId,
+  type LinkedAccountsConfig,
+  type LinkedAccountUsage,
+} from "@elizaos/core/contracts/service-routing";
 import {
   pollAnthropicUsage,
   pollCodexUsage,
@@ -74,7 +74,6 @@ import {
   adoptRotatedCodexTokens,
   installCodingAgentSelectorBridge,
 } from "./coding-account-bridge.js";
-
 export type Strategy =
   | "priority"
   | "round-robin"
@@ -82,9 +81,7 @@ export type Strategy =
   | "quota-aware"
   | "reset-soonest"
   | "drain-soonest-reset";
-
 export type PoolProviderId = LinkedAccountProviderId;
-
 export interface AccountPoolDeps {
   /** Read the current `LinkedAccountsConfig` (live). */
   readAccounts: () => Record<string, LinkedAccountConfig>;
@@ -96,7 +93,6 @@ export interface AccountPoolDeps {
     accountId: string,
   ) => Promise<void>;
 }
-
 export interface SelectInput {
   providerId: PoolProviderId;
   /** Stable session key for affinity (e.g. agent id + run id). */
@@ -110,31 +106,27 @@ export interface SelectInput {
   /** Requested model/display name for provider-specific weekly buckets. */
   model?: string;
 }
-
 interface AffinityEntry {
   accountId: string;
   attempts: number;
 }
-
 interface AccountPoolSelectionRoute {
   backend?: string;
   accountId?: string;
   accountIds?: string[];
   strategy?: string;
 }
-
 interface AccountPoolSelectionConfig {
   accountStrategies?: Partial<Record<PoolProviderId, unknown>>;
   serviceRouting?: {
     llmText?: AccountPoolSelectionRoute;
   } | null;
 }
-
-const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
-const USAGE_PRIMING_DEBOUNCE_MS = 6 * 60 * 60_000;
-const USAGE_PRIMING_RETRY_DELAY_MS = 30_000;
+const USAGE_PRIMING_DEBOUNCE_MS = 6 * 60 * 60000;
+const USAGE_PRIMING_RETRY_DELAY_MS = 30000;
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_USAGE_PRIMING_MODEL = "claude-haiku-4-5-20251001";
 const SUBSCRIPTION_END_BOOST_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -152,8 +144,7 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   grok: "xai-api",
   xai: "xai-api",
 };
-
-const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
+const KEEP_ALIVE_INTERVAL_MS = 5 * 60000;
 /**
  * How long the keep-alive sweep waits before re-probing a parked
  * (needs-reauth / invalid) SUBSCRIPTION account. A parked OAuth account's
@@ -163,27 +154,23 @@ const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
  * account per day. A credential update (re-auth) bypasses the cooldown, so
  * recovered accounts still re-admit within one sweep.
  */
-const PARKED_SUBSCRIPTION_PROBE_COOLDOWN_MS = 6 * 60 * 60_000;
-
+const PARKED_SUBSCRIPTION_PROBE_COOLDOWN_MS = 6 * 60 * 60000;
 function accountSessionPct(account: LinkedAccountConfig): number {
   return typeof account.usage?.sessionPct === "number"
     ? account.usage.sessionPct
     : 0;
 }
-
 function accountWeeklyPct(account: LinkedAccountConfig): number {
   return typeof account.usage?.weeklyPct === "number"
     ? account.usage.weeklyPct
     : accountSessionPct(account);
 }
-
 function normalizeModelKey(value: string): string {
   return value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 }
-
 function modelKeysMatch(requested: string, bucket: string): boolean {
   return (
     requested === bucket ||
@@ -191,11 +178,13 @@ function modelKeysMatch(requested: string, bucket: string): boolean {
     (requested.length >= 4 && bucket.includes(requested))
   );
 }
-
 function accountWeeklyBucket(
   account: LinkedAccountConfig,
   requestedModel?: string,
-): { pct: number; resetsAt?: number } {
+): {
+  pct: number;
+  resetsAt?: number;
+} {
   const key = requestedModel ? normalizeModelKey(requestedModel) : "";
   const buckets = account.usage?.weeklyModelBuckets;
   if (key && buckets) {
@@ -210,11 +199,9 @@ function accountWeeklyBucket(
       : {}),
   };
 }
-
 function accountLastUsedAt(account: LinkedAccountConfig): number {
   return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
 }
-
 /**
  * The instant an account's weekly budget refunds. Prefers the usage
  * snapshot's `resetsAt`; falls back to a live rate-limit `until`. Undefined
@@ -223,7 +210,6 @@ function accountLastUsedAt(account: LinkedAccountConfig): number {
 function accountResetAt(account: LinkedAccountConfig): number | undefined {
   return account.usage?.resetsAt;
 }
-
 /**
  * `reset-soonest` comparator. Prefer the account whose weekly reset arrives
  * SOONEST: its budget refunds first, so spending it now is the cheapest.
@@ -249,7 +235,6 @@ function bySoonestReset(
   if (aUsed !== bUsed) return aUsed - bUsed;
   return a.priority - b.priority;
 }
-
 function subscriptionEndBoost(
   account: LinkedAccountConfig,
   now: number,
@@ -265,7 +250,6 @@ function subscriptionEndBoost(
     ? remaining
     : Number.MAX_SAFE_INTEGER;
 }
-
 function isAccountExpired(
   account: LinkedAccountConfig,
   now: number = Date.now(),
@@ -275,13 +259,11 @@ function isAccountExpired(
     account.subscriptionEndsAt <= now
   );
 }
-
 // affinity is keyed by sessionKey, which is per-conversation/per-request, so the
 // map grows one entry per distinct session over the process lifetime. Cap it
 // (FIFO by Map insertion order) — an evicted session simply re-selects on its
 // next call, which is the same behavior as a cold session.
-const MAX_AFFINITY_ENTRIES = 10_000;
-
+const MAX_AFFINITY_ENTRIES = 10000;
 export class AccountPool {
   private readonly deps: AccountPoolDeps;
   private readonly affinity = new Map<string, AffinityEntry>();
@@ -293,21 +275,20 @@ export class AccountPool {
   // diverges. Monotonic + epoch-aligned so it composes with `lastUsedAt`.
   private readonly recentlySelectedAt = new Map<string, number>();
   private selectionClock = 0;
-
   constructor(deps: AccountPoolDeps) {
     this.deps = deps;
   }
-
   // Selection.
-
   async select(input: SelectInput): Promise<LinkedAccountConfig | null> {
     const all = this.deps.readAccounts();
     await this.markExpiredAccounts(input.providerId, all);
     const eligible = this.filterEligible(all, input);
     if (eligible.length === 0) return null;
-
-    if (input.sessionKey) {
-      const cached = this.affinity.get(input.sessionKey);
+    const affinityKey = input.sessionKey
+      ? poolRecordKey(input.providerId, input.sessionKey)
+      : undefined;
+    if (affinityKey) {
+      const cached = this.affinity.get(affinityKey);
       if (
         cached &&
         cached.attempts < SESSION_AFFINITY_MAX_ATTEMPTS &&
@@ -318,16 +299,15 @@ export class AccountPool {
         if (account) return account;
       }
     }
-
     const strategy: Strategy = input.strategy ?? "priority";
     const picked = this.applyStrategy(strategy, eligible, input.providerId, {
       model: input.model,
+      advanceCursor: true,
     });
     if (!picked) return null;
-    this.stampSelection(picked.id);
-
-    if (input.sessionKey) {
-      this.affinity.set(input.sessionKey, {
+    this.stampSelection(poolRecordKey(picked.providerId, picked.id));
+    if (affinityKey) {
+      this.affinity.set(affinityKey, {
         accountId: picked.id,
         attempts: 1,
       });
@@ -339,7 +319,6 @@ export class AccountPool {
     }
     return picked;
   }
-
   /**
    * Non-mutating dry-run of selection for the accounts API / settings UI:
    * "which account would we serve next for this provider, and why?" Uses the
@@ -351,8 +330,14 @@ export class AccountPool {
   selectionState(
     providerId: PoolProviderId,
     strategy: Strategy = "priority",
-    opts?: { model?: string; accountIds?: string[] },
-  ): { activeAccountId: string | null; reason: string | null } {
+    opts?: {
+      model?: string;
+      accountIds?: string[];
+    },
+  ): {
+    activeAccountId: string | null;
+    reason: string | null;
+  } {
     return this.selectionStateFromAccounts(
       this.deps.readAccounts(),
       providerId,
@@ -360,14 +345,16 @@ export class AccountPool {
       opts,
     );
   }
-
   /** A request-scoped inventory; later requests must acquire a fresh snapshot. */
   readSnapshot(): {
     list(providerId?: PoolProviderId): LinkedAccountConfig[];
     selectionState(
       providerId: PoolProviderId,
       strategy?: Strategy,
-    ): { activeAccountId: string | null; reason: string | null };
+    ): {
+      activeAccountId: string | null;
+      reason: string | null;
+    };
   } {
     const all = this.deps.readAccounts();
     return {
@@ -381,13 +368,18 @@ export class AccountPool {
       ) => this.selectionStateFromAccounts(all, providerId, strategy),
     };
   }
-
   private selectionStateFromAccounts(
     all: Record<string, LinkedAccountConfig>,
     providerId: PoolProviderId,
     strategy: Strategy,
-    opts?: { model?: string; accountIds?: string[] },
-  ): { activeAccountId: string | null; reason: string | null } {
+    opts?: {
+      model?: string;
+      accountIds?: string[];
+    },
+  ): {
+    activeAccountId: string | null;
+    reason: string | null;
+  } {
     const eligible = this.filterEligible(all, {
       providerId,
       accountIds: opts?.accountIds,
@@ -413,12 +405,10 @@ export class AccountPool {
     }
     return { activeAccountId: picked.id, reason };
   }
-
   async sweepExpired(providerId?: PoolProviderId): Promise<number> {
     const all = this.deps.readAccounts();
     return this.markExpiredAccounts(providerId, all);
   }
-
   private async markExpiredAccounts(
     providerId: PoolProviderId | undefined,
     all: Record<string, LinkedAccountConfig>,
@@ -446,7 +436,6 @@ export class AccountPool {
     }
     return changed;
   }
-
   private filterEligible(
     all: Record<string, LinkedAccountConfig>,
     input: SelectInput,
@@ -457,7 +446,6 @@ export class AccountPool {
         ? new Set(input.accountIds)
         : null;
     const now = Date.now();
-
     return Object.values(all).filter((account) => {
       if (account.providerId !== input.providerId) return false;
       if (!account.enabled) return false;
@@ -466,16 +454,17 @@ export class AccountPool {
       return isAccountSelectableNow(account, now);
     });
   }
-
   private applyStrategy(
     strategy: Strategy,
     eligible: LinkedAccountConfig[],
     providerId: PoolProviderId,
-    opts: { model?: string } = {},
+    opts: {
+      model?: string;
+      advanceCursor?: boolean;
+    } = {},
   ): LinkedAccountConfig | null {
     if (eligible.length === 0) return null;
     if (eligible.length === 1) return eligible[0] ?? null;
-
     switch (strategy) {
       case "round-robin": {
         // The ring MUST have a stable order: byPriorityThenAge tiebreaks on
@@ -485,7 +474,7 @@ export class AccountPool {
         const sorted = [...eligible].sort(byPriorityThenStableIdentity);
         const cursor = (this.roundRobinCursor.get(providerId) ?? -1) + 1;
         const index = cursor % sorted.length;
-        this.roundRobinCursor.set(providerId, index);
+        if (opts.advanceCursor) this.roundRobinCursor.set(providerId, index);
         return sorted[index] ?? null;
       }
       case "least-used": {
@@ -528,7 +517,6 @@ export class AccountPool {
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
     }
   }
-
   /** Record that `accountId` was just selected, with a strictly-increasing,
    * epoch-aligned stamp so a same-millisecond burst still rotates. */
   private stampSelection(accountId: string): void {
@@ -540,17 +528,17 @@ export class AccountPool {
       this.recentlySelectedAt.delete(oldest);
     }
   }
-
   /** Most recent of the persisted `lastUsedAt` and the in-memory selection
    * stamp — so a just-picked account sorts as "more recently used". */
   private effectiveLastUsed(account: LinkedAccountConfig): number {
-    const recentSelection = this.recentlySelectedAt.get(account.id);
+    const recentSelection = this.recentlySelectedAt.get(
+      poolRecordKey(account.providerId, account.id),
+    );
     return Math.max(
       accountLastUsedAt(account),
       recentSelection === undefined ? 0 : recentSelection,
     );
   }
-
   /** least-used comparator: spread load first by reported usage, then by
    * recency-of-use (persisted + in-flight selection). Recency is ranked ABOVE
    * `priority` here because least-used is a load-spreading strategy and the
@@ -569,25 +557,21 @@ export class AccountPool {
     if (aUsed !== bUsed) return aUsed - bUsed;
     return a.priority - b.priority;
   }
-
   // CRUD — used by accounts-routes.ts as the single source of truth for
   // LinkedAccountConfig records. Both reads and writes go through here so
   // changes from the HTTP API and from runtime mutations (markRateLimited,
   // refreshUsage, recordCall) stay consistent.
-
   list(providerId?: PoolProviderId): LinkedAccountConfig[] {
     const all = Object.values(this.deps.readAccounts());
     if (!providerId) return all;
     return all.filter((a) => a.providerId === providerId);
   }
-
   get(
     accountId: string,
     providerId?: PoolProviderId,
   ): LinkedAccountConfig | null {
     return findAccountById(this.deps.readAccounts(), accountId, providerId);
   }
-
   async upsert(account: LinkedAccountConfig): Promise<void> {
     const prior = this.get(account.id, account.providerId);
     await this.deps.writeAccount({
@@ -596,17 +580,20 @@ export class AccountPool {
         account.prioritySource ?? prior?.prioritySource ?? "generated",
     });
   }
-
   async deleteMetadata(
     providerId: PoolProviderId,
     accountId: string,
   ): Promise<void> {
-    if (!this.deps.deleteAccount) return;
+    if (!this.deps.deleteAccount) {
+      throw new ElizaError("Account-pool persistence cannot delete metadata", {
+        code: "ACCOUNT_POOL_DELETE_UNSUPPORTED",
+        context: { providerId, accountId },
+        severity: "fatal",
+      });
+    }
     await this.deps.deleteAccount(providerId, accountId);
   }
-
   // Mutations.
-
   async recordCall(
     accountId: string,
     result: {
@@ -616,7 +603,9 @@ export class AccountPool {
       errorCode?: string;
       model?: string;
     },
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -631,7 +620,6 @@ export class AccountPool {
     };
     await this.deps.writeAccount(next);
   }
-
   async refreshUsage(
     accountId: string,
     accessToken: string,
@@ -653,7 +641,6 @@ export class AccountPool {
       });
       return;
     }
-
     let usage: LinkedAccountUsage;
     // Anthropic's OAuth token is opaque (no OIDC claims), so accounts linked
     // before the OAuth flow started persisting the profile email — or imported
@@ -690,7 +677,6 @@ export class AccountPool {
       // No probe defined for direct API providers.
       return;
     }
-
     // The usage probe above is a real suspension point: a concurrent health
     // transition (markRateLimited's 429 cooldown, markNeedsReauth, markInvalid)
     // may have committed while it was in flight. Writing the PRE-AWAIT snapshot
@@ -728,12 +714,13 @@ export class AccountPool {
       ...(email ? { email } : {}),
     });
   }
-
   async markRateLimited(
     accountId: string,
     untilMs: number,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -774,11 +761,12 @@ export class AccountPool {
       healthDetail,
     });
   }
-
   async markRateLimitedUnknown(
     accountId: string,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -796,11 +784,12 @@ export class AccountPool {
       healthDetail,
     });
   }
-
   async markNeedsReauth(
     accountId: string,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -830,11 +819,12 @@ export class AccountPool {
       },
     });
   }
-
   async markInvalid(
     accountId: string,
     detail?: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -857,10 +847,11 @@ export class AccountPool {
       },
     });
   }
-
   async markHealthy(
     accountId: string,
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -881,11 +872,12 @@ export class AccountPool {
       ...(account.healthDetail ? { healthDetail: undefined } : {}),
     });
   }
-
   async markUsagePrimed(
     accountId: string,
     lastPrimedAt: number = Date.now(),
-    opts?: { providerId?: PoolProviderId },
+    opts?: {
+      providerId?: PoolProviderId;
+    },
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -898,7 +890,6 @@ export class AccountPool {
       lastPrimedAt,
     });
   }
-
   /**
    * Re-probe accounts whose `health` is non-OK and whose `healthDetail.until`
    * has passed (or is absent). Used by background sweepers to recover
@@ -920,7 +911,6 @@ export class AccountPool {
     return ready;
   }
 }
-
 /**
  * Health half of the eligibility gate, shared with the coding-agent bridge's
  * `describe()` so availability reporting can never disagree with what
@@ -943,11 +933,9 @@ export function isAccountSelectableNow(
     account.healthDetail.until < now
   );
 }
-
 function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
   return `${providerId}:${accountId}`;
 }
-
 /**
  * A stable fingerprint of an account's health verdict (`health` plus its
  * `healthDetail`). `refreshUsage` snapshots this before its network probe and
@@ -962,7 +950,6 @@ function healthSignature(account: LinkedAccountConfig): string {
     healthDetail: account.healthDetail ?? null,
   });
 }
-
 function findAccountById(
   all: Record<string, LinkedAccountConfig>,
   accountId: string,
@@ -982,7 +969,6 @@ function findAccountById(
   if (direct) return direct;
   return Object.values(all).find((account) => account.id === accountId) ?? null;
 }
-
 function byPriorityThenAge(
   a: LinkedAccountConfig,
   b: LinkedAccountConfig,
@@ -992,7 +978,6 @@ function byPriorityThenAge(
   const bLast = accountLastUsedAt(b);
   return aLast - bLast; // older first
 }
-
 function byExplicitPriority(
   a: LinkedAccountConfig,
   b: LinkedAccountConfig,
@@ -1005,7 +990,6 @@ function byExplicitPriority(
   if (aExplicit !== bExplicit) return aExplicit ? -1 : 1;
   return 0;
 }
-
 function byDrainSoonestReset(
   a: LinkedAccountConfig,
   b: LinkedAccountConfig,
@@ -1032,7 +1016,6 @@ function byDrainSoonestReset(
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
-
 /** Mutation-free ordering for the round-robin ring: identity fields only
  * (priority, createdAt, id), so the cursor walks the same sequence no matter
  * how usage recording mutates `lastUsedAt` between selects. */
@@ -1044,19 +1027,7 @@ function byPriorityThenStableIdentity(
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
-
-function _byLeastUsedThenPriority(
-  a: LinkedAccountConfig,
-  b: LinkedAccountConfig,
-): number {
-  const aPct = accountSessionPct(a);
-  const bPct = accountSessionPct(b);
-  if (aPct !== bPct) return aPct - bPct;
-  return byPriorityThenAge(a, b);
-}
-
 // Default deps wired against account storage plus a pool-owned metadata file.
-
 interface PoolMetaFields {
   label: string;
   enabled: boolean;
@@ -1079,13 +1050,10 @@ interface PoolMetaFields {
    * HERE — the credential file is never rewritten for display metadata. */
   email?: string;
 }
-
 type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
-
 function metadataFile(storagePolicy: AccountStoragePolicy): string {
   return path.join(storagePolicy.authRoot, "_pool-metadata.json");
 }
-
 function readMetaStore(storagePolicy: AccountStoragePolicy): PoolMetaStore {
   const file = metadataFile(storagePolicy);
   let descriptor: number | undefined;
@@ -1123,7 +1091,6 @@ function readMetaStore(storagePolicy: AccountStoragePolicy): PoolMetaStore {
     severity: "fatal",
   });
 }
-
 function fsyncMetadataDirectory(directory: string): void {
   if (process.platform === "win32") return;
   const descriptor = openSync(
@@ -1136,7 +1103,6 @@ function fsyncMetadataDirectory(directory: string): void {
     closeSync(descriptor);
   }
 }
-
 function writeMetaStore(
   store: PoolMetaStore,
   storagePolicy: AccountStoragePolicy,
@@ -1165,7 +1131,6 @@ function writeMetaStore(
     rmSync(tmp, { force: true });
   }
 }
-
 function recordToLinked(
   record: AccountCredentialRecord,
   meta: PoolMetaFields | undefined,
@@ -1218,7 +1183,6 @@ function recordToLinked(
     })(),
   };
 }
-
 /** The OIDC `email` claim from a JWT id_token, or undefined. */
 function emailFromIdToken(idToken: string | undefined): string | undefined {
   if (!idToken) return undefined;
@@ -1228,7 +1192,9 @@ function emailFromIdToken(idToken: string | undefined): string | undefined {
     if (!encodedPayload) return undefined;
     const payload = JSON.parse(
       Buffer.from(encodedPayload, "base64url").toString("utf8"),
-    ) as { email?: unknown };
+    ) as {
+      email?: unknown;
+    };
     return typeof payload.email === "string" && payload.email.includes("@")
       ? payload.email
       : undefined;
@@ -1237,7 +1203,6 @@ function emailFromIdToken(idToken: string | undefined): string | undefined {
     return undefined;
   }
 }
-
 function loadAllAccounts(
   storagePolicy: AccountStoragePolicy,
 ): Record<string, LinkedAccountConfig> {
@@ -1264,7 +1229,6 @@ function loadAllAccounts(
   }
   return out;
 }
-
 async function persistAccount(
   account: LinkedAccountConfig,
   storagePolicy: AccountStoragePolicy,
@@ -1301,7 +1265,6 @@ async function persistAccount(
     },
   );
 }
-
 async function deleteAccountMeta(
   providerId: PoolProviderId,
   accountId: string,
@@ -1320,11 +1283,9 @@ async function deleteAccountMeta(
     },
   );
 }
-
 let cachedDefaultPool: AccountPool | null = null;
 let cachedRuntimeStoragePolicy: AccountStoragePolicy | null = null;
 let defaultSelectionConfig: AccountPoolSelectionConfig = {};
-
 function normalizeStrategy(value: unknown): Strategy | undefined {
   return value === "priority" ||
     value === "round-robin" ||
@@ -1335,7 +1296,6 @@ function normalizeStrategy(value: unknown): Strategy | undefined {
     ? value
     : undefined;
 }
-
 function normalizeAccountIdsFromRoute(
   route: AccountPoolSelectionRoute | undefined,
 ): string[] | undefined {
@@ -1352,7 +1312,6 @@ function normalizeAccountIdsFromRoute(
   const ids = fromList.length > 0 ? fromList : single;
   return ids.length > 0 ? ids : undefined;
 }
-
 function routeTargetsProvider(
   route: AccountPoolSelectionRoute | undefined,
   providerId: PoolProviderId,
@@ -1368,7 +1327,6 @@ function routeTargetsProvider(
   }
   return providerId === "openai-codex" && route.backend === "openai";
 }
-
 /**
  * Live read of the configured per-provider selection (the app's
  * `config.accountStrategies` picker plus any llmText service-routing pin).
@@ -1377,7 +1335,9 @@ function routeTargetsProvider(
  */
 export function selectionForProvider(
   providerId: PoolProviderId,
-  opts: { includeProviderDefault?: boolean } = {},
+  opts: {
+    includeProviderDefault?: boolean;
+  } = {},
 ): {
   strategy?: Strategy;
   accountIds?: string[];
@@ -1403,7 +1363,6 @@ export function selectionForProvider(
     accountIds: routeSelection.accountIds,
   };
 }
-
 export function configuredAccountStrategyForProvider(
   providerId: PoolProviderId,
 ): Strategy | undefined {
@@ -1415,7 +1374,6 @@ export function configuredAccountStrategyForProvider(
     normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId])
   );
 }
-
 export function configureDefaultAccountPoolSelection(
   config: AccountPoolSelectionConfig = {},
 ): void {
@@ -1424,7 +1382,6 @@ export function configureDefaultAccountPoolSelection(
     serviceRouting: config.serviceRouting ?? null,
   };
 }
-
 /**
  * Module-level singleton for the default pool wired against `@elizaos/agent`'s
  * account-storage and the pool-owned metadata file. Plugins and runtime
@@ -1445,7 +1402,6 @@ function defaultRuntimeStoragePolicy(): AccountStoragePolicy {
   }
   return cachedRuntimeStoragePolicy;
 }
-
 export function getDefaultAccountPool(): AccountPool {
   if (!cachedDefaultPool) {
     const storagePolicy = defaultRuntimeStoragePolicy();
@@ -1460,7 +1416,6 @@ export function getDefaultAccountPool(): AccountPool {
   }
   return cachedDefaultPool;
 }
-
 export interface DirectProviderCredentialExportDeps {
   pool: Pick<AccountPool, "select">;
   listAccounts: (
@@ -1474,7 +1429,6 @@ export interface DirectProviderCredentialExportDeps {
   /** Env values this module exported on earlier passes; cleared on fail-closed. */
   ledger: DirectProviderEnvLedger;
 }
-
 /**
  * Tracks which env values the export pass wrote so a later pass can retract
  * exactly those values. A displaced operator value is restored when pool
@@ -1489,11 +1443,15 @@ export type DirectProviderEnvLedger = Map<
     providerEnv?: boolean;
   }
 >;
-
 const defaultDirectProviderEnvLedger: DirectProviderEnvLedger = new Map();
-
-type DisplacedEnvValue = { present: false } | { present: true; value: string };
-
+type DisplacedEnvValue =
+  | {
+      present: false;
+    }
+  | {
+      present: true;
+      value: string;
+    };
 /**
  * Baselines are scoped to a ledger so tests and alternate hosts do not share
  * authority state. A WeakMap keeps the public ledger wire shape compatible
@@ -1507,7 +1465,6 @@ const directProviderExportGeneration = new WeakMap<
   DirectProviderEnvLedger,
   number
 >();
-
 function nextDirectProviderExportGeneration(
   ledger: DirectProviderEnvLedger,
 ): number {
@@ -1515,7 +1472,6 @@ function nextDirectProviderExportGeneration(
   directProviderExportGeneration.set(ledger, generation);
   return generation;
 }
-
 function assignExportedEnv(
   env: NodeJS.ProcessEnv,
   ledger: DirectProviderEnvLedger,
@@ -1538,7 +1494,6 @@ function assignExportedEnv(
   }
   env[key] = value;
 }
-
 function restoreExportedEnv(
   env: NodeJS.ProcessEnv,
   ledger: DirectProviderEnvLedger,
@@ -1550,7 +1505,6 @@ function restoreExportedEnv(
   if (displaced?.present) env[key] = displaced.value;
   else delete env[key];
 }
-
 function retractExportedDirectProviderEnv(
   providerId: DirectAccountProvider,
   env: NodeJS.ProcessEnv,
@@ -1572,7 +1526,6 @@ function retractExportedDirectProviderEnv(
     restoreExportedEnv(env, ledger, "OPENAI_BASE_URL", openAiCompatBase);
   }
 }
-
 function retractAllExportedDirectProviderEnvInternal(
   env: NodeJS.ProcessEnv,
   ledger: DirectProviderEnvLedger,
@@ -1582,7 +1535,6 @@ function retractAllExportedDirectProviderEnvInternal(
   }
   displacedDirectProviderEnv.delete(ledger);
 }
-
 export function retractAllExportedDirectProviderEnv(
   env: NodeJS.ProcessEnv,
   ledger: DirectProviderEnvLedger,
@@ -1590,7 +1542,6 @@ export function retractAllExportedDirectProviderEnv(
   nextDirectProviderExportGeneration(ledger);
   retractAllExportedDirectProviderEnvInternal(env, ledger);
 }
-
 /**
  * Export the pool-selected credential of every direct provider into `env`.
  *
@@ -1616,12 +1567,10 @@ export async function applyDirectProviderCredentialsToEnv(
     : undefined;
   const selected = new Map<DirectAccountProvider, string>();
   const providersWithAccounts = new Set<DirectAccountProvider>();
-
   for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
     const accounts = deps.listAccounts(providerId);
     if (accounts.length === 0) continue;
     providersWithAccounts.add(providerId);
-
     const account = await pool.select({
       providerId,
       sessionKey: `env:${providerId}`,
@@ -1630,12 +1579,10 @@ export async function applyDirectProviderCredentialsToEnv(
     const token = account ? await deps.getToken(providerId, account.id) : null;
     if (account && token) selected.set(providerId, token);
   }
-
   // A newer mutation began a sync while this pass was resolving credentials.
   // Its view of account eligibility is authoritative; an older snapshot must
   // never re-export a credential after the newer pass disabled or deleted it.
   if (directProviderExportGeneration.get(ledger) !== generation) return;
-
   for (const [providerId, token] of selected) {
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
     assignExportedEnv(env, ledger, envKey, token);
@@ -1650,7 +1597,6 @@ export async function applyDirectProviderCredentialsToEnv(
       providerEnv: true,
     });
   }
-
   let activeProviderToken = activeProvider
     ? (selected.get(activeProvider) ?? null)
     : null;
@@ -1689,7 +1635,6 @@ export async function applyDirectProviderCredentialsToEnv(
     }
   }
 }
-
 /**
  * Boot-time and mutation-time bridge: re-reads the selection config, then
  * exports the selected credential of every direct provider into `process.env`.
@@ -1719,20 +1664,17 @@ export async function applyAccountPoolApiCredentials(
     ledger: defaultDirectProviderEnvLedger,
   });
 }
-
 export interface AccountPoolKeepAliveResult {
   checked: number;
   refreshed: number;
   failed: number;
 }
-
 export interface AccountPoolKeepAliveDeps {
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   usagePrimingRetryDelayMs?: number;
 }
-
 function accountPoolUsagePrimingEnabled(): boolean {
   const value =
     process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING?.trim().toLowerCase();
@@ -1740,7 +1682,6 @@ function accountPoolUsagePrimingEnabled(): boolean {
     value !== "0" && value !== "false" && value !== "no" && value !== "off"
   );
 }
-
 function accountNeedsUsagePriming(
   account: LinkedAccountConfig | null,
   now: number,
@@ -1758,7 +1699,6 @@ function accountNeedsUsagePriming(
     lastPrimedAt + USAGE_PRIMING_DEBOUNCE_MS <= now
   );
 }
-
 async function probeAnthropicUsagePriming(
   accessToken: string,
   fetchImpl: typeof fetch,
@@ -1785,7 +1725,6 @@ async function probeAnthropicUsagePriming(
   }
   await response.body?.cancel();
 }
-
 async function primeAnthropicUsageThenRefresh(
   pool: AccountPool,
   record: AccountCredentialRecord,
@@ -1808,7 +1747,6 @@ async function primeAnthropicUsageThenRefresh(
       `[AccountPool] Anthropic usage priming failed for account ${record.id}; usage refresh will continue.`,
     );
   }
-
   await pool.refreshUsage(record.id, token, {
     providerId: "anthropic-subscription",
     fetch: deps.fetch,
@@ -1824,7 +1762,6 @@ async function primeAnthropicUsageThenRefresh(
     fetch: deps.fetch,
   });
 }
-
 function resolveKeepAliveDeps(
   deps: AccountPoolKeepAliveDeps = {},
 ): Required<AccountPoolKeepAliveDeps> {
@@ -1846,7 +1783,6 @@ function resolveKeepAliveDeps(
     usagePrimingRetryDelayMs,
   };
 }
-
 export async function sweepAccountPoolKeepAlive(
   deps: AccountPoolKeepAliveDeps = {},
 ): Promise<AccountPoolKeepAliveResult> {
@@ -1857,14 +1793,12 @@ export async function sweepAccountPoolKeepAlive(
     refreshed: 0,
     failed: 0,
   };
-
   for (const providerId of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
     await pool.sweepExpired(providerId);
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
       const pooled = pool.get(record.id, providerId);
-      if (pooled?.health === "expired") continue;
-
+      if (pooled?.enabled === false || pooled?.health === "expired") continue;
       // A parked subscription account's refresh grant is dead until a human
       // re-auths, so resolving it burns a doomed refresh against the
       // provider's token endpoint (plus an error log line) every sweep,
@@ -1886,7 +1820,6 @@ export async function sweepAccountPoolKeepAlive(
           continue;
         }
       }
-
       // A Codex CLI may have rotated the one-time refresh token inside its
       // per-account CODEX_HOME mid-session; adopt it BEFORE resolving, or the
       // refresh below burns on the consumed token and this sweep marks a
@@ -1912,14 +1845,12 @@ export async function sweepAccountPoolKeepAlive(
         continue;
       }
       const token = outcome.accessToken;
-
       if (!isSubscriptionProvider(providerId)) {
         // Reading a locally stored API key proves only that storage is intact.
         // Provider-observed 401/429 health remains authoritative until the
         // explicit authenticated probe route records a successful response.
         continue;
       }
-
       try {
         if (
           providerId === "anthropic-subscription" &&
@@ -1971,13 +1902,10 @@ export async function sweepAccountPoolKeepAlive(
       }
     }
   }
-
   return result;
 }
-
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let keepAliveRunning = false;
-
 export function startAccountPoolKeepAlive(
   intervalMs: number = KEEP_ALIVE_INTERVAL_MS,
 ): void {
@@ -1992,7 +1920,6 @@ export function startAccountPoolKeepAlive(
     return;
   }
   if (keepAliveTimer) return;
-
   const run = () => {
     if (keepAliveRunning) return;
     keepAliveRunning = true;
@@ -2006,12 +1933,10 @@ export function startAccountPoolKeepAlive(
         keepAliveRunning = false;
       });
   };
-
-  keepAliveTimer = setInterval(run, Math.max(60_000, intervalMs));
+  keepAliveTimer = setInterval(run, Math.max(60000, intervalMs));
   keepAliveTimer.unref();
   run();
 }
-
 export function stopAccountPoolKeepAliveForTests(): void {
   if (keepAliveTimer) {
     clearInterval(keepAliveTimer);
@@ -2019,7 +1944,6 @@ export function stopAccountPoolKeepAliveForTests(): void {
   }
   keepAliveRunning = false;
 }
-
 /**
  * Install the `globalThis`-keyed bridge that plugin-anthropic's
  * credential-store reads. Idempotent — repeated installs replace the
@@ -2056,7 +1980,6 @@ function installAnthropicBridge(pool: AccountPool): void {
   };
   setAnthropicAccountPoolBridge(bridge);
 }
-
 export function resetDefaultAccountPoolAfterCredentialReset(): void {
   stopAccountPoolKeepAliveForTests();
   retractAllExportedDirectProviderEnv(
@@ -2066,8 +1989,6 @@ export function resetDefaultAccountPoolAfterCredentialReset(): void {
   cachedDefaultPool = null;
   cachedRuntimeStoragePolicy = null;
 }
-
 export const __resetDefaultAccountPoolForTests =
   resetDefaultAccountPoolAfterCredentialReset;
-
 export type { LinkedAccountsConfig };

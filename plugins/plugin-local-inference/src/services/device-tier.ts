@@ -26,20 +26,14 @@
  * background-task model breaks long-running local inference (iOS jetsam
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
-
+import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import {
 	type Eliza1Fit,
-	isMobilePlatform,
-	// Aliased to a distinct name (no shared `selectBestEliza1Fit*` prefix with the
-	// local `selectBestEliza1FitForDevice`) — the mobile Bun.build minifier was
-	// observed to mangle the same-prefix pair into a dangling `…Fit2` reference.
 	selectBestEliza1Fit as resolveBestEliza1FitForRam,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/device-fit";
 import type { HardwareProbe } from "./types";
-
 /** The four device tiers used by the runtime + UI. */
 export type DeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
-
 /** Tier ordering (higher index = better device). */
 export const DEVICE_TIER_ORDER: ReadonlyArray<DeviceTier> = [
 	"POOR",
@@ -47,7 +41,6 @@ export const DEVICE_TIER_ORDER: ReadonlyArray<DeviceTier> = [
 	"GOOD",
 	"MAX",
 ];
-
 /**
  * Numeric thresholds. R9 §3.1 — keep in sync.
  *
@@ -82,10 +75,8 @@ export const DEVICE_TIER_THRESHOLDS = {
 		mobileEffectiveModelMemoryGb: 3,
 	},
 } as const;
-
 /** What the runtime should do by default given the tier classification. */
 export type RecommendedMode = "local" | "cloud-with-local-voice" | "cloud-only";
-
 /** A complete tier assessment — what the UI renders + what the runtime gates on. */
 export interface DeviceTierAssessment {
 	tier: DeviceTier;
@@ -116,9 +107,7 @@ export interface DeviceTierAssessment {
 		mobile: boolean;
 	};
 }
-
 const MB_PER_GB = 1024;
-
 /**
  * Compute the memory the model can actually use, in GB. Apple Silicon uses
  * shared memory; discrete-GPU x86 weights VRAM; CPU-only halves total RAM.
@@ -131,14 +120,12 @@ export function effectiveModelMemoryGb(probe: HardwareProbe): number {
 	}
 	return probe.totalRamGb * 0.5;
 }
-
 /**
  * Mobile OS background-task model makes large local tiers unsafe regardless of how
  * much RAM the phone reports, so cap mobile fit at the 4B floor. A strong phone may
  * run 4B; a typical one lands on 2B; both still flow through `selectBestEliza1Fit`.
  */
 const MOBILE_FIT_CEILING_GB = 6;
-
 /**
  * Largest context window we advertise on a phone. A full 128k QJL KV cache does
  * not fit alongside the weights in a handset's real free RAM (the resident agent +
@@ -146,7 +133,6 @@ const MOBILE_FIT_CEILING_GB = 6;
  * even when the coarse RAM math would allow more.
  */
 const MOBILE_CONTEXT_CEILING = 65536; // 64k
-
 /**
  * True when this host should be treated as a phone for fit purposes. The on-device
  * bun agent's hardware probe often reports `platform: "linux"` with no `mobile`
@@ -157,7 +143,6 @@ const MOBILE_CONTEXT_CEILING = 65536; // 64k
 function isMobileHost(probe: HardwareProbe): boolean {
 	return isMobile(probe) || isMobilePlatform();
 }
-
 /**
  * The canonical "biggest eliza-1 that fits this device" decision: normalize the
  * hardware probe to usable model memory, then pick the largest tier at a 128k QJL
@@ -197,7 +182,6 @@ export function selectBestEliza1FitForDevice(
 	}
 	return fit;
 }
-
 /**
  * Treat the host as a mobile device. Mobile clamps to OKAY at best
  * regardless of RAM because the OS background-task model breaks
@@ -208,7 +192,6 @@ function isMobile(probe: HardwareProbe): boolean {
 		probe.mobile?.platform === "ios" || probe.mobile?.platform === "android"
 	);
 }
-
 /**
  * Compute the CPU SIMD baseline. The hardware probe has no direct AVX2 field
  * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies.
@@ -229,7 +212,6 @@ function hasAvx2Baseline(probe: HardwareProbe): boolean {
 	if (probe.arch !== "x64") return false; // 32-bit ARM + others: unsupported
 	return probe.cpuCores >= 4;
 }
-
 /**
  * The free-RAM gate at session start. R9 §3.3: only a *secondary* gate that
  * can demote a device by one tier when `freeRamGb < totalRamGb * 0.25`.
@@ -238,12 +220,10 @@ function hasAvx2Baseline(probe: HardwareProbe): boolean {
 function freeRamDemotion(probe: HardwareProbe): boolean {
 	return probe.freeRamGb < probe.totalRamGb * 0.25;
 }
-
 /** Apple-silicon 8 GB clamp. R9 §3.4: hard ceiling at OKAY. */
 function isAppleSilicon8gb(probe: HardwareProbe): boolean {
 	return probe.appleSilicon && probe.totalRamGb <= 9; // 8 GB rounded.
 }
-
 /**
  * The single-pass classifier. Returns a complete assessment including the
  * tier, the reasons, the recommended default mode, and the numeric context
@@ -262,7 +242,6 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 	const cpuCores = probe.cpuCores;
 	const totalRamGb = probe.totalRamGb;
 	const freeRamGb = probe.freeRamGb;
-
 	let tier: DeviceTier = classifyRawTier({
 		probe,
 		effective,
@@ -270,13 +249,11 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		mobile,
 		reasons,
 	});
-
 	// Apple Silicon 8 GB clamp — never higher than OKAY.
 	if (isAppleSilicon8gb(probe) && tierRank(tier) > tierRank("OKAY")) {
 		reasons.push("Apple Silicon 8 GB models clamp to OKAY");
 		tier = "OKAY";
 	}
-
 	// Mobile clamp — at best OKAY regardless of RAM (iOS jetsam, Android
 	// foreground-service cost). R9 §6.
 	if (mobile && tierRank(tier) > tierRank("OKAY")) {
@@ -287,7 +264,6 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		);
 		tier = "OKAY";
 	}
-
 	// Free-RAM gate at session start — secondary demotion only.
 	if (freeRamDemotion(probe) && tierRank(tier) > tierRank("POOR")) {
 		reasons.push(
@@ -295,7 +271,6 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		);
 		tier = previousTier(tier);
 	}
-
 	const canRunLocalLm = tier !== "POOR";
 	const canRunLocalVoice = tier === "MAX" || tier === "GOOD";
 	let recommendedMode: RecommendedMode;
@@ -303,15 +278,12 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 	else if (tier === "OKAY")
 		recommendedMode = mobile ? "cloud-with-local-voice" : "local";
 	else recommendedMode = "cloud-only";
-
 	if (mobile && tier !== "POOR") {
 		// On mobile we default to cloud TTS+ASR per R9 §6.3; only turn-detector
 		// + VAD + wake-word run locally by default.
 		recommendedMode = "cloud-with-local-voice";
 	}
-
 	const topRecommendation = topRecommendationFor(tier, mobile);
-
 	return {
 		tier,
 		reasons,
@@ -331,7 +303,6 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		},
 	};
 }
-
 interface ClassifyArgs {
 	probe: HardwareProbe;
 	effective: number;
@@ -339,30 +310,25 @@ interface ClassifyArgs {
 	mobile: boolean;
 	reasons: string[];
 }
-
 function classifyRawTier(args: ClassifyArgs): DeviceTier {
 	const { probe, effective, avx2, mobile, reasons } = args;
 	const vramGb = probe.gpu?.totalVramGb ?? 0;
 	const totalRamGb = probe.totalRamGb;
 	const freeRamGb = probe.freeRamGb;
 	const cpuCores = probe.cpuCores;
-
 	if (!avx2) {
 		reasons.push("No AVX2 baseline (or < 4 CPU cores)");
 		return "POOR";
 	}
-
 	const max = DEVICE_TIER_THRESHOLDS.MAX;
 	const good = DEVICE_TIER_THRESHOLDS.GOOD;
 	const okay = DEVICE_TIER_THRESHOLDS.OKAY;
-
 	// MAX gate.
 	const meetsMaxEffective = effective >= max.effectiveModelMemoryGb;
 	const meetsMaxFree = freeRamGb >= max.freeRamGbAtSession;
 	const meetsMaxGpu = vramGb >= max.dGpuMinVramGb;
 	const meetsMaxAppleSilicon =
 		probe.appleSilicon && totalRamGb >= max.appleSiliconMinMemoryGb;
-
 	if (
 		!mobile &&
 		meetsMaxEffective &&
@@ -378,7 +344,6 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		);
 		return "MAX";
 	}
-
 	// GOOD gate.
 	const meetsGoodEffective = effective >= good.effectiveModelMemoryGb;
 	const meetsGoodFree = freeRamGb >= good.freeRamGbAtSession;
@@ -390,7 +355,6 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		!probe.appleSilicon &&
 		totalRamGb >= good.x86CpuOnlyMinTotalGb &&
 		cpuCores >= 4;
-
 	if (
 		!mobile &&
 		meetsGoodEffective &&
@@ -408,7 +372,6 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		);
 		return "GOOD";
 	}
-
 	// OKAY gate. Mobile uses lower effective/total floors — a phone runs 2B fine.
 	const meetsOkayEffective =
 		effective >=
@@ -416,30 +379,25 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 	const meetsOkayFree = freeRamGb >= okay.freeRamGbAtSession;
 	const meetsOkayTotal =
 		totalRamGb >= (mobile ? okay.mobileMinTotalRamGb : okay.minTotalRamGb);
-
 	if (meetsOkayEffective && meetsOkayFree && meetsOkayTotal) {
 		reasons.push(
 			`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${totalRamGb.toFixed(1)} GB total`,
 		);
 		return "OKAY";
 	}
-
 	reasons.push(
 		`Below OKAY thresholds — effective ${effective.toFixed(1)} GB / free ${freeRamGb.toFixed(1)} GB / total ${totalRamGb.toFixed(1)} GB`,
 	);
 	return "POOR";
 }
-
 function tierRank(tier: DeviceTier): number {
 	return DEVICE_TIER_ORDER.indexOf(tier);
 }
-
 function previousTier(tier: DeviceTier): DeviceTier {
 	const idx = tierRank(tier);
 	if (idx <= 0) return "POOR";
 	return DEVICE_TIER_ORDER[idx - 1];
 }
-
 function topRecommendationFor(tier: DeviceTier, mobile: boolean): string {
 	if (mobile) {
 		switch (tier) {
@@ -463,7 +421,6 @@ function topRecommendationFor(tier: DeviceTier, mobile: boolean): string {
 			return "Use cloud mode. Local responses will be very slow on this device.";
 	}
 }
-
 /**
  * Warning-copy strings for each tier. The exact prose comes from R9 §7;
  * I10 surfaces these via the `voice-tier.json` i18n bundle. Keep this in
@@ -495,7 +452,6 @@ export const TIER_WARNING_COPY: Readonly<
 		body: "This device is below the local-voice memory budget. Local responses will be very slow and may fail to load. We recommend Cloud mode — your turn-detection and VAD still run locally for privacy.",
 	},
 };
-
 /** Convenience: total RAM in MB. */
 export function totalRamMb(probe: HardwareProbe): number {
 	return Math.round(probe.totalRamGb * MB_PER_GB);

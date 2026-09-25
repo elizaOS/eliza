@@ -65,9 +65,9 @@ jobs:
           set -euo pipefail
           manifest=release/v0.1.0-beta.1/manifest.json
           output="$(bun -e 'import { testOutputPath } from "../scripts/lib/test-output.ts"; console.log(testOutputPath("os-release-plan"));')"
-          node scripts/validate-release-manifest.mjs --manifest "$manifest"
-          node scripts/assert-canonical-linux-release.mjs --manifest "$manifest"
-          node scripts/collect-release-evidence.mjs --manifest "$manifest" \
+          node scripts/validate-release-manifest.ts --manifest "$manifest"
+          node scripts/assert-canonical-linux-release.ts --manifest "$manifest"
+          node scripts/collect-release-evidence.ts --manifest "$manifest" \
             --evidence-dir "$output" --output "$output/ci-evidence.json"
       - name: Retain release plan validation
         if: always()

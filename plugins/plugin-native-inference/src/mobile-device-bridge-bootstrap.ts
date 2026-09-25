@@ -1,3 +1,5 @@
+import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
+import { requestBionicHost } from "./bionic-host-request.js";
 /**
  * Stock Capacitor mobile local-inference bridge.
  *
@@ -24,7 +26,6 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import type { Plugin } from "@elizaos/core";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
@@ -40,32 +41,34 @@ import {
   MobileDeviceBridgeService,
   type MobileDeviceBridgeStatus,
   ModelType,
+  type Plugin,
+  type PreparedModelRequestGuard,
   resolveBackgroundInferenceBudget,
   resolveStateDir,
   ServiceType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
+import { imageUrlToBase64 } from "./image-url-to-base64.ts";
+import { BGE_EMBEDDING_MODEL } from "./model-catalog/bge-embedding-model.js";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,
-} from "@elizaos/shared/local-inference/bge-input";
-import { imageUrlToBase64 } from "./image-url-to-base64.ts";
+} from "./model-catalog/bge-input.js";
 import { downloadHttpModel } from "./shared/http-model-download.ts";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
 import {
   MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
   MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
 } from "./shared/model-download-deadline.ts";
+import { createNativeModelRequestGuard } from "./shared/native-model-request.ts";
 
 const DEVICE_BRIDGE_PATH = "/api/local-inference/device-bridge";
 const PROVIDER = "capacitor-llama";
 const LOCAL_INFERENCE_PRIORITY = 0;
-const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600_000;
+const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600000;
 const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
-
 /**
  * Constant-time pairing-token comparison (W1-011). Callers fail closed when
  * no token is configured, so an unset `ELIZA_DEVICE_PAIRING_TOKEN` can never
@@ -90,17 +93,19 @@ const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
  * registerMobileDeviceBridgeModels, never by mere plugin presence.
  */
 let registeredModelTrigger: "bionic-host" | "device-bridge" | null = null;
-
 // Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
 // catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
 // window; omitting a drafter path would select the retired same-file path.
 const GEMMA_MTP_DRAFT = { draftMin: 1, draftMax: 1 } as const;
-
 const ELIZA_1_LOAD_METADATA: Record<
   string,
   {
     contextSize: number;
-    mtp?: { drafterFile: string; draftMin: number; draftMax: number };
+    mtp?: {
+      drafterFile: string;
+      draftMin: number;
+      draftMax: number;
+    };
   }
 > = {
   // 2B is the smallest/entry tier (the small-phone default). Every shipped
@@ -128,7 +133,6 @@ const ELIZA_1_LOAD_METADATA: Record<
     mtp: { drafterFile: "mtp/drafter-27b-256k.gguf", ...GEMMA_MTP_DRAFT },
   },
 };
-
 // Native bionic-host override for Gemma separate-drafter MTP. When
 // ELIZA_BIONIC_MTP is set this forces speculative decoding on/off when a
 // drafter GGUF is available (the JNI keystone path reads the same env). "0"/
@@ -146,17 +150,14 @@ function bionicMtpOverride(): boolean | undefined {
   }
   return undefined;
 }
-
 type GenerateTextHandler = (
   runtime: IAgentRuntime,
   params: GenerateTextParams,
 ) => Promise<string>;
-
 type EmbeddingHandler = (
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ) => Promise<number[]>;
-
 interface LocalInferenceLoadArgs {
   modelPath: string;
   contextSize?: number;
@@ -172,7 +173,6 @@ interface LocalInferenceLoadArgs {
   cacheTypeV?: string;
   disableThinking?: boolean;
 }
-
 type RuntimeWithModelRegistration = AgentRuntime & {
   getModel: (
     modelType: string | number,
@@ -184,7 +184,6 @@ type RuntimeWithModelRegistration = AgentRuntime & {
     priority?: number,
   ) => void;
 };
-
 interface MinimalWebSocket {
   readyState: number;
   send(data: string): void;
@@ -194,11 +193,9 @@ interface MinimalWebSocket {
   on(event: "close", listener: () => void): unknown;
   on(event: "error", listener: (err: Error) => void): unknown;
 }
-
 interface WsConstructor {
   readonly OPEN: number;
 }
-
 interface WssInstance {
   handleUpgrade(
     request: IncomingMessage,
@@ -209,13 +206,11 @@ interface WssInstance {
   on(event: "error", listener: (err: Error) => void): unknown;
   close(callback?: (error?: Error) => void): void;
 }
-
 type UpgradeHandler = (
   request: IncomingMessage,
   socket: Duplex,
   head: Buffer,
 ) => void;
-
 interface WsModule {
   WebSocketServer: new (options: {
     noServer: boolean;
@@ -223,17 +218,22 @@ interface WsModule {
   }) => WssInstance;
   WebSocket: WsConstructor;
 }
-
 function isWsModule(value: unknown): value is WsModule {
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as { WebSocketServer?: unknown }).WebSocketServer ===
-      "function" &&
-    typeof (value as { WebSocket?: unknown }).WebSocket === "function"
+    typeof (
+      value as {
+        WebSocketServer?: unknown;
+      }
+    ).WebSocketServer === "function" &&
+    typeof (
+      value as {
+        WebSocket?: unknown;
+      }
+    ).WebSocket === "function"
   );
 }
-
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web";
   deviceModel: string;
@@ -244,7 +244,6 @@ interface DeviceCapabilities {
     available: boolean;
   } | null;
 }
-
 type DeviceOutbound =
   | {
       type: "register";
@@ -255,10 +254,29 @@ type DeviceOutbound =
         loadedPath: string | null;
       };
     }
-  | { type: "loadResult"; correlationId: string; ok: true; loadedPath: string }
-  | { type: "loadResult"; correlationId: string; ok: false; error: string }
-  | { type: "unloadResult"; correlationId: string; ok: true }
-  | { type: "unloadResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "loadResult";
+      correlationId: string;
+      ok: true;
+      loadedPath: string;
+    }
+  | {
+      type: "loadResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
+  | {
+      type: "unloadResult";
+      correlationId: string;
+      ok: true;
+    }
+  | {
+      type: "unloadResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
   | {
       type: "generateResult";
       correlationId: string;
@@ -268,7 +286,12 @@ type DeviceOutbound =
       outputTokens: number;
       durationMs: number;
     }
-  | { type: "generateResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "generateResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
   | {
       type: "embedResult";
       correlationId: string;
@@ -297,11 +320,19 @@ type DeviceOutbound =
       ok: false;
       error: string;
     }
-  | { type: "pong"; at: number };
-
+  | {
+      type: "pong";
+      at: number;
+    };
 type AgentOutbound =
-  | ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
-  | { type: "unload"; correlationId: string }
+  | ({
+      type: "load";
+      correlationId: string;
+    } & LocalInferenceLoadArgs)
+  | {
+      type: "unload";
+      correlationId: string;
+    }
   | {
       type: "generate";
       correlationId: string;
@@ -320,10 +351,15 @@ type AgentOutbound =
   | {
       type: "formatChat";
       correlationId: string;
-      messages: { role: string; content: string }[];
+      messages: {
+        role: string;
+        content: string;
+      }[];
     }
-  | { type: "ping"; at: number };
-
+  | {
+      type: "ping";
+      at: number;
+    };
 interface ConnectedDevice {
   deviceId: string;
   socket: MinimalWebSocket;
@@ -331,14 +367,12 @@ interface ConnectedDevice {
   loadedPath: string | null;
   connectedAt: number;
 }
-
 interface Pending<T> {
   resolve: (value: T) => void;
   reject: (err: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
   routedDeviceId: string;
 }
-
 interface RegistryModelEntry {
   id?: unknown;
   path?: unknown;
@@ -346,17 +380,14 @@ interface RegistryModelEntry {
   embeddingDimension?: unknown;
   embeddingDimensions?: unknown;
 }
-
 interface RegistryFile {
   version?: number;
   models?: RegistryModelEntry[];
 }
-
 interface AssignmentsFile {
   version?: number;
   assignments?: Record<string, unknown>;
 }
-
 interface BundledModelManifestEntry {
   id?: string;
   ggufFile?: string;
@@ -375,7 +406,6 @@ interface BundledModelManifestEntry {
   cacheTypeV?: string;
   disableThinking?: boolean;
 }
-
 interface BundledModelManifest {
   models?: BundledModelManifestEntry[];
 }
@@ -415,7 +445,6 @@ class MobileDeviceBridge {
   private loadTimeoutMs: number = DEFAULT_LOAD_TIMEOUT_MS;
   private generateTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
   private embedTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
-
   status(): MobileDeviceBridgeStatus {
     const devices = [...this.devices.values()].map((device) => ({
       deviceId: device.deviceId,
@@ -437,7 +466,6 @@ class MobileDeviceBridge {
       modelPath: resolveLocalModelPath("TEXT_LARGE"),
     };
   }
-
   async attachToHttpServer(server: HttpServer): Promise<boolean> {
     if (!SERVICE_ENABLED) return false;
     if (this.wss) {
@@ -501,11 +529,9 @@ class MobileDeviceBridge {
       maxPayload: 1024 * 1024,
     });
     this.wss = wss;
-
     wss.on("error", (err: Error) => {
       logger.warn("[mobile-device-bridge] WSS error:", err.message);
     });
-
     const upgradeHandler: UpgradeHandler = (request, socket, head) => {
       const url = new URL(request.url ?? "/", "http://localhost");
       if (url.pathname !== DEVICE_BRIDGE_PATH) return;
@@ -517,13 +543,11 @@ class MobileDeviceBridge {
     this.upgradeHandler = upgradeHandler;
     this.serverCloseHandler = serverCloseHandler;
     server.on("upgrade", upgradeHandler);
-
     logger.info(
       `[mobile-device-bridge] Listening for Capacitor device bridge at ${DEVICE_BRIDGE_PATH}`,
     );
     return true;
   }
-
   private handleConnection(
     socket: MinimalWebSocket,
     WsCtor: WsConstructor,
@@ -547,9 +571,7 @@ class MobileDeviceBridge {
       socket.close(4001, "unauthorized");
       return;
     }
-
     let registeredDeviceId: string | null = null;
-
     socket.on("message", (raw) => {
       let msg: DeviceOutbound;
       try {
@@ -559,7 +581,6 @@ class MobileDeviceBridge {
         logger.warn("[mobile-device-bridge] Ignoring non-JSON frame");
         return;
       }
-
       if (!registeredDeviceId) {
         if (msg.type !== "register") {
           socket.close(4002, "must-register-first");
@@ -599,10 +620,8 @@ class MobileDeviceBridge {
         this.notifyDeviceAttached();
         return;
       }
-
       this.handleDeviceMessage(msg);
     });
-
     socket.on("close", () => {
       if (!registeredDeviceId) return;
       const current = this.devices.get(registeredDeviceId);
@@ -613,11 +632,9 @@ class MobileDeviceBridge {
         );
       }
     });
-
     socket.on("error", (err) => {
       logger.warn("[mobile-device-bridge] Socket error:", err.message);
     });
-
     const heartbeat = setInterval(() => {
       if (!registeredDeviceId || socket.readyState !== WsCtor.OPEN) return;
       try {
@@ -625,16 +642,18 @@ class MobileDeviceBridge {
       } catch {
         clearInterval(heartbeat);
       }
-    }, 15_000);
+    }, 15000);
     if (typeof heartbeat === "object" && "unref" in heartbeat) {
-      (heartbeat as { unref(): void }).unref();
+      (
+        heartbeat as {
+          unref(): void;
+        }
+      ).unref();
     }
     this.heartbeatTimers.set(socket, heartbeat);
   }
-
   private handleDeviceMessage(msg: DeviceOutbound): void {
     if (msg.type === "pong" || msg.type === "register") return;
-
     if (msg.type === "loadResult") {
       const pending = this.pendingLoads.get(msg.correlationId);
       if (!pending) return;
@@ -649,7 +668,6 @@ class MobileDeviceBridge {
       }
       return;
     }
-
     if (msg.type === "unloadResult") {
       const pending = this.pendingUnloads.get(msg.correlationId);
       if (!pending) return;
@@ -664,7 +682,6 @@ class MobileDeviceBridge {
       }
       return;
     }
-
     if (msg.type === "generateResult") {
       const pending = this.pendingGenerates.get(msg.correlationId);
       if (!pending) return;
@@ -677,7 +694,6 @@ class MobileDeviceBridge {
       }
       return;
     }
-
     if (msg.type === "embedResult") {
       const pending = this.pendingEmbeds.get(msg.correlationId);
       if (!pending) return;
@@ -694,7 +710,6 @@ class MobileDeviceBridge {
       }
       return;
     }
-
     if (msg.type === "formatChatResult") {
       const pending = this.pendingFormatChats.get(msg.correlationId);
       if (!pending) return;
@@ -707,7 +722,6 @@ class MobileDeviceBridge {
       }
     }
   }
-
   /**
    * Subscribe to real device-bridge attachment. Model handlers are only
    * registered once a bridge that can actually serve them exists, so the
@@ -718,17 +732,14 @@ class MobileDeviceBridge {
     this.attachListeners.add(listener);
     return () => this.attachListeners.delete(listener);
   }
-
   private notifyDeviceAttached(): void {
     for (const listener of this.attachListeners) {
       listener();
     }
   }
-
   private primaryDevice(): ConnectedDevice | null {
     return this.devices.values().next().value ?? null;
   }
-
   private rejectPending<T>(
     pending: Map<string, Pending<T>>,
     error: Error,
@@ -739,7 +750,6 @@ class MobileDeviceBridge {
     }
     pending.clear();
   }
-
   /** Release the server-owned upgrade hook, clients, timers, and outstanding RPCs. */
   async close(): Promise<void> {
     const closeErrors: Error[] = [];
@@ -752,7 +762,6 @@ class MobileDeviceBridge {
     this.serverCloseHandler = null;
     if (server && upgradeHandler) server.off("upgrade", upgradeHandler);
     if (server && serverCloseHandler) server.off("close", serverCloseHandler);
-
     this.attachListeners.clear();
     const stopped = new Error(
       "DEVICE_BRIDGE_STOPPED: mobile device bridge runtime stopped",
@@ -762,7 +771,6 @@ class MobileDeviceBridge {
     this.rejectPending(this.pendingGenerates, stopped);
     this.rejectPending(this.pendingEmbeds, stopped);
     this.rejectPending(this.pendingFormatChats, stopped);
-
     for (const heartbeat of this.heartbeatTimers.values()) {
       clearInterval(heartbeat);
     }
@@ -782,7 +790,6 @@ class MobileDeviceBridge {
     this.sockets.clear();
     this.devices.clear();
     registeredModelTrigger = null;
-
     const wss = this.wss;
     this.wss = null;
     if (wss) {
@@ -805,12 +812,12 @@ class MobileDeviceBridge {
       );
     }
   }
-
   private sendToPrimary<T>(
     pendingMap: Map<string, Pending<T>>,
     makeMessage: (correlationId: string) => AgentOutbound,
     timeoutMs: number,
     timeoutMessage: string,
+    preparedRequest?: PreparedModelRequestGuard,
   ): Promise<T> {
     const device = this.primaryDevice();
     if (!device) {
@@ -820,17 +827,19 @@ class MobileDeviceBridge {
         ),
       );
     }
-
     const correlationId = randomUUID();
     const message = makeMessage(correlationId);
-
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingMap.delete(correlationId);
         reject(new Error(timeoutMessage));
       }, timeoutMs);
       if (typeof timeout === "object" && "unref" in timeout) {
-        (timeout as { unref(): void }).unref();
+        (
+          timeout as {
+            unref(): void;
+          }
+        ).unref();
       }
       pendingMap.set(correlationId, {
         resolve,
@@ -839,6 +848,7 @@ class MobileDeviceBridge {
         routedDeviceId: device.deviceId,
       });
       try {
+        preparedRequest?.assertBeforeAttempt();
         device.socket.send(JSON.stringify(message));
       } catch (err) {
         clearTimeout(timeout);
@@ -847,7 +857,6 @@ class MobileDeviceBridge {
       }
     });
   }
-
   async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
     const device = this.primaryDevice();
     if (device?.loadedPath === args.modelPath) return;
@@ -862,7 +871,6 @@ class MobileDeviceBridge {
       "DEVICE_TIMEOUT: model load exceeded deadline",
     );
   }
-
   async unloadModel(): Promise<void> {
     const device = this.primaryDevice();
     if (!device?.loadedPath) return;
@@ -873,28 +881,48 @@ class MobileDeviceBridge {
       "DEVICE_TIMEOUT: unload exceeded deadline",
     );
   }
-
   generate(args: {
     prompt: string;
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    model?: string;
+    contextWindowTokens?: number;
   }): Promise<string> {
+    const request = {
+      prompt: args.prompt,
+      stopSequences: args.stopSequences,
+      maxTokens: args.maxTokens,
+      temperature: args.temperature,
+    };
+    const preparedRequest = createNativeModelRequestGuard({
+      provider: PROVIDER,
+      model:
+        args.model ??
+        path.basename(
+          this.primaryDevice()?.loadedPath ?? "capacitor-native-llama",
+        ),
+      contextWindowTokens: args.contextWindowTokens ?? 4096,
+      outputReserveTokens: args.maxTokens ?? 256,
+      projectRequest: () => ({
+        ...request,
+        stopSequences: request.stopSequences
+          ? [...request.stopSequences]
+          : undefined,
+      }),
+    });
     return this.sendToPrimary<string>(
       this.pendingGenerates,
       (correlationId) => ({
         type: "generate",
         correlationId,
-        prompt: args.prompt,
-        stopSequences: args.stopSequences,
-        maxTokens: args.maxTokens,
-        temperature: args.temperature,
+        ...request,
       }),
       this.generateTimeoutMs,
       "DEVICE_TIMEOUT: no device responded within deadline",
+      preparedRequest,
     );
   }
-
   async embed(args: { input: string }): Promise<number[]> {
     const prepared = prepareBgeEmbeddingInput(args.input);
     const response = await this.sendToPrimary<BgeWireResponse>(
@@ -911,7 +939,6 @@ class MobileDeviceBridge {
     );
     return validateBgeResponse(response, prepared);
   }
-
   /**
    * Apply the model's native chat template (Jinja, from the GGUF) to the
    * given message list. Round-trips to the WebView so the Capacitor
@@ -922,7 +949,10 @@ class MobileDeviceBridge {
    * fall back to a manual flatten in that case).
    */
   formatChat(
-    messages: { role: string; content: string }[],
+    messages: {
+      role: string;
+      content: string;
+    }[],
   ): Promise<string | null> {
     return this.sendToPrimary<string | null>(
       this.pendingFormatChats,
@@ -936,11 +966,8 @@ class MobileDeviceBridge {
     );
   }
 }
-
 export const mobileDeviceBridge = new MobileDeviceBridge();
-
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
-
+const MAX_TIMER_DELAY_MS = 2147483647;
 /**
  * Not exported: this parser is an internal implementation detail of the
  * device-bridge and bionic-host timeout contracts, resolved once at each
@@ -977,23 +1004,18 @@ function resolveTimeoutMs(envKey: string, fallback: number): number {
   }
   return parsed;
 }
-
 function localInferenceRoot(): string {
   return path.join(resolveStateDir(), "local-inference");
 }
-
 function modelsDir(): string {
   return path.join(localInferenceRoot(), "models");
 }
-
 function registryPath(): string {
   return path.join(resolveStateDir(), "local-inference", "registry.json");
 }
-
 function assignmentsPath(): string {
   return path.join(resolveStateDir(), "local-inference", "assignments.json");
 }
-
 function readJsonFile<T>(filePath: string): T | null {
   try {
     return JSON.parse(readFileSync(filePath, "utf8")) as T;
@@ -1001,7 +1023,6 @@ function readJsonFile<T>(filePath: string): T | null {
     return null;
   }
 }
-
 function positiveInteger(value: unknown): number | null {
   const numeric =
     typeof value === "number"
@@ -1011,13 +1032,11 @@ function positiveInteger(value: unknown): number | null {
         : Number.NaN;
   return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
 }
-
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : null;
 }
-
 function resolveFromEnv(slot: string): string | null {
   const key =
     slot === "TEXT_EMBEDDING"
@@ -1029,14 +1048,12 @@ function resolveFromEnv(slot: string): string | null {
   if (fallback && existsSync(fallback)) return fallback;
   return null;
 }
-
 function resolveFromRegistry(slot: string): string | null {
   const assignments = readJsonFile<AssignmentsFile>(
     assignmentsPath(),
   )?.assignments;
   const assigned = assignments?.[slot];
   if (typeof assigned !== "string" || !assigned.trim()) return null;
-
   const models = readRegistryModels();
   const matched = models.find((model) => model.id === assigned);
   if (typeof matched?.path !== "string") return null;
@@ -1044,11 +1061,9 @@ function resolveFromRegistry(slot: string): string | null {
   // hold absolute paths from a dead app container (#11669).
   return resolveStoredModelPath(matched.path, localInferenceRoot());
 }
-
 function readRegistryModels(): RegistryModelEntry[] {
   return readJsonFile<RegistryFile>(registryPath())?.models ?? [];
 }
-
 function resolveAssignedRegistryModel(slot: string): {
   id: string;
   path: string;
@@ -1061,7 +1076,6 @@ function resolveAssignedRegistryModel(slot: string): {
   )?.assignments;
   const assigned = assignments?.[slot];
   if (typeof assigned !== "string" || !assigned.trim()) return null;
-
   const models = readRegistryModels();
   const matched = models.find((model) => model.id === assigned);
   if (typeof matched?.path !== "string") return null;
@@ -1078,7 +1092,6 @@ function resolveAssignedRegistryModel(slot: string): {
     embeddingDimensions: matched.embeddingDimensions,
   };
 }
-
 function resolveManifestModel(slot: string): {
   path: string;
   entry: BundledModelManifestEntry;
@@ -1096,11 +1109,9 @@ function resolveManifestModel(slot: string): {
   }
   return null;
 }
-
 function resolveFromManifest(slot: string): string | null {
   return resolveManifestModel(slot)?.path ?? null;
 }
-
 function drafterCandidates(modelPath: string, drafterFile: string): string[] {
   const modelDir = path.dirname(modelPath);
   const basename = path.basename(drafterFile);
@@ -1115,7 +1126,6 @@ function drafterCandidates(modelPath: string, drafterFile: string): string[] {
   candidates.add(path.join(modelsDir(), basename));
   return [...candidates];
 }
-
 function resolveGemmaDrafterPath(
   modelPath: string,
   drafterFile: string,
@@ -1125,7 +1135,6 @@ function resolveGemmaDrafterPath(
   }
   return null;
 }
-
 function resolveFirstGguf(): string | null {
   const dir = modelsDir();
   if (!existsSync(dir)) return null;
@@ -1136,7 +1145,6 @@ function resolveFirstGguf(): string | null {
   }
   return null;
 }
-
 function resolveLocalModelPath(slot: string): string | null {
   return (
     resolveFromEnv(slot) ??
@@ -1145,7 +1153,6 @@ function resolveLocalModelPath(slot: string): string | null {
     resolveFirstGguf()
   );
 }
-
 export function buildLoadArgsFromRegistryModel(model: {
   id: string;
   path: string;
@@ -1178,7 +1185,6 @@ export function buildLoadArgsFromRegistryModel(model: {
   }
   return args;
 }
-
 function applyManifestLoadHints(
   args: LocalInferenceLoadArgs,
   entry: BundledModelManifestEntry,
@@ -1212,7 +1218,6 @@ function applyManifestLoadHints(
   }
   return args;
 }
-
 function buildLoadArgsFromManifestModel(model: {
   path: string;
   entry: BundledModelManifestEntry;
@@ -1223,7 +1228,6 @@ function buildLoadArgsFromManifestModel(model: {
     : { modelPath: model.path };
   return applyManifestLoadHints(args, model.entry);
 }
-
 function resolveLocalLoadArgs(slot: string): LocalInferenceLoadArgs | null {
   if (slot === "TEXT_EMBEDDING") {
     const configured = process.env.ELIZA_LOCAL_EMBEDDING_MODEL_PATH?.trim();
@@ -1260,7 +1264,6 @@ function resolveLocalLoadArgs(slot: string): LocalInferenceLoadArgs | null {
   const firstGguf = resolveFirstGguf();
   return firstGguf ? { modelPath: firstGguf } : null;
 }
-
 // Recommended-model auto-download. The downloader in app
 // (services/local-inference/downloader.ts) is the canonical
 // implementation, but this plugin doesn't import from app to keep the
@@ -1279,7 +1282,6 @@ type RecommendedModel = {
   expectedSizeBytes?: number;
   revision?: string;
 };
-
 const RECOMMENDED_MODELS: Record<
   "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
   RecommendedModel
@@ -1316,7 +1318,6 @@ export {
 };
 
 const inflightDownloads = new Map<string, Promise<string>>();
-
 function buildHfResolveUrl(model: RecommendedModel): string {
   const encodedPath = model.ggufFile
     .split("/")
@@ -1324,7 +1325,6 @@ function buildHfResolveUrl(model: RecommendedModel): string {
     .join("/");
   return `https://huggingface.co/${model.hfRepo}/resolve/${model.revision ?? "main"}/${encodedPath}?download=true`;
 }
-
 function buildRecommendedLoadArgs(
   slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
   modelPath: string,
@@ -1334,7 +1334,6 @@ function buildRecommendedLoadArgs(
     return { modelPath, contextSize: BGE_EMBEDDING_MODEL.contextSize };
   return buildLoadArgsFromRegistryModel({ id: model.id, path: modelPath });
 }
-
 async function downloadRecommendedModelFor(
   slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 ): Promise<string> {
@@ -1361,11 +1360,9 @@ async function downloadRecommendedModelFor(
       // re-download; if it is already gone the re-download proceeds anyway.
     }
   }
-
   const dedupKey = model.id;
   const existing = inflightDownloads.get(dedupKey);
   if (existing) return existing;
-
   const promise = (async () => {
     const url = buildHfResolveUrl(model);
     const stagingPath = `${finalPath}.part`;
@@ -1378,6 +1375,10 @@ async function downloadRecommendedModelFor(
       finalPath,
       label: `[mobile-device-bridge] Recommended-model download (${slot})`,
       expectedSizeBytes: model.expectedSizeBytes,
+      checkAdmission:
+        process.env.ELIZA_BIONIC_HOST_DELEGATED?.trim() === "1"
+          ? createAospNetworkAdmissionCheck(model.expectedSizeBytes ?? 0)
+          : undefined,
     });
     logger.info(
       `[mobile-device-bridge] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
@@ -1391,7 +1392,6 @@ async function downloadRecommendedModelFor(
     inflightDownloads.delete(dedupKey);
   }
 }
-
 async function resolveLoadArgsWithAutoDownload(
   slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 ): Promise<LocalInferenceLoadArgs | null> {
@@ -1403,7 +1403,6 @@ async function resolveLoadArgsWithAutoDownload(
   const downloaded = await downloadRecommendedModelFor(slot);
   return buildRecommendedLoadArgs(slot, downloaded);
 }
-
 function resolveEmbeddingDimension(): number {
   for (const name of [
     "ELIZA_LOCAL_EMBEDDING_DIMENSIONS",
@@ -1419,7 +1418,6 @@ function resolveEmbeddingDimension(): number {
   }
   return BGE_EMBEDDING_MODEL.dimensions;
 }
-
 // elizaOS v5 message-pipeline calls `runtime.useModel(TEXT_LARGE, params)`
 // with `params.messages` set and `params.prompt` undefined. The native
 // Capacitor llama plugin only accepts a flat string prompt, so we have
@@ -1444,11 +1442,25 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
   }
   for (const m of messages) {
     const content =
-      typeof (m as { content?: unknown }).content === "string"
-        ? (m as { content: string }).content
+      typeof (
+        m as {
+          content?: unknown;
+        }
+      ).content === "string"
+        ? (
+            m as {
+              content: string;
+            }
+          ).content
         : "";
     if (!content) continue;
-    const role = ((m as { role?: string }).role ?? "user").toLowerCase();
+    const role = (
+      (
+        m as {
+          role?: string;
+        }
+      ).role ?? "user"
+    ).toLowerCase();
     const safeRole =
       role === "system" || role === "assistant" || role === "user"
         ? role
@@ -1458,7 +1470,6 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
   blocks.push("assistant:");
   return blocks.join("\n\n");
 }
-
 // ── Bionic-host GPU delegation (abstract-namespace UDS) ────────────────────
 // When the dynamic-Vulkan fused lib is staged, the GPU is reachable only from
 // the bionic app process (ElizaBionicInferenceServer). Route the TEXT decode
@@ -1466,7 +1477,6 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 // (which can't reach Vulkan and adds a pairing-token hop). The wire framing
 // matches ElizaBionicInferenceServer.java + BionicHostLoader.ts:
 // [int32 BE length][UTF-8 JSON] each direction.
-
 // The bionic host does a SINGLE blocking generate per call (no streaming), so
 // the whole decode must finish inside this window. On a CPU-only build (the
 // Vulkan lib isn't staged) a small model runs at only a few tok/s, so a longer
@@ -1483,13 +1493,12 @@ function getBionicRequestTimeoutMs(): number {
   if (cachedBionicRequestTimeoutMs === undefined) {
     cachedBionicRequestTimeoutMs = resolveTimeoutMs(
       "ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
-      300_000,
+      300000,
     );
   }
   return cachedBionicRequestTimeoutMs;
 }
 const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
-
 interface BionicGenerateResponse {
   ok: boolean;
   text?: string;
@@ -1503,14 +1512,12 @@ interface BionicGenerateResponse {
   code?: string;
   dim?: number;
 }
-
 /** Abstract-namespace socket name set by ElizaAgentService, or null. */
 function bionicSocketName(): string | null {
   if (process.env.ELIZA_BIONIC_HOST_DELEGATED?.trim() !== "1") return null;
   const sock = process.env.ELIZA_BIONIC_INFERENCE_SOCK?.trim();
   return sock ? sock : null;
 }
-
 /**
  * Per-native-call token budget hint for the host's streaming decode
  * (#11913). Reads the shared agent-side streaming knob
@@ -1525,7 +1532,6 @@ export function resolveBionicStreamStep(): number | undefined {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
-
 /**
  * Keep Eliza chat-turn control markers on every bionic-host request, including
  * the Capacitor bridge fast path that builds its native wire payload directly.
@@ -1542,7 +1548,6 @@ export function resolveBionicStopSequences(
     ]),
   );
 }
-
 // A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
 // layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
 // *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
@@ -1552,7 +1557,6 @@ export function resolveBionicStopSequences(
 // one the WebView chat "(via bionic-host)" delegation actually uses.
 const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
 const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
-
 /** Bundle root the host's eliza_inference_create expects (…/text/<model>.gguf → …). */
 export function deriveBionicBundleDir(modelPath: string): string {
   if (!modelPath) return "";
@@ -1560,7 +1564,6 @@ export function deriveBionicBundleDir(modelPath: string): string {
   if (path.basename(dir) === "text") return path.dirname(dir);
   if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
   if (!existsSync(modelPath)) return "";
-
   const modelName = path.basename(modelPath);
   const bundleRoot = path.join(
     dir,
@@ -1594,19 +1597,26 @@ export function deriveBionicBundleDir(modelPath: string): string {
   }
   return "";
 }
-
 function roleForGemmaPrompt(role: string): "system" | "user" | "model" {
   if (role === "assistant") return "model";
   if (role === "system") return "system";
   return "user";
 }
-
 function collectChatMlPromptMessages(
   prompt: string,
   system?: string,
-): { role: string; content: string }[] | null {
+):
+  | {
+      role: string;
+      content: string;
+    }[]
+  | null {
   const headerPattern = /<\|im_start\|>(system|user|assistant)(?:\n|$)/g;
-  const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+  const headers: Array<{
+    index: number;
+    role: string;
+    bodyStart: number;
+  }> = [];
   let match = headerPattern.exec(prompt);
   while (match !== null) {
     headers.push({
@@ -1617,8 +1627,10 @@ function collectChatMlPromptMessages(
     match = headerPattern.exec(prompt);
   }
   if (headers.length === 0) return null;
-
-  const result: { role: string; content: string }[] = [];
+  const result: {
+    role: string;
+    content: string;
+  }[] = [];
   if (system?.trim() && headers[0]?.role !== "system") {
     result.push({ role: "system", content: system.trim() });
   }
@@ -1634,9 +1646,11 @@ function collectChatMlPromptMessages(
   }
   return result.length > 0 ? result : null;
 }
-
 function renderGemmaPromptMessages(
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{
+    role: string;
+    content: string;
+  }>,
 ): string {
   let out = "";
   for (const m of messages) {
@@ -1663,70 +1677,16 @@ export function buildGemmaBionicPrompt(params: GenerateTextParams): string {
   }
   return renderGemmaPromptMessages(msgs);
 }
-
 function bionicHostGenerate(
   socketName: string,
   request: Record<string, unknown>,
 ): Promise<BionicGenerateResponse> {
-  const payload = Buffer.from(JSON.stringify(request), "utf8");
-  const frame = Buffer.allocUnsafe(4 + payload.length);
-  frame.writeUInt32BE(payload.length, 0);
-  payload.copy(frame, 4);
-  return new Promise((resolve, reject) => {
-    const sock = net.connect({ path: `\0${socketName}` });
-    let settled = false;
-    let chunks = Buffer.alloc(0);
-    let expected = -1;
-    const finish = (err: Error | null, value?: BionicGenerateResponse) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      sock.destroy();
-      err ? reject(err) : resolve(value as BionicGenerateResponse);
-    };
-    const timer = setTimeout(
-      () => finish(new Error("[mobile-device-bridge] bionic host timed out")),
-      getBionicRequestTimeoutMs(),
-    );
-    sock.on("connect", () => sock.write(frame));
-    sock.on("data", (d: Buffer) => {
-      chunks = Buffer.concat([chunks, d]);
-      if (expected < 0 && chunks.length >= 4) {
-        expected = chunks.readUInt32BE(0);
-        if (expected < 0 || expected > BIONIC_MAX_FRAME_BYTES) {
-          finish(
-            new Error(`[mobile-device-bridge] bad bionic frame ${expected}`),
-          );
-          return;
-        }
-      }
-      if (expected >= 0 && chunks.length >= 4 + expected) {
-        try {
-          finish(
-            null,
-            JSON.parse(chunks.subarray(4, 4 + expected).toString("utf8")),
-          );
-        } catch (e) {
-          finish(
-            new Error(
-              `[mobile-device-bridge] bad bionic JSON: ${(e as Error).message}`,
-            ),
-          );
-        }
-      }
-    });
-    sock.on("error", (e: Error) =>
-      finish(
-        new Error(`[mobile-device-bridge] bionic socket error: ${e.message}`),
-      ),
-    );
-    sock.on("close", () => {
-      if (!settled)
-        finish(new Error("[mobile-device-bridge] bionic host closed early"));
-    });
-  });
+  return requestBionicHost(
+    socketName,
+    request,
+    getBionicRequestTimeoutMs(),
+  ) as Promise<BionicGenerateResponse>;
 }
-
 /**
  * Streaming variant of {@link bionicHostGenerate}: sends op="generateStream" and
  * reads MANY length-prefixed frames over the same connection — one
@@ -1740,10 +1700,7 @@ function bionicHostGenerateStream(
   request: Record<string, unknown>,
   onToken: (text: string) => void,
 ): Promise<BionicGenerateResponse> {
-  const payload = Buffer.from(
-    JSON.stringify({ ...request, op: "generateStream" }),
-    "utf8",
-  );
+  const payload = Buffer.from(JSON.stringify(request), "utf8");
   const frame = Buffer.allocUnsafe(4 + payload.length);
   frame.writeUInt32BE(payload.length, 0);
   payload.copy(frame, 4);
@@ -1778,7 +1735,10 @@ function bionicHostGenerateStream(
         if (chunks.length < 4 + expected) break;
         const json = chunks.subarray(4, 4 + expected).toString("utf8");
         chunks = chunks.subarray(4 + expected);
-        let msg: { type?: string; text?: string } & BionicGenerateResponse;
+        let msg: {
+          type?: string;
+          text?: string;
+        } & BionicGenerateResponse;
         try {
           msg = JSON.parse(json);
         } catch (e) {
@@ -1809,7 +1769,6 @@ function bionicHostGenerateStream(
     });
   });
 }
-
 /**
  * Validate a background-priority request against the device-class budget and
  * resolve its bounded lane wait (#11914). Interactive requests pass through
@@ -1820,7 +1779,11 @@ function resolveMobileLaneBudget(
   priority: LocalInferencePriority,
   prompt: string,
   maxTokens: number | undefined,
-): { prompt: string; maxTokens: number | undefined; lockWaitMs?: number } {
+): {
+  prompt: string;
+  maxTokens: number | undefined;
+  lockWaitMs?: number;
+} {
   if (priority !== "background") {
     return { prompt, maxTokens };
   }
@@ -1837,7 +1800,6 @@ function resolveMobileLaneBudget(
     lockWaitMs: budget.lockWaitMs,
   };
 }
-
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
   return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
     // The bionic host decodes ONE request at a time on its resident-model
@@ -1848,7 +1810,6 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
     // time, and reject unsupported explicit device-class budgets. Without this, one
     // long autonomous job self-queues on the host lock and starves chat.
     const priority = params.priority ?? "interactive";
-
     // GPU delegation: run the whole decode in the bionic app process over the
     // abstract UDS (the device-bridge renderer path can't reach Vulkan). The
     // in-process host OWNS its default bundle (filesDir/eliza-1/bundle), so a
@@ -1873,6 +1834,31 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
         maxTokens: lane.maxTokens ?? 256,
         stopSequences: resolveBionicStopSequences(params.stopSequences),
       };
+      const onChunk = params.onStreamChunk;
+      const streamStep = resolveBionicStreamStep();
+      const wireRequest =
+        typeof onChunk === "function"
+          ? {
+              ...baseRequest,
+              ...(streamStep !== undefined ? { streamStep } : {}),
+              op: "generateStream",
+            }
+          : { op: "generate", ...baseRequest };
+      const preparedRequest = createNativeModelRequestGuard({
+        provider: "eliza-bionic-llama",
+        model: installed
+          ? path.basename(installed.modelPath)
+          : RECOMMENDED_MODELS[slot].id,
+        contextWindowTokens:
+          installed?.contextSize ??
+          ELIZA_1_LOAD_METADATA[RECOMMENDED_MODELS[slot].id]?.contextSize ??
+          4096,
+        outputReserveTokens: baseRequest.maxTokens,
+        projectRequest: () => ({
+          ...wireRequest,
+          stopSequences: [...baseRequest.stopSequences],
+        }),
+      });
       const res = await getInferencePriorityGate().runExclusive(
         {
           priority,
@@ -1881,6 +1867,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
           ...(params.signal ? { signal: params.signal } : {}),
         },
         async () => {
+          preparedRequest.assertBeforeAttempt();
           // When the runtime wants streaming (chat SSE / voice), server-push
           // the decode token-by-token over the UDS so the UI paints at the
           // first token instead of after the whole reply. Otherwise one
@@ -1888,24 +1875,13 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
           // decodes per native call before flushing a frame (#11913) — the
           // host clamps it to its JNI buffer and defaults to the #9174
           // streaming knee (8) when the agent-side knob is unset.
-          const onChunk = params.onStreamChunk;
-          const streamStep = resolveBionicStreamStep();
           let accumulated = "";
           return typeof onChunk === "function"
-            ? bionicHostGenerateStream(
-                bionicSock,
-                streamStep !== undefined
-                  ? { ...baseRequest, streamStep }
-                  : baseRequest,
-                (text) => {
-                  accumulated += text;
-                  void onChunk(text, undefined, accumulated);
-                },
-              )
-            : bionicHostGenerate(bionicSock, {
-                op: "generate",
-                ...baseRequest,
-              });
+            ? bionicHostGenerateStream(bionicSock, wireRequest, (text) => {
+                accumulated += text;
+                void onChunk(text, undefined, accumulated);
+              })
+            : bionicHostGenerate(bionicSock, wireRequest);
         },
       );
       if (!res.ok) {
@@ -1935,7 +1911,6 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
       }
       return res.text ?? "";
     }
-
     // Device-bridge (renderer WebSocket) path: needs a real on-device model
     // file to load + format-chat against, so resolve (with auto-download) here.
     const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
@@ -1944,7 +1919,6 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
         `[mobile-device-bridge] No local GGUF model installed under ${modelsDir()} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1). Install a model or unset the disable flag.`,
       );
     }
-
     await mobileDeviceBridge.loadModel(loadArgs);
     // Prefer the model's native chat template via the Capacitor
     // `LlamaCpp.getFormattedChat()` round-trip. That path invokes
@@ -1985,22 +1959,29 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
           stopSequences: params.stopSequences,
           maxTokens: lane.maxTokens,
           temperature: params.temperature,
+          model: path.basename(loadArgs.modelPath),
+          contextWindowTokens: loadArgs.contextSize ?? 4096,
         }),
     );
   };
 }
-
 // Reshape `params` into the `[{role, content}, ...]` list the native
 // `getFormattedChat` call expects. Returns null if `params.messages` is
 // empty (caller falls back to plain-text flatten).
-function collectMessagesForNativeTemplate(
-  params: GenerateTextParams,
-): { role: string; content: string }[] | null {
+function collectMessagesForNativeTemplate(params: GenerateTextParams):
+  | {
+      role: string;
+      content: string;
+    }[]
+  | null {
   const messages = params.messages ?? [];
   if (messages.length === 0 && typeof params.prompt === "string") {
     return collectRoleLabeledPromptMessages(params.prompt, params.system);
   }
-  const result: { role: string; content: string }[] = [];
+  const result: {
+    role: string;
+    content: string;
+  }[] = [];
   const hasSystemMessage = messages.some(
     (m: { role?: string }) => m.role === "system",
   );
@@ -2009,11 +1990,25 @@ function collectMessagesForNativeTemplate(
   }
   for (const m of messages) {
     const content =
-      typeof (m as { content?: unknown }).content === "string"
-        ? (m as { content: string }).content
+      typeof (
+        m as {
+          content?: unknown;
+        }
+      ).content === "string"
+        ? (
+            m as {
+              content: string;
+            }
+          ).content
         : "";
     if (!content) continue;
-    const role = ((m as { role?: string }).role ?? "user").toLowerCase();
+    const role = (
+      (
+        m as {
+          role?: string;
+        }
+      ).role ?? "user"
+    ).toLowerCase();
     const safeRole =
       role === "system" || role === "assistant" || role === "user"
         ? role
@@ -2022,15 +2017,22 @@ function collectMessagesForNativeTemplate(
   }
   return result.length > 0 ? result : null;
 }
-
 function collectRoleLabeledPromptMessages(
   prompt: string,
   system?: string,
-): { role: string; content: string }[] | null {
+):
+  | {
+      role: string;
+      content: string;
+    }[]
+  | null {
   if (!/^(system|user|assistant):\n/.test(prompt)) return null;
-
   const headerPattern = /(^|\n{2,})(system|user|assistant):\n/g;
-  const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+  const headers: Array<{
+    index: number;
+    role: string;
+    bodyStart: number;
+  }> = [];
   let match = headerPattern.exec(prompt);
   while (match !== null) {
     headers.push({
@@ -2041,8 +2043,10 @@ function collectRoleLabeledPromptMessages(
     match = headerPattern.exec(prompt);
   }
   if (headers.length === 0) return null;
-
-  const result: { role: string; content: string }[] = [];
+  const result: {
+    role: string;
+    content: string;
+  }[] = [];
   if (system?.trim() && headers[0]?.role !== "system") {
     result.push({ role: "system", content: system.trim() });
   }
@@ -2057,14 +2061,12 @@ function collectRoleLabeledPromptMessages(
   }
   return result.length > 0 ? result : null;
 }
-
 interface BgeWireResponse {
   embedding?: number[];
   tokens?: number;
   tokenIds?: number[];
   embeddingSpace?: string;
 }
-
 function validateBgeResponse(
   response: BgeWireResponse,
   prepared: ReturnType<typeof prepareBgeEmbeddingInput>,
@@ -2088,7 +2090,6 @@ function validateBgeResponse(
   assertBgeTokenAgreement(prepared, tokenIds);
   return identifyEmbeddingVector(embedding, BGE_SMALL_VECTOR_SPACE);
 }
-
 function extractEmbeddingText(
   params: TextEmbeddingParams | string | null,
 ): string {
@@ -2096,7 +2097,6 @@ function extractEmbeddingText(
   if (typeof params === "string") return params;
   return params.text;
 }
-
 function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
   let readiness: Promise<void> | undefined;
   return async (_runtime, params) => {
@@ -2139,7 +2139,6 @@ function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
         `[mobile-device-bridge] No local GGUF embedding model resolved for ${modelsDir()}.`,
       );
     }
-
     const prepared = prepareBgeEmbeddingInput(extractEmbeddingText(params));
     const bionicSock = bionicSocketName();
     if (bionicSock) {
@@ -2172,18 +2171,15 @@ function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
         });
       return validateBgeResponse(res, prepared);
     }
-
     await mobileDeviceBridge.loadModel(loadArgs);
     return mobileDeviceBridge.embed({
       input: prepared.text,
     });
   };
 }
-
 export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
   return mobileDeviceBridge.status();
 }
-
 export interface MobileDeviceBridgeServingStatus {
   /** Which path bound the capacitor-llama handlers (null = not registered). */
   registeredTrigger: "bionic-host" | "device-bridge" | null;
@@ -2195,19 +2191,17 @@ export interface MobileDeviceBridgeServingStatus {
    */
   bionicHostServing: boolean;
 }
-
 // Same lazy/memoized pattern as getBionicRequestTimeoutMs above.
 let cachedBionicProbeTimeoutMs: number | undefined;
 function getBionicProbeTimeoutMs(): number {
   if (cachedBionicProbeTimeoutMs === undefined) {
     cachedBionicProbeTimeoutMs = resolveTimeoutMs(
       "ELIZA_BIONIC_PROBE_TIMEOUT_MS",
-      2_000,
+      2000,
     );
   }
   return cachedBionicProbeTimeoutMs;
 }
-
 /** True when the bionic host's abstract UDS accepts a connection right now. */
 function probeBionicHostSocket(socketName: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -2222,7 +2216,6 @@ function probeBionicHostSocket(socketName: string): Promise<boolean> {
     sock.on("error", () => finish(false));
   });
 }
-
 /**
  * The true "in-process bionic host can serve" signal for readiness surfaces
  * (GET /api/local-inference/providers → capacitor-llama.servingVia). The
@@ -2237,7 +2230,6 @@ export async function getMobileDeviceBridgeServingStatus(): Promise<MobileDevice
     (await probeBionicHostSocket(socketName));
   return { registeredTrigger: registeredModelTrigger, bionicHostServing };
 }
-
 export async function loadMobileDeviceBridgeModel(
   modelPath: string,
   modelId?: string,
@@ -2248,11 +2240,9 @@ export async function loadMobileDeviceBridgeModel(
       : { modelPath },
   );
 }
-
 export async function unloadMobileDeviceBridgeModel(): Promise<void> {
   await mobileDeviceBridge.unloadModel();
 }
-
 /**
  * Runtime service wrapper over the module-level {@link mobileDeviceBridge}
  * singleton. Registering this via a plugin `services` array lets consumers
@@ -2263,28 +2253,23 @@ export async function unloadMobileDeviceBridgeModel(): Promise<void> {
 export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeService {
   capabilityDescription =
     "Relays on-device GPU inference to a paired mobile device over the device bridge.";
-
   static async start(
     runtime: IAgentRuntime,
   ): Promise<CapacitorMobileDeviceBridgeService> {
     return new CapacitorMobileDeviceBridgeService(runtime);
   }
-
   getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
     return mobileDeviceBridge.status();
   }
-
   async loadMobileDeviceBridgeModel(
     modelPath: string,
     modelId?: string,
   ): Promise<void> {
     await loadMobileDeviceBridgeModel(modelPath, modelId);
   }
-
   async unloadMobileDeviceBridgeModel(): Promise<void> {
     await unloadMobileDeviceBridgeModel();
   }
-
   async stop(): Promise<void> {
     const runtime = this.runtime as AgentRuntime;
     deviceAttachUnsubscribers.get(runtime)?.();
@@ -2295,7 +2280,6 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
     if (registeredRuntimeCount === 0) registeredModelTrigger = null;
   }
 }
-
 /**
  * Mobile-host plugin owning the canonical bridge service. The pre-initialize
  * bootstrap registers this plugin, rather than its service class directly, so
@@ -2308,13 +2292,11 @@ export const mobileDeviceBridgePlugin: Plugin = {
     "Registers the mobile device inference bridge as a runtime service.",
   services: [CapacitorMobileDeviceBridgeService],
 };
-
 export async function attachMobileDeviceBridgeToServer(
   server: HttpServer,
 ): Promise<boolean> {
   return mobileDeviceBridge.attachToHttpServer(server);
 }
-
 /**
  * Collapse the degenerate repetition the small on-device vision model emits on
  * sparse UI screenshots (e.g. "…text input field at the bottom." repeated for
@@ -2347,7 +2329,6 @@ function collapseDescriptionRepetition(text: string): string {
   }
   return kept.join(" ").trim() || text.trim();
 }
-
 /**
  * On-device IMAGE_DESCRIPTION via the bionic host (op="image"). The EPIC #9105
  * GET_SCREEN describe loop — and any agent vision-describe — routes here on a
@@ -2362,7 +2343,12 @@ function collapseDescriptionRepetition(text: string): string {
 function makeBionicImageDescriptionHandler() {
   return async (
     _runtime: IAgentRuntime,
-    params: string | { imageUrl?: string; prompt?: string },
+    params:
+      | string
+      | {
+          imageUrl?: string;
+          prompt?: string;
+        },
   ) => {
     const socketName = bionicSocketName();
     if (!socketName) {
@@ -2404,7 +2390,6 @@ function makeBionicImageDescriptionHandler() {
     };
   };
 }
-
 /**
  * Register the capacitor-llama TEXT/embedding handlers on the runtime.
  *
@@ -2421,7 +2406,6 @@ function registerMobileDeviceBridgeModels(
     logger.debug("[mobile-device-bridge] Handlers already registered");
     return true;
   }
-
   const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
   if (
     typeof runtimeWithRegistration.getModel !== "function" ||
@@ -2432,7 +2416,6 @@ function registerMobileDeviceBridgeModels(
     );
     return false;
   }
-
   runtimeWithRegistration.registerModel(
     ModelType.TEXT_SMALL,
     makeGenerateHandler("TEXT_SMALL"),
@@ -2445,7 +2428,6 @@ function registerMobileDeviceBridgeModels(
     PROVIDER,
     LOCAL_INFERENCE_PRIORITY,
   );
-
   // Pre-warm the chat-model download in the background so the user
   // doesn't pay the multi-hundred-MB latency on their first turn. Same
   // idempotency guard inside downloadRecommendedModelFor() prevents a
@@ -2506,7 +2488,6 @@ function registerMobileDeviceBridgeModels(
       ),
     );
   }
-
   logger.info(
     `[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
   );
@@ -2515,7 +2496,6 @@ function registerMobileDeviceBridgeModels(
   registeredModelTrigger = trigger;
   return true;
 }
-
 export async function ensureMobileDeviceBridgeInferenceHandlers(
   runtime: AgentRuntime,
 ): Promise<boolean> {
@@ -2531,19 +2511,16 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
     logger.debug("[mobile-device-bridge] Handlers already registered");
     return true;
   }
-
   // Bionic-host delegation: the in-process GPU host serves TEXT/embed over
   // the abstract UDS, so the handlers are live from boot.
   if (bionicSocketName()) {
     return registerMobileDeviceBridgeModels(runtime, "bionic-host");
   }
-
   // A device bridge is already attached (agent restart while the WebView
   // stayed connected): the handlers can serve immediately.
   if (mobileDeviceBridge.status().connected) {
     return registerMobileDeviceBridgeModels(runtime, "device-bridge");
   }
-
   // Neither the bionic host nor a device bridge can serve a call right now.
   // Do NOT register the handlers: a registered-but-dead capacitor-llama
   // provider owns the TEXT slots, wins `useModel` routing, and turns every

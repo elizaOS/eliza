@@ -39,7 +39,7 @@ python3 packages/os/scripts/linux/assemble-browser-payload.py \
   --source-commit "$SOURCE_COMMIT" --architecture x86_64 \
   --chromium-revision "$CHROMIUM_REVISION" --chromium-version "$CHROMIUM_VERSION" \
   --output "$STAGE/browser"
-node packages/app/scripts/package-linux-gtk-artifact.mjs produce \
+node packages/app/scripts/package-linux-gtk-artifact.ts produce \
   --stage="$STAGE" --out="$ARTIFACT_OUT" --key="$DESKTOP_SIGNING_KEY" \
   --version="$VERSION" --arch=x86_64 --source-commit="$SOURCE_COMMIT"
 ```
@@ -50,3 +50,11 @@ reviewed Linux overlay, and pinned official Node 24.15.0 archive; it neither
 fetches inputs nor qualifies runtime behavior. Escaping dependencies and empty required assets fail explicitly. Empty non-executable
 generated stamps and Python package markers remain in the hashed closure. Run its isolated tests
 with `python3 packages/os/scripts/linux/test_assemble_browser_payload.py`.
+
+Release-script tests (`test:release`) require e2fsprogs (`mkfs.ext4` and
+`debugfs`) on `PATH` for real Android partition-image fixtures.
+
+The retained release tools use canonical JSON fixtures mirrored from
+[`elizaOS/os` at `735afc708eb3`](https://github.com/elizaOS/os/tree/735afc708eb3e7a76050c0c918c916bb5545b0bf/packages/os/release).
+Preserve hashed policy metadata verbatim; its historical proving command is
+part of the signed digest, not a current script entrypoint.

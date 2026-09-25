@@ -26,7 +26,6 @@
  * does not double-register.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { client, ElizaClient } from "../../api/client";
 import {
   getPushNotificationsPlugin,
@@ -35,6 +34,7 @@ import {
   type PushRegistrationError,
   type PushRegistrationToken,
 } from "../../bridge/native-plugins";
+import { logger } from "../../logger.ts";
 import {
   type FrontendPlatform,
   getFrontendPlatform,

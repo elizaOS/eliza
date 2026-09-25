@@ -45,10 +45,10 @@ fa9033e52dfdaa941f137a52504117b0b5405490696a007d6fd8bab807a8dfea  ./bigint-buffe
 ccde54ea5b08e5370e7795c6db77c05616aca4cee0cd8552d4e6500119bc86f8  ./coding-agent-adapters@0.16.3.patch
 2a6f7c08369dd2b821bf0409d002dea1a4c9422a8e30e65a232533ba06e212f3  ./electrobun/0001-diagnostic-instrumentation.patch
 8e112e92681de2bcee90500358b8a3d66f2e4b2a04582ce6a8f424177aef3d3a  ./electrobun@1.16.0.patch
-d216f37b14aea9ba505190f5cb03059fd6ef34f0ccf979ecf4dde2f3a14ca01f  ./electrobun@1.18.1.patch
+ef8a1244eaaafff1998317e9289174ec6398e64f089388df5a0adfcd1f8a6daa  ./electrobun@1.18.1.patch
 343e506742c0a7e26acadf91aa7c65a1fa9259fea615744374bc94a7a48e49ca  ./llama-cpp-capacitor@0.1.5-bge-cache-upgrade.patch
 18128260c133e6b2dc53d62d8e50f62b2c061e63e86750ef58a43c3e128999b2  ./llama-cpp-capacitor@0.1.5-bge-upgrade.patch
-935e493f6e9ea71fa21be54fc8d6c487fd1b2869af6a193d05cbf86cb20fafd1  ./llama-cpp-capacitor@0.1.5.patch
+2d56b462a5052ed3eb4b2aacd115d9f7b9990bd363d2d6b3815af2a648d2ba7c  ./llama-cpp-capacitor@0.1.5.patch
 2749b1e994de87fd46965252426390fa9ea5d242459d729e51a4b4911aa95efc  ./proper-lockfile@4.1.2.patch
 60f943d60d7ddc28a537b15617dd377ddfc92864db8cea55e9ffa9768d417dd6  ./pty-manager@1.11.0.patch
 3eed38d4a659ea3bdb6ab255e8a306b0caa9c54259de7d28b42ff101d0499311  ./sql.js@1.14.2.patch

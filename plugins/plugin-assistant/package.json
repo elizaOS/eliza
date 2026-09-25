@@ -6,32 +6,40 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./prompts/response-policy": {
-      "types": "./dist/prompts/response-policy.d.ts",
       "eliza-source": "./src/prompts/response-policy.ts",
+      "types": "./dist/prompts/response-policy.d.ts",
       "import": "./dist/prompts/response-policy.js",
       "default": "./dist/prompts/response-policy.js"
     },
     "./actions/generate-media": {
-      "types": "./dist/actions/generate-media.d.ts",
       "eliza-source": "./src/features/advanced-capabilities/actions/generateMedia.ts",
+      "types": "./dist/actions/generate-media.d.ts",
       "import": "./dist/actions/generate-media.js",
       "default": "./dist/actions/generate-media.js"
     },
     "./character-persistence": {
-      "types": "./dist/character-persistence.d.ts",
       "eliza-source": "./src/features/advanced-capabilities/personality/character-persistence.ts",
+      "types": "./dist/character-persistence.d.ts",
       "import": "./dist/character-persistence.js",
       "default": "./dist/character-persistence.js"
+    },
+    "./text/template-engine": {
+      "eliza-source": "./src/text/template-engine.ts",
+      "types": "./dist/text/template-engine.d.ts",
+      "import": "./dist/text/template-engine.js",
+      "default": "./dist/text/template-engine.js"
+    },
+    "./text/template-rendering": {
+      "eliza-source": "./src/text/template-rendering.ts",
+      "types": "./dist/text/template-rendering.d.ts",
+      "import": "./dist/text/template-rendering.js",
+      "default": "./dist/text/template-rendering.js"
     }
   },
   "files": [
@@ -45,7 +53,8 @@
     "lint:check": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format --write src",
-    "format:check": "bunx @biomejs/biome format src"
+    "format:check": "bunx @biomejs/biome format src",
+    "test:templates": "node --test test/templates/*.test.js"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -60,9 +69,9 @@
     "unpdf": "^1.4.0",
     "zod": "^4.6.5",
     "uuid": "^14.0.0",
-    "@elizaos/shared": "workspace:*",
     "yaml": "^2.7.0",
-    "handlebars": "^4.7.8"
+    "handlebars": "^4.7.8",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
@@ -71,7 +80,8 @@
     "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*",
     "@biomejs/biome": "2.5.14",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "esbuild": "^0.28.0"
   },
   "publishConfig": {
     "access": "public"

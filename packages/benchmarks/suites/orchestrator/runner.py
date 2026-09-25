@@ -120,6 +120,8 @@ LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
     *SYNTHETIC_HARNESSES,
     "compare",
+    # Native routes are partial; retain results without requiring Codex in every cohort.
+    "codex",
     # smithers publishes to latest/ but is intentionally NOT in
     # CANONICAL_REAL_HARNESSES: it has partial benchmark coverage, so it must
     # not be a required agent for cross-harness comparability.
@@ -227,14 +229,10 @@ def _comparison_extra_config(
         normalized_extra.pop("agent", None)
     if injected_harness in comparable_agents:
         normalized_extra.pop("harness", None)
-    for runtime_key in (
-        "eliza_bench_http_timeout_s",
-        "openclaw_timeout_s",
-        "timeout_s",
-    ):
-        normalized_extra.pop(runtime_key, None)
-    if str(normalized_extra.get("reasoning_effort") or "").strip().lower() == "low":
-        normalized_extra.pop("reasoning_effort", None)
+    # Time limits and explicit reasoning settings affect the available work.
+    # Preserve them even when a harness consumes a differently named setting;
+    # campaigns must supply the same budget configuration to every lane.
+    # Unspecified reasoning is not necessarily the provider's "low" setting.
     dataset = str(normalized_extra.get("dataset") or "").strip()
     suite = str(normalized_extra.get("suite") or "").strip()
     if dataset and suite and dataset == suite:
@@ -265,7 +263,9 @@ def _comparison_signature_for_row(
     )
 
 
-def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunRequest:
+def _effective_request(
+    adapter: BenchmarkAdapter, request: RunRequest, *, environment: dict[str, str] | None = None
+) -> RunRequest:
     request_extra = dict(request.extra_config)
     replace_adapter_defaults = request_extra.pop("_replace_adapter_defaults", False)
     if replace_adapter_defaults is not False and replace_adapter_defaults is not True:
@@ -317,6 +317,31 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
         merged_extra["handler"] = "eliza"
     if agent_label:
         merged_extra.setdefault("harness", agent_label)
+    if adapter.id in {"osworld", "visualwebbench"}:
+        resolved_env = environment if environment is not None else os.environ
+        native_image_harness = str(merged_extra.get("agent") or merged_extra.get("harness") or agent_label).strip().lower() in {"hermes", "openclaw"}
+        if native_image_harness:
+            # These native runtimes consume image blocks on the primary model.
+            # Eliza's image-description environment is not their model routing.
+            vision_model = request.model
+            configured_model = merged_extra.get("vision_model", vision_model)
+            if configured_model != vision_model:
+                raise ValueError("Native image harness vision_model must match the primary model")
+            if "vision_base_url" in merged_extra:
+                raise ValueError("Native image harness does not support an auxiliary vision_base_url")
+            vision_url = resolved_env.get("OPENAI_BASE_URL", "")
+        else:
+            vision_model = merged_extra.get("vision_model", resolved_env.get("OPENAI_IMAGE_DESCRIPTION_MODEL") or request.model)
+            vision_url = merged_extra.get("vision_base_url", resolved_env.get("OPENAI_IMAGE_DESCRIPTION_BASE_URL") or resolved_env.get("OPENAI_BASE_URL", ""))
+        if not isinstance(vision_model, str) or not vision_model.strip():
+            raise ValueError("vision_model must be a non-empty model name")
+        if not isinstance(vision_url, str) or ("vision_base_url" in merged_extra and not vision_url.strip()):
+            raise ValueError("vision_base_url must be a non-empty string when explicitly supplied")
+        merged_extra["vision_model"] = vision_model.strip()
+        # Snapshot ambient routing without copying URL credentials into result metadata.
+        merged_extra["vision_endpoint_sha256"] = hashlib.sha256(vision_url.strip().rstrip("/").encode()).hexdigest()
+        merged_extra["vision_input_contract"] = "native-image-v1"
+
     return RunRequest(
         benchmarks=request.benchmarks,
         agent=request.agent,
@@ -1326,6 +1351,21 @@ def _publication_quarantine_reason(
         return "unsucceeded_run"
     if not _is_numeric_score(score):
         return "missing_score"
+    if agent.strip().lower() == "codex":
+        if provider != "codex-native" or benchmark_id != "eliza_1":
+            return "codex_unsupported_publication_route"
+        execution = metrics.get("execution")
+        receipts = metrics.get("native_receipts")
+        if (not isinstance(execution, dict) or execution.get("harness") != "codex"
+                or execution.get("model_requested") != model
+                or execution.get("provider_label") != provider):
+            return "codex_execution_identity_mismatch"
+        count = metrics.get("case_count")
+        if (not isinstance(count, int) or isinstance(count, bool) or count <= 0
+                or not isinstance(receipts, dict)
+                or receipts.get("attempt_count") != count
+                or receipts.get("completed_turns") != count):
+            return "codex_missing_native_receipts"
     runtime_provenance = (
         metrics.get("runtime_provenance")
         if isinstance(metrics.get("runtime_provenance"), dict)
@@ -3058,7 +3098,7 @@ def run_benchmarks(
 
     for benchmark_id in selected_ids:
         adapter = discovery.adapters[benchmark_id]
-        effective_request = _effective_request(adapter, request)
+        effective_request = _effective_request(adapter, request, environment=base_env)
         signature = _signature_for(
             adapter, effective_request, workspace_root=workspace_root, repo_meta=repo_meta
         )

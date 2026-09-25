@@ -1,8 +1,8 @@
 /** Verifies per-turn coding profiles filter authorized actions without mutating the runtime catalog. */
 
+import type { Action } from "@elizaos/core";
+import { PI_CODING_ACTION_PROFILE } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { PI_CODING_ACTION_PROFILE } from "../../../../packages/core/src/types/coding.ts";
-import type { Action } from "../../../../packages/core/src/types/components.ts";
 import {
   applyCodingActionProfile,
   parseCodingActionProfile,

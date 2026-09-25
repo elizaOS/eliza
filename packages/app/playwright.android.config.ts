@@ -14,7 +14,7 @@ import { testOutputPath } from "../scripts/lib/test-output.ts";
 // (`_android`), against the real on-device agent. There is no webServer and no
 // browser project — the `page` fixture comes from the device WebView.
 //
-// Prereqs (handled by scripts/android-e2e.mjs, or run manually):
+// Prereqs (handled by scripts/android-e2e.ts, or run manually):
 //   1. An emulator/device is attached (ANDROID_SERIAL selects it; emulator preferred).
 //   2. The app is installed from an APK built with ELIZA_WEBVIEW_DEBUG=1.
 //   3. The on-device local agent is up (mobile-local-chat-smoke bring-up) OR the

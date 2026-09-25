@@ -1,31 +1,12 @@
-"""H2.b — Production diarization + speaker-encoder stack for the bench.
+"""Explicit native or ONNX diarization and speaker encoder evaluation.
 
-Provides the canonical Pyannote-segmentation-3.0 + WeSpeaker ResNet34-LM
-pipeline used by the runtime, available behind the
-`PRODUCTION_SPEAKER_STACK=1` flag. The W3-6 test suite kept the SpeechBrain
-ECAPA + energy-VAD path as the default because the production ONNX weights
-were not yet pushed to HuggingFace at the time. H4 confirmed both ONNX
-files now live on `elizaos/eliza-1`:
-
-  - voice/diarizer/pyannote-segmentation-3.0-int8.onnx (1.5 MB)
-  - voice/speaker-encoder/wespeaker-resnet34-lm.onnx (25 MB)
-
-This module mirrors the runtime contract exactly:
-  - PyannoteDiarizer eats raw [1, 1, num_samples] float32 PCM @ 16 kHz and
-    emits per-frame 7-class logits. We threshold the three speaker-activity
-    channels (cols 0..2) to recover binary speaker presence per frame,
-    then merge consecutive frames into segment dicts.
-  - WespeakerEncoder eats 80-dim Kaldi Fbank features and emits a 256-dim
-    embedding. We L2-normalize before returning so cosine and dot-product
-    are equivalent.
-
-The high-level `ProductionDiarizer` glues VAD + encoder + agglomerative
-clustering into the same `diarize(pcm) -> list[dict]` shape as the W3-6
-`SegmentDiarizer`, so the existing test assertions apply verbatim.
+Production tests require PRODUCTION_SPEAKER_STACK=1 and the selected backend's
+assets. Availability and numerical parity must be measured, never assumed.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -81,13 +62,18 @@ def _resolve_voice_classifier_library() -> Path | None:
     for parent in [here, *here.parents]:
         candidate = (
             parent
-            / "packages"
-            / "native-plugins"
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
             / "voice-classifier-cpp"
             / "build"
         )
         if candidate.is_dir():
-            for name in ("libvoice_classifier.so", "libvoice_classifier.dylib", "voice_classifier.dll"):
+            for name in (
+                "libvoice_classifier.so",
+                "libvoice_classifier.dylib",
+                "voice_classifier.dll",
+            ):
                 p = candidate / name
                 if p.exists():
                     return p
@@ -104,7 +90,9 @@ def _resolve_diarizer_gguf() -> Path | None:
         return p if p.exists() else None
     here = Path(__file__).resolve()
     for parent in [here, *here.parents]:
-        candidate = parent / "models" / "voice" / "diarizer" / "pyannote-segmentation-3.0.gguf"
+        candidate = (
+            parent / "models" / "voice" / "diarizer" / "pyannote-segmentation-3.0.gguf"
+        )
         if candidate.exists():
             return candidate
     return None
@@ -118,7 +106,7 @@ class PyannoteDiarizer:
       - ``backend="ggml"`` (default): bun:ffi-equivalent path — loads the
         pure-C `libvoice_classifier` (K3) and the matching GGUF at
         `models/voice/diarizer/pyannote-segmentation-3.0.gguf`. Numerical
-        parity vs ONNX is 100 % per-frame on the W3-6 fixtures.
+        parity with ONNX requires a separately measured comparison.
       - ``backend="onnx"``: legacy onnxruntime path against the same
         pyannote-segmentation-3.0 ONNX file on HF. Retained for parity
         verification during the J1/K3 transition; will be removed once
@@ -138,7 +126,7 @@ class PyannoteDiarizer:
     _ggml: Any = field(default=None, init=False, repr=False)
 
     @classmethod
-    def load(cls, backend: str | None = None) -> "PyannoteDiarizer":
+    def load(cls, backend: str | None = None) -> PyannoteDiarizer:
         """Load the diarizer. `backend` defaults to the K3 ggml path; set
         to "onnx" to use the legacy onnxruntime backend for parity tests."""
         if backend is None:
@@ -147,16 +135,18 @@ class PyannoteDiarizer:
             gguf_path = _resolve_diarizer_gguf()
             library_path = _resolve_voice_classifier_library()
             if gguf_path is None or library_path is None:
-                # Fall back to ONNX if the K3 artefacts aren't staged so
-                # the test suite stays runnable on machines without the
-                # repo-local build.
-                return cls(
-                    onnx_path=_hf_download("voice/diarizer/pyannote-segmentation-3.0-int8.onnx"),
-                    backend="onnx",
+                raise FileNotFoundError(
+                    "Native diarization requires VOICE_DIARIZER_GGUF and "
+                    "VOICE_CLASSIFIER_LIB (or their repository build locations). "
+                    "Set PYANNOTE_BACKEND=onnx explicitly to evaluate ONNX."
                 )
             return cls(gguf_path=gguf_path, library_path=library_path, backend="ggml")
+        if backend != "onnx":
+            raise ValueError(f"unknown backend: {backend!r}")
         return cls(
-            onnx_path=_hf_download("voice/diarizer/pyannote-segmentation-3.0-int8.onnx"),
+            onnx_path=_hf_download(
+                "voice/diarizer/pyannote-segmentation-3.0-int8.onnx"
+            ),
             backend="onnx",
         )
 
@@ -171,9 +161,13 @@ class PyannoteDiarizer:
         elif self.backend == "ggml":
             assert self.library_path is not None and self.gguf_path is not None
             import ctypes
+
             lib = ctypes.CDLL(str(self.library_path))
             # int voice_diarizer_open(const char *gguf, void **out);
-            lib.voice_diarizer_open.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
+            lib.voice_diarizer_open.argtypes = [
+                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_void_p),
+            ]
             lib.voice_diarizer_open.restype = ctypes.c_int
             # int voice_diarizer_segment(void *h, const float *pcm, size_t n,
             #                            int8_t *labels_out, size_t *frames_cap);
@@ -188,7 +182,9 @@ class PyannoteDiarizer:
             lib.voice_diarizer_close.argtypes = [ctypes.c_void_p]
             lib.voice_diarizer_close.restype = ctypes.c_int
             handle = ctypes.c_void_p()
-            rc = lib.voice_diarizer_open(str(self.gguf_path).encode("utf-8"), ctypes.byref(handle))
+            rc = lib.voice_diarizer_open(
+                str(self.gguf_path).encode("utf-8"), ctypes.byref(handle)
+            )
             if rc != 0 or not handle.value:
                 raise RuntimeError(
                     f"voice_diarizer_open({self.gguf_path}) failed with rc={rc}"
@@ -202,8 +198,8 @@ class PyannoteDiarizer:
             lib, handle = self._ggml
             try:
                 lib.voice_diarizer_close(handle)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                logging.getLogger(__name__).exception("Failed to close native diarizer")
             self._ggml = None
 
     def _run_window(self, chunk: np.ndarray) -> np.ndarray:
@@ -218,6 +214,7 @@ class PyannoteDiarizer:
             return probs.argmax(axis=-1).astype(np.int32)
         # ggml path
         import ctypes
+
         lib, handle = self._ggml
         pcm = np.ascontiguousarray(chunk, dtype=np.float32)
         labels = np.zeros(293, dtype=np.int8)
@@ -266,13 +263,13 @@ class PyannoteDiarizer:
         # Powerset class index → list of single-speaker indices active.
         # Per pyannote-audio Powerset(max_speakers=3, max_overlap=2).
         powerset_to_speakers: dict[int, list[int]] = {
-            0: [],          # silence
-            1: [0],         # speaker 0
-            2: [1],         # speaker 1
-            3: [2],         # speaker 2
-            4: [0, 1],      # overlap 0+1
-            5: [0, 2],      # overlap 0+2
-            6: [1, 2],      # overlap 1+2
+            0: [],  # silence
+            1: [0],  # speaker 0
+            2: [1],  # speaker 1
+            3: [2],  # speaker 2
+            4: [0, 1],  # overlap 0+1
+            5: [0, 2],  # overlap 0+2
+            6: [1, 2],  # overlap 1+2
         }
 
         all_segments: list[tuple[int, int, int, int]] = []
@@ -347,7 +344,7 @@ class WespeakerEncoder:
     _session: Any = field(default=None, init=False, repr=False)
 
     @classmethod
-    def load(cls) -> "WespeakerEncoder":
+    def load(cls) -> WespeakerEncoder:
         return cls(
             onnx_path=_hf_download("voice/speaker-encoder/wespeaker-resnet34-lm.onnx"),
         )
@@ -362,7 +359,7 @@ class WespeakerEncoder:
     def _fbank(self, pcm: np.ndarray) -> np.ndarray:
         """Compute 80-dim Kaldi Fbank features at 25 ms / 10 ms."""
         import torch  # type: ignore[import-untyped]
-        import torchaudio.compliance.kaldi as kaldi  # type: ignore[import-untyped]
+        from torchaudio.compliance import kaldi  # type: ignore[import-untyped]
 
         if pcm.dtype != np.float32:
             pcm = pcm.astype(np.float32)
@@ -411,11 +408,13 @@ class ProductionDiarizer:
     encoder: WespeakerEncoder
 
     @classmethod
-    def load(cls) -> "ProductionDiarizer":
+    def load(cls) -> ProductionDiarizer:
         return cls(diarizer=PyannoteDiarizer.load(), encoder=WespeakerEncoder.load())
 
     def diarize(self, pcm: np.ndarray) -> list[dict]:
-        from sklearn.cluster import AgglomerativeClustering  # type: ignore[import-not-found]
+        from sklearn.cluster import (
+            AgglomerativeClustering,  # type: ignore[import-not-found]
+        )
 
         segments = self.diarizer.segment(pcm)
         if not segments:

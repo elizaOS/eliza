@@ -33,16 +33,17 @@ import {
   type TriggerConfig,
   type TriggerType,
   type TriggerWakeMode,
+  textStatesExplicitRecurrence,
   toWellFormedUnicode,
   type UUID,
   unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
+
 import {
   AUTONOMY_SERVICE_TYPE,
   resolveMessageTimeZone,
 } from "@elizaos/plugin-assistant";
-import { textStatesExplicitRecurrence } from "@elizaos/shared";
 import {
   describeCronSchedule,
   describeIntervalMs,

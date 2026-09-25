@@ -15,3 +15,5 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-personal-assistant build  # build
 bun run --cwd plugins/plugin-personal-assistant test   # tests
 ```
+
+The managed morning brief follows authenticated owner foreground activity after the configured owner-day boundary (04:00 by default), with admission and day consumption persisted on its scheduled-task row. Manual refresh is separate; customized schedules are preserved. Android requires an authenticated user-present report with an unlocked, interactive device; iOS uses foreground events. Client reports are not OS attestation. Duplicate defaults and unresolved legacy delivery require reconciliation.

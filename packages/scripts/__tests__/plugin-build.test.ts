@@ -42,7 +42,6 @@ const TS_CONFIG = {
 describe("workspace production emit", () => {
   test.each([
     ["packages/agent", "index.js"],
-    ["packages/shared", "index.js"],
     ["plugins/plugin-computeruse", "index.d.ts"],
     ["plugins/plugin-wallet", "index.d.ts"],
   ])(

@@ -14,15 +14,25 @@
 
 import type { JsonValue } from "@elizaos/core";
 import type {
+	AgentAutomationMode as SharedAgentAutomationMode,
+	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
+} from "@elizaos/core/api/agent-api-types";
+import type { SubscriptionStatusResponse } from "@elizaos/core/contracts/first-run-options";
+import type { ExistingElizaInstallInfo } from "@elizaos/core/contracts/host-types";
+import type {
+	PermissionId,
+	PermissionState,
+} from "@elizaos/core/contracts/permissions";
+import type {
 	EncryptedRemoteControlEnvelope,
-	ExistingElizaInstallInfo,
 	RemoteCommandAction,
 	RemoteControllerPlatform,
 	RemoteControllerPublicIdentity,
 	RemoteJsonValue,
 	RemoteTargetPublicIdentity,
 	SignedRemoteCommand,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
+import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/core/contracts/wallet-types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
 	DatabaseBackupResult,
@@ -85,10 +95,8 @@ import type {
 // ============================================================================
 // Shared Types
 // ============================================================================
-
 type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
 type BrowserWorkspaceTabKind = "internal" | "standard";
-
 export interface BrowserWorkspaceTab {
 	id: string;
 	title: string;
@@ -104,12 +112,10 @@ export interface BrowserWorkspaceTab {
 	provider?: string | null;
 	status?: string | null;
 }
-
 export interface BrowserWorkspaceSnapshot {
 	mode: BrowserWorkspaceMode;
 	tabs: BrowserWorkspaceTab[];
 }
-
 export interface OpenBrowserWorkspaceTabRequest {
 	url?: string;
 	title?: string;
@@ -121,19 +127,16 @@ export interface OpenBrowserWorkspaceTabRequest {
 	width?: number;
 	height?: number;
 }
-
 export interface NavigateBrowserWorkspaceTabRequest {
 	id: string;
 	url: string;
 	partition?: string;
 }
-
 // -- Desktop --
 export type {
 	ExistingElizaInstallInfo,
 	ExistingElizaInstallSource,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/host-types";
 export interface StateDirMigrationResult {
 	ok: boolean;
 	migrated: boolean;
@@ -142,7 +145,6 @@ export interface StateDirMigrationResult {
 	error?: string;
 	skippedReason?: "same-path" | "source-missing" | "source-not-directory";
 }
-
 export interface TrayMenuItem {
 	id: string;
 	label?: string;
@@ -154,7 +156,6 @@ export interface TrayMenuItem {
 	accelerator?: string;
 	submenu?: TrayMenuItem[];
 }
-
 export interface TrayOptions {
 	icon: string;
 	tooltip?: string;
@@ -166,13 +167,11 @@ export interface TrayOptions {
 	width?: number;
 	height?: number;
 }
-
 export interface ShortcutOptions {
 	id: string;
 	accelerator: string;
 	enabled?: boolean;
 }
-
 export interface NotificationOptions {
 	title: string;
 	body?: string;
@@ -180,7 +179,6 @@ export interface NotificationOptions {
 	silent?: boolean;
 	urgency?: "normal" | "critical" | "low";
 }
-
 export interface DesktopHttpRequestOptions {
 	url: string;
 	method?: string;
@@ -188,7 +186,6 @@ export interface DesktopHttpRequestOptions {
 	body?: string | null;
 	timeoutMs?: number;
 }
-
 export interface DesktopHttpRequestResult {
 	status: number;
 	statusText?: string;
@@ -201,7 +198,6 @@ export interface DesktopHttpRequestResult {
 	 */
 	bodyBase64?: string | null;
 }
-
 /**
  * A buffered local-agent request routed over Electrobun RPC (#12180 / #12355).
  *
@@ -218,14 +214,12 @@ export interface LocalAgentRequestOptions {
 	body?: string | null;
 	timeoutMs?: number;
 }
-
 export interface LocalAgentRequestResult {
 	status: number;
 	statusText?: string;
 	headers?: Record<string, string>;
 	body?: string | null;
 }
-
 /**
  * A streaming local-agent request (chat token SSE) routed over Electrobun RPC.
  * The main process opens the response with `LocalAgentStreamOpen`, pushes body
@@ -240,31 +234,26 @@ export interface LocalAgentStreamRequestOptions {
 	headers?: Record<string, string>;
 	body?: string | null;
 }
-
 export interface LocalAgentStreamOpen {
 	streamId: string;
 	status: number;
 	statusText?: string;
 	headers?: Record<string, string>;
 }
-
 export interface LocalAgentStreamChunkEvent {
 	streamId: string;
 	chunk: string;
 }
-
 export interface LocalAgentStreamEndEvent {
 	streamId: string;
 	error?: string;
 }
-
 export interface WindowBounds {
 	x: number;
 	y: number;
 	width: number;
 	height: number;
 }
-
 export interface WindowOptions {
 	width?: number;
 	height?: number;
@@ -280,7 +269,6 @@ export interface WindowOptions {
 	opacity?: number;
 	title?: string;
 }
-
 export interface DesktopManagedWindowSnapshot {
 	id: string;
 	surface: string;
@@ -288,27 +276,23 @@ export interface DesktopManagedWindowSnapshot {
 	singleton: boolean;
 	alwaysOnTop: boolean;
 }
-
 export interface ClipboardWriteOptions {
 	text?: string;
 	html?: string;
 	image?: string;
 	rtf?: string;
 }
-
 export interface ClipboardReadResult {
 	text?: string;
 	html?: string;
 	rtf?: string;
 	hasImage: boolean;
 }
-
 export interface VersionInfo {
 	version: string;
 	name: string;
 	runtime: string;
 }
-
 export interface DesktopBuildInfo {
 	platform: string;
 	arch: string;
@@ -318,7 +302,6 @@ export interface DesktopBuildInfo {
 	bunVersion?: string;
 	runtime?: Record<string, unknown>;
 }
-
 export interface DesktopUpdaterSnapshot {
 	currentVersion: string;
 	currentHash?: string;
@@ -338,7 +321,6 @@ export interface DesktopUpdaterSnapshot {
 		timestamp: number;
 	} | null;
 }
-
 export type DesktopSessionStorageType =
 	| "cookies"
 	| "localStorage"
@@ -347,7 +329,6 @@ export type DesktopSessionStorageType =
 	| "webSQL"
 	| "cache"
 	| "all";
-
 export interface DesktopSessionCookie {
 	name: string;
 	value?: string;
@@ -358,33 +339,33 @@ export interface DesktopSessionCookie {
 	session?: boolean;
 	expirationDate?: number;
 }
-
 export interface DesktopSessionSnapshot {
 	partition: string;
 	persistent: boolean;
 	cookieCount: number;
 	cookies: DesktopSessionCookie[];
 }
-
 export interface DesktopReleaseNotesWindowInfo {
 	url: string;
 	windowId: number | null;
 	webviewId: number | null;
 }
-
 export interface PowerState {
 	onBattery: boolean;
 	idleState: "active" | "idle" | "locked" | "unknown";
 	idleTime: number;
 }
-
 export interface TrayClickEvent {
 	x: number;
 	y: number;
 	button: string;
-	modifiers: { alt: boolean; shift: boolean; ctrl: boolean; meta: boolean };
+	modifiers: {
+		alt: boolean;
+		shift: boolean;
+		ctrl: boolean;
+		meta: boolean;
+	};
 }
-
 // -- Gateway --
 export interface GatewayEndpoint {
 	stableId: string;
@@ -399,40 +380,25 @@ export interface GatewayEndpoint {
 	tlsFingerprintSha256?: string;
 	isLocal: boolean;
 }
-
 export interface DiscoveryOptions {
 	serviceType?: string;
 	timeout?: number;
 }
-
 export interface DiscoveryResult {
 	gateways: GatewayEndpoint[];
 	status: string;
 }
-
 // -- Permissions --
 export type {
 	PermissionId,
 	PermissionState,
 	PermissionStatus,
-} from "@elizaos/shared";
-
-import type {
-	PermissionId,
-	PermissionState,
-	AgentAutomationMode as SharedAgentAutomationMode,
-	TradePermissionMode as SharedTradePermissionMode,
-	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
-	SubscriptionStatusResponse,
-} from "@elizaos/shared";
-
+} from "@elizaos/core/contracts/permissions";
 export type SystemPermissionId = PermissionId;
-
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {
 	[key: string]: PermissionState;
 }
-
 // -- Canvas --
 export interface CanvasWindowOptions {
 	url?: string;
@@ -444,7 +410,6 @@ export interface CanvasWindowOptions {
 	transparent?: boolean;
 	alwaysOnTop?: boolean;
 }
-
 export interface CanvasWindowInfo {
 	id: string;
 	url: string;
@@ -452,7 +417,6 @@ export interface CanvasWindowInfo {
 	title: string;
 	alwaysOnTop: boolean;
 }
-
 // -- GPU Window / GPU View --
 export interface GpuWindowInfo {
 	id: string;
@@ -460,14 +424,12 @@ export interface GpuWindowInfo {
 	/** Native numeric id of the embedded WGPUView (GpuWindow.wgpuViewId). */
 	wgpuViewId?: number | null;
 }
-
 export interface GpuViewInfo {
 	id: string;
 	frame: WindowBounds;
 	/** Native numeric id of the WGPUView (WGPUView.id). */
 	viewId?: number | null;
 }
-
 // -- Steward Sidecar --
 export interface StewardRpcStatus {
 	state: "stopped" | "starting" | "running" | "error" | "restarting";
@@ -480,14 +442,12 @@ export interface StewardRpcStatus {
 	tenantId: string | null;
 	startedAt: number | null;
 }
-
 // -- Camera --
 export interface CameraDevice {
 	deviceId: string;
 	label: string;
 	kind: string;
 }
-
 // -- Credentials Auto-Detection --
 export interface DetectedProvider {
 	id: string;
@@ -498,21 +458,22 @@ export interface DetectedProvider {
 	status: "valid" | "invalid" | "unchecked" | "error";
 	statusDetail?: string;
 }
-
 export type RendererSecureStoreKind =
 	| "session.device_auth"
 	| "session.steward_token"
 	| "runtime.active_server"
 	| "runtime.agent_profiles";
-
 export type RendererSecureStoreResult =
-	| { ok: true; value?: string; deleted?: boolean }
+	| {
+			ok: true;
+			value?: string;
+			deleted?: boolean;
+	  }
 	| {
 			ok: false;
 			reason: "not_found" | "denied" | "unavailable" | "error";
 			message?: string;
 	  };
-
 export interface RendererSecureStoreStatus {
 	backend:
 		| "android_keystore"
@@ -527,37 +488,34 @@ export interface RendererSecureStoreStatus {
 	scope: "device" | "host" | "unavailable";
 	access: "app_only" | "user_session" | "unavailable";
 }
-
 export interface RuntimeCredentialParams {
 	runtimeId: string;
 }
-
 export interface RuntimeCredentialSetParams extends RuntimeCredentialParams {
 	accessToken: string;
 }
-
 export interface SshHostInspectParams extends RuntimeCredentialParams {
 	target: string;
 	sshPort: number;
 }
-
 export interface SshHostInspection {
 	target: string;
 	host: string;
 	sshPort: number;
-	fingerprints: Array<{ algorithm: string; fingerprint: string }>;
+	fingerprints: Array<{
+		algorithm: string;
+		fingerprint: string;
+	}>;
 	preferredFingerprint: string;
 	pinnedFingerprint: string | null;
 	changed: boolean;
 }
-
 export interface SshRuntimeStartParams extends SshHostInspectParams {
 	remoteApiPort: number;
 	expectedFingerprint: string;
 	identityFile?: string;
 	credentialRef: string;
 }
-
 export interface SshRuntimeRequestParams extends RuntimeCredentialParams {
 	credentialRef?: string;
 	path: string;
@@ -566,14 +524,12 @@ export interface SshRuntimeRequestParams extends RuntimeCredentialParams {
 	body: string | null;
 	timeoutMs: number;
 }
-
 export interface RemoteControllerIdentityParams {
 	ownerId: string;
 	deviceId?: string;
 	displayName: string;
 	platform: "macos" | "windows" | "linux" | "ios" | "android" | "web";
 }
-
 export interface RemoteCommandCreateParams {
 	ownerId: string;
 	grantId: string;
@@ -587,7 +543,6 @@ export interface RemoteCommandCreateParams {
 	action: RemoteCommandAction;
 	payload: RemoteJsonValue;
 }
-
 export interface RemoteCommandOpenResultParams {
 	ownerId: string;
 	controllerDeviceId: string;
@@ -595,9 +550,7 @@ export interface RemoteCommandOpenResultParams {
 	command: SignedRemoteCommand;
 	targetIdentity: RemoteTargetPublicIdentity;
 }
-
 export type RemoteCommandOpenStartReceiptParams = RemoteCommandOpenResultParams;
-
 export interface RemoteTargetEnrollParams {
 	apiBaseUrl: string;
 	ownerId: string;
@@ -606,7 +559,6 @@ export interface RemoteTargetEnrollParams {
 	platform: "macos" | "windows" | "linux";
 	managedNetwork?: boolean;
 }
-
 export interface RemoteTargetRunnerStatusResponse {
 	running: boolean;
 	enrolled: boolean;
@@ -615,7 +567,6 @@ export interface RemoteTargetRunnerStatusResponse {
 	lastPollAt: number | null;
 	lastErrorCode: string | null;
 }
-
 // -- Screencapture --
 export interface ScreenSource {
 	id: string;
@@ -623,7 +574,6 @@ export interface ScreenSource {
 	thumbnail: string;
 	appIcon?: string;
 }
-
 // -- Native Editor Bridge --
 export type NativeEditorId =
 	| "vscode"
@@ -632,27 +582,23 @@ export type NativeEditorId =
 	| "antigravity"
 	| "zed"
 	| "sublime";
-
 export interface NativeEditorInfo {
 	id: NativeEditorId;
 	label: string;
 	installed: boolean;
 	command: string;
 }
-
 export interface EditorSession {
 	editorId: NativeEditorId;
 	workspacePath: string;
 	startedAt: number;
 }
-
 // -- Workspace File Watcher --
 export type FileChangeEventType =
 	| "created"
 	| "modified"
 	| "deleted"
 	| "renamed";
-
 export interface FileChangeEvent {
 	watchId: string;
 	type: FileChangeEventType;
@@ -660,7 +606,6 @@ export interface FileChangeEvent {
 	relativePath: string;
 	timestamp: number;
 }
-
 export interface WatchStatus {
 	watchId: string;
 	watchPath: string;
@@ -668,7 +613,6 @@ export interface WatchStatus {
 	startedAt: number;
 	eventCount: number;
 }
-
 // -- TalkMode --
 export type TalkModeState =
 	| "idle"
@@ -676,14 +620,12 @@ export type TalkModeState =
 	| "processing"
 	| "speaking"
 	| "error";
-
 export interface TalkModeConfig {
 	engine?: "web";
 	modelSize?: string;
 	language?: string;
 	voiceId?: string;
 }
-
 // -- File Dialog --
 export interface FileDialogOptions {
 	title?: string;
@@ -695,12 +637,10 @@ export interface FileDialogOptions {
 	allowsMultipleSelection?: boolean;
 	buttonLabel?: string;
 }
-
 export interface FileDialogResult {
 	canceled: boolean;
 	filePaths: string[];
 }
-
 /**
  * Workspace folder pick result. Used by store builds (Mac App Store, etc.)
  * where the agent's writable area is restricted to user-granted folders.
@@ -716,14 +656,12 @@ export interface WorkspaceFolderPickResult {
 	path: string;
 	bookmark: string | null;
 }
-
 export interface WorkspaceFolderBookmarkResolveResult {
 	ok: boolean;
 	path: string;
 	stale?: boolean;
 	error?: string;
 }
-
 // -- Screen / Display --
 export interface DisplayBounds {
 	x: number;
@@ -731,7 +669,6 @@ export interface DisplayBounds {
 	width: number;
 	height: number;
 }
-
 export interface DisplayInfo {
 	id: number;
 	bounds: DisplayBounds;
@@ -739,12 +676,10 @@ export interface DisplayInfo {
 	scaleFactor: number;
 	isPrimary: boolean;
 }
-
 export interface CursorPosition {
 	x: number;
 	y: number;
 }
-
 // -- Message Box (native alert/confirm/prompt) --
 export interface MessageBoxOptions {
 	type?: "info" | "warning" | "error" | "question";
@@ -755,11 +690,9 @@ export interface MessageBoxOptions {
 	defaultId?: number;
 	cancelId?: number;
 }
-
 export interface MessageBoxResult {
 	response: number;
 }
-
 export interface EmbeddedAgentStatus {
 	state: "not_started" | "starting" | "running" | "stopped" | "error";
 	agentName: string | null;
@@ -767,7 +700,6 @@ export interface EmbeddedAgentStatus {
 	startedAt: number | null;
 	error: string | null;
 }
-
 export type AgentStatusState =
 	| "not_started"
 	| "starting"
@@ -775,14 +707,12 @@ export type AgentStatusState =
 	| "stopped"
 	| "restarting"
 	| "error";
-
 export interface AgentCloudStatusSnapshot {
 	connectionStatus: string;
 	activeAgentId: string | null;
 	cloudProvisioned: boolean;
 	hasApiKey: boolean;
 }
-
 export interface AgentStatusSnapshot {
 	state: AgentStatusState;
 	agentName: string;
@@ -795,17 +725,13 @@ export interface AgentStatusSnapshot {
 	startup?: Record<string, unknown>;
 	cloud?: AgentCloudStatusSnapshot;
 }
-
 export type AgentAutomationMode = SharedAgentAutomationMode;
 export type TradePermissionMode = SharedTradePermissionMode;
-
 export type SettingsConfigSnapshot = Record<string, unknown>;
-
 export interface AgentAutomationModeSnapshot {
 	mode: AgentAutomationMode;
 	options: AgentAutomationMode[];
 }
-
 export interface TradePermissionModeSnapshot {
 	mode: TradePermissionMode;
 	tradePermissionMode: TradePermissionMode;
@@ -814,7 +740,6 @@ export interface TradePermissionModeSnapshot {
 	canUserLocalExecute?: boolean;
 	canAgentAutoTrade?: boolean;
 }
-
 export interface AgentSelfStatusSnapshot {
 	generatedAt: string;
 	state: AgentStatusState;
@@ -860,9 +785,7 @@ export interface AgentSelfStatusSnapshot {
 	};
 	registrySummary?: string;
 }
-
 export type AgentUpdateReleaseChannel = "stable" | "beta" | "nightly";
-
 export interface AgentUpdateStatusSnapshot {
 	currentVersion: string;
 	channel: AgentUpdateReleaseChannel;
@@ -874,35 +797,30 @@ export interface AgentUpdateStatusSnapshot {
 	lastCheckAt: string | null;
 	error: string | null;
 }
-
 export interface RuntimeDebugSnapshotParams {
 	depth?: number;
 	maxArrayLength?: number;
 	maxObjectEntries?: number;
 	maxStringLength?: number;
 }
-
 export interface RuntimeDebugSerializeSettings {
 	maxDepth: number;
 	maxArrayLength: number;
 	maxObjectEntries: number;
 	maxStringLength: number;
 }
-
 export interface RuntimeOrderItem {
 	index: number;
 	name: string;
 	className: string;
 	id: string | null;
 }
-
 export interface RuntimeServiceOrderItem {
 	index: number;
 	serviceType: string;
 	count: number;
 	instances: RuntimeOrderItem[];
 }
-
 export interface RuntimeDebugSnapshot {
 	runtimeAvailable: boolean;
 	generatedAt: number;
@@ -935,9 +853,7 @@ export interface RuntimeDebugSnapshot {
 		services: unknown;
 	};
 }
-
 export type TriggerHealthSnapshot = SharedTriggerHealthSnapshot;
-
 export interface CorePluginEntry {
 	npmName: string;
 	id: string;
@@ -946,12 +862,10 @@ export interface CorePluginEntry {
 	loaded: boolean;
 	enabled: boolean;
 }
-
 export interface CorePluginsSnapshot {
 	core: CorePluginEntry[];
 	optional: CorePluginEntry[];
 }
-
 export interface DesktopStartupDiagnostics {
 	state: "not_started" | "starting" | "running" | "stopped" | "error";
 	phase: string;
@@ -972,16 +886,13 @@ export interface DesktopStartupDiagnostics {
 	packaged?: boolean;
 	locale?: string;
 }
-
 export interface DatabaseRecoveryPreview {
 	snapshot: DatabaseSnapshot;
 	actions: DatabaseSnapshot["recoveryActions"];
 }
-
 export type DatabaseResetPgliteResult = DatabaseResetResult & {
 	restarted: boolean;
 };
-
 export interface DesktopBugReportBundleInfo {
 	directory: string;
 	reportMarkdownPath: string;
@@ -989,7 +900,6 @@ export interface DesktopBugReportBundleInfo {
 	startupLogPath: string | null;
 	startupStatusPath: string | null;
 }
-
 /**
  * Typed response for `getFirstRunStatus` — the renderer's first-boot
  * gate, currently fetched over HTTP at `/api/first-run/status`. Server
@@ -999,11 +909,10 @@ export interface FirstRunStatusSnapshot {
 	complete: boolean;
 	cloudProvisioned?: boolean;
 }
-
 /**
  * Typed response for `getFirstRunOptions` — provider/model catalogs +
  * style presets used by the first-run UI. Mirrors the first-run options
- * structure in `@elizaos/shared/contracts/firstRun`, narrowed to the
+ * structure in `@elizaos/core/contracts/firstRun`, narrowed to the
  * subset the server actually returns at `/api/first-run/options`
  * (server source: `first-run-routes.ts:328`). Fields are kept structural
  * (`unknown`/`Record<string, unknown>`) for items whose shape lives
@@ -1027,7 +936,6 @@ export interface FirstRunOptionsSnapshot {
 	sharedStyleRules: string;
 	githubOAuthAvailable?: boolean;
 }
-
 /**
  * Typed response for `getConfig` — the agent's redacted in-memory
  * config object. Same data as `GET /api/config`. Shape is permissive
@@ -1036,14 +944,12 @@ export interface FirstRunOptionsSnapshot {
  * site as they always have.
  */
 export type ConfigSnapshot = Record<string, unknown>;
-
 export interface ConfigSchemaSnapshot {
 	schema: Record<string, unknown>;
 	uiHints: Record<string, unknown>;
 	version: string;
 	generatedAt: string;
 }
-
 /**
  * Typed response for `listConversations` — matches `GET /api/conversations`.
  * Items pass through as `Record<string, unknown>`; consumers downcast
@@ -1053,42 +959,34 @@ export interface ConfigSchemaSnapshot {
 export interface ConversationsListSnapshot {
 	conversations: ReadonlyArray<Record<string, unknown>>;
 }
-
 export interface ConversationMessagesSnapshot {
 	messages: ReadonlyArray<Record<string, unknown>>;
 }
-
 export interface InboxMessagesParams {
 	limit?: number;
 	sources?: readonly string[];
 	roomId?: string;
 	roomSource?: string;
 }
-
 export interface InboxMessagesSnapshot {
 	messages: ReadonlyArray<Record<string, unknown>>;
 	count: number;
 }
-
 export interface InboxChatsParams {
 	sources?: readonly string[];
 }
-
 export interface InboxChatsSnapshot {
 	chats: ReadonlyArray<Record<string, unknown>>;
 	count: number;
 }
-
 export interface InboxSourcesSnapshot {
 	sources: readonly string[];
 }
-
 /**
  * Typed response for `getCharacter` — matches `GET /api/character`.
  * Dynamic record because the character config is plugin-extensible.
  */
 export type CharacterSnapshot = Record<string, unknown>;
-
 /**
  * Typed response for `getAuthStatus` — pairing/auth gate state for
  * the polling-backend startup phase. Mirrors `GET /api/auth/status`
@@ -1108,7 +1006,6 @@ export interface AuthStatusSnapshot {
 	passwordConfigured?: boolean;
 	instanceId?: string;
 }
-
 /**
  * Typed response for `getAuthMe` — current session identity + access
  * mode. On 401 the server returns a structured reason instead of the
@@ -1142,7 +1039,6 @@ export interface AuthMeSnapshot {
 		};
 	};
 }
-
 /**
  * Aggregated boot/startup snapshot returned by `bootProgress`.
  *
@@ -1177,26 +1073,45 @@ export interface BootProgressSnapshot {
 	/** Wall-clock time the snapshot was assembled, ISO 8601. */
 	updatedAt: string;
 }
-
 // ============================================================================
 // RPC Schema
 // ============================================================================
-
 export type ElizaDesktopRPCSchema = {
 	bun: RPCSchema<{
 		requests: {
 			// ---- Agent ----
-			agentStart: { params: undefined; response: EmbeddedAgentStatus };
-			agentStop: { params: undefined; response: { ok: true } };
-			agentRestart: { params: undefined; response: EmbeddedAgentStatus };
+			agentStart: {
+				params: undefined;
+				response: EmbeddedAgentStatus;
+			};
+			agentStop: {
+				params: undefined;
+				response: {
+					ok: true;
+				};
+			};
+			agentRestart: {
+				params: undefined;
+				response: EmbeddedAgentStatus;
+			};
 			agentRestartClearLocalDb: {
 				params: undefined;
 				response: EmbeddedAgentStatus;
 			};
-			agentStatus: { params: undefined; response: EmbeddedAgentStatus };
-			getAgentStatus: { params: undefined; response: AgentStatusSnapshot };
+			agentStatus: {
+				params: undefined;
+				response: EmbeddedAgentStatus;
+			};
+			getAgentStatus: {
+				params: undefined;
+				response: AgentStatusSnapshot;
+			};
 			getUpdateStatus: {
-				params: { force?: boolean } | undefined;
+				params:
+					| {
+							force?: boolean;
+					  }
+					| undefined;
 				response: AgentUpdateStatusSnapshot;
 			};
 			getSubscriptionStatus: {
@@ -1225,11 +1140,15 @@ export type ElizaDesktopRPCSchema = {
 			};
 			dynamicViewUnregister: {
 				params: DynamicViewUnregisterParams;
-				response: { removed: boolean };
+				response: {
+					removed: boolean;
+				};
 			};
 			dynamicViewList: {
 				params: undefined;
-				response: { views: DynamicViewManifest[] };
+				response: {
+					views: DynamicViewManifest[];
+				};
 			};
 			dynamicViewOpen: {
 				params: DynamicViewOpenParams;
@@ -1241,11 +1160,15 @@ export type ElizaDesktopRPCSchema = {
 			};
 			dynamicViewPush: {
 				params: DynamicViewPushParams;
-				response: { ok: true };
+				response: {
+					ok: true;
+				};
 			};
 			dynamicViewSessions: {
 				params: undefined;
-				response: { sessions: DynamicViewSession[] };
+				response: {
+					sessions: DynamicViewSession[];
+				};
 			};
 			traceSessionStart: {
 				params: TraceStartSessionParams;
@@ -1259,11 +1182,18 @@ export type ElizaDesktopRPCSchema = {
 				response: TraceSession;
 			};
 			traceSessionCancel: {
-				params: { sessionId: string; reason?: string };
+				params: {
+					sessionId: string;
+					reason?: string;
+				};
 				response: TraceSession;
 			};
 			traceSessionError: {
-				params: { sessionId: string; error: string; details?: JsonValue };
+				params: {
+					sessionId: string;
+					error: string;
+					details?: JsonValue;
+				};
 				response: TraceSession;
 			};
 			traceEventRecord: {
@@ -1277,14 +1207,20 @@ export type ElizaDesktopRPCSchema = {
 							status?: TraceSessionStatus;
 					  }
 					| undefined;
-				response: { sessions: TraceSession[] };
+				response: {
+					sessions: TraceSession[];
+				};
 			};
 			traceSessionGet: {
-				params: { sessionId: string };
+				params: {
+					sessionId: string;
+				};
 				response: TraceSession;
 			};
 			traceSessionSummary: {
-				params: { sessionId: string };
+				params: {
+					sessionId: string;
+				};
 				response: TraceSummary;
 			};
 			traceEventsTail: {
@@ -1293,11 +1229,18 @@ export type ElizaDesktopRPCSchema = {
 			};
 			traceEventsSearch: {
 				params: TraceSearchParams | undefined;
-				response: { events: TraceEvent[] };
+				response: {
+					events: TraceEvent[];
+				};
 			};
 			traceViewOpen: {
-				params: { sessionId: string };
-				response: { session: TraceSession; dynamicViewSessionId: string };
+				params: {
+					sessionId: string;
+				};
+				response: {
+					session: TraceSession;
+					dynamicViewSessionId: string;
+				};
 			};
 			voiceStatus: {
 				params: undefined;
@@ -1305,7 +1248,9 @@ export type ElizaDesktopRPCSchema = {
 			};
 			voiceComponents: {
 				params: undefined;
-				response: { components: VoiceComponentSnapshot[] };
+				response: {
+					components: VoiceComponentSnapshot[];
+				};
 			};
 			voiceStart: {
 				params: VoiceStartParams | undefined;
@@ -1340,8 +1285,14 @@ export type ElizaDesktopRPCSchema = {
 				response: VoiceLatencySummary;
 			};
 			voiceRecentTurns: {
-				params: { limit?: number } | undefined;
-				response: { turns: VoiceTurn[] };
+				params:
+					| {
+							limit?: number;
+					  }
+					| undefined;
+				response: {
+					turns: VoiceTurn[];
+				};
 			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the
@@ -1350,16 +1301,27 @@ export type ElizaDesktopRPCSchema = {
 			 * instead of hitting `/api/health` over HTTP — typed end-to-end,
 			 * no port shifts, no schema drift.
 			 */
-			bootProgress: { params: undefined; response: BootProgressSnapshot };
-			launchProgress: { params: undefined; response: LaunchSnapshot };
+			bootProgress: {
+				params: undefined;
+				response: BootProgressSnapshot;
+			};
+			launchProgress: {
+				params: undefined;
+				response: LaunchSnapshot;
+			};
 			launchEventsTail: {
 				params: LaunchEventsTailParams | undefined;
 				response: LaunchEventsTailResult;
 			};
-			launchRetry: { params: undefined; response: LaunchSnapshot };
+			launchRetry: {
+				params: undefined;
+				response: LaunchSnapshot;
+			};
 			launchOpenDiagnosticsView: {
 				params: undefined;
-				response: { sessionId: string };
+				response: {
+					sessionId: string;
+				};
 			};
 			launchCreateBugReportBundle: {
 				params: undefined;
@@ -1378,7 +1340,11 @@ export type ElizaDesktopRPCSchema = {
 				response: DatabaseBackupResult;
 			};
 			databaseResetPglite: {
-				params: { restart?: boolean } | undefined;
+				params:
+					| {
+							restart?: boolean;
+					  }
+					| undefined;
 				response: DatabaseResetPgliteResult;
 			};
 			/**
@@ -1405,18 +1371,26 @@ export type ElizaDesktopRPCSchema = {
 			 * Typed counterpart to `client.getConfig()` — the agent's
 			 * redacted in-memory config. Same data as `GET /api/config`.
 			 */
-			getConfig: { params: undefined; response: ConfigSnapshot };
+			getConfig: {
+				params: undefined;
+				response: ConfigSnapshot;
+			};
 			updateConfig: {
 				params: SettingsConfigSnapshot;
 				response: SettingsConfigSnapshot;
 			};
-			getConfigSchema: { params: undefined; response: ConfigSchemaSnapshot };
+			getConfigSchema: {
+				params: undefined;
+				response: ConfigSchemaSnapshot;
+			};
 			getAgentAutomationMode: {
 				params: undefined;
 				response: AgentAutomationModeSnapshot;
 			};
 			setAgentAutomationMode: {
-				params: { mode: AgentAutomationMode };
+				params: {
+					mode: AgentAutomationMode;
+				};
 				response: AgentAutomationModeSnapshot;
 			};
 			getTradePermissionMode: {
@@ -1424,7 +1398,9 @@ export type ElizaDesktopRPCSchema = {
 				response: TradePermissionModeSnapshot;
 			};
 			setTradePermissionMode: {
-				params: { mode: TradePermissionMode };
+				params: {
+					mode: TradePermissionMode;
+				};
 				response: TradePermissionModeSnapshot;
 			};
 			/**
@@ -1433,12 +1409,18 @@ export type ElizaDesktopRPCSchema = {
 			 * polling-backend startup phase calls this to decide between
 			 * "no auth needed" and "show pairing/login view".
 			 */
-			getAuthStatus: { params: undefined; response: AuthStatusSnapshot };
+			getAuthStatus: {
+				params: undefined;
+				response: AuthStatusSnapshot;
+			};
 			/**
 			 * Typed counterpart to `client.getAuthMe()` — current session
 			 * identity + access mode. Same data as `GET /api/auth/me`.
 			 */
-			getAuthMe: { params: undefined; response: AuthMeSnapshot };
+			getAuthMe: {
+				params: undefined;
+				response: AuthMeSnapshot;
+			};
 			/**
 			 * Typed counterpart to `client.listConversations()` — drives
 			 * the conversations sidebar. Same data as `GET /api/conversations`.
@@ -1449,7 +1431,9 @@ export type ElizaDesktopRPCSchema = {
 				response: ConversationsListSnapshot;
 			};
 			getConversationMessages: {
-				params: { id: string };
+				params: {
+					id: string;
+				};
 				response: ConversationMessagesSnapshot;
 			};
 			getInboxMessages: {
@@ -1468,32 +1452,67 @@ export type ElizaDesktopRPCSchema = {
 			 * Typed counterpart to `client.getCharacter()` — the agent's
 			 * current character config. Same data as `GET /api/character`.
 			 */
-			getCharacter: { params: undefined; response: CharacterSnapshot };
+			getCharacter: {
+				params: undefined;
+				response: CharacterSnapshot;
+			};
 			agentInspectExistingInstall: {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
 			};
 			agentMigrateStateDir: {
-				params: { fromPath: string };
+				params: {
+					fromPath: string;
+				};
 				response: StateDirMigrationResult;
 			};
 			agentPostReset: {
-				params: { apiBase?: string; bearerToken?: string } | undefined | null;
-				response: { ok: boolean; error?: string };
+				params:
+					| {
+							apiBase?: string;
+							bearerToken?: string;
+					  }
+					| undefined
+					| null;
+				response: {
+					ok: boolean;
+					error?: string;
+				};
 			};
 			agentPostCloudDisconnect: {
-				params: { apiBase?: string; bearerToken?: string } | undefined | null;
-				response: { ok: boolean; error?: string };
+				params:
+					| {
+							apiBase?: string;
+							bearerToken?: string;
+					  }
+					| undefined
+					| null;
+				response: {
+					ok: boolean;
+					error?: string;
+				};
 			};
 			/** Native confirm + main POST (renderer bridge/fetch can stall after a sheet). */
 			agentCloudDisconnectWithConfirm: {
-				params: { apiBase?: string; bearerToken?: string } | undefined | null;
+				params:
+					| {
+							apiBase?: string;
+							bearerToken?: string;
+					  }
+					| undefined
+					| null;
 				response:
-					| { cancelled: true }
-					| { ok: true }
-					| { ok: false; error: string };
+					| {
+							cancelled: true;
+					  }
+					| {
+							ok: true;
+					  }
+					| {
+							ok: false;
+							error: string;
+					  };
 			};
-
 			// ---- Renderer diagnostics ----
 			rendererReportDiagnostic: {
 				params:
@@ -1505,31 +1524,53 @@ export type ElizaDesktopRPCSchema = {
 					  }
 					| undefined
 					| null;
-				response: { ok: true };
+				response: {
+					ok: true;
+				};
 			};
-
 			// ---- Desktop: Tray ----
-			desktopCreateTray: { params: TrayOptions; response: undefined };
-			desktopUpdateTray: { params: Partial<TrayOptions>; response: undefined };
-			desktopDestroyTray: { params: undefined; response: undefined };
-			desktopSetTrayMenu: {
-				params: { menu: TrayMenuItem[] };
+			desktopCreateTray: {
+				params: TrayOptions;
 				response: undefined;
 			};
-
+			desktopUpdateTray: {
+				params: Partial<TrayOptions>;
+				response: undefined;
+			};
+			desktopDestroyTray: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopSetTrayMenu: {
+				params: {
+					menu: TrayMenuItem[];
+				};
+				response: undefined;
+			};
 			// ---- Desktop: Shortcuts ----
 			desktopRegisterShortcut: {
 				params: ShortcutOptions;
-				response: { success: boolean };
+				response: {
+					success: boolean;
+				};
 			};
 			desktopUnregisterShortcut: {
-				params: { id: string };
+				params: {
+					id: string;
+				};
 				response: undefined;
 			};
-			desktopUnregisterAllShortcuts: { params: undefined; response: undefined };
+			desktopUnregisterAllShortcuts: {
+				params: undefined;
+				response: undefined;
+			};
 			desktopIsShortcutRegistered: {
-				params: { accelerator: string };
-				response: { registered: boolean };
+				params: {
+					accelerator: string;
+				};
+				response: {
+					registered: boolean;
+				};
 			};
 			/** Fn-hold push-to-talk (#20483), macOS direct builds only.
 			 *  `permission-missing` means Accessibility/Input Monitoring trust is
@@ -1543,24 +1584,44 @@ export type ElizaDesktopRPCSchema = {
 					fnSystemUsageType: number;
 				};
 			};
-			desktopStopFnHoldMonitor: { params: undefined; response: undefined };
-
+			desktopStopFnHoldMonitor: {
+				params: undefined;
+				response: undefined;
+			};
 			// ---- Desktop: Auto Launch ----
 			desktopSetAutoLaunch: {
-				params: { enabled: boolean; openAsHidden?: boolean };
+				params: {
+					enabled: boolean;
+					openAsHidden?: boolean;
+				};
 				response: undefined;
 			};
 			desktopGetAutoLaunchStatus: {
 				params: undefined;
-				response: { enabled: boolean; openAsHidden: boolean };
+				response: {
+					enabled: boolean;
+					openAsHidden: boolean;
+				};
 			};
-
 			// ---- Desktop: Window ----
-			desktopSetWindowOptions: { params: WindowOptions; response: undefined };
-			desktopGetWindowBounds: { params: undefined; response: WindowBounds };
-			desktopSetWindowBounds: { params: WindowBounds; response: undefined };
+			desktopSetWindowOptions: {
+				params: WindowOptions;
+				response: undefined;
+			};
+			desktopGetWindowBounds: {
+				params: undefined;
+				response: WindowBounds;
+			};
+			desktopSetWindowBounds: {
+				params: WindowBounds;
+				response: undefined;
+			};
 			desktopSetBottomBarExpanded: {
-				params: { expanded: boolean; chip?: boolean; hovered?: boolean };
+				params: {
+					expanded: boolean;
+					chip?: boolean;
+					hovered?: boolean;
+				};
 				response: undefined;
 			};
 			desktopSetBottomBarSurfaceState: {
@@ -1575,69 +1636,138 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: undefined;
 			};
-			desktopMinimizeWindow: { params: undefined; response: undefined };
-			desktopUnminimizeWindow: { params: undefined; response: undefined };
-			desktopMaximizeWindow: { params: undefined; response: undefined };
-			desktopUnmaximizeWindow: { params: undefined; response: undefined };
-			desktopCloseWindow: { params: undefined; response: undefined };
-			desktopShowWindow: { params: undefined; response: undefined };
-			desktopHideWindow: { params: undefined; response: undefined };
-			desktopFocusWindow: { params: undefined; response: undefined };
+			desktopMinimizeWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopUnminimizeWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopMaximizeWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopUnmaximizeWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopCloseWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopShowWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopHideWindow: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopFocusWindow: {
+				params: undefined;
+				response: undefined;
+			};
 			desktopIsWindowMaximized: {
 				params: undefined;
-				response: { maximized: boolean };
+				response: {
+					maximized: boolean;
+				};
 			};
 			desktopIsWindowMinimized: {
 				params: undefined;
-				response: { minimized: boolean };
+				response: {
+					minimized: boolean;
+				};
 			};
 			desktopIsWindowVisible: {
 				params: undefined;
-				response: { visible: boolean };
+				response: {
+					visible: boolean;
+				};
 			};
 			desktopIsWindowFocused: {
 				params: undefined;
-				response: { focused: boolean };
+				response: {
+					focused: boolean;
+				};
 			};
 			desktopSetAlwaysOnTop: {
-				params: { flag: boolean; level?: string };
+				params: {
+					flag: boolean;
+					level?: string;
+				};
 				response: undefined;
 			};
-			desktopSetFullscreen: { params: { flag: boolean }; response: undefined };
-			desktopSetOpacity: { params: { opacity: number }; response: undefined };
-
+			desktopSetFullscreen: {
+				params: {
+					flag: boolean;
+				};
+				response: undefined;
+			};
+			desktopSetOpacity: {
+				params: {
+					opacity: number;
+				};
+				response: undefined;
+			};
 			// ---- Desktop: Notifications ----
 			desktopShowNotification: {
 				params: NotificationOptions;
-				response: { id: string };
+				response: {
+					id: string;
+				};
 			};
-			desktopCloseNotification: { params: { id: string }; response: undefined };
+			desktopCloseNotification: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
 			desktopShowBackgroundNotice: {
 				params: undefined;
-				response: { shown: boolean };
+				response: {
+					shown: boolean;
+				};
 			};
-
 			// ---- Desktop: Power ----
-			desktopGetPowerState: { params: undefined; response: PowerState };
-
+			desktopGetPowerState: {
+				params: undefined;
+				response: PowerState;
+			};
 			// ---- Screen ----
-			desktopGetPrimaryDisplay: { params: undefined; response: DisplayInfo };
+			desktopGetPrimaryDisplay: {
+				params: undefined;
+				response: DisplayInfo;
+			};
 			desktopGetAllDisplays: {
 				params: undefined;
-				response: { displays: DisplayInfo[] };
+				response: {
+					displays: DisplayInfo[];
+				};
 			};
-			desktopGetCursorPosition: { params: undefined; response: CursorPosition };
-
+			desktopGetCursorPosition: {
+				params: undefined;
+				response: CursorPosition;
+			};
 			// ---- Desktop: Message Box ----
 			desktopShowMessageBox: {
 				params: MessageBoxOptions;
 				response: MessageBoxResult;
 			};
-
 			// ---- Desktop: App ----
-			desktopQuit: { params: undefined; response: undefined };
-			desktopRelaunch: { params: undefined; response: undefined };
-			desktopApplyUpdate: { params: undefined; response: undefined };
+			desktopQuit: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopRelaunch: {
+				params: undefined;
+				response: undefined;
+			};
+			desktopApplyUpdate: {
+				params: undefined;
+				response: undefined;
+			};
 			desktopCheckForUpdates: {
 				params: undefined;
 				response: DesktopUpdaterSnapshot;
@@ -1646,20 +1776,41 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: DesktopUpdaterSnapshot;
 			};
-			desktopGetVersion: { params: undefined; response: VersionInfo };
-			desktopGetBuildInfo: { params: undefined; response: DesktopBuildInfo };
-			desktopIsPackaged: { params: undefined; response: { packaged: boolean } };
+			desktopGetVersion: {
+				params: undefined;
+				response: VersionInfo;
+			};
+			desktopGetBuildInfo: {
+				params: undefined;
+				response: DesktopBuildInfo;
+			};
+			desktopIsPackaged: {
+				params: undefined;
+				response: {
+					packaged: boolean;
+				};
+			};
 			desktopGetDockIconVisibility: {
 				params: undefined;
-				response: { visible: boolean };
+				response: {
+					visible: boolean;
+				};
 			};
 			desktopSetDockIconVisibility: {
-				params: { visible: boolean };
-				response: { visible: boolean };
+				params: {
+					visible: boolean;
+				};
+				response: {
+					visible: boolean;
+				};
 			};
 			desktopGetPath: {
-				params: { name: string };
-				response: { path: string };
+				params: {
+					name: string;
+				};
+				response: {
+					path: string;
+				};
 			};
 			desktopGetStartupDiagnostics: {
 				params: undefined;
@@ -1678,12 +1829,20 @@ export type ElizaDesktopRPCSchema = {
 				response: DesktopHttpRequestResult;
 			};
 			nativeTranscriptPublishStream: {
-				params: { schema: string; events: unknown[] };
-				response: { view: unknown; rejectedIndexes: number[] };
+				params: {
+					schema: string;
+					events: unknown[];
+				};
+				response: {
+					view: unknown;
+					rejectedIndexes: number[];
+				};
 			};
 			nativeTranscriptReadViewModel: {
 				params: undefined;
-				response: { view: unknown };
+				response: {
+					view: unknown;
+				};
 			};
 			localAgentRequest: {
 				params: LocalAgentRequestOptions;
@@ -1693,7 +1852,10 @@ export type ElizaDesktopRPCSchema = {
 				params: LocalAgentStreamRequestOptions;
 				response: LocalAgentStreamOpen;
 			};
-			desktopOpenLogsFolder: { params: undefined; response: undefined };
+			desktopOpenLogsFolder: {
+				params: undefined;
+				response: undefined;
+			};
 			desktopCreateBugReportBundle: {
 				params: {
 					reportMarkdown: string;
@@ -1702,13 +1864,22 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: DesktopBugReportBundleInfo;
 			};
-			desktopBeep: { params: undefined; response: undefined };
+			desktopBeep: {
+				params: undefined;
+				response: undefined;
+			};
 			desktopShowSelectionContextMenu: {
-				params: { text: string };
-				response: { shown: boolean };
+				params: {
+					text: string;
+				};
+				response: {
+					shown: boolean;
+				};
 			};
 			desktopGetSessionSnapshot: {
-				params: { partition: string };
+				params: {
+					partition: string;
+				};
 				response: DesktopSessionSnapshot;
 			};
 			desktopClearSessionData: {
@@ -1730,11 +1901,18 @@ export type ElizaDesktopRPCSchema = {
 				};
 			};
 			desktopOpenReleaseNotesWindow: {
-				params: { url: string; title?: string };
+				params: {
+					url: string;
+					title?: string;
+				};
 				response: DesktopReleaseNotesWindowInfo;
 			};
 			desktopOpenSettingsWindow: {
-				params: { tabHint?: string } | undefined;
+				params:
+					| {
+							tabHint?: string;
+					  }
+					| undefined;
 				response: undefined;
 			};
 			desktopOpenSurfaceWindow: {
@@ -1762,10 +1940,14 @@ export type ElizaDesktopRPCSchema = {
 				response: DesktopManagedWindowSnapshot | null;
 			};
 			desktopSetManagedWindowAlwaysOnTop: {
-				params: { id: string; flag: boolean };
-				response: { success: boolean };
+				params: {
+					id: string;
+					flag: boolean;
+				};
+				response: {
+					success: boolean;
+				};
 			};
-
 			// ---- Browser Workspace ----
 			browserWorkspaceGetSnapshot: {
 				params: undefined;
@@ -1773,29 +1955,48 @@ export type ElizaDesktopRPCSchema = {
 			};
 			browserWorkspaceOpenTab: {
 				params: OpenBrowserWorkspaceTabRequest;
-				response: { tab: BrowserWorkspaceTab };
+				response: {
+					tab: BrowserWorkspaceTab;
+				};
 			};
 			browserWorkspaceNavigateTab: {
 				params: NavigateBrowserWorkspaceTabRequest;
-				response: { tab: BrowserWorkspaceTab };
+				response: {
+					tab: BrowserWorkspaceTab;
+				};
 			};
 			browserWorkspaceShowTab: {
-				params: { id: string };
-				response: { tab: BrowserWorkspaceTab };
+				params: {
+					id: string;
+				};
+				response: {
+					tab: BrowserWorkspaceTab;
+				};
 			};
 			browserWorkspaceHideTab: {
-				params: { id: string };
-				response: { tab: BrowserWorkspaceTab };
+				params: {
+					id: string;
+				};
+				response: {
+					tab: BrowserWorkspaceTab;
+				};
 			};
 			browserWorkspaceCloseTab: {
-				params: { id: string };
-				response: { closed: boolean };
+				params: {
+					id: string;
+				};
+				response: {
+					closed: boolean;
+				};
 			};
 			browserWorkspaceSnapshotTab: {
-				params: { id: string };
-				response: { data: string };
+				params: {
+					id: string;
+				};
+				response: {
+					data: string;
+				};
 			};
-
 			// ---- Desktop: Clipboard ----
 			desktopWriteToClipboard: {
 				params: ClipboardWriteOptions;
@@ -1805,24 +2006,39 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: ClipboardReadResult;
 			};
-			desktopClearClipboard: { params: undefined; response: undefined };
+			desktopClearClipboard: {
+				params: undefined;
+				response: undefined;
+			};
 			desktopClipboardAvailableFormats: {
 				params: undefined;
-				response: { formats: string[] };
+				response: {
+					formats: string[];
+				};
 			};
-
 			// ---- Desktop: Shell ----
 			desktopOpenBrowser: {
 				params: { url: string };
 				response: { engine: "chromium"; surface: "window" };
 			};
-			desktopOpenExternal: { params: { url: string }; response: undefined };
-			desktopShowItemInFolder: {
-				params: { path: string };
+			desktopOpenExternal: {
+				params: {
+					url: string;
+				};
 				response: undefined;
 			};
-			desktopOpenPath: { params: { path: string }; response: undefined };
-
+			desktopShowItemInFolder: {
+				params: {
+					path: string;
+				};
+				response: undefined;
+			};
+			desktopOpenPath: {
+				params: {
+					path: string;
+				};
+				response: undefined;
+			};
 			// ---- Desktop: File Dialogs ----
 			desktopShowOpenDialog: {
 				params: FileDialogOptions;
@@ -1833,62 +2049,98 @@ export type ElizaDesktopRPCSchema = {
 				response: FileDialogResult;
 			};
 			desktopPickWorkspaceFolder: {
-				params: { defaultPath?: string; promptTitle?: string };
+				params: {
+					defaultPath?: string;
+					promptTitle?: string;
+				};
 				response: WorkspaceFolderPickResult;
 			};
 			desktopResolveWorkspaceFolderBookmark: {
-				params: { bookmark: string };
+				params: {
+					bookmark: string;
+				};
 				response: WorkspaceFolderBookmarkResolveResult;
 			};
 			desktopReleaseWorkspaceFolderBookmarks: {
 				params: undefined;
-				response: { ok: true };
+				response: {
+					ok: true;
+				};
 			};
-
 			// ---- Gateway ----
 			gatewayStartDiscovery: {
 				params: DiscoveryOptions | undefined;
 				response: DiscoveryResult;
 			};
-			gatewayStopDiscovery: { params: undefined; response: undefined };
+			gatewayStopDiscovery: {
+				params: undefined;
+				response: undefined;
+			};
 			gatewayIsDiscovering: {
 				params: undefined;
-				response: { isDiscovering: boolean };
+				response: {
+					isDiscovering: boolean;
+				};
 			};
 			gatewayGetDiscoveredGateways: {
 				params: undefined;
-				response: { gateways: GatewayEndpoint[] };
+				response: {
+					gateways: GatewayEndpoint[];
+				};
 			};
-
 			// ---- Permissions ----
 			permissionsCheck: {
-				params: { id: SystemPermissionId; forceRefresh?: boolean };
+				params: {
+					id: SystemPermissionId;
+					forceRefresh?: boolean;
+				};
 				response: PermissionState;
 			};
 			permissionsCheckFeature: {
-				params: { featureId: string };
-				response: { granted: boolean; missing: SystemPermissionId[] };
+				params: {
+					featureId: string;
+				};
+				response: {
+					granted: boolean;
+					missing: SystemPermissionId[];
+				};
 			};
 			permissionsRequest: {
-				params: { id: SystemPermissionId };
+				params: {
+					id: SystemPermissionId;
+				};
 				response: PermissionState;
 			};
 			permissionsGetAll: {
-				params: { forceRefresh?: boolean };
+				params: {
+					forceRefresh?: boolean;
+				};
 				response: AllPermissionsState;
 			};
-			permissionsGetPlatform: { params: undefined; response: string };
-			permissionsIsShellEnabled: { params: undefined; response: boolean };
+			permissionsGetPlatform: {
+				params: undefined;
+				response: string;
+			};
+			permissionsIsShellEnabled: {
+				params: undefined;
+				response: boolean;
+			};
 			permissionsSetShellEnabled: {
-				params: { enabled: boolean };
+				params: {
+					enabled: boolean;
+				};
 				response: PermissionState;
 			};
-			permissionsClearCache: { params: undefined; response: undefined };
-			permissionsOpenSettings: {
-				params: { id: SystemPermissionId };
+			permissionsClearCache: {
+				params: undefined;
 				response: undefined;
 			};
-
+			permissionsOpenSettings: {
+				params: {
+					id: SystemPermissionId;
+				};
+				response: undefined;
+			};
 			// ---- Location ----
 			locationGetCurrentPosition: {
 				params: undefined;
@@ -1900,10 +2152,19 @@ export type ElizaDesktopRPCSchema = {
 				} | null;
 			};
 			locationWatchPosition: {
-				params: { interval?: number };
-				response: { watchId: string };
+				params: {
+					interval?: number;
+				};
+				response: {
+					watchId: string;
+				};
 			};
-			locationClearWatch: { params: { watchId: string }; response: undefined };
+			locationClearWatch: {
+				params: {
+					watchId: string;
+				};
+				response: undefined;
+			};
 			locationGetLastKnownLocation: {
 				params: undefined;
 				response: {
@@ -1913,55 +2174,96 @@ export type ElizaDesktopRPCSchema = {
 					timestamp: number;
 				} | null;
 			};
-
 			// ---- Camera (graceful stubs) ----
 			cameraGetDevices: {
 				params: undefined;
-				response: { devices: CameraDevice[]; available: boolean };
+				response: {
+					devices: CameraDevice[];
+					available: boolean;
+				};
 			};
 			cameraStartPreview: {
-				params: { deviceId?: string };
-				response: { available: boolean; reason?: string };
+				params: {
+					deviceId?: string;
+				};
+				response: {
+					available: boolean;
+					reason?: string;
+				};
 			};
-			cameraStopPreview: { params: undefined; response: undefined };
+			cameraStopPreview: {
+				params: undefined;
+				response: undefined;
+			};
 			cameraSwitchCamera: {
-				params: { deviceId: string };
-				response: { available: boolean };
+				params: {
+					deviceId: string;
+				};
+				response: {
+					available: boolean;
+				};
 			};
 			cameraCapturePhoto: {
 				params: undefined;
-				response: { available: boolean; data?: string };
+				response: {
+					available: boolean;
+					data?: string;
+				};
 			};
 			cameraStartRecording: {
 				params: undefined;
-				response: { available: boolean };
+				response: {
+					available: boolean;
+				};
 			};
 			cameraStopRecording: {
 				params: undefined;
-				response: { available: boolean; path?: string };
+				response: {
+					available: boolean;
+					path?: string;
+				};
 			};
 			cameraGetRecordingState: {
 				params: undefined;
-				response: { recording: boolean; duration: number };
+				response: {
+					recording: boolean;
+					duration: number;
+				};
 			};
 			cameraCheckPermissions: {
 				params: undefined;
-				response: { status: string };
+				response: {
+					status: string;
+				};
 			};
 			cameraRequestPermissions: {
 				params: undefined;
-				response: { status: string };
+				response: {
+					status: string;
+				};
 			};
-
 			// ---- Canvas ----
 			canvasCreateWindow: {
 				params: CanvasWindowOptions;
-				response: { id: string };
+				response: {
+					id: string;
+				};
 			};
-			canvasDestroyWindow: { params: { id: string }; response: undefined };
+			canvasDestroyWindow: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
 			canvasNavigate: {
-				params: { id: string; url: string };
-				response: { available: boolean; reason?: string };
+				params: {
+					id: string;
+					url: string;
+				};
+				response: {
+					available: boolean;
+					reason?: string;
+				};
 			};
 			/**
 			 * PRIVILEGED: Executes arbitrary JavaScript in a canvas BrowserWindow.
@@ -1970,81 +2272,157 @@ export type ElizaDesktopRPCSchema = {
 			 * Any XSS in the main webview could invoke this on canvas windows.
 			 */
 			canvasEval: {
-				params: { id: string; script: string };
+				params: {
+					id: string;
+					script: string;
+				};
 				response: unknown;
 			};
 			canvasSnapshot: {
-				params: { id: string; format?: string; quality?: number };
-				response: { data: string } | null;
+				params: {
+					id: string;
+					format?: string;
+					quality?: number;
+				};
+				response: {
+					data: string;
+				} | null;
 			};
 			canvasA2uiPush: {
-				params: { id: string; payload: unknown };
+				params: {
+					id: string;
+					payload: unknown;
+				};
 				response: undefined;
 			};
-			canvasA2uiReset: { params: { id: string }; response: undefined };
-			canvasShow: { params: { id: string }; response: undefined };
-			canvasHide: { params: { id: string }; response: undefined };
+			canvasA2uiReset: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
+			canvasShow: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
+			canvasHide: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
 			canvasResize: {
-				params: { id: string; width: number; height: number };
+				params: {
+					id: string;
+					width: number;
+					height: number;
+				};
 				response: undefined;
 			};
-			canvasFocus: { params: { id: string }; response: undefined };
+			canvasFocus: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
 			canvasGetBounds: {
-				params: { id: string };
+				params: {
+					id: string;
+				};
 				response: WindowBounds;
 			};
 			canvasSetBounds: {
-				params: { id: string } & WindowBounds;
+				params: {
+					id: string;
+				} & WindowBounds;
 				response: undefined;
 			};
 			canvasSetAlwaysOnTop: {
-				params: { id: string; flag: boolean };
-				response: { success: boolean };
+				params: {
+					id: string;
+					flag: boolean;
+				};
+				response: {
+					success: boolean;
+				};
 			};
 			canvasListWindows: {
 				params: undefined;
-				response: { windows: CanvasWindowInfo[] };
+				response: {
+					windows: CanvasWindowInfo[];
+				};
 			};
-
 			// ---- Game ----
 			/** Opens a game client URL in a dedicated isolated BrowserWindow. */
 			gameOpenWindow: {
-				params: { url: string; title?: string; alwaysOnTop?: boolean };
-				response: { id: string };
+				params: {
+					url: string;
+					title?: string;
+					alwaysOnTop?: boolean;
+				};
+				response: {
+					id: string;
+				};
 			};
-
 			// ---- Screencapture (graceful stubs) ----
 			screencaptureGetSources: {
 				params: undefined;
-				response: { sources: ScreenSource[]; available: boolean };
+				response: {
+					sources: ScreenSource[];
+					available: boolean;
+				};
 			};
 			screencaptureTakeScreenshot: {
 				params: undefined;
-				response: { available: boolean; data?: string };
+				response: {
+					available: boolean;
+					data?: string;
+				};
 			};
 			screencaptureCaptureWindow: {
-				params: { windowId?: string };
-				response: { available: boolean; data?: string };
+				params: {
+					windowId?: string;
+				};
+				response: {
+					available: boolean;
+					data?: string;
+				};
 			};
 			screencaptureStartRecording: {
 				params: undefined;
-				response: { available: boolean; reason?: string };
+				response: {
+					available: boolean;
+					reason?: string;
+				};
 			};
 			screencaptureStopRecording: {
 				params: undefined;
-				response: { available: boolean; path?: string };
+				response: {
+					available: boolean;
+					path?: string;
+				};
 			};
 			screencapturePauseRecording: {
 				params: undefined;
-				response: { available: boolean };
+				response: {
+					available: boolean;
+				};
 			};
 			screencaptureResumeRecording: {
 				params: undefined;
-				response: { available: boolean };
+				response: {
+					available: boolean;
+				};
 			};
 			screencaptureGetRecordingState: {
 				params: undefined;
-				response: { recording: boolean; duration: number; paused: boolean };
+				response: {
+					recording: boolean;
+					duration: number;
+					paused: boolean;
+				};
 			};
 			screencaptureStartFrameCapture: {
 				params: {
@@ -2054,29 +2432,49 @@ export type ElizaDesktopRPCSchema = {
 					endpoint?: string;
 					gameUrl?: string;
 				};
-				response: { available: boolean; reason?: string };
+				response: {
+					available: boolean;
+					reason?: string;
+				};
 			};
 			screencaptureStopFrameCapture: {
 				params: undefined;
-				response: { available: boolean };
+				response: {
+					available: boolean;
+				};
 			};
 			screencaptureIsFrameCaptureActive: {
 				params: undefined;
-				response: { active: boolean };
+				response: {
+					active: boolean;
+				};
 			};
 			screencaptureSaveScreenshot: {
-				params: { data: string; filename?: string };
-				response: { available: boolean; path?: string };
+				params: {
+					data: string;
+					filename?: string;
+				};
+				response: {
+					available: boolean;
+					path?: string;
+				};
 			};
 			screencaptureSwitchSource: {
-				params: { sourceId: string };
-				response: { available: boolean };
+				params: {
+					sourceId: string;
+				};
+				response: {
+					available: boolean;
+				};
 			};
 			screencaptureSetCaptureTarget: {
-				params: { webviewId?: string };
-				response: { available: boolean };
+				params: {
+					webviewId?: string;
+				};
+				response: {
+					available: boolean;
+				};
 			};
-
 			// ---- Swabble (wake word) ----
 			swabbleStart: {
 				params: {
@@ -2088,24 +2486,45 @@ export type ElizaDesktopRPCSchema = {
 						enabled?: boolean;
 					};
 				};
-				response: { started: boolean; error?: string };
+				response: {
+					started: boolean;
+					error?: string;
+				};
 			};
-			swabbleStop: { params: undefined; response: undefined };
+			swabbleStop: {
+				params: undefined;
+				response: undefined;
+			};
 			swabbleIsListening: {
 				params: undefined;
-				response: { listening: boolean };
+				response: {
+					listening: boolean;
+				};
 			};
 			// Fused on-device wake (#10351): start/stop the native libwakeword head
 			// detector in the main process. `started:false` (with a reason) when the
 			// model is not staged — the renderer keeps the Swabble fallback.
 			fusedWakeStart: {
-				params: { head?: string; threshold?: number } | undefined;
-				response: { started: boolean; reason?: string };
+				params:
+					| {
+							head?: string;
+							threshold?: number;
+					  }
+					| undefined;
+				response: {
+					started: boolean;
+					reason?: string;
+				};
 			};
-			fusedWakeStop: { params: undefined; response: undefined };
+			fusedWakeStop: {
+				params: undefined;
+				response: undefined;
+			};
 			fusedWakeIsListening: {
 				params: undefined;
-				response: { listening: boolean };
+				response: {
+					listening: boolean;
+				};
 			};
 			swabbleGetConfig: {
 				params: undefined;
@@ -2115,64 +2534,116 @@ export type ElizaDesktopRPCSchema = {
 				params: Record<string, unknown>;
 				response: undefined;
 			};
-			swabbleAudioChunk: { params: { data: string }; response: undefined };
-
+			swabbleAudioChunk: {
+				params: {
+					data: string;
+				};
+				response: undefined;
+			};
 			// ---- TalkMode ----
 			talkmodeStart: {
 				params: undefined;
-				response: { available: boolean; reason?: string };
+				response: {
+					available: boolean;
+					reason?: string;
+				};
 			};
-			talkmodeStop: { params: undefined; response: undefined };
-			talkmodeSpeak: {
-				params: { text: string; directive?: Record<string, unknown> };
+			talkmodeStop: {
+				params: undefined;
 				response: undefined;
 			};
-			talkmodeStopSpeaking: { params: undefined; response: undefined };
+			talkmodeSpeak: {
+				params: {
+					text: string;
+					directive?: Record<string, unknown>;
+				};
+				response: undefined;
+			};
+			talkmodeStopSpeaking: {
+				params: undefined;
+				response: undefined;
+			};
 			talkmodeGetState: {
 				params: undefined;
-				response: { state: TalkModeState };
+				response: {
+					state: TalkModeState;
+				};
 			};
-			talkmodeIsEnabled: { params: undefined; response: { enabled: boolean } };
+			talkmodeIsEnabled: {
+				params: undefined;
+				response: {
+					enabled: boolean;
+				};
+			};
 			talkmodeIsSpeaking: {
 				params: undefined;
-				response: { speaking: boolean };
+				response: {
+					speaking: boolean;
+				};
 			};
-			talkmodeUpdateConfig: { params: TalkModeConfig; response: undefined };
-			talkmodeAudioChunk: { params: { data: string }; response: undefined };
-
+			talkmodeUpdateConfig: {
+				params: TalkModeConfig;
+				response: undefined;
+			};
+			talkmodeAudioChunk: {
+				params: {
+					data: string;
+				};
+				response: undefined;
+			};
 			// ---- Context Menu ----
 			contextMenuAskAgent: {
-				params: { text: string };
+				params: {
+					text: string;
+				};
 				response: undefined;
 			};
 			contextMenuCreateSkill: {
-				params: { text: string };
+				params: {
+					text: string;
+				};
 				response: undefined;
 			};
 			contextMenuQuoteInChat: {
-				params: { text: string };
+				params: {
+					text: string;
+				};
 				response: undefined;
 			};
-
 			// ---- Credentials Auto-Detection ----
 			credentialsScanProviders: {
-				params: { context: "first-run" | "tray-refresh" };
-				response: { providers: DetectedProvider[] };
+				params: {
+					context: "first-run" | "tray-refresh";
+				};
+				response: {
+					providers: DetectedProvider[];
+				};
 			};
 			credentialsScanAndValidate: {
-				params: { context: "first-run" | "tray-refresh" };
-				response: { providers: DetectedProvider[] };
+				params: {
+					context: "first-run" | "tray-refresh";
+				};
+				response: {
+					providers: DetectedProvider[];
+				};
 			};
 			secureStoreGet: {
-				params: { kind: RendererSecureStoreKind };
+				params: {
+					kind: RendererSecureStoreKind;
+				};
 				response: RendererSecureStoreResult;
 			};
 			secureStoreSet: {
-				params: { kind: RendererSecureStoreKind; value: string };
+				params: {
+					kind: RendererSecureStoreKind;
+					value: string;
+				};
 				response: RendererSecureStoreResult;
 			};
 			secureStoreDelete: {
-				params: { kind: RendererSecureStoreKind };
+				params: {
+					kind: RendererSecureStoreKind;
+				};
 				response: RendererSecureStoreResult;
 			};
 			secureStoreStatus: {
@@ -2181,15 +2652,21 @@ export type ElizaDesktopRPCSchema = {
 			};
 			runtimeCredentialStore: {
 				params: RuntimeCredentialSetParams;
-				response: { stored: true };
+				response: {
+					stored: true;
+				};
 			};
 			runtimeCredentialDelete: {
 				params: RuntimeCredentialParams;
-				response: { deleted: boolean };
+				response: {
+					deleted: boolean;
+				};
 			};
 			runtimeCredentialDeleteRecord: {
 				params: RuntimeCredentialParams;
-				response: { deleted: boolean };
+				response: {
+					deleted: boolean;
+				};
 			};
 			sshRuntimeInspectHost: {
 				params: SshHostInspectParams;
@@ -2205,7 +2682,9 @@ export type ElizaDesktopRPCSchema = {
 			};
 			sshRuntimeStop: {
 				params: RuntimeCredentialParams;
-				response: { stopped: boolean };
+				response: {
+					stopped: boolean;
+				};
 			};
 			sshRuntimeStatus: {
 				params: RuntimeCredentialParams;
@@ -2251,7 +2730,10 @@ export type ElizaDesktopRPCSchema = {
 			};
 			remoteControllerOpenStartReceipt: {
 				params: RemoteCommandOpenStartReceiptParams;
-				response: { startedAt: number; executionId: string };
+				response: {
+					startedAt: number;
+					executionId: string;
+				};
 			};
 			remoteControllerClearSessionState: {
 				params: {
@@ -2259,7 +2741,9 @@ export type ElizaDesktopRPCSchema = {
 					controllerDeviceId: string;
 					sessionId: string;
 				};
-				response: { cleared: boolean };
+				response: {
+					cleared: boolean;
+				};
 			};
 			remoteControllerAcknowledgeEnqueue: {
 				params: {
@@ -2269,7 +2753,9 @@ export type ElizaDesktopRPCSchema = {
 					commandId: string;
 					bindingDigest: string;
 				};
-				response: { acknowledged: boolean };
+				response: {
+					acknowledged: boolean;
+				};
 			};
 			remoteTargetEnroll: {
 				params: RemoteTargetEnrollParams;
@@ -2281,7 +2767,10 @@ export type ElizaDesktopRPCSchema = {
 			};
 			remoteTargetGetIdentity: {
 				params: Record<string, never>;
-				response: { enrolled: boolean; identity?: RemoteTargetPublicIdentity };
+				response: {
+					enrolled: boolean;
+					identity?: RemoteTargetPublicIdentity;
+				};
 			};
 			remoteTargetCreatePairingChallenge: {
 				params: Record<string, never>;
@@ -2294,7 +2783,9 @@ export type ElizaDesktopRPCSchema = {
 				};
 			};
 			remoteTargetReadPairingChallenge: {
-				params: { sessionId: string };
+				params: {
+					sessionId: string;
+				};
 				response: {
 					sessionId: string;
 					status: "pending" | "claimed" | "denied" | "expired";
@@ -2353,7 +2844,9 @@ export type ElizaDesktopRPCSchema = {
 					  };
 			};
 			remoteTargetCompensateActivation: {
-				params: { sessionId: string };
+				params: {
+					sessionId: string;
+				};
 				response: {
 					sessionId: string;
 					status: "denied" | "revoked";
@@ -2361,7 +2854,9 @@ export type ElizaDesktopRPCSchema = {
 				};
 			};
 			remoteTargetCommitActivation: {
-				params: { sessionId: string };
+				params: {
+					sessionId: string;
+				};
 				response: {
 					sessionId: string;
 					status: "active";
@@ -2370,25 +2865,36 @@ export type ElizaDesktopRPCSchema = {
 			};
 			remoteTargetStart: {
 				params: Record<string, never>;
-				response: { running: true };
+				response: {
+					running: true;
+				};
 			};
 			remoteTargetStop: {
 				params: Record<string, never>;
-				response: { running: false };
+				response: {
+					running: false;
+				};
 			};
 			remoteTargetStatus: {
 				params: Record<string, never>;
 				response: RemoteTargetRunnerStatusResponse;
 			};
 			remoteTargetRevoke: {
-				params: { sessionId: string };
-				response: { revoked: true };
+				params: {
+					sessionId: string;
+				};
+				response: {
+					revoked: true;
+				};
 			};
 			remoteTargetFinalizeHostRevoke: {
-				params: { hostId: string };
-				response: { cleaned: true };
+				params: {
+					hostId: string;
+				};
+				response: {
+					cleaned: true;
+				};
 			};
-
 			// ---- GPU Window ----
 			gpuWindowCreate: {
 				params: {
@@ -2404,22 +2910,42 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: GpuWindowInfo;
 			};
-			gpuWindowDestroy: { params: { id: string }; response: undefined };
-			gpuWindowShow: { params: { id: string }; response: undefined };
-			gpuWindowHide: { params: { id: string }; response: undefined };
+			gpuWindowDestroy: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
+			gpuWindowShow: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
+			gpuWindowHide: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
 			gpuWindowSetBounds: {
-				params: { id: string } & WindowBounds;
+				params: {
+					id: string;
+				} & WindowBounds;
 				response: undefined;
 			};
 			gpuWindowGetInfo: {
-				params: { id: string };
+				params: {
+					id: string;
+				};
 				response: GpuWindowInfo | null;
 			};
 			gpuWindowList: {
 				params: undefined;
-				response: { windows: GpuWindowInfo[] };
+				response: {
+					windows: GpuWindowInfo[];
+				};
 			};
-
 			// ---- GPU View ----
 			gpuViewCreate: {
 				params: {
@@ -2435,35 +2961,58 @@ export type ElizaDesktopRPCSchema = {
 				};
 				response: GpuViewInfo;
 			};
-			gpuViewDestroy: { params: { id: string }; response: undefined };
+			gpuViewDestroy: {
+				params: {
+					id: string;
+				};
+				response: undefined;
+			};
 			gpuViewSetFrame: {
-				params: { id: string } & WindowBounds;
+				params: {
+					id: string;
+				} & WindowBounds;
 				response: undefined;
 			};
 			gpuViewSetTransparent: {
-				params: { id: string; transparent: boolean };
+				params: {
+					id: string;
+					transparent: boolean;
+				};
 				response: undefined;
 			};
 			gpuViewSetHidden: {
-				params: { id: string; hidden: boolean };
+				params: {
+					id: string;
+					hidden: boolean;
+				};
 				response: undefined;
 			};
 			gpuViewGetNativeHandle: {
-				params: { id: string };
-				response: { handle: unknown } | null;
+				params: {
+					id: string;
+				};
+				response: {
+					handle: unknown;
+				} | null;
 			};
 			gpuViewList: {
 				params: undefined;
-				response: { views: GpuViewInfo[] };
+				response: {
+					views: GpuViewInfo[];
+				};
 			};
-
 			// ---- Native Editor Bridge ----
 			editorBridgeListEditors: {
 				params: undefined;
-				response: { editors: NativeEditorInfo[] };
+				response: {
+					editors: NativeEditorInfo[];
+				};
 			};
 			editorBridgeOpenInEditor: {
-				params: { editorId: NativeEditorId; workspacePath: string };
+				params: {
+					editorId: NativeEditorId;
+					workspacePath: string;
+				};
 				response: EditorSession;
 			};
 			editorBridgeGetSession: {
@@ -2474,15 +3023,22 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: undefined;
 			};
-
 			// ---- Workspace File Watcher ----
 			fileWatcherStart: {
-				params: { watchPath: string };
-				response: { watchId: string };
+				params: {
+					watchPath: string;
+				};
+				response: {
+					watchId: string;
+				};
 			};
 			fileWatcherStop: {
-				params: { watchId: string };
-				response: { stopped: boolean };
+				params: {
+					watchId: string;
+				};
+				response: {
+					stopped: boolean;
+				};
 			};
 			fileWatcherStopAll: {
 				params: undefined;
@@ -2490,13 +3046,16 @@ export type ElizaDesktopRPCSchema = {
 			};
 			fileWatcherList: {
 				params: undefined;
-				response: { watches: WatchStatus[] };
+				response: {
+					watches: WatchStatus[];
+				};
 			};
 			fileWatcherGetStatus: {
-				params: { watchId: string };
+				params: {
+					watchId: string;
+				};
 				response: WatchStatus | null;
 			};
-
 			// ---- Steward Sidecar ----
 			stewardGetStatus: {
 				params: undefined;
@@ -2504,7 +3063,9 @@ export type ElizaDesktopRPCSchema = {
 			};
 			stewardIsLocalEnabled: {
 				params: undefined;
-				response: { enabled: boolean };
+				response: {
+					enabled: boolean;
+				};
 			};
 			stewardStart: {
 				params: undefined;
@@ -2518,7 +3079,6 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: StewardRpcStatus;
 			};
-
 			// Main-process authority for the one cross-window chat/voice controller.
 			shellControllerConnect: {
 				params: ShellAuthorityConnectParams;
@@ -2530,7 +3090,9 @@ export type ElizaDesktopRPCSchema = {
 			};
 			shellControllerPublishSnapshot: {
 				params: ShellAuthorityPublishSnapshotParams;
-				response: { ok: boolean };
+				response: {
+					ok: boolean;
+				};
 			};
 			shellControllerDispatchCommand: {
 				params: ShellAuthorityDispatchCommandParams;
@@ -2538,34 +3100,44 @@ export type ElizaDesktopRPCSchema = {
 			};
 			shellControllerCompleteCommand: {
 				params: ShellAuthorityCompleteCommandParams;
-				response: { ok: boolean };
+				response: {
+					ok: boolean;
+				};
 			};
 			shellControllerDeliver: {
 				params: ShellAuthorityDeliverParams;
-				response: { ok: boolean };
+				response: {
+					ok: boolean;
+				};
 			};
 		};
 		// biome-ignore lint/complexity/noBannedTypes: empty message schema placeholder for future audio streaming
-		messages: {
-			// Messages the webview sends TO bun (rare - most communication
-			// is request/response). Audio chunks for streaming could go here.
-		};
+		messages: {};
 	}>;
 	webview: RPCSchema<{
 		requests: {
 			// Built-in: evaluateJavascriptWithResponse is added by Electroview.
-
 			// Browser Workspace — bun delegates evaluate/get-tab-rect to the
 			// renderer, which holds the <electrobun-webview> tag refs and runs the
 			// request against the matching tab. The rect is in CSS pixels relative
 			// to the renderer viewport; bun adds the main-window origin and runs
 			// the OS screencapture itself.
 			browserWorkspaceRendererEvaluate: {
-				params: { id: string; script: string; timeoutMs: number };
-				response: { ok: boolean; result?: unknown; error?: string };
+				params: {
+					id: string;
+					script: string;
+					timeoutMs: number;
+				};
+				response: {
+					ok: boolean;
+					result?: unknown;
+					error?: string;
+				};
 			};
 			browserWorkspaceRendererGetTabRect: {
-				params: { id: string };
+				params: {
+					id: string;
+				};
 				response: {
 					x: number;
 					y: number;
@@ -2576,22 +3148,23 @@ export type ElizaDesktopRPCSchema = {
 		};
 		messages: {
 			// Push events FROM bun TO webview
-
 			// Main-authoritative shell controller state, command, delivery, and ping.
 			shellControllerAuthorityState: ShellAuthorityState;
 			shellControllerAuthorityCommand: ShellAuthorityCommandPush;
 			shellControllerAuthorityDelivery: ShellAuthorityDeliveryPush;
-			shellControllerAuthorityPing: { generation: number; now: number };
-
+			shellControllerAuthorityPing: {
+				generation: number;
+				now: number;
+			};
 			// Gateway
 			gatewayDiscovery: {
 				type: "found" | "updated" | "lost";
 				gateway: GatewayEndpoint;
 			};
-
 			// Permissions
-			permissionsChanged: { id: string };
-
+			permissionsChanged: {
+				id: string;
+			};
 			// Desktop: Tray events
 			desktopTrayMenuClick: {
 				itemId: string;
@@ -2600,58 +3173,70 @@ export type ElizaDesktopRPCSchema = {
 				agentStatus?: Record<string, unknown> | null;
 			};
 			desktopTrayClick: TrayClickEvent;
-
 			// Desktop: Shortcut events
-			desktopShortcutPressed: { id: string; accelerator: string };
+			desktopShortcutPressed: {
+				id: string;
+				accelerator: string;
+			};
 			/** Fn (Globe) key hold transition (#20483). `cancelled` is true when a
 			 *  release must NOT send: the user typed an fn-chord during the hold,
 			 *  or the monitor stopped/resynced mid-hold. */
-			desktopFnHoldChanged: { held: boolean; cancelled: boolean };
-
+			desktopFnHoldChanged: {
+				held: boolean;
+				cancelled: boolean;
+			};
 			// Desktop: Window events
 			desktopWindowFocus: undefined;
 			desktopWindowBlur: undefined;
 			desktopWindowMaximize: undefined;
 			desktopWindowUnmaximize: undefined;
 			desktopWindowClose: undefined;
-			desktopShutdownStarted: { reason: string };
+			desktopShutdownStarted: {
+				reason: string;
+			};
 			desktopManagedWindowsChanged: {
 				windows: DesktopManagedWindowSnapshot[];
 			};
-
 			// Canvas: Window events
 			canvasWindowEvent: {
 				windowId: string;
 				event: string;
 				data?: unknown;
 			};
-
 			// Kiosk: in-window dynamic-view surface events. In kiosk shell mode the
 			// dynamic-view session manager pushes these instead of opening native
 			// canvas windows; the KioskShell mounts/unmounts each surface in-canvas.
 			kioskViewEvent: KioskViewEvent;
-
 			// TalkMode: Audio/state push events
-			talkmodeAudioChunkPush: { data: string };
-			talkmodeStateChanged: { state: TalkModeState };
+			talkmodeAudioChunkPush: {
+				data: string;
+			};
+			talkmodeStateChanged: {
+				state: TalkModeState;
+			};
 			talkmodeSpeakComplete: undefined;
 			talkmodeTranscript: {
 				text: string;
-				segments: Array<{ text: string; start: number; end: number }>;
+				segments: Array<{
+					text: string;
+					start: number;
+					end: number;
+				}>;
 			};
 			talkmodeError: {
 				code: string;
 				message: string;
 				recoverable: boolean;
 			};
-
 			// Swabble: Wake word detection
 			swabbleWakeWord: {
 				trigger: string;
 				command: string;
 				transcript: string;
 			};
-			swabbleStateChanged: { listening: boolean };
+			swabbleStateChanged: {
+				listening: boolean;
+			};
 			swabbleTranscript: {
 				transcript: string;
 				segments: Array<{
@@ -2669,25 +3254,33 @@ export type ElizaDesktopRPCSchema = {
 				recoverable: boolean;
 			};
 			// Swabble: audio chunk fallback (native ASR unavailable)
-			swabbleAudioChunkPush: { data: string };
-
+			swabbleAudioChunkPush: {
+				data: string;
+			};
 			// Fused on-device wake (#10351): the native libwakeword head fired in the
 			// main process. The renderer forwards this to the `eliza:fused-wake`
 			// bridge → useWakeController → the bottom bar.
-			voiceFusedWake: { stage: "head-fired"; confidence?: number };
-			voiceFusedWakeState: { listening: boolean };
-
+			voiceFusedWake: {
+				stage: "head-fired";
+				confidence?: number;
+			};
+			voiceFusedWakeState: {
+				listening: boolean;
+			};
 			// Context menu push events (Bun pushes to renderer after processing)
-			contextMenuAskAgent: { text: string };
-			contextMenuCreateSkill: { text: string };
-			contextMenuQuoteInChat: { text: string };
-
+			contextMenuAskAgent: {
+				text: string;
+			};
+			contextMenuCreateSkill: {
+				text: string;
+			};
+			contextMenuQuoteInChat: {
+				text: string;
+			};
 			// Workspace file change push events
 			workspaceFileChanged: FileChangeEvent;
-
 			// Editor bridge push events
 			editorSessionChanged: EditorSession | null;
-
 			// API Base injection
 			apiBaseUpdate: {
 				base: string;
@@ -2695,16 +3288,16 @@ export type ElizaDesktopRPCSchema = {
 				externalApiBase?: string | null;
 				localApiBase?: string | null;
 			};
-
 			// Local-agent IPC streaming push events (#12180 / #12355): a
 			// localAgentStreamRequest response is delivered as an ordered sequence of
 			// chunk events terminated by an end event, all keyed by `streamId`.
 			localAgentStreamChunk: LocalAgentStreamChunkEvent;
 			localAgentStreamEnd: LocalAgentStreamEndEvent;
-
 			// Share target
-			shareTargetReceived: { url: string; text?: string };
-
+			shareTargetReceived: {
+				url: string;
+				text?: string;
+			};
 			// Location push events
 			locationUpdate: {
 				latitude: number;
@@ -2712,17 +3305,20 @@ export type ElizaDesktopRPCSchema = {
 				accuracy: number;
 				timestamp: number;
 			};
-
 			// Desktop: Update events
-			desktopUpdateAvailable: { version: string; releaseNotes?: string };
-			desktopUpdateReady: { version: string };
-
+			desktopUpdateAvailable: {
+				version: string;
+				releaseNotes?: string;
+			};
+			desktopUpdateReady: {
+				version: string;
+			};
 			// GPU Window push events
-			gpuWindowClosed: { id: string };
-
+			gpuWindowClosed: {
+				id: string;
+			};
 			// Steward sidecar status push
 			stewardStatusUpdate: StewardRpcStatus;
-
 			// WebGPU browser support status
 			webGpuBrowserStatus: {
 				available: boolean;
@@ -2734,11 +3330,9 @@ export type ElizaDesktopRPCSchema = {
 		};
 	}>;
 };
-
 // ============================================================================
 // Channel ↔ RPC Method Mapping
 // ============================================================================
-
 /**
  * Maps legacy colon-separated desktop channel names to camelCase RPC
  * method names. Used by the renderer bridge for backward compatibility.
@@ -2762,13 +3356,11 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:setAgentAutomationMode": "setAgentAutomationMode",
 	"agent:getTradePermissionMode": "getTradePermissionMode",
 	"agent:setTradePermissionMode": "setTradePermissionMode",
-
 	// Desktop: Tray
 	"desktop:createTray": "desktopCreateTray",
 	"desktop:updateTray": "desktopUpdateTray",
 	"desktop:destroyTray": "desktopDestroyTray",
 	"desktop:setTrayMenu": "desktopSetTrayMenu",
-
 	// Desktop: Shortcuts
 	"desktop:registerShortcut": "desktopRegisterShortcut",
 	"desktop:unregisterShortcut": "desktopUnregisterShortcut",
@@ -2776,11 +3368,9 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"desktop:isShortcutRegistered": "desktopIsShortcutRegistered",
 	"desktop:startFnHoldMonitor": "desktopStartFnHoldMonitor",
 	"desktop:stopFnHoldMonitor": "desktopStopFnHoldMonitor",
-
 	// Desktop: Auto Launch
 	"desktop:setAutoLaunch": "desktopSetAutoLaunch",
 	"desktop:getAutoLaunchStatus": "desktopGetAutoLaunchStatus",
-
 	// Desktop: Window
 	"desktop:setWindowOptions": "desktopSetWindowOptions",
 	"desktop:getWindowBounds": "desktopGetWindowBounds",
@@ -2801,23 +3391,18 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"desktop:setAlwaysOnTop": "desktopSetAlwaysOnTop",
 	"desktop:setFullscreen": "desktopSetFullscreen",
 	"desktop:setOpacity": "desktopSetOpacity",
-
 	// Desktop: Notifications
 	"desktop:showNotification": "desktopShowNotification",
 	"desktop:closeNotification": "desktopCloseNotification",
 	"desktop:showBackgroundNotice": "desktopShowBackgroundNotice",
-
 	// Desktop: Power
 	"desktop:getPowerState": "desktopGetPowerState",
-
 	// Desktop: Screen
 	"desktop:getPrimaryDisplay": "desktopGetPrimaryDisplay",
 	"desktop:getAllDisplays": "desktopGetAllDisplays",
 	"desktop:getCursorPosition": "desktopGetCursorPosition",
-
 	// Desktop: Message Box
 	"desktop:showMessageBox": "desktopShowMessageBox",
-
 	// Desktop: App
 	"desktop:quit": "desktopQuit",
 	"desktop:relaunch": "desktopRelaunch",
@@ -2853,7 +3438,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
 	"desktop:openAppWindow": "desktopOpenAppWindow",
 	"desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
-
 	// Remote Plugins
 	"dynamic-view:register": "dynamicViewRegister",
 	"dynamic-view:unregister": "dynamicViewUnregister",
@@ -2884,7 +3468,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"voice:synthesizeSpeech": "voiceSynthesizeSpeech",
 	"voice:latency": "voiceLatency",
 	"voice:recentTurns": "voiceRecentTurns",
-
 	// Browser Workspace
 	"browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
 	"browser-workspace:openTab": "browserWorkspaceOpenTab",
@@ -2893,19 +3476,16 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"browser-workspace:hideTab": "browserWorkspaceHideTab",
 	"browser-workspace:closeTab": "browserWorkspaceCloseTab",
 	"browser-workspace:snapshotTab": "browserWorkspaceSnapshotTab",
-
 	// Desktop: Clipboard
 	"desktop:writeToClipboard": "desktopWriteToClipboard",
 	"desktop:readFromClipboard": "desktopReadFromClipboard",
 	"desktop:clearClipboard": "desktopClearClipboard",
 	"desktop:clipboardAvailableFormats": "desktopClipboardAvailableFormats",
-
 	// Desktop: Shell
 	"desktop:openExternal": "desktopOpenExternal",
 	"desktop:openBrowser": "desktopOpenBrowser",
 	"desktop:showItemInFolder": "desktopShowItemInFolder",
 	"desktop:openPath": "desktopOpenPath",
-
 	// Desktop: File Dialogs
 	"desktop:showOpenDialog": "desktopShowOpenDialog",
 	"desktop:showSaveDialog": "desktopShowSaveDialog",
@@ -2914,13 +3494,11 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 		"desktopResolveWorkspaceFolderBookmark",
 	"desktop:releaseWorkspaceFolderBookmarks":
 		"desktopReleaseWorkspaceFolderBookmarks",
-
 	// Gateway
 	"gateway:startDiscovery": "gatewayStartDiscovery",
 	"gateway:stopDiscovery": "gatewayStopDiscovery",
 	"gateway:isDiscovering": "gatewayIsDiscovering",
 	"gateway:getDiscoveredGateways": "gatewayGetDiscoveredGateways",
-
 	// Permissions
 	"permissions:check": "permissionsCheck",
 	"permissions:checkFeature": "permissionsCheckFeature",
@@ -2931,13 +3509,11 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"permissions:setShellEnabled": "permissionsSetShellEnabled",
 	"permissions:clearCache": "permissionsClearCache",
 	"permissions:openSettings": "permissionsOpenSettings",
-
 	// Location
 	"location:getCurrentPosition": "locationGetCurrentPosition",
 	"location:watchPosition": "locationWatchPosition",
 	"location:clearWatch": "locationClearWatch",
 	"location:getLastKnownLocation": "locationGetLastKnownLocation",
-
 	// Camera
 	"camera:getDevices": "cameraGetDevices",
 	"camera:startPreview": "cameraStartPreview",
@@ -2949,7 +3525,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"camera:getRecordingState": "cameraGetRecordingState",
 	"camera:checkPermissions": "cameraCheckPermissions",
 	"camera:requestPermissions": "cameraRequestPermissions",
-
 	// Canvas
 	"canvas:createWindow": "canvasCreateWindow",
 	"canvas:destroyWindow": "canvasDestroyWindow",
@@ -2966,10 +3541,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"canvas:setBounds": "canvasSetBounds",
 	"canvas:setAlwaysOnTop": "canvasSetAlwaysOnTop",
 	"canvas:listWindows": "canvasListWindows",
-
 	// Game
 	"game:openWindow": "gameOpenWindow",
-
 	// Screencapture
 	"screencapture:getSources": "screencaptureGetSources",
 	"screencapture:takeScreenshot": "screencaptureTakeScreenshot",
@@ -2985,7 +3558,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"screencapture:saveScreenshot": "screencaptureSaveScreenshot",
 	"screencapture:switchSource": "screencaptureSwitchSource",
 	"screencapture:setCaptureTarget": "screencaptureSetCaptureTarget",
-
 	// Swabble
 	"swabble:start": "swabbleStart",
 	"swabble:stop": "swabbleStop",
@@ -2996,7 +3568,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"swabble:getConfig": "swabbleGetConfig",
 	"swabble:updateConfig": "swabbleUpdateConfig",
 	"swabble:audioChunk": "swabbleAudioChunk",
-
 	// TalkMode
 	"talkmode:start": "talkmodeStart",
 	"talkmode:stop": "talkmodeStop",
@@ -3007,12 +3578,10 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"talkmode:isSpeaking": "talkmodeIsSpeaking",
 	"talkmode:updateConfig": "talkmodeUpdateConfig",
 	"talkmode:audioChunk": "talkmodeAudioChunk",
-
 	// Context Menu
 	"contextMenu:askAgent": "contextMenuAskAgent",
 	"contextMenu:createSkill": "contextMenuCreateSkill",
 	"contextMenu:quoteInChat": "contextMenuQuoteInChat",
-
 	// Credentials
 	"credentials:scanProviders": "credentialsScanProviders",
 	"credentials:scanAndValidate": "credentialsScanAndValidate",
@@ -3047,7 +3616,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"remoteTarget:status": "remoteTargetStatus",
 	"remoteTarget:revoke": "remoteTargetRevoke",
 	"remoteTarget:finalizeHostRevoke": "remoteTargetFinalizeHostRevoke",
-
 	// GPU Window
 	"gpuWindow:create": "gpuWindowCreate",
 	"gpuWindow:destroy": "gpuWindowDestroy",
@@ -3056,7 +3624,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"gpuWindow:setBounds": "gpuWindowSetBounds",
 	"gpuWindow:getInfo": "gpuWindowGetInfo",
 	"gpuWindow:list": "gpuWindowList",
-
 	// GPU View
 	"gpuView:create": "gpuViewCreate",
 	"gpuView:destroy": "gpuViewDestroy",
@@ -3065,20 +3632,17 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"gpuView:setHidden": "gpuViewSetHidden",
 	"gpuView:getNativeHandle": "gpuViewGetNativeHandle",
 	"gpuView:list": "gpuViewList",
-
 	// Steward Sidecar
 	"steward:getStatus": "stewardGetStatus",
 	"steward:isLocalEnabled": "stewardIsLocalEnabled",
 	"steward:start": "stewardStart",
 	"steward:restart": "stewardRestart",
 	"steward:reset": "stewardReset",
-
 	// Native Editor Bridge
 	"editorBridge:listEditors": "editorBridgeListEditors",
 	"editorBridge:openInEditor": "editorBridgeOpenInEditor",
 	"editorBridge:getSession": "editorBridgeGetSession",
 	"editorBridge:clearSession": "editorBridgeClearSession",
-
 	// Workspace File Watcher
 	"fileWatcher:start": "fileWatcherStart",
 	"fileWatcher:stop": "fileWatcherStop",
@@ -3086,7 +3650,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"fileWatcher:list": "fileWatcherList",
 	"fileWatcher:getStatus": "fileWatcherGetStatus",
 };
-
 /**
  * Maps legacy desktop push channel names to RPC message names.
  * Used by the renderer bridge to subscribe to push events.
@@ -3128,23 +3691,17 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
 	"location:update": "locationUpdate",
 	"desktop:updateAvailable": "desktopUpdateAvailable",
 	"desktop:updateReady": "desktopUpdateReady",
-
 	// GPU Window push events
 	"gpuWindow:closed": "gpuWindowClosed",
-
 	// Steward sidecar
 	stewardStatusUpdate: "stewardStatusUpdate",
-
 	// WebGPU browser support
 	"webgpu:browserStatus": "webGpuBrowserStatus",
-
 	// Workspace file watcher
 	"fileWatcher:fileChanged": "workspaceFileChanged",
-
 	// Editor bridge
 	"editorBridge:sessionChanged": "editorSessionChanged",
 };
-
 /**
  * Reverse mapping: RPC message name → legacy desktop push channel name.
  */

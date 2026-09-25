@@ -9,14 +9,18 @@
  * returns 503 when the feature is unavailable. The activity feed also folds in
  * recent extracted facts from runtime memory.
  */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  PostRelationshipLinkRequestSchema,
+  type RouteRequestContext,
+  type UUID,
+} from "@elizaos/core";
+
 import type {
   RelationshipsGraphQuery,
   RelationshipsGraphService,
   RelationshipsMergeProposalEvidence,
 } from "@elizaos/plugin-assistant";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { PostRelationshipLinkRequestSchema } from "@elizaos/shared";
 import { decodePathComponent } from "./server-helpers.ts";
 
 const UUID_REGEX =

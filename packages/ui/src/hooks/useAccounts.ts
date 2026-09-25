@@ -12,8 +12,7 @@
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/contracts/service-routing";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type {
@@ -22,15 +21,14 @@ import type {
   AccountsListResponse,
   AccountTestResult,
 } from "../api/client-agent";
+import { logger } from "../logger.ts";
 import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
-
 export interface UseAccountsOptions {
   setActionNotice?: ActionNoticeFn;
   /** How often to refetch the full list. Defaults to 30s. */
   pollMs?: number;
 }
-
 export interface UseAccountsResult {
   data: AccountsListResponse | null;
   loading: boolean;
@@ -53,12 +51,19 @@ export interface UseAccountsResult {
   }) => Promise<void>;
   createApiKey: (
     providerId: LinkedAccountProviderId,
-    body: { label: string; apiKey: string },
+    body: {
+      label: string;
+      apiKey: string;
+    },
   ) => Promise<void>;
   patch: (
     providerId: LinkedAccountProviderId,
     accountId: string,
-    body: Partial<{ label: string; enabled: boolean; priority: number }>,
+    body: Partial<{
+      label: string;
+      enabled: boolean;
+      priority: number;
+    }>,
   ) => Promise<void>;
   remove: (
     providerId: LinkedAccountProviderId,
@@ -77,9 +82,7 @@ export interface UseAccountsResult {
     strategy: AccountStrategy,
   ) => Promise<void>;
 }
-
-const DEFAULT_POLL_MS = 30_000;
-
+const DEFAULT_POLL_MS = 30000;
 function describeError(prefix: string, err: unknown): string {
   const message =
     err instanceof Error && err.message.trim()
@@ -87,7 +90,6 @@ function describeError(prefix: string, err: unknown): string {
       : prefix;
   return message;
 }
-
 function replaceAccount(
   list: AccountsListResponse | null,
   providerId: LinkedAccountProviderId,
@@ -115,7 +117,6 @@ function replaceAccount(
     }),
   };
 }
-
 export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const { setActionNotice, pollMs = DEFAULT_POLL_MS } = opts;
   const [data, setData] = useState<AccountsListResponse | null>(null);
@@ -132,7 +133,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const activeListAbortRef = useRef<AbortController | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
-
   const nextAccountVersion = useCallback(
     (providerId: LinkedAccountProviderId, accountId: string) => {
       const key = `${providerId}:${accountId}`;
@@ -142,14 +142,12 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [],
   );
-
   const notify = useCallback(
     (prefix: string, err: unknown) => {
       setActionNotice?.(describeError(prefix, err), "error", 6000);
     },
     [setActionNotice],
   );
-
   const refresh = useCallback<UseAccountsResult["refresh"]>(
     async (created) => {
       if (created) {
@@ -209,7 +207,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [notify],
   );
-
   const markSaving = useCallback((id: string, on: boolean) => {
     setSaving((prev) => {
       const next = new Set(prev);
@@ -218,7 +215,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       return next;
     });
   }, []);
-
   const createApiKey = useCallback<UseAccountsResult["createApiKey"]>(
     async (providerId, body) => {
       stateVersionRef.current += 1;
@@ -253,7 +249,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [markSaving, notify, refresh],
   );
-
   const patch = useCallback<UseAccountsResult["patch"]>(
     async (providerId, accountId, body) => {
       stateVersionRef.current += 1;
@@ -298,7 +293,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [markSaving, nextAccountVersion, notify],
   );
-
   const remove = useCallback<UseAccountsResult["remove"]>(
     async (providerId, accountId) => {
       stateVersionRef.current += 1;
@@ -329,7 +323,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [markSaving, nextAccountVersion, notify],
   );
-
   const test = useCallback<UseAccountsResult["test"]>(
     async (providerId, accountId) => {
       markSaving(`test:${accountId}`, true);
@@ -367,7 +360,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [markSaving, notify, setActionNotice],
   );
-
   const refreshUsage = useCallback<UseAccountsResult["refreshUsage"]>(
     async (providerId, accountId) => {
       stateVersionRef.current += 1;
@@ -412,7 +404,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [markSaving, nextAccountVersion, notify],
   );
-
   const setStrategy = useCallback<UseAccountsResult["setStrategy"]>(
     async (providerId, strategy) => {
       stateVersionRef.current += 1;
@@ -441,7 +432,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     },
     [markSaving, notify],
   );
-
   useEffect(() => {
     mountedRef.current = true;
     void refresh();
@@ -451,9 +441,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       activeListAbortRef.current = null;
     };
   }, [refresh]);
-
   useIntervalWhenDocumentVisible(() => void refresh(), pollMs, pollMs > 0);
-
   return {
     data,
     loading,

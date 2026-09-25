@@ -23,14 +23,14 @@
 
 import path from "node:path";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   adbDevice,
   adbReverse,
   resolveAdb,
-} from "../../scripts/lib/android-device.mjs";
-import { parsePort } from "../../scripts/lib/host-agent.mjs";
+} from "../../scripts/lib/android-device.ts";
+import { parsePort } from "../../scripts/lib/host-agent.ts";
 import {
   assertOnboardingLiveness,
   sendChatAndReadReply,

@@ -11,6 +11,20 @@ async function bundle(entry: string) {
   try {
     const fixture = join(directory, "node_modules/@fixture/shared");
     await mkdir(fixture, { recursive: true });
+    const core = join(directory, "node_modules/@elizaos/core");
+    await mkdir(core, { recursive: true });
+    await writeFile(
+      join(core, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/core",
+        type: "module",
+        exports: { "./errors": "./errors.js" },
+      }),
+    );
+    await writeFile(
+      join(core, "errors.js"),
+      "export class ElizaError extends Error {}",
+    );
     await Promise.all([
       writeFile(join(directory, "entry.js"), entry),
       writeFile(
@@ -53,6 +67,16 @@ async function bundle(entry: string) {
 }
 
 describe("renderer runtime boundary", () => {
+  it("rejects retained SQL runtime imports instead of substituting a schema", async () => {
+    await expect(
+      bundle(
+        'export { executeSql } from "@elizaos/plugin-sql/database-utils/raw-sql";',
+      ),
+    ).rejects.toThrow(
+      "Node runtime import @elizaos/plugin-sql/database-utils/raw-sql survived",
+    );
+  });
+
   it("discards unused runtime exports from a shared barrel", async () => {
     const result = await bundle('export { label } from "@fixture/shared";');
     const outputs = Array.isArray(result) ? result : [result];
@@ -64,7 +88,23 @@ describe("renderer runtime boundary", () => {
     }
   });
 
+  it("bundles a pure core leaf without loading the runtime", async () => {
+    const result = await bundle(
+      'export { ElizaError } from "@elizaos/core/errors";',
+    );
+    const outputs = Array.isArray(result) ? result : [result];
+    for (const output of outputs) {
+      if (!("output" in output)) throw new Error("Expected a completed build");
+      const chunk = output.output.find((item) => item.type === "chunk");
+      expect(chunk?.code).toContain("extends Error");
+      expect(chunk?.imports).toEqual([]);
+    }
+  });
+
   it.each([
+    'import "node:fs"; export const ready = true;',
+    'export { readFile } from "fs/promises";',
+    'export async function load() { return import("@elizaos/agent"); }',
     'export { migrate } from "@fixture/shared";',
     'import "@elizaos/core"; export const ready = true;',
     'export async function load() { return import("@elizaos/core"); }',

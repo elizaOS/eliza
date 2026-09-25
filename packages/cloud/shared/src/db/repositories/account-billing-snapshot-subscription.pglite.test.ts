@@ -2,6 +2,7 @@
 
 import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { installOrganizationBillingScopeTestColumns } from "./organization-billing-scope-test-fixture";
 import { observeSubscriptionAllowanceEligibility } from "./subscription-allowance-eligibility";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -67,6 +68,11 @@ beforeAll(async () => {
       new URL("../migrations/0380_organization_policy_authority.sql", import.meta.url),
       "utf8",
     ),
+  );
+});
+beforeAll(async () => {
+  await installOrganizationBillingScopeTestColumns((query) =>
+    getPgliteClientForTests().exec(query),
   );
 });
 beforeEach(async () => {

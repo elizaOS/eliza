@@ -3,38 +3,27 @@
  * deterministic gates so delivery/terminal ordering is asserted without network.
  */
 
+import type { EffectReceipt, IAgentRuntime, Memory, Task } from "@elizaos/core";
+import {
+  applyGroundedActionReply,
+  asUUID,
+  ChannelType,
+  createUnavailableGroundedActionReply,
+  drainPostDeliveryTasks,
+  drainRoomPostDeliveryTasks,
+  EventType,
+  getStreamingContext,
+  ModelType,
+  NoModelProviderConfiguredError,
+  pendingRoomPostDeliveryTaskCount,
+  ResponseHandlerFieldRegistry,
+  RoomHandlerQueue,
+  TurnControllerRegistry,
+  type UUID,
+} from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { v4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
-import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
-import { RoomHandlerQueue } from "../../../../packages/core/src/runtime/room-handler-queue.ts";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { NoModelProviderConfiguredError } from "../../../../packages/core/src/runtime.ts";
-import {
-  drainPostDeliveryTasks,
-  drainRoomPostDeliveryTasks,
-  pendingRoomPostDeliveryTaskCount,
-} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
-import { getStreamingContext } from "../../../../packages/core/src/streaming-context.ts";
-import {
-  applyGroundedActionReply,
-  createUnavailableGroundedActionReply,
-} from "../../../../packages/core/src/types/action-reply.ts";
-import type {
-  EffectReceipt,
-  IAgentRuntime,
-  Memory,
-  Task,
-} from "../../../../packages/core/src/types/index.ts";
-import {
-  EventType,
-  ModelType,
-} from "../../../../packages/core/src/types/index.ts";
-import {
-  asUUID,
-  ChannelType,
-  type UUID,
-} from "../../../../packages/core/src/types/primitives.ts";
 import {
   factMemoryEvaluator,
   relationshipEvaluator,
@@ -196,6 +185,10 @@ function makeRuntime(options: {
     startRun: vi.fn(() => RUN_ID),
     getCurrentRunId: vi.fn(() => RUN_ID),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     getMemories: vi.fn(async () => []),
     getRelationships: vi.fn(async () => []),
     getParticipantsForRoom: vi.fn(async () => []),

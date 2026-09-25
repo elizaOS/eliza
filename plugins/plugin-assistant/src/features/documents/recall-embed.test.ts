@@ -9,13 +9,10 @@
  * embedding API handlers registered through the production model router.
  */
 
+import type { AgentRuntime } from "@elizaos/core";
+import { EventType, ModelType } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
-import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import {
-  EventType,
-  ModelType,
-} from "../../../../../packages/core/src/types/index.ts";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 
 const MSG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";

@@ -25,14 +25,14 @@ import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
 
 import {
-  createTestPgliteDataDir,
-  isInMemoryPgliteDataDir,
-} from "@elizaos/shared/utils/pglite-storage";
-import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
 } from "./live-provider.ts";
+import {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+} from "./pglite-storage.ts";
 
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */

@@ -24,11 +24,11 @@ import abc
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from elizaos_tau_bench.types import (
-    Action,
     RESPOND_ACTION_NAME,
+    Action,
 )
 from elizaos_tau_bench.upstream.envs.base import Env
 
@@ -44,29 +44,65 @@ class AgentRunResult:
     num_tool_calls: int = 0
     num_turns: int = 0
     agent_cost: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class BaseTauAgent(abc.ABC):
     @abc.abstractmethod
-    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
-        ...
+    def solve(
+        self, env: Env, task_index: int, max_num_steps: int = 30
+    ) -> AgentRunResult: ...
 
 
 def _message_to_action(message: dict[str, Any]) -> Action:
-    tool_calls = message.get("tool_calls")
-    if tool_calls and len(tool_calls) > 0 and tool_calls[0].get("function") is not None:
-        tc = tool_calls[0]
-        fn = tc["function"]
-        try:
-            kwargs = json.loads(fn.get("arguments") or "{}")
-        except json.JSONDecodeError:
-            kwargs = {}
-        return Action(name=fn["name"], kwargs=kwargs)
+    """Translate one agent action without repairing malformed tool arguments."""
+    calls = message.get("tool_calls")
+    if calls:
+        call = calls[0]
+        if not isinstance(call, dict) or not isinstance(call.get("function"), dict):
+            raise ValueError("Tau tool call must contain a function object")
+        function = call["function"]
+        name = function.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Tau tool call must have a nonempty name")
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            arguments = json.loads(arguments)
+        if not isinstance(arguments, dict):
+            raise TypeError("Tau tool arguments must be a JSON object")
+        return Action(name=name, kwargs=arguments)
     return Action(
-        name=RESPOND_ACTION_NAME,
-        kwargs={"content": message.get("content") or ""},
+        name=RESPOND_ACTION_NAME, kwargs={"content": message.get("content") or ""}
     )
+
+
+def _normalize_tool_calls_for_history(
+    raw_tool_calls: list[Any] | None,
+) -> list[dict[str, Any]]:
+    """Preserve tool arguments while adapting flat and nested transport shapes."""
+    out: list[dict[str, Any]] = []
+    for call in raw_tool_calls or []:
+        if not isinstance(call, dict):
+            raise TypeError("Tau tool call must be an object")
+        function = call.get("function", call)
+        if not isinstance(function, dict):
+            raise TypeError("Tau tool function must be an object")
+        name = function.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Tau tool call must have a nonempty name")
+        arguments = function.get("arguments")
+        if isinstance(arguments, dict):
+            arguments = json.dumps(arguments)
+        elif not isinstance(arguments, str):
+            raise TypeError("Tau tool arguments must be a JSON object or JSON text")
+        out.append(
+            {
+                "id": str(call.get("id") or f"call_{len(out)}"),
+                "type": "function",
+                "function": {"name": name, "arguments": arguments},
+            }
+        )
+    return out
 
 
 class LiteLLMToolCallingAgent(BaseTauAgent):
@@ -82,8 +118,10 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
         self.provider = provider
         self.temperature = temperature
 
-    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
-        import elizaos_tau_bench.model_client as model_client
+    def solve(
+        self, env: Env, task_index: int, max_num_steps: int = 30
+    ) -> AgentRunResult:
+        from elizaos_tau_bench import model_client
 
         reset = env.reset(task_index=task_index)
         obs = reset.observation
@@ -109,7 +147,9 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
                 )
                 next_message = res.choices[0].message.model_dump()
                 step_cost = (
-                    res._hidden_params.get("response_cost") if hasattr(res, "_hidden_params") else None
+                    res._hidden_params.get("response_cost")
+                    if hasattr(res, "_hidden_params")
+                    else None
                 )
                 if step_cost:
                     total_cost += step_cost
@@ -128,27 +168,31 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
                     if tcs:
                         next_message["tool_calls"] = tcs[:1]
                         tc = next_message["tool_calls"][0]
-                        messages.extend([
-                            next_message,
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
-                                "name": tc["function"]["name"],
-                                "content": env_response.observation,
-                            },
-                        ])
+                        messages.extend(
+                            [
+                                next_message,
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "name": tc["function"]["name"],
+                                    "content": env_response.observation,
+                                },
+                            ]
+                        )
                     else:
                         messages.append(next_message)
                 else:
-                    messages.extend([
-                        next_message,
-                        {"role": "user", "content": env_response.observation},
-                    ])
+                    messages.extend(
+                        [
+                            next_message,
+                            {"role": "user", "content": env_response.observation},
+                        ]
+                    )
 
                 if env_response.done:
                     break
         except Exception as e:
-            logger.exception("Agent solve loop failed: %s", e)
+            logger.exception("Agent solve loop failed")
             return AgentRunResult(
                 reward=reward,
                 messages=messages,
@@ -183,7 +227,9 @@ class MockTauAgent(BaseTauAgent):
     def __init__(self, final_message: str = "Done. Anything else?") -> None:
         self.final_message = final_message
 
-    def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
+    def solve(
+        self, env: Env, task_index: int, max_num_steps: int = 30
+    ) -> AgentRunResult:
         reset = env.reset(task_index=task_index)
         info: dict[str, Any] = reset.info.model_dump()
         # Replay ground-truth actions deterministically
@@ -203,16 +249,24 @@ class MockTauAgent(BaseTauAgent):
             info = {**info, **response.info.model_dump()}
             if a.name != RESPOND_ACTION_NAME:
                 num_tool_calls += 1
-                messages.append({"role": "assistant", "content": f"[mock] tool {a.name}"})
-                messages.append({"role": "tool", "name": a.name, "content": response.observation})
+                messages.append(
+                    {"role": "assistant", "content": f"[mock] tool {a.name}"}
+                )
+                messages.append(
+                    {"role": "tool", "name": a.name, "content": response.observation}
+                )
             else:
-                messages.append({"role": "assistant", "content": a.kwargs.get("content", "")})
+                messages.append(
+                    {"role": "assistant", "content": a.kwargs.get("content", "")}
+                )
                 messages.append({"role": "user", "content": response.observation})
             if response.done:
                 break
 
         # Final RESPOND to terminate from user side (only if not already done)
-        respond = Action(name=RESPOND_ACTION_NAME, kwargs={"content": self.final_message})
+        respond = Action(
+            name=RESPOND_ACTION_NAME, kwargs={"content": self.final_message}
+        )
         actions_taken.append(respond)
         final_response = env.step(respond)
         reward = final_response.reward
@@ -238,7 +292,9 @@ def create_tau_agent(
 ) -> BaseTauAgent:
     if use_mock:
         return MockTauAgent()
-    return LiteLLMToolCallingAgent(model=model, provider=provider, temperature=temperature)
+    return LiteLLMToolCallingAgent(
+        model=model, provider=provider, temperature=temperature
+    )
 
 
 __all__ = [

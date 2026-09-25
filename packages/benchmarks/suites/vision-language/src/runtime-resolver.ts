@@ -158,7 +158,7 @@ function resolveModelPath(tier: Eliza1TierId): string | null {
 }
 
 /**
- * Local mirror of `elizaModelsDir()` from `@elizaos/shared/local-inference/paths`,
+ * Local mirror of `elizaModelsDir()` from `@elizaos/plugin-native-inference/model-catalog/paths`,
  * kept so the bench resolves model paths without importing shared. State-dir and
  * namespace resolve through core's non-mutating alias reader so a branded prefix
  * (e.g. `ACME_STATE_DIR`) is honoured from the alias table with nothing written

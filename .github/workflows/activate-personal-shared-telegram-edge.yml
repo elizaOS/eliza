@@ -205,7 +205,7 @@ jobs:
           TELEGRAM_EXPECTED_BOT_ID="$expected_id" \
           TELEGRAM_EXPECTED_BOT_USERNAME="$expected_username" \
           TELEGRAM_ATTESTATION_CONTEXT="$TARGET_ENVIRONMENT" \
-            node packages/cloud/scripts/verify-telegram-bot-identity.mjs
+            node packages/cloud/scripts/verify-telegram-bot-identity.ts
 
       - name: Validate exact served Worker source before enable
         if: inputs.enabled == true
@@ -430,7 +430,7 @@ jobs:
           set -euo pipefail
 
           remove_edge_secret() {
-            node "$GITHUB_WORKSPACE/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+            node "$GITHUB_WORKSPACE/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
               "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT" >/dev/null
           }
 

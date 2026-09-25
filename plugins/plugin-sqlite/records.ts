@@ -7,16 +7,21 @@ import { randomUUID } from "node:crypto";
 import {
   type AccessContext,
   type Agent,
+  type AtomicMemoryPublicationParams,
+  type AtomicMemoryPublicationResult,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
+  authorizeMessageContentRead,
   type Component,
   type Content,
+  canonicalAttachmentText,
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   compareMemoryIds,
   compareTasksForQuery,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
   type DocumentDirectGrantUpdateParams,
@@ -25,6 +30,8 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRangeReadParams,
+  type DocumentRangeReadResult,
   type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
@@ -33,6 +40,7 @@ import {
   type Entity,
   filterMemoryReadByAccessContext,
   getWorldMetadataRevision,
+  hashAttachmentIdForLocator,
   type IDatabaseAdapter,
   initializeWorldMetadataRevision,
   isDocumentVisibleToRequester,
@@ -40,9 +48,15 @@ import {
   type Log,
   type LogBody,
   logger,
+  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
   type Memory,
   type MemoryMetadata,
   MemoryType,
+  type MessageContentPublicationParams,
+  type MessageContentPublicationResult,
+  type MessageContentRangeReadParams,
+  type MessageContentRangeReadResult,
   type MessageSearchHit,
   type Metadata,
   normalizePairingPageOptions,
@@ -63,8 +77,12 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
+  readDocumentSourceProjection,
+  readMessageContentProjection,
+  requireDocumentSourceReadMetadata,
   requireFreshWorldMetadataRevision,
   rerankMemories,
+  resolveMessageContentSourceDescriptor,
   type Task,
   type TaskMetadataPatch,
   type UUID,
@@ -477,6 +495,7 @@ function compareStoredMemoriesNewestFirst(
 const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
 
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
+  readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
   protected vectorIndex: EphemeralHNSW;
@@ -960,6 +979,89 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     }
     const memory = toMemory(stored);
     return isDocumentVisibleToRequester(memory, params) ? memory : null;
+  }
+
+  readonly documentRangeReadCapability = 2 as const;
+
+  async readDocumentRange(
+    params: DocumentRangeReadParams,
+  ): Promise<DocumentRangeReadResult | null> {
+    if (
+      !["line", "fragment", "byte"].includes(params.unit) ||
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
+    ) {
+      throw new ElizaError(
+        "Document range read requires a bounded safe-integer range",
+        { code: "DOCUMENT_READ_INVALID_RANGE" },
+      );
+    }
+    const document = await this.getDocument(params);
+    if (!document) return null;
+    const parent = requireDocumentSourceReadMetadata(
+      (document.metadata ?? {}) as Record<string, unknown>,
+      params.documentId,
+    );
+    const prefix =
+      params.unit === "byte"
+        ? "sourceByte"
+        : params.unit === "line"
+          ? "sourceLine"
+          : "sourceFragment";
+    const total =
+      params.unit === "byte"
+        ? parent.sourceByteLength
+        : params.unit === "line"
+          ? parent.sourceLineCount
+          : parent.sourceFragmentCount;
+    const end = Math.min(params.offset + params.limit, total);
+    const rows =
+      params.offset >= total
+        ? []
+        : await this.storage.getWhere<StoredMemory>(
+            COLLECTIONS.MEMORIES,
+            (memory) => {
+              const metadata = memory.metadata as
+                | Record<string, unknown>
+                | undefined;
+              return (
+                storedMemoryTableName(memory) === "document_fragments" &&
+                memory.agentId === params.agentId &&
+                metadata?.documentId === params.documentId &&
+                metadata.fragmentRole === "source-segment" &&
+                metadata.sourceSegmentVersion === 1 &&
+                typeof metadata[`${prefix}Start`] === "number" &&
+                typeof metadata[`${prefix}End`] === "number" &&
+                Number(metadata[`${prefix}Start`]) < end &&
+                Number(metadata[`${prefix}End`]) > params.offset
+              );
+            },
+          );
+    const segments = rows
+      .sort(
+        (left, right) =>
+          Number(
+            (left.metadata as Record<string, unknown> | undefined)
+              ?.sourceByteStart,
+          ) -
+          Number(
+            (right.metadata as Record<string, unknown> | undefined)
+              ?.sourceByteStart,
+          ),
+      )
+      .slice(0, DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS)
+      .map(toMemory);
+    return readDocumentSourceProjection({
+      segments,
+      params,
+      parent,
+      documentId: params.documentId,
+      examinedSourceSegments: rows.length,
+      sourceQueryCount: params.offset >= total ? 1 : 2,
+    });
   }
 
   async queryDocumentFragments(
@@ -1521,6 +1623,301 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     return memories;
   }
 
+  async publishMessageContentSegments(
+    params: MessageContentPublicationParams,
+  ): Promise<MessageContentPublicationResult> {
+    return this.withMemoryMutationLock(async () => {
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "The configured in-memory storage cannot atomically publish message content",
+          { code: "MESSAGE_CONTENT_ATOMIC_STORAGE_REQUIRED" },
+        );
+      }
+      const parentId =
+        params.mode === "create" ? params.parent.id : params.messageId;
+      const publicationAgentId =
+        params.mode === "create" ? params.parent.agentId : params.agentId;
+      if (!parentId || !publicationAgentId) {
+        throw new ElizaError(
+          "Message content publication requires parent and agent IDs",
+          {
+            code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+          },
+        );
+      }
+      const existing = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        parentId,
+      );
+      if (params.mode === "create" && existing) return { status: "conflict" };
+      if (params.mode === "replace") {
+        if (
+          !existing ||
+          storedMemoryTableName(existing) !== "messages" ||
+          existing.agentId !== params.agentId
+        ) {
+          return { status: "not_found" };
+        }
+        if (
+          JSON.stringify(existing.content) !==
+          JSON.stringify(params.expectedContent)
+        ) {
+          return { status: "conflict" };
+        }
+      }
+      const removedIds =
+        params.mode === "replace"
+          ? new Set<string>(params.removeSegmentIds)
+          : new Set<string>();
+      if (params.mode === "replace") {
+        for (const segmentId of params.removeSegmentIds) {
+          const segment = await this.storage.get<StoredMemory>(
+            COLLECTIONS.MEMORIES,
+            segmentId,
+          );
+          const metadata = segment?.metadata as
+            | Record<string, unknown>
+            | undefined;
+          if (
+            !segment ||
+            segment.agentId !== params.agentId ||
+            metadata?.type !== "message-content-segment" ||
+            metadata.messageId !== params.messageId
+          ) {
+            throw new ElizaError(
+              "Message content replacement cannot remove an unrelated or missing segment",
+              {
+                code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+                context: { messageId: params.messageId, segmentId },
+              },
+            );
+          }
+        }
+      }
+      const newSegmentIds = new Set<string>();
+      for (const segment of params.segments) {
+        if (!segment.id || segment.agentId !== publicationAgentId) {
+          throw new ElizaError("Message content segment identity is invalid", {
+            code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+            context: { messageId: parentId },
+          });
+        }
+        if (newSegmentIds.has(segment.id)) {
+          throw new ElizaError("Message content segment id is duplicated", {
+            code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+            context: { messageId: parentId, segmentId: segment.id },
+          });
+        }
+        newSegmentIds.add(segment.id);
+        const collision = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          segment.id,
+        );
+        if (collision && !removedIds.has(segment.id)) {
+          throw new ElizaError("Message content segment id already exists", {
+            code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+            context: { messageId: parentId, segmentId: segment.id },
+          });
+        }
+      }
+      const now = Date.now();
+      const storedSegments: StoredMemory[] = params.segments.map((segment) => ({
+        ...persistableMemory(segment),
+        id: segment.id,
+        tableName: "message_content_segments",
+        agentId: publicationAgentId,
+        createdAt: segment.createdAt ?? now,
+      }));
+      const storedParent: StoredMemory =
+        params.mode === "create"
+          ? {
+              ...persistableMemory(params.parent),
+              id: parentId,
+              tableName: "messages",
+              agentId: publicationAgentId,
+              createdAt: params.parent.createdAt ?? now,
+            }
+          : {
+              ...(existing as StoredMemory),
+              content: persistableMemory({ content: params.replacementContent })
+                .content,
+            };
+      let parentIndexStaged = false;
+      try {
+        if (params.mode === "create" && storedParent.embedding?.length) {
+          await this.vectorIndex.add(parentId, storedParent.embedding);
+          parentIndexStaged = true;
+        }
+        await this.storage.applyBatch({
+          collection: COLLECTIONS.MEMORIES,
+          deletes: [...removedIds],
+          sets: [
+            ...storedSegments.map((data) => ({ id: data.id as string, data })),
+            { id: parentId, data: storedParent },
+          ],
+        });
+      } catch (cause) {
+        if (parentIndexStaged) await this.vectorIndex.remove(parentId);
+        throw new ElizaError("Failed to publish atomic message content", {
+          code: "MESSAGE_CONTENT_PUBLICATION_FAILED",
+          context: { messageId: parentId },
+          cause,
+        });
+      }
+      for (const removedId of removedIds)
+        await this.vectorIndex.remove(removedId);
+      return {
+        status: params.mode === "create" ? "created" : "updated",
+        parent: toMemory(storedParent),
+        removedSegmentIds:
+          params.mode === "create" ? [] : [...params.removeSegmentIds],
+      };
+    });
+  }
+
+  async readMessageContentRange(
+    params: MessageContentRangeReadParams,
+  ): Promise<MessageContentRangeReadResult> {
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+    ) {
+      throw new ElizaError("Message content range is invalid", {
+        code: "MESSAGE_CONTENT_INVALID_RANGE",
+      });
+    }
+    const storedParent = await this.storage.get<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      params.messageId,
+    );
+    if (
+      !storedParent ||
+      storedMemoryTableName(storedParent) !== "messages" ||
+      storedParent.agentId !== params.agentId ||
+      storedParent.roomId !== params.authorizedRoomId
+    ) {
+      return { status: "not_found" };
+    }
+    const parent = toMemory(storedParent);
+    const participants = await this.storage.getWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (participant) =>
+        participant.roomId === parent.roomId &&
+        participant.entityId === params.accessContext.requesterEntityId,
+    );
+    if (
+      !authorizeMessageContentRead({
+        parent,
+        authorizedRoomId: params.authorizedRoomId,
+        requester: params.accessContext,
+        agentId: params.agentId,
+        participantCurrent: participants.length > 0,
+        selector: params.source,
+      })
+    ) {
+      return { status: "forbidden" };
+    }
+    const descriptor = resolveMessageContentSourceDescriptor(
+      parent.content,
+      params.source,
+    );
+    if (!descriptor) {
+      let inline = "";
+      if (params.source.kind === "message-text") {
+        inline = parent.content.text ?? "";
+      } else {
+        const attachment = (parent.content.attachments ?? []).find(
+          (item) =>
+            hashAttachmentIdForLocator(item.id) ===
+            params.source.attachmentIdHash,
+        );
+        inline = attachment ? canonicalAttachmentText(attachment) : "";
+      }
+      if (
+        new TextEncoder().encode(inline).length >
+        MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+      ) {
+        throw new ElizaError(
+          "Legacy content requires explicit segmented reindexing",
+          {
+            code:
+              params.source.kind === "message-text"
+                ? "MESSAGE_REINDEX_REQUIRED"
+                : "ATTACHMENT_REINDEX_REQUIRED",
+            context: { messageId: params.messageId },
+          },
+        );
+      }
+      return { status: "inline", parent, text: inline };
+    }
+    if (params.offset > 0 && !params.expectedRevision) {
+      throw new ElizaError("Message content continuation requires a revision", {
+        code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
+      });
+    }
+    if (
+      params.expectedRevision &&
+      params.expectedRevision !== descriptor.revision
+    ) {
+      throw new ElizaError("Message content changed before continuation", {
+        code: "MESSAGE_CONTENT_STALE_REVISION",
+        context: { messageId: params.messageId },
+      });
+    }
+    const requestedEnd = Math.min(
+      params.offset + params.limit,
+      descriptor.byteLength,
+    );
+    const selected = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (segment) => {
+        const metadata = segment.metadata as
+          | Record<string, unknown>
+          | undefined;
+        return (
+          segment.agentId === params.agentId &&
+          storedMemoryTableName(segment) === "message_content_segments" &&
+          metadata?.type === "message-content-segment" &&
+          metadata.messageId === params.messageId &&
+          metadata.sourceKind === params.source.kind &&
+          metadata.attachmentIdHash === params.source.attachmentIdHash &&
+          metadata.sourceRevision === descriptor.revision &&
+          typeof metadata.byteStart === "number" &&
+          typeof metadata.byteEnd === "number" &&
+          metadata.byteEnd > params.offset &&
+          metadata.byteStart < requestedEnd
+        );
+      },
+    );
+    selected.sort((left, right) => {
+      const leftMetadata = left.metadata as Record<string, unknown> | undefined;
+      const rightMetadata = right.metadata as
+        | Record<string, unknown>
+        | undefined;
+      return (
+        Number(leftMetadata?.byteStart ?? -1) -
+        Number(rightMetadata?.byteStart ?? -1)
+      );
+    });
+    return {
+      status: "ok",
+      parent,
+      page: readMessageContentProjection({
+        descriptor,
+        segments: selected
+          .slice(0, MESSAGE_CONTENT_READ_MAX_SEGMENTS)
+          .map(toMemory),
+        messageId: params.messageId,
+        offset: params.offset,
+        limit: params.limit,
+        sourceQueryCount: 0,
+      }),
+    };
+  }
+
   async getCachedEmbeddings(params: {
     query_table_name: string;
     query_threshold: number;
@@ -1569,9 +1966,27 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<Memory[]> {
     return this.withMemoryMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
-      const limit = params.count ?? params.limit;
+      // An absent count/limit means the caller asked for the COMPLETE eligible
+      // result, not a default page: silently capping it would drop eligible
+      // matches without any signal to the caller.
+      const requestedLimit = params.count ?? params.limit;
       const offset = params.offset ?? 0;
       const excludedRooms = new Set(params.excludeRoomIds);
+      if (!Number.isSafeInteger(offset) || offset < 0) {
+        throw new Error(
+          "searchMemories offset must be a non-negative safe integer",
+        );
+      }
+      if (requestedLimit !== undefined) {
+        if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 0) {
+          throw new Error(
+            "searchMemories limit must be a non-negative safe integer",
+          );
+        }
+        if (offset > Number.MAX_SAFE_INTEGER - requestedLimit) {
+          throw new Error("searchMemories page boundary is not representable");
+        }
+      }
 
       // Scope eligibility must be applied BEFORE the top-K cut so the result is
       // "top K among eligible memories". Mirrors the plugin-sql adapter, whose
@@ -1614,11 +2029,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           memory.id ? [[memory.id, memory] as const] : [],
         ),
       );
-      const requestedCount =
-        limit === undefined ? memoriesById.size : limit + offset;
+      const limit = requestedLimit ?? memoriesById.size;
       const results = await this.vectorIndex.searchExact(
         params.embedding,
-        requestedCount,
+        offset + limit,
         threshold,
         new Set(memoriesById.keys()),
       );
@@ -1631,6 +2045,141 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       return params.includeEmbedding === false
         ? ranked.map(({ embedding, ...memory }) => memory)
         : ranked;
+    });
+  }
+
+  override async compareAndSwapMemoryPublication(
+    params: AtomicMemoryPublicationParams,
+  ): Promise<AtomicMemoryPublicationResult> {
+    return this.withMemoryMutationLock(async () => {
+      const headId = params.head.memory.id;
+      if (!headId) {
+        throw new ElizaError("Atomic memory publication head requires an id", {
+          code: "CONTENT_CONTINUITY_PUBLICATION_INVALID",
+        });
+      }
+      const rows = [params.head, ...params.dependencies];
+      for (const row of rows) {
+        if (
+          row.memory.agentId !== undefined &&
+          row.memory.agentId !== this.agentId
+        ) {
+          throw new ElizaError("SQLite publication targets another agent", {
+            code: "SQLITE_AGENT_MISMATCH",
+          });
+        }
+      }
+      const current = await this.storage.get<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        headId,
+      );
+      const currentRevision =
+        current?.metadata && "revision" in current.metadata
+          ? current.metadata.revision
+          : undefined;
+      if (
+        (params.expectedRevision === null && current !== null) ||
+        (params.expectedRevision !== null &&
+          currentRevision !== params.expectedRevision)
+      )
+        return { status: "conflict" };
+      if (
+        current &&
+        (current.agentId !== this.agentId ||
+          current.roomId !== params.head.memory.roomId ||
+          current.entityId !== params.head.memory.entityId ||
+          storedMemoryTableName(current) !== params.head.tableName)
+      ) {
+        throw new ElizaError(
+          "Atomic publication cannot replace another owner's head",
+          {
+            code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+            context: { memoryId: headId },
+          },
+        );
+      }
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "SQLite storage cannot atomically publish memory dependencies",
+          {
+            code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+          },
+        );
+      }
+      const additions = new Map<string, StoredMemory>();
+      for (const dependency of params.dependencies) {
+        const id = dependency.memory.id;
+        if (!id || id === headId) {
+          throw new ElizaError(
+            "Immutable memory dependency requires a distinct id",
+            {
+              code: "CONTENT_CONTINUITY_PUBLICATION_INVALID",
+            },
+          );
+        }
+        const stored =
+          additions.get(id) ??
+          (await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id));
+        if (stored) {
+          if (
+            storedMemoryTableName(stored) !== dependency.tableName ||
+            stored.agentId !== this.agentId ||
+            stored.roomId !== dependency.memory.roomId ||
+            stored.entityId !== dependency.memory.entityId ||
+            JSON.stringify(stored.content) !==
+              JSON.stringify(dependency.memory.content)
+          ) {
+            throw new ElizaError(
+              "Immutable memory dependency id has different content",
+              {
+                code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+                context: { memoryId: id },
+              },
+            );
+          }
+        } else {
+          additions.set(id, {
+            ...persistableMemory(dependency.memory),
+            id,
+            tableName: dependency.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: dependency.memory.createdAt ?? Date.now(),
+          });
+        }
+      }
+      const head: StoredMemory = current
+        ? {
+            ...current,
+            ...persistableMemory(params.head.memory),
+            id: headId,
+            tableName: params.head.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: current.createdAt,
+          }
+        : {
+            ...persistableMemory(params.head.memory),
+            id: headId,
+            tableName: params.head.tableName,
+            agentId: this.agentId,
+            unique: true,
+            createdAt: params.head.memory.createdAt ?? Date.now(),
+          };
+      additions.set(headId, head);
+      // The public adapter serializes the compare and this batch in one SQLite
+      // transaction. Readers cannot observe dependencies without their head.
+      await this.storage.applyBatch({
+        collection: COLLECTIONS.MEMORIES,
+        deletes: [],
+        sets: [...additions].map(([id, data]) => ({ id, data })),
+      });
+      for (const [id, memory] of additions) {
+        if (memory.embedding?.length)
+          await this.vectorIndex.add(id, memory.embedding);
+        else await this.vectorIndex.remove(id);
+      }
+      return { status: "published", head: toMemory(head) };
     });
   }
 

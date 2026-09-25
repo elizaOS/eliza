@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # GPU certification image for vast.ai runs (#14548, epic #14541).
 #
-# packages/scripts/vast/run-certification.mjs rents a vast.ai RTX 4090 and boots this
+# packages/scripts/vast/run-certification.ts rents a vast.ai RTX 4090 and boots this
 # image; the onstart script it injects only clones the repo at one sha and
 # runs the packages/testing certification chain. vast caps onstart-cmd at
 # 16 KB, so EVERYTHING heavy is baked here instead: CUDA-enabled llama-server
@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential cmake git ca-certificates libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# b8525 is the exact minimum packages/scripts/gpu-vision/lib.mjs (MIN_LLAMA_BUILD)
+# b8525 is the exact minimum packages/scripts/gpu-vision/lib.ts (MIN_LLAMA_BUILD)
 # demands; every llama.cpp CI build is tagged bNNNN so the ref is stable.
 #
 # The clone must keep full commit history. llama.cpp's cmake/build-info.cmake
@@ -90,12 +90,12 @@ RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # The gpu-vision trio lands before the smoke test so the build can hold the
-# baked binary to the same floor serve.mjs enforces on the billed instance
+# baked binary to the same floor serve.ts enforces on the billed instance
 # (lockfile resolves relative to lib.mjs, so the three are copied together).
-# ELIZA_GPU_VISION_CACHE points the cloned repo's serve.mjs at this baked cache
+# ELIZA_GPU_VISION_CACHE points the cloned repo's serve.ts at this baked cache
 # at runtime — no model download on the billed instance.
 ENV ELIZA_GPU_VISION_CACHE=/opt/eliza/gpu-vision-cache
-COPY packages/scripts/gpu-vision/setup.mjs packages/scripts/gpu-vision/lib.mjs packages/scripts/gpu-vision/models.lock.json /opt/eliza/gpu-vision/
+COPY packages/scripts/gpu-vision/setup.ts packages/scripts/gpu-vision/lib.ts packages/scripts/gpu-vision/models.lock.json /opt/eliza/gpu-vision/
 
 # CUDA llama-server from the builder.
 COPY --from=llama-builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
@@ -104,7 +104,7 @@ COPY --from=llama-builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/l
 # mount keeps the stub out of the published image. Running the output through
 # assertLlamaBuildSupported is the point of the smoke test: merely executing is
 # not enough, because a binary reporting a build below MIN_LLAMA_BUILD is
-# rejected by serve.mjs only after the GPU rental is already billing.
+# rejected by serve.ts only after the GPU rental is already billing.
 RUN --mount=type=bind,from=llama-builder,source=/tmp/libcuda.so.1,target=/tmp/libcuda.so.1,ro \
     LD_LIBRARY_PATH=/tmp llama-server --version >/tmp/llama-version.txt 2>&1 \
     && cat /tmp/llama-version.txt \
@@ -113,7 +113,7 @@ RUN --mount=type=bind,from=llama-builder,source=/tmp/libcuda.so.1,target=/tmp/li
 
 # Pinned GPU-vision models, fetched + sha256-verified by the repo's own setup
 # script.
-RUN node /opt/eliza/gpu-vision/setup.mjs --with-vlm
+RUN node /opt/eliza/gpu-vision/setup.ts --with-vlm
 
 WORKDIR /workspace
 CMD ["/bin/bash"]

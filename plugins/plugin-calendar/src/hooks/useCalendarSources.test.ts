@@ -5,10 +5,10 @@
  * client, including stale-list and overlapping-write races across accounts.
  */
 
-import type {
-  LifeOpsCalendarSummary,
-  SetLifeOpsCalendarIncludedResponse,
-} from "@elizaos/shared";
+import {
+  type LifeOpsCalendarSummary,
+  type SetLifeOpsCalendarIncludedResponse,
+} from "@elizaos/core/contracts/calendar";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -6,14 +6,12 @@
  * or an appropriate error/auth event.
  */
 
-import { getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/core/character-presets";
 import {
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/shared/browser-contracts";
-import { logger } from "@elizaos/shared/logger";
-import type { FirstRunOptions } from "../api";
-import { client } from "../api";
+} from "@elizaos/core/utils/unicode";
+import { client, type FirstRunOptions } from "../api";
 import {
   getAndroidLocalAgentBootStateForUrl,
   requestAndroidLocalAgentStartForUrl,
@@ -46,6 +44,7 @@ import {
 import { readMobileRuntimeBuildTruth } from "../first-run/reconcile-mobile-runtime-mode";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
+import { logger } from "../logger.ts";
 import { isAndroid, isIOS } from "../platform";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
@@ -83,14 +82,15 @@ import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 function isCapacitorNative(): boolean {
   try {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | { isNativePlatform?: () => boolean }
+      | {
+          isNativePlatform?: () => boolean;
+        }
       | undefined;
     return Boolean(cap?.isNativePlatform?.());
   } catch {
     return false;
   }
 }
-
 /**
  * Default Capacitor-native consecutive-failure budget: after this long without
  * a single successful backend probe, the poll surfaces the error phase with
@@ -100,7 +100,6 @@ function isCapacitorNative(): boolean {
  */
 const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS =
   STARTUP_TIMING_POLICY.nativeConsecutiveFailureBudgetMs;
-
 /**
  * Per-request cap for a single startup probe (issue #13737). Well under the
  * consecutive-failure budget so a hung request fails fast and the loop retries
@@ -111,7 +110,6 @@ const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS =
  * going to succeed resolves in well under 12s).
  */
 const PROBE_REQUEST_TIMEOUT_MS = STARTUP_TIMING_POLICY.probeRequestTimeoutMs;
-
 /**
  * A startup probe outlived the whole remaining phase budget without settling
  * (issue #11030: the iOS transport awaited Capacitor's raw plugin proxy — a
@@ -125,7 +123,6 @@ class ApiHangTimeoutError extends Error {
     this.name = "ApiHangTimeoutError";
   }
 }
-
 /**
  * Terminal 503 body from the Eliza Cloud dedicated-agent proxy
  * (packages/cloud/api/src/dedicated-agent-proxy.ts) when the agent sandbox
@@ -150,7 +147,6 @@ export function isTerminalDedicatedCloudAgentErrorState(args: {
 }): boolean {
   return classifyTerminalDedicatedCloudAgentErrorState(args);
 }
-
 /**
  * Decide whether a connection-level startup failure against the persisted
  * active server should be abandoned in favour of the local same-origin backend
@@ -199,7 +195,6 @@ export function shouldFallBackToLocalOrigin(args: {
   }
   return isRecoverableRemoteBase(args);
 }
-
 /**
  * True when the client is currently pinned to a base we could abandon in favour
  * of the local same-origin backend: a non-empty, non-loopback host that isn't
@@ -245,9 +240,7 @@ export function isRecoverableRemoteBase(args: {
   }
   return true;
 }
-
 const DEFAULT_DIRECT_CLOUD_SITE_BASE = "https://eliza.app";
-
 /** Resolve recovery probes onto the same Cloud environment as startup restore. */
 export function resolveStartupCloudControlPlaneBase(
   agentBase: string,
@@ -270,7 +263,6 @@ export function resolveStartupCloudControlPlaneBase(
     }),
   );
 }
-
 function sharedCloudAgentIdFromBase(base: string): string | null {
   try {
     const url = new URL(base);
@@ -283,7 +275,6 @@ function sharedCloudAgentIdFromBase(base: string): string | null {
     return null;
   }
 }
-
 /**
  * A DEDICATED cloud agent base just 404'd on the first-run shell endpoints.
  * That 404 is ambiguous: it is the normal "no first-run shell on a cloud agent"
@@ -303,7 +294,6 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
   const agentId = dedicatedCloudAgentIdFromBase(base);
   if (!agentId) return false;
   if (!getCloudAuthToken(client)) return false;
-
   const priorBaseUrl = client.getBaseUrl();
   const priorToken = client.hasToken();
   // getCloudCompatAgent resolves the control-plane via the client base, so point
@@ -325,7 +315,6 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
     if (!priorToken) client.setToken(null);
   }
 }
-
 async function sharedCloudAgentIsMissingFromRunningSet(
   base: string,
 ): Promise<boolean> {
@@ -341,7 +330,6 @@ async function sharedCloudAgentIsMissingFromRunningSet(
   // reload and bounces the user back through first-run.
   if (isPersonalSharedElizaId(agentId)) return false;
   if (!getCloudAuthToken(client)) return false;
-
   const priorBaseUrl = client.getBaseUrl();
   const priorToken = client.hasToken();
   client.setBaseUrl(resolveStartupCloudControlPlaneBase(base));
@@ -360,7 +348,6 @@ async function sharedCloudAgentIsMissingFromRunningSet(
     if (!priorToken) client.setToken(null);
   }
 }
-
 export interface PollingBackendDeps {
   setStartupError: (v: StartupErrorState | null) => void;
   setAuthRequired: (v: boolean) => void;
@@ -378,7 +365,6 @@ export interface PollingBackendDeps {
   firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
 }
-
 /** Apply resume fields derived from a partial config to the first-run state. */
 function applyFirstRunResumeFields(
   rf: ReturnType<typeof deriveFirstRunResumeFieldsFromConfig>,
@@ -397,7 +383,6 @@ function applyFirstRunResumeFields(
   deps.setFirstRunRemoteApiBase(rf.firstRunRemoteApiBase);
   deps.setFirstRunRemoteToken(rf.firstRunRemoteToken);
 }
-
 /**
  * Runs the polling-backend phase.
  * Polls /auth/status and /first-run/status until the backend is reachable
@@ -419,8 +404,12 @@ export async function runPollingBackend(
   ctx: RestoringSessionCtx | null,
   effectRunId: number,
   effectRunRef: React.MutableRefObject<number>,
-  cancelled: { current: boolean },
-  tidRef: { current: ReturnType<typeof setTimeout> | null },
+  cancelled: {
+    current: boolean;
+  },
+  tidRef: {
+    current: ReturnType<typeof setTimeout> | null;
+  },
   target: RuntimeTarget = "embedded-local",
 ): Promise<void> {
   const completionAtPollStart = deps.firstRunCompletionCommittedRef.current;
@@ -457,7 +446,6 @@ export async function runPollingBackend(
       path: apiErr?.path,
     };
   };
-
   let deadline = Date.now() + policy.backendTimeoutMs;
   let attempts = 0;
   let lastErr: unknown = null;
@@ -494,7 +482,6 @@ export async function runPollingBackend(
     pairingEnabled: false,
     expiresAt: null as number | null,
   };
-
   const recoveryEnv = () => ({
     clientBaseUrl: client.getBaseUrl(),
     pageOrigin: typeof window !== "undefined" ? window.location.origin : null,
@@ -502,7 +489,6 @@ export async function runPollingBackend(
       typeof window !== "undefined" ? window.location.protocol : null,
     isNativeMobile: isCapacitorNative() || isAndroid || isIOS,
   });
-
   // One-shot: clear the stale saved server, re-point at the local origin, and
   // reset the budget so the loop re-polls localhost. Used both when the saved
   // server is unreachable and when it dead-ends on an unpassable auth gate.
@@ -519,7 +505,6 @@ export async function runPollingBackend(
     attempts = 0;
     lastErr = null;
   };
-
   // One-shot recovery to the bundled ON-DEVICE agent (issue: iOS icon-tap
   // startup timeout). A stale persisted `cloud` runtime mode can pin a
   // local-capable native build to a dedicated cloud agent that is DEAD
@@ -572,7 +557,6 @@ export async function runPollingBackend(
     lastErr = null;
     nativeFailureStreakStartedAt = null;
   };
-
   // Terminal recovery for a deleted/unreachable DEDICATED cloud agent: clear the
   // dead saved server + per-agent base/token, then route to first-run agent
   // selection (the user is still signed into Eliza Cloud — the cloud auth token
@@ -594,13 +578,11 @@ export async function runPollingBackend(
     deps.setFirstRunLoading(false);
     dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
   };
-
   const advanceManagedCloudAuthRejection = (why: string): boolean => {
     if (!client.hasToken()) return false;
     const activeServer =
       ctx?.persistedActiveServer ?? ctx?.restoredActiveServer ?? null;
     if (activeServer?.kind !== "cloud") return false;
-
     // Startup only classifies the rejected adopted bearer and advances far
     // enough for useAuthStatus to publish `remote_auth_required`. The top-level
     // useAgentSessionRecovery hook is the single owner of Cloud session
@@ -621,7 +603,6 @@ export async function runPollingBackend(
     dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
     return true;
   };
-
   const isSameOriginProxyBase = () => {
     const base = client.getBaseUrl().trim();
     if (!base) return true;
@@ -632,7 +613,6 @@ export async function runPollingBackend(
       return false;
     }
   };
-
   const routeToOfflineFirstRun = (why: string) => {
     logger.warn(
       { reason: why },
@@ -646,14 +626,15 @@ export async function runPollingBackend(
     deps.setFirstRunLoading(false);
     dispatch({ type: "BACKEND_UNAVAILABLE_FIRST_RUN" });
   };
-
   const cloudOnlyDesktopRenderer =
     typeof window !== "undefined" &&
-    (window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown })
-      .__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
+    (
+      window as {
+        __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown;
+      }
+    ).__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
   const freshCloudOnlyTarget =
     policy.defaultTarget === "cloud-managed" || cloudOnlyDesktopRenderer;
-
   if (
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
@@ -667,7 +648,6 @@ export async function runPollingBackend(
     );
     return;
   }
-
   // Boot-trace bookkeeping (no-ops off native iOS): entry marker, capped
   // per-failure entries, and a first-success marker, so an unattended device
   // launch records WHICH base the poll hit and HOW it failed.
@@ -678,7 +658,6 @@ export async function runPollingBackend(
     backendTimeoutMs: policy.backendTimeoutMs,
     nativeFailureBudgetMs,
   });
-
   const restoredManagedCloud =
     ctx?.restoredActiveServer?.kind === "cloud" ||
     ctx?.persistedActiveServer?.kind === "cloud";
@@ -701,7 +680,6 @@ export async function runPollingBackend(
     dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
     return;
   }
-
   // Stall detector (issue #11030 root-cause instrumentation): a startup probe
   // that neither resolves nor rejects is invisible to every failure path —
   // the loop just stops, no poll-failure entries, no timeout card. Arm a
@@ -722,10 +700,9 @@ export async function runPollingBackend(
         stalledForMs: Date.now() - armedAt,
         agentBootInProgress: isIosNativeAgentBootInProgress(),
       });
-    }, 20_000);
+    }, 20000);
     return promise.finally(() => clearTimeout(stallTid));
   };
-
   /**
    * Bound every probe await by a SHORT per-request timeout so a hung request
    * fails fast and the loop retries, instead of one hang consuming the whole
@@ -778,7 +755,6 @@ export async function runPollingBackend(
       );
     });
   };
-
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       appendIosBootTrace("backend-deadline-exceeded", {
@@ -930,7 +906,6 @@ export async function runPollingBackend(
       deps.setFirstRunCloudProvisionedContainer(Boolean(cloudProvisioned));
       let sessionComplete =
         complete || deps.firstRunCompletionCommittedRef.current;
-
       // A saved renderer session can outlive the embedded backend's data.
       // Reconcile that cache with runtime state without resetting a running
       // legacy installation or completion committed during this poll.
@@ -950,7 +925,6 @@ export async function runPollingBackend(
           sessionComplete = false;
         }
       }
-
       // Preserve backend-complete installs even when this browser has no prior
       // local state (for example headless/VPS setups or a fresh visit to a
       // cloud-provisioned container). Only clear the optimistic completion
@@ -963,7 +937,6 @@ export async function runPollingBackend(
       ) {
         sessionComplete = false;
       }
-
       if (
         sessionComplete &&
         !ctx?.persistedActiveServer &&
@@ -972,7 +945,6 @@ export async function runPollingBackend(
         savePersistedActiveServer(ctx.restoredActiveServer);
       }
       deps.setFirstRunComplete(sessionComplete);
-
       if (!sessionComplete) {
         // Fetch first-run options
         const optDeadline = Date.now() + getBackendStartupTimeoutMs();
@@ -1499,7 +1471,13 @@ export async function runPollingBackend(
           androidBootState.state === "unknown" &&
           androidLocalAgentIpc &&
           (err instanceof ApiHangTimeoutError ||
-            (err as { status?: number } | undefined)?.status === undefined);
+            (
+              err as
+                | {
+                    status?: number;
+                  }
+                | undefined
+            )?.status === undefined);
         const localAgentBootProgress =
           !remoteTarget &&
           (isIosNativeAgentBootInProgress() ||

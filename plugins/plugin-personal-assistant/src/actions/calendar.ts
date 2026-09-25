@@ -34,8 +34,18 @@ import {
   stableStringify,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarProvider,
+} from "@elizaos/core/contracts/calendar";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
 import {
+  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
+  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   type CalendarMutationApprovalResult,
   type CalendarMutationGatewayDep,
@@ -46,18 +56,6 @@ import {
   isElizaCalendarGrant,
   isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import {
-  CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
-} from "@elizaos/plugin-calendar/calendar-action-schema";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarProvider,
-} from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -370,6 +368,9 @@ export function createCalendarMutationApprovalGateway(options?: {
     async schedule(args) {
       const payload: CalendarApprovalPayload = {
         action: "schedule_event",
+        ...(args.request.sourceNote !== undefined
+          ? { sourceNote: structuredClone(args.request.sourceNote) }
+          : {}),
         side: args.request.side,
         grantId: args.request.grantId,
         calendarId: args.request.calendarId,

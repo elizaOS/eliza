@@ -20,26 +20,22 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   EventType,
+  readRequestBodyBuffer,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/shared";
 
 const MAX_BODY_BYTES = 4 * 1024;
-
 /** Stable shortcut id: kebab-case, bounded length (e.g. "open-command-palette"). */
 const SHORTCUT_ID_PATTERN = /^[a-z][a-z0-9-]{1,48}$/;
 const SURFACE_ID_PATTERN = /^[a-z][a-z0-9_-]{1,64}$/;
 const MAX_CONVERSATION_ID_CHARS = 128;
-const MAX_DRAFT_LENGTH = 100_000;
-
+const MAX_DRAFT_LENGTH = 100000;
 const COMPOSER_ACTIVITY_TO_EVENT = {
   typing_started: EventType.USER_TYPING_STARTED,
   typing_paused: EventType.USER_TYPING_PAUSED,
   draft_abandoned: EventType.USER_DRAFT_ABANDONED,
 } as const;
-
 type ComposerActivity = keyof typeof COMPOSER_ACTIVITY_TO_EVENT;
-
 export interface InteractionsRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -49,12 +45,10 @@ export interface InteractionsRouteContext {
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   runtime: AgentRuntime | null | undefined;
 }
-
 export interface ShortcutInteractionRequest {
   shortcutId: string;
   context?: string;
 }
-
 export interface ComposerInteractionRequest {
   activity: ComposerActivity;
   surface: string;
@@ -64,7 +58,6 @@ export interface ComposerInteractionRequest {
   reason?: "cleared" | "blurred" | "conversation_switched" | "unknown";
   occurredAt: string;
 }
-
 /** Parse + validate the shortcut report body; null on anything malformed. */
 export function parseShortcutBody(
   raw: string,
@@ -90,7 +83,6 @@ export function parseShortcutBody(
       : undefined;
   return { shortcutId, ...(context ? { context } : {}) };
 }
-
 function readStringWithinLimit(
   value: unknown,
   maxChars: number,
@@ -101,18 +93,15 @@ function readStringWithinLimit(
   const wellFormed = toWellFormedUnicode(trimmed);
   return wellFormed.length <= maxChars ? wellFormed : undefined;
 }
-
 function readNonNegativeInteger(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
   return value >= 0 ? value : null;
 }
-
 function readOccurredAt(value: unknown): string | null {
   if (typeof value !== "string") return new Date().toISOString();
   const parsedMs = Date.parse(value);
   return Number.isFinite(parsedMs) ? new Date(parsedMs).toISOString() : null;
 }
-
 /** Parse + validate a composer lifecycle report; null on anything malformed. */
 export function parseComposerBody(
   raw: string,
@@ -135,13 +124,10 @@ export function parseComposerBody(
       ? (body.activity as ComposerActivity)
       : null;
   if (!activity) return null;
-
   const surface = readStringWithinLimit(body.surface, 64);
   if (!surface || !SURFACE_ID_PATTERN.test(surface)) return null;
-
   const draftLength = readNonNegativeInteger(body.draftLength);
   if (draftLength === null || draftLength > MAX_DRAFT_LENGTH) return null;
-
   const idleForMs =
     body.idleForMs === undefined
       ? undefined
@@ -152,7 +138,6 @@ export function parseComposerBody(
   ) {
     return null;
   }
-
   const reason =
     body.reason === "cleared" ||
     body.reason === "blurred" ||
@@ -162,7 +147,6 @@ export function parseComposerBody(
       : undefined;
   const occurredAt = readOccurredAt(body.occurredAt);
   if (!occurredAt) return null;
-
   let conversationId: string | undefined;
   if (body.conversationId !== undefined) {
     conversationId = readStringWithinLimit(
@@ -181,7 +165,6 @@ export function parseComposerBody(
     occurredAt,
   };
 }
-
 export async function handleInteractionsRoutes(
   ctx: InteractionsRouteContext,
 ): Promise<boolean> {
@@ -196,7 +179,6 @@ export async function handleInteractionsRoutes(
     error(res, "Method not allowed", 405);
     return true;
   }
-
   const buffer = await readRequestBodyBuffer(req, {
     maxBytes: MAX_BODY_BYTES,
     returnNullOnTooLarge: true,
@@ -207,7 +189,6 @@ export async function handleInteractionsRoutes(
       error(res, "Invalid composer interaction body", 400);
       return true;
     }
-
     if (runtime) {
       const eventType = COMPOSER_ACTIVITY_TO_EVENT[request.activity];
       void runtime
@@ -236,18 +217,15 @@ export async function handleInteractionsRoutes(
           });
         });
     }
-
     json(res, { ok: true, activity: request.activity });
     return true;
   }
-
   const shortcutBody = buffer ? buffer.toString("utf8") : null;
   const request = shortcutBody ? parseShortcutBody(shortcutBody) : null;
   if (!request) {
     error(res, "Invalid shortcut interaction body", 400);
     return true;
   }
-
   // Emit the first-class SHORTCUT_FIRED interaction event (#8792). Fire-and-forget
   // so the proactive decider can react without ever blocking the response.
   if (runtime) {
@@ -267,7 +245,6 @@ export async function handleInteractionsRoutes(
         });
       });
   }
-
   json(res, { ok: true, shortcutId: request.shortcutId });
   return true;
 }

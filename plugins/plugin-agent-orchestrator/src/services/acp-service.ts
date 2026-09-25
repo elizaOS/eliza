@@ -43,18 +43,18 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE } from "@elizaos/plugin-assistant";
 import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
-  isAndroidMobile,
   isCodingAgentBackend,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/coding-agent-capabilities";
 import {
   applyHostToolchainExecutionBaseline,
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/core/host-execution-env";
+import { isAndroidMobile } from "@elizaos/core/runtime-env";
+import { SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE } from "@elizaos/plugin-assistant";
 import {
   NativeAcpClient,
   type NativeAcpEventContext,
@@ -991,6 +991,7 @@ export class AcpService extends Service {
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
+  private readonly nativeClientStops = new Map<string, Promise<void>>();
   private readonly nativePromptSessionIds = new Set<string>();
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
@@ -1017,6 +1018,7 @@ export class AcpService extends Service {
   // Raw stdout arrives on the subprocess stream, while task completion is parsed
   // from that same stream. Queue writes per session so the terminal event can
   // wait for the tee before persisting a task document that references it.
+  private readonly initialTaskRuns = new Set<Promise<void>>();
   private readonly pendingStdoutWrites = new Map<string, Promise<void>>();
   // Per-session model-gateway lease (#11536 E2 residual). Minted at spawn when
   // gateway mode + a lease broker are configured; the leased token (not the
@@ -1355,10 +1357,14 @@ export class AcpService extends Service {
     await Promise.allSettled([
       ...stops,
       ...nativeStops,
+      ...this.nativeClientStops.values(),
       ...leaseRevokes,
       ...(warm ? [this.disposeWarmNativeClient(warm)] : []),
       ...(this.warmNativeClientStarting ? [this.warmNativeClientStarting] : []),
     ]);
+    // Initial prompts include terminal persistence and automatic session close.
+    // Drain them before the host closes the database adapter.
+    await Promise.allSettled([...this.initialTaskRuns]);
   }
 
   private acpxStateRoot(): string {
@@ -2264,7 +2270,7 @@ export class AcpService extends Service {
           const keepAliveAfterComplete =
             (opts.metadata as Record<string, unknown> | undefined)
               ?.keepAliveAfterComplete === true;
-          void this.sendPrompt(id, initialTask ?? "", {
+          const initialTaskRun = this.sendPrompt(id, initialTask ?? "", {
             timeoutMs: resolveInitialTaskPromptTimeoutMs(opts.timeoutMs),
             model: spawnModel,
           })
@@ -2279,10 +2285,11 @@ export class AcpService extends Service {
                 error: errorMessage(err),
               });
             })
-            .finally(() => {
+            .finally(async () => {
               if (keepAliveAfterComplete) return;
-              void this.closeInitialTaskSession(id);
+              await this.closeInitialTaskSession(id);
             });
+          this.trackInitialTaskRun(initialTaskRun, id);
         }
         return result;
       }
@@ -2344,7 +2351,7 @@ export class AcpService extends Service {
         const keepAliveAfterComplete =
           (opts.metadata as Record<string, unknown> | undefined)
             ?.keepAliveAfterComplete === true;
-        void this.sendPrompt(id, initialTask ?? "", {
+        const initialTaskRun = this.sendPrompt(id, initialTask ?? "", {
           timeoutMs: resolveInitialTaskPromptTimeoutMs(opts.timeoutMs),
           model: spawnModel,
         })
@@ -2359,10 +2366,11 @@ export class AcpService extends Service {
               error: errorMessage(err),
             });
           })
-          .finally(() => {
+          .finally(async () => {
             if (keepAliveAfterComplete) return;
-            void this.closeInitialTaskSession(id);
+            await this.closeInitialTaskSession(id);
           });
+        this.trackInitialTaskRun(initialTaskRun, id);
       }
 
       const updated = await this.store.get(id);
@@ -3229,6 +3237,19 @@ export class AcpService extends Service {
     } finally {
       this.reclaimingSessionIds.delete(sessionId);
     }
+  }
+
+  private trackInitialTaskRun(run: Promise<unknown>, sessionId: string): void {
+    const tracked = run
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        this.log("warn", "initial task lifecycle failed", {
+          sessionId,
+          error: errorMessage(error),
+        });
+      });
+    this.initialTaskRuns.add(tracked);
+    void tracked.then(() => this.initialTaskRuns.delete(tracked));
   }
 
   private async closeInitialTaskSession(sessionId: string): Promise<void> {
@@ -4187,16 +4208,27 @@ export class AcpService extends Service {
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {
+    const pending = this.nativeClientStops.get(sessionId);
+    if (pending) return pending;
     const client = this.nativeClients.get(sessionId);
     if (!client) return;
     this.nativeClients.delete(sessionId);
-    const session = await this.store.get(sessionId);
-    const protocolSessionId =
-      session?.acpxSessionId ?? session?.agentSessionId ?? sessionId;
-    // error-policy:J6 best-effort teardown of a session being deleted; a
-    // close/closeSession failure must not abort the deletion.
-    await client.closeSession(protocolSessionId).catch(() => undefined);
-    await client.close().catch(() => undefined);
+    // Publish the shared close before asynchronous persistence or transport work.
+    const stopping = Promise.resolve().then(async () => {
+      const session = await this.store.get(sessionId);
+      const protocolSessionId =
+        session?.acpxSessionId ?? session?.agentSessionId ?? sessionId;
+      // error-policy:J6 best-effort teardown of a session being deleted; a
+      // close/closeSession failure must not abort the deletion.
+      await client.closeSession(protocolSessionId).catch(() => undefined);
+      await client.close().catch(() => undefined);
+    });
+    this.nativeClientStops.set(sessionId, stopping);
+    try {
+      await stopping;
+    } finally {
+      this.nativeClientStops.delete(sessionId);
+    }
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {

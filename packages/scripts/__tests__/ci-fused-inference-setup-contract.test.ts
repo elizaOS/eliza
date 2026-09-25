@@ -63,7 +63,7 @@ function runLifecycle(
       }),
     );
     const installer = new URL(
-      "../../app/scripts/ensure-fused-inference-install.mjs",
+      "../../app/scripts/ensure-fused-inference-install.ts",
       import.meta.url,
     ).href;
     writeFileSync(
@@ -148,10 +148,13 @@ describe("CI fused inference setup ownership", () => {
       ".github/actions/cloud-setup-test-env/action.yml",
     ) as Action;
     const install = cloud.runs.steps.find(
-      (step) => step.name === "Install dependencies",
+      (step) => step.uses === "./.github/actions/setup-bun-workspace",
     );
     if (!install) throw new Error("Cloud setup has no install step");
-    runLifecycle(install, "false", ["install", "--no-save"], false);
+    expect(install.with?.["run-postinstall"]).toBe("false");
+    expect(install.with?.["install-command"]).toBe(
+      "bun install --frozen-lockfile --ignore-scripts",
+    );
   });
 
   test("desktop artifact owners enter the installer", () => {

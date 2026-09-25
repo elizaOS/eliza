@@ -7,10 +7,9 @@
  * `./actions/inbox.ts`. This plugin must not import from
  * @elizaos/plugin-personal-assistant.
  */
-
 /**
  * Channels the unified inbox aggregates. These mirror the wire channel ids the
- * inbox route emits (`LIFEOPS_INBOX_CHANNELS` in @elizaos/shared) so the view
+ * inbox route emits (`LIFEOPS_INBOX_CHANNELS` in @elizaos/core) so the view
  * can group the real payload without a translation table. Defined locally —
  * this plugin must not import from @elizaos/plugin-personal-assistant.
  */
@@ -24,7 +23,6 @@ export const INBOX_CHANNELS = [
   "sms",
 ] as const;
 export type InboxChannel = (typeof INBOX_CHANNELS)[number];
-
 /** Human-readable label per channel, in display order. */
 export const INBOX_CHANNEL_LABELS: Record<InboxChannel, string> = {
   gmail: "Email",
@@ -35,7 +33,6 @@ export const INBOX_CHANNEL_LABELS: Record<InboxChannel, string> = {
   whatsapp: "WhatsApp",
   sms: "SMS",
 };
-
 /**
  * One triage item rendered by the InboxView. This is the view's local display
  * DTO, mapped at the fetch boundary from a `LifeOpsInboxMessage` on the wire

@@ -7,27 +7,26 @@
  * Automation/page rooms are excluded and owner-private disclosure is checked
  * before identity expansion or history reads.
  */
-import type {
-  IAgentRuntime,
-  Media,
-  Memory,
-  Provider,
-  ProviderResult,
-  Room,
-  State,
-  UUID,
-} from "@elizaos/core";
 import {
   actionGateRejection,
   buildCrossWorldConversationAccessContext,
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type Provider,
+  type ProviderResult,
+  type Room,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
+  type State,
   toWellFormedUnicode,
+  type UUID,
 } from "@elizaos/core";
+
 import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
-import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,

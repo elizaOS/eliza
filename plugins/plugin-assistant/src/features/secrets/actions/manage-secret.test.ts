@@ -5,8 +5,8 @@
  * no handler module, model, database, or secret implementation is mocked.
  */
 
+import { ChannelType } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { ChannelType } from "../../../../../../packages/core/src/types/primitives.ts";
 import { maskSecretValue, secretsAction } from "./manage-secret.ts";
 
 function createRuntime(hasSecretsService = true) {

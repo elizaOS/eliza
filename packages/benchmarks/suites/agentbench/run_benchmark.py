@@ -76,7 +76,7 @@ async def main() -> int:
     )
     parser.add_argument(
         "--runtime",
-        choices=["mock", "bridge", "elizaos", "eliza", "hermes", "openclaw", "smithers"],
+        choices=["mock", "bridge", "elizaos", "eliza", "hermes", "openclaw"],
         default="mock",
         help=(
             "Runtime backend: mock for offline smoke tests, bridge/eliza/elizaos "
@@ -293,7 +293,7 @@ async def main() -> int:
             eliza_harness = ElizaAgentHarness(eliza_server.client)
         runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
         print("Eliza benchmark server connected")
-    elif runtime_name in {"hermes", "openclaw", "smithers"}:
+    elif runtime_name in {"hermes", "openclaw"}:
         from elizaos_agentbench.agent_fn_harness import AgentFnHarness
 
         _load_dotenv()
@@ -307,8 +307,6 @@ async def main() -> int:
         )
         if runtime_name == "hermes":
             from hermes_adapter.agentbench import build_agentbench_agent_fn
-        elif runtime_name == "smithers":
-            from smithers_adapter.agentbench import build_agentbench_agent_fn
         else:
             from openclaw_adapter.agentbench import build_agentbench_agent_fn
 

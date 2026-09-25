@@ -1,6 +1,6 @@
 /** Adapts host connector identity defaults to the canonical calendar repository. Calendar SQL, parsing, and sync-state ownership remain in plugin-calendar. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { CalendarRepository } from "@elizaos/plugin-calendar/service/CalendarRepository";
+import { CalendarRepository } from "@elizaos/plugin-calendar";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsConnectorGrant,

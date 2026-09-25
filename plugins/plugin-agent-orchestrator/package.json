@@ -14,12 +14,8 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "node": {
         "types": "./dist/node/index.d.ts",
         "import": "./dist/node/index.node.js",
@@ -39,20 +35,20 @@
       "default": "./dist/*.js"
     },
     "./ui": {
-      "types": "./dist/ui/index.d.ts",
       "eliza-source": "./src/ui/index.ts",
+      "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
     "./ui/*": {
-      "types": "./dist/ui/*.d.ts",
       "eliza-source": "./src/ui/*.ts",
+      "types": "./dist/ui/*.d.ts",
       "import": "./dist/ui/*.js",
       "default": "./dist/ui/*.js"
     },
     "./ui/register": {
-      "types": "./dist/ui/register.d.ts",
       "eliza-source": "./src/ui/register.ts",
+      "types": "./dist/ui/register.d.ts",
       "import": "./dist/ui/register.js",
       "default": "./dist/ui/register.js"
     }
@@ -91,7 +87,6 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "git-workspace-service": "0.4.5"
   },
   "dependencies": {
@@ -103,20 +98,19 @@
     "smol-toml": "^1.8.0",
     "@elizaos/auth": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "lucide-react": "^1.0.0",
     "marked": "^18.0.13",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@types/bun": "1.3.14",
     "@types/node": "^25.2.3",
     "bun-types": "1.3.14",
@@ -126,13 +120,14 @@
     "vitest": "^5.0.1",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "tsup": "^8.5.1",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -141,7 +136,7 @@
     "typecheck:live-harness": "tsc --noEmit -p tsconfig.live-harness.json",
     "test": "bunx vitest run --config vitest.config.ts && bun run test:ui",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
-    "test:e2e:pi-linked-account": "bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.mjs",
+    "test:e2e:pi-linked-account": "bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.ts",
     "test:e2e:multi-account": "bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/compose-multi-account-e2e.ts",
     "test:e2e:multi-account:live": "ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun --conditions=eliza-source ../../packages/scripts/plugins/plugin-agent-orchestrator/live-multi-account-e2e.ts",
     "check:account-readiness": "bun ../../packages/scripts/plugins/plugin-agent-orchestrator/check-account-readiness.ts",
@@ -152,7 +147,7 @@
     "build": "bun run build.ts && bun run build:ui",
     "build:ts": "bun run build.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "build:ui": "tsc6 --noCheck -p ui/tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs plugins/plugin-agent-orchestrator && bun run build:views",
+    "build:ui": "tsc6 --noCheck -p ui/tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts plugins/plugin-agent-orchestrator && bun run build:views",
     "test:ui": "vitest run --config ui/vitest.config.ts",
     "typecheck:ui": "tsc --noEmit -p ui/tsconfig.build.json",
     "test:e2e:cockpit-browser": "node ui/test/browser-e2e/run-cockpit-browser-e2e.mjs",

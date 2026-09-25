@@ -32,15 +32,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Bun's test runner can return empty stdio pipes from node:child_process
 // spawnSync; the captured adapter routes output through files instead.
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const { runContract, classifyTypeRange, isConcretePin } = await import(
-  new URL("../ci-bun-version-contract.mjs", import.meta.url).href
+  new URL("../ci-bun-version-contract.ts", import.meta.url).href
 );
 
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CONTRACT_CLI_PATH = fileURLToPath(
-  new URL("../ci-bun-version-contract.mjs", import.meta.url),
+  new URL("../ci-bun-version-contract.ts", import.meta.url),
 );
 
 interface InventorySite {
@@ -54,7 +54,7 @@ interface InventorySite {
   reason?: string;
 }
 
-const CANONICAL = "1.3.14";
+const CANONICAL = "1.4.2";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
 const GATE_WORKFLOWS = [
@@ -79,7 +79,7 @@ jobs:
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: \${{ env.BUN_VERSION }}
-      - run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+      - run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: bun-runtime-inventory
@@ -182,8 +182,8 @@ function inventoryOf(
 
 describe("ci-bun-version-contract", () => {
   test("parses concrete versions without backtracking on long invalid suffixes", () => {
-    expect(isConcretePin("1.3.14")).toBe(true);
-    expect(isConcretePin("1.3.14-canary.1+darwin-arm64")).toBe(true);
+    expect(isConcretePin("1.4.2")).toBe(true);
+    expect(isConcretePin("1.4.2-canary.1+darwin-arm64")).toBe(true);
     expect(isConcretePin(`0.0.0+${"--".repeat(100_000)}!`)).toBe(false);
     expect(isConcretePin(`0.0.0-${"a.".repeat(100_000)}`)).toBe(false);
   });
@@ -202,7 +202,7 @@ describe("ci-bun-version-contract", () => {
   test("fails when a concrete pin diverges from the source of truth", () => {
     expectViolation(
       buildRepo({ extra: { "drift.yml": pinnedWorkflow("1.3.99") } }),
-      /canonical CI Bun version is 1\.3\.14/,
+      /canonical CI Bun version is 1\.4\.2/,
     );
   });
 
@@ -428,7 +428,7 @@ jobs:
     expectViolation(
       buildRepo({
         files: {
-          "deploy/generate.mjs": [
+          "deploy/generate.ts": [
             "const script = [",
             '  "if ! command -v bun >/dev/null 2>&1; then",',
             `  '  curl -fsSL https://bun.sh/install | bash -s "bun-v${CANONICAL}"',`,
@@ -590,7 +590,7 @@ jobs:
       buildRepo({
         overrides: {
           "pr-static-smoke.yml": gateStub().replace(
-            /\s+- run: node packages\/scripts\/ci-bun-version-contract\.mjs --inventory[^\n]+/,
+            /\s+- run: node packages\/scripts\/ci-bun-version-contract\.ts --inventory[^\n]+/,
             "",
           ),
         },
@@ -1114,7 +1114,7 @@ jobs:
       buildRepo({
         files: {
           "deploy/Dockerfile": [
-            "FROM oven/bun:1.3.14 AS runtime",
+            "FROM oven/bun:1.4.2 AS runtime",
             "ARG BUN_VERSION",
             // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
             'RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"',
@@ -1232,7 +1232,7 @@ jobs:
     expect(classifyTypeRange(CANONICAL, CANONICAL)).toBe("exact-canonical");
     expect(classifyTypeRange("*", CANONICAL)).toBe("compatible-range");
     expect(classifyTypeRange("^1.2.25", CANONICAL)).toBe("compatible-range");
-    expect(classifyTypeRange("~1.3.2", CANONICAL)).toBe("compatible-range");
+    expect(classifyTypeRange("~1.4.0", CANONICAL)).toBe("compatible-range");
     expect(classifyTypeRange("~1.2.0", CANONICAL)).toBe("drift");
     expect(classifyTypeRange("1.3.13", CANONICAL)).toBe("drift");
     expect(classifyTypeRange("^2.0.0", CANONICAL)).toBe("drift");
@@ -1293,7 +1293,7 @@ jobs:
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain(
-        "ci bun version contract passed (canonical 1.3.14",
+        "ci bun version contract passed (canonical 1.4.2",
       );
       const inventory = JSON.parse(readFileSync(inventoryPath, "utf8"));
       expect(inventory.canonical).toBe(CANONICAL);

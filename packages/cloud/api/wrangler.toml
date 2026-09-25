@@ -2,7 +2,7 @@
 # eliza-cloud-api — Cloudflare Worker config
 # =============================================================================
 # This file is committed; secrets live in `wrangler secret put` (push them via
-# packages/cloud/scripts/admin/cf-secrets-migrate.mjs). Environment bindings below
+# packages/cloud/scripts/admin/cf-secrets-migrate.ts). Environment bindings below
 # identify provisioned resources. New environments require explicit provisioning
 # and binding configuration before the protected cloud-cf-release.yml workflow.
 # =============================================================================
@@ -23,19 +23,18 @@ keep_vars = true
 # Bundle-time aliases — swap Node-only / forbidden-top-level-IO modules for
 # Workers-friendly adapters for services outside the Worker. The shared turn
 # host uses the ordinary Node runtime through nodejs_compat; core has no Worker
-# shim or platform variant. SQL aliases expose the shared Drizzle tables.
+# shim or platform variant. SQL uses the canonical package root.
 # -----------------------------------------------------------------------------
 [define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [alias]
-"@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
 "@elizaos/plugin-elevenlabs" = "./src/stubs/elizaos-plugin-elevenlabs.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
-"@elizaos/shared/contracts/cloud-coding-containers" = "../../shared/src/contracts/cloud-coding-containers.ts"
-"@elizaos/shared/local-inference/voice-models" = "../../shared/src/local-inference/voice-models.ts"
+"@elizaos/core/contracts/cloud-coding-containers" = "../../core/src/contracts/cloud-coding-containers.ts"
+"@elizaos/plugin-native-inference/model-catalog/voice-models" = "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
 "@brighter/storage-adapter-s3" = "./src/stubs/brighter-storage-adapter-s3.ts"
 # ssh2 is Node-only (.node native binding). Container/agent SSH lives on the
 # sidecar (cloud/INFRA.md). Stub at bundle time so the Worker compiles; any
@@ -273,6 +272,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
+APP_BILLING_ENVIRONMENT = "live"
+APP_BILLING_UI_ORIGIN = "https://cloud.eliza.app"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
 # Warm-pool claim half (#16961): the provision route only claims a pre-booted
@@ -359,7 +360,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
 # -----------------------------------------------------------------------------
 # Required secrets — set via `wrangler secret put KEY` (or run
-# packages/cloud/scripts/admin/cf-secrets-migrate.mjs which iterates a .env file).
+# packages/cloud/scripts/admin/cf-secrets-migrate.ts which iterates a .env file).
 #
 # Login credentials retain their existing names to preserve deployed sessions
 # and encrypted keys. LOGIN_API_URL selects the owned identity service.
@@ -396,6 +397,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
 #                                      Exact allowlisted Cloud organization UUIDs
 #   STRIPE_SECRET_KEY                  Stripe billing
+#   STRIPE_TEST_SECRET_KEY             Optional test-mode app billing in production
+#   STRIPE_PLATFORM_BILLING_ORGANIZATION_ID  Owner of first-party platform merchant
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
@@ -648,6 +651,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "staging"
+APP_BILLING_ENVIRONMENT = "test"
+APP_BILLING_UI_ORIGIN = "https://cloud-staging.eliza.app"
 # Staging canary. Set false for an immediate rollback to the full app router.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
@@ -930,6 +935,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
+APP_BILLING_ENVIRONMENT = "live"
+APP_BILLING_UI_ORIGIN = "https://cloud.eliza.app"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
 # Warm-pool claim half (#16961): the provision route only claims a pre-booted

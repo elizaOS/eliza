@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core";
 import { getNotesService, type NotesService } from "./service.js";
 import type { NotesSnapshot, StickyNote } from "./types.js";
-import { isRecord, parseNoteContent } from "./validation.js";
+import { isRecord } from "./validation.js";
 
 export interface NotesInteractResult {
   success: boolean;
@@ -300,7 +300,7 @@ async function dispatchCapability(
   if (capability === "create-note") {
     assertOnlyParams(params, ["content", "color"]);
     const input = {
-      ...parseNoteContent(params.content),
+      content: params.content,
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
     const {
@@ -334,9 +334,7 @@ async function dispatchCapability(
       "query",
     ]);
     const patch: Record<string, unknown> = {
-      ...(Object.hasOwn(params, "content")
-        ? parseNoteContent(params.content)
-        : {}),
+      ...(Object.hasOwn(params, "content") ? { content: params.content } : {}),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
     const updated =

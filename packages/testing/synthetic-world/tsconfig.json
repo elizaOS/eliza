@@ -1,7 +1,6 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "customConditions": ["eliza-source"],
     "composite": false,
     "incremental": false,
     "types": ["node", "bun-types"],

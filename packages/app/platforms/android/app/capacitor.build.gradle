@@ -33,11 +33,17 @@ dependencies {
     implementation project(':elizaos-capacitor-gateway')
     implementation project(':elizaos-capacitor-location')
     implementation project(':elizaos-capacitor-mobile-signals')
+    implementation project(':elizaos-capacitor-network-policy')
     implementation project(':elizaos-capacitor-secure-store')
     implementation project(':elizaos-capacitor-swabble')
     implementation project(':elizaos-capacitor-system')
     implementation project(':elizaos-capacitor-talkmode')
     implementation project(':elizaos-capacitor-websiteblocker')
+    implementation project(':elizaos-plugin-native-contacts')
+    implementation project(':elizaos-plugin-native-inference')
+    implementation project(':elizaos-plugin-native-messages')
+    implementation project(':elizaos-plugin-native-phone')
+    implementation project(':elizaos-plugin-native-wifi')
 
 }
 

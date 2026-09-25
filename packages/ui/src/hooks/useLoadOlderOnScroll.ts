@@ -32,8 +32,8 @@
  * shares the SAME scroller node with `useThreadAutoScroll` via `scrollRef`.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { logger } from "../logger.ts";
 
 /**
  * How far before the literal top (as a fraction of the viewport height) the

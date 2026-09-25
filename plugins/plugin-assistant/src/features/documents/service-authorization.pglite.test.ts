@@ -4,23 +4,25 @@
  * composition across user and agent-tenant boundaries.
  */
 
-import { createTestRuntime } from "@elizaos/testing";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { readDocumentMutationSnapshot } from "../../../../../packages/core/src/database/document-list-query.ts";
-import { setEntityRoleCas } from "../../../../../packages/core/src/roles.ts";
-import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
-import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import { runWithTrajectoryContext } from "../../../../../packages/core/src/trajectory-context.ts";
+import type { AgentRuntime, DocumentMetadata } from "@elizaos/core";
 import {
   type Agent,
+  buildDocumentSourceProjection,
   ChannelType,
+  filterByContextGate,
   type HandlerOptions,
   type Memory,
   MemoryType,
   ModelType,
+  projectDocumentParentContent,
+  readDocumentMutationSnapshot,
+  runWithTrajectoryContext,
   type State,
+  setEntityRoleCas,
   type UUID,
-} from "../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectV5PlannerStateProviderNames } from "../../services/message/provider-state.ts";
 import { documentAction } from "./actions.ts";
 import { pinnedDocumentsProvider } from "./pinned-provider.ts";
@@ -51,6 +53,54 @@ const LARGE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000029" as UUID;
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
 let failEmbedding = false;
+
+function sourcePublication(memory: Memory) {
+  if (
+    !memory.id ||
+    !memory.agentId ||
+    !memory.roomId ||
+    !memory.entityId ||
+    typeof memory.content.text !== "string"
+  )
+    throw new Error("Incomplete document fixture");
+  const projection = buildDocumentSourceProjection({
+    text: memory.content.text,
+    documentId: memory.id,
+    agentId: memory.agentId,
+    roomId: memory.roomId,
+    entityId: memory.entityId,
+    worldId: memory.worldId,
+    documentMetadata: memory.metadata as DocumentMetadata,
+  });
+  return {
+    parent: {
+      ...memory,
+      content: projectDocumentParentContent({
+        text: memory.content.text,
+        projection: projection.metadata,
+      }),
+      metadata: { ...memory.metadata, ...projection.metadata },
+    } as Memory,
+    segments: projection.segments,
+  };
+}
+async function seedMemories(
+  entries: Parameters<AgentRuntime["createMemories"]>[0],
+) {
+  return runtime.createMemories(
+    entries.flatMap((entry) => {
+      if (entry.tableName !== "documents") return [entry];
+      const publication = sourcePublication(entry.memory);
+      return [
+        { ...entry, memory: publication.parent },
+        ...publication.segments.map((memory) => ({
+          memory,
+          tableName: "document_fragments",
+        })),
+      ];
+    }),
+  );
+}
 
 function message(): Memory {
   return {
@@ -237,7 +287,7 @@ beforeAll(async () => {
       title: "HIDDEN_FOREIGN_TENANT_DOCUMENT",
     },
   );
-  await runtime.createMemories([
+  await seedMemories([
     {
       memory: userPrivateDocument(
         PRIVATE_GRANT_DOCUMENT_ID,
@@ -503,7 +553,7 @@ describe("DocumentService requester authorization", () => {
     const lateLine = `${"LATE-EVIDENCE".padEnd(1_023, "z")}\n`;
     const source = ordinaryLine.repeat(10_239) + lateLine;
     expect(Buffer.byteLength(source)).toBe(10 * 1024 * 1024);
-    await runtime.createMemories([
+    await seedMemories([
       {
         memory: userPrivateDocument(LARGE_DOCUMENT_ID, source, {
           title: "Large bounded-read document",
@@ -644,7 +694,7 @@ describe("DocumentService requester authorization", () => {
       type: MemoryType.DOCUMENT,
       pinned: true,
     };
-    await runtime.createMemories([
+    await seedMemories([
       { memory: shared, tableName: "documents" },
       { memory: hidden, tableName: "documents" },
     ]);
@@ -713,9 +763,7 @@ describe("DocumentService requester authorization", () => {
       type: ChannelType.DM,
     });
     const original = userPrivateDocument(id, "CHAT_PIN_COMPLETE_BODY");
-    await runtime.createMemories([
-      { memory: original, tableName: "documents" },
-    ]);
+    await seedMemories([{ memory: original, tableName: "documents" }]);
     const owner = {
       requesterEntityId: USER_ID,
       role: "OWNER" as const,
@@ -831,7 +879,7 @@ describe("DocumentService requester authorization", () => {
       type: MemoryType.DOCUMENT,
       pinTargets: { agent: true, roomIds: [] },
     };
-    await runtime.createMemories([
+    await seedMemories([
       { memory: original, tableName: "documents" },
       {
         memory: documentFragment(
@@ -1006,7 +1054,7 @@ describe("DocumentService requester authorization", () => {
     const roomId = await privateConversation(USER_ID);
     const id = crypto.randomUUID() as UUID;
     const original = userPrivateDocument(id, "raceword old source");
-    await runtime.createMemories([
+    await seedMemories([
       { memory: original, tableName: "documents" },
       {
         memory: documentFragment(
@@ -1042,6 +1090,7 @@ describe("DocumentService requester authorization", () => {
           documentRevision: 1,
         },
       };
+      const publication = sourcePublication(replacement);
       const mutation = await runtime.adapter.replaceDocumentRevision({
         agentId: runtime.agentId,
         documentId: id,
@@ -1049,8 +1098,9 @@ describe("DocumentService requester authorization", () => {
         requesterRole: "USER",
         requesterRoomIds: [ROOM_ID, roomId],
         expected: snapshot,
-        replacement,
+        replacement: publication.parent,
         fragments: [
+          ...publication.segments,
           documentFragment(
             replacement,
             "raceword revised source",
@@ -1115,7 +1165,7 @@ describe("DocumentService requester authorization", () => {
       "Failure original body",
     );
     const oldFragmentId = "f4300000-0000-4000-8000-000000000019" as UUID;
-    await runtime.createMemories([
+    await seedMemories([
       { memory: original, tableName: "documents" },
       {
         memory: documentFragment(
@@ -1160,7 +1210,7 @@ describe("DocumentService requester authorization", () => {
       "Atomic original body",
     );
     const oldFragmentId = "f4300000-0000-4000-8000-000000000017" as UUID;
-    await runtime.createMemories([
+    await seedMemories([
       { memory: original, tableName: "documents" },
       {
         memory: documentFragment(
@@ -1215,17 +1265,21 @@ describe("DocumentService requester authorization", () => {
       throw new Error("Replacement parent has no mutation snapshot");
     const rejectedFragmentId = "f4300000-0000-4000-8000-000000000099" as UUID;
     const oversized = "x".repeat(32 * 1024 * 1024);
+    const rejectedPublication = sourcePublication({
+      ...parent,
+      metadata: { ...parent.metadata, documentRevision: 2 },
+    });
     await expect(
       runtime.adapter.replaceDocumentRevision({
         ...context,
         documentId: ATOMIC_UPDATE_DOCUMENT_ID,
         expected,
         replacement: {
-          ...parent,
-          content: { text: oversized },
-          metadata: { ...parent.metadata, documentRevision: 2 },
+          ...rejectedPublication.parent,
+          content: { ...rejectedPublication.parent.content, title: oversized },
         },
         fragments: [
+          ...rejectedPublication.segments,
           {
             ...documentFragment(
               parent,

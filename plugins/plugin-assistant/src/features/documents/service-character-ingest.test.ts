@@ -4,23 +4,14 @@
  * AgentRuntime, model registry, and in-memory adapter.
  */
 
+import type { Character, Memory, UUID } from "@elizaos/core";
+import { AgentRuntime, ElizaError, MemoryType, ModelType } from "@elizaos/core";
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
   SQLiteDatabaseAdapter,
 } from "@elizaos/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { ElizaError } from "../../../../../packages/core/src/errors.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import type {
-  Character,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
-import {
-  MemoryType,
-  ModelType,
-} from "../../../../../packages/core/src/types/index.ts";
 import { DocumentService } from "./service.ts";
 import { generateContentBasedId } from "./utils.ts";
 
@@ -84,6 +75,12 @@ describe("DocumentService character document ingestion boot races", () => {
         created.push({ memory, table });
         return memory.id as UUID;
       },
+      createMemories: async (entries) => {
+        for (const { memory, tableName } of entries) {
+          created.push({ memory, table: tableName });
+        }
+        return entries.map(({ memory }) => memory.id as UUID);
+      },
       updateMemory: async () => true,
       deleteMemory: async () => {},
       addEmbeddingToMemory: async (memory: Memory) => {
@@ -114,7 +111,11 @@ describe("DocumentService character document ingestion boot races", () => {
     ).toBe(true);
     expect(
       created
-        .filter((entry) => entry.table === DOCUMENT_FRAGMENTS_TABLE)
+        .filter(
+          (entry) =>
+            entry.table === DOCUMENT_FRAGMENTS_TABLE &&
+            entry.memory.metadata?.fragmentRole !== "source-segment",
+        )
         .every((entry) => Array.isArray(entry.memory.embedding)),
     ).toBe(true);
   });
@@ -197,12 +198,22 @@ describe("DocumentService character document ingestion boot races", () => {
     });
 
     expect(result.fragmentCount).toBe(2);
-    expect(createMemories).toHaveBeenCalledTimes(1);
-    expect(createMemories.mock.calls[0]?.[0]).toHaveLength(2);
+    const batches = createMemories.mock.calls.flatMap(([entries]) => entries);
+    expect(
+      batches.filter(
+        ({ memory }) => memory.metadata?.fragmentRole !== "source-segment",
+      ),
+    ).toHaveLength(2);
+    expect(
+      batches.some(
+        ({ memory }) => memory.metadata?.fragmentRole === "source-segment",
+      ),
+    ).toBe(true);
     const documents = await getStoredMemories(runtime, DOCUMENTS_TABLE);
-    const fragments = await getStoredMemories(
-      runtime,
-      DOCUMENT_FRAGMENTS_TABLE,
+    const fragments = (
+      await getStoredMemories(runtime, DOCUMENT_FRAGMENTS_TABLE)
+    ).filter(
+      (fragment) => fragment.metadata?.fragmentRole !== "source-segment",
     );
     expect(documents).toHaveLength(1);
     expect(fragments).toHaveLength(2);

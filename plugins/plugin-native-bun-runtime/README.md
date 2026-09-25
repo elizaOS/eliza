@@ -15,3 +15,7 @@ bun run --cwd plugins/plugin-native-bun-runtime test   # tests
 ```
 
 Build the package before running engine check, build, verify, or smoke commands; these commands use the bundled tools shipped to consumers.
+
+Android lifecycle, streamed Agent requests, and BunRuntime RPCs are exercised against
+the real bundled backend by `node packages/app/scripts/android-native-agent.ts
+--serial <fresh-x86_64-emulator>`. See the [app setup guide](../../packages/app/README.md).

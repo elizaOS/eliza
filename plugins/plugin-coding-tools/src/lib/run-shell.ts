@@ -28,18 +28,22 @@ import {
   sanitizeSpawnEnv,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import { resolveRuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/core/host-execution-env";
+import { type ShellOutputArtifact } from "./shell-output-artifact.js";
+import {
+  ForegroundShellCapture,
+  type ShellCaptureProjection,
+} from "./shell-streaming-capture.js";
 import {
   detectTerminalSupport,
   missingToolForCommand,
   missingToolMessage,
   resolveHostShell,
 } from "./terminal-capabilities.js";
-
 export type ShellSandboxBackend =
   | "host"
   | "capability-router"
@@ -48,7 +52,6 @@ export type ShellSandboxBackend =
   | "wsl2"
   | "appcontainer"
   | "none";
-
 export interface ShellResult {
   exitCode: number;
   stdout: string;
@@ -57,41 +60,27 @@ export interface ShellResult {
   sandbox: ShellSandboxBackend;
   timedOut: boolean;
   signal: NodeJS.Signals | null;
-  /** True only when complete capture was refused; stdout/stderr are empty. */
-  outputLimitExceeded?: boolean;
   workspaceExecution?: {
     root: string;
     rootId: string;
     executionDomainId: string;
   };
   workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
-}
-
-const COMPLETE_SHELL_CAPTURE_LIMIT_CHARS = 1_000_000;
-
-function enforceCompleteCaptureLimit(result: ShellResult): ShellResult {
-  if (
-    result.outputLimitExceeded === true ||
-    result.stdout.length + result.stderr.length <=
-      COMPLETE_SHELL_CAPTURE_LIMIT_CHARS
-  ) {
-    return result;
-  }
-  return {
-    ...result,
-    stdout: "",
-    stderr: "",
-    outputLimitExceeded: true,
+  artifact?: ShellOutputArtifact;
+  projection?: ShellCaptureProjection;
+  upstreamCaptureAttested?: true;
+  sourceLoss?: {
+    code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED";
+    backend: Exclude<ShellSandboxBackend, "host">;
+    message: string;
   };
 }
-
 export interface BackgroundShellStartResult {
   process: HostShellProcess;
   pid: number | undefined;
   sandbox: ShellSandboxBackend;
   startedAt: number;
 }
-
 export interface HostShellProcess {
   pid?: number;
   stdout: Readable;
@@ -108,7 +97,6 @@ export interface HostShellProcess {
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
   ): this;
 }
-
 export interface HostShellWritable {
   write(chunk: string): unknown;
   end(): unknown;
@@ -116,7 +104,6 @@ export interface HostShellWritable {
   writableEnded?: boolean;
   on?(event: "error", listener: (error: Error) => void): unknown;
 }
-
 interface RuntimeSandboxManager {
   exec: (options: {
     command: string;
@@ -130,9 +117,66 @@ interface RuntimeSandboxManager {
     stderr: string;
     durationMs: number;
     executedInSandbox: boolean;
+    capture?: UpstreamCaptureAttestation;
   }>;
 }
-
+interface UpstreamCaptureAttestation {
+  complete: true;
+  maxBytes: number;
+  stdoutBytes: number;
+  stderrBytes: number;
+}
+const MAX_ATTESTED_UPSTREAM_CAPTURE_BYTES = 1000000;
+function hasValidUpstreamCaptureAttestation(result: {
+  stdout: string;
+  stderr: string;
+  capture?: UpstreamCaptureAttestation;
+}): boolean {
+  const capture = result.capture;
+  return Boolean(
+    capture?.complete === true &&
+      Number.isSafeInteger(capture.maxBytes) &&
+      capture.maxBytes > 0 &&
+      capture.maxBytes <= MAX_ATTESTED_UPSTREAM_CAPTURE_BYTES &&
+      capture.stdoutBytes === Buffer.byteLength(result.stdout, "utf8") &&
+      capture.stderrBytes === Buffer.byteLength(result.stderr, "utf8") &&
+      capture.stdoutBytes + capture.stderrBytes <= capture.maxBytes,
+  );
+}
+async function finalizeAttestedUpstreamResult(
+  runtime: IAgentRuntime,
+  opts: RunShellOptions,
+  result: ShellResult,
+): Promise<ShellResult> {
+  if (!opts.captureScope) {
+    throw new Error(
+      "foreground shell artifact capture requires an owner scope",
+    );
+  }
+  const captureScope = opts.captureScope;
+  const capture = await ForegroundShellCapture.create();
+  try {
+    capture.write("stdout", result.stdout);
+    capture.write("stderr", result.stderr);
+    const finalized = await capture.finalize(runtime, {
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      signal: result.signal,
+      ownerAgentId: captureScope.ownerAgentId,
+      ownerConversationId: captureScope.ownerConversationId,
+    });
+    return {
+      ...result,
+      stdout: finalized.projection.stdout,
+      stderr: finalized.projection.stderr,
+      artifact: finalized.artifact,
+      projection: finalized.projection,
+    };
+  } catch (error) {
+    await capture.abort();
+    throw error;
+  }
+}
 function getRuntimeSandboxManager(
   runtime: IAgentRuntime,
 ): RuntimeSandboxManager | null {
@@ -143,19 +187,19 @@ function getRuntimeSandboxManager(
   ).getSandboxManager?.();
   return candidate ?? null;
 }
-
 function backendForManager(
   manager: RuntimeSandboxManager,
-): ShellSandboxBackend {
+): Exclude<ShellSandboxBackend, "host" | "capability-router"> {
   const internal = manager as RuntimeSandboxManager & {
-    engine?: { engineType?: string };
+    engine?: {
+      engineType?: string;
+    };
   };
   const engineType = internal.engine?.engineType;
   if (engineType === "docker") return "docker";
   if (engineType === "apple-container") return "apple-container";
   return "none";
 }
-
 function toSandboxWorkdir(cwd: string): string | undefined {
   const root = process.cwd();
   const relative = importPath.relative(
@@ -168,11 +212,9 @@ function toSandboxWorkdir(cwd: string): string | undefined {
   }
   return undefined;
 }
-
 function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
 }
-
 function shellArgsForCommand(shell: {
   command: string;
   args: string[];
@@ -204,7 +246,6 @@ function shellArgsForCommand(shell: {
   }
   return shell.args;
 }
-
 function killHostProcess(
   pid: number | undefined,
   signal: NodeJS.Signals,
@@ -222,7 +263,6 @@ function killHostProcess(
     // the timeout firing and kill delivery, so a failed signal is a no-op.
   }
 }
-
 interface BunHostSubprocess {
   pid: number;
   stdout: unknown;
@@ -235,7 +275,6 @@ interface BunHostSubprocess {
   signalCode: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals): void;
 }
-
 interface BunHostRuntime {
   spawn(options: {
     cmd: string[];
@@ -253,15 +292,18 @@ interface BunHostRuntime {
     ) => void;
   }): BunHostSubprocess;
 }
-
 function getBunRuntime(): BunHostRuntime | null {
-  return (globalThis as { Bun?: BunHostRuntime }).Bun ?? null;
+  return (
+    (
+      globalThis as {
+        Bun?: BunHostRuntime;
+      }
+    ).Bun ?? null
+  );
 }
-
 function isBunRuntime(): boolean {
   return typeof getBunRuntime()?.spawn === "function";
 }
-
 function startHostProcess(opts: {
   command: string;
   args: string[];
@@ -285,7 +327,6 @@ function startHostProcess(opts: {
     detached: opts.detached,
   }) as HostShellProcess;
 }
-
 function startBunHostProcess(opts: {
   command: string;
   args: string[];
@@ -332,7 +373,6 @@ function startBunHostProcess(opts: {
   let exitCode: number | null = null;
   let signalCode: NodeJS.Signals | null = null;
   let exitError: Error | undefined;
-
   proc.exited
     .then((code) => {
       exitCode = code;
@@ -349,7 +389,6 @@ function startBunHostProcess(opts: {
         events.emit("close", exitCode, signalCode);
       });
     });
-
   return {
     pid: proc.pid,
     stdout,
@@ -379,7 +418,6 @@ function startBunHostProcess(opts: {
     },
   };
 }
-
 function streamEnded(stream: Readable): Promise<void> {
   return new Promise((resolve) => {
     if (stream.readableEnded) {
@@ -390,7 +428,6 @@ function streamEnded(stream: Readable): Promise<void> {
     stream.once("close", resolve);
   });
 }
-
 function createStdinFifo(): {
   path: string;
   open(events: EventEmitter): HostShellWritable;
@@ -420,55 +457,49 @@ function createStdinFifo(): {
     },
   };
 }
-
 function withShellStdinRedirect(args: string[], fifoPath: string): string[] {
   const commandFlagIndex = args.lastIndexOf("-c");
   if (commandFlagIndex < 0 || commandFlagIndex + 1 >= args.length) {
     return args;
   }
-  const redirected = `exec < ${quoteShellArg(fifoPath)}; ${
-    args[commandFlagIndex + 1]
-  }`;
+  const redirected = `exec < ${quoteShellArg(fifoPath)}; ${args[commandFlagIndex + 1]}`;
   return [
     ...args.slice(0, commandFlagIndex + 1),
     redirected,
     ...args.slice(commandFlagIndex + 2),
   ];
 }
-
 function quoteShellArg(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
-
-function runOnHost(opts: {
-  command: string;
-  cwd: string;
-  timeoutMs: number;
-  env: NodeJS.ProcessEnv;
-}): Promise<ShellResult> {
-  return runOnHostWithShell(opts, resolveHostShell()).then(async (result) => {
-    const shell = resolveHostShell();
-    const basename = importPath.basename(shell.command).toLowerCase();
-    if (
-      basename === "zsh" &&
-      result.exitCode !== 0 &&
-      result.stdout.length === 0 &&
-      result.stderr.length === 0
-    ) {
-      const bash = resolveExecutableForHost("bash", "/bin/bash");
-      if (bash && bash !== shell.command) {
-        return runOnHostWithShell(opts, {
-          command: bash,
-          args: ["-c"],
-          available: true,
-          source: "candidate",
-        });
+function runOnHost(
+  runtime: IAgentRuntime,
+  opts: RunShellOptions,
+): Promise<ShellResult> {
+  return runOnHostWithShell(runtime, opts, resolveHostShell()).then(
+    async (result) => {
+      const shell = resolveHostShell();
+      const basename = importPath.basename(shell.command).toLowerCase();
+      if (
+        basename === "zsh" &&
+        result.exitCode !== 0 &&
+        result.stdout.length === 0 &&
+        result.stderr.length === 0
+      ) {
+        const bash = resolveExecutableForHost("bash", "/bin/bash");
+        if (bash && bash !== shell.command) {
+          return runOnHostWithShell(runtime, opts, {
+            command: bash,
+            args: ["-c"],
+            available: true,
+            source: "candidate",
+          });
+        }
       }
-    }
-    return result;
-  });
+      return result;
+    },
+  );
 }
-
 function assertHostBackgroundSupported(
   runtime: IAgentRuntime,
   command: string,
@@ -479,7 +510,6 @@ function assertHostBackgroundSupported(
       "Background shell sessions are not supported by the capability-router backend.",
     );
   }
-
   const mode = resolveRuntimeExecutionMode(runtime);
   if (mode === "cloud") {
     throw new Error("Background shell sessions are disabled in cloud mode.");
@@ -489,25 +519,21 @@ function assertHostBackgroundSupported(
       "Background shell sessions require a managed sandbox backend with session support; this runtime only exposes one-shot sandbox exec.",
     );
   }
-
   const support = detectTerminalSupport();
   if (!support.supported) {
     throw new Error(
       support.message ?? "Local terminal execution is unavailable.",
     );
   }
-
   const missingTool = missingToolForCommand(command);
   if (missingTool) {
     throw new Error(missingToolMessage(missingTool));
   }
-
   const resolvedCwd = importPath.resolve(cwd);
   if (!existsSync(resolvedCwd)) {
     throw new Error(`cwd does not exist: ${cwd}`);
   }
 }
-
 export function startBackgroundShellOnHost(
   runtime: IAgentRuntime,
   opts: {
@@ -537,42 +563,44 @@ export function startBackgroundShellOnHost(
     startedAt: Date.now(),
   };
 }
-
 export function signalHostProcessGroup(
   proc: HostShellProcess,
   signal: NodeJS.Signals,
 ): void {
   killHostProcess(proc.pid, signal, process.platform !== "win32", proc);
 }
-
 function resolveExecutableForHost(
   name: string,
   fallback: string,
 ): string | undefined {
   return resolveHostExecutable(name) ?? resolveHostExecutable(fallback);
 }
-
-function runOnHostWithShell(
-  opts: {
-    command: string;
-    cwd: string;
-    timeoutMs: number;
-    env: NodeJS.ProcessEnv;
-  },
+async function runOnHostWithShell(
+  runtime: IAgentRuntime,
+  opts: RunShellOptions,
   shell: ReturnType<typeof resolveHostShell>,
 ): Promise<ShellResult> {
   const start = Date.now();
-  return new Promise<ShellResult>((resolve) => {
+  if (!opts.captureScope) {
+    throw new Error(
+      "foreground shell artifact capture requires an owner scope",
+    );
+  }
+  const captureScope = opts.captureScope;
+  const capture = await ForegroundShellCapture.create();
+  return new Promise<ShellResult>((resolve, reject) => {
     if (!shell.available) {
-      resolve({
-        exitCode: -1,
-        signal: null,
-        stdout: "",
-        stderr: shell.warning ?? "No executable shell was detected.",
-        timedOut: false,
-        durationMs: Date.now() - start,
-        sandbox: "host",
-      });
+      void capture.abort().finally(() =>
+        resolve({
+          exitCode: -1,
+          signal: null,
+          stdout: "",
+          stderr: shell.warning ?? "No executable shell was detected.",
+          timedOut: false,
+          durationMs: Date.now() - start,
+          sandbox: "host",
+        }),
+      );
       return;
     }
     const useProcessGroup = process.platform !== "win32";
@@ -580,40 +608,26 @@ function runOnHostWithShell(
       command: shell.command,
       args: [...shellArgsForCommand(shell), opts.command],
       cwd: opts.cwd,
-      env: opts.env,
+      env: hostSpawnEnv(process.env),
       stdin: "ignore",
       detached: useProcessGroup,
     });
-    let stdout = "";
-    let stderr = "";
     let timedOut = false;
-    let outputLimitExceeded = false;
-    const rejectOversizeCapture = () => {
-      if (outputLimitExceeded) return;
-      outputLimitExceeded = true;
-      stdout = "";
-      stderr = "";
-      killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
-    };
-
-    // Preserve code points split across OS pipe chunks before accumulating.
+    // Preserve code points split across OS pipe chunks before encrypted spill.
     proc.stdout.setEncoding("utf8");
     proc.stderr.setEncoding("utf8");
     proc.stdout.on("data", (chunk: string) => {
-      if (outputLimitExceeded) return;
-      stdout += chunk;
-      if (stdout.length + stderr.length > COMPLETE_SHELL_CAPTURE_LIMIT_CHARS) {
-        rejectOversizeCapture();
+      if (!capture.write("stdout", chunk)) {
+        proc.stdout.pause();
+        capture.onDrain("stdout", () => proc.stdout.resume());
       }
     });
     proc.stderr.on("data", (chunk: string) => {
-      if (outputLimitExceeded) return;
-      stderr += chunk;
-      if (stdout.length + stderr.length > COMPLETE_SHELL_CAPTURE_LIMIT_CHARS) {
-        rejectOversizeCapture();
+      if (!capture.write("stderr", chunk)) {
+        proc.stderr.pause();
+        capture.onDrain("stderr", () => proc.stderr.resume());
       }
     });
-
     const timer = setTimeout(() => {
       timedOut = true;
       killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
@@ -622,36 +636,38 @@ function runOnHostWithShell(
       }, 1500);
     }, opts.timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
-
     proc.on("close", (code, signal) => {
       clearTimeout(timer);
-      resolve({
-        exitCode: code ?? -1,
-        signal,
-        stdout,
-        stderr,
-        timedOut,
-        durationMs: Date.now() - start,
-        sandbox: "host",
-        outputLimitExceeded,
-      });
+      const exitCode = code ?? -1;
+      void capture
+        .finalize(runtime, {
+          exitCode,
+          signal,
+          timedOut,
+          ownerAgentId: captureScope.ownerAgentId,
+          ownerConversationId: captureScope.ownerConversationId,
+        })
+        .then(({ artifact, projection }) =>
+          resolve({
+            exitCode,
+            signal,
+            stdout: projection.stdout,
+            stderr: projection.stderr,
+            timedOut,
+            durationMs: Date.now() - start,
+            sandbox: "host",
+            artifact,
+            projection,
+          }),
+        )
+        .catch(reject);
     });
     proc.on("error", (err) => {
       clearTimeout(timer);
-      resolve({
-        exitCode: -1,
-        signal: null,
-        stdout,
-        stderr: stderr.length > 0 ? `${stderr}\n${err.message}` : err.message,
-        timedOut,
-        durationMs: Date.now() - start,
-        sandbox: "host",
-        outputLimitExceeded,
-      });
+      capture.write("stderr", `\n${err.message}`);
     });
   });
 }
-
 async function runThroughCapabilityRouter(
   runtime: IAgentRuntime,
   opts: RunShellOptions,
@@ -681,6 +697,9 @@ async function runThroughCapabilityRouter(
         "routed workspace receipt does not match its attested execution scope",
       );
     }
+    const attested = result as typeof result & {
+      capture?: UpstreamCaptureAttestation;
+    };
     return {
       exitCode: result.exitCode ?? -1,
       signal: null,
@@ -693,6 +712,13 @@ async function runThroughCapabilityRouter(
         ? { workspaceExecution: result.workspaceExecution }
         : {}),
       ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
+      ...(hasValidUpstreamCaptureAttestation({
+        stdout: result.output,
+        stderr: "",
+        capture: attested.capture,
+      })
+        ? { upstreamCaptureAttested: true }
+        : {}),
     };
   } catch (error) {
     // error-policy:J4 only the expected "no PTY capability" shape
@@ -708,13 +734,15 @@ async function runThroughCapabilityRouter(
     throw error;
   }
 }
-
 export interface RunShellOptions {
   command: string;
   cwd: string;
   timeoutMs: number;
+  captureScope?: {
+    ownerAgentId: string;
+    ownerConversationId: string;
+  };
 }
-
 /**
  * Run a shell command, dispatching against the active runtime mode:
  *  - `cloud`      → throws ("Local shell execution disabled in cloud mode.").
@@ -727,26 +755,36 @@ export async function runShell(
   opts: RunShellOptions,
 ): Promise<ShellResult> {
   const mode = resolveRuntimeExecutionMode(runtime);
-
   const routed = await runThroughCapabilityRouter(runtime, opts);
-  if (routed) return enforceCompleteCaptureLimit(routed);
-
+  if (routed) {
+    if (routed.upstreamCaptureAttested) {
+      return finalizeAttestedUpstreamResult(runtime, opts, routed);
+    }
+    return {
+      ...routed,
+      stdout: "",
+      stderr: "",
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+        backend: "capability-router",
+        message:
+          "capability-router returned a full string without a streaming completeness contract",
+      },
+    };
+  }
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");
   }
-
   const support = detectTerminalSupport();
   if (!support.supported) {
     throw new Error(
       support.message ?? "Local terminal execution is unavailable.",
     );
   }
-
   const missingTool = missingToolForCommand(opts.command);
   if (missingTool) {
     throw new Error(missingToolMessage(missingTool));
   }
-
   if (mode === "local-safe") {
     const manager = getRuntimeSandboxManager(runtime);
     if (!manager) {
@@ -765,23 +803,33 @@ export async function runShell(
       workdir: sandboxWorkdir,
       timeoutMs: opts.timeoutMs,
     });
-    return enforceCompleteCaptureLimit({
+    if (hasValidUpstreamCaptureAttestation(result)) {
+      return finalizeAttestedUpstreamResult(runtime, opts, {
+        exitCode: result.exitCode,
+        signal: null,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        durationMs: result.durationMs,
+        timedOut: false,
+        sandbox: backendForManager(manager),
+        upstreamCaptureAttested: true,
+      });
+    }
+    return {
       exitCode: result.exitCode,
       signal: null,
-      stdout: result.stdout,
-      stderr: result.stderr,
+      stdout: "",
+      stderr: "",
       durationMs: result.durationMs,
       timedOut: false,
       sandbox: backendForManager(manager),
-    });
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+        backend: backendForManager(manager),
+        message:
+          "sandbox manager returned full strings without a streaming completeness contract",
+      },
+    };
   }
-
-  return enforceCompleteCaptureLimit(
-    await runOnHost({
-      command: opts.command,
-      cwd: opts.cwd,
-      timeoutMs: opts.timeoutMs,
-      env: hostSpawnEnv(process.env),
-    }),
-  );
+  return runOnHost(runtime, opts);
 }

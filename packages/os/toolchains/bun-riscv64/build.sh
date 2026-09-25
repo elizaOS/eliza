@@ -43,7 +43,7 @@ export CARGO_HOME="/home/builder/.cargo"
 log() { printf '[bun-riscv64] %s\n' "$*"; }
 die() { printf '[bun-riscv64][FATAL] %s\n' "$*" >&2; exit 1; }
 
-RM_PATH_RECURSIVE="${RM_PATH_RECURSIVE:-/opt/rm-path-recursive.mjs}"
+RM_PATH_RECURSIVE="${RM_PATH_RECURSIVE:-/opt/rm-path-recursive.ts}"
 remove_path_recursive() {
     [ -r "$RM_PATH_RECURSIVE" ] || die "recursive cleanup helper not mounted at $RM_PATH_RECURSIVE"
     bun "$RM_PATH_RECURSIVE" "$@"
@@ -81,7 +81,7 @@ if [ "${BUN_RISCV64_RUST_CORE:-0}" = "1" ]; then
     BUN_TAG="${BUN_TAG:-$(bun_jq 'v.rust_core_port.target_commit')}"
     RUST_NIGHTLY="${RUST_NIGHTLY:-$(bun_jq 'v.rust_core_port.rust_channel')}"
     # bun@target_commit's deps/webkit.ts pins WEBKIT_VERSION=963f8758…, distinct
-    # from the Zig-era 1.3.14 WebKit — use the version this bun expects.
+    # from the legacy Zig-era WebKit — use the version this bun expects.
     WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.rust_core_port.webkit_commit')}"
 else
     BUN_TAG="${BUN_TAG:-$(bun_jq 'v.bun.tag')}"
@@ -216,7 +216,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 log "── stage 2: Bun checkout + patches ──────────────────────────────────"
 
-# BUN_TAG may be a tag (Zig fallback, e.g. bun-v1.3.14) OR a bare commit SHA
+# BUN_TAG may be a tag (stable release, e.g. bun-v1.3.14) OR a bare commit SHA
 # (Rust-core port, e.g. rust_core_port.target_commit). `git clone --branch`
 # rejects a SHA, so fetch the ref directly — GitHub allows fetch-by-SHA
 # (allowAnySHA1InWant) — mirroring the WebKit checkout above. Works for both.

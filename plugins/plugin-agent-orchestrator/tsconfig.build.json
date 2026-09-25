@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "rootDir": ".",
     "outDir": "dist/node",
     "sourceMap": true,

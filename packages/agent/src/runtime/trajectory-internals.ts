@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { createGzip } from "node:zlib";
 import {
+  asObjectRecord as asRecord,
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
@@ -26,11 +27,8 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { asRecord, composePrompt } from "@elizaos/shared";
-import { observationExtractionTemplate } from "./observation-prompt.js";
 
-export { asRecord };
-
+import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import type {
   TrajectoryActionAttempt,
   TrajectoryLlmCall,
@@ -40,18 +38,17 @@ import type {
   TrajectoryStep,
   TrajectoryStepKind,
 } from "../types/trajectory.ts";
+import { observationExtractionTemplate } from "./observation-prompt.js";
 
+export { asRecord };
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
-
 export type RuntimeDb = {
   execute: (query: { queryChunks: object[] }) => Promise<unknown>;
   transaction?: <T>(work: (tx: RuntimeDb) => Promise<T>) => Promise<T>;
 };
-
 export type RawSqlExecutor = (sqlText: string) => Promise<unknown>;
-
 export type TrajectoryLoggerLike = {
   listTrajectories?: unknown;
   getTrajectoryDetail?: unknown;
@@ -64,7 +61,6 @@ export type TrajectoryLoggerLike = {
   llmCalls?: unknown[];
   providerAccess?: unknown[];
 };
-
 type OrchestratorTrajectoryContext = {
   source: "orchestrator";
   decisionType: string;
@@ -74,11 +70,9 @@ type OrchestratorTrajectoryContext = {
   workdir?: string;
   originalTask?: string;
 };
-
 type RuntimeWithOrchestratorTrajectoryContext = {
   __orchestratorTrajectoryCtx?: OrchestratorTrajectoryContext;
 };
-
 /**
  * Appends derived trajectory text records without a recency window, dedupe, or
  * normalization. Invalid persisted metadata is rejected so a corrupt legacy
@@ -105,7 +99,6 @@ export function appendCompleteTrajectoryTextRecords(
   }
   return [...prior, ...additions];
 }
-
 function assertWellFormedTrajectoryText(value: string, field: string): string {
   if (toWellFormedUnicode(value) !== value) {
     throw new ElizaError("Trajectory text contains malformed Unicode", {
@@ -115,7 +108,6 @@ function assertWellFormedTrajectoryText(value: string, field: string): string {
   }
   return value;
 }
-
 export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
@@ -125,7 +117,6 @@ export type PersistedLlmCall = TrajectoryLlmCall & {
   purpose: string;
   actionType: string;
 };
-
 export type PersistedProviderAccess = TrajectoryProviderAccess & {
   providerId: string;
   providerName: string;
@@ -133,7 +124,6 @@ export type PersistedProviderAccess = TrajectoryProviderAccess & {
   data: Record<string, unknown>;
   purpose: string;
 };
-
 export type PersistedStep = TrajectoryStep & {
   stepId: string;
   stepNumber: number;
@@ -154,7 +144,6 @@ export type PersistedStep = TrajectoryStep & {
   /** Skill names the step relied on (populated by Track C). */
   usedSkills?: string[];
 };
-
 export type PersistedTrajectory = {
   id: string;
   agentId: string;
@@ -175,14 +164,12 @@ export type PersistedTrajectory = {
   createdAt: string;
   updatedAt: string;
 };
-
 export type StartStepOptions = {
   runtime: IAgentRuntime;
   stepId: string;
   source?: string;
   metadata?: Record<string, unknown>;
 };
-
 export type CompleteStepOptions = {
   runtime: IAgentRuntime;
   stepId: string;
@@ -190,37 +177,33 @@ export type CompleteStepOptions = {
   source?: string;
   metadata?: Record<string, unknown>;
 };
-
 // ---------------------------------------------------------------------------
 // Module-level state
 // ---------------------------------------------------------------------------
-
 export const initializedRuntimes = new WeakSet<object>();
 export const patchedLoggers = new WeakSet<object>();
-
 export const stepWriteQueues = new WeakMap<
   object,
   Map<string, Promise<void>>
 >();
 export const lastWritePromises = new WeakMap<object, Promise<void>>();
-
-let cachedSqlRaw: ((query: string) => { queryChunks: object[] }) | null = null;
-
+let cachedSqlRaw:
+  | ((query: string) => {
+      queryChunks: object[];
+    })
+  | null = null;
 // Module version - changes on each hot reload, ensuring schema checks run
 const SCHEMA_VERSION = Date.now();
 const schemaVersions = new WeakMap<object, number>();
-
 export function toText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
   if (value === undefined || value === null) return fallback;
   return String(value);
 }
-
 export function toOptionalText(value: unknown): string | undefined {
   const normalized = toText(value, "").trim();
   return normalized.length > 0 ? normalized : undefined;
 }
-
 export function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -229,13 +212,11 @@ export function toNumber(value: unknown, fallback = 0): number {
   }
   return fallback;
 }
-
 export function toOptionalNumber(value: unknown): number | undefined {
   if (value === null || value === undefined) return undefined;
   const parsed = toNumber(value, Number.NaN);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
-
 export function toOptionalBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -246,7 +227,6 @@ export function toOptionalBoolean(value: unknown): boolean | undefined {
     return false;
   return undefined;
 }
-
 export function normalizeTrajectoryTag(value: unknown): string {
   const raw = toText(value, "").trim();
   if (!raw) return "";
@@ -257,7 +237,6 @@ export function normalizeTrajectoryTag(value: unknown): string {
     .replace(/^_+|_+$/g, "")
     .replace(/_+/g, "_");
 }
-
 function normalizeTrajectoryTagList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const tags: string[] = [];
@@ -270,14 +249,12 @@ function normalizeTrajectoryTagList(value: unknown): string[] {
   }
   return tags;
 }
-
 const ORCHESTRATOR_STEP_TYPES = new Set([
   "coordination",
   "observation_extraction",
   "orchestrator",
   "turn_complete",
 ]);
-
 export function inferTrajectoryLlmStepType(params: {
   stepType?: unknown;
   purpose?: unknown;
@@ -286,10 +263,8 @@ export function inferTrajectoryLlmStepType(params: {
 }): string {
   const existing = normalizeTrajectoryTag(params.stepType);
   if (existing) return existing;
-
   const purpose = normalizeTrajectoryTag(params.purpose);
   const actionType = normalizeTrajectoryTag(params.actionType);
-
   if (purpose === "should_respond") return "should_respond";
   if (
     purpose === "compose_state" ||
@@ -310,7 +285,6 @@ export function inferTrajectoryLlmStepType(params: {
   if (actionType) return actionType;
   return purpose;
 }
-
 export function inferTrajectoryLlmTags(params: {
   stepType?: unknown;
   purpose?: unknown;
@@ -329,7 +303,6 @@ export function inferTrajectoryLlmTags(params: {
     seen.add(normalized);
     tags.push(normalized);
   };
-
   push("llm");
   if (stepType) push(`step:${stepType}`);
   if (purpose) push(`purpose:${purpose}`);
@@ -342,13 +315,14 @@ export function inferTrajectoryLlmTags(params: {
   ) {
     push("orchestrator");
   }
-
   return tags;
 }
-
 export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
   call: T,
-): T & { stepType?: string; tags?: string[] } {
+): T & {
+  stepType?: string;
+  tags?: string[];
+} {
   const stepType = inferTrajectoryLlmStepType({
     stepType: call.stepType,
     purpose: call.purpose,
@@ -362,14 +336,12 @@ export function enrichTrajectoryLlmCall<T extends Record<string, unknown>>(
     model: call.model,
     tags: call.tags,
   });
-
   return {
     ...call,
     ...(stepType ? { stepType } : {}),
     ...(tags.length > 0 ? { tags } : {}),
   };
 }
-
 export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
   const actions = runtime.actions;
   if (!Array.isArray(actions)) return false;
@@ -379,7 +351,6 @@ export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
     return actionName === target;
   });
 }
-
 export function readRecordValue(
   record: Record<string, unknown>,
   keys: string[],
@@ -389,7 +360,6 @@ export function readRecordValue(
   }
   return undefined;
 }
-
 export function parseJsonValue(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -398,17 +368,14 @@ export function parseJsonValue(value: unknown): unknown {
     return value;
   }
 }
-
 const TRAJECTORY_SCENARIO_METADATA_KEYS = ["scenarioId", "scenario_id"];
 const TRAJECTORY_BATCH_METADATA_KEYS = ["batchId", "batch_id"];
-
 function readGroupingValue(
   metadata: Record<string, unknown>,
   keys: string[],
 ): string | undefined {
   return toOptionalText(readRecordValue(metadata, keys));
 }
-
 export function resolveTrajectoryGrouping(
   metadata: Record<string, unknown> | undefined,
   fallback?: {
@@ -428,7 +395,6 @@ export function resolveTrajectoryGrouping(
     toOptionalText(fallback?.batchId);
   return { scenarioId, batchId };
 }
-
 export function normalizeTrajectoryMetadata(
   metadata: Record<string, unknown> | undefined,
   fallback?: {
@@ -447,30 +413,25 @@ export function normalizeTrajectoryMetadata(
     normalizedMetadata,
     fallback,
   );
-
   if (scenarioId) {
     normalizedMetadata.scenarioId = scenarioId;
   } else {
     delete normalizedMetadata.scenarioId;
   }
-
   if (batchId) {
     normalizedMetadata.batchId = batchId;
   } else {
     delete normalizedMetadata.batchId;
   }
-
   return {
     metadata: normalizedMetadata,
     scenarioId,
     batchId,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Script capture helpers
 // ---------------------------------------------------------------------------
-
 /**
  * Preserve complete script source for trajectory persistence.
  */
@@ -480,11 +441,9 @@ export function capScriptForPersistence(script: string): {
 } {
   return { script: assertWellFormedTrajectoryText(script, "script") };
 }
-
 // ---------------------------------------------------------------------------
 // Insight extraction
 // ---------------------------------------------------------------------------
-
 export function extractInsightsFromResponse(
   response: string,
   purpose: string,
@@ -520,11 +479,9 @@ export function extractInsightsFromResponse(
   }
   return insights;
 }
-
 // ---------------------------------------------------------------------------
 // Observation extraction
 // ---------------------------------------------------------------------------
-
 export function shouldRunObservationExtraction(
   runtime: IAgentRuntime,
 ): boolean {
@@ -533,32 +490,26 @@ export function shouldRunObservationExtraction(
   );
   const explicitValue = toOptionalBoolean(explicitSetting);
   if (explicitValue !== undefined) return explicitValue;
-
   if (hasActionNamed(runtime, "REFLECTION")) {
     return false;
   }
   return true;
 }
-
 export interface BufferedExchange {
   userPrompt: string;
   response: string;
   trajectoryId: string;
   timestamp: number;
 }
-
 const OBSERVATION_BUFFER_THRESHOLD = 5;
 const OBSERVATION_FLUSH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-
 const observationBuffers = new WeakMap<object, BufferedExchange[]>();
 const observationFlushTimers = new WeakMap<
   object,
   ReturnType<typeof setTimeout>
 >();
 const observationFlushInProgress = new WeakMap<object, boolean>();
-
 export const TRAJECTORY_ARCHIVE_DIRNAME = "trajectory-archive";
-
 function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
   const key = runtime as object;
   let buffer = observationBuffers.get(key);
@@ -568,16 +519,13 @@ function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
   }
   return buffer;
 }
-
 export function pushChatExchange(
   runtime: IAgentRuntime,
   exchange: BufferedExchange,
 ): void {
   const buffer = getObservationBuffer(runtime);
   buffer.push(exchange);
-
   const key = runtime as object;
-
   // Flush on threshold
   if (buffer.length >= OBSERVATION_BUFFER_THRESHOLD) {
     flushObservationBuffer(runtime).catch((err) => {
@@ -585,7 +533,6 @@ export function pushChatExchange(
     });
     return;
   }
-
   // Set/reset flush timer
   const existing = observationFlushTimers.get(key);
   if (existing) clearTimeout(existing);
@@ -598,27 +545,22 @@ export function pushChatExchange(
     }, OBSERVATION_FLUSH_INTERVAL_MS),
   );
 }
-
 export async function flushObservationBuffer(
   runtime: IAgentRuntime,
 ): Promise<string[]> {
   const key = runtime as object;
-
   // Prevent concurrent flushes
   if (observationFlushInProgress.get(key)) return [];
   observationFlushInProgress.set(key, true);
-
   const buffer = getObservationBuffer(runtime);
   if (buffer.length === 0) {
     observationFlushInProgress.set(key, false);
     return [];
   }
-
   // Take the current buffer and reset
   const exchanges = buffer.splice(0, buffer.length);
   const timer = observationFlushTimers.get(key);
   if (timer) clearTimeout(timer);
-
   // Build the extraction prompt
   const exchangeText = exchanges
     .map(
@@ -626,12 +568,10 @@ export async function flushObservationBuffer(
         `Exchange ${i + 1}:\nUser: ${toWellFormedUnicode(e.userPrompt)}\nAssistant: ${toWellFormedUnicode(e.response)}`,
     )
     .join("\n\n");
-
   const prompt = composePrompt({
     state: { exchanges: exchangeText },
     template: observationExtractionTemplate,
   });
-
   const runtimeRecord = runtime as IAgentRuntime &
     RuntimeWithOrchestratorTrajectoryContext;
   try {
@@ -640,25 +580,19 @@ export async function flushObservationBuffer(
       source: "orchestrator",
       decisionType: "observation-extraction",
     };
-
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       temperature: 0,
     });
-
     // Parse the JSON response
     const jsonMatch = result.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
-
     const parsed = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(parsed)) return [];
-
     const observations = parsed
       .filter((s: unknown) => typeof s === "string" && s.length > 0)
       .map((s: string) => toWellFormedUnicode(s)) as string[];
-
     if (observations.length === 0) return [];
-
     // Write observations to the most recent trajectory in the batch
     const lastExchange = exchanges[exchanges.length - 1];
     if (!lastExchange) {
@@ -678,7 +612,6 @@ export async function flushObservationBuffer(
       trajectory.metadata = meta;
       await saveTrajectory(runtime, trajectory, { changedStepIds: [] });
     }
-
     return observations;
   } catch (err) {
     // error-policy:J7 observation extraction is diagnostic enrichment, but its
@@ -698,17 +631,14 @@ export async function flushObservationBuffer(
     observationFlushInProgress.set(key, false);
   }
 }
-
 // ---------------------------------------------------------------------------
 // SQL helpers
 // ---------------------------------------------------------------------------
-
 export function parseMetadata(value: unknown): Record<string, unknown> {
   const parsed = parseJsonValue(value);
   const record = asRecord(parsed);
   return record ?? {};
 }
-
 export function parsePersistedMetadata(
   value: unknown,
   trajectoryId: string,
@@ -724,7 +654,6 @@ export function parsePersistedMetadata(
   }
   return record;
 }
-
 function parseCanonicalJsonObject(
   value: unknown,
   field: "metrics" | "rewardComponents",
@@ -744,7 +673,6 @@ function parseCanonicalJsonObject(
   }
   return record as Record<string, JsonValue>;
 }
-
 export function parseSteps(
   value: unknown,
   trajectoryId = "unknown",
@@ -770,44 +698,46 @@ export function parseSteps(
     parsePersistedStepObject(step, trajectoryId, index),
   );
 }
-
 export function sqlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
-
 export function sqlNumber(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "NULL";
   return String(value);
 }
-
 export async function getSqlRaw(): Promise<
-  (query: string) => { queryChunks: object[] }
+  (query: string) => {
+    queryChunks: object[];
+  }
 > {
   if (cachedSqlRaw) return cachedSqlRaw;
   const drizzle = (await import("drizzle-orm")) as {
-    sql: { raw: (query: string) => { queryChunks: object[] } };
+    sql: {
+      raw: (query: string) => {
+        queryChunks: object[];
+      };
+    };
   };
   cachedSqlRaw = drizzle.sql.raw;
   return cachedSqlRaw;
 }
-
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
   const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
   // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
   const fallbackDb = (
     runtime as IAgentRuntime & {
-      databaseAdapter?: { db?: RuntimeDb };
+      databaseAdapter?: {
+        db?: RuntimeDb;
+      };
     }
   ).databaseAdapter?.db;
   const db = adapterDb || fallbackDb;
   if (!db || typeof db.execute !== "function") return null;
   return db;
 }
-
 export function hasRuntimeDb(runtime: IAgentRuntime): boolean {
   return Boolean(getRuntimeDb(runtime));
 }
-
 export async function executeRawSql(
   runtime: IAgentRuntime,
   sqlText: string,
@@ -819,7 +749,6 @@ export async function executeRawSql(
   const raw = await getSqlRaw();
   return db.execute(raw(sqlText));
 }
-
 export async function executeRawSqlTransaction<T>(
   runtime: IAgentRuntime,
   work: (execute: RawSqlExecutor) => Promise<T>,
@@ -837,14 +766,12 @@ export async function executeRawSqlTransaction<T>(
     transaction((tx) => work((sqlText) => tx.execute(raw(sqlText)))),
   );
 }
-
 export function extractRows(result: unknown): unknown[] {
   if (Array.isArray(result)) return result;
   const record = asRecord(result);
   if (!record) return [];
   return Array.isArray(record.rows) ? record.rows : [];
 }
-
 export function extractRequiredRows(
   result: unknown,
   context: Record<string, unknown> = {},
@@ -859,7 +786,6 @@ export function extractRequiredRows(
   }
   return record.rows;
 }
-
 export async function computeBySource(
   runtime: IAgentRuntime,
 ): Promise<Record<string, number>> {
@@ -893,7 +819,6 @@ export async function computeBySource(
   }
   return bySource;
 }
-
 export function warnRuntime(
   runtime: IAgentRuntime,
   message: string,
@@ -906,30 +831,29 @@ export function warnRuntime(
     );
   }
 }
-
 // ---------------------------------------------------------------------------
 // Schema management
 // ---------------------------------------------------------------------------
-
 function databaseErrorMatches(error: unknown, patterns: RegExp[]): boolean {
   const messages: string[] = [];
   const seen = new Set<unknown>();
   let current: unknown = error;
-
   while (current !== undefined && current !== null && !seen.has(current)) {
     seen.add(current);
     messages.push(current instanceof Error ? current.message : String(current));
     current =
       typeof current === "object" && "cause" in current
-        ? (current as { cause?: unknown }).cause
+        ? (
+            current as {
+              cause?: unknown;
+            }
+          ).cause
         : undefined;
   }
-
   return patterns.some((pattern) =>
     messages.some((message) => pattern.test(message)),
   );
 }
-
 function isMissingTableError(error: unknown): boolean {
   return databaseErrorMatches(error, [
     /no such table/i,
@@ -937,14 +861,12 @@ function isMissingTableError(error: unknown): boolean {
     /table .* does not exist/i,
   ]);
 }
-
 function isDuplicateColumnError(error: unknown): boolean {
   return databaseErrorMatches(error, [
     /duplicate column/i,
     /column .* already exists/i,
   ]);
 }
-
 function isMissingCurrentTrajectoryColumnError(error: unknown): boolean {
   return databaseErrorMatches(error, [
     /column ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?.*does not exist/i,
@@ -953,7 +875,6 @@ function isMissingCurrentTrajectoryColumnError(error: unknown): boolean {
     /unknown column ["'`]?(?:metadata_json|metrics_json|reward_components_json)["'`]?/i,
   ]);
 }
-
 async function addColumnIfMissing(
   runtime: IAgentRuntime,
   table: string,
@@ -971,12 +892,10 @@ async function addColumnIfMissing(
     if (!isDuplicateColumnError(error)) throw error;
   }
 }
-
 const trajectorySchemaInitializationPromises = new WeakMap<
   object,
   Promise<boolean>
 >();
-
 export async function ensureTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
@@ -987,7 +906,6 @@ export async function ensureTrajectoriesTable(
   }
   const existing = trajectorySchemaInitializationPromises.get(key);
   if (existing) return existing;
-
   const initialization = initializeTrajectoriesTable(runtime);
   trajectorySchemaInitializationPromises.set(key, initialization);
   try {
@@ -998,15 +916,12 @@ export async function ensureTrajectoriesTable(
     }
   }
 }
-
 async function initializeTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
   const key = runtime as object;
-
   // Only skip if verified with current module version
   if (schemaVersions.get(key) === SCHEMA_VERSION) return true;
-
   try {
     // First, check if the table exists and has the correct schema
     // by attempting to select all required columns
@@ -1056,7 +971,6 @@ async function initializeTrajectoriesTable(
         "[trajectory-persistence] Trajectories table does not exist, creating...",
       );
     }
-
     await executeRawSql(
       runtime,
       `CREATE TABLE IF NOT EXISTS trajectories (
@@ -1094,7 +1008,6 @@ async function initializeTrajectoriesTable(
         archetype TEXT
       )`,
     );
-
     // Archive table
     await executeRawSql(
       runtime,
@@ -1124,7 +1037,6 @@ async function initializeTrajectoriesTable(
         archived_at TEXT NOT NULL
       )`,
     );
-
     // Best-effort forward migration for existing archive tables.
     await addColumnIfMissing(
       runtime,
@@ -1144,7 +1056,6 @@ async function initializeTrajectoriesTable(
       "total_cache_creation_input_tokens",
       "INTEGER NOT NULL DEFAULT 0",
     );
-
     // Best-effort forward migration for grouping columns.
     await addColumnIfMissing(runtime, "trajectories", "scenario_id", "TEXT");
     await executeRawSql(
@@ -1163,7 +1074,6 @@ async function initializeTrajectoriesTable(
       "TEXT",
     );
     await addColumnIfMissing(runtime, "trajectory_archive", "batch_id", "TEXT");
-
     let trajectoryStepsExisted = true;
     try {
       await executeRawSql(runtime, `SELECT id FROM trajectory_steps LIMIT 1`);
@@ -1173,7 +1083,6 @@ async function initializeTrajectoriesTable(
       if (!isMissingTableError(error)) throw error;
       trajectoryStepsExisted = false;
     }
-
     // Per-step rows; script column is unbounded TEXT (no legacy 4096-char cap).
     await executeRawSql(
       runtime,
@@ -1207,18 +1116,15 @@ async function initializeTrajectoriesTable(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
     );
-
     // A trajectory becomes row-authoritative only after its complete legacy
     // snapshot commits in one transaction; failed trajectories remain
     // readable from steps_json and are eligible for the next retry.
     await forwardMigrateStepsJsonToRows(runtime);
-
     if (needsRecreate) {
       coreLogger.warn(
         "[trajectory-persistence] Recreated trajectories table with updated schema",
       );
     }
-
     schemaVersions.set(key, SCHEMA_VERSION);
     initializedRuntimes.add(key);
     return true;
@@ -1232,9 +1138,7 @@ async function initializeTrajectoriesTable(
     });
   }
 }
-
 const TRAJECTORY_STEPS_CONSTRAINT_MIGRATION = "trajectory_steps_constraints_v1";
-
 async function ensureTrajectoryStepsConstraintSchema(
   runtime: IAgentRuntime,
   trajectoryStepsExisted: boolean,
@@ -1246,26 +1150,21 @@ async function ensureTrajectoryStepsConstraintSchema(
       created_at TEXT NOT NULL
     )`,
   );
-
   await executeRawSqlTransaction(runtime, async (execute) => {
     const claimed = extractRequiredRows(
-      await execute(
-        `INSERT INTO trajectory_schema_migrations (id, created_at)
+      await execute(`INSERT INTO trajectory_schema_migrations (id, created_at)
          VALUES (
            ${sqlQuote(TRAJECTORY_STEPS_CONSTRAINT_MIGRATION)},
            ${sqlQuote(new Date().toISOString())}
          )
          ON CONFLICT (id) DO NOTHING
-         RETURNING id`,
-      ),
+         RETURNING id`),
       { operation: "claim trajectory step schema migration" },
     );
     if (claimed.length === 0 || !trajectoryStepsExisted) return;
-
     const migrationTable = "trajectory_steps_constraint_migration";
     await execute(`DROP TABLE IF EXISTS ${migrationTable}`);
-    await execute(
-      `CREATE TABLE ${migrationTable} (
+    await execute(`CREATE TABLE ${migrationTable} (
         id TEXT PRIMARY KEY,
         trajectory_id TEXT NOT NULL,
         ordinal INTEGER NOT NULL,
@@ -1281,28 +1180,22 @@ async function ensureTrajectoryStepsConstraintSchema(
         FOREIGN KEY (trajectory_id, parent_step_id)
           REFERENCES ${migrationTable}(trajectory_id, id)
           ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
-      )`,
-    );
-    await execute(
-      `INSERT INTO ${migrationTable} (
+      )`);
+    await execute(`INSERT INTO ${migrationTable} (
         id, trajectory_id, ordinal, parent_step_id, step_type, name,
         started_at, ended_at, payload, script
       )
       SELECT id, trajectory_id, ordinal, parent_step_id, step_type, name,
              started_at, ended_at, payload, script
-      FROM trajectory_steps`,
-    );
+      FROM trajectory_steps`);
     await execute(`DROP TABLE trajectory_steps`);
     await execute(`ALTER TABLE ${migrationTable} RENAME TO trajectory_steps`);
   });
 }
-
 // Dedicated rows become canonical per trajectory. The parent snapshot remains
 // a bounded compatibility projection for readers that predate the row store.
-
 const stepsForwardMigrationRan = new WeakSet<object>();
 const stepsForwardMigrationPromises = new WeakMap<object, Promise<boolean>>();
-
 async function forwardMigrateStepsJsonToRows(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
@@ -1322,7 +1215,6 @@ async function forwardMigrateStepsJsonToRows(
     }
   }
 }
-
 async function runForwardStepsMigration(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
@@ -1342,7 +1234,6 @@ async function runForwardStepsMigration(
       operation: "discover legacy trajectory steps",
     });
     if (rows.length === 0) return true;
-
     let migrated = 0;
     let failed = false;
     for (const row of rows) {
@@ -1362,7 +1253,6 @@ async function runForwardStepsMigration(
         failed = true;
         continue;
       }
-
       try {
         const steps = parsed.map((stepValue, index) =>
           normalizeMigratedStep(stepValue, trajectoryId, index),
@@ -1391,7 +1281,6 @@ async function runForwardStepsMigration(
         });
       }
     }
-
     if (migrated > 0) {
       coreLogger.info(
         `[trajectory-persistence] Forward-migrated ${migrated} step rows from steps_json into trajectory_steps`,
@@ -1412,7 +1301,6 @@ async function runForwardStepsMigration(
     return false;
   }
 }
-
 function normalizeMigratedStep(
   value: unknown,
   trajectoryId: string,
@@ -1420,11 +1308,9 @@ function normalizeMigratedStep(
 ): PersistedStep {
   return parsePersistedStepObject(value, trajectoryId, index);
 }
-
 // ---------------------------------------------------------------------------
 // Normalization helpers
 // ---------------------------------------------------------------------------
-
 export function normalizeStatus(
   value: unknown,
   fallback: TrajectoryStatus,
@@ -1441,7 +1327,6 @@ export function normalizeStatus(
   }
   return fallback;
 }
-
 export function parsePersistedTrajectoryStatus(
   value: unknown,
   trajectoryId: string,
@@ -1461,7 +1346,6 @@ export function parsePersistedTrajectoryStatus(
     context: { trajectoryId, field: "status", status: value },
   });
 }
-
 export function toOptionalEpochMs(value: unknown): number | undefined {
   const directNumber = toOptionalNumber(value);
   if (directNumber !== undefined) return directNumber;
@@ -1470,7 +1354,6 @@ export function toOptionalEpochMs(value: unknown): number | undefined {
   const parsed = Date.parse(text);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
-
 export function normalizePersistedTrajectoryTiming(input: {
   status: TrajectoryStatus;
   startTime: number;
@@ -1478,11 +1361,13 @@ export function normalizePersistedTrajectoryTiming(input: {
   durationMs?: number | null;
   createdAt?: unknown;
   updatedAt?: unknown;
-}): { endTime: number | null; durationMs: number | null } {
+}): {
+  endTime: number | null;
+  durationMs: number | null;
+} {
   if (input.status === "active") {
     return { endTime: null, durationMs: null };
   }
-
   const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
   const existingEndTime =
     typeof input.endTime === "number" &&
@@ -1513,10 +1398,8 @@ export function normalizePersistedTrajectoryTiming(input: {
     input.durationMs >= 0
       ? input.durationMs
       : Math.max(0, endTime - startTime);
-
   return { endTime, durationMs };
 }
-
 export function normalizePersistedUpdatedAt(input: {
   startTime: number;
   endTime: number | null | undefined;
@@ -1543,16 +1426,13 @@ export function normalizePersistedUpdatedAt(input: {
       : null) ??
     (typeof createdAtMs === "number" && createdAtMs > 0 ? createdAtMs : null) ??
     (startTime > 0 ? startTime : Date.now());
-
   return new Date(timestamp).toISOString();
 }
-
 export function normalizeStepId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const stepId = value.trim();
   return stepId.length > 0 ? stepId : null;
 }
-
 /** Fields in an LLM call payload that may carry PII / secrets. */
 const TRAJECTORY_REDACTABLE_FIELDS: readonly string[] = [
   "systemPrompt",
@@ -1562,7 +1442,6 @@ const TRAJECTORY_REDACTABLE_FIELDS: readonly string[] = [
   "response",
   "reasoning",
 ];
-
 function redactTrajectoryParams(
   params: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1578,7 +1457,6 @@ function redactTrajectoryParams(
   }
   return cloned ?? params;
 }
-
 function snapshotCaptureParams(
   params: Record<string, unknown>,
   stepId: string,
@@ -1592,7 +1470,6 @@ function snapshotCaptureParams(
   }
   return snapshot;
 }
-
 /**
  * Snapshot a complete LLM capture after JSON-safe normalization. Field order
  * keeps the required completeness contract visible without imposing a byte
@@ -1613,7 +1490,6 @@ function snapshotLlmCaptureParams(
     stepId,
   );
 }
-
 /**
  * A tool-call-only completion (`finishReason=tool-calls` — a planner turn that
  * emits only a tool call, or a Stage-1 truncated at its completion-token cap)
@@ -1630,10 +1506,10 @@ function coerceAbsentLlmResponse(
   if (params.response != null) return params;
   return { ...params, response: "" };
 }
-
-export function normalizeLlmCallPayload(
-  args: unknown[],
-): { stepId: string; params: Record<string, unknown> } | null {
+export function normalizeLlmCallPayload(args: unknown[]): {
+  stepId: string;
+  params: Record<string, unknown>;
+} | null {
   if (args.length === 0) {
     throw new ElizaError("Trajectory LLM capture is missing", {
       code: "TRAJECTORY_CAPTURE_INVALID",
@@ -1663,7 +1539,6 @@ export function normalizeLlmCallPayload(
       params: snapshot,
     };
   }
-
   const params = asRecord(args[0]);
   if (!params) {
     throw new ElizaError("Trajectory LLM capture is invalid", {
@@ -1691,7 +1566,6 @@ export function normalizeLlmCallPayload(
     params: snapshot,
   };
 }
-
 function requireCaptureString(
   params: Record<string, unknown>,
   field: string,
@@ -1707,7 +1581,6 @@ function requireCaptureString(
     context: { stepId, field },
   });
 }
-
 function validateLlmCapture(
   params: Record<string, unknown>,
   stepId: string,
@@ -1847,7 +1720,6 @@ function validateLlmCapture(
     }
   }
 }
-
 /**
  * Snapshot a complete provider capture after JSON-safe normalization, mirroring
  * {@link snapshotLlmCaptureParams}. Required fields are ordered first for
@@ -1867,10 +1739,10 @@ function snapshotProviderCaptureParams(
     stepId,
   );
 }
-
-export function normalizeProviderAccessPayload(
-  args: unknown[],
-): { stepId: string; params: Record<string, unknown> } | null {
+export function normalizeProviderAccessPayload(args: unknown[]): {
+  stepId: string;
+  params: Record<string, unknown>;
+} | null {
   if (args.length === 0) {
     throw new ElizaError("Trajectory provider capture is missing", {
       code: "TRAJECTORY_CAPTURE_INVALID",
@@ -1898,7 +1770,6 @@ export function normalizeProviderAccessPayload(
       params: snapshot,
     };
   }
-
   const params = asRecord(args[0]);
   if (!params) {
     throw new ElizaError("Trajectory provider capture is invalid", {
@@ -1923,7 +1794,6 @@ export function normalizeProviderAccessPayload(
     params: snapshot,
   };
 }
-
 function validateProviderCapture(
   params: Record<string, unknown>,
   stepId: string,
@@ -2011,7 +1881,6 @@ function validateProviderCapture(
     });
   }
 }
-
 export function isNumericVectorString(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed === "[array]") return true;
@@ -2030,7 +1899,6 @@ export function isNumericVectorString(value: string): boolean {
   }
   return true;
 }
-
 export function shouldSuppressNoInputEmbeddingCall(
   params: Record<string, unknown>,
 ): boolean {
@@ -2048,7 +1916,6 @@ export function shouldSuppressNoInputEmbeddingCall(
   if (!response.trim()) return true;
   return isNumericVectorString(response);
 }
-
 export function isLegacyTrajectoryLogger(
   logger: TrajectoryLoggerLike,
 ): boolean {
@@ -2057,7 +1924,6 @@ export function isLegacyTrajectoryLogger(
     typeof logger.getTrajectoryDetail === "function"
   );
 }
-
 export async function resolveTrajectoryLogger(
   runtime: IAgentRuntime,
 ): Promise<TrajectoryLoggerLike | null> {
@@ -2069,7 +1935,6 @@ export async function resolveTrajectoryLogger(
     seen.add(candidate);
     candidates.push(candidate as TrajectoryLoggerLike);
   };
-
   const byType = runtime.getServicesByType("trajectories");
   if (Array.isArray(byType)) {
     for (const item of byType) push(item);
@@ -2077,9 +1942,7 @@ export async function resolveTrajectoryLogger(
     push(byType);
   }
   push(runtime.getService("trajectories"));
-
   if (candidates.length === 0) return null;
-
   let best: TrajectoryLoggerLike | null = null;
   let bestScore = -1;
   for (const candidate of candidates) {
@@ -2094,14 +1957,11 @@ export async function resolveTrajectoryLogger(
       bestScore = score;
     }
   }
-
   return best;
 }
-
 // ---------------------------------------------------------------------------
 // Trajectory data helpers
 // ---------------------------------------------------------------------------
-
 export function enqueueStepWrite(
   runtime: IAgentRuntime,
   stepId: string,
@@ -2113,7 +1973,6 @@ export function enqueueStepWrite(
     perStep = new Map<string, Promise<void>>();
     stepWriteQueues.set(runtimeKey, perStep);
   }
-
   const previous = perStep.get(stepId) ?? Promise.resolve();
   const current = previous
     .catch(() => {
@@ -2156,7 +2015,6 @@ export function enqueueStepWrite(
         perStep.delete(stepId);
       }
     });
-
   perStep.set(stepId, current);
   void current.catch((error) => {
     // error-policy:J5 lifecycle and flush observe this same rejecting promise;
@@ -2166,7 +2024,6 @@ export function enqueueStepWrite(
   });
   return current;
 }
-
 export function createBaseTrajectory(
   stepId: string,
   now: number,
@@ -2203,7 +2060,6 @@ export function createBaseTrajectory(
     updatedAt: createdAt,
   };
 }
-
 export function ensureStep(
   trajectory: PersistedTrajectory,
   stepId: string,
@@ -2222,7 +2078,6 @@ export function ensureStep(
   }
   return step;
 }
-
 export function mergeMetadata(
   existing: Record<string, unknown>,
   incoming?: Record<string, unknown>,
@@ -2242,7 +2097,6 @@ export function mergeMetadata(
   }
   return normalizeTrajectoryMetadata(merged).metadata;
 }
-
 export function collectTrajectoryTimestamps(
   trajectory: PersistedTrajectory,
 ): number[] {
@@ -2258,7 +2112,6 @@ export function collectTrajectoryTimestamps(
   }
   return timestamps.filter((value) => Number.isFinite(value));
 }
-
 export function summarizeTrajectory(trajectory: PersistedTrajectory): {
   startTime: number;
   endTime: number;
@@ -2273,14 +2126,12 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
   const startTime =
     timestamps.length > 0 ? Math.min(...timestamps) : Date.now();
   const endTime = timestamps.length > 0 ? Math.max(...timestamps) : startTime;
-
   let llmCallCount = 0;
   let providerAccessCount = 0;
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   let totalCacheReadInputTokens = 0;
   let totalCacheCreationInputTokens = 0;
-
   for (const step of trajectory.steps) {
     llmCallCount += step.llmCalls.length;
     providerAccessCount += step.providerAccesses.length;
@@ -2291,7 +2142,6 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
       totalCacheCreationInputTokens += call.cacheCreationInputTokens ?? 0;
     }
   }
-
   return {
     startTime,
     endTime,
@@ -2303,7 +2153,6 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
     totalCacheCreationInputTokens,
   };
 }
-
 export function parsePersistedTrajectoryRow(
   row: Record<string, unknown>,
   fallbackId: string,
@@ -2455,7 +2304,6 @@ export function parsePersistedTrajectoryRow(
       context: { trajectoryId: fallbackId },
     });
   }
-
   return {
     id,
     agentId,
@@ -2477,11 +2325,9 @@ export function parsePersistedTrajectoryRow(
     updatedAt,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Core load/save (used by both storage and query modules)
 // ---------------------------------------------------------------------------
-
 export async function loadTrajectoryById(
   runtime: IAgentRuntime,
   stepId: string,
@@ -2529,7 +2375,6 @@ export async function loadTrajectoryById(
     });
   }
 }
-
 /**
  * Loads the canonical step rows, using `null` solely to signal that a
  * trajectory has not yet been promoted from its compatibility snapshot.
@@ -2578,7 +2423,6 @@ async function loadAllStepsFromDedicatedTable(
     });
   }
 }
-
 export function stepRowToPersistedStep(
   row: Record<string, unknown>,
 ): PersistedStep {
@@ -2647,7 +2491,6 @@ export function stepRowToPersistedStep(
     typeof payloadRecord.scriptHash === "string"
       ? payloadRecord.scriptHash
       : undefined;
-
   return parsePersistedStepObject(
     {
       ...payloadRecord,
@@ -2666,7 +2509,6 @@ export function stepRowToPersistedStep(
     stepNumber,
   );
 }
-
 export function buildTrajectoryStepUpsertSql(
   trajectoryId: string,
   step: PersistedStep,
@@ -2709,7 +2551,6 @@ export function buildTrajectoryStepUpsertSql(
         payload = EXCLUDED.payload,
         script = EXCLUDED.script
         WHERE trajectory_steps.trajectory_id = EXCLUDED.trajectory_id`;
-
   return `INSERT INTO trajectory_steps (
       id, trajectory_id, ordinal, parent_step_id, step_type,
       name, started_at, ended_at, payload, script
@@ -2727,7 +2568,6 @@ export function buildTrajectoryStepUpsertSql(
     )
     ON CONFLICT (id) ${updateClause}`;
 }
-
 export async function assertTrajectoryStepOwnership(
   execute: RawSqlExecutor,
   trajectoryId: string,
@@ -2751,7 +2591,6 @@ export async function assertTrajectoryStepOwnership(
     });
   }
 }
-
 export async function assertTrajectoryAgentOwnership(
   execute: RawSqlExecutor,
   trajectoryId: string,
@@ -2788,7 +2627,6 @@ export async function assertTrajectoryAgentOwnership(
     });
   }
 }
-
 export async function assertTrajectoryStepParentOwnership(
   execute: RawSqlExecutor,
   trajectoryId: string,
@@ -2802,10 +2640,8 @@ export async function assertTrajectoryStepParentOwnership(
       context: { trajectoryId, stepId: step.stepId, parentStepId },
     });
   }
-  const result = await execute(
-    `SELECT trajectory_id FROM trajectory_steps
-     WHERE id = ${sqlQuote(parentStepId)} LIMIT 1`,
-  );
+  const result = await execute(`SELECT trajectory_id FROM trajectory_steps
+     WHERE id = ${sqlQuote(parentStepId)} LIMIT 1`);
   const parentOwner = toOptionalText(
     asRecord(
       extractRequiredRows(result, {
@@ -2828,7 +2664,6 @@ export async function assertTrajectoryStepParentOwnership(
     });
   }
 }
-
 export function parsePersistedEvaluatorName(
   value: unknown,
 ): string | undefined {
@@ -2840,7 +2675,6 @@ export function parsePersistedEvaluatorName(
   }
   return value;
 }
-
 export function parsePersistedSkillInvocations(
   value: unknown,
 ): TrajectorySkillInvocation[] | undefined {
@@ -2850,7 +2684,6 @@ export function parsePersistedSkillInvocations(
       code: "TRAJECTORY_SKILL_INVOCATIONS_INVALID",
     });
   }
-
   return value.map((entry, index) => {
     const record = asRecord(entry);
     const skillSlug = toText(record?.skillSlug, "").trim();
@@ -2871,7 +2704,6 @@ export function parsePersistedSkillInvocations(
         context: { index, skillSlug },
       });
     }
-
     const optionalStrings = ["args", "result", "script"] as const;
     for (const field of optionalStrings) {
       if (record[field] !== undefined && typeof record[field] !== "string") {
@@ -2897,7 +2729,6 @@ export function parsePersistedSkillInvocations(
         },
       );
     }
-
     let truncated: TrajectorySkillInvocation["truncated"];
     if (record.truncated !== undefined) {
       if (!Array.isArray(record.truncated)) {
@@ -2933,7 +2764,6 @@ export function parsePersistedSkillInvocations(
         return { field, originalBytes, capBytes };
       });
     }
-
     return {
       skillSlug,
       durationMs,
@@ -2952,7 +2782,6 @@ export function parsePersistedSkillInvocations(
     };
   });
 }
-
 function isJsonValue(value: unknown): value is JsonValue {
   if (
     value === null ||
@@ -2966,7 +2795,6 @@ function isJsonValue(value: unknown): value is JsonValue {
   const record = asRecord(value);
   return record ? Object.values(record).every(isJsonValue) : false;
 }
-
 function parsePersistedActionAttempt(
   value: unknown,
 ): TrajectoryActionAttempt | undefined {
@@ -2996,7 +2824,6 @@ function parsePersistedActionAttempt(
       context: { actionName, actionType },
     });
   }
-
   const result = asRecord(record.result);
   if (record.result !== undefined && (!result || !isJsonValue(result))) {
     throw new ElizaError("Stored trajectory action result is invalid", {
@@ -3022,7 +2849,6 @@ function parsePersistedActionAttempt(
       context: { actionName, actionType, field: "immediateReward" },
     });
   }
-
   return {
     attemptId,
     timestamp,
@@ -3043,7 +2869,6 @@ function parsePersistedActionAttempt(
       : {}),
   };
 }
-
 function persistedRowError(
   trajectoryId: string,
   field: string,
@@ -3060,7 +2885,6 @@ function persistedRowError(
     },
   });
 }
-
 function requiredPersistedString(
   value: unknown,
   trajectoryId: string,
@@ -3073,7 +2897,6 @@ function requiredPersistedString(
   }
   return value;
 }
-
 function requiredPersistedNumber(
   value: unknown,
   trajectoryId: string,
@@ -3086,7 +2909,6 @@ function requiredPersistedNumber(
   }
   return parsed;
 }
-
 function requiredPersistedJsonNumber(
   value: unknown,
   trajectoryId: string,
@@ -3098,7 +2920,6 @@ function requiredPersistedJsonNumber(
   }
   return value;
 }
-
 function parseOptionalPersistedString(
   record: Record<string, unknown>,
   field: string,
@@ -3112,7 +2933,6 @@ function parseOptionalPersistedString(
   }
   return value;
 }
-
 function parseOptionalPersistedNumber(
   record: Record<string, unknown>,
   field: string,
@@ -3126,7 +2946,6 @@ function parseOptionalPersistedNumber(
   }
   return value;
 }
-
 export function parsePersistedLlmCall(
   value: unknown,
   trajectoryId: string,
@@ -3255,7 +3074,6 @@ export function parsePersistedLlmCall(
     actionType,
   } as PersistedLlmCall;
 }
-
 export function parsePersistedProviderAccess(
   value: unknown,
   trajectoryId: string,
@@ -3381,7 +3199,6 @@ export function parsePersistedProviderAccess(
     data,
   } as PersistedProviderAccess;
 }
-
 export function parsePersistedStepObject(
   value: unknown,
   trajectoryId: string,
@@ -3486,7 +3303,6 @@ export function parsePersistedStepObject(
     ...(semanticStages !== undefined ? { semanticStages } : {}),
   };
 }
-
 export async function loadTrajectoryByStepId(
   runtime: IAgentRuntime,
   stepId: string,
@@ -3495,12 +3311,10 @@ export async function loadTrajectoryByStepId(
   if (direct) {
     return direct;
   }
-
   const normalizedStepId = stepId.trim();
   if (!normalizedStepId) {
     return null;
   }
-
   const dedicatedResult = await executeRawSql(
     runtime,
     `SELECT s.trajectory_id
@@ -3522,7 +3336,6 @@ export async function loadTrajectoryByStepId(
   if (dedicatedTrajectoryId) {
     return loadTrajectoryById(runtime, dedicatedTrajectoryId);
   }
-
   const stepPattern = sqlQuote(`%"stepId":"${normalizedStepId}"%`);
   try {
     const result = await executeRawSql(
@@ -3557,7 +3370,6 @@ export async function loadTrajectoryByStepId(
     });
   }
 }
-
 function normalizeStepForPersistence(
   trajectoryId: string,
   step: PersistedStep,
@@ -3617,7 +3429,6 @@ function normalizeStepForPersistence(
       index,
     );
   };
-
   return {
     ...(boundedScalars as unknown as PersistedStep),
     stepId: step.stepId,
@@ -3642,7 +3453,6 @@ function normalizeStepForPersistence(
     ...(script !== undefined ? { script } : {}),
   };
 }
-
 export async function saveTrajectory(
   runtime: IAgentRuntime,
   trajectory: PersistedTrajectory,
@@ -3683,7 +3493,6 @@ export async function saveTrajectory(
   trajectory.metadata = normalizedMetadata.metadata;
   trajectory.scenarioId = normalizedMetadata.scenarioId;
   trajectory.batchId = normalizedMetadata.batchId;
-
   const summary = summarizeTrajectory(trajectory);
   const isActive = trajectory.status === "active";
   const persistedEndTime =
@@ -3777,7 +3586,6 @@ export async function saveTrajectory(
     replaceAllSteps || options.updateLegacySnapshot
       ? `steps_json = ${serializeLegacySteps()},`
       : "";
-
   // Current schema (Core TrajectoriesService): metrics_json / metadata_json /
   // reward_components_json. Prefer this so active/completed metrics are always
   // valid for strict Core readers that share the table.
@@ -3865,7 +3673,6 @@ export async function saveTrajectory(
       reward_components_json = EXCLUDED.reward_components_json,
       created_at = EXCLUDED.created_at,
       updated_at = EXCLUDED.updated_at`;
-
   const currentSchemaUpdateSql = `UPDATE trajectories SET
       source = ${sqlQuote(trajectory.source)},
       status = ${sqlQuote(trajectory.status)},
@@ -3891,7 +3698,6 @@ export async function saveTrajectory(
       reward_components_json = ${serializedRewardComponents},
       created_at = ${sqlQuote(createdAt)},
       updated_at = ${sqlQuote(updatedAt)}`;
-
   // Legacy Eliza schema (metadata TEXT + episode_length) when canonical
   // JSONB columns are missing on the adapter.
   const legacySchemaInsertSql = () => `INSERT INTO trajectories (
@@ -3966,7 +3772,6 @@ export async function saveTrajectory(
       created_at = EXCLUDED.created_at,
       updated_at = EXCLUDED.updated_at,
       episode_length = EXCLUDED.episode_length`;
-
   const legacySchemaUpdateSql = `UPDATE trajectories SET
       source = ${sqlQuote(trajectory.source)},
       status = ${sqlQuote(trajectory.status)},
@@ -3988,7 +3793,6 @@ export async function saveTrajectory(
       created_at = ${sqlQuote(createdAt)},
       updated_at = ${sqlQuote(updatedAt)},
       episode_length = ${sqlNumber(trajectory.steps.length)}`;
-
   try {
     await persistTrajectoryAndSteps(
       runtime,
@@ -4070,10 +3874,8 @@ export async function saveTrajectory(
       });
     }
   }
-
   return true;
 }
-
 async function persistTrajectoryAndSteps(
   runtime: IAgentRuntime,
   parentUpsertSql: () => string,
@@ -4129,21 +3931,18 @@ async function persistTrajectoryAndSteps(
             ]
           : []),
       ];
-      const parentWriteResult = await execute(
-        `${parentWriteSql}
+      const parentWriteResult = await execute(`${parentWriteSql}
          WHERE ${conflictPredicates.join(" AND ")}
-         RETURNING id`,
-      );
+         RETURNING id`);
       const parentWriteRows = extractRequiredRows(parentWriteResult, {
         operation: "write trajectory parent",
         trajectoryId,
         agentId: runtime.agentId,
       });
       if (parentWriteRows.length === 0) {
-        const parentResult = await execute(
-          `SELECT agent_id, status, updated_at FROM trajectories
-           WHERE id = ${sqlQuote(trajectoryId)}`,
-        );
+        const parentResult =
+          await execute(`SELECT agent_id, status, updated_at FROM trajectories
+           WHERE id = ${sqlQuote(trajectoryId)}`);
         const parentRows = extractRequiredRows(parentResult, {
           operation: "diagnose trajectory write conflict",
           trajectoryId,
@@ -4213,7 +4012,6 @@ async function persistTrajectoryAndSteps(
     }
   });
 }
-
 async function replaceStepsForTrajectoryInternal(
   trajectoryId: string,
   steps: PersistedStep[],
@@ -4252,7 +4050,6 @@ async function replaceStepsForTrajectoryInternal(
     writtenStepIds.add(step.stepId);
   }
 }
-
 /**
  * Read orchestrator trajectory context from the runtime, if set.
  */
@@ -4271,25 +4068,19 @@ export function readOrchestratorTrajectoryContext(
     return undefined;
   return candidate as OrchestratorTrajectoryContext;
 }
-
 // ---------------------------------------------------------------------------
 // Archive helpers
 // ---------------------------------------------------------------------------
-
 export function resolvePreferredTrajectoryArchiveRoot(): string {
   const explicitWorkspace = process.env.ELIZA_WORKSPACE_DIR?.trim();
   if (explicitWorkspace) return explicitWorkspace;
-
   const workspaceRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
   if (workspaceRoot) return workspaceRoot;
-
   return path.join(resolveStateDir(), "workspace");
 }
-
 export async function ensureArchiveDirectory(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
 }
-
 export async function resolveTrajectoryArchiveDirectory(): Promise<string> {
   const preferred = path.join(
     resolvePreferredTrajectoryArchiveRoot(),
@@ -4308,17 +4099,14 @@ export async function resolveTrajectoryArchiveDirectory(): Promise<string> {
     return fallback;
   }
 }
-
 export function toArchiveSafeTimestamp(isoTimestamp: string): string {
   return isoTimestamp.replace(/[:.]/g, "-");
 }
-
 export function stringifyArchiveRow(row: Record<string, unknown>): string {
   return JSON.stringify(row, (_key, value) =>
     typeof value === "bigint" ? value.toString() : value,
   );
 }
-
 export async function writeCompressedJsonlRows(
   archivePath: string,
   rows: Record<string, unknown>[],
@@ -4326,17 +4114,14 @@ export async function writeCompressedJsonlRows(
   const gzipStream = createGzip({ level: 9 });
   const outStream = createWriteStream(archivePath);
   gzipStream.pipe(outStream);
-
   for (const row of rows) {
     if (!gzipStream.write(`${stringifyArchiveRow(row)}\n`, "utf8")) {
       await once(gzipStream, "drain");
     }
   }
-
   gzipStream.end();
   await once(outStream, "finish");
 }
-
 /**
  * Resolves whether DB trajectory persistence is on by default. Delegates to the
  * single core gate resolver (trajectory-gate.ts) so this DB logger and the file
@@ -4350,14 +4135,16 @@ export function shouldEnableTrajectoryLoggingByDefault(
 ): boolean {
   return resolveTrajectoryGate(env).enabled;
 }
-
 /**
  * Coarse PII redaction applied to LLM prompts/responses before persistence
  * (SOC2 O-5). Strips email addresses, common API/OAuth tokens, ETH/BTC
  * addresses, and credit-card-shaped digit runs. Conservative — combine
  * with workspace isolation rather than treating as a sole defence.
  */
-const TRAJECTORY_REDACT_PATTERNS: { re: RegExp; label: string }[] = [
+const TRAJECTORY_REDACT_PATTERNS: {
+  re: RegExp;
+  label: string;
+}[] = [
   { re: /sk-[A-Za-z0-9_-]{20,}/g, label: "<API_KEY>" },
   { re: /(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, label: "<GH_TOKEN>" },
   { re: /xox[bpars]-[A-Za-z0-9-]{10,}/g, label: "<SLACK_TOKEN>" },
@@ -4366,7 +4153,6 @@ const TRAJECTORY_REDACT_PATTERNS: { re: RegExp; label: string }[] = [
   // Decimal geometry is source evidence; neither side of its decimal point is a PAN.
   { re: /(?<!\d\.)\b\d{13,19}\b(?!\.\d)/g, label: "<CARD>" },
 ];
-
 export function redactTrajectoryText(value: unknown): unknown {
   if (typeof value !== "string") return value;
   if (value.length === 0) return value;

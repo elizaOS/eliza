@@ -17,8 +17,7 @@
     "trusted-runtime:server": "node --conditions=eliza-source --conditions=development --import tsx src/trusted-runtime-server.ts",
     "normalize-capture": "node --import tsx ../../../scripts/lifeops-bench/runner/normalize-eliza-capture.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "bun run typecheck"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -29,12 +28,12 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "dotenv": "^17.2.3",
-    "zod": "^4.4.3",
+    "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*"
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "25.6.2",

@@ -542,7 +542,7 @@ for (const width of [760, 390]) {
   await accountPage.screenshot({ path: join(outDir, `account-row-${width}.png`) });
   await add.click();
   assert(await accountPage.locator("output").textContent() === "add account", `visible account action dispatches at ${width}px`);
-  const activate = accountPage.getByRole("button", { name: "Use for chat & coding", exact: true });
+  const activate = accountPage.getByRole("button", { name: "Use for coding", exact: true });
   await activate.hover();
   await accountPage.screenshot({ path: join(outDir, `account-row-${width}-hover.png`) });
   await activate.focus();

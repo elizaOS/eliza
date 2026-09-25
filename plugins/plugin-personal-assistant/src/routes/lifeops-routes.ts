@@ -3,8 +3,7 @@
  * LifeOps dashboard and connector cards.
  *
  * Dispatches reads and writes across the owner domains: occurrences, goals,
- * task/workflow definitions, reminders, money/finances (delegated to
- * `@elizaos/plugin-finances`), Gmail triage/search/reply/manage, the merged
+ * task/workflow definitions, reminders, Gmail triage/search/reply/manage, the merged
  * inbox, screen-time/sleep, activity signals, schedule state, connector status,
  * and full-disk-access probing; calendar routes delegate to
  * `@elizaos/plugin-calendar`. Handlers run behind the `LifeOpsRouteContext`
@@ -12,7 +11,6 @@
  * OWNER/ADMIN role gate before delegating, so this layer trusts the request is
  * authorized and only re-checks that a runtime is present.
  */
-
 import type http from "node:http";
 import {
   checkRateLimit,
@@ -26,68 +24,42 @@ import {
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
+import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,
+  type CalendarRouteService,
   CalendarService,
   CalendarServiceError,
-} from "@elizaos/plugin-calendar";
-import {
-  type CalendarRouteService,
   handleCalendarRoutes,
-} from "@elizaos/plugin-calendar/routes/calendar-routes";
+} from "@elizaos/plugin-calendar";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
-import type {
-  AcknowledgeLifeOpsReminderRequest,
-  CaptureLifeOpsActivitySignalRequest,
-  CaptureLifeOpsManualOverrideRequest,
-  CaptureLifeOpsPhoneConsentRequest,
-  CompleteLifeOpsOccurrenceRequest,
-  CreateLifeOpsDefinitionRequest,
-  CreateLifeOpsGmailBatchReplyDraftsRequest,
-  CreateLifeOpsGmailReplyDraftRequest,
-  CreateLifeOpsGoalRequest,
-  CreateLifeOpsWorkflowRequest,
-  CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsGoogleConnectorRequest,
-  GetLifeOpsGmailRecommendationsRequest,
-  GetLifeOpsGmailSearchRequest,
-  GetLifeOpsGmailSpamReviewRequest,
-  GetLifeOpsGmailTriageRequest,
-  GetLifeOpsGmailUnrespondedRequest,
-  GetLifeOpsHealthSummaryRequest,
-  GetLifeOpsIMessageMessagesRequest,
-  GetLifeOpsInboxRequest,
-  IngestLifeOpsGmailEventRequest,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsInboxChannel,
-  ManageLifeOpsGmailMessagesRequest,
-  ProcessLifeOpsRemindersRequest,
-  PurgeLifeOpsGmailImportedDataRequest,
-  RelockLifeOpsWebsiteAccessRequest,
-  ResolveLifeOpsWebsiteAccessCallbackRequest,
-  RunLifeOpsWorkflowRequest,
-  SeedLifeOpsGmailRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailMessageRequest,
-  SendLifeOpsGmailReplyRequest,
-  SetLifeOpsReminderPreferenceRequest,
-  SnoozeLifeOpsOccurrenceRequest,
-  StartLifeOpsGoogleConnectorRequest,
-  UpdateLifeOpsDefinitionRequest,
-  UpdateLifeOpsGmailSpamReviewItemRequest,
-  UpdateLifeOpsGoalRequest,
-  UpdateLifeOpsWorkflowRequest,
-  UpsertLifeOpsChannelPolicyRequest,
-} from "../contracts/index.js";
 import {
+  type AcknowledgeLifeOpsReminderRequest,
+  type CaptureLifeOpsActivitySignalRequest,
+  type CaptureLifeOpsManualOverrideRequest,
+  type CaptureLifeOpsPhoneConsentRequest,
+  type CompleteLifeOpsOccurrenceRequest,
+  type CreateLifeOpsDefinitionRequest,
+  type CreateLifeOpsGmailBatchReplyDraftsRequest,
+  type CreateLifeOpsGmailReplyDraftRequest,
+  type CreateLifeOpsGoalRequest,
+  type CreateLifeOpsWorkflowRequest,
+  type CreateLifeOpsXPostRequest,
+  type DisconnectLifeOpsGoogleConnectorRequest,
+  type GetLifeOpsGmailRecommendationsRequest,
+  type GetLifeOpsGmailSearchRequest,
+  type GetLifeOpsGmailSpamReviewRequest,
+  type GetLifeOpsGmailTriageRequest,
+  type GetLifeOpsGmailUnrespondedRequest,
+  type GetLifeOpsHealthSummaryRequest,
+  type GetLifeOpsIMessageMessagesRequest,
+  type GetLifeOpsInboxRequest,
+  type IngestLifeOpsGmailEventRequest,
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
@@ -96,7 +68,29 @@ import {
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
   LIFEOPS_SCREEN_TIME_RANGES,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
   type LifeOpsGmailSpamReviewStatus,
+  type LifeOpsHealthConnectorProvider,
+  type LifeOpsInboxChannel,
+  type ManageLifeOpsGmailMessagesRequest,
+  type ProcessLifeOpsRemindersRequest,
+  type PurgeLifeOpsGmailImportedDataRequest,
+  type RelockLifeOpsWebsiteAccessRequest,
+  type ResolveLifeOpsWebsiteAccessCallbackRequest,
+  type RunLifeOpsWorkflowRequest,
+  type SeedLifeOpsGmailRequest,
+  type SendLifeOpsGmailBatchReplyRequest,
+  type SendLifeOpsGmailMessageRequest,
+  type SendLifeOpsGmailReplyRequest,
+  type SetLifeOpsReminderPreferenceRequest,
+  type SnoozeLifeOpsOccurrenceRequest,
+  type StartLifeOpsGoogleConnectorRequest,
+  type UpdateLifeOpsDefinitionRequest,
+  type UpdateLifeOpsGmailSpamReviewItemRequest,
+  type UpdateLifeOpsGoalRequest,
+  type UpdateLifeOpsWorkflowRequest,
+  type UpsertLifeOpsChannelPolicyRequest,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
 import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
@@ -126,7 +120,6 @@ import {
   type LifeOpsAuthenticatedPrincipal,
 } from "./authenticated-entity-principal.js";
 import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
-
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -153,7 +146,6 @@ export interface LifeOpsRouteContext {
     label: string,
   ) => string | null;
 }
-
 /**
  * Ensure the request has the runtime context required to act on behalf of
  * the configured owner entity. Returns `false` (and writes a 503) when the
@@ -170,7 +162,6 @@ function requireAuthorizedRouteContext(ctx: LifeOpsRouteContext): boolean {
   }
   return true;
 }
-
 function requireActivitySignalsAvailable(ctx: LifeOpsRouteContext): boolean {
   if (!requireAuthorizedRouteContext(ctx)) {
     return false;
@@ -186,7 +177,6 @@ function requireActivitySignalsAvailable(ctx: LifeOpsRouteContext): boolean {
   }
   return true;
 }
-
 function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
   if (!requireAuthorizedRouteContext(ctx)) {
     return null;
@@ -205,7 +195,6 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
     ownerEntityId: ctx.state.adminEntityId,
   });
 }
-
 // ---------------------------------------------------------------------------
 // Rate limit configuration per operation.
 //
@@ -223,55 +212,48 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
 // operation not explicitly listed.
 // ---------------------------------------------------------------------------
 const LIFEOPS_RATE_LIMITS = {
-  google_api_read: { maxRequests: 120, windowMs: 60_000 },
-  google_api_write: { maxRequests: 30, windowMs: 60_000 },
-  reminders_process: { maxRequests: 10, windowMs: 60_000 },
-  task_create: { maxRequests: 30, windowMs: 60_000 },
-  task_update: { maxRequests: 30, windowMs: 60_000 },
-  gmail_draft: { maxRequests: 20, windowMs: 60_000 },
+  google_api_read: { maxRequests: 120, windowMs: 60000 },
+  google_api_write: { maxRequests: 30, windowMs: 60000 },
+  reminders_process: { maxRequests: 10, windowMs: 60000 },
+  task_create: { maxRequests: 30, windowMs: 60000 },
+  task_update: { maxRequests: 30, windowMs: 60000 },
+  gmail_draft: { maxRequests: 20, windowMs: 60000 },
   // A range seed walks every provider page for up to 90 days of mail; keep
   // the burst small so a retry loop cannot hammer the Gmail quota.
-  gmail_seed: { maxRequests: 4, windowMs: 60_000 },
+  gmail_seed: { maxRequests: 4, windowMs: 60000 },
   // Tightened from 5/min: composing and sending email is the most sensitive
   // outbound action LifeOps takes; cap the burst at 2/min so a bug or a
   // confused operator cannot machine-gun the user's contacts.
-  gmail_send: { maxRequests: 2, windowMs: 60_000 },
-  calendar_create: { maxRequests: 20, windowMs: 60_000 },
-  calendar_update: { maxRequests: 20, windowMs: 60_000 },
-  calendar_delete: { maxRequests: 10, windowMs: 60_000 },
-  calendar_source_read: { maxRequests: 120, windowMs: 60_000 },
-  calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
-  calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
-  calendar_imported_data_purge: { maxRequests: 10, windowMs: 60_000 },
-  calendar_link_read: { maxRequests: 120, windowMs: 60_000 },
-  calendar_link_write: { maxRequests: 20, windowMs: 60_000 },
-  calendar_card: { maxRequests: 10, windowMs: 60_000 },
+  gmail_send: { maxRequests: 2, windowMs: 60000 },
+  calendar_create: { maxRequests: 20, windowMs: 60000 },
+  calendar_update: { maxRequests: 20, windowMs: 60000 },
+  calendar_delete: { maxRequests: 10, windowMs: 60000 },
+  calendar_source_read: { maxRequests: 120, windowMs: 60000 },
+  calendar_source_write: { maxRequests: 20, windowMs: 60000 },
+  calendar_source_sync: { maxRequests: 30, windowMs: 60000 },
+  calendar_imported_data_purge: { maxRequests: 10, windowMs: 60000 },
+  calendar_link_read: { maxRequests: 120, windowMs: 60000 },
+  calendar_link_write: { maxRequests: 20, windowMs: 60000 },
+  calendar_card: { maxRequests: 10, windowMs: 60000 },
   // OAuth + connector lifecycle: tight cap because these mutate stored
   // credentials or initiate consent flows.
-  oauth_init: { maxRequests: 5, windowMs: 60_000 },
-  connector_write: { maxRequests: 10, windowMs: 60_000 },
+  oauth_init: { maxRequests: 5, windowMs: 60000 },
+  connector_write: { maxRequests: 10, windowMs: 60000 },
   // A saved account switch takes multiple revision-checked checkpoints; it
   // must not exhaust the budget for starting new connector consent flows.
-  account_handoff_advance: { maxRequests: 30, windowMs: 60_000 },
+  account_handoff_advance: { maxRequests: 30, windowMs: 60000 },
   // Generic outbound messaging (X DMs, iMessage, Telegram). Tighter
   // than the default to limit blast radius.
-  outbound_message: { maxRequests: 5, windowMs: 60_000 },
-  // Unauthenticated provider webhook ingress (Plaid). A dedicated bucket so a
-  // flood of forged deliveries cannot exhaust the shared default bucket and
-  // 429 the owner's own routes; verification rejects forgeries afterwards.
-  webhook_ingress: { maxRequests: 120, windowMs: 60_000 },
-  default: { maxRequests: 60, windowMs: 60_000 },
+  outbound_message: { maxRequests: 5, windowMs: 60000 },
+  default: { maxRequests: 60, windowMs: 60000 },
 } satisfies Record<string, RateLimitConfig>;
-
 type LifeOpsRateLimitOperation = keyof typeof LIFEOPS_RATE_LIMITS;
-
 const ACTIVITY_SIGNALS_DEFAULT_LIMIT = 200;
 const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
-const MS_PER_DAY = 86_400_000;
+const MS_PER_DAY = 86400000;
 const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
 const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
 const routeSchemaBootstraps = new WeakMap<AgentRuntime, Promise<void>>();
-
 async function ensureRouteSchema(runtime: AgentRuntime | null): Promise<void> {
   if (!runtime) return;
   const adapter = runtime.adapter;
@@ -289,7 +271,6 @@ async function ensureRouteSchema(runtime: AgentRuntime | null): Promise<void> {
   }
   await bootstrap;
 }
-
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
  * sends a 429 response with Retry-After header and returns `true`.
@@ -306,22 +287,19 @@ function rateLimitRequest(
   const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
   if (!allowed) {
     ctx.res.writeHead(429, {
-      "Retry-After": String(Math.ceil(retryAfterMs / 1_000)),
+      "Retry-After": String(Math.ceil(retryAfterMs / 1000)),
     });
     ctx.res.end(JSON.stringify({ error: "Rate limit exceeded", retryAfterMs }));
     return true;
   }
   return false;
 }
-
 function routeOperation(ctx: LifeOpsRouteContext): string {
   return `${ctx.method.toUpperCase()} ${ctx.pathname}`;
 }
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-
 function decodeMatchedPathComponent(
   ctx: LifeOpsRouteContext,
   match: RegExpMatchArray | null,
@@ -332,7 +310,6 @@ function decodeMatchedPathComponent(
   const raw = match?.[index];
   return raw ? ctx.decodePathComponent(raw, res, label) : null;
 }
-
 function parseRouteInput<T>(
   ctx: LifeOpsRouteContext,
   parser: () => T | null,
@@ -347,11 +324,12 @@ function parseRouteInput<T>(
     throw error;
   }
 }
-
 function parsePositiveIntegerQuery(
   value: string | null,
   field: string,
-  options: { max?: number } = {},
+  options: {
+    max?: number;
+  } = {},
 ): number | null {
   const normalized = value?.trim();
   if (!normalized) {
@@ -372,14 +350,12 @@ function parsePositiveIntegerQuery(
   }
   return parsed;
 }
-
 function isOneOf<T extends string>(
   value: string,
   values: readonly T[],
 ): value is T {
   return values.some((allowed) => allowed === value);
 }
-
 function parseConnectorModeQuery(
   value: string | null,
 ): LifeOpsConnectorMode | undefined {
@@ -395,7 +371,6 @@ function parseConnectorModeQuery(
   }
   return normalized;
 }
-
 function parseConnectorModeInput(
   value: unknown,
 ): LifeOpsConnectorMode | undefined {
@@ -410,7 +385,6 @@ function parseConnectorModeInput(
   }
   return parseConnectorModeQuery(value);
 }
-
 function parseConnectorSideQuery(
   value: string | null,
 ): LifeOpsConnectorSide | undefined {
@@ -426,7 +400,6 @@ function parseConnectorSideQuery(
   }
   return normalized;
 }
-
 function parseConnectorSideInput(
   value: unknown,
 ): LifeOpsConnectorSide | undefined {
@@ -441,10 +414,11 @@ function parseConnectorSideInput(
   }
   return parseConnectorSideQuery(value);
 }
-
 function parseConnectorSideFromRequest(
   url: URL,
-  body?: { side?: unknown } | null,
+  body?: {
+    side?: unknown;
+  } | null,
 ): LifeOpsConnectorSide | undefined {
   const querySide = parseConnectorSideQuery(url.searchParams.get("side"));
   const bodySide = parseConnectorSideInput(body?.side);
@@ -456,7 +430,6 @@ function parseConnectorSideFromRequest(
   }
   return bodySide ?? querySide;
 }
-
 function parseHealthConnectorProvider(
   value: string,
 ): LifeOpsHealthConnectorProvider {
@@ -469,14 +442,12 @@ function parseHealthConnectorProvider(
   }
   return normalized;
 }
-
 function parseOptionalHealthConnectorProvider(
   value: string | null,
 ): LifeOpsHealthConnectorProvider | null {
   const normalized = value?.trim();
   return normalized ? parseHealthConnectorProvider(normalized) : null;
 }
-
 function parseHealthConnectorProviderPath(
   ctx: LifeOpsRouteContext,
   match: RegExpMatchArray,
@@ -492,7 +463,6 @@ function parseHealthConnectorProviderPath(
     return provider ? parseHealthConnectorProvider(provider) : null;
   });
 }
-
 function parseDateOnlyQuery(
   value: string | null,
   field: string,
@@ -506,7 +476,6 @@ function parseDateOnlyQuery(
   }
   return normalized;
 }
-
 function parseGmailSpamReviewStatusInput(
   value: unknown,
   field: string,
@@ -532,13 +501,11 @@ function parseGmailSpamReviewStatusInput(
   }
   return normalized;
 }
-
 function parseGmailSpamReviewStatusQuery(
   value: string | null,
 ): LifeOpsGmailSpamReviewStatus | undefined {
   return parseGmailSpamReviewStatusInput(value, "status");
 }
-
 function parseBooleanQuery(
   value: string | null,
   field: string,
@@ -555,7 +522,6 @@ function parseBooleanQuery(
   }
   throw new LifeOpsServiceError(400, `${field} must be a boolean`);
 }
-
 function requireBodyString(
   body: Record<string, unknown>,
   field: string,
@@ -570,7 +536,6 @@ function requireBodyString(
   }
   return trimmed;
 }
-
 function parseOptionalBodyString(
   body: Record<string, unknown>,
   field: string,
@@ -585,7 +550,6 @@ function parseOptionalBodyString(
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function parseOptionalBodyBoolean(
   body: Record<string, unknown>,
   field: string,
@@ -599,7 +563,6 @@ function parseOptionalBodyBoolean(
   }
   return value;
 }
-
 function parseOptionalBodyStringArray(
   body: Record<string, unknown>,
   field: string,
@@ -628,7 +591,6 @@ function parseOptionalBodyStringArray(
   }
   return parsed;
 }
-
 function parseActivitySignalStates(
   url: URL,
 ): Array<(typeof LIFEOPS_ACTIVITY_SIGNAL_STATES)[number]> | null {
@@ -653,7 +615,6 @@ function parseActivitySignalStates(
   }
   return states;
 }
-
 function parseScreenTimeSourceQuery(
   value: string | null,
 ): "app" | "website" | undefined {
@@ -666,14 +627,12 @@ function parseScreenTimeSourceQuery(
   }
   return normalized;
 }
-
 function parseScreenTimeIdentifierQuery(
   value: string | null,
 ): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
-
 function parseScreenTimeRangeQuery(value: string | null) {
   const normalized = value?.trim().toLowerCase() || "today";
   if (!isOneOf(normalized, LIFEOPS_SCREEN_TIME_RANGES)) {
@@ -684,10 +643,8 @@ function parseScreenTimeRangeQuery(value: string | null) {
   }
   return normalized;
 }
-
 const ISO_INSTANT_QUERY_RE =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
-
 function parseRequiredIsoQuery(url: URL, field: string): string {
   const value = url.searchParams.get(field)?.trim();
   if (!value) {
@@ -701,7 +658,6 @@ function parseRequiredIsoQuery(url: URL, field: string): string {
   }
   return value;
 }
-
 function parseOptionalIsoQuery(
   value: string | null,
   field: string,
@@ -715,7 +671,6 @@ function parseOptionalIsoQuery(
   }
   return normalized;
 }
-
 function parseBoundedIsoWindowQuery(url: URL): {
   since: string;
   until: string;
@@ -735,7 +690,6 @@ function parseBoundedIsoWindowQuery(url: URL): {
   }
   return { since, until };
 }
-
 async function runRoute(
   ctx: LifeOpsRouteContext,
   fn: (service: LifeOpsService) => Promise<void>,
@@ -809,7 +763,6 @@ async function runRoute(
     throw error;
   }
 }
-
 /**
  * Runs an owner-gated calendar route against the singleton calendar service.
  * Calendar owns its domain service; constructing a LifeOpsService here would
@@ -833,7 +786,6 @@ async function runCalendarRoute(
     span.failure({ statusCode: 503, errorKind: "runtime_unavailable" });
     return true;
   }
-
   try {
     let loaded = runtime.getService(CalendarService.serviceType);
     if (!loaded) {
@@ -901,7 +853,6 @@ async function runCalendarRoute(
     throw error;
   }
 }
-
 function _parseConnectorRefreshDetailFromQuery(
   ctx: LifeOpsRouteContext,
   defaults: {
@@ -921,7 +872,6 @@ function _parseConnectorRefreshDetailFromQuery(
       defaults.mode,
   }));
 }
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -930,11 +880,9 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
-
 function serializeInlineScriptValue(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
-
 function writeHtml(
   res: http.ServerResponse,
   status: number,
@@ -1043,7 +991,6 @@ function writeHtml(
   </body>
 </html>`);
 }
-
 export async function handleLifeOpsRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
@@ -1160,7 +1107,7 @@ export async function handleLifeOpsRoutes(
       json(res, { error: error.message, code: error.code }, 503);
       return true;
     }
-    const ttlMs = cardRequest.ttlMs ?? 24 * 60 * 60_000;
+    const ttlMs = cardRequest.ttlMs ?? 24 * 60 * 60000;
     const placeholder = composeDailyCalendarCard({
       date: cardRequest.date,
       timeZone: cardRequest.timeZone,
@@ -1264,7 +1211,6 @@ export async function handleLifeOpsRoutes(
     }
     return gateway;
   };
-
   if (
     ctx.pathname === "/api/lifeops/account-handoffs" ||
     ctx.pathname.startsWith("/api/lifeops/account-handoffs/")
@@ -1283,7 +1229,6 @@ export async function handleLifeOpsRoutes(
     if (await handleAccountHandoffRoutes(ctx)) return true;
   }
   if (await handleFamilyWorkflowRoutes(ctx)) return true;
-
   // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service
   // mapping lives there. We inject LifeOps' HTTP plumbing so the calendar plugin
   // never depends back on LifeOps.
@@ -1347,7 +1292,6 @@ export async function handleLifeOpsRoutes(
   ) {
     return true;
   }
-
   if (method === "GET" && pathname === "/api/lifeops/app-state") {
     if (!requireAuthorizedRouteContext(ctx)) return true;
     const runtime = ctx.state.runtime;
@@ -1355,7 +1299,6 @@ export async function handleLifeOpsRoutes(
     json(res, await loadLifeOpsAppState(runtime));
     return true;
   }
-
   if (method === "POST" && pathname === "/api/lifeops/features/toggle") {
     if (!requireAuthorizedRouteContext(ctx)) return true;
     if (rateLimitRequest(ctx, "default")) return true;
@@ -1419,7 +1362,6 @@ export async function handleLifeOpsRoutes(
     });
     return true;
   }
-
   if (method === "PUT" && pathname === "/api/lifeops/app-state") {
     if (!requireAuthorizedRouteContext(ctx)) return true;
     if (rateLimitRequest(ctx, "default")) return true;
@@ -1476,15 +1418,12 @@ export async function handleLifeOpsRoutes(
     } catch (error) {
       ctx.error(
         res,
-        `failed to persist LifeOps app state: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `failed to persist LifeOps app state: ${error instanceof Error ? error.message : String(error)}`,
         500,
       );
     }
     return true;
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/triage") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1505,7 +1444,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getGmailTriage(url, request));
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/google/status"
@@ -1520,7 +1458,6 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/google/connect"
@@ -1535,7 +1472,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.startGoogleConnector(body, url));
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/google/disconnect"
@@ -1548,7 +1484,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.disconnectGoogleConnector(body, url));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/sync-health") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1567,7 +1502,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/seed") {
     if (rateLimitRequest(ctx, "gmail_seed")) return true;
     const body = await ctx.readJsonBody<SeedLifeOpsGmailRequest>(req, res);
@@ -1576,7 +1510,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.seedGmailMessages(url, body));
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/gmail/imported-data/purge"
@@ -1591,7 +1524,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.purgeGmailImportedData(url, body));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/search") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1622,7 +1554,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getGmailSearch(url, request));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/needs-response") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1643,7 +1574,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getGmailNeedsResponse(url, request));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/recommendations") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1674,7 +1604,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getGmailRecommendations(url, request));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/spam-review") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1692,7 +1621,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getGmailSpamReviewItems(url, request));
     });
   }
-
   const gmailSpamReviewMatch = pathname.match(
     /^\/api\/lifeops\/gmail\/spam-review\/([^/]+)$/,
   );
@@ -1722,7 +1650,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/gmail/unresponded") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -1744,7 +1671,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getGmailUnresponded(url, request));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/inbox") {
     return runRoute(ctx, async (service) => {
       const limit =
@@ -1851,7 +1777,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getInbox(request));
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/reply-drafts") {
     if (rateLimitRequest(ctx, "gmail_draft")) return true;
     const body = await readJsonBody<CreateLifeOpsGmailReplyDraftRequest>(
@@ -1863,7 +1788,6 @@ export async function handleLifeOpsRoutes(
       json(res, { draft: await service.createGmailReplyDraft(url, body) }, 201);
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/gmail/batch-reply-drafts"
@@ -1882,7 +1806,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/reply-send") {
     if (rateLimitRequest(ctx, "gmail_send")) return true;
     const body = await readJsonBody<SendLifeOpsGmailReplyRequest>(req, res);
@@ -1891,7 +1814,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.sendGmailReply(url, body));
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/message-send") {
     if (rateLimitRequest(ctx, "gmail_send")) return true;
     const body = await readJsonBody<SendLifeOpsGmailMessageRequest>(req, res);
@@ -1900,7 +1822,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.sendGmailMessage(url, body));
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/batch-reply-send") {
     if (rateLimitRequest(ctx, "gmail_send")) return true;
     const body = await readJsonBody<SendLifeOpsGmailBatchReplyRequest>(
@@ -1912,7 +1833,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.sendGmailReplies(url, body));
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/manage") {
     if (rateLimitRequest(ctx, "google_api_write")) return true;
     const body = await readJsonBody<ManageLifeOpsGmailMessagesRequest>(
@@ -1924,7 +1844,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.manageGmailMessages(url, body));
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/gmail/events/ingest") {
     if (rateLimitRequest(ctx, "google_api_write")) return true;
     const body = await readJsonBody<IngestLifeOpsGmailEventRequest>(req, res);
@@ -1933,7 +1852,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.ingestGmailEvent(url, body), 202);
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/health/status"
@@ -1950,7 +1868,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   const healthStatusMatch = pathname.match(
     /^\/api\/lifeops\/connectors\/health\/([^/]+)\/status$/,
   );
@@ -1970,7 +1887,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   const healthCallbackMatch = pathname.match(
     /^\/api\/lifeops\/connectors\/health\/([^/]+)\/callback$/,
   );
@@ -2003,7 +1919,6 @@ export async function handleLifeOpsRoutes(
       throw error;
     }
   }
-
   const healthSuccessMatch = pathname.match(
     /^\/api\/lifeops\/connectors\/health\/([^/]+)\/success$/,
   );
@@ -2018,7 +1933,6 @@ export async function handleLifeOpsRoutes(
     );
     return true;
   }
-
   if (method === "GET" && pathname === "/api/lifeops/health/summary") {
     if (rateLimitRequest(ctx, "default")) return true;
     return runRoute(ctx, async (service) => {
@@ -2042,7 +1956,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getHealthSummary(request));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/connectors/x/status") {
     return runRoute(ctx, async (service) => {
       json(
@@ -2054,7 +1967,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/x/posts") {
     if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<CreateLifeOpsXPostRequest>(req, res);
@@ -2063,7 +1975,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.createXPost(body), 201);
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/x/dms/digest") {
     return runRoute(ctx, async (service) => {
       const limit =
@@ -2080,7 +1991,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/x/dms/curate") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
@@ -2097,7 +2007,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/x/dms/send") {
     if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
@@ -2116,11 +2025,9 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   // -----------------------------------------------------------------------
   // iMessage connector
   // -----------------------------------------------------------------------
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/imessage/status"
@@ -2129,7 +2036,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getIMessageConnectorStatus());
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/imessage/chats"
@@ -2139,7 +2045,6 @@ export async function handleLifeOpsRoutes(
       json(res, { chats, count: chats.length });
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/imessage/messages"
@@ -2157,7 +2062,6 @@ export async function handleLifeOpsRoutes(
       json(res, { messages, count: messages.length });
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/imessage/send"
@@ -2180,11 +2084,9 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   // -----------------------------------------------------------------------
   // Telegram connector
   // -----------------------------------------------------------------------
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/telegram/status"
@@ -2198,7 +2100,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/verify"
@@ -2213,11 +2114,9 @@ export async function handleLifeOpsRoutes(
       json(res, await service.verifyTelegramConnector(body));
     });
   }
-
   // -----------------------------------------------------------------------
   // Discord connector
   // -----------------------------------------------------------------------
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/discord/status"
@@ -2231,7 +2130,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/send"
@@ -2251,7 +2149,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/verify"
@@ -2270,7 +2167,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/whatsapp/status"
@@ -2279,7 +2175,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.getWhatsAppConnectorStatus());
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/connectors/whatsapp/send"
@@ -2299,7 +2194,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/whatsapp/messages"
@@ -2312,13 +2206,11 @@ export async function handleLifeOpsRoutes(
       json(res, await service.pullWhatsAppRecent(limit));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/channel-policies") {
     return runRoute(ctx, async (service) => {
       json(res, { policies: await service.listChannelPolicies() });
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/channel-policies") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<UpsertLifeOpsChannelPolicyRequest>(
@@ -2330,7 +2222,6 @@ export async function handleLifeOpsRoutes(
       json(res, { policy: await service.upsertChannelPolicy(body) }, 201);
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/channels/phone-consent") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsPhoneConsentRequest>(
@@ -2342,7 +2233,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.capturePhoneConsent(body), 201);
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/activity-signals") {
     if (!requireActivitySignalsAvailable(ctx)) return true;
     return runRoute(ctx, async (service) => {
@@ -2362,7 +2252,6 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/activity-signals") {
     if (!requireActivitySignalsAvailable(ctx)) return true;
     if (rateLimitRequest(ctx, "default")) return true;
@@ -2389,7 +2278,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/manual-override") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsManualOverrideRequest>(
@@ -2401,7 +2289,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.captureManualOverride(body), 201);
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/reminders/process") {
     if (rateLimitRequest(ctx, "reminders_process")) return true;
     const body = await readJsonBody<ProcessLifeOpsRemindersRequest>(req, res);
@@ -2410,7 +2297,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.processReminders(body));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/reminder-preferences") {
     return runRoute(ctx, async (service) => {
       json(
@@ -2421,7 +2307,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/reminder-preferences") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<SetLifeOpsReminderPreferenceRequest>(
@@ -2433,7 +2318,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.setReminderPreference(body), 201);
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/reminders/acknowledge") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<AcknowledgeLifeOpsReminderRequest>(
@@ -2445,7 +2329,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.acknowledgeReminder(body));
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/website-access/relock") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<RelockLifeOpsWebsiteAccessRequest>(
@@ -2457,7 +2340,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.relockWebsiteAccessGroup(body.groupKey));
     });
   }
-
   const websiteAccessCallbackMatch = pathname.match(
     /^\/api\/lifeops\/website-access\/callbacks\/([^/]+)\/resolve$/,
   );
@@ -2485,7 +2367,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/reminders/inspection") {
     return runRoute(ctx, async (service) => {
       const ownerType = url.searchParams.get("ownerType");
@@ -2502,13 +2383,11 @@ export async function handleLifeOpsRoutes(
       json(res, await service.inspectReminder(ownerType, ownerId));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/workflows") {
     return runRoute(ctx, async (service) => {
       json(res, { workflows: await service.listWorkflows() });
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/workflows") {
     if (rateLimitRequest(ctx, "task_create")) return true;
     const body = await readJsonBody<CreateLifeOpsWorkflowRequest>(req, res);
@@ -2517,11 +2396,9 @@ export async function handleLifeOpsRoutes(
       json(res, await service.createWorkflow(body), 201);
     });
   }
-
   // Browser companion + package routes extracted to
   // `@elizaos/plugin-browser/routes` (mounted under
   // `/api/browser-bridge/*`).
-
   if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<SyncLifeOpsScheduleObservationsRequest>(
@@ -2533,7 +2410,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.ingestScheduleObservations(body));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/schedule/merged-state") {
     const scopeParam = url.searchParams.get("scope");
     const scope = scopeParam?.trim() ?? "";
@@ -2572,21 +2448,18 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/schedule/inspection") {
     const timezoneParam = url.searchParams.get("timezone")?.trim() || "UTC";
     return runRoute(ctx, async (service) => {
       json(res, await service.inspectSchedule({ timezone: timezoneParam }));
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/schedule/summary") {
     const timezoneParam = url.searchParams.get("timezone")?.trim() || "UTC";
     return runRoute(ctx, async (service) => {
       json(res, await service.readScheduleSummary({ timezone: timezoneParam }));
     });
   }
-
   if (
     method === "GET" &&
     pathname === "/api/lifeops/permissions/full-disk-access"
@@ -2595,7 +2468,6 @@ export async function handleLifeOpsRoutes(
       json(res, await probeFullDiskAccess());
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/screen-time/summary") {
     return runRoute(ctx, async (service) => {
       const window = parseBoundedIsoWindowQuery(url);
@@ -2616,7 +2488,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/screen-time/breakdown") {
     return runRoute(ctx, async (service) => {
       const window = parseBoundedIsoWindowQuery(url);
@@ -2637,7 +2508,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/screen-time/history") {
     return runRoute(ctx, async (service) => {
       json(
@@ -2658,7 +2528,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/social/summary") {
     return runRoute(ctx, async (service) => {
       const window = parseBoundedIsoWindowQuery(url);
@@ -2675,25 +2544,21 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/capabilities") {
     return runRoute(ctx, async (service) => {
       json(res, await service.getCapabilityStatus());
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/overview") {
     return runRoute(ctx, async (service) => {
       json(res, await service.getOverview());
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/todos") {
     return runRoute(ctx, async (service) => {
       json(res, { todos: await service.getTodos() });
     });
   }
-
   const todoTransition = pathname.match(
     /^\/api\/lifeops\/definitions\/([^/]+)\/(complete|reopen)$/,
   );
@@ -2710,7 +2575,6 @@ export async function handleLifeOpsRoutes(
       );
     });
   }
-
   if (method === "GET" && pathname === "/api/lifeops/smart-features/settings") {
     return runRoute(ctx, async (service) => {
       const get = (key: string): string | null => {
@@ -2728,7 +2592,6 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/smart-features/settings"
@@ -2770,7 +2633,6 @@ export async function handleLifeOpsRoutes(
       json(res, { ok: true });
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/email-unsubscribe/scan") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
@@ -2779,7 +2641,6 @@ export async function handleLifeOpsRoutes(
       json(res, result);
     });
   }
-
   if (
     method === "POST" &&
     pathname === "/api/lifeops/email-unsubscribe/unsubscribe"
@@ -2851,17 +2712,14 @@ export async function handleLifeOpsRoutes(
       json(res, result);
     });
   }
-
   // Routine seeding is handled via the FIRST_RUN customize path
   // (see `src/lifeops/first-run/service.ts`) and the migrator at
   // `src/lifeops/seed-routine-migration/migrator.ts`.
-
   if (method === "GET" && pathname === "/api/lifeops/definitions") {
     return runRoute(ctx, async (service) => {
       json(res, { definitions: await service.listDefinitions() });
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/definitions") {
     if (rateLimitRequest(ctx, "task_create")) return true;
     const body = await readJsonBody<CreateLifeOpsDefinitionRequest>(req, res);
@@ -2870,7 +2728,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.createDefinition(body), 201);
     });
   }
-
   const definitionMatch = pathname.match(
     /^\/api\/lifeops\/definitions\/([^/]+)$/,
   );
@@ -2904,13 +2761,11 @@ export async function handleLifeOpsRoutes(
       });
     }
   }
-
   if (method === "GET" && pathname === "/api/lifeops/goals") {
     return runRoute(ctx, async (service) => {
       json(res, { goals: await service.listGoals() });
     });
   }
-
   if (method === "POST" && pathname === "/api/lifeops/goals") {
     if (rateLimitRequest(ctx, "task_create")) return true;
     const body = await readJsonBody<CreateLifeOpsGoalRequest>(req, res);
@@ -2919,7 +2774,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.createGoal(body), 201);
     });
   }
-
   const goalMatch = pathname.match(/^\/api\/lifeops\/goals\/([^/]+)$/);
   if (goalMatch) {
     const goalId = decodeMatchedPathComponent(
@@ -2951,7 +2805,6 @@ export async function handleLifeOpsRoutes(
       });
     }
   }
-
   const goalReviewMatch = pathname.match(
     /^\/api\/lifeops\/goals\/([^/]+)\/review$/,
   );
@@ -2968,7 +2821,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.reviewGoal(goalId));
     });
   }
-
   const workflowMatch = pathname.match(/^\/api\/lifeops\/workflows\/([^/]+)$/);
   if (workflowMatch) {
     const workflowId = decodeMatchedPathComponent(
@@ -2993,7 +2845,6 @@ export async function handleLifeOpsRoutes(
       });
     }
   }
-
   const workflowRunMatch = pathname.match(
     /^\/api\/lifeops\/workflows\/([^/]+)\/run$/,
   );
@@ -3013,11 +2864,9 @@ export async function handleLifeOpsRoutes(
       json(res, { run: await service.runWorkflow(workflowId, body) }, 201);
     });
   }
-
   // Browser session + companion progress/complete routes extracted to
   // `@elizaos/plugin-browser/routes` (mounted under
   // `/api/browser-bridge/*`).
-
   const occurrenceExplanationMatch = pathname.match(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/explanation$/,
   );
@@ -3034,7 +2883,6 @@ export async function handleLifeOpsRoutes(
       json(res, await service.explainOccurrence(occurrenceId));
     });
   }
-
   const completeMatch = pathname.match(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/complete$/,
   );
@@ -3056,7 +2904,6 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   const skipMatch = pathname.match(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/skip$/,
   );
@@ -3078,7 +2925,6 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   const snoozeMatch = pathname.match(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/snooze$/,
   );
@@ -3100,6 +2946,5 @@ export async function handleLifeOpsRoutes(
       });
     });
   }
-
   return false;
 }

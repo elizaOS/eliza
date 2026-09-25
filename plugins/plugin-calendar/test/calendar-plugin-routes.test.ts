@@ -4,8 +4,14 @@
  */
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LegacyRouteHandler } from "@elizaos/shared";
+import type { LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
+import { normalizeCalendarDateTimeInTimeZone } from "../src/internal/calendar-normalize.js";
+import { calendarPlugin } from "../src/plugin.js";
+import {
+  calendarHttpRoutes,
+  calendarRouteHandler,
+} from "../src/routes/plugin-routes.js";
 
 const MockCalendarService = vi.hoisted(() =>
   Object.assign(function CalendarService() {}, {
@@ -17,28 +23,18 @@ const MockCalendarMigrationService = vi.hoisted(() =>
     serviceType: "calendar_migration",
   }),
 );
-
 vi.mock("../src/service/CalendarService.js", () => ({
   CalendarService: MockCalendarService,
 }));
-
 vi.mock("../src/service/migration.js", () => ({
   CALENDAR_MIGRATION_SERVICE_TYPE: "calendar_migration",
   CalendarMigrationService: MockCalendarMigrationService,
 }));
-
-import { calendarPlugin } from "../src/plugin.js";
-import {
-  calendarHttpRoutes,
-  calendarRouteHandler,
-} from "../src/routes/plugin-routes.js";
-
 type MockResponse = http.ServerResponse & {
   body: string;
   headers: Record<string, string | string[]>;
   headersSent: boolean;
 };
-
 function makeRequest(args: {
   method: string;
   url: string;
@@ -51,7 +47,6 @@ function makeRequest(args: {
     body: args.body,
   } as unknown as http.IncomingMessage;
 }
-
 function makeResponse(): MockResponse {
   const headers: Record<string, string | string[]> = {};
   const res = {
@@ -82,7 +77,6 @@ function makeResponse(): MockResponse {
   };
   return res as unknown as MockResponse;
 }
-
 function makeCalendarService() {
   return {
     getCalendarFeed: vi.fn(async () => ({
@@ -127,7 +121,6 @@ function makeCalendarService() {
     getLinkedCalendarEvent: vi.fn(async () => null),
   };
 }
-
 function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
   return {
     agentId: "agent-1",
@@ -135,8 +128,43 @@ function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
     getServiceLoadPromise: vi.fn(async () => service),
   } as unknown as IAgentRuntime;
 }
-
 describe("calendar plugin HTTP routes", () => {
+  it.each([
+    ["2026-03-08T02:30:00", "CALENDAR_LOCAL_TIME_NONEXISTENT", 0],
+    ["2026-11-01T01:30:00", "CALENDAR_LOCAL_TIME_AMBIGUOUS", 2],
+  ])(
+    "translates local-time validation at %s into actionable HTTP 409",
+    async (localTime, code, choices) => {
+      const service = makeCalendarService();
+      service.getCalendarFeed.mockImplementation(async () => {
+        normalizeCalendarDateTimeInTimeZone(
+          localTime,
+          "startAt",
+          "America/Los_Angeles",
+          "reject",
+        );
+        throw new Error("Expected local-time rejection");
+      });
+      const response = makeResponse();
+      await calendarRouteHandler()(
+        makeRequest({
+          method: "GET",
+          url: "/api/lifeops/calendar/feed",
+        }) as never,
+        response as never,
+        makeRuntime(service) as never,
+      );
+      expect(response.statusCode).toBe(409);
+      const body = JSON.parse(response.body);
+      expect(body).toMatchObject({
+        code,
+        requiresInput: true,
+        timeClarification: { timeZone: "America/Los_Angeles" },
+      });
+      expect(body.timeClarification.possibleInstants).toHaveLength(choices);
+    },
+  );
+
   it("registers only the provider-authenticated webhook directly", () => {
     expect(calendarPlugin.dependencies).toEqual(["@elizaos/plugin-scheduling"]);
     expect(calendarPlugin.routes).toEqual(calendarHttpRoutes);
@@ -148,7 +176,6 @@ describe("calendar plugin HTTP routes", () => {
       handler: expect.any(Function),
     });
   });
-
   it("serves linked-event names through the resolved owner route service", async () => {
     const service = makeCalendarService();
     const response = makeResponse();
@@ -166,13 +193,11 @@ describe("calendar plugin HTTP routes", () => {
     });
     expect(service.listLinkedCalendarEvents).not.toHaveBeenCalled();
   });
-
   it("keeps the host adapter available for the owner-gated LifeOps route", async () => {
     const service = makeCalendarService();
     const runtime = makeRuntime(service);
     const res = makeResponse();
     const handler: LegacyRouteHandler = calendarRouteHandler();
-
     await handler(
       makeRequest({
         method: "GET",
@@ -181,7 +206,6 @@ describe("calendar plugin HTTP routes", () => {
       res as never,
       runtime as never,
     );
-
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
       calendarId: "all",

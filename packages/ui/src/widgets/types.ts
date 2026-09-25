@@ -2,12 +2,12 @@
  * Types for the widget registry: slots, plugin widget declarations, and the
  * WidgetProps the host passes to each widget component.
  */
+
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
-import type { UiSpec } from "@elizaos/shared";
+import type { UiSpec } from "@elizaos/core/config/ui-spec";
 import type { ComponentType } from "react";
 import type { PluginInfo } from "../api/client-types-config";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
-
 /** Named injection points where plugin widgets can render. */
 export const WIDGET_SLOTS = [
   "chat-sidebar",
@@ -15,9 +15,7 @@ export const WIDGET_SLOTS = [
   "nav-page",
   "home",
 ] as const;
-
 export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
-
 /**
  * Show-once-then-retire lifecycle for a transient home-slot widget (for example, connector nudges). A widget with `sunset` is filtered out of the
  * home grid once its condition is met; the per-key lifecycle state is persisted
@@ -33,7 +31,6 @@ export interface HomeWidgetSunset {
   /** Render a dismiss control; retire permanently once dismissed. */
   dismissible?: boolean;
 }
-
 /**
  * Serializable widget metadata declared by a plugin.
  *
@@ -48,7 +45,6 @@ export interface PluginWidgetDeclaration extends CorePluginWidgetDeclaration {
   /** Show-once-then-retire lifecycle (home slot only). See {@link HomeWidgetSunset}. */
   sunset?: HomeWidgetSunset;
 }
-
 /** Props passed to every widget React component. */
 export interface WidgetProps {
   pluginId: string;
@@ -69,7 +65,6 @@ export interface WidgetProps {
    */
   spanClassName?: string;
 }
-
 /**
  * Client-side registration mapping a widget declaration to a React component.
  * Bundled plugins register these statically; third-party plugins rely on uiSpec.

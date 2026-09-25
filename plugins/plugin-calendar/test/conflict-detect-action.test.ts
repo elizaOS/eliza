@@ -9,7 +9,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConflictDetectEvent,

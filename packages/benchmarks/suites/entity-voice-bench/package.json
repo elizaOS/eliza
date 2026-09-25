@@ -18,10 +18,9 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/testing": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "4.1.10"
+    "vitest": "5.0.1"
   }
 }

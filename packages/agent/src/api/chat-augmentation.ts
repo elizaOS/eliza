@@ -8,24 +8,26 @@
 
 import crypto from "node:crypto";
 
-export { userRequestFromAugmentedText } from "./augmented-request.ts";
+export { userRequestFromAugmentedText } from "@elizaos/core";
 
-import type {
-  AccessContext,
-  AgentRuntime,
-  Content,
-  createMessageMemory,
-  Memory,
-  UUID,
+import {
+  type AccessContext,
+  type AgentRuntime,
+  buildAccessContext,
+  type Content,
+  type createMessageMemory,
+  type Memory,
+  normalizeCharacterLanguage,
+  toWellFormedUnicode,
+  type UUID,
 } from "@elizaos/core";
-import { buildAccessContext, toWellFormedUnicode } from "@elizaos/core";
+
 import {
   aliasRecallQuery,
   type DocumentsServiceLike,
   embedRecallQuery,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
-import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import { getErrorMessage } from "./server-helpers.ts";
 

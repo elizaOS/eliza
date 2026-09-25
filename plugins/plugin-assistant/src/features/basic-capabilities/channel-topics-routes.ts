@@ -6,18 +6,16 @@
  * The in-chat counterpart is the SEARCH_CHANNEL_TOPICS action.
  */
 
-import type { TopicSearchHit } from "@elizaos/core";
-import type { Route } from "@elizaos/shared";
+import { type TopicSearchHit } from "@elizaos/core";
+import { type Route } from "@elizaos/core/api/http-plugin";
 
 interface TopicSearchService {
   searchTopics(query: string, limit?: number): TopicSearchHit[];
 }
-
 function firstQueryValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
 }
-
 export const CHANNEL_TOPICS_SEARCH_ROUTE: Route = {
   type: "GET",
   path: "/api/channel-topics/search",
@@ -53,5 +51,4 @@ export const CHANNEL_TOPICS_SEARCH_ROUTE: Route = {
     res.status(200).json({ query, count: hits.length, hits });
   },
 };
-
 export const CHANNEL_TOPICS_ROUTES: Route[] = [CHANNEL_TOPICS_SEARCH_ROUTE];

@@ -326,7 +326,10 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
-    if (priorDialogueContent(raw.trim(), speaker) !== event.segment.content)
+    if (
+      priorDialogueContent(raw, speaker) !== event.segment.content &&
+      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+    )
       continue;
     originals.set(id, raw);
     references.set(id, {
@@ -351,6 +354,60 @@ export function createSourceReplySnapshot(
     originals,
     references,
   };
+}
+
+/** A quote explicitly carries its original bytes; source IDs remain runtime-only.
+ * Ordinary strings and text parts never acquire literal/effect exemptions. */
+export function resolveLiteralSourceReply(
+  context: ContextObject,
+  snapshot: SourceReplySnapshot,
+  raw: Record<string, unknown>,
+  onRendering?: (rendering: SourceReplyRendering) => void,
+): Record<string, unknown> | undefined {
+  if (!Array.isArray(raw.replyText)) return raw;
+  const ids: string[] = [];
+  const parts = raw.replyText.map((part) => {
+    if (
+      !isObjectRecord(part) ||
+      part.kind !== "source" ||
+      typeof part.value !== "string"
+    )
+      return part;
+    const original = [...snapshot.originals].find(
+      ([, text]) => text === part.value,
+    );
+    if (!original)
+      throw new ElizaError("Quoted text does not match a supplied original", {
+        code: "STAGE1_INVALID_SOURCE_REPLY",
+        severity: "ephemeral",
+      });
+    if (!snapshot.providerIds.has(original[0])) ids.push(original[0]);
+    return { ...part, value: original[0] };
+  });
+  const resolved = resolveSourceReply(
+    context,
+    snapshot,
+    {
+      ...raw,
+      replyText: parts,
+      completionContext: {
+        mode: "relevant_prior_dialogue",
+        complete: true,
+        sourceSetId: snapshot.sourceSetId,
+        relevantSourceIds: [...new Set(ids)],
+        constraintSourceIds: [],
+        referentSourceIds: [],
+        pendingIntentSourceIds: [],
+      },
+    },
+    onRendering,
+  );
+  if (!resolved) return undefined;
+  // Internal quote validation must never select planning/completion history.
+  const { completionContext: _binding, ...reply } = resolved;
+  return Object.hasOwn(raw, "completionContext")
+    ? { ...reply, completionContext: raw.completionContext }
+    : reply;
 }
 
 /** Undefined keeps an invalid source decision in ordinary history recovery.

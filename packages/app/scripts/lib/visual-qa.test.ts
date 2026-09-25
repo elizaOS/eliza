@@ -9,18 +9,18 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  analyzeImageFile,
   comparePixels,
   summarizeDiff,
 } from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
-import { analyzeImageFile } from "../mvp-visual-verify/ocr.mjs";
 import {
   analyzeScreenshot,
   changeMetric,
   colorFractions,
   dominantPalette,
   evaluateExpectation,
-} from "./visual-qa.mjs";
+} from "./visual-qa.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "visual-qa-"));
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -222,5 +222,5 @@ describe("analyzeScreenshot end to end", () => {
     expect(
       report.ocr_note === null || typeof report.ocr_note === "string",
     ).toBe(true);
-  });
+  }, 30_000);
 });

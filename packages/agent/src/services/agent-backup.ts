@@ -18,9 +18,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createKmsClient, systemKey } from "@elizaos/auth/kms";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger, timeInferenceSpan } from "@elizaos/core";
 import {
+  AGENT_BACKUP_CANONICAL_JSON,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
@@ -29,16 +28,19 @@ import {
   type AgentBackupCaptureV2FileEntry,
   type AgentBackupCaptureV2FrameHeader,
   type AgentBackupCaptureV2Request,
+  type AgentRuntime,
   compareAgentBackupCaptureV2FilePaths,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   parseAgentBackupCaptureV2Request,
   readAgentBackupCaptureV2FrameDigest,
   serializeAgentBackupCaptureV2Frame,
-} from "@elizaos/shared";
-import {
-  AGENT_BACKUP_CANONICAL_JSON,
   stableJsonString,
-} from "@elizaos/shared/canonical-json";
+  timeInferenceSpan,
+} from "@elizaos/core";
+
 import { z } from "zod";
 import type { ElizaConfig } from "../config/config.ts";
 import {
@@ -56,9 +58,7 @@ import {
 } from "./agent-backup-authority.ts";
 
 type JsonRecord = Record<string, unknown>;
-
 const EMPTY_LEGACY_CONFIG_SECTION = Object.freeze({});
-
 export interface AgentBackupFileEntry {
   path: string;
   sha256: string;
@@ -67,7 +67,6 @@ export interface AgentBackupFileEntry {
   mtimeMs?: number;
   bytesBase64: string;
 }
-
 export interface AgentBackupFileSet {
   kind: "file-set";
   rootLabel: "state-dir" | "pglite-dir";
@@ -75,26 +74,22 @@ export interface AgentBackupFileSet {
   files: AgentBackupFileEntry[];
   sha256: string;
 }
-
 export interface AgentBackupPostgresTable {
   name: string;
   columns: string[];
   rows: JsonRecord[];
 }
-
 export interface AgentBackupPostgresDump {
   kind: "postgres-rows";
   tables: AgentBackupPostgresTable[];
   sha256: string;
 }
-
 export interface AgentBackupPgliteDump {
   kind: "pglite-dump";
   compression: "gzip";
   file: AgentBackupFileEntry;
   sha256: string;
 }
-
 export interface AgentBackupDatabaseComponent {
   kind: "pglite-dump" | "pglite-files" | "postgres-rows" | "none";
   pgliteDump?: AgentBackupPgliteDump;
@@ -103,7 +98,6 @@ export interface AgentBackupDatabaseComponent {
   reason?: string;
   sha256: string;
 }
-
 export interface AgentBackupManifest {
   schemaVersion: 1;
   format: "elizaos.agent-backup";
@@ -125,14 +119,16 @@ export interface AgentBackupManifest {
     componentHashes: Record<string, string>;
   };
 }
-
 export interface AgentBackupStateData {
-  memories: Array<{ role: string; text: string; timestamp: number }>;
+  memories: Array<{
+    role: string;
+    text: string;
+    timestamp: number;
+  }>;
   config: Record<string, unknown>;
   workspaceFiles: Record<string, string>;
   manifest: AgentBackupManifest;
 }
-
 export interface AgentBackupFileEnvelope {
   schemaVersion: 1;
   format: "elizaos.agent-backup-file";
@@ -148,7 +144,6 @@ export interface AgentBackupFileEnvelope {
     kmsKeyVersion: number;
   };
 }
-
 export interface LocalAgentBackupMetadata {
   fileName: string;
   path: string;
@@ -157,7 +152,6 @@ export interface LocalAgentBackupMetadata {
   stateSha256: string;
   sizeBytes: number;
 }
-
 /**
  * A capture refused because it would exceed the source-side snapshot budget.
  *
@@ -179,7 +173,6 @@ export class AgentSnapshotBudgetExceededError extends ElizaError {
     });
   }
 }
-
 /**
  * Produce-side budget for a snapshot capture (#17172 §1).
  *
@@ -202,18 +195,15 @@ export class SnapshotBudget {
   private chargedBytes = 0;
   private reservedBytes = 0;
   private fileCount = 0;
-
   constructor(
     private readonly maxRawBytes: number,
     private readonly maxFiles: number,
     private readonly signal?: AbortSignal,
   ) {}
-
   /** Abort between units of work so a cancelled capture stops promptly. */
   check(): void {
     this.signal?.throwIfAborted();
   }
-
   /**
    * Hold capacity for a not-yet-read payload from its declared size. Refuses
    * before anything is allocated, counting capacity other in-flight holds have
@@ -233,7 +223,6 @@ export class SnapshotBudget {
       );
     }
     this.reservedBytes += holdBytes;
-
     let settled = false;
     const releaseHold = () => {
       if (settled) return false;
@@ -251,12 +240,10 @@ export class SnapshotBudget {
       },
     };
   }
-
   chargeRaw(bytes: number, stage: string): void {
     this.check();
     this.charge(bytes, stage);
   }
-
   assertWireSize(value: unknown): void {
     this.check();
     const wireBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
@@ -268,7 +255,6 @@ export class SnapshotBudget {
       );
     }
   }
-
   private chargeFileEntry(base64Bytes: number): void {
     this.check();
     this.fileCount += 1;
@@ -281,7 +267,6 @@ export class SnapshotBudget {
     }
     this.charge(base64Bytes, "file capture");
   }
-
   private charge(bytes: number, stage: string): void {
     this.chargedBytes += bytes;
     if (this.chargedBytes + this.reservedBytes > this.maxRawBytes) {
@@ -293,7 +278,6 @@ export class SnapshotBudget {
     }
   }
 }
-
 /** Settle-once token returned by {@link SnapshotBudget.reserve}. */
 export interface SnapshotReservation {
   /** Convert the hold into a charged file entry at its actual encoded size. */
@@ -301,19 +285,16 @@ export interface SnapshotReservation {
   /** Free the hold without charging (the payload was never materialized). */
   release(): void;
 }
-
 /** Encoded length of `n` raw bytes in base64 (4 chars per 3 bytes, padded). */
 function base64Length(rawBytes: number): number {
   return Math.ceil(rawBytes / 3) * 4;
 }
-
 /**
  * File-count ceiling for one capture. Mirrors the hydration-side file cap so a
  * snapshot this process is willing to PRODUCE is one the consumer is willing to
  * expand; a pathological state dir is refused here rather than downstream.
  */
-const DEFAULT_SNAPSHOT_MAX_FILES = 5_000;
-
+const DEFAULT_SNAPSHOT_MAX_FILES = 5000;
 /**
  * Rows fetched per round-trip when capturing an agent-scoped Postgres table.
  *
@@ -323,7 +304,6 @@ const DEFAULT_SNAPSHOT_MAX_FILES = 5_000;
  * peak at one batch and lets the budget refuse mid-table (#17172 §1).
  */
 const POSTGRES_CAPTURE_BATCH_ROWS = 500;
-
 const MEDIA_DIR_NAME = "media";
 const BACKUPS_DIR_NAME = "backups";
 /** Per-provider model cache / weights under state-dir (`resolveModelsCacheDir`). */
@@ -350,12 +330,10 @@ const PGLITE_VOLATILE_ROOT_FILES = new Set([
   "postmaster.pid",
 ]);
 const PGLITE_DUMP_PATH = "pglite-data-dir.tar.gz";
-
 const POSTGRES_AGENT_ID_COLUMNS = ["agent_id", "agentId"];
 const POSTGRES_AGENT_TABLE = "agents";
 const POSTGRES_EMBEDDINGS_TABLE = "embeddings";
 const POSTGRES_MEMORIES_TABLE = "memories";
-
 const RESTORE_TABLE_ORDER = [
   "agents",
   "worlds",
@@ -386,16 +364,13 @@ const RESTORE_TABLE_ORDER = [
   "auth_owner_login_tokens",
   "cache",
 ];
-
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 let localBackupKmsClient: ReturnType<typeof createKmsClient> | null = null;
-
 function getLocalBackupKmsClient(): ReturnType<typeof createKmsClient> {
   localBackupKmsClient ??= createKmsClient();
   return localBackupKmsClient;
 }
-
 /**
  * Deterministic JSON with recursively sorted object keys — the bytes every
  * backup integrity hash is taken over.
@@ -413,36 +388,28 @@ function getLocalBackupKmsClient(): ReturnType<typeof createKmsClient> {
 function stableJson(value: unknown): string {
   return stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
 }
-
 function sha256Bytes(bytes: Buffer | string): string {
   return crypto.createHash("sha256").update(bytes).digest("hex");
 }
-
 function sha256Json(value: unknown): string {
   return sha256Bytes(stableJson(value));
 }
-
 function b64encode(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
-
 function b64decode(input: string): Uint8Array {
   return new Uint8Array(Buffer.from(input, "base64"));
 }
-
 function localBackupAad(agentId: string, stateSha256: string): Uint8Array {
   return textEncoder.encode(`agent-backup-file|${agentId}|${stateSha256}`);
 }
-
 function localBackupsDir(): string {
   return path.join(resolveStateDir(), BACKUPS_DIR_NAME);
 }
-
 function safeBackupFileName(createdAt: string, agentId: string): string {
   const timestamp = createdAt.replace(/[:.]/g, "-");
   return `${timestamp}-${agentId}${LOCAL_BACKUP_EXTENSION}`;
 }
-
 function resolveLocalBackupPath(fileName: string): string {
   if (
     path.basename(fileName) !== fileName ||
@@ -458,7 +425,6 @@ function resolveLocalBackupPath(fileName: string): string {
   }
   return resolved;
 }
-
 function normalizeRelativePath(input: string): string {
   const normalized = path.posix.normalize(input.replaceAll(path.sep, "/"));
   if (
@@ -472,7 +438,6 @@ function normalizeRelativePath(input: string): string {
   }
   return normalized;
 }
-
 async function pathExists(target: string): Promise<boolean> {
   try {
     await fs.lstat(target);
@@ -482,7 +447,6 @@ async function pathExists(target: string): Promise<boolean> {
     throw error;
   }
 }
-
 function isWithin(root: string, target: string): boolean {
   const relative = path.relative(root, target);
   return (
@@ -490,7 +454,6 @@ function isWithin(root: string, target: string): boolean {
     (!relative.startsWith("..") && !path.isAbsolute(relative))
   );
 }
-
 async function readFileEntry(
   root: string,
   absolutePath: string,
@@ -520,7 +483,6 @@ async function readFileEntry(
     if (!committed) hold?.release();
   }
 }
-
 function fileEntryFromBytes(
   relativePath: string,
   bytes: Buffer,
@@ -533,7 +495,6 @@ function fileEntryFromBytes(
     bytesBase64: bytes.toString("base64"),
   };
 }
-
 async function collectFileSet(params: {
   root: string;
   rootLabel: AgentBackupFileSet["rootLabel"];
@@ -551,7 +512,6 @@ async function collectFileSet(params: {
       sha256: "",
     });
   }
-
   async function visit(dir: string): Promise<void> {
     // Stop descending promptly once the capture is cancelled or over budget.
     params.budget?.check();
@@ -568,7 +528,6 @@ async function collectFileSet(params: {
       }
     }
   }
-
   await visit(root);
   files.sort((left, right) => left.path.localeCompare(right.path));
   return withFileSetHash({
@@ -579,7 +538,6 @@ async function collectFileSet(params: {
     sha256: "",
   });
 }
-
 function withFileSetHash(fileSet: AgentBackupFileSet): AgentBackupFileSet {
   const hashInput = fileSet.files.map(({ path, sha256, size }) => ({
     path,
@@ -588,7 +546,6 @@ function withFileSetHash(fileSet: AgentBackupFileSet): AgentBackupFileSet {
   }));
   return { ...fileSet, sha256: sha256Json(hashInput) };
 }
-
 function baseStateFileInclude(relativePath: string): boolean {
   // Plugin import generations are rebuilt from installed sources on boot.
   if (
@@ -616,7 +573,6 @@ function baseStateFileInclude(relativePath: string): boolean {
   if (relativePath.endsWith(".log")) return false;
   return true;
 }
-
 function vaultFileInclude(relativePath: string): boolean {
   return (
     relativePath === VAULT_JSON_PATH ||
@@ -626,7 +582,6 @@ function vaultFileInclude(relativePath: string): boolean {
     relativePath.startsWith(`${VAULT_PGLITE_DIR_NAME}/`)
   );
 }
-
 function pgliteFileInclude(relativePath: string): boolean {
   const first = relativePath.split("/")[0];
   if (PGLITE_VOLATILE_ROOT_FILES.has(relativePath)) return false;
@@ -635,7 +590,6 @@ function pgliteFileInclude(relativePath: string): boolean {
     return false;
   return true;
 }
-
 async function removePgliteVolatileFiles(root: string): Promise<void> {
   await Promise.all(
     [...PGLITE_VOLATILE_ROOT_FILES].map((fileName) =>
@@ -658,7 +612,6 @@ async function removePgliteVolatileFiles(root: string): Promise<void> {
       .map((entry) => fs.rm(path.join(root, entry.name), { force: true })),
   );
 }
-
 function relativeRootWithin(
   root: string,
   target: string | null,
@@ -669,7 +622,6 @@ function relativeRootWithin(
     return null;
   return normalizeRelativePath(relative);
 }
-
 function makeStateFileInclude(
   stateDir: string,
   pgliteDir: string | null,
@@ -690,7 +642,6 @@ function makeStateFileInclude(
     return true;
   };
 }
-
 async function resolvePgliteDir(): Promise<string> {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
   if (configured) {
@@ -698,7 +649,6 @@ async function resolvePgliteDir(): Promise<string> {
       ? path.join(process.cwd(), configured.slice(1))
       : path.resolve(configured);
   }
-
   let current = process.cwd();
   while (true) {
     if (await pathExists(path.join(current, "packages", "core"))) {
@@ -710,7 +660,6 @@ async function resolvePgliteDir(): Promise<string> {
   }
   return path.join(process.cwd(), ".eliza", ".elizadb");
 }
-
 function hasPostgresUrl(
   runtime?: IAgentRuntime | AgentRuntime | null,
 ): string | null {
@@ -722,21 +671,18 @@ function hasPostgresUrl(
     process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim() || null
   );
 }
-
 function quoteIdentifier(identifier: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
     throw new Error(`Unsafe SQL identifier: ${identifier}`);
   }
   return `"${identifier.replaceAll('"', '""')}"`;
 }
-
 function agentIdColumn(columns: Set<string>): string | null {
   for (const candidate of POSTGRES_AGENT_ID_COLUMNS) {
     if (columns.has(candidate)) return candidate;
   }
   return null;
 }
-
 function getTableColumnsBucket(
   tableColumns: Map<string, string[]>,
   tableName: string,
@@ -747,7 +693,6 @@ function getTableColumnsBucket(
   tableColumns.set(tableName, columns);
   return columns;
 }
-
 /**
  * Read an agent-scoped table in keyset batches, charging the budget per batch.
  *
@@ -766,7 +711,12 @@ function getTableColumnsBucket(
  */
 export async function fetchAgentScopedRowsBatched(
   pool: {
-    query: (text: string, values: unknown[]) => Promise<{ rows: unknown[] }>;
+    query: (
+      text: string,
+      values: unknown[],
+    ) => Promise<{
+      rows: unknown[];
+    }>;
   },
   buildSql: (keysetClause: string) => string,
   baseParams: unknown[],
@@ -806,7 +756,6 @@ export async function fetchAgentScopedRowsBatched(
   }
   return rows;
 }
-
 async function capturePostgresRows(
   postgresUrl: string,
   agentId: string,
@@ -822,18 +771,15 @@ async function capturePostgresRows(
       table_name: string;
       column_name: string;
       ordinal_position: number;
-    }>(
-      `SELECT table_name, column_name, ordinal_position
+    }>(`SELECT table_name, column_name, ordinal_position
        FROM information_schema.columns
        WHERE table_schema = 'public'
-       ORDER BY table_name, ordinal_position`,
-    );
+       ORDER BY table_name, ordinal_position`);
     const tableColumns = new Map<string, string[]>();
     for (const row of columnsResult.rows) {
       const columns = getTableColumnsBucket(tableColumns, row.table_name);
       columns.push(row.column_name);
     }
-
     const tables: AgentBackupPostgresTable[] = [];
     for (const [tableName, columns] of tableColumns) {
       const columnSet = new Set(columns);
@@ -853,8 +799,7 @@ async function capturePostgresRows(
         if (columnSet.has("id")) {
           rows = await fetchAgentScopedRowsBatched(
             pool,
-            (keyset) =>
-              `SELECT e.*
+            (keyset) => `SELECT e.*
                FROM ${quoteIdentifier(tableName)} e
                INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
                  ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
@@ -926,7 +871,6 @@ async function capturePostgresRows(
     await pool.end();
   }
 }
-
 function withPostgresHash(
   dump: AgentBackupPostgresDump,
 ): AgentBackupPostgresDump {
@@ -941,7 +885,6 @@ function withPostgresHash(
     ),
   };
 }
-
 function withPgliteDumpHash(
   dump: AgentBackupPgliteDump,
 ): AgentBackupPgliteDump {
@@ -958,22 +901,28 @@ function withPgliteDumpHash(
     }),
   };
 }
-
 function isBlobLike(value: unknown): value is {
   arrayBuffer: () => Promise<ArrayBuffer>;
   size: number;
 } {
-  const size = (value as { size?: unknown } | null)?.size;
+  const size = (
+    value as {
+      size?: unknown;
+    } | null
+  )?.size;
   return (
     value !== null &&
     typeof value === "object" &&
-    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
+    typeof (
+      value as {
+        arrayBuffer?: unknown;
+      }
+    ).arrayBuffer === "function" &&
     typeof size === "number" &&
     Number.isSafeInteger(size) &&
     size >= 0
   );
 }
-
 /**
  * Recognizable sentinel for a snapshot that failed because the underlying
  * PGlite connection was closing/closed while `dumpDataDir()` ran — a TRANSIENT
@@ -988,14 +937,12 @@ export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT =
   "PGlite snapshot temporarily unavailable (connection closing)";
 export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE =
   "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
-
 const PGLITE_BOUNDED_SNAPSHOT_TRANSIENT_CODES = new Set([
   "PGLITE_DATA_DIR_EXPORT_BUSY",
   "AGENT_BACKUP_V2_PGLITE_RSS_BUDGET_EXCEEDED",
   "AGENT_BACKUP_V2_PGLITE_PREFLIGHT_CHANGED",
 ]);
 const LEGACY_PGLITE_POST_DUMP_COPY_FACTOR = 4;
-
 /**
  * A PGlite handle that is mid-close throws with these shapes. Kept narrow so a
  * genuine dump failure (corruption, OOM) still hard-fails rather than being
@@ -1012,7 +959,6 @@ function isPgliteClosingError(err: unknown): boolean {
     )
   );
 }
-
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
   pgliteDir: string,
@@ -1048,7 +994,6 @@ async function capturePgliteDump(
       "The bounded PGlite exporter is not backed by a physical data directory",
     );
   }
-
   const [physicalPgliteDir, physicalManagedDataDir] = await Promise.all([
     fs.realpath(path.resolve(pgliteDir)),
     fs.realpath(path.resolve(managedDataDir)),
@@ -1058,7 +1003,6 @@ async function capturePgliteDump(
       "The bounded PGlite exporter data directory does not match backup configuration",
     );
   }
-
   let bounded: unknown;
   let provenPreflight: PglitePhysicalPreflight | undefined;
   try {
@@ -1078,7 +1022,11 @@ async function capturePgliteDump(
   } catch (err) {
     const code =
       err && typeof err === "object"
-        ? (err as { code?: unknown }).code
+        ? (
+            err as {
+              code?: unknown;
+            }
+          ).code
         : undefined;
     if (
       isPgliteClosingError(err) ||
@@ -1103,7 +1051,6 @@ async function capturePgliteDump(
       "The bounded PGlite exporter did not provide a consumer-lifetime lease",
     );
   }
-
   let released = false;
   const releaseOnce = () => {
     if (released) return;
@@ -1161,7 +1108,6 @@ async function capturePgliteDump(
     releaseOnce();
   }
 }
-
 async function captureDatabaseComponent(
   runtime: IAgentRuntime | AgentRuntime,
   signal: AbortSignal,
@@ -1180,13 +1126,11 @@ async function captureDatabaseComponent(
       sha256: postgres.sha256,
     };
   }
-
   const pgliteDir = await resolvePgliteDir();
   if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
     const reason = `PGlite data dir ${pgliteDir} is not a filesystem directory`;
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
-
   const pgliteDump = await capturePgliteDump(
     runtime,
     pgliteDir,
@@ -1200,7 +1144,6 @@ async function captureDatabaseComponent(
       sha256: pgliteDump.sha256,
     };
   }
-
   const pglite = await collectFileSet({
     root: pgliteDir,
     rootLabel: "pglite-dir",
@@ -1213,7 +1156,6 @@ async function captureDatabaseComponent(
     sha256: pglite.sha256,
   };
 }
-
 async function captureCharacterComponent(
   runtime: IAgentRuntime | AgentRuntime,
   budget?: SnapshotBudget,
@@ -1232,7 +1174,6 @@ async function captureCharacterComponent(
   );
   return { ...component, sha256: sha256Json(component) };
 }
-
 function legacyConfigProjection(config: ElizaConfig): Record<string, unknown> {
   return {
     agents: config.agents || EMPTY_LEGACY_CONFIG_SECTION,
@@ -1241,11 +1182,14 @@ function legacyConfigProjection(config: ElizaConfig): Record<string, unknown> {
     cloud: config.cloud || EMPTY_LEGACY_CONFIG_SECTION,
   };
 }
-
 export async function createAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
-  options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
+  options?: {
+    signal?: AbortSignal;
+    maxRawBytes?: number;
+    maxFiles?: number;
+  },
 ): Promise<AgentBackupStateData> {
   return withAgentBackupAuthority(resolveStateDir(), async (authority) =>
     captureAgentSnapshot(
@@ -1256,12 +1200,15 @@ export async function createAgentSnapshot(
     ),
   );
 }
-
 async function captureAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
   restoreGeneration: string,
-  options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
+  options?: {
+    signal?: AbortSignal;
+    maxRawBytes?: number;
+    maxFiles?: number;
+  },
 ): Promise<AgentBackupStateData> {
   // Bound what THIS process materializes. Without it the five captures below
   // run concurrently with no size awareness at all, and the downstream Cloud
@@ -1340,7 +1287,6 @@ async function captureAgentSnapshot(
   // this resolves immediately with full inference.
   const [database, media, vault, character, stateFiles] =
     await Promise.all(captures);
-
   const componentHashes = {
     database: database.sha256,
     media: media.sha256,
@@ -1363,7 +1309,6 @@ async function captureAgentSnapshot(
     },
     integrity: { componentHashes },
   };
-
   logger.info(
     {
       agentId: runtime.agentId,
@@ -1374,7 +1319,6 @@ async function captureAgentSnapshot(
     },
     "[agent-backup] Snapshot manifest created",
   );
-
   const snapshot = {
     memories: [],
     config: legacyConfigProjection(config),
@@ -1388,7 +1332,6 @@ async function captureAgentSnapshot(
   budget.assertWireSize(snapshot);
   return snapshot;
 }
-
 async function encryptLocalBackupEnvelope(
   snapshot: AgentBackupStateData,
 ): Promise<AgentBackupFileEnvelope> {
@@ -1418,7 +1361,6 @@ async function encryptLocalBackupEnvelope(
     },
   };
 }
-
 async function decryptLocalBackupEnvelope(
   envelope: AgentBackupFileEnvelope,
 ): Promise<AgentBackupStateData> {
@@ -1450,7 +1392,6 @@ async function decryptLocalBackupEnvelope(
   assertManifest(snapshot);
   return snapshot;
 }
-
 async function readLocalBackupEnvelope(
   fileName: string,
 ): Promise<AgentBackupFileEnvelope> {
@@ -1459,7 +1400,6 @@ async function readLocalBackupEnvelope(
     await fs.readFile(filePath, "utf8"),
   ) as AgentBackupFileEnvelope;
 }
-
 export async function createLocalAgentBackup(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
@@ -1473,7 +1413,6 @@ export async function createLocalAgentBackup(
     return persistLocalAgentBackup(snapshot);
   });
 }
-
 async function persistLocalAgentBackup(
   snapshot: AgentBackupStateData,
 ): Promise<LocalAgentBackupMetadata> {
@@ -1484,7 +1423,6 @@ async function persistLocalAgentBackup(
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, body, { mode: 0o600 });
   await pruneLocalBackups(envelope.agentId, fileName);
-
   logger.info(
     {
       agentId: envelope.agentId,
@@ -1494,7 +1432,6 @@ async function persistLocalAgentBackup(
     },
     "[agent-backup] Local backup file written",
   );
-
   return {
     fileName,
     path: filePath,
@@ -1504,7 +1441,6 @@ async function persistLocalAgentBackup(
     sizeBytes: Buffer.byteLength(body),
   };
 }
-
 async function pruneLocalBackups(
   agentId: string,
   keepFileName: string,
@@ -1540,20 +1476,20 @@ async function pruneLocalBackups(
     );
   }
 }
-
 // Cache only public listing metadata, never encrypted bodies or restore data.
 // Every listing still enumerates the directory and stats each file. The bound
 // limits retained process memory, not the number of backups returned.
 const LOCAL_BACKUP_METADATA_CACHE_SIZE = 128;
 const localBackupMetadataCache = new Map<
   string,
-  { version: string; metadata: LocalAgentBackupMetadata }
+  {
+    version: string;
+    metadata: LocalAgentBackupMetadata;
+  }
 >();
-
 function localBackupFileVersion(stat: BigIntStats): string {
   return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
 }
-
 export async function listLocalAgentBackups(
   agentId?: string,
 ): Promise<LocalAgentBackupMetadata[]> {
@@ -1636,7 +1572,6 @@ export async function listLocalAgentBackups(
     right.createdAt.localeCompare(left.createdAt),
   );
 }
-
 /** Whole-agent archive identities requiring separate owner review before removal. */
 export interface RetiredLocalAgentBackup {
   fileName: string;
@@ -1646,7 +1581,6 @@ export interface RetiredLocalAgentBackup {
   createdAt: string;
   sizeBytes: number;
 }
-
 const cleanupEnvelopeSchema = z.strictObject({
   schemaVersion: z.literal(1),
   format: z.literal("elizaos.agent-backup-file"),
@@ -1662,7 +1596,6 @@ const cleanupEnvelopeSchema = z.strictObject({
     kmsKeyVersion: z.number().int().nonnegative(),
   }),
 });
-
 /**
  * Authenticates the complete local archive inventory under the snapshot lock.
  * Unlike the diagnostic listing, unreadable archives block review. Results refer
@@ -1677,7 +1610,6 @@ export async function reviewRetiredLocalAgentBackups(agentId: string): Promise<{
     async (review) => review,
   );
 }
-
 /** Keeps inventory stable until the caller durably admits its reviewed identities. */
 export async function withReviewedRetiredLocalAgentBackups<T>(
   agentId: string,
@@ -1691,7 +1623,6 @@ export async function withReviewedRetiredLocalAgentBackups<T>(
     return operation(await readRetiredLocalAgentBackups(agentId, generation));
   });
 }
-
 async function readRetiredLocalAgentBackups(
   agentId: string,
   generation: string,
@@ -1792,7 +1723,6 @@ async function readRetiredLocalAgentBackups(
   }
   return { generation, archives };
 }
-
 /**
  * Removes only the exact retired archives already admitted in a durable owner job.
  * The caller must load this admission from its journal, never from an HTTP body.
@@ -1915,17 +1845,18 @@ export async function purgeAdmittedRetiredLocalAgentBackups(
       );
   });
 }
-
 export async function restoreLocalAgentBackup(
   runtime: IAgentRuntime | AgentRuntime,
   fileName: string,
-): Promise<{ restored: true; requiresRestart: true }> {
+): Promise<{
+  restored: true;
+  requiresRestart: true;
+}> {
   const snapshot = await decryptLocalBackupEnvelope(
     await readLocalBackupEnvelope(fileName),
   );
   return restoreAgentSnapshot(runtime, snapshot);
 }
-
 function verifyFileEntry(entry: AgentBackupFileEntry): Buffer {
   const bytes = Buffer.from(entry.bytesBase64, "base64");
   const actual = sha256Bytes(bytes);
@@ -1941,7 +1872,6 @@ function verifyFileEntry(entry: AgentBackupFileEntry): Buffer {
   }
   return bytes;
 }
-
 function verifyFileSet(fileSet: AgentBackupFileSet): void {
   const expected = withFileSetHash({ ...fileSet, sha256: "" }).sha256;
   if (expected !== fileSet.sha256) {
@@ -1949,7 +1879,6 @@ function verifyFileSet(fileSet: AgentBackupFileSet): void {
   }
   for (const file of fileSet.files) verifyFileEntry(file);
 }
-
 function verifyPgliteDump(dump: AgentBackupPgliteDump): Buffer {
   const expected = withPgliteDumpHash({ ...dump, sha256: "" }).sha256;
   if (expected !== dump.sha256) {
@@ -1959,14 +1888,12 @@ function verifyPgliteDump(dump: AgentBackupPgliteDump): Buffer {
   }
   return verifyFileEntry(dump.file);
 }
-
 async function pruneExtraFiles(
   root: string,
   include: (relativePath: string) => boolean,
   keepPaths: Set<string>,
 ): Promise<void> {
   if (!(await pathExists(root))) return;
-
   async function visit(dir: string): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -1974,7 +1901,6 @@ async function pruneExtraFiles(
       if (!isWithin(root, absolute)) continue;
       const relative = normalizeRelativePath(path.relative(root, absolute));
       if (!include(relative)) continue;
-
       if (entry.isDirectory()) {
         await visit(absolute);
         await fs.rmdir(absolute).catch((error: NodeJS.ErrnoException) => {
@@ -1983,16 +1909,13 @@ async function pruneExtraFiles(
         });
         continue;
       }
-
       if (entry.isFile() && !keepPaths.has(relative)) {
         await fs.rm(absolute, { force: true });
       }
     }
   }
-
   await visit(root);
 }
-
 /** Derives empty PostgreSQL directories from this PGlite version for legacy file-only vault archives. */
 async function prepareVaultRestoreDirectories(
   vault: AgentBackupFileSet,
@@ -2054,7 +1977,6 @@ async function prepareVaultRestoreDirectories(
     await fs.rm(template, { recursive: true, force: true });
   }
 }
-
 async function restoreFileSet(
   root: string,
   fileSet: AgentBackupFileSet,
@@ -2106,7 +2028,6 @@ async function restoreFileSet(
     }
   }
 }
-
 async function restorePgliteDump(
   pgliteDir: string,
   dump: AgentBackupPgliteDump,
@@ -2114,7 +2035,6 @@ async function restorePgliteDump(
   const bytes = verifyPgliteDump(dump);
   await fs.rm(pgliteDir, { recursive: true, force: true });
   await fs.mkdir(path.dirname(pgliteDir), { recursive: true });
-
   const { PGlite } = await import("@electric-sql/pglite");
   const blobBytes = new Uint8Array(bytes);
   const database = new PGlite({
@@ -2128,12 +2048,10 @@ async function restorePgliteDump(
   }
   await removePgliteVolatileFiles(pgliteDir);
 }
-
 function tableRestoreRank(tableName: string): number {
   const index = RESTORE_TABLE_ORDER.indexOf(tableName);
   return index === -1 ? RESTORE_TABLE_ORDER.length : index;
 }
-
 function sortedTablesForRestore(
   tables: AgentBackupPostgresTable[],
 ): AgentBackupPostgresTable[] {
@@ -2141,13 +2059,11 @@ function sortedTablesForRestore(
     (left, right) => tableRestoreRank(left.name) - tableRestoreRank(right.name),
   );
 }
-
 function sortedTablesForDelete(
   tables: AgentBackupPostgresTable[],
 ): AgentBackupPostgresTable[] {
   return sortedTablesForRestore(tables).reverse();
 }
-
 function verifyPostgresDump(dump: AgentBackupPostgresDump): void {
   const expected = withPostgresHash({ ...dump, sha256: "" }).sha256;
   if (expected !== dump.sha256) {
@@ -2156,14 +2072,12 @@ function verifyPostgresDump(dump: AgentBackupPostgresDump): void {
     );
   }
 }
-
 async function restorePostgresRows(
   postgresUrl: string,
   agentId: string,
   dump: AgentBackupPostgresDump,
 ): Promise<void> {
   verifyPostgresDump(dump);
-
   const pgModule = await import("pg");
   const pool = new pgModule.default.Pool({
     connectionString: postgresUrl,
@@ -2183,7 +2097,6 @@ async function restorePostgresRows(
         [agentId],
       )
       .catch(() => undefined);
-
     for (const table of sortedTablesForDelete(dump.tables)) {
       if (table.name === POSTGRES_EMBEDDINGS_TABLE) continue;
       if (table.name === POSTGRES_AGENT_TABLE) continue;
@@ -2201,7 +2114,6 @@ async function restorePostgresRows(
         [agentId],
       )
       .catch(() => undefined);
-
     for (const table of sortedTablesForRestore(dump.tables)) {
       if (table.rows.length === 0) continue;
       const quotedColumns = table.columns.map(quoteIdentifier);
@@ -2224,7 +2136,6 @@ async function restorePostgresRows(
     await pool.end();
   }
 }
-
 function assertManifest(snapshot: AgentBackupStateData): AgentBackupManifest {
   const manifest = snapshot.manifest;
   if (
@@ -2247,11 +2158,13 @@ function assertManifest(snapshot: AgentBackupStateData): AgentBackupManifest {
   }
   return manifest;
 }
-
 export async function restoreAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   snapshot: AgentBackupStateData,
-): Promise<{ restored: true; requiresRestart: true }> {
+): Promise<{
+  restored: true;
+  requiresRestart: true;
+}> {
   return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
     const manifest = assertManifest(snapshot);
     const current = await authority.generation(runtime.agentId);
@@ -2303,18 +2216,19 @@ export async function restoreAgentSnapshot(
     return restoreAuthorizedAgentSnapshot(runtime, snapshot);
   });
 }
-
 async function restoreAuthorizedAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   snapshot: AgentBackupStateData,
-): Promise<{ restored: true; requiresRestart: true }> {
+): Promise<{
+  restored: true;
+  requiresRestart: true;
+}> {
   const manifest = assertManifest(snapshot);
   if (manifest.agentId !== runtime.agentId) {
     throw new Error(
       `Backup belongs to agent ${manifest.agentId}, not ${runtime.agentId}`,
     );
   }
-
   const stateDir = resolveStateDir();
   const database = manifest.components.database;
   // Reject invalid later components before stopping a healthy runtime or
@@ -2363,10 +2277,17 @@ async function restoreAuthorizedAgentSnapshot(
     verifyPgliteDump(database.pgliteDump);
     await stopRuntimeBeforeDatabaseRestore(runtime);
     if (
-      typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
-      "function"
+      typeof (
+        runtime.adapter as {
+          close?: () => Promise<void>;
+        }
+      ).close === "function"
     ) {
-      await (runtime.adapter as { close: () => Promise<void> }).close();
+      await (
+        runtime.adapter as {
+          close: () => Promise<void>;
+        }
+      ).close();
     }
     await restorePgliteDump(pgliteDir, database.pgliteDump);
   } else if (database.kind === "pglite-files") {
@@ -2384,10 +2305,17 @@ async function restoreAuthorizedAgentSnapshot(
     for (const file of database.pglite.files) normalizeRelativePath(file.path);
     await stopRuntimeBeforeDatabaseRestore(runtime);
     if (
-      typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
-      "function"
+      typeof (
+        runtime.adapter as {
+          close?: () => Promise<void>;
+        }
+      ).close === "function"
     ) {
-      await (runtime.adapter as { close: () => Promise<void> }).close();
+      await (
+        runtime.adapter as {
+          close: () => Promise<void>;
+        }
+      ).close();
     }
     await restoreFileSet(pgliteDir, database.pglite, {
       replaceRoot: true,
@@ -2398,7 +2326,6 @@ async function restoreAuthorizedAgentSnapshot(
       database.reason ?? "Backup did not capture a database component",
     );
   }
-
   await restoreFileSet(
     path.join(stateDir, MEDIA_DIR_NAME),
     manifest.components.media,
@@ -2413,7 +2340,6 @@ async function restoreAuthorizedAgentSnapshot(
   await restoreFileSet(stateDir, manifest.components.stateFiles, {
     pruneExtra: makeStateFileInclude(stateDir, pgliteDirForStateFiles),
   });
-
   if (manifest.components.character.configFile) {
     const configPath = resolveConfigPath();
     const bytes = verifyFileEntry(manifest.components.character.configFile);
@@ -2427,7 +2353,6 @@ async function restoreAuthorizedAgentSnapshot(
   } else {
     await fs.rm(resolveConfigPath(), { force: true });
   }
-
   logger.info(
     {
       agentId: runtime.agentId,
@@ -2438,10 +2363,8 @@ async function restoreAuthorizedAgentSnapshot(
     },
     "[agent-backup] Snapshot restored",
   );
-
   return { restored: true, requiresRestart: true };
 }
-
 async function stopRuntimeBeforeDatabaseRestore(
   runtime: IAgentRuntime | AgentRuntime,
 ): Promise<void> {
@@ -2451,11 +2374,9 @@ async function stopRuntimeBeforeDatabaseRestore(
   await cancelAndDrainDeferredBoot(runtime);
   await runtime.stop();
 }
-
 const ACTIVATION_DIR_NAME = ".activation";
 const MIB = 1024 * 1024;
 const PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES = 32 * MIB;
-
 /**
  * PGlite 0.4.x materializes the file list, tar, gzip chunks, joined gzip bytes,
  * and Blob before capture can stream the result. The gate reserves eight
@@ -2474,13 +2395,11 @@ export const AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS = Object.freeze({
   archiveEntryOverheadBytes: 4 * 1024,
   archiveBaseOverheadBytes: MIB,
 });
-
 export interface AgentBackupV2CaptureSourceChunk {
   bytes: Uint8Array;
   /** Required for file-set sources; absent for opaque/record streams. */
   entry?: AgentBackupCaptureV2FileEntry;
 }
-
 /** Minimal runtime surface needed by capture; deliberately excludes providers. */
 export interface AgentBackupV2CaptureRuntime {
   agentId: string;
@@ -2488,7 +2407,6 @@ export interface AgentBackupV2CaptureRuntime {
   adapter?: unknown;
   getSetting?(key: string): unknown;
 }
-
 export interface AgentBackupV2CaptureComponentSource {
   descriptor: AgentBackupCaptureV2ComponentDescriptor;
   /** Optional pre-header preparation for sources that must fail before commit. */
@@ -2497,7 +2415,6 @@ export interface AgentBackupV2CaptureComponentSource {
   dispose?(): void;
   open(signal: AbortSignal): AsyncIterable<AgentBackupV2CaptureSourceChunk>;
 }
-
 export interface StreamAgentBackupV2CaptureOptions {
   request: AgentBackupCaptureV2Request;
   agentId: string;
@@ -2505,21 +2422,21 @@ export interface StreamAgentBackupV2CaptureOptions {
   signal?: AbortSignal;
   now?: () => number;
 }
-
 export interface CreateAgentBackupV2CaptureOptions {
   signal?: AbortSignal;
   components?: readonly AgentBackupV2CaptureComponentSource[];
   now?: () => number;
 }
-
 export class AgentBackupV2CaptureError extends ElizaError {
   override readonly name = "AgentBackupV2CaptureError";
-
   constructor(
     message: string,
     code: string,
     context?: Record<string, unknown>,
-    options?: { cause?: unknown; severity?: "ephemeral" | "fatal" },
+    options?: {
+      cause?: unknown;
+      severity?: "ephemeral" | "fatal";
+    },
   ) {
     super(message, {
       code,
@@ -2529,20 +2446,20 @@ export class AgentBackupV2CaptureError extends ElizaError {
     });
   }
 }
-
 function captureError(
   message: string,
   code: string,
   context?: Record<string, unknown>,
-  options?: { cause?: unknown; severity?: "ephemeral" | "fatal" },
+  options?: {
+    cause?: unknown;
+    severity?: "ephemeral" | "fatal";
+  },
 ): never {
   throw new AgentBackupV2CaptureError(message, code, context, options);
 }
-
 function abortReason(signal: AbortSignal | undefined): unknown {
   return signal?.reason instanceof Error ? signal.reason : undefined;
 }
-
 function sourceAbortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason
@@ -2553,7 +2470,6 @@ function sourceAbortError(signal: AbortSignal): Error {
         { severity: "ephemeral" },
       );
 }
-
 function assertCaptureActive(
   request: AgentBackupCaptureV2Request,
   signal: AbortSignal | undefined,
@@ -2582,7 +2498,6 @@ function assertCaptureActive(
     );
   }
 }
-
 async function awaitWithCaptureControl<T>(
   operation: () => PromiseLike<T>,
   request: AgentBackupCaptureV2Request,
@@ -2608,7 +2523,7 @@ async function awaitWithCaptureControl<T>(
             { severity: "ephemeral" },
           ),
         ),
-      Math.min(remainingMs, 2_147_483_647),
+      Math.min(remainingMs, 2147483647),
     );
     if (signal) {
       abortListener = () =>
@@ -2634,15 +2549,12 @@ async function awaitWithCaptureControl<T>(
     }
   }
 }
-
 function nodeSha256Digest(bytes: Uint8Array): Uint8Array {
   return crypto.createHash("sha256").update(bytes).digest();
 }
-
 function sha256Hex(bytes: Uint8Array): string {
   return crypto.createHash("sha256").update(bytes).digest("hex");
 }
-
 function normalizeCaptureRelativePath(input: string): string {
   const normalized = path.posix.normalize(input.replaceAll(path.sep, "/"));
   if (
@@ -2661,7 +2573,6 @@ function normalizeCaptureRelativePath(input: string): string {
   }
   return normalized;
 }
-
 function resolveCaptureDirectoryIdentity(
   directory: string,
   role: "pglite" | "state",
@@ -2690,11 +2601,9 @@ function resolveCaptureDirectoryIdentity(
     );
   }
 }
-
 function pathsOverlap(left: string, right: string): boolean {
   return isWithin(left, right) || isWithin(right, left);
 }
-
 function resolveStateFilesPgliteExclusion(
   stateDir: string,
   pgliteDir: string,
@@ -2704,7 +2613,6 @@ function resolveStateFilesPgliteExclusion(
     pgliteDir,
     "pglite",
   );
-
   if (isWithin(physicalPgliteDir, physicalStateDir)) {
     captureError(
       "PGlite cannot contain or equal the agent state directory during capture",
@@ -2714,7 +2622,6 @@ function resolveStateFilesPgliteExclusion(
     );
   }
   if (!isWithin(physicalStateDir, physicalPgliteDir)) return null;
-
   const mediaDir = path.join(physicalStateDir, MEDIA_DIR_NAME);
   const vaultPgliteDir = path.join(physicalStateDir, VAULT_PGLITE_DIR_NAME);
   const vaultAuditDir = path.join(physicalStateDir, VAULT_AUDIT_DIR_NAME);
@@ -2730,12 +2637,10 @@ function resolveStateFilesPgliteExclusion(
       { severity: "fatal" },
     );
   }
-
   return normalizeCaptureRelativePath(
     path.relative(physicalStateDir, physicalPgliteDir),
   );
 }
-
 export interface PglitePhysicalPreflight {
   physicalBytes: number;
   estimatedArchiveBytes: number;
@@ -2744,7 +2649,6 @@ export interface PglitePhysicalPreflight {
   additionalMemoryBudgetBytes: number;
   requiredAvailableMemoryBytes: number;
 }
-
 /** Remaining memory available to this process, cgroup-aware when supported. */
 export function resolveAgentBackupAvailableMemoryBytes(): number {
   const processAvailableMemory = process.availableMemory?.();
@@ -2766,12 +2670,10 @@ export function resolveAgentBackupAvailableMemoryBytes(): number {
     { severity: "fatal" },
   );
 }
-
 function roundUpTarBlock(bytes: bigint): bigint {
   const block = 512n;
   return ((bytes + block - 1n) / block) * block;
 }
-
 function sameDirectoryIdentity(left: BigIntStats, right: BigIntStats): boolean {
   return (
     left.dev === right.dev &&
@@ -2780,19 +2682,19 @@ function sameDirectoryIdentity(left: BigIntStats, right: BigIntStats): boolean {
     left.mtimeNs === right.mtimeNs
   );
 }
-
 export async function preflightPglitePhysicalDirectory(
   physicalRoot: string,
   signal: AbortSignal,
   agentId: string,
-  options: { archiveCopyFactor?: number } = {},
+  options: {
+    archiveCopyFactor?: number;
+  } = {},
 ): Promise<PglitePhysicalPreflight> {
   const limits = AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS;
   let physicalBytes = 0n;
   let estimatedArchiveBytes = BigInt(limits.archiveBaseOverheadBytes);
   let entryCount = 0;
   const pendingDirectories = [physicalRoot];
-
   try {
     while (pendingDirectories.length > 0) {
       if (signal.aborted) throw sourceAbortError(signal);
@@ -2807,7 +2709,6 @@ export async function preflightPglitePhysicalDirectory(
           { severity: "fatal" },
         );
       }
-
       const entries = await fs.opendir(directory);
       for await (const entry of entries) {
         if (signal.aborted) throw sourceAbortError(signal);
@@ -2820,7 +2721,6 @@ export async function preflightPglitePhysicalDirectory(
             { severity: "fatal" },
           );
         }
-
         const absolutePath = path.join(directory, entry.name);
         if (!isWithin(physicalRoot, absolutePath)) {
           captureError(
@@ -2839,7 +2739,6 @@ export async function preflightPglitePhysicalDirectory(
             { severity: "fatal" },
           );
         }
-
         estimatedArchiveBytes += BigInt(limits.archiveEntryOverheadBytes);
         if (stats.isDirectory()) {
           pendingDirectories.push(absolutePath);
@@ -2853,11 +2752,9 @@ export async function preflightPglitePhysicalDirectory(
             { severity: "fatal" },
           );
         }
-
         physicalBytes += stats.size;
         estimatedArchiveBytes += roundUpTarBlock(stats.size);
       }
-
       const after = await fs.lstat(directory, { bigint: true });
       if (!sameDirectoryIdentity(before, after)) {
         captureError(
@@ -2877,7 +2774,6 @@ export async function preflightPglitePhysicalDirectory(
       { cause: error, severity: "fatal" },
     );
   }
-
   const estimatedArchive = Number(estimatedArchiveBytes);
   const archiveCopyFactor =
     options.archiveCopyFactor ?? limits.archiveCopyFactor;
@@ -2913,7 +2809,6 @@ export async function preflightPglitePhysicalDirectory(
       { severity: "ephemeral" },
     );
   }
-
   return {
     physicalBytes: Number(physicalBytes),
     estimatedArchiveBytes: estimatedArchive,
@@ -2923,7 +2818,6 @@ export async function preflightPglitePhysicalDirectory(
     requiredAvailableMemoryBytes,
   };
 }
-
 async function* splitOpaqueBytes(
   bytes: Uint8Array,
 ): AsyncGenerator<AgentBackupV2CaptureSourceChunk> {
@@ -2943,18 +2837,20 @@ async function* splitOpaqueBytes(
     };
   }
 }
-
 async function* walkFiles(
   root: string,
   include: ((relativePath: string) => boolean) | undefined,
   signal: AbortSignal,
-): AsyncGenerator<{ absolutePath: string; relativePath: string }> {
+): AsyncGenerator<{
+  absolutePath: string;
+  relativePath: string;
+}> {
   const resolvedRoot = path.resolve(root);
   if (!(await pathExists(resolvedRoot))) return;
-
-  async function* visit(
-    directory: string,
-  ): AsyncGenerator<{ absolutePath: string; relativePath: string }> {
+  async function* visit(directory: string): AsyncGenerator<{
+    absolutePath: string;
+    relativePath: string;
+  }> {
     if (signal.aborted) {
       captureError(
         "Agent backup file walk was cancelled",
@@ -2986,10 +2882,8 @@ async function* walkFiles(
       }
     }
   }
-
   yield* visit(resolvedRoot);
 }
-
 function fileSetSource(
   descriptor: AgentBackupCaptureV2ComponentDescriptor,
   root: string,
@@ -3080,7 +2974,6 @@ function fileSetSource(
     },
   };
 }
-
 function jsonSource(
   descriptor: AgentBackupCaptureV2ComponentDescriptor,
   value: unknown,
@@ -3092,30 +2985,38 @@ function jsonSource(
     },
   };
 }
-
 function isPgliteDump(value: unknown): value is {
   size: number;
   stream: () => ReadableStream<Uint8Array>;
 } {
-  const size = (value as { size?: unknown } | null)?.size;
+  const size = (
+    value as {
+      size?: unknown;
+    } | null
+  )?.size;
   return (
     value !== null &&
     typeof value === "object" &&
     typeof size === "number" &&
     Number.isSafeInteger(size) &&
     size >= 0 &&
-    typeof (value as { stream?: unknown }).stream === "function"
+    typeof (
+      value as {
+        stream?: unknown;
+      }
+    ).stream === "function"
   );
 }
-
 const activePgliteDumpByPhysicalDirectory = new Map<string, symbol>();
-
 function pgliteManagedExportErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
-  const code = (error as { code?: unknown }).code;
+  const code = (
+    error as {
+      code?: unknown;
+    }
+  ).code;
   return typeof code === "string" ? code : undefined;
 }
-
 function acquirePgliteDumpSlot(
   physicalPgliteDir: string,
   agentId: string,
@@ -3136,7 +3037,6 @@ function acquirePgliteDumpSlot(
     }
   };
 }
-
 function pgliteDumpSource(
   runtime: AgentBackupV2CaptureRuntime,
   physicalPgliteDir: string,
@@ -3198,15 +3098,18 @@ function pgliteDumpSource(
     );
   }
   const runManagedDump = managedDump.bind(adapter);
-
   let prepared:
-    | { dump: { size: number; stream: () => ReadableStream<Uint8Array> } }
+    | {
+        dump: {
+          size: number;
+          stream: () => ReadableStream<Uint8Array>;
+        };
+      }
     | undefined;
   let preparing: Promise<void> | undefined;
   let releasePreparedExport: (() => void) | undefined;
   let opened = false;
   let disposed = false;
-
   const prepare = async (signal: AbortSignal): Promise<void> => {
     if (signal.aborted) throw sourceAbortError(signal);
     if (disposed) {
@@ -3342,7 +3245,6 @@ function pgliteDumpSource(
     await preparing;
     if (signal.aborted) throw sourceAbortError(signal);
   };
-
   return {
     descriptor: {
       name: "database",
@@ -3422,7 +3324,6 @@ function pgliteDumpSource(
     },
   };
 }
-
 function resolveCapturePgliteDir(config: ElizaConfig): string {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
   if (configured) return resolveUserPath(configured);
@@ -3430,7 +3331,6 @@ function resolveCapturePgliteDir(config: ElizaConfig): string {
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
   return path.join(resolveUserPath(workspace), DEFAULT_PGLITE_DIR_NAME);
 }
-
 function captureHasPostgresUrl(runtime: AgentBackupV2CaptureRuntime): boolean {
   const runtimeSetting = runtime.getSetting?.("POSTGRES_URL");
   return (
@@ -3440,7 +3340,6 @@ function captureHasPostgresUrl(runtime: AgentBackupV2CaptureRuntime): boolean {
     )
   );
 }
-
 function captureStateFileInclude(
   relativePath: string,
   pgliteRelativePath: string | null,
@@ -3477,7 +3376,6 @@ function captureStateFileInclude(
   }
   return !relativePath.endsWith(".log");
 }
-
 /** Build the five required full-capture components without provider provenance. */
 export function createDefaultAgentBackupV2CaptureSources(
   runtime: AgentBackupV2CaptureRuntime,
@@ -3510,7 +3408,6 @@ export function createDefaultAgentBackupV2CaptureSources(
     "pglite",
   );
   const database = pgliteDumpSource(runtime, physicalPgliteDir);
-
   return Object.freeze([
     jsonSource(
       {
@@ -3558,7 +3455,6 @@ export function createDefaultAgentBackupV2CaptureSources(
     ),
   ]);
 }
-
 function assertComponentSources(
   components: readonly AgentBackupV2CaptureComponentSource[],
 ): void {
@@ -3587,7 +3483,6 @@ function assertComponentSources(
     previousName = source.descriptor.name;
   }
 }
-
 /** Stream an injected capture source; used by production and large real tests. */
 export async function* streamAgentBackupV2Capture(
   options: Readonly<StreamAgentBackupV2CaptureOptions>,
@@ -3615,7 +3510,6 @@ export async function* streamAgentBackupV2Capture(
     );
   }
   assertComponentSources(options.components);
-
   const controller = new AbortController();
   const signal = options.signal
     ? AbortSignal.any([options.signal, controller.signal])
@@ -3630,7 +3524,7 @@ export async function* streamAgentBackupV2Capture(
           { severity: "ephemeral" },
         ),
       ),
-    Math.min(deadlineAheadMs, 2_147_483_647),
+    Math.min(deadlineAheadMs, 2147483647),
   );
   const frameDigestChain = crypto.createHash("sha256");
   let sequence = 0;
@@ -3640,7 +3534,6 @@ export async function* streamAgentBackupV2Capture(
     format: AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
     schemaVersion: AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
   } as const;
-
   const serialize = async (
     header: AgentBackupCaptureV2FrameHeader,
     payload?: Uint8Array,
@@ -3656,7 +3549,6 @@ export async function* streamAgentBackupV2Capture(
     }
     return wire;
   };
-
   try {
     for (const source of options.components) {
       if (!source.prepare) continue;
@@ -3680,7 +3572,6 @@ export async function* streamAgentBackupV2Capture(
         );
       }
     }
-
     yield await serialize({
       ...base,
       kind: "capture-start",
@@ -3693,7 +3584,6 @@ export async function* streamAgentBackupV2Capture(
       componentCount: options.components.length,
       maxFramePayloadBytes: AGENT_BACKUP_CAPTURE_V2_LIMITS.maxFramePayloadBytes,
     });
-
     for (const [componentIndex, source] of options.components.entries()) {
       yield await serialize({
         ...base,
@@ -3845,7 +3735,6 @@ export async function* streamAgentBackupV2Capture(
         payloadSha256: payloadHash.digest("hex"),
       });
     }
-
     assertCaptureActive(request, signal, now);
     const frameDigestChainSha256 = frameDigestChain.digest("hex");
     yield await serialize(
@@ -3888,7 +3777,6 @@ export async function* streamAgentBackupV2Capture(
     }
   }
 }
-
 /** Create the production capture stream for one authenticated runtime. */
 export function createAgentBackupV2Capture(
   runtime: AgentBackupV2CaptureRuntime,
@@ -3908,7 +3796,6 @@ export function createAgentBackupV2Capture(
     now: options.now,
   });
 }
-
 /** Utility for callers/tests that need the payload digest of one bounded chunk. */
 export function sha256AgentBackupV2CaptureChunk(bytes: Uint8Array): string {
   return sha256Hex(bytes);

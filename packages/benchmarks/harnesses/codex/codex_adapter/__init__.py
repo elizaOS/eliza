@@ -1,14 +1,7 @@
-"""Benchmark adapter for the Codex CLI agent harness (#10193/#10199).
+"""Codex CLI adapter with full conversation replay and JSONL execution receipts.
 
-Skeleton harness bridge, API-shaped like ``smithers_adapter``: a one-shot
-per-turn ``codex exec`` subprocess authenticated AS a selected OpenAI-Codex
-account by pointing ``CODEX_HOME`` at that account's materialized home. Select
-it with ``--adapters codex`` and iterate accounts with ``--accounts <n|list>``.
-
-The account-selection / round-robin logic (``codex_adapter.accounts``) is fully
-offline-testable; a live model run is credential-gated on real authenticated
-Codex homes and the gpt-5.5 model those accounts are entitled to.
-"""
+Not yet registered as a cross-framework suite adapter. Live execution requires
+authenticated accounts with access to the explicitly selected model."""
 
 from __future__ import annotations
 

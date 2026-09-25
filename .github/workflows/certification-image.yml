@@ -94,7 +94,7 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
         with:
           images: ${{ steps.image.outputs.name }}
-          # :latest tracks develop — it is what run-certification.mjs boots by
+          # :latest tracks develop — it is what run-certification.ts boots by
           # default; :sha-<short> pins for reproducible re-runs.
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
@@ -122,5 +122,5 @@ jobs:
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
             echo ""
-            echo "Boot it on vast: \`node packages/scripts/vast/run-certification.mjs --image ${{ steps.image.outputs.name }}:latest ...\`"
+            echo "Boot it on vast: \`node packages/scripts/vast/run-certification.ts --image ${{ steps.image.outputs.name }}:latest ...\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -2,17 +2,20 @@
  * Exchanges one-time Cloud pairing links, persists the resulting agent
  * credential, and renders the browser/native recovery surfaces.
  */
+
 import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
   type CloudPairRelaySession,
-  classifyElizaHostname,
   cloudPairTokenKeyForAgent,
+  parseCloudPairRelaySession,
+} from "@elizaos/core/contracts/cloud-pair";
+import { setElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import {
+  classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
-  parseCloudPairRelaySession,
-  setElizaApiToken,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {
@@ -22,10 +25,8 @@ import {
 import { Button } from "../ui/button";
 
 export { cloudPairTokenKeyForAgent };
-
 export const CLOUD_PAIR_SESSION_STORAGE_KEY = CLOUD_PAIR_LEGACY_STORAGE_KEY;
 export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
-
 interface PairExchangeResponse {
   agentId?: unknown;
   agentName?: unknown;
@@ -33,7 +34,6 @@ interface PairExchangeResponse {
   code?: unknown;
   error?: unknown;
 }
-
 export class CloudPairExchangeError extends Error {
   constructor(
     message: string,
@@ -44,7 +44,6 @@ export class CloudPairExchangeError extends Error {
     this.name = "CloudPairExchangeError";
   }
 }
-
 export function getCloudPairTokenFromLocation(
   locationLike: Pick<Location, "pathname" | "search"> | null = typeof window ===
   "undefined"
@@ -56,7 +55,6 @@ export function getCloudPairTokenFromLocation(
   const token = new URLSearchParams(locationLike.search).get("token")?.trim();
   return token || null;
 }
-
 export function isElizaCloudHostedLocation(
   locationLike: Pick<
     Location,
@@ -73,7 +71,6 @@ export function isElizaCloudHostedLocation(
     isElizaDedicatedAgentHostname(hostname)
   );
 }
-
 export function resolveCloudPairExchangeUrl(cloudApiBase?: string): string {
   const configured = cloudApiBase?.trim() || getBootConfig().cloudApiBase;
   const base = (configured || ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin)
@@ -86,7 +83,6 @@ export function resolveCloudPairExchangeUrl(cloudApiBase?: string): string {
   }
   return url.toString();
 }
-
 export function resolveNativeCloudPairExchangeUrl(
   cloudApiBase?: string,
 ): string {
@@ -94,7 +90,6 @@ export function resolveNativeCloudPairExchangeUrl(
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/native`;
   return url.toString();
 }
-
 async function readCloudPairResponse(
   response: Response,
 ): Promise<CloudPairRelaySession> {
@@ -103,7 +98,6 @@ async function readCloudPairResponse(
   const body = (await response
     .json()
     .catch(() => null)) as PairExchangeResponse | null;
-
   if (!response.ok) {
     const message =
       typeof body?.error === "string" && body.error.trim()
@@ -115,7 +109,6 @@ async function readCloudPairResponse(
         : undefined;
     throw new CloudPairExchangeError(message, response.status, code);
   }
-
   const session = parseCloudPairRelaySession(body);
   if (!session) {
     throw new CloudPairExchangeError(
@@ -124,10 +117,8 @@ async function readCloudPairResponse(
       "invalid_pairing_response",
     );
   }
-
   return session;
 }
-
 export async function exchangeCloudPairToken(
   token: string,
   options: {
@@ -146,10 +137,8 @@ export async function exchangeCloudPairToken(
       signal: options.signal,
     },
   );
-
   return readCloudPairResponse(response);
 }
-
 /**
  * Exchange a native in-process pair token without relying on an Origin header.
  * The Cloud bearer and every binding copied from the authenticated mint
@@ -183,10 +172,8 @@ export async function exchangeAuthenticatedNativeCloudPairToken(
       signal: options.signal,
     },
   );
-
   return readCloudPairResponse(response);
 }
-
 function tryPersistBrowserStorage(
   storage: Storage | undefined,
   agentKey: string,
@@ -202,7 +189,6 @@ function tryPersistBrowserStorage(
     return false;
   }
 }
-
 /**
  * Install the exchanged cloud-pair bearer for the LIVE page session only:
  * boot config, the global API token, the boot-config global, and the
@@ -214,18 +200,15 @@ function tryPersistBrowserStorage(
 export function installCloudPairApiTokenForSession(apiToken: string): void {
   const token = apiToken.trim();
   if (!token) throw new Error("Missing cloud pair API token.");
-
   const nextConfig = { ...getBootConfig(), apiToken: token };
   setBootConfig(nextConfig);
   setElizaApiToken(token);
   (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__ =
     nextConfig;
-
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
 }
-
 /**
  * Persist the durable cloud-pair API token scoped to its owning agent.
  *
@@ -247,7 +230,6 @@ export function persistCloudPairApiToken(
   if (!token) throw new Error("Missing cloud pair API token.");
   const owner = agentId.trim();
   if (!owner) throw new Error("Missing cloud pair token owner agent id.");
-
   const agentKey = cloudPairTokenKeyForAgent(owner);
   const persistedInSession = tryPersistBrowserStorage(
     typeof window === "undefined" ? undefined : window.sessionStorage,
@@ -259,9 +241,7 @@ export function persistCloudPairApiToken(
     agentKey,
     token,
   );
-
   installCloudPairApiTokenForSession(token);
-
   if (persistedInSession || persistedDurably) {
     // Legacy single-key format is now superseded by the per-agent key. Only
     // remove it after the scoped write landed, so a failed storage channel
@@ -278,14 +258,12 @@ export function persistCloudPairApiToken(
       }
     }
   }
-
   if (!(persistedInSession || persistedDurably)) {
     throw new Error(
       "Cloud pair API token could not be stored in this browser.",
     );
   }
 }
-
 export function resolveCloudHostedAgentUrl(
   locationLike: Pick<Location, "hostname"> | null = typeof window ===
   "undefined"
@@ -314,24 +292,30 @@ export function resolveCloudHostedAgentUrl(
       : "";
   return `${base}/cloud/agents${agentPath}`;
 }
-
 type CloudPairStatus =
-  | { phase: "pairing" }
-  | { phase: "session-only" }
-  | { phase: "error"; title: string; message: string };
-
+  | {
+      phase: "pairing";
+    }
+  | {
+      phase: "session-only";
+    }
+  | {
+      phase: "error";
+      title: string;
+      message: string;
+    };
 export type CloudPairExchangeFn = (
   token: string,
-  options?: { signal?: AbortSignal },
+  options?: {
+    signal?: AbortSignal;
+  },
 ) => Promise<CloudPairRelaySession>;
-
 export interface CloudPairRelayProps {
   token: string;
   exchangeFn?: CloudPairExchangeFn;
   persistFn?: (apiToken: string, agentId: string) => void;
   onPaired?: () => void;
 }
-
 function describePairFailure(error: unknown): Exclude<
   CloudPairStatus,
   {
@@ -354,14 +338,12 @@ function describePairFailure(error: unknown): Exclude<
       };
     }
   }
-
   return {
     phase: "error",
     title: "Could not sign in",
     message: "Open this agent from Eliza Cloud again to continue.",
   };
 }
-
 export interface CloudHostedAgentAuthNoticeProps {
   /**
    * Native shells supply the canonical device-code login flow here. A plain
@@ -373,7 +355,6 @@ export interface CloudHostedAgentAuthNoticeProps {
   /** Whether native should renew Cloud auth or retry the agent connection. */
   nativeRecoveryMode?: "reauth" | "retry" | "manage";
 }
-
 export function CloudHostedAgentAuthNotice({
   onNativeReauth,
   onNativeRetry,
@@ -405,10 +386,8 @@ export function CloudHostedAgentAuthNotice({
       setActiveNativeAction(null);
     }
   };
-
   const ctaClass =
     "mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710] disabled:cursor-wait disabled:opacity-70";
-
   return (
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[25rem]">
@@ -474,11 +453,9 @@ export function CloudHostedAgentAuthNotice({
     </main>
   );
 }
-
 function redirectToAgentRoot(): void {
   window.location.replace("/");
 }
-
 export function CloudPairRelay({
   token,
   exchangeFn = exchangeCloudPairToken,
@@ -486,11 +463,9 @@ export function CloudPairRelay({
   onPaired = redirectToAgentRoot,
 }: CloudPairRelayProps) {
   const [status, setStatus] = useState<CloudPairStatus>({ phase: "pairing" });
-
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-
     exchangeFn(token, { signal: controller.signal })
       .then(({ apiKey, agentId }) => {
         if (!active) return;
@@ -513,13 +488,11 @@ export function CloudPairRelay({
         if (!active || controller.signal.aborted) return;
         setStatus(describePairFailure(error));
       });
-
     return () => {
       active = false;
       controller.abort();
     };
   }, [exchangeFn, onPaired, persistFn, token]);
-
   const title =
     status.phase === "pairing"
       ? "Signing in to your agent"

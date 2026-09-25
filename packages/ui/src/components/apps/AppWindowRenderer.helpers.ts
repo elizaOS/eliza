@@ -5,8 +5,11 @@
  * in a `WeakMap` so repeated renders of the same app reuse one lazy component.
  */
 
-import type { OverlayApp, OverlayAppContext } from "@elizaos/shared";
 import { type ComponentType, createElement } from "react";
+import type {
+  OverlayApp,
+  OverlayAppContext,
+} from "../../apps/overlay-app-api.js";
 import { RetainedLazyComponent } from "../../retained-lazy";
 import {
   navigateToViews,
@@ -18,7 +21,6 @@ const lazyComponentCache = new WeakMap<
   NonNullable<OverlayApp["loader"]>,
   ComponentType<OverlayAppContext>
 >();
-
 export function getOverlayAppLazyComponent(
   app: OverlayApp,
 ): ComponentType<OverlayAppContext> | null {

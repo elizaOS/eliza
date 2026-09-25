@@ -74,11 +74,11 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 const { resolveElizaSourceRoot } = await import(process.argv[1]);
 const { produceArtifact } = await import(pathToFileURL(path.join(
-  resolveElizaSourceRoot(), 'packages/app/scripts/package-linux-gtk-artifact.mjs')));
+  resolveElizaSourceRoot(), 'packages/app/scripts/package-linux-gtk-artifact.ts')));
 const options = JSON.parse(process.argv[2]);
 options.privateKeyPem = readFileSync(options.privateKeyPath, 'utf8');
 console.log(JSON.stringify(produceArtifact(options)));
-""", (SCRIPT.parent.parent / "eliza-source.mjs").as_uri(), json.dumps({
+""", (SCRIPT.parent.parent / "eliza-source.ts").as_uri(), json.dumps({
                 "stageDir": str(stage), "outDir": str(self.root / "app-output"),
                 "privateKeyPath": str(private_key), "version": "0.1.0-beta.1",
                 "architecture": "x86_64", "sourceCommit": "a" * 40,

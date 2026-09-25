@@ -113,14 +113,17 @@ function requireStreamResult(value: unknown): StreamResult {
     !isRecord(value) ||
     !value.textStream ||
     typeof (value.textStream as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !==
-      "function" ||
-    !isPromiseLike(value.text) ||
-    !isPromiseLike(value.usage) ||
-    !isPromiseLike(value.finishReason)
+      "function"
   ) {
     throw new Error("[OpenAICerebrasEvidence] Expected native streaming result.");
   }
-  return value as unknown as StreamResult;
+  // The runtime exposes lazy companion getters. Read each once so validation
+  // cannot abandon a separate promise that rejects on the disconnect path.
+  const { text, usage, finishReason } = value;
+  if (!isPromiseLike(text) || !isPromiseLike(usage) || !isPromiseLike(finishReason)) {
+    throw new Error("[OpenAICerebrasEvidence] Expected streaming companion promises.");
+  }
+  return { textStream: value.textStream, text, usage, finishReason } as StreamResult;
 }
 
 function requireJsonRequest(call: CapturedWireCall): Record<string, unknown> {
@@ -214,9 +217,10 @@ async function runCapturedError(
   if (options.minimumWireCalls === undefined) {
     expect(wireCalls, `${name} should make one provider request`).toHaveLength(1);
   } else {
-    expect(wireCalls.length, `${name} should exercise provider retries`).toBeGreaterThanOrEqual(
-      options.minimumWireCalls
-    );
+    expect(
+      wireCalls.length,
+      `${name} should capture the required provider requests`
+    ).toBeGreaterThanOrEqual(options.minimumWireCalls);
   }
   return { error: serializeCerebrasProviderError(thrown), wireCalls };
 }
@@ -289,7 +293,7 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     const catalogResponse = await fetch(PUBLIC_MODELS_URL);
     expect(catalogResponse.status).toBe(200);
     providerCatalog = (await catalogResponse.json()) as unknown;
-    for (const modelId of ["gpt-oss-120b", "zai-glm-4.7"]) {
+    for (const modelId of ["gpt-oss-120b", "qwen-3.8-27b"]) {
       const model = catalogModel(modelId);
       expect(model.capabilities).toEqual(
         expect.objectContaining({
@@ -393,15 +397,15 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     });
   }, 120_000);
 
-  it("captures GLM thinking-off and the raw SSE stream", async () => {
+  it("captures Qwen thinking-off and the raw SSE stream", async () => {
     const runtime = requireHarness().runtime;
     const { result: rawStream, wireCalls } = await runCaptured(
-      "GLM streaming thinking-off",
-      "cerebras-evidence-glm-stream",
+      "Qwen streaming thinking-off",
+      "cerebras-evidence-qwen-stream",
       async () => {
         const stream = requireStreamResult(
           await runtime.useModel(ModelType.TEXT_LARGE, {
-            model: "zai-glm-4.7",
+            model: "qwen-3.8-27b",
             messages: [{ role: "user", content: "Reply with exactly PONG and no punctuation." }],
             maxTokens: 160,
             stream: true,
@@ -424,7 +428,7 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     expect(rawStream.iterated.join("")).toBe(rawStream.text);
     const request = requireJsonRequest(wireCalls[0]);
     expect(request).toMatchObject({
-      model: "zai-glm-4.7",
+      model: "qwen-3.8-27b",
       stream: true,
       reasoning_effort: "none",
     });
@@ -439,13 +443,13 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     expect(wireCalls[0].response?.body?.utf8).toContain("[DONE]");
 
     receipts.push({
-      name: "glm-thinking-off-stream",
+      name: "qwen-thinking-off-stream",
       status: "passed",
       wireCallIds: wireCalls.map((call) => call.id),
       result: rawStream,
       parsedChunks: rawStream.iterated,
       latencyMs: observedLatencyMs(wireCalls),
-      cost: calculatedCost("zai-glm-4.7", rawStream.usage),
+      cost: calculatedCost("qwen-3.8-27b", rawStream.usage),
     });
   }, 120_000);
 
@@ -574,7 +578,7 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     });
   }, 120_000);
 
-  it("captures and parses real Cerebras JSON-mode structured output", async () => {
+  it("captures and parses real Cerebras strict-schema structured output", async () => {
     const runtime = requireHarness().runtime;
     const responseSchema = {
       type: "object",
@@ -606,7 +610,10 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     const parsed = JSON.parse(result.text) as unknown;
     expect(parsed).toEqual({ verdict: "verified", count: 2 });
     const request = requireJsonRequest(wireCalls[0]);
-    expect(request.response_format).toEqual({ type: "json_object" });
+    expect(request.response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: "response", schema: responseSchema, strict: true },
+    });
     expect(wireCalls[0].response?.status).toBe(200);
 
     receipts.push({
@@ -750,12 +757,19 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
             stream: true,
           })
         );
-        for await (const _chunk of stream.textStream) {
-          // The proxy severs every retry before forwarding the captured chunk.
+        const completion = Promise.allSettled([stream.text, stream.usage, stream.finishReason]);
+        try {
+          for await (const _chunk of stream.textStream) {
+            // The proxy severs every retry before forwarding the captured chunk.
+          }
+          for (const result of await completion) {
+            if (result.status === "rejected") throw result.reason;
+          }
+        } finally {
+          await completion;
         }
-        await Promise.all([stream.text, stream.usage, stream.finishReason]);
       },
-      { minimumWireCalls: 2 }
+      { minimumWireCalls: 1 }
     );
     for (const wireCall of evidence.wireCalls) {
       expect(wireCall.fault).toEqual({

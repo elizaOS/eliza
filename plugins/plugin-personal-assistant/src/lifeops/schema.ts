@@ -451,11 +451,6 @@ export const lifeDelegationContracts = appLifeopsPgSchema.table(
   ],
 );
 
-// Finance tables (life_payment_*, life_subscription_*) moved to
-// @elizaos/plugin-finances under pgSchema("app_finances"). PA no longer creates
-// them in app_lifeops; the finances plugin owns + migrates them. PA's raw
-// finance SQL (repository.ts) targets app_finances directly.
-
 // Carved to @elizaos/plugin-inbox (`app_inbox`); kept here only as the
 // non-destructive migration source. See the inbox-triage note further down.
 export const lifeEmailUnsubscribes = appLifeopsPgSchema.table(

@@ -11,14 +11,10 @@
  * database. Deliberately NO size-ceiling tests: this action has no deliverable
  * or read bound (PROMPT-INTEGRITY, PR #26780).
  */
+
+import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { filterByContextGate } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
-import type {
-  ActionResult,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../../packages/core/src/types/index.ts";
 import { searchMessagesAction } from "../messaging/triage/actions/searchMessages.ts";
 import {
   CHANNEL_RECAP_DEFAULT_COUNT,

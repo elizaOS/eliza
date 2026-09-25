@@ -2,8 +2,8 @@
  * Real-browser screenshots for the #13535 agent-activity surfaces — no app
  * server. Bundles activity-feedback-fixture.tsx (the REAL TurnStatus working
  * indicator + the REAL ToolCallEventLog inline row) with esbuild, loads it in
- * headless Chromium via Playwright, waits for the elapsed clock to tick past its
- * 900ms grace, and captures desktop + mobile rest screenshots of the three turn
+ * headless Chromium via Playwright, checks phase labels, and captures desktop
+ * and mobile screenshots of the three turn
  * states (thinking / tool-running / settled). Exits non-zero on any page error.
  *
  * Run: bun run --cwd packages/ui test:activity-feedback-e2e
@@ -79,10 +79,9 @@ async function capture(name, viewport, deviceScaleFactor) {
   assert(spinner >= 2, `${name}: working-indicator spinners render (${spinner})`);
   const rows = await page.getByTestId("tool-call-event-log").count();
   assert(rows >= 2, `${name}: inline tool rows render (${rows})`);
-  // Let the elapsed clock cross its 900ms grace so "Thinking · Ns" shows.
-  await page.waitForTimeout(2600);
-  const elapsed = await page.getByTestId("turn-status-elapsed").first().innerText();
-  assert(/\d+s/.test(elapsed), `${name}: elapsed clock ticks (${elapsed.trim()})`);
+  const statuses = await page.getByTestId("turn-status-label").allTextContents();
+  assert(statuses.some((text) => text.includes("Thinking")), `${name}: thinking label renders`);
+  assert(statuses.some((text) => text.includes("Using Web search")), `${name}: tool phase label renders`);
   await page.screenshot({
     path: join(outDir, `${name}.png`),
     fullPage: true,

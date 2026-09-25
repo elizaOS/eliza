@@ -311,7 +311,7 @@ test.describe("monetized full loop", () => {
 
     // ── g. Autoscale: the daemon-driven hot-pool cron grows the pool. ───────
     // #8920/#8921 landed the daemon path: `cloud:mock --with-daemon`
-    // (`packages/scripts/cloud/mock-stack-up.mjs`) ticks the autoscale / hot-pool /
+    // (`packages/scripts/cloud/mock-stack-up.ts`) ticks the autoscale / hot-pool /
     // pool-replenish crons on an interval, and the `agent-hot-pool` cron
     // replenishes the warm pool toward its target. Here we drive that same cron
     // ONCE (as the daemon would on its interval) and assert the tick ALONE grows

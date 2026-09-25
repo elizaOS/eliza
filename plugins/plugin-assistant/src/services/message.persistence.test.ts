@@ -2,18 +2,15 @@
  * Service-level persistence coverage for inbound message transforms that must
  * affect stored memories without changing the in-flight turn payload.
  */
-import { describe, expect, it, vi } from "vitest";
-import { RoomHandlerQueue } from "../../../../packages/core/src/runtime/room-handler-queue.ts";
-import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   drainRoomPostDeliveryTasks,
   pendingRoomPostDeliveryTaskCount,
-} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "../../../../packages/core/src/types/index.ts";
+  RoomHandlerQueue,
+  TurnControllerRegistry,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
@@ -69,6 +66,10 @@ function makeRuntime() {
     getWorld: vi.fn(async () => null),
     getService: vi.fn(() => null),
     getMemoryById: vi.fn(async () => null),
+    getMemoriesByIds: vi.fn(async (_ids: string[], tableName?: string) => {
+      expect(tableName).toBe("messages");
+      return [];
+    }),
     createMemory,
     updateMemory,
     queueEmbeddingGeneration,

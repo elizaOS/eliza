@@ -1,6 +1,7 @@
 /** Exercises Stage-1 candidate admission and terminal replies through the real parsers without model transport. */
+
+import type { Action } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Action } from "../../../../packages/core/src/types/components.ts";
 import { inferDirectCurrentRequestCandidateInference } from "./message/direct-action-heuristics.ts";
 import { parseMessageHandlerModelOutput } from "./message/stage1-generation.ts";
 import {
@@ -53,6 +54,8 @@ describe("budgeted model-selected action surface", () => {
     },
   );
   it.each([
+    { candidates: ["DISCOVER_ACTIONS"] },
+    { candidates: ["DISCOVER_ACTIONS", "NOTES"] },
     { candidates: ["DISCOVER_TOOLS"] },
     { candidates: ["DISCOVER_TOOLS", "NOTES"] },
   ])(

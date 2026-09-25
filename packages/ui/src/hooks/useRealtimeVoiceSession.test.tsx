@@ -14,8 +14,8 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api/client";
 
 import {
@@ -30,6 +30,17 @@ import {
   parseRealtimeVoiceFlag,
   useRealtimeVoiceSession,
 } from "./useRealtimeVoiceSession";
+
+const finishDeferredCloses = new Set<() => void>();
+
+afterEach(async () => {
+  // Unmount starts the real client's asynchronous microphone/playback teardown.
+  await act(async () => {
+    for (const finish of finishDeferredCloses) finish();
+    finishDeferredCloses.clear();
+    cleanup();
+  });
+});
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const CONV_ID = "22222222-2222-2222-2222-222222222222";
@@ -306,7 +317,8 @@ describe("useRealtimeVoiceSession", () => {
       await flushAsync();
     });
     expect(result.current.status).toBe("thinking");
-    expect(result.current.progressText).toBeUndefined();
+    // Keep the acknowledgment visible until playback completes.
+    expect(result.current.progressText).toBe("Checking your note.");
 
     await act(async () => {
       sock.emitControl({ t: "speaking_start", traceId: "T1" });
@@ -768,6 +780,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("rapid identity changes re-mint only the newest identity", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -801,6 +814,12 @@ describe("useRealtimeVoiceSession", () => {
         conversationId: "44444444-4444-4444-4444-444444444444",
       });
     });
+    await flushAsync();
+    expect(mint.calls).toHaveLength(1);
+    await act(async () => {
+      closeGate.resolve();
+      await flushAsync();
+    });
     await waitFor(() => expect(mint.calls).toHaveLength(2));
     expect(mint.calls[1]).toMatchObject({
       agentId: AGENT_ID,
@@ -819,10 +838,6 @@ describe("useRealtimeVoiceSession", () => {
       expect(result.current.status).toBe("listening");
     });
 
-    closeGate.resolve();
-    await act(async () => {
-      await flushAsync();
-    });
     expect(mint.calls).toHaveLength(2);
     expect(result.current.active).toBe(true);
     expect(result.current.status).toBe("listening");
@@ -833,6 +848,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("does not re-mint after the user stops during identity-change teardown", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -862,11 +878,10 @@ describe("useRealtimeVoiceSession", () => {
     await waitFor(() => expect(closeStarted).toHaveBeenCalledTimes(1));
 
     await act(async () => {
-      await result.current.stop();
-    });
-    closeGate.resolve();
-    await act(async () => {
-      await flushAsync();
+      const stopped = result.current.stop();
+      expect(mint.calls).toHaveLength(1);
+      closeGate.resolve();
+      await stopped;
     });
 
     expect(mint.calls).toHaveLength(1);
@@ -876,6 +891,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("does not auto-restart after operational identity loss during deferred teardown", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -961,6 +977,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("does not re-mint after unmount during identity-change teardown", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {

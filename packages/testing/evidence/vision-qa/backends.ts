@@ -122,6 +122,8 @@ export function parseAnswers(
   const asked = new Set(questions.map((q) => q.id));
   const answered = new Set(result.data.answers.map((a) => a.id));
   if (
+    asked.size !== questions.length ||
+    result.data.answers.length !== questions.length ||
     asked.size !== answered.size ||
     [...asked].some((id) => !answered.has(id))
   ) {
@@ -169,8 +171,8 @@ export interface VisionBackendClient {
 const anthropicResponseSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
   usage: z.object({
-    input_tokens: z.number(),
-    output_tokens: z.number(),
+    input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative(),
   }),
 });
 
@@ -254,8 +256,8 @@ const openAiResponseSchema = z.object({
     }),
   ),
   usage: z.object({
-    prompt_tokens: z.number(),
-    completion_tokens: z.number(),
+    prompt_tokens: z.number().int().nonnegative(),
+    completion_tokens: z.number().int().nonnegative(),
   }),
 });
 

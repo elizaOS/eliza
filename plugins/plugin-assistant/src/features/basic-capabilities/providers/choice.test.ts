@@ -5,8 +5,6 @@
  * rendering of legacy string options alongside typed option objects.
  */
 
-import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
-import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,
   Memory,
@@ -14,7 +12,9 @@ import type {
   Task,
   TaskMetadata,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
+import { describe, expect, it } from "vitest";
 import choiceProviderDefault, { choiceProvider } from "./choice.ts";
 
 const roomId = "00000000-0000-0000-0000-0000000000bb" as UUID;
@@ -67,7 +67,7 @@ describe("CHOICE provider.get", () => {
     ]);
   });
 
-  it("renders the placeholder when the task store returns nothing", async () => {
+  it("omits empty context when the task store returns nothing", async () => {
     const runtime = createMockRuntime({
       getTasks: async () => [] as unknown as Task[],
     });
@@ -75,28 +75,28 @@ describe("CHOICE provider.get", () => {
 
     expect(result).toEqual({
       data: { tasks: [] },
-      values: { tasks: "No pending choices for the moment." },
-      text: "No pending choices for the moment.",
+      values: { tasks: "" },
+      text: "",
     });
   });
 
-  it("renders the placeholder when the store reports no pending tasks at all", async () => {
+  it("omits empty context when the store reports no pending tasks at all", async () => {
     const runtime = createMockRuntime({
       getTasks: async () => null as unknown as Task[],
     });
     const result = await choiceProvider.get(runtime, message, state);
 
-    expect(result.text).toBe("No pending choices for the moment.");
+    expect(result.text).toBe("");
     expect(result.data.tasks).toEqual([]);
   });
 
-  it("renders the placeholder when awaiting tasks carry no options field at all", async () => {
+  it("omits empty context when awaiting tasks carry no options field at all", async () => {
     const runtime = createMockRuntime({
       getTasks: async () => [taskWith("NO_OPTIONS")],
     });
     const result = await choiceProvider.get(runtime, message, state);
 
-    expect(result.text).toBe("No pending choices for the moment.");
+    expect(result.text).toBe("");
     expect(result.data.tasks).toEqual([]);
   });
 

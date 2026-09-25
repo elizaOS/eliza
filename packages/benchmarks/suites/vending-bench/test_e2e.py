@@ -268,8 +268,8 @@ async def test_benchmark_runner(results: TestResults):
         assert report.metrics is not None
         results.pass_test("Metrics calculated")
 
-        assert report.leaderboard_comparison is not None
-        results.pass_test("Leaderboard comparison")
+        assert report.leaderboard_comparison is None
+        results.pass_test("No incomparable leaderboard ranking")
 
         assert "key_findings" in report.summary
         results.pass_test("Summary generated")
@@ -283,13 +283,8 @@ async def test_leaderboard_data(results: TestResults):
     print("\nTesting Leaderboard Data...")
 
     try:
-        assert len(LEADERBOARD_SCORES) > 0
-        results.pass_test("Leaderboard loaded")
-
-        # Check Grok 4 (top score)
-        assert "grok_4" in LEADERBOARD_SCORES
-        assert LEADERBOARD_SCORES["grok_4"].top_score > Decimal("4000")
-        results.pass_test("Top scores present")
+        assert LEADERBOARD_SCORES == {}
+        results.pass_test("No unverified external reference scores")
 
     except Exception as e:
         results.fail_test("Leaderboard test", str(e))
@@ -376,7 +371,7 @@ async def main():
     await test_leaderboard_data(results)
 
     # Check for --with-llm flag
-    if "--with-llm" in sys.argv or os.getenv("OPENAI_API_KEY"):
+    if "--with-llm" in sys.argv:
         await test_with_openai(results)
 
     # Plugin test (may fail gracefully if elizaos not installed)

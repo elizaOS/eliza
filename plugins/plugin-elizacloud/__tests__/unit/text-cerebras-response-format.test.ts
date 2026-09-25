@@ -9,15 +9,14 @@
  * The fetch is mocked: we capture the request body and return a canned
  * chat-completions response, asserting only the outgoing `response_format`.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { IAgentRuntime } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateNativeChatCompletion } from "../../src/models/text";
 
 type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
   Partial<IAgentRuntime>;
-
 function runtime(): IAgentRuntime {
   const settings: Record<string, string | undefined> = {
     ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
@@ -29,7 +28,6 @@ function runtime(): IAgentRuntime {
   };
   return fixture as IAgentRuntime;
 }
-
 const RESPONSE_SCHEMA = {
   schema: {
     type: "object",
@@ -38,7 +36,6 @@ const RESPONSE_SCHEMA = {
   },
   name: "reply_envelope",
 };
-
 function cannedResponse(): Response {
   return new Response(
     JSON.stringify({
@@ -48,7 +45,6 @@ function cannedResponse(): Response {
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 }
-
 async function captureBody(
   modelName: string,
   params: Record<string, unknown> = { responseSchema: RESPONSE_SCHEMA }
@@ -62,26 +58,21 @@ async function captureBody(
       return cannedResponse();
     }
   );
-
   await generateNativeChatCompletion(
     runtime(),
     "TEXT_SMALL",
     { prompt: "hi", ...params } as never,
     { modelName, prompt: "hi" }
   );
-
   return captured;
 }
-
 describe("native /chat/completions response_format gate", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
   it.each([
     DEFAULT_CEREBRAS_TEXT_MODEL,
     `cerebras:${DEFAULT_CEREBRAS_TEXT_MODEL}`,
@@ -94,7 +85,6 @@ describe("native /chat/completions response_format gate", () => {
     expect(body).not.toBeNull();
     expect(body?.response_format).toBeUndefined();
   });
-
   it("still honors an explicit caller responseFormat override", async () => {
     const body = await captureBody("zai-glm-4.7", {
       responseSchema: {
@@ -105,7 +95,6 @@ describe("native /chat/completions response_format gate", () => {
     expect(body?.response_format).toEqual({ type: "json_object" });
   });
 });
-
 /**
  * The runtime asks for no hidden thinking via
  * `providerOptions.eliza.thinking="off"`; the native request must translate that
@@ -116,11 +105,9 @@ describe("native /chat/completions reasoning_effort gate", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
   it.each([
     ["gpt-oss-120b", "low"],
     [DEFAULT_CEREBRAS_TEXT_MODEL, "none"],
@@ -134,14 +121,12 @@ describe("native /chat/completions reasoning_effort gate", () => {
       expect(body?.reasoning_effort).toBe(expectedEffort);
     }
   );
-
   it("preserves Gemma's omitted effort when thinking is not suppressed", async () => {
     const body = await captureBody("gemma-4-31b", {
       providerOptions: {},
     });
     expect(body?.reasoning_effort).toBeUndefined();
   });
-
   it("never sets reasoning_effort for non-cerebras models", async () => {
     const body = await captureBody("gpt-4o-mini", {
       providerOptions: { eliza: { thinking: "off" } },

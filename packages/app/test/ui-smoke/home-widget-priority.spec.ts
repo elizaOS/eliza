@@ -70,16 +70,6 @@ const VIEW_FIXTURES = [
     tags: ["goals"],
     desktopTabEnabled: true,
   },
-  {
-    id: "finances",
-    label: "Finances",
-    description: "Finances view",
-    path: "/finances",
-    available: true,
-    pluginName: "finances",
-    tags: ["finances"],
-    desktopTabEnabled: true,
-  },
 ];
 
 // Plugin snapshot (GET /api/plugins) — the home widgets resolve only when the
@@ -623,7 +613,6 @@ const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 const URGENT_TESTIDS = [TODAY_TESTID];
 const SEEDED_TESTIDS = [TODAY_TESTID, CALENDAR_TESTID];
 const REMOVED_HOME_TESTIDS = [
-  "chat-widget-finances-alerts",
   "chat-widget-relationships",
   "chat-widget-inbox-unread",
   "chat-widget-automations",

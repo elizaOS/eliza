@@ -57,7 +57,7 @@ PLANNER_STAGES = {
     "mcp_tool_call",
 }
 TERMINAL_TOOL_NAMES = {"REPLY", "IGNORE", "STOP", "NONE"}
-HARNESS_NAMES = {"eliza", "hermes", "openclaw", "smithers"}
+HARNESS_NAMES = {"eliza", "hermes", "openclaw"}
 ACTION_CALLING_CONTRACT_VERSION = "structured-output-tool-v2"
 STRUCTURED_OUTPUT_TOOL_DESCRIPTION = (
     "Submit the structured object requested by the user. Put every requested "
@@ -788,13 +788,6 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
             model=model,
             base_url=args.base_url,
         )
-        client.wait_until_ready(timeout=120)
-        return client
-    if harness == "smithers":
-        _ensure_adapter_path("smithers")
-        from smithers_adapter.client import SmithersClient  # noqa: WPS433
-
-        client = SmithersClient(provider=provider, model=model, base_url=args.base_url)
         client.wait_until_ready(timeout=120)
         return client
     raise SystemExit(f"unknown harness {harness!r}")

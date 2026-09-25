@@ -20,12 +20,12 @@ import type {
 	Handler,
 	HandlerCallback,
 	HandlerOptions,
-	IAgentRuntime,
-	JsonValue,
-	Memory,
-	State,
 	Validator,
-} from "../types";
+} from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { JsonValue } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import {
 	CANONICAL_SUBACTION_KEY,
 	DEFAULT_SUBACTION_KEYS,

@@ -8,7 +8,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +85,6 @@ IGNORED_BENCHMARK_DIRS = {
     "memperf",
     "mobile-resource",
     # Non-agent KPI harnesses run directly by the full-campaign manifest.
-    "lifeops-quality",
     "searchbench",
     "view-bundle-size",
     "voice-rtt",
@@ -112,7 +110,7 @@ IGNORED_BENCHMARK_DIRS = {
 # tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
-AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {"framework": ("eliza",), "eliza_1": (*ALL_HARNESSES, "codex")}
 
 # Historical result readers retain this diagnostic; no live adapter registers it.
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
@@ -172,7 +170,9 @@ def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "osworld":
         return ALL_HARNESSES if _has_osworld_docker_backend() else ()
     if benchmark_id == "gauntlet":
-        return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
+        # These bridges classify text and emit placeholder transaction bytes.
+        # Surfpool availability cannot make them native transaction agents.
+        return ()
     if benchmark_id in {
         "hermes_tblite",
         "hermes_terminalbench_2",
@@ -243,25 +243,21 @@ def _has_terminal_bench_docker_backend() -> bool:
     return _TERMINAL_BENCH_DOCKER_AVAILABLE
 
 
-def _docker_info_available(*, attempts: int = 3, timeout_s: float = 20.0) -> bool:
+def _docker_info_available() -> bool:
+    """Bound discovery probes; starting Docker belongs to execution setup."""
     if not shutil.which("docker"):
         return False
-    for attempt in range(max(attempts, 1)):
-        try:
-            completed = subprocess.run(
-                ["docker", "info", "--format", "{{.ServerVersion}}"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=timeout_s,
-                check=False,
-            )
-            if completed.returncode == 0:
-                return True
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        if attempt < attempts - 1:
-            time.sleep(0.25)
-    return False
+    try:
+        completed = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 _SWE_BENCH_DOCKER_AVAILABLE: bool | None = None
@@ -284,7 +280,7 @@ def _has_osworld_docker_backend() -> bool:
     global _OSWORLD_DOCKER_AVAILABLE
     if _OSWORLD_DOCKER_AVAILABLE is not None:
         return _OSWORLD_DOCKER_AVAILABLE
-    _OSWORLD_DOCKER_AVAILABLE = _docker_info_available(attempts=1, timeout_s=5.0)
+    _OSWORLD_DOCKER_AVAILABLE = _docker_info_available()
     return _OSWORLD_DOCKER_AVAILABLE
 
 
@@ -889,6 +885,13 @@ def _make_registry_adapter(
             "BENCHMARK_MODEL_NAME": model_name,
             "MODEL_NAME": model_name,
         }
+        if benchmark_id in {"osworld", "visualwebbench"} and harness not in {"hermes", "openclaw"}:
+            vision_model = ctx.request.extra_config.get("vision_model")
+            if isinstance(vision_model, str) and vision_model.strip():
+                env["OPENAI_IMAGE_DESCRIPTION_MODEL"] = vision_model.strip()
+            vision_url = ctx.request.extra_config.get("vision_base_url")
+            if isinstance(vision_url, str) and vision_url.strip():
+                env["OPENAI_IMAGE_DESCRIPTION_BASE_URL"] = vision_url.strip().rstrip("/")
         for extra_key, env_key in (
             ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
             ("hermes_timeout_s", "HERMES_TIMEOUT_S"),
@@ -1205,36 +1208,15 @@ def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
 
 
 def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    mode = str(ctx.request.extra_config.get("mode", "harness")).strip().lower()
+    mode = str(ctx.request.extra_config.get("mode", "typescript")).strip().lower()
+    if mode != "typescript" or ctx.request.agent != "eliza":
+        raise ValueError("framework measures Eliza runtime overhead only; cross-harness response scoring was removed")
     flags = shlex.split(str(ctx.request.extra_config.get("flags", "")))
-    output_path = ctx.output_root / "framework-results.json"
-    if mode != "typescript":
-        scenarios = str(ctx.request.extra_config.get("scenarios", "single-message"))
-        iterations = int(ctx.request.extra_config.get("iterations", 1) or 1)
-        generated_limit = int(ctx.request.extra_config.get("generated_limit", 3) or 3)
-        return [
-            sys.executable,
-            "scripts/framework/harness_runner.py",
-            "--harness",
-            ctx.request.agent.strip().lower(),
-            "--provider",
-            ctx.request.provider,
-            "--model",
-            ctx.request.model,
-            "--scenarios",
-            scenarios,
-            "--iterations",
-            str(max(1, iterations)),
-            "--generated-limit",
-            str(max(1, generated_limit)),
-            "--output",
-            str(output_path),
-        ]
     return [
-        "bun",
-        "run",
-        "framework/typescript/src/bench.ts",
-        f"--output={output_path}",
+        "bun", "run", "framework/typescript/src/bench.ts",
+        f"--output={ctx.output_root / 'framework-results.json'}",
+        f"--scenarios={ctx.request.extra_config.get('scenarios', 'single-message')}",
+        f"--iterations={int(ctx.request.extra_config.get('iterations', 1))}",
         *flags,
     ]
 
@@ -1526,7 +1508,7 @@ def _command_eliza_replay(
 def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     task = str(ctx.request.extra_config.get("task", "should_respond")).strip()
     n_value = int(
-        ctx.request.extra_config.get("n", ctx.request.extra_config.get("limit", 1))
+        ctx.request.extra_config.get("n", 1)
     )
     harness = (
         ctx.request.extra_config.get("harness")
@@ -1534,6 +1516,15 @@ def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         or os.environ.get("BENCHMARK_HARNESS")
         or "eliza"
     )
+    selected_harness = str(harness).strip().lower()
+    requested_harness = ctx.request.agent.strip().lower()
+    if selected_harness != requested_harness:
+        raise ValueError("Decision dispatch must match the recorded agent identity")
+    if str(harness).strip().lower() == "codex":
+        if task not in {"should_respond", "should-respond"}:
+            raise ValueError("Codex eliza_1 supports only the native decision task")
+        if ctx.request.provider != "codex-native":
+            raise ValueError("Codex requires provider codex-native; configured CLI routing is not an API-provider comparison")
     if task in {"should_respond", "should-respond"}:
         args = [
             sys.executable,
@@ -1547,6 +1538,10 @@ def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
             "--out",
             str(ctx.output_root / "eliza-1-results.json"),
         ]
+        for key, flag in (("fixture_set", "--fixture-set"), ("codex_home", "--codex-home"), ("accounts", "--accounts"), ("reasoning_effort", "--reasoning-effort"), ("codex_timeout_s", "--timeout-s")):
+            value = ctx.request.extra_config.get(key)
+            if value is not None:
+                args.extend([flag, str(value)])
         limit = ctx.request.extra_config.get("limit")
         if isinstance(limit, int) and limit > 0:
             args.extend(["--limit", str(limit)])
@@ -1574,12 +1569,166 @@ def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     return args
 
 
+def _validate_codex_decision_receipts(path: Path, data: dict[str, Any]) -> dict[str, Any]:
+    execution = data.get("execution")
+    if not isinstance(execution, dict) or execution.get("harness") != "codex":
+        return {}
+    if execution.get("provider_label") != "codex-native":
+        raise ValueError("eliza_1: Codex provider identity mismatch")
+    receipt_root = (path.parent / "codex" / "attempts").resolve()
+    by_task: dict[str, list[dict[str, Any]]] = {}
+    for receipt_path in receipt_root.glob("*/attempt.json"):
+        if not receipt_path.resolve().is_relative_to(receipt_root):
+            raise ValueError("eliza_1: Codex receipt escapes its output directory")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(receipt, dict):
+            raise ValueError("eliza_1: malformed Codex attempt receipt")
+        by_task.setdefault(str(receipt.get("task_id")), []).append(receipt)
+    cases = data.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("eliza_1: missing Codex cases")
+    completed = 0
+    seen = set()
+    for case in cases:
+        case_id = str(case.get("caseId", ""))
+        fixture_id, separator, repetition = case_id.rpartition("#")
+        if not separator or not repetition.isdecimal():
+            raise ValueError("eliza_1: malformed Codex case identity")
+        task_id = f"eliza-1-should-respond-{fixture_id}-{repetition}"
+        attempts = by_task.get(task_id, [])
+        if task_id in seen or len(attempts) != 1:
+            raise ValueError("eliza_1: missing, duplicate or ambiguous Codex attempt")
+        seen.add(task_id)
+        receipt = attempts[0]
+        if receipt.get("benchmark") != "eliza_1" or receipt.get("model") != execution.get("model_requested"):
+            raise ValueError("eliza_1: Codex attempt provenance mismatch")
+        if case.get("error"):
+            if receipt.get("status") != "failed":
+                raise ValueError("eliza_1: Codex failure has no failed receipt")
+            continue
+        response = receipt.get("response") or {}
+        events = (response.get("params") or {}).get("events", [])
+        if (receipt.get("status") != "succeeded" or receipt.get("returncode") != 0
+                or response.get("text") != case.get("raw_output")
+                or not any(event.get("type") == "turn.completed" for event in events)
+                or any(event.get("type") in {"turn.failed", "error"} for event in events)):
+            raise ValueError("eliza_1: Codex output lacks a matching successful native turn")
+        completed += 1
+    if set(by_task) != seen:
+        raise ValueError("eliza_1: unaccounted Codex attempts")
+    return {"attempt_count": len(seen), "completed_turns": completed,
+            "provider_observed": None, "comparison_scope": "configured-native-system"}
+
+
+def _native_decision_exclusion(data: dict[str, object]) -> str | None:
+    """Keep native decision scores out of comparisons without per-attempt evidence."""
+    execution = data.get("execution")
+    harness = execution.get("harness") if isinstance(execution, dict) else None
+    modes = data.get("modes", [])
+    summaries = data.get("summaries", [])
+    declared = list(modes) if isinstance(modes, list) else []
+    if isinstance(summaries, list):
+        declared.extend(item.get("modeId") for item in summaries if isinstance(item, dict))
+    if harness not in ("hermes", "openclaw"):
+        if any(mode in ("hermes", "openclaw") for mode in declared):
+            return "native_decision_execution_identity_missing"
+        return None
+    if any(mode in ("hermes", "openclaw") and mode != harness for mode in declared):
+        return "native_decision_execution_identity_mismatch"
+    if execution.get("interrupted_campaign") is True:
+        return "native_decision_campaign_interrupted"
+    cases = data.get("cases")
+    if not isinstance(cases, list) or not cases:
+        return "native_decision_attempt_evidence_missing"
+    for case in cases:
+        if not isinstance(case, dict):
+            return "native_decision_attempt_evidence_missing"
+        attempts = case.get("native_attempts")
+        if not isinstance(attempts, list) or not attempts:
+            return "native_decision_attempt_evidence_missing"
+        task_id = "eliza-1-should-respond-" + str(case.get("caseId", "")).replace("#", "-")
+        for attempt in attempts:
+            if not isinstance(attempt, dict) or attempt.get("task_id") != task_id:
+                return "native_decision_attempt_identity_mismatch"
+            response = attempt.get("response")
+            if not isinstance(response, dict):
+                if case.get("error") and attempt.get("error"):
+                    continue
+                return "native_decision_response_evidence_missing"
+            params = response.get("params")
+            meta = params.get("_meta") if isinstance(params, dict) else None
+            if harness == "openclaw" and isinstance(meta, dict):
+                meta = meta.get("openclaw_adapter")
+            if (not isinstance(meta, dict) or meta.get("agent_runtime") != harness
+                    or meta.get("publishable_native") is not True):
+                return "native_decision_runtime_unverified"
+        if not case.get("error"):
+            final = attempts[-1].get("response", {})
+            if final.get("text") != case.get("raw_output"):
+                return "native_decision_output_mismatch"
+    return None
+
+
+def _decision_completeness_exclusion(data: dict[str, object]) -> str | None:
+    """Require the exact selected case/repetition set for native comparisons."""
+    execution = data.get("execution")
+    frameworks = {"eliza", "hermes", "openclaw", "codex"}
+    declared = {item.get("modeId") for item in data.get("summaries", [])
+                if isinstance(item, dict) and isinstance(item.get("modeId"), str)}
+    if isinstance(execution, dict) and isinstance(execution.get("harness"), str):
+        declared.add(execution["harness"])
+    modes = data.get("modes", [])
+    if isinstance(modes, list):
+        declared.update(mode for mode in modes if isinstance(mode, str))
+    native = declared & frameworks
+    if not native:
+        return None
+    if not isinstance(execution, dict) or execution.get("harness") not in frameworks:
+        return "native_decision_execution_identity_missing"
+    if native != {execution["harness"]}:
+        return "native_decision_execution_identity_mismatch"
+    if execution.get("interrupted_campaign") is True:
+        return "native_decision_campaign_interrupted"
+    summaries = data.get("summaries")
+    if (not isinstance(summaries, list) or not summaries
+            or any(not isinstance(item, dict) or item.get("taskId") != "should_respond" for item in summaries)
+            or ("tasks" in data and data["tasks"] != ["should_respond"])):
+        return "native_decision_task_identity_mismatch"
+    corpus = data.get("corpus")
+    if not isinstance(corpus, dict):
+        return "decision_selection_evidence_missing"
+    selected = corpus.get("selected_case_ids")
+    repetitions = corpus.get("repetitions")
+    count = corpus.get("selected_case_count")
+    expected = corpus.get("expected_result_count")
+    if (
+        not isinstance(selected, list) or not selected
+        or any(not isinstance(value, str) or not value.strip() for value in selected)
+        or any(type(value) is not int or value <= 0 for value in (repetitions, count, expected))
+    ):
+        return "decision_selection_evidence_missing"
+    if len(set(selected)) != len(selected) or count != len(selected) or expected != count * repetitions:
+        return "decision_selection_evidence_invalid"
+    cases = data.get("cases")
+    if not isinstance(cases, list) or len(cases) != expected:
+        return "decision_results_incomplete"
+    if any(not isinstance(case, dict) or case.get("taskId") != "should_respond"
+           or not isinstance(case.get("caseId"), str) for case in cases):
+        return "decision_case_identity_invalid"
+    actual_ids = [case["caseId"] for case in cases]
+    expected_ids = {f"{case_id}#{iteration}" for case_id in selected for iteration in range(repetitions)}
+    if len(set(actual_ids)) != len(actual_ids) or set(actual_ids) != expected_ids:
+        return "decision_case_identity_invalid"
+    return None
+
+
 def _score_from_eliza_1(path: Path) -> ScoreSummary:
     import json
 
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    native_receipts = _validate_codex_decision_receipts(path, data)
     raw_cases = data.get("cases")
     if isinstance(raw_cases, list) and raw_cases:
         case_dicts = [case for case in raw_cases if isinstance(case, dict)]
@@ -1635,12 +1784,54 @@ def _score_from_eliza_1(path: Path) -> ScoreSummary:
         if isinstance(item.get("taskId"), str):
             tasks.add(str(item["taskId"]))
     score = (sum(label_rates) / len(label_rates)) if label_rates else None
+    decision_counts = {label: 0 for label in ("RESPOND", "IGNORE", "STOP")}
+    exclusion = None
+    if "should_respond" in tasks:
+        decision_cases = [case for case in data.get("cases", [])
+                          if isinstance(case, dict) and case.get("taskId") == "should_respond"]
+        for case in decision_cases:
+            label = case.get("expected_label")
+            if isinstance(label, str) and label in decision_counts:
+                decision_counts[label] += 1
+        if sum(decision_counts.values()) != len(decision_cases) or not decision_cases:
+            exclusion = "decision_class_evidence_missing"
+        elif not all(decision_counts.values()):
+            exclusion = "decision_classes_incomplete"
+    reported_score = score
+    if tasks == {"should_respond"} and decision_cases:
+        correct = parsed_count = schema_count = 0
+        for case in decision_cases:
+            try:
+                value = json.loads(case.get("raw_output") or "") if not case.get("error") else None
+            except (TypeError, json.JSONDecodeError):
+                value = None
+            parsed_count += value is not None
+            valid = (isinstance(value, dict) and set(value) == {"shouldRespond"}
+                     and isinstance(value.get("shouldRespond"), str)
+                     and value["shouldRespond"] in decision_counts)
+            schema_count += valid
+            correct += bool(valid and value["shouldRespond"] == case.get("expected_label"))
+        score = correct / len(decision_cases)
+        parse_rates = [parsed_count / len(decision_cases)]
+        schema_rates = [schema_count / len(decision_cases)]
+        case_count = len(decision_cases)
+    diagnostic_score = score
+    exclusion = exclusion or _native_decision_exclusion(data)
+    exclusion = exclusion or _decision_completeness_exclusion(data)
+    if exclusion:
+        score = None
     return ScoreSummary(
         score=score,
         unit="ratio",
         higher_is_better=True,
         metrics={
-            "label_match_rate": score,
+            "label_match_rate": diagnostic_score,
+            "reported_label_match_rate": reported_score,
+            "native_receipts": native_receipts,
+            "execution": data.get("execution") if isinstance(data.get("execution"), dict) else None,
+            "comparison_eligible": exclusion is None,
+            "quality_exclusion_reason": exclusion,
+            "decision_label_counts": decision_counts if "should_respond" in tasks else None,
             "parse_success_rate": (sum(parse_rates) / len(parse_rates))
             if parse_rates
             else 0,
@@ -1926,20 +2117,8 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     import json
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    overall_score = data.get("overall_score") if isinstance(data, dict) else None
-    if isinstance(overall_score, (int, float)):
-        return ScoreSummary(
-            score=float(overall_score),
-            unit="ratio",
-            higher_is_better=True,
-            metrics={
-                "runtime": data.get("runtime"),
-                "scenario_count": len(data.get("scenarios", {}))
-                if isinstance(data.get("scenarios"), dict)
-                else 0,
-                "primary_score_note": "Normalized correctness/SLO score; throughput metrics are secondary diagnostics.",
-            },
-        )
+    if isinstance(data, dict) and "overall_score" in data:
+        raise ValueError("Legacy framework response-presence scores are not runtime measurements")
     scenarios = data.get("scenarios", {}) if isinstance(data, dict) else {}
     if not isinstance(scenarios, dict) or not scenarios:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
@@ -1967,16 +2146,8 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     )
     if has_throughput_observation:
         raw_throughput = (total_messages / total_time_ms) * 1000.0
-        # Treat 50 messages/sec as the smoke SLO. The raw throughput remains
-        # in metrics; the primary score must stay a bounded 0..1 ratio so
-        # calibration and cross-benchmark comparisons are meaningful.
-        score = max(0.0, min(1.0, raw_throughput / 50.0))
-        unit = "ratio"
-    elif latency_values:
-        mean_latency = sum(latency_values) / len(latency_values)
-        raw_throughput = 1000.0 / mean_latency if mean_latency > 0 else 0.0
-        score = max(0.0, min(1.0, raw_throughput / 50.0))
-        unit = "ratio"
+        score = raw_throughput
+        unit = "messages/second"
     else:
         score = None
         raw_throughput = None
@@ -1995,7 +2166,7 @@ def _score_from_framework(path: Path) -> ScoreSummary:
             "mean_latency_ms": sum(latency_values) / len(latency_values)
             if latency_values
             else None,
-            "primary_score_note": "Normalized smoke SLO score capped at 1.0; raw throughput is tracked separately.",
+            "primary_score_note": "Measured Eliza runtime throughput, not agent correctness or cross-framework parity.",
         },
     )
 
@@ -2424,7 +2595,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "multitask_bench": "multitask-bench",
-        "voicebench_quality": "voicebench-quality",
+        "voicebench_quality": "voicebench/quality",
         "vision_language": "vision-language",
         "recall_bench": "recall-bench",
         "trajectory_replay": "standard",
@@ -2472,7 +2643,13 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             )
             continue
         if directory not in benchmark_dirs:
-            if entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
+            if (
+                entry.id == "voicebench_quality"
+                and "voicebench" in benchmark_dirs
+                and (benchmarks_root / directory).is_dir()
+            ):
+                pass
+            elif entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
                 directory = "OSWorld"
             elif entry.id == "gauntlet" and "gauntlet" in benchmark_dirs:
                 directory = "gauntlet"
@@ -2570,6 +2747,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             adapter_id="eliza_1",
             directory="eliza-1",
             description="eliza-1 structured-output quality and latency benchmark",
+            capability_notes="Codex supports only should_respond with provider codex-native; configured native-system results are separate from equal-provider framework cohorts.",
             cwd=str((benchmarks_root / "eliza-1").resolve()),
             command_builder=_command_eliza_1,
             result_patterns=["eliza-1-results.json", "bench-results-*.json"],
@@ -2578,7 +2756,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
                 "task": "should_respond",
                 "mode": "cerebras",
                 "n": 1,
-                "limit": 3,
             },
             default_timeout_seconds=1800,
         ),
@@ -2612,7 +2789,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             ],
             score_extractor=_score_from_framework,
             default_extra_config={
-                "mode": "harness",
+                "mode": "typescript",
                 "scenarios": "single-message",
                 "iterations": 1,
             },

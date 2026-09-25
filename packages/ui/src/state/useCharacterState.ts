@@ -7,11 +7,11 @@
  * than coupling this hook to useLifecycleState directly.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import { useCallback, useState } from "react";
 import type { AgentStatus } from "../api";
 import { type CharacterData, client } from "../api";
 import { prepareDraftForSave } from "../character/character-draft-helpers";
+import { logger } from "../logger.ts";
 import { replaceNameTokens } from "../utils/name-tokens";
 import {
   loadAvatarIndex,

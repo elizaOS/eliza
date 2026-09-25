@@ -18,7 +18,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { TranscriptWord } from "@elizaos/shared";
+import { type TranscriptWord } from "@elizaos/core/transcripts";
 import { isHallucination } from "./hallucination-filter";
 
 /** One ASR segment, times in seconds relative to the submitted audio window. */

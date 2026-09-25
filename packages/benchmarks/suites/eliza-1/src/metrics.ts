@@ -17,55 +17,13 @@ import type {
   TaskName,
 } from "./types.ts";
 
-/**
- * Strip the model's preamble / suffix and parse the first balanced JSON
- * envelope. Returns null when no JSON object can be extracted.
- *
- * The bench is generous: it accepts JSON that's wrapped in code fences, has
- * leading prose, or has a trailing period. Anything stricter would
- * disadvantage unguided modes and obscure the parse-success signal.
- */
+/** Parse the complete response; do not repair prose into a valid JSON answer. */
 export function tryParseJson(raw: string): JsonValue | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  // Strip ```json ... ``` or ``` ... ``` fences when present.
-  const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```\s*$/);
-  const body = fence ? fence[1] : trimmed;
-  const start = body.indexOf("{");
-  if (start < 0) return null;
-  // Walk forward looking for the matching `}` accounting for quoted strings.
-  let depth = 0;
-  let inString = false;
-  let isEscaped = false;
-  for (let i = start; i < body.length; i += 1) {
-    const ch = body[i];
-    if (isEscaped) {
-      isEscaped = false;
-      continue;
-    }
-    if (ch === "\\") {
-      isEscaped = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        const candidate = body.slice(start, i + 1);
-        try {
-          return JSON.parse(candidate) as JsonValue;
-        } catch {
-          return null;
-        }
-      }
-    }
+  try {
+    return JSON.parse(raw) as JsonValue;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /** True when `value` is a plain object (not array, not null). */
@@ -85,7 +43,7 @@ export function isPlainObject(
  * be `{ shouldRespond: "RESPOND" | "IGNORE" | "STOP" }`.
  */
 export function checkShouldRespondSchema(value: JsonValue): boolean {
-  if (!isPlainObject(value)) return false;
+  if (!isPlainObject(value) || Object.keys(value).length !== 1) return false;
   const v = value.shouldRespond;
   return v === "RESPOND" || v === "IGNORE" || v === "STOP";
 }
@@ -159,12 +117,6 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/** Approximate token count when the mode doesn't report one. ~4 chars / token. */
-export function approxTokens(text: string): number {
-  if (!text) return 0;
-  return Math.max(1, Math.round(text.length / 4));
-}
-
 /**
  * Compute skip_ratio from a skeleton: sum of literal span lengths / total output bytes.
  * Returns undefined if skeleton is not available or not computable.
@@ -203,13 +155,17 @@ export function buildMetric(args: {
   parse_success: boolean;
   schema_valid: boolean;
   label_match: boolean | null;
+  expected_label?: string;
 }): CaseMetric {
   const total = args.result.totalLatencyMs;
+  const reported = args.result.tokensGenerated;
   const tokens =
-    args.result.tokensGenerated > 0
-      ? args.result.tokensGenerated
-      : approxTokens(args.result.rawOutput);
-  const tps = total > 0 ? (tokens / total) * 1000 : 0;
+    typeof reported === "number" &&
+    Number.isSafeInteger(reported) &&
+    reported >= 0
+      ? reported
+      : null;
+  const tps = tokens !== null && total > 0 ? (tokens / total) * 1000 : null;
   const skipRatio = computeSkipRatio(
     args.result._skeleton,
     args.result.rawOutput,
@@ -221,6 +177,7 @@ export function buildMetric(args: {
     parse_success: args.parse_success,
     schema_valid: args.schema_valid,
     label_match: args.label_match,
+    expected_label: args.expected_label,
     first_token_latency_ms: args.result.firstTokenLatencyMs,
     total_latency_ms: total,
     tokens_generated: tokens,
@@ -264,13 +221,14 @@ export function summarize(cases: CaseMetric[]): ModeSummary[] {
     const total = list.length;
     const parseOk = list.filter((c) => c.parse_success).length;
     const schemaOk = list.filter((c) => c.schema_valid).length;
-    const labelEligible = list.filter((c) => c.label_match !== null);
-    const labelOk = labelEligible.filter((c) => c.label_match === true).length;
+    const labelOk = list.filter((c) => c.label_match === true).length;
     const totalLatencies = list.map((c) => c.total_latency_ms);
     const ftlList = list
       .map((c) => c.first_token_latency_ms)
       .filter((v): v is number => typeof v === "number");
-    const tpsSum = list.reduce((acc, c) => acc + c.tokens_per_second, 0);
+    const tokenRates = list
+      .map((c) => c.tokens_per_second)
+      .filter((v): v is number => v !== null);
     const skipRatios = list
       .map((c) => c.skip_ratio)
       .filter((v): v is number => typeof v === "number");
@@ -284,13 +242,17 @@ export function summarize(cases: CaseMetric[]): ModeSummary[] {
       cases: total,
       parse_success_rate: total === 0 ? 0 : parseOk / total,
       schema_valid_rate: total === 0 ? 0 : schemaOk / total,
-      label_match_rate:
-        labelEligible.length === 0 ? 0 : labelOk / labelEligible.length,
+      label_match_rate: total === 0 ? 0 : labelOk / total,
       first_token_latency_p50_ms: percentile(ftlList, 50),
       first_token_latency_p95_ms: percentile(ftlList, 95),
       total_latency_p50_ms: percentile(totalLatencies, 50) ?? 0,
       total_latency_p95_ms: percentile(totalLatencies, 95) ?? 0,
-      mean_tokens_per_second: total === 0 ? 0 : tpsSum / total,
+      mean_tokens_per_second: tokenRates.length
+        ? tokenRates.reduce((a, b) => a + b, 0) / tokenRates.length
+        : null,
+      token_usage_observed_cases: list.filter(
+        (c) => c.tokens_generated !== null,
+      ).length,
       mean_skip_ratio: meanSkipRatio,
     });
   }

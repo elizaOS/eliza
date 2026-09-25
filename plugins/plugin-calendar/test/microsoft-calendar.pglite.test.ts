@@ -9,8 +9,9 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PGlite } from "@electric-sql/pglite";
 import type { ConnectorAccount, IAgentRuntime } from "@elizaos/core";
-import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
-import { type LifeOpsConnectorGrant, SELF_ENTITY_ID } from "@elizaos/shared";
+import type { LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
+import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,

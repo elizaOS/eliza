@@ -2,7 +2,6 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     "package.json",
-    "bun.lock",
     "bunfig.toml",
     "turbo.json",
     "tsconfig.json",
@@ -40,38 +39,26 @@
         "$TURBO_ROOT$/plugins/plugin-build-externals.ts",
         "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
         "$TURBO_ROOT$/packages/scripts/view-bundle-vite.config.ts",
-        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
-        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
-        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
-        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
-        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.ts",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.ts",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.ts",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.ts",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.ts",
         "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
-        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
-        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs"
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
+        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.ts"
       ]
     },
     "@elizaos/app#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
-        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
-        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
-        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
-        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
-        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
-        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
-        "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
-        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
+        "$TURBO_ROOT$/packages/scripts/run-turbo.ts"
       ],
-      "dependsOn": ["^build"],
+      "dependsOn": ["build:dist"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -79,7 +66,7 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": ["dist/**", "web-dist/**"]
+      "outputs": ["web-dist/**"]
     },
     "@elizaos/cloud-api#build": {
       "dependsOn": ["^build"],
@@ -88,26 +75,26 @@
     "@elizaos/ui#build": {
       "dependsOn": [
         "@elizaos/core#build",
-        "@elizaos/shared#build",
+        "@elizaos/cloud-sdk#build",
         "@elizaos/capacitor-secure-store#build"
       ],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
-        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
-        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
-        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
-        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
-        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
-        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
-        "$TURBO_ROOT$/packages/scripts/verify-package-runtime-exports.mjs",
+        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.ts",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.ts",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.ts",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.ts",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.ts",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.ts",
+        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+        "$TURBO_ROOT$/packages/scripts/verify-package-runtime-exports.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
         "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs"
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts"
       ]
     },
     "@elizaos/electrobun#build": {
@@ -116,7 +103,7 @@
       "outputs": []
     },
     "@elizaos/plugin-assistant#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
+      "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "lint": {
@@ -161,20 +148,8 @@
         "typecheck:deps",
         "^build",
         "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/ui#build",
         "@elizaos/plugin-inbox#build",
-        "@elizaos/plugin-wallet#build",
-        "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-agent-orchestrator#build",
-        "@elizaos/plugin-video#build",
-        "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-embeddings#build",
-        "@elizaos/plugin-knowledge#build",
-        "@elizaos/plugin-native-filesystem#build",
-        "@elizaos/plugin-pty#build",
-        "@elizaos/plugin-relationships#build",
-        "@elizaos/plugin-web-search#build"
+        "@elizaos/plugin-knowledge#build"
       ]
     },
     "@elizaos/app#typecheck": {
@@ -194,7 +169,8 @@
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
-        "@elizaos/plugin-web-search#build"
+        "@elizaos/plugin-web-search#build",
+        "@elizaos/plugin-wallet#build"
       ]
     },
     "@elizaos/cloud-shared#typecheck": {
@@ -259,7 +235,7 @@
       "dependsOn": [
         "typecheck:deps",
         "@elizaos/core#build",
-        "@elizaos/shared#build",
+        "^build",
         "@elizaos/plugin-computeruse#build"
       ]
     },
@@ -317,24 +293,19 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.mjs",
-        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.mjs",
-        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.mjs",
-        "$TURBO_ROOT$/packages/scripts/copy-package-assets.mjs",
-        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.mjs",
-        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.mjs",
-        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.mjs",
+        "$TURBO_ROOT$/packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.ts",
+        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.ts",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.ts",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.ts",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.ts",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.ts",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.ts",
         "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
         "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.mjs",
-        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
+        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.ts"
       ],
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/agent#build",
-        "@elizaos/shared#build",
-        "@elizaos/ui#build"
-      ],
+      "dependsOn": ["^build"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -375,7 +346,7 @@
     "@elizaos/container-control-plane#typecheck": {
       "dependsOn": [
         "typecheck:deps",
-        "@elizaos/shared#build",
+        "^build",
         "@elizaos/auth#build",
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
@@ -412,7 +383,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-assistant#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-browser#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
@@ -421,7 +392,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/ui#build"]
     },
     "@elizaos/plugin-mcp#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-messages#typecheck": {
       "dependsOn": [
@@ -453,7 +424,7 @@
       ]
     },
     "@elizaos/plugin-openai#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sql#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -466,7 +437,7 @@
       ]
     },
     "@elizaos/auth#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/bench-eliza-1#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -498,7 +469,7 @@
       ]
     },
     "@elizaos/gateway-discord#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/gateway-webhook#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -507,7 +478,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/os#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-benchmarks#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -532,13 +503,18 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-github#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-goals#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
     },
     "@elizaos/plugin-google-workspace#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/core#build",
+        "@elizaos/testing#build",
+        "@elizaos/plugin-assistant#build"
+      ]
     },
     "@elizaos/plugin-health#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-scheduling#build"]
@@ -560,7 +536,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "@elizaos/plugin-meetings#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-native-filesystem#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -569,10 +545,10 @@
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-pty#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-slack#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-sqlite#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
@@ -588,13 +564,13 @@
       "dependsOn": ["typecheck:deps", "@elizaos/auth#build"]
     },
     "@elizaos/plugin-video#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-web-search#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
     "@elizaos/plugin-workflow#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/plugin-x#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
@@ -603,11 +579,7 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "memperf-suite#typecheck": {
-      "dependsOn": [
-        "typecheck:deps",
-        "@elizaos/shared#build",
-        "@elizaos/plugin-assistant#build"
-      ]
+      "dependsOn": ["typecheck:deps", "^build"]
     },
     "@elizaos/ui#typecheck": {
       "dependsOn": [
@@ -617,6 +589,10 @@
     },
     "@elizaos/plugin-todos#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/ui#typecheck:deps"]
+    },
+    "@elizaos/plugin-native-inference#build": {
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": ["dist/**"]
     }
   }
 }

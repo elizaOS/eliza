@@ -1,5 +1,5 @@
 {
-  // Bundler-only tsconfig — used by `Bun.build` in scripts/build-mobile-bundle.mjs.
+  // Bundler-only tsconfig — used by `Bun.build` in scripts/build-mobile-bundle.ts.
   //
   // The agent's main `tsconfig.json` aliases `react`, `react/jsx-runtime`,
   // `react/jsx-dev-runtime`, and `react-dom` to `@types/*` `.d.ts` files so
@@ -12,7 +12,7 @@
   // main tsconfig — `tsc` merges `paths` from extends-chains in surprising
   // ways and the only contract we care about here is "no React aliases visible
   // to Bun.build". Workspace `@elizaos/*` resolution is handled by the
-  // dedupe / capacitor / src-fallback plugins in build-mobile-bundle.mjs,
+  // dedupe / capacitor / src-fallback plugins in build-mobile-bundle.ts,
   // not via paths.
   "compilerOptions": {
     "target": "ES2022",

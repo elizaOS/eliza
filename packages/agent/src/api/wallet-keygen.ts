@@ -8,7 +8,7 @@ import type {
   WalletChain,
   WalletGenerateResult,
   WalletKeys,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import {
@@ -19,7 +19,6 @@ import {
 function generateEvmPrivateKey(): string {
   return `0x${crypto.randomBytes(32).toString("hex")}`;
 }
-
 export function deriveEvmAddress(privateKeyHex: string): string {
   const cleaned = privateKeyHex.startsWith("0x")
     ? privateKeyHex.slice(2)
@@ -33,7 +32,6 @@ export function deriveEvmAddress(privateKeyHex: string): string {
   const raw = hash.slice(-40);
   return toChecksumEvmAddress(raw);
 }
-
 function toChecksumEvmAddress(addressHex: string): string {
   const lower = addressHex.toLowerCase().replace(/^0x/, "");
   const hash = Buffer.from(keccak_256(Buffer.from(lower, "ascii"))).toString(
@@ -46,8 +44,10 @@ function toChecksumEvmAddress(addressHex: string): string {
   }
   return out;
 }
-
-function generateSolanaKeypair(): { privateKey: string; publicKey: string } {
+function generateSolanaKeypair(): {
+  privateKey: string;
+  publicKey: string;
+} {
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
   const privBytes = privateKey.export({ type: "pkcs8", format: "der" });
   const pubBytes = publicKey.export({ type: "spki", format: "der" });
@@ -60,7 +60,6 @@ function generateSolanaKeypair(): { privateKey: string; publicKey: string } {
     publicKey: base58Encode(pubRaw),
   };
 }
-
 export function deriveSolanaAddress(privateKeyString: string): string {
   const secretBytes = decodeSolanaPrivateKey(privateKeyString);
   if (secretBytes.length === 64) return base58Encode(secretBytes.subarray(32));
@@ -81,9 +80,7 @@ export function deriveSolanaAddress(privateKeyString: string): string {
   }
   throw new Error(`Invalid Solana secret key length: ${secretBytes.length}`);
 }
-
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
 function base58Encode(data: Buffer | Uint8Array): string {
   let num = BigInt(`0x${Buffer.from(data).toString("hex")}`);
   const chars: string[] = [];
@@ -101,7 +98,6 @@ function base58Encode(data: Buffer | Uint8Array): string {
   }
   return chars.join("") || "1";
 }
-
 export function decodeSolanaBase58(str: string): Buffer {
   assertSolanaBase58CharBudget(str);
   if (str.length === 0) return Buffer.alloc(0);
@@ -120,15 +116,12 @@ export function decodeSolanaBase58(str: string): Buffer {
   }
   return zeros > 0 ? Buffer.concat([Buffer.alloc(zeros), bytes]) : bytes;
 }
-
 const PLACEHOLDER_RE =
   /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
-
 /** Identifies configuration sentinels that do not represent wallet keys. */
 export function isWalletKeyPlaceholder(value: string): boolean {
   return PLACEHOLDER_RE.test(value);
 }
-
 export function decodeSolanaPrivateKey(key: string): Buffer {
   assertSolanaSecretCharBudget(key);
   if (PLACEHOLDER_RE.test(key)) {
@@ -153,7 +146,6 @@ export function decodeSolanaPrivateKey(key: string): Buffer {
   }
   return decodeSolanaBase58(key);
 }
-
 export function generateWalletKeys(): WalletKeys {
   const evmPrivateKey = generateEvmPrivateKey();
   const solana = generateSolanaKeypair();
@@ -164,7 +156,6 @@ export function generateWalletKeys(): WalletKeys {
     solanaAddress: solana.publicKey,
   };
 }
-
 export function generateWalletForChain(
   chain: WalletChain,
 ): WalletGenerateResult {
@@ -179,13 +170,11 @@ export function generateWalletForChain(
     privateKey: sol.privateKey,
   };
 }
-
 export function setSolanaWalletEnv(privateKey: string): string | null {
   const trimmed = privateKey.trim();
   process.env.SOLANA_PRIVATE_KEY = trimmed;
   return syncSolanaPublicKeyEnv(trimmed);
 }
-
 export function syncSolanaPublicKeyEnv(
   privateKey = process.env.SOLANA_PRIVATE_KEY,
 ): string | null {
@@ -193,7 +182,6 @@ export function syncSolanaPublicKeyEnv(
   if (!trimmed || PLACEHOLDER_RE.test(trimmed)) {
     return null;
   }
-
   try {
     const publicKey = deriveSolanaAddress(trimmed);
     process.env.SOLANA_PUBLIC_KEY = publicKey;

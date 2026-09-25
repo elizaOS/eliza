@@ -13,6 +13,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -23,6 +24,7 @@ import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   assertFlatpakArtifactDirectoryOutsideBuild,
+  canonicalizePlatformPathAlias,
   FLATPAK_BUNDLED_LIBRARIES,
   FLATPAK_FINISH_ARGS,
   FLATPAK_RUNTIME,
@@ -32,7 +34,7 @@ import {
   resolveFlatpakRefs,
   withFlatpakStagingCleanup,
   writeMetadata,
-} from "../package-electrobun-flatpak.mjs";
+} from "../package-electrobun-flatpak.ts";
 
 const tempDirs: string[] = [];
 
@@ -65,6 +67,22 @@ afterEach(() => {
 });
 
 describe("Electrobun Flatpak packaging", () => {
+  it("normalizes only platform aliases and preserves sibling paths", () => {
+    expect(canonicalizePlatformPathAlias("/tmp/output", "linux")).toBe(
+      path.resolve("/tmp/output"),
+    );
+    if (process.platform === "darwin") {
+      for (const alias of ["/tmp", "/var"]) {
+        expect(canonicalizePlatformPathAlias(`${alias}/output`)).toBe(
+          path.join(realpathSync(alias), "output"),
+        );
+        expect(canonicalizePlatformPathAlias(`${alias}-other/output`)).toBe(
+          `${alias}-other/output`,
+        );
+      }
+    }
+  });
+
   it("uses the GNOME runtime that supplies WebKitGTK", () => {
     expect(FLATPAK_RUNTIME).toEqual({
       platform: "org.gnome.Platform",

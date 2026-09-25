@@ -28,26 +28,27 @@
  * runtime handler and direct-provider credential are usable. Unresolved vault
  * references and configured-but-unservable providers omit the field.
  */
+
 import {
   type AgentRuntime,
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   ElizaError,
   logger,
   ModelType,
+  type RouteHelpers,
+  type RouteRequestMeta,
+  resolveServiceRoutingInConfig,
 } from "@elizaos/core";
+
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { isCerebrasMode, resolveOpenAIBaseURL } from "@elizaos/plugin-openai";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
-import {
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
-import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
+import type { RuntimeOperationManager } from "../runtime/operations/types.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
 import {
   hasCloudTextHandlerRegistered,
@@ -59,10 +60,8 @@ import {
   type ModelCatalog,
   type ModelCatalogEntry,
 } from "./model-catalog.ts";
-
 export type ModelConfigTarget = "small" | "large" | "coding";
 export type CodingBackend = "codex" | "claude" | "eliza-code";
-
 export interface ModelConfigWriteBody {
   target: ModelConfigTarget;
   provider?: string;
@@ -73,11 +72,13 @@ export interface ModelConfigWriteBody {
   /** Optional coding-backend switch, persisted as ELIZA_DEFAULT_AGENT_TYPE. */
   defaultBackend?: CodingBackend;
 }
-
 export interface ModelConfigRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "readJsonBody"> {
-  state: { config: ElizaConfig; runtime?: AgentRuntime | null };
+  state: {
+    config: ElizaConfig;
+    runtime?: AgentRuntime | null;
+  };
   saveElizaConfig: (config: ElizaConfig) => void;
   runtimeOperationManager: RuntimeOperationManager;
   /** Injectable catalog for tests; defaults to the live buildModelCatalog(). */
@@ -85,14 +86,12 @@ export interface ModelConfigRouteContext
   /** Injectable process env for tests; defaults to process.env. */
   processEnv?: NodeJS.ProcessEnv;
 }
-
 const TARGETS = new Set<ModelConfigTarget>(["small", "large", "coding"]);
 const CODING_BACKENDS = new Set<CodingBackend>([
   "codex",
   "claude",
   "eliza-code",
 ]);
-
 // Chat providers → the env-var family the corresponding model plugin reads.
 // cerebras serves through plugin-openai's Cerebras mode (OPENAI_*), but
 // elizacloud serves through plugin-elizacloud, which reads only the
@@ -105,9 +104,7 @@ const CHAT_PROVIDER_KEY_FAMILY: Record<string, ChatKeyFamily> = {
   elizacloud: "ELIZAOS_CLOUD",
   "claude-chat": "ANTHROPIC",
 };
-
 const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
-
 /**
  * Keep model-status diagnostics loadable in provider-minimal runtime images.
  * Dedicated Cerebras images intentionally omit plugin-anthropic, so this API
@@ -116,7 +113,9 @@ const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
  */
 function resolveAnthropicBaseURL(
   readSetting: (key: string) => string | undefined,
-  options: { mockBaseURL?: string } = {},
+  options: {
+    mockBaseURL?: string;
+  } = {},
 ): string {
   const mockBaseURL = options.mockBaseURL?.trim();
   if (mockBaseURL) return mockBaseURL;
@@ -124,7 +123,6 @@ function resolveAnthropicBaseURL(
     readSetting("ANTHROPIC_BASE_URL")?.trim() || DEFAULT_ANTHROPIC_BASE_URL
   );
 }
-
 // serviceRouting.llmText backend ids → the catalog chat provider that serves
 // them. "anthropic" is the provider-switch id; the catalog names that brain
 // "claude-chat".
@@ -134,7 +132,6 @@ const LLM_BACKEND_TO_CHAT_PROVIDER: Record<string, string> = {
   anthropic: "claude-chat",
   openai: "openai",
 };
-
 interface CodingBackendSeam {
   modelKey: string;
   /** null = the backend has no effort seam; sending effort is a 400. */
@@ -142,7 +139,6 @@ interface CodingBackendSeam {
   /** Catalog provider to validate against; null = free-form model string. */
   catalogProvider: string | null;
 }
-
 // Model keys are the `powerful` slots of TASK_AGENT_MODEL_PREF_SETTING_KEYS
 // (plugin-agent-orchestrator/src/services/task-agent-frameworks.ts) — the keys
 // spawns actually read. The effort keys are persisted now; the CLI adapters
@@ -164,7 +160,6 @@ const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
     catalogProvider: null,
   },
 };
-
 // The orchestrator's KNOWN_ADAPTER_TYPES spells the in-house backend
 // "elizaos"; persisting the API's "eliza-code" literal would be silently
 // dropped by its adapter normalization.
@@ -173,7 +168,6 @@ const DEFAULT_BACKEND_PERSISTED_VALUE: Record<CodingBackend, string> = {
   claude: "claude",
   "eliza-code": "elizaos",
 };
-
 function invalid(
   message: string,
   context: Record<string, unknown>,
@@ -184,7 +178,6 @@ function invalid(
     severity: "ephemeral",
   });
 }
-
 function findEntry(
   catalog: ModelCatalog,
   provider: string,
@@ -192,7 +185,6 @@ function findEntry(
 ): ModelCatalogEntry | undefined {
   return catalog.providers[provider]?.find((entry) => entry.id === model);
 }
-
 // Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app's
 // coding-account-bridge.ts. The model catalog may advertise newer effort
 // variants before the managed Codex ACP spawn path supports them end to end;
@@ -203,7 +195,6 @@ const MANAGED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
   "high",
   "xhigh",
 ]);
-
 function validateEffort(entry: ModelCatalogEntry, effort: string): void {
   if (entry.efforts.length === 0) {
     throw invalid(`Model "${entry.id}" exposes no effort control`, {
@@ -218,7 +209,6 @@ function validateEffort(entry: ModelCatalogEntry, effort: string): void {
     );
   }
 }
-
 function ensureEnvSections(config: ElizaConfig): {
   direct: Record<string, unknown>;
   vars: Record<string, string>;
@@ -241,11 +231,13 @@ function ensureEnvSections(config: ElizaConfig): {
   }
   return { direct, vars: direct.vars as Record<string, string> };
 }
-
 function readConfigEnvString(
   config: ElizaConfig,
   key: string,
-): { value: string; source: "config.env" | "config.env.vars" } | null {
+): {
+  value: string;
+  source: "config.env" | "config.env.vars";
+} | null {
   const env = (config as Record<string, unknown>).env;
   if (!env || typeof env !== "object" || Array.isArray(env)) return null;
   const direct = (env as Record<string, unknown>)[key];
@@ -261,7 +253,6 @@ function readConfigEnvString(
   }
   return null;
 }
-
 /**
  * Write one key to all three seams. Returns true when process.env already
  * carried a different value that the config did not put there — i.e. it came
@@ -286,12 +277,10 @@ function writeModelEnvKey(
     priorProcess !== priorConfig
   );
 }
-
 interface ResolvedWrite {
   key: string;
   value: string;
 }
-
 function resolveChatWrites(
   catalog: ModelCatalog,
   body: ModelConfigWriteBody,
@@ -309,7 +298,6 @@ function resolveChatWrites(
   if (model === undefined) {
     throw invalid("model must be a non-empty string", { model: null });
   }
-
   let provider = body.provider;
   if (provider !== undefined && !(provider in CHAT_PROVIDER_KEY_FAMILY)) {
     throw invalid(
@@ -345,7 +333,6 @@ function resolveChatWrites(
       provider = matches[0] as string;
     }
   }
-
   const entry = findEntry(catalog, provider, model);
   if (!entry) {
     throw invalid(`Unknown model "${model}" for provider "${provider}"`, {
@@ -359,7 +346,6 @@ function resolveChatWrites(
       { model, provider, target: body.target, roles: entry.roles },
     );
   }
-
   const family = CHAT_PROVIDER_KEY_FAMILY[provider] as ChatKeyFamily;
   const targetUpper = body.target.toUpperCase();
   const writes: ResolvedWrite[] = [
@@ -377,7 +363,6 @@ function resolveChatWrites(
   }
   return writes;
 }
-
 function resolveCodingWrites(
   catalog: ModelCatalog,
   body: ModelConfigWriteBody,
@@ -408,7 +393,6 @@ function resolveCodingWrites(
     return writes;
   }
   const model = body.model;
-
   const backend = body.backend;
   if (backend === undefined || !CODING_BACKENDS.has(backend)) {
     throw invalid(
@@ -423,7 +407,6 @@ function resolveCodingWrites(
       { provider: body.provider, backend },
     );
   }
-
   if (seam.catalogProvider) {
     const entry = findEntry(catalog, seam.catalogProvider, model);
     if (!entry) {
@@ -453,7 +436,6 @@ function resolveCodingWrites(
       effort: body.effort,
     });
   }
-
   const writes: ResolvedWrite[] = [{ key: seam.modelKey, value: model }];
   if (body.effort !== undefined && seam.effortKey) {
     writes.push({ key: seam.effortKey, value: body.effort });
@@ -461,7 +443,6 @@ function resolveCodingWrites(
   writes.push(...resolveDefaultBackendWrites(body));
   return writes;
 }
-
 function resolveDefaultBackendWrites(
   body: ModelConfigWriteBody,
 ): ResolvedWrite[] {
@@ -478,7 +459,6 @@ function resolveDefaultBackendWrites(
     },
   ];
 }
-
 function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
   const target = raw.target;
   if (typeof target !== "string" || !TARGETS.has(target as ModelConfigTarget)) {
@@ -532,12 +512,10 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
     defaultBackend: defaultBackend as CodingBackend | undefined,
   };
 }
-
 type EffectiveValue = {
   value: string;
   source: "config.env" | "config.env.vars" | "process.env" | "default";
 } | null;
-
 function resolveEffective(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
@@ -551,7 +529,6 @@ function resolveEffective(
   }
   return null;
 }
-
 /**
  * The chat provider actually serving inference right now, resolved from the
  * canonical serviceRouting topology — the same signal the plugin-collector
@@ -569,7 +546,6 @@ export interface ActiveChatInfo {
   family: ChatKeyFamily;
   endpoint: string;
 }
-
 function hostOf(value: string | undefined): string | null {
   if (!value) return null;
   try {
@@ -580,7 +556,6 @@ function hostOf(value: string | undefined): string | null {
     return null;
   }
 }
-
 function hasTextHandlerRegistered(
   runtime: AgentRuntime,
   provider: string,
@@ -598,9 +573,14 @@ function hasTextHandlerRegistered(
     return false;
   }
 }
-
 const DIRECT_CHAT_SERVING_REQUIREMENTS: Readonly<
-  Record<string, { credentialKeys: readonly string[]; runtimeProvider: string }>
+  Record<
+    string,
+    {
+      credentialKeys: readonly string[];
+      runtimeProvider: string;
+    }
+  >
 > = {
   cerebras: {
     credentialKeys: ["CEREBRAS_API_KEY", "OPENAI_API_KEY"],
@@ -615,7 +595,6 @@ const DIRECT_CHAT_SERVING_REQUIREMENTS: Readonly<
     runtimeProvider: "anthropic",
   },
 };
-
 function isUsableProviderCredential(value: unknown): boolean {
   return (
     typeof value === "string" &&
@@ -623,7 +602,6 @@ function isUsableProviderCredential(value: unknown): boolean {
     !isVaultRef(value.trim())
   );
 }
-
 function isConfiguredCerebrasMode(
   runtime: AgentRuntime,
   processEnv: NodeJS.ProcessEnv,
@@ -634,7 +612,6 @@ function isConfiguredCerebrasMode(
         if (property !== "getSetting") {
           return Reflect.get(target, property, receiver);
         }
-
         return (key: string) => {
           const runtimeValue = runtime.getSetting(key);
           if (runtimeValue !== null && runtimeValue !== undefined) {
@@ -651,7 +628,6 @@ function isConfiguredCerebrasMode(
     return false;
   }
 }
-
 function hasDirectProviderServingEvidence(
   provider: string,
   processEnv: NodeJS.ProcessEnv,
@@ -687,7 +663,6 @@ function hasDirectProviderServingEvidence(
   }
   return false;
 }
-
 export function resolveActiveChat(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
@@ -780,10 +755,7 @@ export function resolveActiveChat(
             mockBaseURL: processEnv.ELIZA_MOCK_ANTHROPIC_BASE,
           })
         : resolveOpenAIBaseURL(
-            (key) =>
-              key === "ELIZA_PROVIDER" && provider === "cerebras"
-                ? "cerebras"
-                : readSetting(key),
+            (key) => (key === "ELIZA_PROVIDER" ? provider : readSetting(key)),
             { mockBaseURL: processEnv.ELIZA_MOCK_OPENAI_BASE },
           );
   const endpoint =
@@ -799,7 +771,6 @@ export function resolveActiveChat(
     ).hostname;
   return { provider, family, endpoint };
 }
-
 function buildEffectiveConfig(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
@@ -851,7 +822,6 @@ function buildEffectiveConfig(
     },
   };
 }
-
 /**
  * Handle `GET`/`POST /api/models/config`. Returns true when the request was
  * handled.
@@ -866,7 +836,6 @@ export async function handleModelConfigRoutes(
   // edit non-Cloud providers during local development, but Cloud-prefixed
   // model selections belong to the immutable launch tuple.
   const devCloudAuthority = resolveDevCloudEnvAuthority();
-
   if (method === "GET") {
     const activeChat = resolveActiveChat(
       state.config,
@@ -879,16 +848,12 @@ export async function handleModelConfigRoutes(
     });
     return true;
   }
-
   if (method !== "POST") return false;
-
   const raw = await readJsonBody<Record<string, unknown>>(req, res);
   if (raw === null) return true;
-
   try {
     const body = parseWriteBody(raw);
     const catalog = ctx.catalog ?? buildModelCatalog();
-
     if (body.target === "coding") {
       const writes = resolveCodingWrites(catalog, body);
       const conflicts: string[] = [];
@@ -915,7 +880,6 @@ export async function handleModelConfigRoutes(
       });
       return true;
     }
-
     const writes = resolveChatWrites(
       catalog,
       body,
@@ -956,7 +920,6 @@ export async function handleModelConfigRoutes(
         return undefined;
       },
     });
-
     if (outcome.kind === "rejected-busy") {
       json(
         res,
@@ -968,7 +931,6 @@ export async function handleModelConfigRoutes(
       );
       return true;
     }
-
     logger.info(
       `[ModelConfigRoutes] ${body.target} model config applied: ${writes.map((w) => `${w.key}=${w.value}`).join(" ")} op=${outcome.operation.id}`,
     );

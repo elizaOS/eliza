@@ -5,19 +5,18 @@
  * APIs cannot prove complete, duplicate-free, snapshot-coherent results.
  */
 import { ElizaError } from "../errors";
-import {
-	type DocumentFragmentQueryParams,
-	type DocumentListCursor,
-	type DocumentListQueryParams,
-	type DocumentListQueryResult,
-	type DocumentMutationSnapshot,
-	type DocumentRequesterContext,
-	type DocumentRevisionReplaceParams,
-	type IDatabaseAdapter,
-	type Memory,
-	MemoryType,
-	type UUID,
-} from "../types";
+import type {
+	DocumentFragmentQueryParams,
+	DocumentListCursor,
+	DocumentListQueryParams,
+	DocumentListQueryResult,
+	DocumentMutationSnapshot,
+	DocumentRequesterContext,
+	DocumentRevisionReplaceParams,
+	IDatabaseAdapter,
+} from "../types/database.js";
+import { type Memory, MemoryType } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 
 export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 4 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;
@@ -396,6 +395,17 @@ export function validateDocumentRevisionReplacement(
 		| Record<string, unknown>
 		| undefined;
 	const revision = replacementMetadata?.documentRevision;
+	const sourceStorage = replacementMetadata?.sourceStorage;
+	const hasCanonicalSource =
+		replacementMetadata?.sourceSegmentVersion === 1 &&
+		typeof replacementMetadata.sourceSegmentCount === "number" &&
+		typeof replacementMetadata.sourceByteLength === "number" &&
+		typeof replacementMetadata.sourceFingerprint === "string" &&
+		((sourceStorage === "inline" &&
+			typeof replacement.content.text === "string") ||
+			(sourceStorage === "segments" &&
+				replacement.content.documentSource !== null &&
+				typeof replacement.content.documentSource === "object"));
 	const replacementSnapshot = readDocumentMutationSnapshot(replacement);
 	const invalid = (
 		reason: string,
@@ -411,7 +421,7 @@ export function validateDocumentRevisionReplacement(
 		replacement.agentId !== params.agentId ||
 		replacementMetadata?.type !== MemoryType.DOCUMENT ||
 		replacementMetadata.documentId !== params.documentId ||
-		typeof replacement.content.text !== "string" ||
+		!hasCanonicalSource ||
 		revision !== params.expected.revision + 1 ||
 		!replacementSnapshot ||
 		replacementSnapshot.scope !== params.expected.scope ||
@@ -435,10 +445,16 @@ export function validateDocumentRevisionReplacement(
 		});
 	}
 	const ids = new Set<string>();
+	let sourcePosition = 0;
+	let embeddingPosition = 0;
 	for (let index = 0; index < params.fragments.length; index++) {
 		const fragment = params.fragments[index];
 		const fragmentId = fragment.id;
 		const metadata = fragment.metadata as Record<string, unknown> | undefined;
+		const isSourceSegment = metadata?.fragmentRole === "source-segment";
+		const expectedPosition = isSourceSegment
+			? sourcePosition++
+			: embeddingPosition++;
 		if (
 			!isUuid(fragmentId) ||
 			fragmentId === params.documentId ||
@@ -450,7 +466,12 @@ export function validateDocumentRevisionReplacement(
 			metadata?.type !== MemoryType.FRAGMENT ||
 			metadata.documentId !== params.documentId ||
 			metadata.documentRevision !== revision ||
-			metadata.position !== index ||
+			metadata.position !== expectedPosition ||
+			(isSourceSegment &&
+				(metadata.sourceSegmentVersion !== 1 ||
+					typeof metadata.sourceSegmentSha256 !== "string" ||
+					typeof metadata.sourceByteStart !== "number" ||
+					typeof metadata.sourceByteEnd !== "number")) ||
 			typeof fragment.content.text !== "string" ||
 			(fragment.embedding !== undefined &&
 				(!Array.isArray(fragment.embedding) ||
@@ -463,6 +484,12 @@ export function validateDocumentRevisionReplacement(
 			});
 		}
 		ids.add(fragmentId as UUID);
+	}
+	if (sourcePosition !== replacementMetadata?.sourceSegmentCount) {
+		invalid("source segment count does not match the replacement parent", {
+			expectedSourceSegments: replacementMetadata?.sourceSegmentCount,
+			actualSourceSegments: sourcePosition,
+		});
 	}
 }
 
@@ -644,10 +671,21 @@ export function documentSearchText(memory: Memory): string {
 		.join("\n");
 }
 
-function matchesDocumentQuery(memory: Memory, query: string): boolean {
+function matchesDocumentQuery(
+	memory: Memory,
+	query: string,
+	sourceSegmentsByDocument: ReadonlyMap<string, readonly Memory[]>,
+): boolean {
 	const haystack = new Set(
 		portableDocumentSearchTokens(documentSearchText(memory)),
 	);
+	for (const segment of sourceSegmentsByDocument.get(String(memory.id)) ?? []) {
+		for (const token of portableDocumentSearchTokens(
+			segment.content.text ?? "",
+		)) {
+			haystack.add(token);
+		}
+	}
 	const queryLexemes = portableDocumentSearchTokens(query);
 	return (
 		queryLexemes.length > 0 &&
@@ -825,6 +863,8 @@ export function validateDocumentListQueryParams(
 ): void {
 	validateDocumentRequesterContext(params);
 	if (
+		(params.pinnedOnly !== undefined &&
+			typeof params.pinnedOnly !== "boolean") ||
 		!Number.isSafeInteger(params.limit) ||
 		params.limit < 1 ||
 		params.limit > DOCUMENT_LIST_MAX_LIMIT
@@ -919,8 +959,24 @@ export function queryDocumentsInMemory(
 	params: DocumentListQueryParams,
 ): DocumentListQueryResult {
 	validateDocumentListQueryParams(params);
-	assertUniqueDocumentIds(memories);
-	const allVisibleDocuments = memories
+	const documents = memories.filter(isDocumentMemory);
+	assertUniqueDocumentIds(documents);
+	const sourceSegmentsByDocument = new Map<string, Memory[]>();
+	for (const memory of memories) {
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		if (
+			memory.agentId !== params.agentId ||
+			metadata.type !== MemoryType.FRAGMENT ||
+			metadata.fragmentRole !== "source-segment" ||
+			typeof metadata.documentId !== "string"
+		) {
+			continue;
+		}
+		const rows = sourceSegmentsByDocument.get(metadata.documentId) ?? [];
+		rows.push(memory);
+		sourceSegmentsByDocument.set(metadata.documentId, rows);
+	}
+	const allVisibleDocuments = documents
 		.filter(
 			(memory) =>
 				memory.agentId === params.agentId &&
@@ -933,13 +989,17 @@ export function queryDocumentsInMemory(
 				isWithinDocumentSnapshot(memory, params.cursor as DocumentListCursor),
 			)
 		: allVisibleDocuments;
-	const availableDocuments = visibleDocuments.filter((memory) =>
-		matchesDocumentFilters(memory, params),
+	const availableDocuments = visibleDocuments.filter(
+		(memory) =>
+			matchesDocumentFilters(memory, params) &&
+			(!params.pinnedOnly ||
+				(memory.metadata as Record<string, unknown> | undefined)?.pinned ===
+					true),
 	);
 	const normalizedQuery = params.query?.trim();
 	const matchedDocuments = normalizedQuery
 		? availableDocuments.filter((memory) =>
-				matchesDocumentQuery(memory, normalizedQuery),
+				matchesDocumentQuery(memory, normalizedQuery, sourceSegmentsByDocument),
 			)
 		: availableDocuments;
 	const matchedPage = paginateDocuments(matchedDocuments, params);
@@ -1013,7 +1073,9 @@ export function queryDocumentFragmentsInMemory(
 		.filter((memory) => {
 			if (
 				memory.agentId !== params.agentId ||
-				memory.metadata?.type !== MemoryType.FRAGMENT
+				memory.metadata?.type !== MemoryType.FRAGMENT ||
+				(memory.metadata as unknown as Record<string, unknown>).fragmentRole ===
+					"source-segment"
 			) {
 				return false;
 			}

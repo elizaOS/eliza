@@ -3,11 +3,9 @@
  * dashboard HTTP API plus auth/response helpers, the Eliza runtime loader and
  * runtime-mode/desktop surfaces, the curated registry, security/vault/steward
  * services, first-run config, and diagnostics. Frontend surfaces live in
- * `@elizaos/ui`; pure contracts/utilities live in `@elizaos/shared`. Star
+ * `@elizaos/ui`; pure contracts/utilities live in `@elizaos/core`. Star
  * re-exports are used except where a name collides with `@elizaos/ui`
- * (`ConfigField`/`getPlugins`, re-exported explicitly); `./platform/empty-node-module`
- * is deliberately excluded so its browser aliases can't shadow the real Node
- * exports.
+ * (`ConfigField`/`getPlugins`, re-exported explicitly).
  */
 
 // Runtime-mode resolution moved into @elizaos/agent (api/runtime-mode/) so the
@@ -28,16 +26,49 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
-export type {
-  AllPermissionsState,
-  PermissionCheckResult,
-  PermissionManagerConfig,
-  PermissionState,
-  PermissionStatus,
-  Platform,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/shared";
+export {
+  type AccountAuthKind,
+  type AccountConfig,
+  type AppEntry,
+  type AppLaunch,
+  accountConfigSchema,
+  appEntrySchema,
+  appLaunchSchema,
+  type ConfigField,
+  type ConnectorEntry,
+  clearRegistryCacheForTests,
+  configFieldSchema,
+  connectorEntrySchema,
+  type ElizaCuratedAppDefinition,
+  getApps,
+  getConnectors,
+  getEntry,
+  getEntryByNpmName,
+  getPlugins,
+  getRegisteredCuratedApps,
+  indexEntries,
+  type LoadedRegistry,
+  loadRegistry,
+  mergeWithRuntime,
+  normalizeConnectorAuth,
+  type PluginEntry,
+  pluginEntrySchema,
+  type RegistryEntry,
+  type RegistryKind,
+  type RegistryRuntimeOverlay,
+  type RegistryValidationError,
+  type RegistryView,
+  type RenderHints,
+  type Resources,
+  registerCuratedApp,
+  registerRegistryEntry,
+  registryEntrySchema,
+  registryRuntimeOverlaySchema,
+  renderSchema,
+  resourcesSchema,
+  type SecondarySurface,
+} from "@elizaos/core";
+
 export {
   type AndroidUserAgentMarker,
   type AospVariantConfig,
@@ -48,12 +79,29 @@ export {
   type AppWebConfig,
   DEFAULT_APP_CONFIG,
   resolveAppBranding,
-} from "@elizaos/shared";
-export * from "@elizaos/shared/catalog";
-// `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
-// app registry versions explicitly so the Node barrel stays authoritative
-// and avoids ambiguous star re-exports.
-export { type ConfigField, getPlugins } from "@elizaos/shared/catalog";
+} from "@elizaos/core/config/app-config";
+export type {
+  AllPermissionsState,
+  PermissionCheckResult,
+  PermissionManagerConfig,
+  PermissionState,
+  PermissionStatus,
+  Platform,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+} from "@elizaos/core/contracts/permissions";
+export * from "@elizaos/core/integration-observability";
+export {
+  _resetBuildVariantForTests,
+  BUILD_VARIANTS,
+  type BuildVariant,
+  DEFAULT_BUILD_VARIANT,
+  getBuildVariant,
+  getDirectDownloadUrl,
+  isDirectBuild,
+  isStoreBuild,
+} from "@elizaos/core/platform/build-variant";
+export * from "@elizaos/plugin-github/github-credentials";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
@@ -66,13 +114,7 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
-export * from "./diagnostics/integration-observability";
 export * from "./first-run/first-run-config";
-// `./platform/empty-node-module` is intentionally NOT re-exported here.
-// It exists as a tsconfig-paths target for browser builds — re-exporting it
-// would shadow the real api/server, runtime/eliza, etc. exports above with
-// inert browser aliases. Browser bundlers alias it in via the path map; Node imports
-// the originals directly through this barrel.
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export * from "./platform/ios-runtime-backends";
 export {
@@ -83,7 +125,6 @@ export {
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
-export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";
@@ -98,8 +139,6 @@ export * from "./services/account-pool";
 export * from "./services/account-pool-consumer-metering";
 export * from "./services/auth-store";
 export * from "./services/credential-tunnel-service";
-export * from "./services/github-credentials";
-export * from "./services/inference-abort";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
 // Explicit .ts extension on steward-sidecar.ts disambiguates from the

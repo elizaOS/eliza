@@ -18,7 +18,6 @@ const pluginSchedulingSrc = path.join(
   "plugin-scheduling",
   "src",
 );
-const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 
@@ -40,7 +39,7 @@ export default defineConfig({
       "**/*.e2e.test.{ts,tsx}",
       // #9310 §E: the guarded real/live connector suites (they self-skip
       // without creds) and hermetic real-DB suites are invocable only in the
-      // post-merge lane, where run-all-tests.mjs prints named accounting.
+      // post-merge lane, where run-all-tests.ts prints named accounting.
       ...(process.env.VITEST_LANE === "post-merge"
         ? []
         : [
@@ -67,20 +66,6 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        // plugin-scheduling (source-aliased below) imports @elizaos/core/edge;
-        // vite's test-mode resolver misses linked-package subpath exports, so
-        // pin it to the edge source entry the same way the other workspace
-        // packages are pinned.
-        find: /^@elizaos\/core\/edge$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "core",
-          "src",
-          "index.edge.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },
@@ -103,14 +88,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-scheduling\/(.+)$/,
         replacement: path.join(pluginSchedulingSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(sharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/ui$/,

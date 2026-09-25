@@ -1,12 +1,5 @@
 /** Scenario authoring contracts and explicit runtime fixtures for package-owned validation. */
 
-// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
-export {
-  createTestPgliteDataDir,
-  isInMemoryPgliteDataDir,
-  type TestPgliteStorageMode,
-  testPgliteStorageMode,
-} from "@elizaos/shared/utils/pglite-storage";
 export * from "../scenario-runner/schema/index.js";
 export {
   CerebrasJudge,
@@ -81,7 +74,6 @@ export {
   getElizaCoreEntry,
   getInstalledPackageEntry,
   getInstalledPackageRoot,
-  getSharedSourceRoot,
   getUiSourceRoot,
   resolveModuleEntry,
 } from "./eliza-package-paths.ts";
@@ -127,7 +119,23 @@ export {
   type TestRuntimeOptions,
   type TestRuntimeResult,
 } from "./pglite-runtime.ts";
+// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
+export {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+  type TestPgliteStorageMode,
+  testPgliteStorageMode,
+} from "./pglite-storage.ts";
 export { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture.ts";
+
+export * from "./progressive-content-conformance.ts";
+export * from "./progressive-content-external-mutant-executors.ts";
+export * from "./progressive-content-faults.ts";
+export * from "./progressive-content-mixed-soak.ts";
+export * from "./progressive-content-mutants.ts";
+export * from "./progressive-content-production-faults.ts";
+export * from "./progressive-content-stress.ts";
+export * from "./progressive-content-target.ts";
 // Real runtime factory with LLM/connector support
 export {
   createRealTestRuntime,

@@ -5,11 +5,11 @@
 #                that their SPIR-V blobs are referenced at link time and the
 #                resulting libggml-vulkan.so contains the new pipeline names.
 #
-# Two hunks (parsed sequentially by kernel-patches/vulkan-kernels.mjs).
+# Two hunks (parsed sequentially by kernel-patches/vulkan-kernels.ts).
 # Each hunk carries its own ANCHOR / SENTINEL / INJECT block. SENTINEL is the
 # same token across both hunks so a partially-applied state still re-checks.
 #
-# OUT OF SCOPE for this patch (deliberate, mirrors metal-kernels.mjs §41):
+# OUT OF SCOPE for this patch (deliberate, mirrors metal-kernels.ts §41):
 #   * Wiring op-level dispatch (ggml_vk_get_dequantize_mul_mat_vec / GGML_OP_*
 #     case branches) for GGML_TYPE_TBQ3_0 / TBQ4_0 / QJL1_256 / Q4_POLAR /
 #     TBQ3_TCQ. The standalones use bespoke push-constant layouts and bind

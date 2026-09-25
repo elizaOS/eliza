@@ -1,4 +1,3 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Executes one scenario end-to-end against a live runtime:
  *   1. Check `requires` gates — skip with reason if a required plugin/credential
@@ -9,17 +8,12 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
  *   4. Run `finalChecks` via the handler registry.
  *   5. Aggregate + return a ScenarioReport.
  */
-
 import * as crypto from "node:crypto";
 import * as http from "node:http";
-import type {
-  Action,
-  ActionResult,
-  AgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
 import {
+  type Action,
+  type ActionResult,
+  type AgentRuntime,
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   createMessageMemory,
@@ -27,24 +21,27 @@ import {
   ElizaError,
   invalidateRelatedEntityIds,
   logger,
+  type Memory,
   MemoryType,
   PrincipalService,
   postDeliveryTaskQuarantineReason,
   revalidateOwnerExclusiveDisclosure,
   stringToUuid,
+  type UUID,
   validateUuid,
 } from "@elizaos/core";
-import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
+import {
+  type RouteBodyValue,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { type VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";
-import type {
-  RouteBodyValue,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import {
   type CapturedAction,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
+  type DeterministicModelDiagnostics,
   type ScenarioContext,
   type ScenarioDefinition,
   type ScenarioExecutionProfile,
@@ -90,16 +87,15 @@ import {
 } from "./scenario-background-memory";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import { resolveScenarioTurnSender } from "./turn-sender.ts";
-import type {
-  FinalCheckReport,
-  RunnerContext,
-  ScenarioReport,
+import {
+  type FinalCheckReport,
+  type RunnerContext,
+  type ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
-const EXECUTOR_REQUEST_TIMEOUT_MS = 30_000;
-
+const EXECUTOR_REQUEST_TIMEOUT_MS = 30000;
 /**
  * Bound every executor hop (lifeops API + Google mock) so a hung service
  * cannot pin a scenario run. A caller-provided abort signal is composed with
@@ -118,7 +114,6 @@ export function executorFetch(
       : timeoutSignal,
   });
 }
-
 export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
@@ -151,7 +146,6 @@ export interface ExecutorOptions {
    */
   scenarioDeclaredActionNames?: readonly string[];
 }
-
 /**
  * A finalCheck whose runtime dependency was missing (status `skipped`) must
  * never silently pass. In the pr-deterministic lane it fails the scenario —
@@ -172,7 +166,6 @@ export function skippedFinalCheckFailure(
   }
   return `finalCheck "${result.label}" skipped (${result.detail}) — a missing dependency is a failure in ${executionProfile === "provider-qualified" ? "provider-qualified execution" : "the pr-deterministic lane"}`;
 }
-
 const TRUSTED_PROVIDER_CHECK_TYPES = new Set([
   "providerEffectObserved",
   "providerNoEffectObserved",
@@ -195,7 +188,6 @@ const PROVIDER_QUALIFIED_TURN_KEYS = new Set([
   "responseExcludes",
   "responseJudge",
 ]);
-
 function scenarioHasIndependentJudgeWork(
   scenario: ScenarioDefinition,
 ): boolean {
@@ -216,7 +208,6 @@ function scenarioHasIndependentJudgeWork(
       check.rubric.trim().length > 0,
   );
 }
-
 /**
  * Provider-qualified execution is deliberately a small, production-shaped
  * subset. Every rejected construct either injects state, bypasses the model,
@@ -311,11 +302,8 @@ export function providerQualifiedScenarioProblems(
   }
   return problems;
 }
-
-const DEFAULT_TURN_TIMEOUT_MS = 120_000;
-
+const DEFAULT_TURN_TIMEOUT_MS = 120000;
 type TurnMatcher = string | RegExp;
-
 function responsePatternMatches(
   pattern: unknown,
   responseText: string,
@@ -329,7 +317,6 @@ function responsePatternMatches(
   }
   return false;
 }
-
 function stringList(value: unknown): string[] {
   if (typeof value === "string" && value.length > 0) {
     return [value];
@@ -339,14 +326,12 @@ function stringList(value: unknown): string[] {
   }
   return value.filter((item): item is string => typeof item === "string");
 }
-
 function isSynthesizedReplyAction(
   action: ScenarioTurnExecution["actionsCalled"][number],
 ): boolean {
   const data = toRecord(action.result?.data);
   return action.actionName === "REPLY" && data?.source === "synthesized-reply";
 }
-
 // The runtime message callback receives full `Content`; the executor only
 // needs the reply text plus the structural failure marker set by
 // `buildStructuredFailureReply` (packages/core/src/services/message.ts).
@@ -354,7 +339,6 @@ type SyntheticFailureAwareContent = {
   text?: string;
   elizaSyntheticFailure?: boolean;
 };
-
 function stringifyForAssertion(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -365,11 +349,9 @@ function stringifyForAssertion(value: unknown): string {
     return String(value);
   }
 }
-
 function isTurnMatcher(value: unknown): value is TurnMatcher {
   return typeof value === "string" || value instanceof RegExp;
 }
-
 function toTurnMatcherArray(value: unknown): TurnMatcher[] {
   if (isTurnMatcher(value)) {
     return [value];
@@ -379,15 +361,12 @@ function toTurnMatcherArray(value: unknown): TurnMatcher[] {
   }
   return value.filter(isTurnMatcher);
 }
-
 function formatTurnMatcher(pattern: TurnMatcher): string {
   return pattern instanceof RegExp ? pattern.toString() : pattern;
 }
-
 function formatTurnMatchers(patterns: readonly TurnMatcher[]): string {
   return patterns.map(formatTurnMatcher).join(",");
 }
-
 function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
   if (typeof pattern === "string") {
     return value.toLowerCase().includes(pattern.toLowerCase());
@@ -395,7 +374,6 @@ function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
   pattern.lastIndex = 0;
   return pattern.test(value);
 }
-
 /**
  * The "planner trace" that `plannerIncludesAll`/`plannerIncludesAny`/
  * `plannerExcludes` match against: the executed action names plus their
@@ -415,7 +393,6 @@ function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
   }
   return parts.join(" ");
 }
-
 type ScenarioRoomDefinition = {
   id: string;
   logicalWorldId: string;
@@ -429,7 +406,6 @@ type ScenarioRoomDefinition = {
   channelType: ChannelType;
   userName: string;
 };
-
 async function attestScenarioTurnAudience(
   runtime: AgentRuntime,
   message: Memory,
@@ -473,7 +449,6 @@ async function attestScenarioTurnAudience(
     });
   }
 }
-
 async function restoreScenarioConnectorTopology(
   runtime: AgentRuntime,
   room: ScenarioRoomDefinition,
@@ -489,15 +464,23 @@ async function restoreScenarioConnectorTopology(
     type: room.channelType,
   });
 }
-
 // Mirrors the subset of the real (display-dependent) ComputerUseService that
 // scenario providers/actions read through `getService("computeruse")`: the
 // computer-state and scene providers and the COMPUTER_USE progress/CLIPBOARD
 // paths call these at compose/run time, so a stub missing any of them throws
 // mid-turn (e.g. `getApprovalSnapshot is not a function`).
 type ScenarioComputerUseService = {
-  getCapabilities: () => Record<string, { available: boolean; tool: string }>;
-  getScreenDimensions: () => { width: number; height: number };
+  getCapabilities: () => Record<
+    string,
+    {
+      available: boolean;
+      tool: string;
+    }
+  >;
+  getScreenDimensions: () => {
+    width: number;
+    height: number;
+  };
   getDisplays: () => Array<{
     id: number;
     name: string;
@@ -508,9 +491,15 @@ type ScenarioComputerUseService = {
   getApprovalSnapshot: () => {
     mode: string;
     pendingCount: number;
-    pendingApprovals: Array<{ id: string; command?: string }>;
+    pendingApprovals: Array<{
+      id: string;
+      command?: string;
+    }>;
   };
-  getRecentActions: () => Array<{ action: string; success: boolean }>;
+  getRecentActions: () => Array<{
+    action: string;
+    success: boolean;
+  }>;
   getCurrentScene: () => null;
   refreshScene: (reason: string) => Promise<null>;
   executeDesktopAction: (params: Record<string, unknown>) => Promise<unknown>;
@@ -519,7 +508,6 @@ type ScenarioComputerUseService = {
   executeWindowAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeTerminalAction: (params: Record<string, unknown>) => Promise<unknown>;
 };
-
 type ExecutedTurn = ScenarioTurnExecution & {
   apiStatus?: number;
   apiBody?: unknown;
@@ -527,27 +515,22 @@ type ExecutedTurn = ScenarioTurnExecution & {
   reportResponseText?: string;
   syntheticFailure?: boolean;
 };
-
 type ScenarioVariableState = {
   baseNow: Date;
   capturesByName: Map<string, unknown>;
   definitionIdsByTitle: Map<string, string>;
   occurrenceIdsByTitle: Map<string, string>;
 };
-
 type ScenarioApiServer = {
   baseUrl: string;
   close: () => Promise<void>;
 };
-
 type ScenarioRouteRequest = http.IncomingMessage &
   RouteRequest & {
     get?: (name: string) => string | undefined;
     protocol?: string;
   };
-
 type ScenarioRouteResponse = http.ServerResponse & RouteResponse;
-
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
     clear?: () => void;
@@ -556,12 +539,10 @@ type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   assertScenarioModelFixturesConsumed?: () => void;
   getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
 };
-
 type SeedRunResult = {
   now: Date;
   error?: string;
 };
-
 function stringifyForJudge(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
@@ -570,9 +551,7 @@ function stringifyForJudge(value: unknown): string {
     return String(value);
   }
 }
-
 export const __INTERNAL_stringifyForJudge = stringifyForJudge;
-
 /**
  * Wipe the shared LifeOps scheduling + owner-fact state before a scenario runs.
  *
@@ -601,7 +580,6 @@ async function resetSharedSchedulingState(
   };
   await resetLifeOpsScenarioState(runtime);
 }
-
 function assertScenarioModelFixturesConsumed(
   runtime: AgentRuntime,
 ): string | undefined {
@@ -617,7 +595,6 @@ function assertScenarioModelFixturesConsumed(
     return err instanceof Error ? err.message : String(err);
   }
 }
-
 function captureScenarioModelFixtureDiagnostics(
   runtime: AgentRuntime,
 ): DeterministicModelDiagnostics | undefined {
@@ -625,7 +602,6 @@ function captureScenarioModelFixtureDiagnostics(
     runtime as RuntimeWithScenarioModelFixtures
   ).getScenarioModelFixtureDiagnostics?.();
 }
-
 function summarizeArtifactsForJudge(value: unknown): string | null {
   const artifacts = Array.isArray(value) ? value : null;
   if (!artifacts || artifacts.length === 0) {
@@ -650,7 +626,6 @@ function summarizeArtifactsForJudge(value: unknown): string | null {
   }
   return labels.join(", ");
 }
-
 function summarizeActionForJudge(
   action: ScenarioTurnExecution["actionsCalled"][number],
 ): string {
@@ -703,7 +678,6 @@ function summarizeActionForJudge(
   }
   return lines.join("\n");
 }
-
 function buildExecutionJudgeCandidate(
   turn: ScenarioTurn,
   execution: ScenarioTurnExecution,
@@ -724,7 +698,6 @@ function buildExecutionJudgeCandidate(
   }
   return sections.join("\n\n");
 }
-
 function buildScenarioJudgeCandidate(
   scenario: ScenarioDefinition,
   ctx: RunnerContext,
@@ -779,7 +752,6 @@ function buildScenarioJudgeCandidate(
   }
   return sections.join("\n\n");
 }
-
 function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
@@ -802,7 +774,6 @@ function withTimeout<T>(
     );
   });
 }
-
 async function drainScenarioPostDeliveryTasks(
   runtime: AgentRuntime,
   opts: ExecutorOptions,
@@ -837,7 +808,6 @@ async function drainScenarioPostDeliveryTasks(
     opts.abortSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
-
 function normalizeChannelType(value: unknown): ChannelType {
   if (typeof value !== "string") {
     return ChannelType.DM;
@@ -846,12 +816,15 @@ function normalizeChannelType(value: unknown): ChannelType {
     ? (value as ChannelType)
     : ChannelType.DM;
 }
-
 function resolveScenarioRooms(
   scenario: ScenarioDefinition,
 ): ScenarioRoomDefinition[] {
   const defaultWorldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
-  const maybeRooms = (scenario as { rooms?: unknown }).rooms;
+  const maybeRooms = (
+    scenario as {
+      rooms?: unknown;
+    }
+  ).rooms;
   const rooms = Array.isArray(maybeRooms) ? maybeRooms : [];
   const resolved = rooms
     .map((room, index) => {
@@ -881,7 +854,6 @@ function resolveScenarioRooms(
         typeof raw.title === "string" && raw.title.trim().length > 0
           ? raw.title.trim()
           : account;
-
       return {
         id,
         logicalWorldId,
@@ -905,11 +877,9 @@ function resolveScenarioRooms(
       } satisfies ScenarioRoomDefinition;
     })
     .filter((room): room is ScenarioRoomDefinition => room !== null);
-
   if (resolved.length > 0) {
     return resolved;
   }
-
   return [
     {
       id: "main",
@@ -926,7 +896,6 @@ function resolveScenarioRooms(
     },
   ];
 }
-
 function resolveTurnRoom(
   turn: ScenarioTurn,
   rooms: readonly ScenarioRoomDefinition[],
@@ -952,7 +921,6 @@ function resolveTurnRoom(
   }
   return resolved;
 }
-
 /**
  * Materialize authored connector accounts as distinct principals, then link
  * accounts sharing `rooms[].entity` through both the relationship graph and
@@ -970,13 +938,11 @@ async function establishScenarioIdentityTopology(
     group.push(room);
     byCanonical.set(room.canonicalEntityId, group);
   }
-
   for (const [canonicalEntityId, group] of byCanonical) {
     const sourcePrincipalIds = Array.from(
       new Set(group.map((room) => room.userId)),
     ).filter((entityId) => entityId !== canonicalEntityId);
     if (sourcePrincipalIds.length === 0) continue;
-
     if (!(await runtime.getEntityById(canonicalEntityId))) {
       const created = await runtime.createEntity({
         id: canonicalEntityId,
@@ -991,7 +957,6 @@ async function establishScenarioIdentityTopology(
         });
       }
     }
-
     const existingRelationships = await runtime.getRelationships({
       entityIds: [canonicalEntityId, ...sourcePrincipalIds],
       tags: ["identity_link"],
@@ -1006,8 +971,13 @@ async function establishScenarioIdentityTopology(
         return (
           samePair &&
           relationship.tags?.includes("identity_link") &&
-          (relationship.metadata as { status?: unknown } | undefined)
-            ?.status === "confirmed"
+          (
+            relationship.metadata as
+              | {
+                  status?: unknown;
+                }
+              | undefined
+          )?.status === "confirmed"
         );
       });
       if (!exists) {
@@ -1033,12 +1003,10 @@ async function establishScenarioIdentityTopology(
         }
       }
     }
-
     const authority = runtime.getService<PrincipalService>(
       PrincipalService.serviceType,
     );
     if (!authority) continue;
-
     const unresolved: UUID[] = [];
     let generation = 0;
     for (const sourcePrincipalId of sourcePrincipalIds) {
@@ -1052,7 +1020,6 @@ async function establishScenarioIdentityTopology(
       }
     }
     if (unresolved.length === 0) continue;
-
     const proposalKey = `scenario:${scenarioId}:identity:${canonicalEntityId}`;
     const proposalValue = {
       agentId: runtime.agentId,
@@ -1090,7 +1057,6 @@ async function establishScenarioIdentityTopology(
     invalidateRelatedEntityIds(runtime);
   }
 }
-
 function getDefaultScenarioRoom(
   rooms: readonly ScenarioRoomDefinition[],
 ): ScenarioRoomDefinition {
@@ -1100,7 +1066,6 @@ function getDefaultScenarioRoom(
   }
   return firstRoom;
 }
-
 export function matchRoutePath(
   pattern: string,
   pathname: string,
@@ -1111,7 +1076,6 @@ export function matchRoutePath(
   if (patternSegments.length !== pathSegments.length) {
     return null;
   }
-
   const params: Record<string, string> = {};
   for (let i = 0; i < patternSegments.length; i += 1) {
     const patternSegment = patternSegments[i];
@@ -1134,7 +1098,6 @@ export function matchRoutePath(
   }
   return params;
 }
-
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {};
   for (const key of url.searchParams.keys()) {
@@ -1143,7 +1106,6 @@ function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   }
   return query;
 }
-
 function attachResponseHelpers(
   res: http.ServerResponse,
 ): ScenarioRouteResponse {
@@ -1151,7 +1113,6 @@ function attachResponseHelpers(
   if (typeof response.status === "function") {
     return response;
   }
-
   const sendPayload = (data: unknown) => {
     if (res.headersSent) {
       return response;
@@ -1164,7 +1125,6 @@ function attachResponseHelpers(
     res.end(JSON.stringify(data));
     return response;
   };
-
   response.status = (code: number) => {
     res.statusCode = code;
     return response;
@@ -1173,7 +1133,6 @@ function attachResponseHelpers(
   response.send = (data: unknown) => sendPayload(data);
   return response;
 }
-
 async function readRawRequestBody(req: http.IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -1181,7 +1140,6 @@ async function readRawRequestBody(req: http.IncomingMessage): Promise<string> {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
-
 function toRouteBodyValue(value: unknown): RouteBodyValue {
   if (
     value === null ||
@@ -1203,7 +1161,6 @@ function toRouteBodyValue(value: unknown): RouteBodyValue {
   }
   return null;
 }
-
 function toRouteBody(value: unknown): Record<string, RouteBodyValue> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record: Record<string, RouteBodyValue> = {};
@@ -1214,7 +1171,6 @@ function toRouteBody(value: unknown): Record<string, RouteBodyValue> {
   }
   return { value: toRouteBodyValue(value) };
 }
-
 async function augmentRequest(
   req: http.IncomingMessage,
   url: URL,
@@ -1262,14 +1218,12 @@ async function augmentRequest(
   request.body = { value: rawBody };
   return request;
 }
-
 async function startScenarioApiServer(
   runtime: AgentRuntime,
 ): Promise<ScenarioApiServer> {
   const server = http.createServer(async (req, res) => {
     const method = (req.method ?? "GET").toUpperCase();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-
     for (const route of getHttpRuntime(runtime).routes ?? []) {
       if (route.type !== method || typeof route.handler !== "function") {
         continue;
@@ -1299,14 +1253,12 @@ async function startScenarioApiServer(
       }
       return;
     }
-
     res.statusCode = 404;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.end(
       JSON.stringify({ error: `No route matched ${method} ${url.pathname}` }),
     );
   });
-
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => resolve());
@@ -1315,7 +1267,6 @@ async function startScenarioApiServer(
   if (!address || typeof address === "string") {
     throw new Error("[executor] failed to start scenario API server");
   }
-
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     close: async () =>
@@ -1324,7 +1275,6 @@ async function startScenarioApiServer(
       }),
   };
 }
-
 function resolveNowToken(token: string, baseNow: Date): string | null {
   const match = token.match(/^now(?:([+-])(\d+)([mhdw]))?$/i);
   if (!match) {
@@ -1336,19 +1286,18 @@ function resolveNowToken(token: string, baseNow: Date): string | null {
     const amount = Number.parseInt(amountText, 10);
     const multiplier =
       unit.toLowerCase() === "m"
-        ? 60_000
+        ? 60000
         : unit.toLowerCase() === "h"
-          ? 60 * 60_000
+          ? 60 * 60000
           : unit.toLowerCase() === "d"
-            ? 24 * 60 * 60_000
-            : 7 * 24 * 60 * 60_000;
+            ? 24 * 60 * 60000
+            : 7 * 24 * 60 * 60000;
     resolved.setTime(
       resolved.getTime() + (sign === "+" ? amount : -amount) * multiplier,
     );
   }
   return resolved.toISOString();
 }
-
 function addClockOffset(baseNow: Date, offset: string): Date {
   const normalizedOffset = /^[+-]/.test(offset) ? offset : `+${offset}`;
   const resolved = resolveNowToken(`now${normalizedOffset}`, baseNow);
@@ -1357,7 +1306,6 @@ function addClockOffset(baseNow: Date, offset: string): Date {
   }
   return new Date(resolved);
 }
-
 function resolveScenarioTemplates(value: unknown, currentNow: Date): unknown {
   if (typeof value === "string") {
     return value.replace(/\{\{([^{}]{1,256})\}\}/g, (fullMatch, rawToken) => {
@@ -1384,7 +1332,6 @@ function resolveScenarioTemplates(value: unknown, currentNow: Date): unknown {
   }
   return value;
 }
-
 function indexResponseIdentifiers(
   body: unknown,
   variables: ScenarioVariableState,
@@ -1398,7 +1345,6 @@ function indexResponseIdentifiers(
   if (definitionId && definitionTitle) {
     variables.definitionIdsByTitle.set(definitionTitle, definitionId);
   }
-
   const occurrenceCollections = [
     record?.occurrences,
     toRecord(record?.owner)?.occurrences,
@@ -1420,7 +1366,6 @@ function indexResponseIdentifiers(
     }
   }
 }
-
 function readCapturePath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path.split(".").filter(Boolean)) {
@@ -1434,7 +1379,6 @@ function readCapturePath(value: unknown, path: string): unknown {
   }
   return current;
 }
-
 function captureResponseFields(
   turn: ScenarioTurn,
   body: unknown,
@@ -1445,7 +1389,6 @@ function captureResponseFields(
       ? turn.captures
       : undefined;
   if (!captures) return;
-
   for (const [name, path] of Object.entries(captures)) {
     const captureName = name.trim();
     if (!captureName) {
@@ -1472,7 +1415,6 @@ function captureResponseFields(
     variables.capturesByName.set(captureName, value);
   }
 }
-
 async function lookupDefinitionIdByTitle(args: {
   apiServer: ScenarioApiServer;
   title: string;
@@ -1505,7 +1447,6 @@ async function lookupDefinitionIdByTitle(args: {
     `[executor] could not resolve definitionId for title "${args.title}"`,
   );
 }
-
 async function lookupOccurrenceIdByTitle(args: {
   apiServer: ScenarioApiServer;
   title: string;
@@ -1528,7 +1469,6 @@ async function lookupOccurrenceIdByTitle(args: {
     `[executor] could not resolve occurrenceId for title "${args.title}"`,
   );
 }
-
 async function resolveTemplateString(args: {
   value: string;
   apiServer: ScenarioApiServer;
@@ -1538,7 +1478,6 @@ async function resolveTemplateString(args: {
   if (matches.length === 0) {
     return args.value;
   }
-
   let resolved = args.value;
   for (const match of matches) {
     const token = match[1]?.trim() ?? "";
@@ -1577,7 +1516,6 @@ async function resolveTemplateString(args: {
   }
   return resolved;
 }
-
 async function resolveTemplateValue(args: {
   value: unknown;
   apiServer: ScenarioApiServer;
@@ -1618,7 +1556,6 @@ async function resolveTemplateValue(args: {
   }
   return args.value;
 }
-
 function createScenarioComputerUseService(): ScenarioComputerUseService {
   const run = async (params: Record<string, unknown>) => {
     const blob = JSON.stringify(params).toLowerCase();
@@ -1637,7 +1574,6 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
       label,
       detail: `scenario://${label}`,
     };
-
     return {
       success: true,
       message,
@@ -1666,7 +1602,6 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
       path: `/tmp/${label}.txt`,
     };
   };
-
   return {
     getCapabilities() {
       return {
@@ -1696,14 +1631,17 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
     executeTerminalAction: run,
   };
 }
-
 async function runCustomSeeds(
   scenario: ScenarioDefinition,
   runtime: AgentRuntime,
   ctx: RunnerContext,
   initialNow: Date,
 ): Promise<SeedRunResult> {
-  const seeds = (scenario as { seed?: unknown }).seed;
+  const seeds = (
+    scenario as {
+      seed?: unknown;
+    }
+  ).seed;
   if (!Array.isArray(seeds)) {
     ctx.now = initialNow.toISOString();
     return { now: initialNow };
@@ -1722,7 +1660,13 @@ async function runCustomSeeds(
       by?: unknown;
     };
     if (type === "advanceClock") {
-      if (typeof (resolvedSeed as { by?: unknown }).by !== "string") {
+      if (
+        typeof (
+          resolvedSeed as {
+            by?: unknown;
+          }
+        ).by !== "string"
+      ) {
         return {
           now: currentNow,
           error: `seed ${name ?? "(unnamed)"} missing string 'by' offset`,
@@ -1731,7 +1675,11 @@ async function runCustomSeeds(
       try {
         currentNow = addClockOffset(
           currentNow,
-          (resolvedSeed as { by: string }).by,
+          (
+            resolvedSeed as {
+              by: string;
+            }
+          ).by,
         );
         ctx.now = currentNow.toISOString();
       } catch (err) {
@@ -1766,7 +1714,6 @@ async function runCustomSeeds(
       }
       continue;
     }
-
     try {
       const result = await applyScenarioSeedStep(
         scenarioCtx,
@@ -1788,7 +1735,6 @@ async function runCustomSeeds(
   ctx.now = currentNow.toISOString();
   return { now: currentNow };
 }
-
 async function deleteMockGmailDrafts(): Promise<string | undefined> {
   const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!isLoopbackUrl(baseUrl)) {
@@ -1798,13 +1744,19 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   if (!response.ok) {
     return `gmailDeleteDrafts list failed with HTTP ${response.status}`;
   }
-  const body = (await response.json()) as { drafts?: unknown };
+  const body = (await response.json()) as {
+    drafts?: unknown;
+  };
   const drafts = Array.isArray(body.drafts) ? body.drafts : [];
   for (const draft of drafts) {
     if (!draft || typeof draft !== "object") {
       continue;
     }
-    const id = (draft as { id?: unknown }).id;
+    const id = (
+      draft as {
+        id?: unknown;
+      }
+    ).id;
     if (typeof id !== "string" || id.length === 0) {
       continue;
     }
@@ -1818,7 +1770,6 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   }
   return undefined;
 }
-
 async function clearSelfControlBlocks(): Promise<string | undefined> {
   const { stopSelfControlBlock } = await import(
     "@elizaos/plugin-blocker/services/website-blocker/index"
@@ -1829,13 +1780,16 @@ async function clearSelfControlBlocks(): Promise<string | undefined> {
   }
   return `selfControlClearBlocks failed: ${result.error}`;
 }
-
 async function runScenarioCleanups(
   scenario: ScenarioDefinition,
   runtime: AgentRuntime,
   ctx: RunnerContext,
 ): Promise<string[]> {
-  const cleanups = (scenario as { cleanup?: unknown }).cleanup;
+  const cleanups = (
+    scenario as {
+      cleanup?: unknown;
+    }
+  ).cleanup;
   if (!Array.isArray(cleanups)) {
     return [];
   }
@@ -1881,7 +1835,6 @@ async function runScenarioCleanups(
   }
   return failures;
 }
-
 async function executeMessageTurn(
   runtime: AgentRuntime,
   turn: ScenarioTurn,
@@ -1902,12 +1855,10 @@ async function executeMessageTurn(
   if (text.length === 0) {
     throw new Error(`[executor] turn '${turn.name}' has no text to send`);
   }
-
   const turnContent =
     turn.content !== null && typeof turn.content === "object"
       ? (turn.content as Record<string, unknown>)
       : {};
-
   const authoredSender = turn.sender;
   const resolvedSender = resolveScenarioTurnSender({
     scenarioId,
@@ -1928,7 +1879,6 @@ async function executeMessageTurn(
       type: room.channelType,
     });
   }
-
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: senderEntityId,
@@ -1964,7 +1914,6 @@ async function executeMessageTurn(
   // otherwise the generic API sanitizer correctly treats the turn as external
   // and every owner-private provider/action fails closed for the wrong reason.
   await attestScenarioTurnAudience(runtime, message, room);
-
   const messageService = (
     runtime as {
       messageService?: {
@@ -1985,7 +1934,6 @@ async function executeMessageTurn(
       "[executor] runtime.messageService is not initialized — cannot send messages",
     );
   }
-
   const startedAt = Date.now();
   let responseText = "";
   // The runtime synthesizes a failure reply (rate-limit / auth / credits /
@@ -2003,30 +1951,25 @@ async function executeMessageTurn(
   };
   const timeoutMs =
     typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
-
   const result = await withTimeout(
     messageService.handleMessage(runtime, message, callback, {}),
     timeoutMs,
     `handleMessage(${turn.name})`,
   );
-
   if (!responseText && result?.responseContent?.text) {
     responseText = result.responseContent.text;
   }
   if (result?.responseContent?.elizaSyntheticFailure === true) {
     syntheticFailure = true;
   }
-
   // Let completed events settle.
   await new Promise((r) => setTimeout(r, 500));
   // MessageService's generic harness ingress can upsert the active room with
   // its transport source. Restore the authored connector metadata just as the
   // next real connector delivery would before later discovery assertions.
   await restoreScenarioConnectorTopology(runtime, room);
-
   return { responseText, durationMs: Date.now() - startedAt, syntheticFailure };
 }
-
 async function executeActionTurn(
   runtime: AgentRuntime,
   turn: ScenarioTurn,
@@ -2045,15 +1988,24 @@ async function executeActionTurn(
       ? turn.actionName.trim()
       : turn.content !== null &&
           typeof turn.content === "object" &&
-          typeof (turn.content as { action?: unknown }).action === "string"
-        ? String((turn.content as { action: string }).action).trim()
+          typeof (
+            turn.content as {
+              action?: unknown;
+            }
+          ).action === "string"
+        ? String(
+            (
+              turn.content as {
+                action: string;
+              }
+            ).action,
+          ).trim()
         : "";
   if (!actionName) {
     throw new Error(
       `[executor] action turn '${turn.name}' is missing actionName`,
     );
   }
-
   const action = runtime.actions.find(
     (candidate: Action) => candidate.name === actionName,
   );
@@ -2071,7 +2023,6 @@ async function executeActionTurn(
       `[executor] action turn '${turn.name}' requested unknown action '${actionName}'`,
     );
   }
-
   const text =
     typeof turn.text === "string"
       ? String(resolveScenarioTemplates(turn.text, currentNow))
@@ -2204,7 +2155,6 @@ async function executeActionTurn(
     durationMs: Date.now() - startedAt,
   };
 }
-
 async function executeApiTurn(args: {
   turn: ScenarioTurn;
   apiServer: ScenarioApiServer;
@@ -2251,7 +2201,6 @@ async function executeApiTurn(args: {
         variables: args.variables,
       })) as Record<string, string>)
     : undefined;
-
   const startedAt = Date.now();
   const timeoutMs =
     typeof args.turn.timeoutMs === "number"
@@ -2310,7 +2259,6 @@ async function executeApiTurn(args: {
       responseBody,
       explicitRedactions,
     );
-
     return {
       apiStatus: response.status,
       apiBody: responseBody,
@@ -2331,7 +2279,6 @@ async function executeApiTurn(args: {
     args.abortSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
-
 async function executeTickTurn(args: {
   turn: ScenarioTurn;
   apiServer: ScenarioApiServer;
@@ -2348,12 +2295,16 @@ async function executeTickTurn(args: {
     typeof args.turn.worker === "string" && args.turn.worker.trim().length > 0
       ? args.turn.worker.trim()
       : null;
-  if (worker !== "lifeops_scheduler") {
+  if (
+    worker !== "lifeops_scheduler" &&
+    worker !== "lifeops_reminders" &&
+    worker !== "scheduled_tasks" &&
+    worker !== "scheduling"
+  ) {
     throw new Error(
       `[executor] tick turn '${args.turn.name}' has unsupported worker '${worker ?? "(missing)"}'`,
     );
   }
-
   const options = await resolveTemplateValue({
     value: args.turn.options ?? {},
     apiServer: args.apiServer,
@@ -2368,19 +2319,89 @@ async function executeTickTurn(args: {
         })
       : undefined;
   const startedAt = Date.now();
-  const { executeLifeOpsSchedulerTask } = (await import(
-    "@elizaos/plugin-personal-assistant/plugin"
-  )) as {
-    executeLifeOpsSchedulerTask: (
-      runtime: AgentRuntime,
-      options: Record<string, unknown>,
-    ) => Promise<Record<string, unknown>>;
+  const resolvedOptions: Record<string, unknown> = {
+    ...(toRecord(options) ?? {}),
+    ...(now ? { now } : {}),
   };
+  const execution =
+    worker === "scheduling"
+      ? (async (): Promise<Record<string, unknown>> => {
+          const { runStandaloneSchedulingTick } = await import(
+            "@elizaos/plugin-scheduling"
+          );
+          return {
+            ...(await runStandaloneSchedulingTick(args.runtime, {
+              ...(now ? { now: new Date(now) } : {}),
+            })),
+          };
+        })()
+      : worker === "lifeops_reminders"
+        ? (async (): Promise<Record<string, unknown>> => {
+            const { executeLifeOpsReminderTask } = await import(
+              "@elizaos/plugin-personal-assistant/plugin"
+            );
+            const rawLimit = resolvedOptions.reminderLimit;
+            const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+            if (!Number.isInteger(limit) || limit < 1) {
+              throw new Error(
+                `[executor] tick turn '${args.turn.name}' reminderLimit must be a positive integer`,
+              );
+            }
+            return {
+              ...(await executeLifeOpsReminderTask(args.runtime, {
+                ...(now ? { now } : {}),
+                limit,
+              })),
+            };
+          })()
+        : worker === "scheduled_tasks"
+          ? (async (): Promise<Record<string, unknown>> => {
+              const { processDueScheduledTasks } = await import(
+                "@elizaos/plugin-personal-assistant/plugin"
+              );
+              const rawNow = resolvedOptions.now;
+              const scheduledNow =
+                rawNow instanceof Date
+                  ? new Date(rawNow)
+                  : typeof rawNow === "number"
+                    ? new Date(rawNow)
+                    : rawNow === undefined
+                      ? new Date()
+                      : new Date(String(rawNow));
+              if (!Number.isFinite(scheduledNow.getTime())) {
+                throw new Error(
+                  `[executor] tick turn '${args.turn.name}' has invalid scheduled-task now`,
+                );
+              }
+              const rawLimit = resolvedOptions.scheduledTaskLimit;
+              const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+              if (!Number.isInteger(limit) || limit < 1) {
+                throw new Error(
+                  `[executor] tick turn '${args.turn.name}' scheduledTaskLimit must be a positive integer`,
+                );
+              }
+              return {
+                ...(await processDueScheduledTasks({
+                  runtime: args.runtime,
+                  agentId: args.runtime.agentId,
+                  now: scheduledNow,
+                  limit,
+                })),
+              };
+            })()
+          : (async (): Promise<Record<string, unknown>> => {
+              const { executeLifeOpsSchedulerTask } = (await import(
+                "@elizaos/plugin-personal-assistant/plugin"
+              )) as {
+                executeLifeOpsSchedulerTask: (
+                  runtime: AgentRuntime,
+                  options: Record<string, unknown>,
+                ) => Promise<Record<string, unknown>>;
+              };
+              return executeLifeOpsSchedulerTask(args.runtime, resolvedOptions);
+            })();
   const result = await withTimeout(
-    executeLifeOpsSchedulerTask(args.runtime, {
-      ...(toRecord(options) ?? {}),
-      ...(now ? { now } : {}),
-    }),
+    execution,
     typeof args.turn.timeoutMs === "number"
       ? args.turn.timeoutMs
       : args.turnTimeoutMs,
@@ -2394,7 +2415,6 @@ async function executeTickTurn(args: {
     durationMs: Date.now() - startedAt,
   };
 }
-
 async function executeWaitTurn(
   turn: ScenarioTurn,
   turnTimeoutMs: number,
@@ -2478,11 +2498,9 @@ async function executeWaitTurn(
     durationMs: Date.now() - startedAt,
   };
 }
-
 function turnUsesStatusResponse(turnKind: string): boolean {
   return turnKind === "api" || turnKind === "tick" || turnKind === "wait";
 }
-
 interface TurnAssertionResult {
   judgment?: JudgeResult;
   judgeFailure?: JudgeEvidence;
@@ -2490,7 +2508,6 @@ interface TurnAssertionResult {
   /** Numeric `responseJudge` score when the turn ran an LLM judge (#8795). */
   judgeScore?: number;
 }
-
 async function runTurnAssertions(
   turn: ScenarioTurn,
   execution: ExecutedTurn,
@@ -2502,13 +2519,11 @@ async function runTurnAssertions(
   let judgment: JudgeResult | undefined;
   let judgeFailure: JudgeEvidence | undefined;
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
-
   if (execution.syntheticFailure === true) {
     failures.push(
       "runtimeFailureReply: the runtime returned a synthetic model/runtime failure reply (rate-limit, auth, credits, or generic apology); this cannot satisfy scenario evidence",
     );
   }
-
   if (typeof turn.assertResponse === "function") {
     const result = turnUsesStatusResponse(kind)
       ? await (
@@ -2521,9 +2536,12 @@ async function runTurnAssertions(
       failures.push(`assertResponse: ${result}`);
     }
   }
-
   if (turnUsesStatusResponse(kind)) {
-    const expectedStatus = (turn as { expectedStatus: number }).expectedStatus;
+    const expectedStatus = (
+      turn as {
+        expectedStatus: number;
+      }
+    ).expectedStatus;
     if (
       typeof expectedStatus === "number" &&
       execution.statusCode !== expectedStatus
@@ -2533,7 +2551,6 @@ async function runTurnAssertions(
       );
     }
   }
-
   if (kind === "voice") {
     // A voice turn fails when the scored run regressed or silently skipped.
     // Optional/manual voice coverage must opt in with allowVoiceSkip.
@@ -2544,16 +2561,18 @@ async function runTurnAssertions(
       ),
     );
   }
-
   if (typeof turn.assertTurn === "function") {
     const result = await turn.assertTurn(execution);
     if (typeof result === "string" && result.length > 0) {
       failures.push(`assertTurn: ${result}`);
     }
   }
-
   const expectedActions = stringList(
-    (turn as { expectedActions?: unknown }).expectedActions,
+    (
+      turn as {
+        expectedActions?: unknown;
+      }
+    ).expectedActions,
   );
   if (expectedActions.length > 0) {
     const realActions = execution.actionsCalled.filter(
@@ -2573,16 +2592,16 @@ async function runTurnAssertions(
           ? ""
           : `; captured actions: [${capturedActionNames}]`;
       failures.push(
-        `expectedActions: expected action in [${expectedActions.join(
-          ",",
-        )}], saw actions [${realActionNames}]${capturedDetail}`,
+        `expectedActions: expected action in [${expectedActions.join(",")}], saw actions [${realActionNames}]${capturedDetail}`,
       );
     }
   }
-
   // responseIncludesAny / responseIncludesAll / responseExcludes / forbiddenActions (inline)
-  const includesAny = (turn as { responseIncludesAny?: unknown })
-    .responseIncludesAny;
+  const includesAny = (
+    turn as {
+      responseIncludesAny?: unknown;
+    }
+  ).responseIncludesAny;
   if (Array.isArray(includesAny) && includesAny.length > 0) {
     const text = execution.responseText ?? "";
     const ok = includesAny.some((pattern) =>
@@ -2590,14 +2609,15 @@ async function runTurnAssertions(
     );
     if (!ok) {
       failures.push(
-        `responseIncludesAny: expected response to include any of [${includesAny.join(
-          ",",
-        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+        `responseIncludesAny: expected response to include any of [${includesAny.join(",")}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );
     }
   }
-  const includesAll = (turn as { responseIncludesAll?: unknown })
-    .responseIncludesAll;
+  const includesAll = (
+    turn as {
+      responseIncludesAll?: unknown;
+    }
+  ).responseIncludesAll;
   if (Array.isArray(includesAll) && includesAll.length > 0) {
     const text = execution.responseText ?? "";
     const missing = includesAll.filter(
@@ -2605,15 +2625,15 @@ async function runTurnAssertions(
     );
     if (missing.length > 0) {
       failures.push(
-        `responseIncludesAll: expected response to include all of [${includesAll.join(
-          ",",
-        )}], missing [${missing.join(",")}], saw ${JSON.stringify(
-          execution.responseText ?? "",
-        )}`,
+        `responseIncludesAll: expected response to include all of [${includesAll.join(",")}], missing [${missing.join(",")}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );
     }
   }
-  const excludes = (turn as { responseExcludes?: unknown }).responseExcludes;
+  const excludes = (
+    turn as {
+      responseExcludes?: unknown;
+    }
+  ).responseExcludes;
   if (Array.isArray(excludes) && excludes.length > 0) {
     const text = execution.responseText ?? "";
     const hits = excludes.filter((pattern) =>
@@ -2621,13 +2641,15 @@ async function runTurnAssertions(
     );
     if (hits.length > 0) {
       failures.push(
-        `responseExcludes: response included forbidden pattern(s) [${hits.join(
-          ",",
-        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+        `responseExcludes: response included forbidden pattern(s) [${hits.join(",")}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );
     }
   }
-  const forbidden = (turn as { forbiddenActions?: unknown }).forbiddenActions;
+  const forbidden = (
+    turn as {
+      forbiddenActions?: unknown;
+    }
+  ).forbiddenActions;
   if (Array.isArray(forbidden) && forbidden.length > 0) {
     const hits = execution.actionsCalled.filter((a) =>
       forbidden.includes(a.actionName),
@@ -2639,13 +2661,25 @@ async function runTurnAssertions(
     }
   }
   const plannerIncludesAll = toTurnMatcherArray(
-    (turn as { plannerIncludesAll?: unknown }).plannerIncludesAll,
+    (
+      turn as {
+        plannerIncludesAll?: unknown;
+      }
+    ).plannerIncludesAll,
   );
   const plannerIncludesAny = toTurnMatcherArray(
-    (turn as { plannerIncludesAny?: unknown }).plannerIncludesAny,
+    (
+      turn as {
+        plannerIncludesAny?: unknown;
+      }
+    ).plannerIncludesAny,
   );
   const plannerExcludes = toTurnMatcherArray(
-    (turn as { plannerExcludes?: unknown }).plannerExcludes,
+    (
+      turn as {
+        plannerExcludes?: unknown;
+      }
+    ).plannerExcludes,
   );
   if (
     plannerIncludesAll.length > 0 ||
@@ -2660,9 +2694,7 @@ async function runTurnAssertions(
       );
       if (missing.length > 0) {
         failures.push(
-          `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(
-            missing[0] as TurnMatcher,
-          )}, saw ${plannerEvidence}`,
+          `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(missing[0] as TurnMatcher)}, saw ${plannerEvidence}`,
         );
       }
     }
@@ -2672,9 +2704,7 @@ async function runTurnAssertions(
       );
       if (!ok) {
         failures.push(
-          `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(
-            plannerIncludesAny,
-          )}], saw ${plannerEvidence}`,
+          `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(plannerIncludesAny)}], saw ${plannerEvidence}`,
         );
       }
     }
@@ -2684,14 +2714,11 @@ async function runTurnAssertions(
       );
       if (hits.length > 0) {
         failures.push(
-          `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(
-            hits,
-          )}], saw ${plannerEvidence}`,
+          `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(hits)}], saw ${plannerEvidence}`,
         );
       }
     }
   }
-
   if (turn.responseJudge) {
     const rubric = turn.responseJudge as ScenarioJudgeRubric;
     const threshold = rubric.minimumScore ?? minJudgeScore;
@@ -2716,7 +2743,6 @@ async function runTurnAssertions(
       );
     }
   }
-
   return {
     failures,
     judgment,
@@ -2724,7 +2750,6 @@ async function runTurnAssertions(
     ...(judgeScore !== undefined ? { judgeScore } : {}),
   };
 }
-
 async function runJudgeRubricFinalCheck(
   check: ScenarioFinalCheck,
   scenario: ScenarioDefinition,
@@ -2778,7 +2803,6 @@ async function runJudgeRubricFinalCheck(
     };
   }
 }
-
 async function runObservedScenario(
   scenario: ScenarioDefinition,
   runtime: AgentRuntime,
@@ -2802,7 +2826,6 @@ async function runObservedScenario(
     stateTransitions: [],
     artifacts: [],
   };
-
   const report: ScenarioReport = {
     id: scenario.id,
     title: scenario.title,
@@ -2940,7 +2963,6 @@ async function runObservedScenario(
   // responseJudge + judgeRubric final checks). The minimum — the binding
   // quality constraint — is serialized as report.judgeScore (#8795).
   const judgeScores: number[] = [];
-
   let interceptor = attachInterceptor(runtime);
   const rooms = resolveScenarioRooms(scenario);
   const primaryRoom = getDefaultScenarioRoom(rooms);
@@ -2996,7 +3018,6 @@ async function runObservedScenario(
       opts.worldId,
     );
     await resetSharedSchedulingState(runtime);
-
     runtime.setSetting(
       "ELIZA_ADMIN_ENTITY_ID",
       primaryRoom.canonicalEntityId,
@@ -3042,7 +3063,6 @@ async function runObservedScenario(
       }
       return existing;
     }) as AgentRuntime["getService"];
-
     for (const room of rooms) {
       await runtime.ensureConnection({
         entityId: room.userId,
@@ -3055,7 +3075,6 @@ async function runObservedScenario(
       });
     }
     await establishScenarioIdentityTopology(runtime, scenario.id, rooms);
-
     const seedResult = await runCustomSeeds(scenario, runtime, ctx, logicalNow);
     logicalNow = seedResult.now;
     variables.baseNow = new Date(logicalNow);
@@ -3066,7 +3085,6 @@ async function runObservedScenario(
       report.durationMs = Date.now() - startedAt;
       return report;
     }
-
     // Seeds may register fixture plugins, so verify both requirement classes
     // after seeding while importing only the explicitly declared packages.
     const requiredPluginPackages = resolveRequiredPluginPackages(scenario);
@@ -3109,14 +3127,12 @@ async function runObservedScenario(
       return report;
     }
     await waitForScenarioRequiredServices(runtime, scenario, opts.abortSignal);
-
     // Re-attach interceptor so any actions registered by seed plugins are wrapped.
     interceptor.detach();
     interceptor = attachInterceptor(runtime);
     apiServer = await startScenarioApiServer(runtime);
     const activeApiServer = apiServer;
     ctx.apiBaseUrl = activeApiServer.baseUrl;
-
     for (const turn of scenario.turns) {
       const kind = typeof turn.kind === "string" ? turn.kind : "message";
       if (
@@ -3141,7 +3157,6 @@ async function runObservedScenario(
         report.status = "failed";
         continue;
       }
-
       const actionsBefore = interceptor.actions.length;
       const execution: ExecutedTurn =
         kind === "voice"
@@ -3239,7 +3254,6 @@ async function runObservedScenario(
       }
       execution.actionsCalled = actionsThisTurn;
       ctx.turns.push(execution);
-
       const {
         failures: failedAssertions,
         judgeScore: turnJudgeScore,
@@ -3297,7 +3311,6 @@ async function runObservedScenario(
         }
       }
     }
-
     ctx.actionsCalled = interceptor.actions;
     ctx.approvalRequests = interceptor.approvalRequests;
     ctx.connectorDispatches = interceptor.connectorDispatches;
@@ -3305,14 +3318,26 @@ async function runObservedScenario(
     ctx.stateTransitions = interceptor.stateTransitions;
     ctx.artifacts = interceptor.artifacts;
     report.actionsCalled = [...interceptor.actions];
-
     const finalChecks = Array.isArray(
-      (scenario as { finalChecks?: unknown }).finalChecks,
+      (
+        scenario as {
+          finalChecks?: unknown;
+        }
+      ).finalChecks,
     )
-      ? ((scenario as { finalChecks: ScenarioFinalCheck[] }).finalChecks ?? [])
+      ? ((
+          scenario as {
+            finalChecks: ScenarioFinalCheck[];
+          }
+        ).finalChecks ?? [])
       : [];
     for (const check of finalChecks) {
-      const type = (check as { type?: string }).type ?? "unknown";
+      const type =
+        (
+          check as {
+            type?: string;
+          }
+        ).type ?? "unknown";
       let result: FinalCheckReport;
       if (type === "judgeRubric") {
         result = await runJudgeRubricFinalCheck(
@@ -3414,7 +3439,6 @@ async function runObservedScenario(
     actionScope.restore();
     report.durationMs = Date.now() - startedAt;
   }
-
   if (judgeScores.length > 0) {
     report.judgeScore = Math.min(...judgeScores);
     // Identity evidence is separate from transport configuration and fixture scoring.
@@ -3458,7 +3482,6 @@ async function runObservedScenario(
   }
   return report;
 }
-
 /** Isolate actor/judge observations for one scenario and always detach them. */
 export async function runScenario(
   scenario: ScenarioDefinition,

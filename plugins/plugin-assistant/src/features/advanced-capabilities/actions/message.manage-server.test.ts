@@ -6,16 +6,20 @@
  * Deterministic mock runtime and connectors — no live model, no DB.
  */
 
-import { createMockRuntime } from "@elizaos/testing";
-import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,
   IAgentRuntime,
   Memory,
   MessageConnectorManageServerAuthorization,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../../../packages/core/src/utils.ts";
+} from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  stringToUuid,
+  validateToolArgs,
+} from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
+import { describe, expect, it, vi } from "vitest";
 import { inferOp, messageAction } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
@@ -189,6 +193,45 @@ describe("MESSAGE op inference for manage_server", () => {
 });
 
 describe("MESSAGE op=manage_server routing", () => {
+  it.each([true, false])(
+    "dispatches the promoted server target through destination authorization (allowed=%s)",
+    async (allowed) => {
+      const { runtime, calls } = harness({
+        authorizedEntityId: allowed ? (SENDER_ID as UUID) : null,
+      });
+      const action = promoteSubactionsToActions(messageAction).find(
+        (candidate) => candidate.name === "MESSAGE_MANAGE_SERVER",
+      );
+      if (!action) throw new Error("Missing promoted server operation");
+      const validated = validateToolArgs(action, {
+        operation: "create_channel",
+        source: "discord",
+        accountId: ACCOUNT_ID,
+        serverId: "223456789012345678",
+        name: "destination-channel",
+      });
+      expect(validated.errors).toEqual([]);
+      if (!validated.valid || !validated.args)
+        throw new Error("Invalid target");
+      const result = await action.handler(runtime, baseMessage, undefined, {
+        parameters: validated.args,
+      });
+      expect(result?.success).toBe(allowed);
+      if (allowed) {
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({
+          serverId: "223456789012345678",
+          authorization: { destinationWorldId: DESTINATION_WORLD_ID },
+        });
+      } else {
+        expect(calls).toEqual([]);
+        expect(result?.data?.error).toBe(
+          "MANAGE_SERVER_DESTINATION_NOT_AUTHORIZED",
+        );
+      }
+    },
+  );
+
   it("forwards an explicit operation with bounded params to the connector", async () => {
     const { runtime, calls } = harness();
     const result = await invoke(runtime, {

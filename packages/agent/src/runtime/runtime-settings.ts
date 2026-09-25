@@ -8,13 +8,14 @@ import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
 } from "@elizaos/auth/auth/types";
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
+  type IAgentRuntime,
   resolveServiceRoutingInConfig,
   type ServiceRouteConfig,
-} from "@elizaos/shared";
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
@@ -125,7 +126,7 @@ export function hydrateConfigEnvForBoot(
   }
 }
 
-/** Explicit direct text pins override legacy provider settings for this runtime only. */
+/** Explicit direct text routing overrides legacy provider settings for this runtime only. */
 function directTextModelSettings(
   route: ServiceRouteConfig | undefined,
   brainProviderName: string | undefined,
@@ -156,6 +157,7 @@ function directTextModelSettings(
   // durable config aliases behind. Response/media Cloud fields have no direct
   // text-handler counterpart and retain their existing semantics.
   const pins = {
+    ELIZA_PROVIDER: route.backend,
     OPENAI_NANO_MODEL: route.nanoModel,
     OPENAI_SMALL_MODEL: route.smallModel,
     OPENAI_MEDIUM_MODEL: route.mediumModel,
@@ -181,11 +183,15 @@ export function reconcileDirectTextModelSettings(
 ): void {
   const brain = env.ELIZA_BRAIN_PROVIDER?.trim() || undefined;
   const before = directTextModelSettings(
-    resolveServiceRoutingInConfig(previous)?.llmText,
+    Object.hasOwn(previous, "serviceRouting")
+      ? resolveServiceRoutingInConfig(previous)?.llmText
+      : undefined,
     brain,
   );
   const after = directTextModelSettings(
-    resolveServiceRoutingInConfig(current)?.llmText,
+    Object.hasOwn(current, "serviceRouting")
+      ? resolveServiceRoutingInConfig(current)?.llmText
+      : undefined,
     brain,
   );
   const explicit = collectConfigEnvVars(current);

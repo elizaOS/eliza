@@ -7,7 +7,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud/domain-contract";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 export const DEFAULT_DIRECT_CLOUD_BASE_URL =
   ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin;

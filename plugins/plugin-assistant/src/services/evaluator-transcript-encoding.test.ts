@@ -1,6 +1,7 @@
 /** Reconstruct model-facing evidence, including speaker and literal-content boundaries. */
+
+import { stringToUuid } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { stringToUuid } from "../../../../packages/core/src/utils.ts";
 import {
   type EvaluatorTranscriptRecord,
   encodeEvaluatorTranscript,

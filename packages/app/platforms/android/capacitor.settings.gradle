@@ -85,6 +85,9 @@ project(':elizaos-capacitor-location').projectDir = new File('../../../../plugin
 include ':elizaos-capacitor-mobile-signals'
 project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../../plugins/plugin-native-mobile-signals/android')
 
+include ':elizaos-capacitor-network-policy'
+project(':elizaos-capacitor-network-policy').projectDir = new File('../../../../plugins/plugin-native-network-policy/android')
+
 include ':elizaos-capacitor-secure-store'
 project(':elizaos-capacitor-secure-store').projectDir = new File('../../../../plugins/plugin-native-secure-store/android')
 
@@ -99,3 +102,18 @@ project(':elizaos-capacitor-talkmode').projectDir = new File('../../../../plugin
 
 include ':elizaos-capacitor-websiteblocker'
 project(':elizaos-capacitor-websiteblocker').projectDir = new File('../../../../plugins/plugin-native-websiteblocker/android')
+
+include ':elizaos-plugin-native-contacts'
+project(':elizaos-plugin-native-contacts').projectDir = new File('../../../../plugins/plugin-native-contacts/android')
+
+include ':elizaos-plugin-native-inference'
+project(':elizaos-plugin-native-inference').projectDir = new File('../../../../plugins/plugin-native-inference/android')
+
+include ':elizaos-plugin-native-messages'
+project(':elizaos-plugin-native-messages').projectDir = new File('../../../../plugins/plugin-native-messages/android')
+
+include ':elizaos-plugin-native-phone'
+project(':elizaos-plugin-native-phone').projectDir = new File('../../../../plugins/plugin-native-phone/android')
+
+include ':elizaos-plugin-native-wifi'
+project(':elizaos-plugin-native-wifi').projectDir = new File('../../../../plugins/plugin-native-wifi/android')

@@ -174,7 +174,7 @@ if [[ -z "${ELIZA_MTP_CMAKE_FLAGS:-}" ]]; then
 fi
 
 if [[ "${ROCM_BUILD_FORK:-1}" != "0" ]]; then
-    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.mjs" --target "$TARGET"
+    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.ts" --target "$TARGET"
 fi
 
 if [[ "${ROCM_SKIP_GRAPH_SMOKE:-0}" == "1" ]]; then

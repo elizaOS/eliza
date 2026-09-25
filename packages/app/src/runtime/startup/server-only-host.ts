@@ -4,15 +4,14 @@
  * idempotent resource shutdown without owning process signals or exit policy.
  */
 import process from "node:process";
-import type { AgentRuntime } from "@elizaos/core";
-import { formatError, logger } from "@elizaos/core";
+import { type AgentRuntime, formatError, logger } from "@elizaos/core";
 import {
-  readAliasedEnv,
   resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncResolvedApiPort,
-} from "@elizaos/shared";
+} from "@elizaos/core/runtime-env";
+import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {
   isRuntimeBootDeferred,
   registerDeferredRuntimeBoot,
@@ -22,19 +21,16 @@ import {
 import { startApiServer } from "../../api/server.js";
 import { invalidateCorsAllowedPorts } from "../../api/server-cors.js";
 import { bootLap } from "../../boot-profile.js";
-import type { ServerOnlyHost } from "../server-only-process.js";
+import { type ServerOnlyHost } from "../server-only-process.js";
 import {
   type AppStartupPhase,
   AppStartupStateMachine,
 } from "../startup-state.js";
-
 export interface ServerOnlyHostOptions {
   localAgentMode?: boolean;
   onServerOnlyHostReady?: (host: ServerOnlyHost) => void;
 }
-
 type PostReadyPhase = "pending" | "complete" | "failed";
-
 export interface StartServerOnlyHostOptions {
   options: ServerOnlyHostOptions;
   bootRuntime: (
@@ -43,7 +39,6 @@ export interface StartServerOnlyHostOptions {
   stopRuntime: (runtime: AgentRuntime, reason: string) => Promise<unknown>;
   stopWithoutRuntime: () => void;
 }
-
 export async function startServerOnlyHost({
   options,
   bootRuntime,
@@ -76,11 +71,9 @@ export async function startServerOnlyHost({
           : "degraded",
     );
   };
-
   // The caller owns upstream boot and app repair; this host owns when a
   // repaired runtime becomes visible to the HTTP layer.
   const bootServerOnlyRuntime = () => bootRuntime(publishPostReadyPhase);
-
   // Fresh-install gate, decided BEFORE the API binds so the onRestart
   // closure below can never race an in-flight deferral decision: on a
   // genuinely-fresh install (the GUI will run onboarding; no provider env
@@ -89,7 +82,6 @@ export async function startServerOnlyHost({
   // first-run commit instead (see ../api/deferred-runtime-boot.ts).
   const deferRuntimeBootUntilOnboarding =
     shouldDeferRuntimeBootUntilOnboarding();
-
   // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
   // renderer's hardcoded API base; honor it when present. CLI/server-only
   // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
@@ -154,7 +146,6 @@ export async function startServerOnlyHost({
       bootLap("startEliza:deferred runtime booted + ready:true");
     });
   }
-
   bootLap(
     "startEliza:before startApiServer (config/registry/embedding setup done)",
   );
@@ -221,7 +212,6 @@ export async function startServerOnlyHost({
     publishStartup("failed");
     throw apiErr;
   }
-
   if (!skipApiListen) {
     // WHY: `startApiServer` may bind a different port than requested (busy
     // socket, upstream policy). Shells, scripts, and follow-up code reading
@@ -235,7 +225,6 @@ export async function startServerOnlyHost({
     // CORS caches resolved ports, so a rebound listener must invalidate the
     // cache before any renderer request is evaluated.
     invalidateCorsAllowedPorts();
-
     logger.info(
       `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
     );
@@ -247,7 +236,6 @@ export async function startServerOnlyHost({
     );
     bootLap("startEliza:route kernel ready (IPC mode, no TCP bind)");
   }
-
   if (deferRuntimeBootUntilOnboarding) {
     // Fresh install: no runtime until onboarding commits. The API server
     // already serves everything onboarding needs (first-run status/options,
@@ -286,11 +274,9 @@ export async function startServerOnlyHost({
     publishPostReadyPhase(postReadyPhase);
     bootLap("startEliza:runtime booted + ready:true");
   }
-
   logger.info("[eliza] Server running. Press Ctrl+C to stop.");
-
   const { buildSandboxRegistryFromEnv } = await import(
-    "@elizaos/shared/sandbox-registry"
+    "@elizaos/agent/sandbox-registry"
   );
   const sandboxRegistry = buildSandboxRegistryFromEnv();
   if (sandboxRegistry) {
@@ -306,9 +292,8 @@ export async function startServerOnlyHost({
         phase: "register",
       });
     }
-    sandboxRegistry.startHeartbeat(30_000);
+    sandboxRegistry.startHeartbeat(30000);
   }
-
   let isClosed = false;
   const close = async (): Promise<void> => {
     if (isClosed) return;

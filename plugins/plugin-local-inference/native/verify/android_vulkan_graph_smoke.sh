@@ -176,7 +176,7 @@ if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   rm -rf "$LLAMA_DIR/build/$TARGET"
   ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
   ELIZA_MTP_SKIP_DRAFTER_ARCH_PATCH=1 \
-    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.mjs" \
+    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.ts" \
       --target "$TARGET" \
       --cache-dir "$LLAMA_DIR" \
       --jobs "$MTP_BUILD_JOBS"
@@ -342,7 +342,7 @@ if [[ "${ELIZA_MTP_SKIP_REBUILD_WITH_EVIDENCE:-0}" != "1" && "${ELIZA_MTP_SKIP_B
   rm -rf "$LLAMA_DIR/build/$TARGET"
   ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
   ELIZA_MTP_SKIP_DRAFTER_ARCH_PATCH=1 \
-    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.mjs" \
+    node "$REPO_ROOT/packages/app/scripts/build-llama-cpp-mtp.ts" \
     --target "$TARGET" \
     --cache-dir "$LLAMA_DIR" \
     --jobs "$MTP_BUILD_JOBS"

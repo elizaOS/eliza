@@ -3,20 +3,20 @@
  * P-256 keys in the operating-system credential service. Only public identity
  * data can leave this module.
  */
+
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import {
 	canonicalizeRemoteControlValue,
 	isRemoteTargetPublicIdentity,
 	REMOTE_CONTROL_PROTOCOL_VERSION,
 	type RemoteTargetPublicIdentity,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/remote-control";
 import { resolveCanonicalStateDir } from "../../../src/security/agent-vault-id";
 import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";
 
 const TARGET_VAULT_KIND = "runtime.agent_profiles" as const;
 const HOST_TOKEN_PATTERN = /^rhost_v1_[A-Za-z0-9_-]{43}$/;
-
 export interface PendingRemoteTargetVaultRecord {
 	version: 1;
 	status: "pending";
@@ -29,7 +29,6 @@ export interface PendingRemoteTargetVaultRecord {
 	encryptionPrivateKeyJwk: JsonWebKey;
 	createdAt: number;
 }
-
 export interface EnrolledRemoteTargetVaultRecord {
 	version: 1;
 	status: "enrolled";
@@ -44,15 +43,12 @@ export interface EnrolledRemoteTargetVaultRecord {
 		loginServer: string;
 	};
 }
-
 type RemoteTargetVaultRecord =
 	| PendingRemoteTargetVaultRecord
 	| EnrolledRemoteTargetVaultRecord;
-
 function isIdentifier(value: unknown): value is string {
 	return typeof value === "string" && /^[A-Za-z0-9._:-]{1,256}$/.test(value);
 }
-
 function isPrivateP256Jwk(value: unknown): value is JsonWebKey {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return false;
@@ -65,18 +61,15 @@ function isPrivateP256Jwk(value: unknown): value is JsonWebKey {
 		typeof Reflect.get(value, "d") === "string"
 	);
 }
-
 function publicJwk(privateKey: JsonWebKey): JsonWebKey {
 	const { d: _privateScalar, ...publicFields } = privateKey;
 	return publicFields;
 }
-
 function generatePrivateP256Jwk(): JsonWebKey {
 	return generateKeyPairSync("ec", {
 		namedCurve: "prime256v1",
 	}).privateKey.export({ format: "jwk" });
 }
-
 function keyId(signing: JsonWebKey, encryption: JsonWebKey): string {
 	return `p256:${createHash("sha256")
 		.update(
@@ -87,7 +80,6 @@ function keyId(signing: JsonWebKey, encryption: JsonWebKey): string {
 		)
 		.digest("base64url")}`;
 }
-
 function canonicalApiBase(value: string): string {
 	const url = new URL(value);
 	const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
@@ -103,7 +95,6 @@ function canonicalApiBase(value: string): string {
 	url.pathname = url.pathname.replace(/\/+$/, "");
 	return url.toString().replace(/\/$/, "");
 }
-
 function canonicalManagedNetworkLoginServer(value: string): string {
 	const canonical = canonicalApiBase(value);
 	const url = new URL(canonical);
@@ -112,7 +103,6 @@ function canonicalManagedNetworkLoginServer(value: string): string {
 	}
 	return url.origin;
 }
-
 function isManagedNetworkRecord(value: unknown): boolean {
 	if (value === undefined) return true;
 	try {
@@ -135,7 +125,6 @@ function isManagedNetworkRecord(value: unknown): boolean {
 		return false;
 	}
 }
-
 export function remoteTargetVaultId(
 	canonicalStateDir = resolveCanonicalStateDir(),
 ): string {
@@ -143,7 +132,6 @@ export function remoteTargetVaultId(
 		.update(`linux-target-v1\0${canonicalStateDir}`)
 		.digest("hex")}`;
 }
-
 function parseRecord(raw: string): RemoteTargetVaultRecord {
 	let value: unknown;
 	try {
@@ -220,15 +208,12 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
 	}
 	return enrolled;
 }
-
 export class RemoteTargetVault {
 	private mutationTail: Promise<void> = Promise.resolve();
-
 	constructor(
 		private readonly secureStore: PlatformSecureStore = createNodePlatformSecureStore(),
 		private readonly vaultId = remoteTargetVaultId(),
 	) {}
-
 	private async serialize<T>(operation: () => Promise<T>): Promise<T> {
 		const predecessor = this.mutationTail;
 		let release!: () => void;
@@ -247,7 +232,6 @@ export class RemoteTargetVault {
 			release();
 		}
 	}
-
 	async load(): Promise<RemoteTargetVaultRecord | null> {
 		const result = await this.secureStore.get(this.vaultId, TARGET_VAULT_KIND);
 		if (!result.ok) {
@@ -256,7 +240,6 @@ export class RemoteTargetVault {
 		}
 		return parseRecord(result.value);
 	}
-
 	async prepare(input: {
 		ownerId: string;
 		displayName: string;
@@ -309,7 +292,6 @@ export class RemoteTargetVault {
 			return pending;
 		});
 	}
-
 	async commitEnrollment(input: {
 		apiBaseUrl: string;
 		hostId: string;
@@ -373,7 +355,6 @@ export class RemoteTargetVault {
 			return enrolled;
 		});
 	}
-
 	async recordManagedNetwork(input: {
 		hostId: string;
 		hostname: string;
@@ -411,7 +392,6 @@ export class RemoteTargetVault {
 			return updated;
 		});
 	}
-
 	async delete(): Promise<boolean> {
 		return this.serialize(async () => {
 			const result = await this.secureStore.delete(
@@ -425,7 +405,6 @@ export class RemoteTargetVault {
 		});
 	}
 }
-
 export const remoteTargetVaultInternals = {
 	HOST_TOKEN_PATTERN,
 	keyId,

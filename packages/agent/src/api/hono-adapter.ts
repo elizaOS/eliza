@@ -1,4 +1,15 @@
-import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import {
+  type AccessContext,
+  getHttpRuntime,
+  type IAgentRuntime,
+  type Route,
+  type RouteHandlerResult,
+} from "@elizaos/core";
+
+import { type Context, Hono } from "hono";
+import { stream as honoStream } from "hono/streaming";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { dispatchRoute } from "./dispatch-route.ts";
 /**
  * Hono adapter for plugin routes.
  *
@@ -11,15 +22,6 @@ import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
  * covers any plugin route registered via `runtime.routes`. The hardcoded
  * handlers will be migrated onto `runtime.routes` in later phases.
  */
-
-import type { AccessContext, IAgentRuntime } from "@elizaos/core";
-import type { Route, RouteHandlerResult } from "@elizaos/shared";
-import { type Context, Hono } from "hono";
-import { stream as honoStream } from "hono/streaming";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-
-import { dispatchRoute } from "./dispatch-route.ts";
-
 export interface HonoAdapterOptions {
   /** Native transport provenance, supplied only by the authenticated host adapter. */
   inProcess?: (req: Request) => boolean;
@@ -34,7 +36,6 @@ export interface HonoAdapterOptions {
    */
   resolveAccessContext?: (req: Request) => AccessContext | undefined;
 }
-
 function honoMethod(type: Route["type"]): string | null {
   switch (type) {
     case "GET":
@@ -51,7 +52,6 @@ function honoMethod(type: Route["type"]): string | null {
       return null;
   }
 }
-
 /**
  * Translate an elizaOS route path (which uses `:param` and `:rest*` tokens)
  * to Hono's path syntax. Hono supports `:param` directly; trailing `*` becomes
@@ -69,11 +69,13 @@ function toHonoPath(path: string): string {
     })
     .join("/");
 }
-
 async function readBodyForDispatch(
   request: Request,
   method: string,
-): Promise<{ body: unknown; rawBody?: string }> {
+): Promise<{
+  body: unknown;
+  rawBody?: string;
+}> {
   if (method === "GET" || method === "HEAD") {
     return { body: undefined };
   }
@@ -92,7 +94,6 @@ async function readBodyForDispatch(
   const text = await request.text();
   return { body: text, rawBody: text };
 }
-
 function headersToRecord(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {};
   headers.forEach((value, key) => {
@@ -100,7 +101,6 @@ function headersToRecord(headers: Headers): Record<string, string> {
   });
   return out;
 }
-
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of url.searchParams.keys()) {
@@ -109,7 +109,6 @@ function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   }
   return out;
 }
-
 /**
  * Mount every `runtime.routes` entry onto the given Hono app.
  *
@@ -126,9 +125,7 @@ export function mountRoutesOnHono(
   for (const route of routes as Route[]) {
     if (!honoMethod(route.type)) continue;
     if (!route.handler && !route.routeHandler) continue;
-
     const honoPath = toHonoPath(route.path);
-
     const honoHandler = async (ctx: Context): Promise<Response> => {
       const request = ctx.req.raw;
       const url = new URL(request.url);
@@ -158,13 +155,11 @@ export function mountRoutesOnHono(
           },
         }),
       );
-
       if (result === null) {
         // Should be unreachable — Hono only invokes this handler on a match.
         void params;
         return new Response("Not Found", { status: 404 });
       }
-
       const headers = new Headers(result.headers ?? {});
       if (result.stream) {
         const resultStream = result.stream;
@@ -183,7 +178,6 @@ export function mountRoutesOnHono(
           await stream.close();
         });
       }
-
       let bodyOut: BodyInit | null = null;
       if (result.body == null) {
         bodyOut = null;
@@ -205,7 +199,6 @@ export function mountRoutesOnHono(
       }
       return new Response(bodyOut, { status: result.status, headers });
     };
-
     switch (route.type) {
       case "GET":
         app.get(honoPath, honoHandler);
@@ -225,7 +218,6 @@ export function mountRoutesOnHono(
     }
   }
 }
-
 /** Convenience: build a new Hono app already wired to the runtime. */
 export function buildHonoAppForRuntime(
   runtime: IAgentRuntime,

@@ -18,7 +18,7 @@ import {
   bindAuditOcrControls,
   parseAuditReport,
 } from "../../scripts/lib/audit-capture-manifest";
-import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
+import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.ts";
 import {
   authorizedShots,
   type ReportEntry,
@@ -449,7 +449,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     );
   });
 
-  it("invalidates a missing-bundle exemption once that remote bundle loads", async () => {
+  it("rejects a retired view even when its remote bundle loads", async () => {
     const rows: ReportEntry[] = [
       {
         slug: "plugin-lifeops-live-test-gui",
@@ -472,7 +472,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     await expect(
       runOcrTriage(["--audit-dir", dir, "--ocr", join(dir, "ocr.ndjson")]),
     ).rejects.toThrow(
-      /exemption for plugin-lifeops-live-test-gui no longer applies.*real-dist/,
+      /No semantic OCR policy declared for audited view plugin-lifeops-live-test-gui/,
     );
   });
 
@@ -694,7 +694,7 @@ describe("audit runner cleanup", () => {
     const output = execFileSync(
       process.execPath,
       [
-        join(APP_DIR, "scripts", "run-ui-playwright.mjs"),
+        join(APP_DIR, "scripts", "run-ui-playwright.ts"),
         "--config",
         "playwright.ui-smoke.config.ts",
         "--project=audit-app",

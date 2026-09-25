@@ -3,10 +3,8 @@
  * share ingest, workbench, trajectories, database.
  */
 
-import type {
-  DatabaseProviderType,
-  PostInboxMessageRequest,
-} from "@elizaos/shared";
+import type { DatabaseProviderType } from "@elizaos/core/contracts/config";
+import type { PostInboxMessageRequest } from "@elizaos/core/contracts/inbox-routes";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import type {
@@ -20,6 +18,7 @@ import type {
   ChatTurnStatus,
   ConnectionTestResult,
   ContentBlock,
+  ContextInspectorResponse,
   Conversation,
   ConversationChannelType,
   ConversationGreeting,
@@ -106,7 +105,6 @@ type DocumentListOptions = {
    *  store, not the client's first page. `doc` groups pdf/text/file. */
   knowledgeFacet?: string;
 };
-
 type DocumentUploadRequest = {
   content: string;
   filename: string;
@@ -117,7 +115,6 @@ type DocumentUploadRequest = {
   scopedToEntityId?: string;
   addedFrom?: string;
 };
-
 type DocumentUrlUploadOptions = {
   includeImageDescriptions?: boolean;
   metadata?: Record<string, unknown>;
@@ -125,9 +122,7 @@ type DocumentUrlUploadOptions = {
   scope?: DocumentScope;
   scopedToEntityId?: string;
 };
-
 type DocumentSearchMode = "hybrid" | "vector" | "keyword";
-
 type DocumentSearchOptions = {
   threshold?: number;
   limit?: number;
@@ -143,16 +138,15 @@ type DocumentSearchOptions = {
   knowledgeFacet?: string;
   searchMode?: DocumentSearchMode;
 };
-
 type InboxMessagesOptions = {
   limit?: number;
   sources?: string[];
   roomId?: string;
   roomSource?: string;
 };
-
-type InboxChatsOptions = { sources?: string[] };
-
+type InboxChatsOptions = {
+  sources?: string[];
+};
 function setPositiveNumberParam(
   params: URLSearchParams,
   key: string,
@@ -160,7 +154,6 @@ function setPositiveNumberParam(
 ): void {
   if (typeof value === "number" && value > 0) params.set(key, String(value));
 }
-
 function setTruthyNumberParam(
   params: URLSearchParams,
   key: string,
@@ -168,7 +161,6 @@ function setTruthyNumberParam(
 ): void {
   if (value) params.set(key, String(value));
 }
-
 function setDefinedNumberParam(
   params: URLSearchParams,
   key: string,
@@ -176,7 +168,6 @@ function setDefinedNumberParam(
 ): void {
   if (value !== undefined) params.set(key, String(value));
 }
-
 function setNonEmptyStringParam(
   params: URLSearchParams,
   key: string,
@@ -184,7 +175,6 @@ function setNonEmptyStringParam(
 ): void {
   if (typeof value === "string" && value.length > 0) params.set(key, value);
 }
-
 function setTruthyStringParam(
   params: URLSearchParams,
   key: string,
@@ -192,20 +182,17 @@ function setTruthyStringParam(
 ): void {
   if (value) params.set(key, value);
 }
-
 function appendTagsParam(
   params: URLSearchParams,
   tags: string[] | undefined,
 ): void {
   for (const tag of tags ?? []) params.append("tag", tag);
 }
-
 function buildSourcesParams(sources: string[] | undefined): URLSearchParams {
   const params = new URLSearchParams();
   if (sources && sources.length > 0) params.set("sources", sources.join(","));
   return params;
 }
-
 function buildInboxMessagesParams(
   options: InboxMessagesOptions | undefined,
 ): URLSearchParams {
@@ -215,7 +202,6 @@ function buildInboxMessagesParams(
   setNonEmptyStringParam(params, "roomSource", options?.roomSource);
   return params;
 }
-
 function buildInboxMessagesRpcParams(
   options: InboxMessagesOptions | undefined,
 ): InboxMessagesOptions {
@@ -237,7 +223,6 @@ function buildInboxMessagesRpcParams(
   }
   return params;
 }
-
 function buildInboxChatsRpcParams(
   options: InboxChatsOptions | undefined,
 ): InboxChatsOptions {
@@ -245,7 +230,6 @@ function buildInboxChatsRpcParams(
     ? { sources: options.sources }
     : {};
 }
-
 function appendDocumentFilterParams(
   params: URLSearchParams,
   options: DocumentListOptions | DocumentSearchOptions | undefined,
@@ -260,7 +244,6 @@ function appendDocumentFilterParams(
   setTruthyStringParam(params, "knowledgeFacet", options?.knowledgeFacet);
   appendTagsParam(params, options?.tags);
 }
-
 function buildDocumentListParams(
   options: DocumentListOptions | undefined,
 ): URLSearchParams {
@@ -271,7 +254,6 @@ function buildDocumentListParams(
   appendDocumentFilterParams(params, options);
   return params;
 }
-
 function buildDocumentSearchParams(
   query: string,
   options: DocumentSearchOptions | undefined,
@@ -284,7 +266,6 @@ function buildDocumentSearchParams(
   appendDocumentFilterParams(params, options);
   return params;
 }
-
 function buildTrajectoryParams(
   options: TrajectoryListOptions | undefined,
 ): URLSearchParams {
@@ -301,11 +282,9 @@ function buildTrajectoryParams(
   setTruthyStringParam(params, "search", options?.search);
   return params;
 }
-
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-
 declare module "./client-base" {
   interface ElizaClient {
     sendChatRest(
@@ -339,9 +318,9 @@ declare module "./client-base" {
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
-    listConversations(options?: {
-      signal?: AbortSignal;
-    }): Promise<{ conversations: Conversation[] }>;
+    listConversations(options?: { signal?: AbortSignal }): Promise<{
+      conversations: Conversation[];
+    }>;
     createConversation(
       title?: string,
       options?: CreateConversationOptions,
@@ -371,7 +350,10 @@ declare module "./client-base" {
         /** Older-page size for the `before` cursor path. Server-clamped. */
         limit?: number;
       },
-    ): Promise<{ messages: ConversationMessage[]; hasMore?: boolean }>;
+    ): Promise<{
+      messages: ConversationMessage[];
+      hasMore?: boolean;
+    }>;
     /**
      * Keyword search across every conversation the user can see, ranked by
      * relevance then recency. Backs the chat message-search affordance.
@@ -407,7 +389,12 @@ declare module "./client-base" {
       roomId?: string;
       roomSource?: string;
     }): Promise<{
-      messages: Array<ConversationMessage & { roomId: string; source: string }>;
+      messages: Array<
+        ConversationMessage & {
+          roomId: string;
+          source: string;
+        }
+      >;
       count: number;
     }>;
     /**
@@ -415,7 +402,9 @@ declare module "./client-base" {
      * inbox messages for. Used by the inbox UI to build the
      * source filter chip list dynamically.
      */
-    getInboxSources(): Promise<{ sources: string[] }>;
+    getInboxSources(): Promise<{
+      sources: string[];
+    }>;
     /**
      * List every connector chat thread the agent participates in as
      * one sidebar-friendly row per external chat room. Each row carries
@@ -464,13 +453,21 @@ declare module "./client-base" {
     }>;
     sendInboxMessage(data: PostInboxMessageRequest): Promise<{
       ok: boolean;
-      message?: ConversationMessage & { roomId: string; source: string };
+      message?: ConversationMessage & {
+        roomId: string;
+        source: string;
+      };
     }>;
     truncateConversationMessages(
       id: string,
       messageId: string,
-      options?: { inclusive?: boolean },
-    ): Promise<{ ok: boolean; deletedCount: number }>;
+      options?: {
+        inclusive?: boolean;
+      },
+    ): Promise<{
+      ok: boolean;
+      deletedCount: number;
+    }>;
     /**
      * Delete a single message from a conversation and its backing memory row
      * (#13533). Persists across reloads — distinct from the local-only
@@ -479,7 +476,10 @@ declare module "./client-base" {
     deleteConversationMessage(
       id: string,
       messageId: string,
-    ): Promise<{ ok: boolean; deletedCount: number }>;
+    ): Promise<{
+      ok: boolean;
+      deletedCount: number;
+    }>;
     retryConversationReply(
       id: string,
       messageId: string,
@@ -577,7 +577,11 @@ declare module "./client-base" {
     abortConversationTurn(
       roomId: string,
       reason?: string,
-    ): Promise<{ aborted: boolean; roomId: string; reason: string }>;
+    ): Promise<{
+      aborted: boolean;
+      roomId: string;
+      reason: string;
+    }>;
     requestGreeting(
       id: string,
       lang?: string,
@@ -591,8 +595,12 @@ declare module "./client-base" {
     renameConversation(
       id: string,
       title: string,
-      options?: { generate?: boolean },
-    ): Promise<{ conversation: Conversation }>;
+      options?: {
+        generate?: boolean;
+      },
+    ): Promise<{
+      conversation: Conversation;
+    }>;
     updateConversation(
       id: string,
       data: {
@@ -600,17 +608,23 @@ declare module "./client-base" {
         generate?: boolean;
         metadata?: ConversationMetadata | null;
       },
-    ): Promise<{ conversation: Conversation }>;
-    deleteConversation(id: string): Promise<{ ok: boolean }>;
-    cleanupEmptyConversations(options?: {
-      keepId?: string;
-    }): Promise<{ deleted: string[] }>;
+    ): Promise<{
+      conversation: Conversation;
+    }>;
+    deleteConversation(id: string): Promise<{
+      ok: boolean;
+    }>;
+    cleanupEmptyConversations(options?: { keepId?: string }): Promise<{
+      deleted: string[];
+    }>;
     getDocumentStats(): Promise<DocumentStats>;
     getDocumentFacetCounts(
       options?: DocumentListOptions,
     ): Promise<DocumentFacetCountsResponse>;
     listDocuments(options?: DocumentListOptions): Promise<DocumentsResponse>;
-    getDocument(documentId: string): Promise<{ document: DocumentDetail }>;
+    getDocument(documentId: string): Promise<{
+      document: DocumentDetail;
+    }>;
     getDocumentAccess(documentId: string): Promise<{
       documentId: string;
       directGrantEntityIds: string[];
@@ -618,13 +632,23 @@ declare module "./client-base" {
     }>;
     getDocumentPins(documentId: string): Promise<{
       documentId: string;
-      targets: { agent: boolean; roomIds: string[] };
+      targets: {
+        agent: boolean;
+        roomIds: string[];
+      };
       pinRevision: string;
     }>;
     updateDocumentPins(
       documentId: string,
-      data: { agent: boolean; roomIds: string[]; expectedPinRevision: string },
-    ): Promise<{ ok: true; documentId: string }>;
+      data: {
+        agent: boolean;
+        roomIds: string[];
+        expectedPinRevision: string;
+      },
+    ): Promise<{
+      ok: true;
+      documentId: string;
+    }>;
     updateDocumentAccess(
       documentId: string,
       data: {
@@ -638,11 +662,14 @@ declare module "./client-base" {
     }>;
     updateDocument(
       documentId: string,
-      data: { content: string },
+      data: {
+        content: string;
+      },
     ): Promise<DocumentUpdateResult>;
-    deleteDocument(
-      documentId: string,
-    ): Promise<{ ok: boolean; deletedFragments: number }>;
+    deleteDocument(documentId: string): Promise<{
+      ok: boolean;
+      deletedFragments: number;
+    }>;
     uploadDocument(data: DocumentUploadRequest): Promise<DocumentUploadResult>;
     uploadDocumentsBulk(data: {
       documents: DocumentUploadRequest[];
@@ -661,11 +688,15 @@ declare module "./client-base" {
     rememberMemory(text: string): Promise<MemoryRememberResponse>;
     searchMemory(
       query: string,
-      options?: { limit?: number },
+      options?: {
+        limit?: number;
+      },
     ): Promise<MemorySearchResponse>;
     quickContext(
       query: string,
-      options?: { limit?: number },
+      options?: {
+        limit?: number;
+      },
     ): Promise<QuickContextResponse>;
     getMemoryFeed(query?: MemoryFeedQuery): Promise<MemoryFeedResponse>;
     browseMemories(query?: MemoryBrowseQuery): Promise<MemoryBrowseResponse>;
@@ -674,21 +705,29 @@ declare module "./client-base" {
       query?: MemoryBrowseQuery,
     ): Promise<MemoryBrowseResponse>;
     getMemoryStats(): Promise<MemoryStatsResponse>;
-    getMcpConfig(): Promise<{ servers: Record<string, McpServerConfig> }>;
-    getMcpStatus(): Promise<{ servers: McpServerStatus[] }>;
+    getMcpConfig(): Promise<{
+      servers: Record<string, McpServerConfig>;
+    }>;
+    getMcpStatus(): Promise<{
+      servers: McpServerStatus[];
+    }>;
     searchMcpMarketplace(
       query: string,
       limit: number,
-    ): Promise<{ results: McpMarketplaceResult[] }>;
-    getMcpServerDetails(
-      name: string,
-    ): Promise<{ server: McpRegistryServerDetail }>;
+    ): Promise<{
+      results: McpMarketplaceResult[];
+    }>;
+    getMcpServerDetails(name: string): Promise<{
+      server: McpRegistryServerDetail;
+    }>;
     addMcpServer(name: string, config: McpServerConfig): Promise<void>;
     removeMcpServer(name: string): Promise<void>;
-    ingestShare(
-      payload: ShareIngestPayload,
-    ): Promise<{ item: ShareIngestItem }>;
-    consumeShareIngest(): Promise<{ items: ShareIngestItem[] }>;
+    ingestShare(payload: ShareIngestPayload): Promise<{
+      item: ShareIngestItem;
+    }>;
+    consumeShareIngest(): Promise<{
+      items: ShareIngestItem[];
+    }>;
     getWorkbenchOverview(): Promise<
       WorkbenchOverview & {
         tasksAvailable?: boolean;
@@ -696,14 +735,20 @@ declare module "./client-base" {
         todosAvailable?: boolean;
       }
     >;
-    listWorkbenchTasks(): Promise<{ tasks: WorkbenchTask[] }>;
-    getWorkbenchTask(taskId: string): Promise<{ task: WorkbenchTask }>;
+    listWorkbenchTasks(): Promise<{
+      tasks: WorkbenchTask[];
+    }>;
+    getWorkbenchTask(taskId: string): Promise<{
+      task: WorkbenchTask;
+    }>;
     createWorkbenchTask(data: {
       name: string;
       description?: string;
       tags?: string[];
       isCompleted?: boolean;
-    }): Promise<{ task: WorkbenchTask }>;
+    }): Promise<{
+      task: WorkbenchTask;
+    }>;
     updateWorkbenchTask(
       taskId: string,
       data: {
@@ -712,10 +757,18 @@ declare module "./client-base" {
         tags?: string[];
         isCompleted?: boolean;
       },
-    ): Promise<{ task: WorkbenchTask }>;
-    deleteWorkbenchTask(taskId: string): Promise<{ ok: boolean }>;
-    listWorkbenchTodos(): Promise<{ todos: WorkbenchTodo[] }>;
-    getWorkbenchTodo(todoId: string): Promise<{ todo: WorkbenchTodo }>;
+    ): Promise<{
+      task: WorkbenchTask;
+    }>;
+    deleteWorkbenchTask(taskId: string): Promise<{
+      ok: boolean;
+    }>;
+    listWorkbenchTodos(): Promise<{
+      todos: WorkbenchTodo[];
+    }>;
+    getWorkbenchTodo(todoId: string): Promise<{
+      todo: WorkbenchTodo;
+    }>;
     createWorkbenchTodo(data: {
       name: string;
       description?: string;
@@ -723,7 +776,9 @@ declare module "./client-base" {
       isUrgent?: boolean;
       type?: string;
       isCompleted?: boolean;
-    }): Promise<{ todo: WorkbenchTodo }>;
+    }): Promise<{
+      todo: WorkbenchTodo;
+    }>;
     updateWorkbenchTodo(
       todoId: string,
       data: {
@@ -734,50 +789,82 @@ declare module "./client-base" {
         type?: string;
         isCompleted?: boolean;
       },
-    ): Promise<{ todo: WorkbenchTodo }>;
+    ): Promise<{
+      todo: WorkbenchTodo;
+    }>;
     setWorkbenchTodoCompleted(
       todoId: string,
       isCompleted: boolean,
     ): Promise<void>;
-    deleteWorkbenchTodo(todoId: string): Promise<{ ok: boolean }>;
-    createWorkbenchVfsProject(
-      projectId: string,
-    ): Promise<{ project: WorkbenchVfsProject; quota: WorkbenchVfsQuota }>;
-    getWorkbenchVfsQuota(
-      projectId: string,
-    ): Promise<{ quota: WorkbenchVfsQuota }>;
+    deleteWorkbenchTodo(todoId: string): Promise<{
+      ok: boolean;
+    }>;
+    createWorkbenchVfsProject(projectId: string): Promise<{
+      project: WorkbenchVfsProject;
+      quota: WorkbenchVfsQuota;
+    }>;
+    getWorkbenchVfsQuota(projectId: string): Promise<{
+      quota: WorkbenchVfsQuota;
+    }>;
     listWorkbenchVfsFiles(
       projectId: string,
-      options?: { path?: string; recursive?: boolean },
-    ): Promise<{ files: WorkbenchVfsEntry[] }>;
+      options?: {
+        path?: string;
+        recursive?: boolean;
+      },
+    ): Promise<{
+      files: WorkbenchVfsEntry[];
+    }>;
     readWorkbenchVfsFile(
       projectId: string,
       path: string,
-      options?: { encoding?: "utf-8" | "base64" },
-    ): Promise<{ path: string; encoding: "utf-8" | "base64"; content: string }>;
+      options?: {
+        encoding?: "utf-8" | "base64";
+      },
+    ): Promise<{
+      path: string;
+      encoding: "utf-8" | "base64";
+      content: string;
+    }>;
     writeWorkbenchVfsFile(
       projectId: string,
-      data: { path: string; content: string; encoding?: "utf-8" | "base64" },
-    ): Promise<{ file: WorkbenchVfsEntry }>;
+      data: {
+        path: string;
+        content: string;
+        encoding?: "utf-8" | "base64";
+      },
+    ): Promise<{
+      file: WorkbenchVfsEntry;
+    }>;
     deleteWorkbenchVfsFile(
       projectId: string,
       path: string,
-    ): Promise<{ ok: boolean }>;
-    listWorkbenchVfsSnapshots(
-      projectId: string,
-    ): Promise<{ snapshots: WorkbenchVfsSnapshot[] }>;
+    ): Promise<{
+      ok: boolean;
+    }>;
+    listWorkbenchVfsSnapshots(projectId: string): Promise<{
+      snapshots: WorkbenchVfsSnapshot[];
+    }>;
     createWorkbenchVfsSnapshot(
       projectId: string,
-      data?: { note?: string },
-    ): Promise<{ snapshot: WorkbenchVfsSnapshot }>;
+      data?: {
+        note?: string;
+      },
+    ): Promise<{
+      snapshot: WorkbenchVfsSnapshot;
+    }>;
     getWorkbenchVfsDiff(
       projectId: string,
       snapshotId: string,
-    ): Promise<{ diff: WorkbenchVfsDiffEntry[] }>;
+    ): Promise<{
+      diff: WorkbenchVfsDiffEntry[];
+    }>;
     rollbackWorkbenchVfs(
       projectId: string,
       snapshotId: string,
-    ): Promise<{ rollback: unknown }>;
+    ): Promise<{
+      rollback: unknown;
+    }>;
     compileWorkbenchVfsPlugin(
       projectId: string,
       data: {
@@ -786,16 +873,30 @@ declare module "./client-base" {
         format?: "esm" | "cjs";
         target?: string;
       },
-    ): Promise<{ compile: WorkbenchVfsCompileResult }>;
+    ): Promise<{
+      compile: WorkbenchVfsCompileResult;
+    }>;
     loadWorkbenchVfsPlugin(
       projectId: string,
-      data: { entry: string; outFile?: string; compileFirst?: boolean },
-    ): Promise<{ pluginName: string; unloaded: false }>;
-    listWorkbenchVfsPlugins(): Promise<{ plugins: WorkbenchLoadedVfsPlugin[] }>;
+      data: {
+        entry: string;
+        outFile?: string;
+        compileFirst?: boolean;
+      },
+    ): Promise<{
+      pluginName: string;
+      unloaded: false;
+    }>;
+    listWorkbenchVfsPlugins(): Promise<{
+      plugins: WorkbenchLoadedVfsPlugin[];
+    }>;
     unloadWorkbenchVfsPlugin(
       projectId: string,
       pluginName: string,
-    ): Promise<{ pluginName: string; unloaded: boolean }>;
+    ): Promise<{
+      pluginName: string;
+      unloaded: boolean;
+    }>;
     promoteWorkbenchVfsToCloud(
       projectId: string,
       data?: PostWorkbenchVfsPromoteToCloudRequest,
@@ -817,21 +918,36 @@ declare module "./client-base" {
     ): Promise<TrajectoryListResult>;
     getTrajectoryDetail(
       trajectoryId: string,
-      options?: RequestInit & { includePayloads?: boolean },
+      options?: RequestInit & {
+        includePayloads?: boolean;
+      },
     ): Promise<TrajectoryDetailResult>;
     getTrajectoryStats(): Promise<TrajectoryStats>;
+    getContextInspector(
+      conversationId: string,
+      options?: {
+        offset?: number;
+        limit?: number;
+      },
+    ): Promise<ContextInspectorResponse>;
     getTrajectoryConfig(): Promise<TrajectoryConfig>;
     updateTrajectoryConfig(
       config: Partial<TrajectoryConfig>,
     ): Promise<TrajectoryConfig>;
     exportTrajectories(options: TrajectoryExportOptions): Promise<Blob>;
-    deleteTrajectories(trajectoryIds: string[]): Promise<{ deleted: number }>;
-    clearAllTrajectories(): Promise<{ deleted: number }>;
+    deleteTrajectories(trajectoryIds: string[]): Promise<{
+      deleted: number;
+    }>;
+    clearAllTrajectories(): Promise<{
+      deleted: number;
+    }>;
     getDatabaseStatus(): Promise<DatabaseStatus>;
     getDatabaseConfig(): Promise<DatabaseConfigResponse>;
     saveDatabaseConfig(config: {
       provider?: DatabaseProviderType;
-      pglite?: { dataDir?: string };
+      pglite?: {
+        dataDir?: string;
+      };
       postgres?: {
         connectionString?: string;
         host?: string;
@@ -841,7 +957,10 @@ declare module "./client-base" {
         password?: string;
         ssl?: boolean;
       };
-    }): Promise<{ saved: boolean; needsRestart: boolean }>;
+    }): Promise<{
+      saved: boolean;
+      needsRestart: boolean;
+    }>;
     testDatabaseConnection(creds: {
       connectionString?: string;
       host?: string;
@@ -851,7 +970,9 @@ declare module "./client-base" {
       password?: string;
       ssl?: boolean;
     }): Promise<ConnectionTestResult>;
-    getDatabaseTables(): Promise<{ tables: TableInfo[] }>;
+    getDatabaseTables(): Promise<{
+      tables: TableInfo[];
+    }>;
     getDatabaseRows(
       table: string,
       opts?: {
@@ -873,29 +994,31 @@ declare module "./client-base" {
       table: string,
       where: Record<string, unknown>,
       data: Record<string, unknown>,
-    ): Promise<{ updated: boolean; row: Record<string, unknown> }>;
+    ): Promise<{
+      updated: boolean;
+      row: Record<string, unknown>;
+    }>;
     deleteDatabaseRow(
       table: string,
       where: Record<string, unknown>,
-    ): Promise<{ deleted: boolean; row: Record<string, unknown> }>;
+    ): Promise<{
+      deleted: boolean;
+      row: Record<string, unknown>;
+    }>;
     executeDatabaseQuery(sql: string, readOnly?: boolean): Promise<QueryResult>;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
-
 const LEGACY_CHAT_COMPAT_TITLE = "Quick Chat";
 const LEGACY_CHAT_CONVERSATION_STORAGE_PREFIX = "legacy_chat_conversation";
-
 function getLegacyChatConversationStorageKey(client: ElizaClient): string {
   const base =
     client.getBaseUrl() ||
     (typeof window !== "undefined" ? window.location.origin : "same-origin");
   return `${LEGACY_CHAT_CONVERSATION_STORAGE_PREFIX}:${encodeURIComponent(base)}`;
 }
-
 function readLegacyChatConversationId(client: ElizaClient): string | null {
   if (typeof window === "undefined") {
     return null;
@@ -905,7 +1028,6 @@ function readLegacyChatConversationId(client: ElizaClient): string | null {
   );
   return stored?.trim() ? stored.trim() : null;
 }
-
 function writeLegacyChatConversationId(
   client: ElizaClient,
   conversationId: string | null,
@@ -920,7 +1042,6 @@ function writeLegacyChatConversationId(
   }
   window.sessionStorage.removeItem(key);
 }
-
 async function ensureLegacyChatConversationId(
   client: ElizaClient,
 ): Promise<string> {
@@ -928,14 +1049,12 @@ async function ensureLegacyChatConversationId(
   if (cached) {
     return cached;
   }
-
   const { conversation } = await client.createConversation(
     LEGACY_CHAT_COMPAT_TITLE,
   );
   writeLegacyChatConversationId(client, conversation.id);
   return conversation.id;
 }
-
 ElizaClient.prototype.sendChatRest = async function (
   this: ElizaClient,
   text,
@@ -943,7 +1062,6 @@ ElizaClient.prototype.sendChatRest = async function (
 ) {
   const sendToConversation = async (conversationId: string) =>
     this.sendConversationMessage(conversationId, text, channelType, undefined);
-
   const conversationId = await ensureLegacyChatConversationId(this);
   try {
     return await sendToConversation(conversationId);
@@ -959,7 +1077,6 @@ ElizaClient.prototype.sendChatRest = async function (
     throw error;
   }
 };
-
 ElizaClient.prototype.sendChatMessage = function (
   this: ElizaClient,
   text,
@@ -970,7 +1087,6 @@ ElizaClient.prototype.sendChatMessage = function (
     // chat surface owns visible delivery/error state for full composer sends.
   });
 };
-
 ElizaClient.prototype.sendChatStream = async function (
   this: ElizaClient,
   text,
@@ -987,7 +1103,6 @@ ElizaClient.prototype.sendChatStream = async function (
       signal,
       undefined,
     );
-
   const conversationId = await ensureLegacyChatConversationId(this);
   try {
     return await streamConversation(conversationId);
@@ -1003,7 +1118,6 @@ ElizaClient.prototype.sendChatStream = async function (
     throw error;
   }
 };
-
 // A serverless / shared-runtime agent may omit `updatedAt` from conversation
 // objects (a never-updated conversation legitimately has updatedAt == createdAt).
 // The shared `isConversationRecord` guard requires the standard shape, so without
@@ -1027,10 +1141,11 @@ function withConversationDefaults<T>(conversation: T): T {
   }
   return conversation;
 }
-
-function withConversationListDefaults<T extends { conversations?: unknown }>(
-  response: T,
-): T {
+function withConversationListDefaults<
+  T extends {
+    conversations?: unknown;
+  },
+>(response: T): T {
   if (response && Array.isArray(response.conversations)) {
     return {
       ...response,
@@ -1039,10 +1154,13 @@ function withConversationListDefaults<T extends { conversations?: unknown }>(
   }
   return response;
 }
-
 async function invokeLocalDesktopChatRpc<T>(
   baseUrl: string,
-  options: { rpcMethod: string; ipcChannel: string; params?: unknown },
+  options: {
+    rpcMethod: string;
+    ipcChannel: string;
+    params?: unknown;
+  },
 ): Promise<T | null> {
   if (
     !isDesktopLocalApiBaseUrl(baseUrl) ||
@@ -1053,7 +1171,6 @@ async function invokeLocalDesktopChatRpc<T>(
   }
   return invokeDesktopBridgeRequest<T>(options);
 }
-
 ElizaClient.prototype.listConversations = async function (
   this: ElizaClient,
   options,
@@ -1074,12 +1191,13 @@ ElizaClient.prototype.listConversations = async function (
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
   return withConversationListDefaults(
-    await this.fetch<{ conversations: Conversation[] }>("/api/conversations", {
+    await this.fetch<{
+      conversations: Conversation[];
+    }>("/api/conversations", {
       signal: options?.signal,
     }),
   );
 };
-
 ElizaClient.prototype.createConversation = async function (
   this: ElizaClient,
   title?,
@@ -1115,14 +1233,15 @@ ElizaClient.prototype.createConversation = async function (
     },
   };
 };
-
 ElizaClient.prototype.getConversationMessages = async function (
   this: ElizaClient,
   id,
   options,
 ) {
-  let response: { messages: ConversationMessage[]; hasMore?: boolean } | null =
-    null;
+  let response: {
+    messages: ConversationMessage[];
+    hasMore?: boolean;
+  } | null = null;
   // The desktop-bridge RPC only serves the recent window; an `around` jump or a
   // `before` load-older page must go straight to HTTP so the server can center
   // the window on the target (around) or page below the cursor (before).
@@ -1172,7 +1291,6 @@ ElizaClient.prototype.getConversationMessages = async function (
       : {}),
   };
 };
-
 ElizaClient.prototype.searchConversationMessages = async function (
   this: ElizaClient,
   query,
@@ -1189,7 +1307,6 @@ ElizaClient.prototype.searchConversationMessages = async function (
     options?.signal ? { signal: options.signal } : undefined,
   );
 };
-
 ElizaClient.prototype.getInboxMessages = async function (
   this: ElizaClient,
   options,
@@ -1199,7 +1316,12 @@ ElizaClient.prototype.getInboxMessages = async function (
   const path = query ? `/api/inbox/messages?${query}` : "/api/inbox/messages";
   try {
     const viaRpc = await invokeLocalDesktopChatRpc<{
-      messages: Array<ConversationMessage & { roomId: string; source: string }>;
+      messages: Array<
+        ConversationMessage & {
+          roomId: string;
+          source: string;
+        }
+      >;
       count: number;
     }>(this.getBaseUrl(), {
       rpcMethod: "getInboxMessages",
@@ -1211,27 +1333,31 @@ ElizaClient.prototype.getInboxMessages = async function (
     /* fall through */
   }
   return this.fetch<{
-    messages: Array<ConversationMessage & { roomId: string; source: string }>;
+    messages: Array<
+      ConversationMessage & {
+        roomId: string;
+        source: string;
+      }
+    >;
     count: number;
   }>(path);
 };
-
 ElizaClient.prototype.getInboxSources = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeLocalDesktopChatRpc<{ sources: string[] }>(
-      this.getBaseUrl(),
-      {
-        rpcMethod: "getInboxSources",
-        ipcChannel: "agent",
-      },
-    );
+    const viaRpc = await invokeLocalDesktopChatRpc<{
+      sources: string[];
+    }>(this.getBaseUrl(), {
+      rpcMethod: "getInboxSources",
+      ipcChannel: "agent",
+    });
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
   }
-  return this.fetch<{ sources: string[] }>("/api/inbox/sources");
+  return this.fetch<{
+    sources: string[];
+  }>("/api/inbox/sources");
 };
-
 ElizaClient.prototype.getInboxChats = async function (
   this: ElizaClient,
   options,
@@ -1288,7 +1414,6 @@ ElizaClient.prototype.getInboxChats = async function (
     count: number;
   }>(path);
 };
-
 ElizaClient.prototype.setInboxChatMute = async function (
   this: ElizaClient,
   data,
@@ -1305,20 +1430,21 @@ ElizaClient.prototype.setInboxChatMute = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.sendInboxMessage = async function (
   this: ElizaClient,
   data,
 ) {
   return this.fetch<{
     ok: boolean;
-    message?: ConversationMessage & { roomId: string; source: string };
+    message?: ConversationMessage & {
+      roomId: string;
+      source: string;
+    };
   }>("/api/inbox/messages", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.truncateConversationMessages = async function (
   this: ElizaClient,
   id,
@@ -1336,20 +1462,16 @@ ElizaClient.prototype.truncateConversationMessages = async function (
     },
   );
 };
-
 ElizaClient.prototype.deleteConversationMessage = async function (
   this: ElizaClient,
   id,
   messageId,
 ) {
   return this.fetch(
-    `/api/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(
-      messageId,
-    )}`,
+    `/api/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}`,
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.retryConversationReply = async function (
   this: ElizaClient,
   id,
@@ -1360,7 +1482,6 @@ ElizaClient.prototype.retryConversationReply = async function (
     { method: "POST", body: JSON.stringify({}) },
   );
 };
-
 ElizaClient.prototype.sendConversationMessage = async function (
   this: ElizaClient,
   id,
@@ -1400,7 +1521,6 @@ ElizaClient.prototype.sendConversationMessage = async function (
           }),
   };
 };
-
 ElizaClient.prototype.sendConversationMessageStream = async function (
   this: ElizaClient,
   id,
@@ -1429,7 +1549,6 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     onReplyReady,
   );
 };
-
 ElizaClient.prototype.abortConversationTurn = async function (
   this: ElizaClient,
   roomId,
@@ -1441,7 +1560,6 @@ ElizaClient.prototype.abortConversationTurn = async function (
     body: JSON.stringify({ reason }),
   });
 };
-
 ElizaClient.prototype.requestGreeting = async function (
   this: ElizaClient,
   id,
@@ -1462,7 +1580,6 @@ ElizaClient.prototype.requestGreeting = async function (
     text: this.normalizeGreetingText(response.text),
   };
 };
-
 ElizaClient.prototype.renameConversation = async function (
   this: ElizaClient,
   id,
@@ -1474,7 +1591,6 @@ ElizaClient.prototype.renameConversation = async function (
     generate: options?.generate,
   });
 };
-
 ElizaClient.prototype.updateConversation = async function (
   this: ElizaClient,
   id,
@@ -1491,7 +1607,6 @@ ElizaClient.prototype.updateConversation = async function (
     }),
   });
 };
-
 ElizaClient.prototype.deleteConversation = async function (
   this: ElizaClient,
   id,
@@ -1500,7 +1615,6 @@ ElizaClient.prototype.deleteConversation = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.cleanupEmptyConversations = async function (
   this: ElizaClient,
   options?,
@@ -1513,11 +1627,9 @@ ElizaClient.prototype.cleanupEmptyConversations = async function (
     }),
   });
 };
-
 ElizaClient.prototype.getDocumentStats = async function (this: ElizaClient) {
   return this.fetch("/api/documents/stats");
 };
-
 ElizaClient.prototype.listDocuments = async function (
   this: ElizaClient,
   options?,
@@ -1526,7 +1638,6 @@ ElizaClient.prototype.listDocuments = async function (
   const query = params.toString();
   return this.fetch(`/api/documents${query ? `?${query}` : ""}`);
 };
-
 ElizaClient.prototype.getDocumentFacetCounts = async function (
   this: ElizaClient,
   options?,
@@ -1541,28 +1652,24 @@ ElizaClient.prototype.getDocumentFacetCounts = async function (
   const query = params.toString();
   return this.fetch(`/api/documents/facets${query ? `?${query}` : ""}`);
 };
-
 ElizaClient.prototype.getDocument = async function (
   this: ElizaClient,
   documentId,
 ) {
   return this.fetch(`/api/documents/${encodeURIComponent(documentId)}`);
 };
-
 ElizaClient.prototype.getDocumentAccess = async function (
   this: ElizaClient,
   documentId,
 ) {
   return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/access`);
 };
-
 ElizaClient.prototype.getDocumentPins = async function (
   this: ElizaClient,
   documentId,
 ) {
   return this.fetch(`/api/documents/${encodeURIComponent(documentId)}/pins`);
 };
-
 ElizaClient.prototype.updateDocumentPins = async function (
   this: ElizaClient,
   documentId,
@@ -1573,7 +1680,6 @@ ElizaClient.prototype.updateDocumentPins = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.updateDocumentAccess = async function (
   this: ElizaClient,
   documentId,
@@ -1584,7 +1690,6 @@ ElizaClient.prototype.updateDocumentAccess = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.updateDocument = async function (
   this: ElizaClient,
   documentId,
@@ -1595,7 +1700,6 @@ ElizaClient.prototype.updateDocument = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.deleteDocument = async function (
   this: ElizaClient,
   documentId,
@@ -1604,7 +1708,6 @@ ElizaClient.prototype.deleteDocument = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.uploadDocument = async function (
   this: ElizaClient,
   data,
@@ -1614,7 +1717,6 @@ ElizaClient.prototype.uploadDocument = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.uploadDocumentsBulk = async function (
   this: ElizaClient,
   data,
@@ -1624,7 +1726,6 @@ ElizaClient.prototype.uploadDocumentsBulk = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.uploadDocumentFromUrl = async function (
   this: ElizaClient,
   url,
@@ -1649,7 +1750,6 @@ ElizaClient.prototype.uploadDocumentFromUrl = async function (
     }),
   });
 };
-
 ElizaClient.prototype.searchDocuments = async function (
   this: ElizaClient,
   query,
@@ -1658,7 +1758,6 @@ ElizaClient.prototype.searchDocuments = async function (
   const params = buildDocumentSearchParams(query, options);
   return this.fetch(`/api/documents/search?${params}`);
 };
-
 ElizaClient.prototype.getDocumentFragments = async function (
   this: ElizaClient,
   documentId,
@@ -1667,7 +1766,6 @@ ElizaClient.prototype.getDocumentFragments = async function (
     `/api/documents/${encodeURIComponent(documentId)}/fragments`,
   );
 };
-
 ElizaClient.prototype.rememberMemory = async function (
   this: ElizaClient,
   text,
@@ -1677,7 +1775,6 @@ ElizaClient.prototype.rememberMemory = async function (
     body: JSON.stringify({ text }),
   });
 };
-
 ElizaClient.prototype.searchMemory = async function (
   this: ElizaClient,
   query,
@@ -1687,7 +1784,6 @@ ElizaClient.prototype.searchMemory = async function (
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
   return this.fetch(`/api/memory/search?${params}`);
 };
-
 ElizaClient.prototype.quickContext = async function (
   this: ElizaClient,
   query,
@@ -1697,7 +1793,6 @@ ElizaClient.prototype.quickContext = async function (
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
   return this.fetch(`/api/context/quick?${params}`);
 };
-
 ElizaClient.prototype.getMemoryFeed = async function (
   this: ElizaClient,
   query?,
@@ -1712,7 +1807,6 @@ ElizaClient.prototype.getMemoryFeed = async function (
   const qs = params.toString();
   return this.fetch(`/api/memories/feed${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.browseMemories = async function (
   this: ElizaClient,
   query?,
@@ -1729,7 +1823,6 @@ ElizaClient.prototype.browseMemories = async function (
   const qs = params.toString();
   return this.fetch(`/api/memories/browse${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.getMemoriesByEntity = async function (
   this: ElizaClient,
   entityId,
@@ -1748,19 +1841,15 @@ ElizaClient.prototype.getMemoriesByEntity = async function (
     `/api/memories/by-entity/${encodeURIComponent(entityId)}${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.getMemoryStats = async function (this: ElizaClient) {
   return this.fetch("/api/memories/stats");
 };
-
 ElizaClient.prototype.getMcpConfig = async function (this: ElizaClient) {
   return this.fetch("/api/mcp/config");
 };
-
 ElizaClient.prototype.getMcpStatus = async function (this: ElizaClient) {
   return this.fetch("/api/mcp/status");
 };
-
 ElizaClient.prototype.searchMcpMarketplace = async function (
   this: ElizaClient,
   query,
@@ -1769,14 +1858,12 @@ ElizaClient.prototype.searchMcpMarketplace = async function (
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   return this.fetch(`/api/mcp/marketplace/search?${params}`);
 };
-
 ElizaClient.prototype.getMcpServerDetails = async function (
   this: ElizaClient,
   name,
 ) {
   return this.fetch(`/api/mcp/marketplace/${encodeURIComponent(name)}`);
 };
-
 ElizaClient.prototype.addMcpServer = async function (
   this: ElizaClient,
   name,
@@ -1787,7 +1874,6 @@ ElizaClient.prototype.addMcpServer = async function (
     body: JSON.stringify({ name, config }),
   });
 };
-
 ElizaClient.prototype.removeMcpServer = async function (
   this: ElizaClient,
   name,
@@ -1796,7 +1882,6 @@ ElizaClient.prototype.removeMcpServer = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.ingestShare = async function (
   this: ElizaClient,
   payload,
@@ -1806,28 +1891,23 @@ ElizaClient.prototype.ingestShare = async function (
     body: JSON.stringify(payload),
   });
 };
-
 ElizaClient.prototype.consumeShareIngest = async function (this: ElizaClient) {
   return this.fetch("/api/share/consume", { method: "POST" });
 };
-
 ElizaClient.prototype.getWorkbenchOverview = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/workbench/overview");
 };
-
 ElizaClient.prototype.listWorkbenchTasks = async function (this: ElizaClient) {
   return this.fetch("/api/workbench/tasks");
 };
-
 ElizaClient.prototype.getWorkbenchTask = async function (
   this: ElizaClient,
   taskId,
 ) {
   return this.fetch(`/api/workbench/tasks/${encodeURIComponent(taskId)}`);
 };
-
 ElizaClient.prototype.createWorkbenchTask = async function (
   this: ElizaClient,
   data,
@@ -1837,7 +1917,6 @@ ElizaClient.prototype.createWorkbenchTask = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.updateWorkbenchTask = async function (
   this: ElizaClient,
   taskId,
@@ -1848,7 +1927,6 @@ ElizaClient.prototype.updateWorkbenchTask = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.deleteWorkbenchTask = async function (
   this: ElizaClient,
   taskId,
@@ -1857,18 +1935,15 @@ ElizaClient.prototype.deleteWorkbenchTask = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.listWorkbenchTodos = async function (this: ElizaClient) {
   return this.fetch("/api/workbench/todos");
 };
-
 ElizaClient.prototype.getWorkbenchTodo = async function (
   this: ElizaClient,
   todoId,
 ) {
   return this.fetch(`/api/workbench/todos/${encodeURIComponent(todoId)}`);
 };
-
 ElizaClient.prototype.createWorkbenchTodo = async function (
   this: ElizaClient,
   data,
@@ -1878,7 +1953,6 @@ ElizaClient.prototype.createWorkbenchTodo = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.updateWorkbenchTodo = async function (
   this: ElizaClient,
   todoId,
@@ -1889,7 +1963,6 @@ ElizaClient.prototype.updateWorkbenchTodo = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.setWorkbenchTodoCompleted = async function (
   this: ElizaClient,
   todoId,
@@ -1903,7 +1976,6 @@ ElizaClient.prototype.setWorkbenchTodoCompleted = async function (
     },
   );
 };
-
 ElizaClient.prototype.deleteWorkbenchTodo = async function (
   this: ElizaClient,
   todoId,
@@ -1912,7 +1984,6 @@ ElizaClient.prototype.deleteWorkbenchTodo = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.createWorkbenchVfsProject = async function (
   this: ElizaClient,
   projectId,
@@ -1922,7 +1993,6 @@ ElizaClient.prototype.createWorkbenchVfsProject = async function (
     body: JSON.stringify({ projectId }),
   });
 };
-
 ElizaClient.prototype.getWorkbenchVfsQuota = async function (
   this: ElizaClient,
   projectId,
@@ -1931,7 +2001,6 @@ ElizaClient.prototype.getWorkbenchVfsQuota = async function (
     `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/quota`,
   );
 };
-
 ElizaClient.prototype.listWorkbenchVfsFiles = async function (
   this: ElizaClient,
   projectId,
@@ -1942,12 +2011,9 @@ ElizaClient.prototype.listWorkbenchVfsFiles = async function (
   if (options.recursive) params.set("recursive", "true");
   const query = params.toString();
   return this.fetch(
-    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/files${
-      query ? `?${query}` : ""
-    }`,
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/files${query ? `?${query}` : ""}`,
   );
 };
-
 ElizaClient.prototype.readWorkbenchVfsFile = async function (
   this: ElizaClient,
   projectId,
@@ -1960,7 +2026,6 @@ ElizaClient.prototype.readWorkbenchVfsFile = async function (
     `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/file?${params.toString()}`,
   );
 };
-
 ElizaClient.prototype.writeWorkbenchVfsFile = async function (
   this: ElizaClient,
   projectId,
@@ -1974,7 +2039,6 @@ ElizaClient.prototype.writeWorkbenchVfsFile = async function (
     },
   );
 };
-
 ElizaClient.prototype.deleteWorkbenchVfsFile = async function (
   this: ElizaClient,
   projectId,
@@ -1986,7 +2050,6 @@ ElizaClient.prototype.deleteWorkbenchVfsFile = async function (
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.listWorkbenchVfsSnapshots = async function (
   this: ElizaClient,
   projectId,
@@ -1995,7 +2058,6 @@ ElizaClient.prototype.listWorkbenchVfsSnapshots = async function (
     `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/snapshots`,
   );
 };
-
 ElizaClient.prototype.createWorkbenchVfsSnapshot = async function (
   this: ElizaClient,
   projectId,
@@ -2009,7 +2071,6 @@ ElizaClient.prototype.createWorkbenchVfsSnapshot = async function (
     },
   );
 };
-
 ElizaClient.prototype.getWorkbenchVfsDiff = async function (
   this: ElizaClient,
   projectId,
@@ -2020,7 +2081,6 @@ ElizaClient.prototype.getWorkbenchVfsDiff = async function (
     `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/diff?${params.toString()}`,
   );
 };
-
 ElizaClient.prototype.rollbackWorkbenchVfs = async function (
   this: ElizaClient,
   projectId,
@@ -2034,7 +2094,6 @@ ElizaClient.prototype.rollbackWorkbenchVfs = async function (
     },
   );
 };
-
 ElizaClient.prototype.compileWorkbenchVfsPlugin = async function (
   this: ElizaClient,
   projectId,
@@ -2048,7 +2107,6 @@ ElizaClient.prototype.compileWorkbenchVfsPlugin = async function (
     },
   );
 };
-
 ElizaClient.prototype.loadWorkbenchVfsPlugin = async function (
   this: ElizaClient,
   projectId,
@@ -2062,13 +2120,11 @@ ElizaClient.prototype.loadWorkbenchVfsPlugin = async function (
     },
   );
 };
-
 ElizaClient.prototype.listWorkbenchVfsPlugins = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/workbench/vfs/plugins");
 };
-
 ElizaClient.prototype.unloadWorkbenchVfsPlugin = async function (
   this: ElizaClient,
   projectId,
@@ -2079,7 +2135,6 @@ ElizaClient.prototype.unloadWorkbenchVfsPlugin = async function (
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.promoteWorkbenchVfsToCloud = async function (
   this: ElizaClient,
   projectId,
@@ -2093,7 +2148,6 @@ ElizaClient.prototype.promoteWorkbenchVfsToCloud = async function (
     },
   );
 };
-
 ElizaClient.prototype.promoteVfsToCloudContainer = async function (
   this: ElizaClient,
   data,
@@ -2103,7 +2157,6 @@ ElizaClient.prototype.promoteVfsToCloudContainer = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.requestCloudCodingContainer = async function (
   this: ElizaClient,
   data,
@@ -2113,7 +2166,6 @@ ElizaClient.prototype.requestCloudCodingContainer = async function (
     body: JSON.stringify(data),
   });
 };
-
 ElizaClient.prototype.syncCloudCodingContainerChanges = async function (
   this: ElizaClient,
   containerId,
@@ -2127,11 +2179,9 @@ ElizaClient.prototype.syncCloudCodingContainerChanges = async function (
     },
   );
 };
-
 ElizaClient.prototype.refreshRegistry = async function (this: ElizaClient) {
   await this.fetch("/api/apps/refresh", { method: "POST" });
 };
-
 ElizaClient.prototype.getTrajectories = async function (
   this: ElizaClient,
   options?,
@@ -2141,7 +2191,6 @@ ElizaClient.prototype.getTrajectories = async function (
   const query = params.toString();
   return this.fetch(`/api/trajectories${query ? `?${query}` : ""}`, init);
 };
-
 ElizaClient.prototype.getTrajectoryDetail = async function (
   this: ElizaClient,
   trajectoryId,
@@ -2153,15 +2202,32 @@ ElizaClient.prototype.getTrajectoryDetail = async function (
     init,
   );
 };
-
 ElizaClient.prototype.getTrajectoryStats = async function (this: ElizaClient) {
   return this.fetch("/api/trajectories/stats");
 };
-
+ElizaClient.prototype.getContextInspector = async function (
+  this: ElizaClient,
+  conversationId,
+  options = {},
+) {
+  const params = new URLSearchParams({ conversationId });
+  if (options.offset !== undefined) {
+    params.set("offset", String(options.offset));
+  }
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  // The local PGlite host serializes database work. Inspector paging can enter
+  // the queue behind the app's initial catalog/status reads even though the
+  // inspector query itself is fast, so retain a finite but startup-tolerant
+  // deadline for this developer-only diagnostic surface.
+  return this.fetch(`/api/context-inspector?${params.toString()}`, undefined, {
+    timeoutMs: 30000,
+  });
+};
 ElizaClient.prototype.getTrajectoryConfig = async function (this: ElizaClient) {
   return this.fetch("/api/trajectories/config");
 };
-
 ElizaClient.prototype.updateTrajectoryConfig = async function (
   this: ElizaClient,
   config,
@@ -2171,7 +2237,6 @@ ElizaClient.prototype.updateTrajectoryConfig = async function (
     body: JSON.stringify(config),
   });
 };
-
 ElizaClient.prototype.exportTrajectories = async function (
   this: ElizaClient,
   options,
@@ -2185,7 +2250,6 @@ ElizaClient.prototype.exportTrajectories = async function (
   });
   return res.blob();
 };
-
 ElizaClient.prototype.deleteTrajectories = async function (
   this: ElizaClient,
   trajectoryIds,
@@ -2195,7 +2259,6 @@ ElizaClient.prototype.deleteTrajectories = async function (
     body: JSON.stringify({ trajectoryIds }),
   });
 };
-
 ElizaClient.prototype.clearAllTrajectories = async function (
   this: ElizaClient,
 ) {
@@ -2204,15 +2267,12 @@ ElizaClient.prototype.clearAllTrajectories = async function (
     body: JSON.stringify({ clearAll: true }),
   });
 };
-
 ElizaClient.prototype.getDatabaseStatus = async function (this: ElizaClient) {
   return this.fetch("/api/database/status");
 };
-
 ElizaClient.prototype.getDatabaseConfig = async function (this: ElizaClient) {
   return this.fetch("/api/database/config");
 };
-
 ElizaClient.prototype.saveDatabaseConfig = async function (
   this: ElizaClient,
   config,
@@ -2222,7 +2282,6 @@ ElizaClient.prototype.saveDatabaseConfig = async function (
     body: JSON.stringify(config),
   });
 };
-
 ElizaClient.prototype.testDatabaseConnection = async function (
   this: ElizaClient,
   creds,
@@ -2232,11 +2291,9 @@ ElizaClient.prototype.testDatabaseConnection = async function (
     body: JSON.stringify(creds),
   });
 };
-
 ElizaClient.prototype.getDatabaseTables = async function (this: ElizaClient) {
   return this.fetch("/api/database/tables");
 };
-
 ElizaClient.prototype.getDatabaseRows = async function (
   this: ElizaClient,
   table,
@@ -2253,7 +2310,6 @@ ElizaClient.prototype.getDatabaseRows = async function (
     `/api/database/tables/${encodeURIComponent(table)}/rows${qs ? `?${qs}` : ""}`,
   );
 };
-
 ElizaClient.prototype.insertDatabaseRow = async function (
   this: ElizaClient,
   table,
@@ -2264,7 +2320,6 @@ ElizaClient.prototype.insertDatabaseRow = async function (
     body: JSON.stringify({ data }),
   });
 };
-
 ElizaClient.prototype.updateDatabaseRow = async function (
   this: ElizaClient,
   table,
@@ -2276,7 +2331,6 @@ ElizaClient.prototype.updateDatabaseRow = async function (
     body: JSON.stringify({ where, data }),
   });
 };
-
 ElizaClient.prototype.deleteDatabaseRow = async function (
   this: ElizaClient,
   table,
@@ -2287,7 +2341,6 @@ ElizaClient.prototype.deleteDatabaseRow = async function (
     body: JSON.stringify({ where }),
   });
 };
-
 ElizaClient.prototype.executeDatabaseQuery = async function (
   this: ElizaClient,
   sql,

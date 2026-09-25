@@ -9,8 +9,12 @@
 import type {
   LifeOpsCalendarEvent,
   ListLifeOpsCalendarsResponse,
-} from "@elizaos/shared";
+} from "@elizaos/core/contracts/calendar";
+import { client as authorityClient } from "@elizaos/ui/api/client";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
+import { getActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -45,9 +49,8 @@ vi.mock("@elizaos/ui", () => {
   >((props, ref) => <textarea ref={ref} {...props} />);
   Textarea.displayName = "Textarea";
 
-  // The drawer imports `../api/client-calendar.js` for its side effect, which
-  // augments `ElizaClient.prototype`. Provide a throwaway class so that import
-  // resolves; we exercise the spied `client` object, not the prototype.
+  // Give the explicit Calendar client installer a prototype target while
+  // this component test exercises the spied transport client.
   class ElizaClient {
     fetch = vi.fn(async () => ({}) as never);
   }
@@ -332,6 +335,137 @@ function editSaveButton(): HTMLButtonElement {
 }
 
 describe("EventEditorDrawer", () => {
+  it("opens a source note through the shell without exposing note content", () => {
+    const sourceNote = {
+      agentId: editEvent.agentId,
+      noteId: "note-original",
+      contentHash: "a".repeat(64),
+    };
+    const onClose = vi.fn();
+    const received: unknown[] = [];
+    const listener = (event: Event) => {
+      if (event instanceof CustomEvent) received.push(event.detail);
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
+    try {
+      render(
+        <EventEditorDrawer
+          open
+          mode="edit"
+          event={{
+            ...editEvent,
+            metadata: { ...editEvent.metadata, sourceNote },
+          }}
+          onClose={onClose}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Open source note" }));
+      expect(onClose).toHaveBeenCalledOnce();
+      expect(received).toEqual([
+        {
+          viewId: "notes",
+          viewPath: "/notes",
+          source: "user",
+          payload: { sourceNote, authority: getActiveAgentAuthority() },
+        },
+      ]);
+    } finally {
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
+    }
+  });
+
+  it("invalidates a stale source link and binds a reopened event to the current agent", async () => {
+    const sourceNote = {
+      agentId: editEvent.agentId,
+      noteId: "note-original",
+      contentHash: "a".repeat(64),
+    };
+    const originalBase = authorityClient.getBaseUrl();
+    const onClose = vi.fn();
+    const view = render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={{
+          ...editEvent,
+          metadata: { ...editEvent.metadata, sourceNote },
+        }}
+        onClose={onClose}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Open source note" }),
+    ).toBeTruthy();
+    try {
+      await act(async () =>
+        authorityClient.setBaseUrl("https://different-agent.example.test", {
+          persist: false,
+        }),
+      );
+      expect(
+        screen.queryByRole("button", { name: "Open source note" }),
+      ).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+      view.rerender(
+        <EventEditorDrawer
+          open={false}
+          mode="edit"
+          event={null}
+          onClose={onClose}
+        />,
+      );
+      view.rerender(
+        <EventEditorDrawer
+          open
+          mode="edit"
+          event={{
+            ...editEvent,
+            metadata: { ...editEvent.metadata, sourceNote },
+          }}
+          onClose={onClose}
+        />,
+      );
+      expect(
+        screen.getByRole("button", { name: "Open source note" }),
+      ).toBeTruthy();
+    } finally {
+      view.unmount();
+      authorityClient.setBaseUrl(originalBase, { persist: false });
+    }
+  });
+
+  it.each([
+    {
+      agentId: "different-agent",
+      noteId: "note-original",
+      contentHash: "a".repeat(64),
+    },
+    {
+      agentId: editEvent.agentId,
+      noteId: "note-original",
+      contentHash: "invalid",
+    },
+    { agentId: editEvent.agentId, contentHash: "a".repeat(64) },
+  ])(
+    "does not expose malformed or differently scoped source references",
+    (sourceNote) => {
+      render(
+        <EventEditorDrawer
+          open
+          mode="edit"
+          event={{
+            ...editEvent,
+            metadata: { ...editEvent.metadata, sourceNote },
+          }}
+          onClose={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "Open source note" }),
+      ).toBeNull();
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     uiClient.getLifeOpsCalendars.mockResolvedValue(calendarsResponse);

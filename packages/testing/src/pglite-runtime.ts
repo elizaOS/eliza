@@ -24,7 +24,7 @@ import { AgentRuntime, createCharacter } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/shared/utils/pglite-storage";
+} from "./pglite-storage.ts";
 
 export interface TestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */

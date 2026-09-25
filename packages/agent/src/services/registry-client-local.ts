@@ -10,8 +10,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, readJsonFile } from "@elizaos/core";
-import { packageNameToAppDisplayName } from "@elizaos/shared";
+import {
+  logger,
+  packageNameToAppDisplayName,
+  readJsonFile,
+} from "@elizaos/core";
+
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {

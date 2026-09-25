@@ -9,12 +9,15 @@
  */
 import path from "node:path";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared";
 import {
+  type AgentRuntime,
   getDefaultStylePreset,
   normalizeCharacterLanguage,
-} from "@elizaos/shared";
+  type RouteHelpers,
+  type RouteRequestMeta,
+  type UUID,
+} from "@elizaos/core";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveUserPath } from "../config/paths.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";

@@ -36,14 +36,11 @@ const appCoreTaskHostCapabilities = path.join(
   "task-host-capabilities.ts",
 );
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
-const corePackageRequire = createRequire(
-  path.join(elizaRoot, "packages", "core", "package.json"),
-);
 const assistantPackageRequire = createRequire(
   path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
 );
-const sharedPackageRequire = createRequire(
-  path.join(elizaRoot, "packages", "shared", "package.json"),
+const corePackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "core", "package.json"),
 );
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
@@ -60,7 +57,6 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-native-filesystem",
   "@elizaos/plugin-elizacloud",
-  "@elizaos/plugin-inbox/plugin",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -68,6 +64,8 @@ const agentSourceJsToTsPlugin = {
   name: "lifeops-agent-source-js-to-ts",
   enforce: "pre" as const,
   resolveId(source: string, importer?: string) {
+    // Native built-ins remain lazy runtime imports in the UI test graph.
+    if (source.startsWith("bun:")) return { id: source, external: true };
     if (optionalCorePluginStubPackages.has(source)) {
       return `${optionalCorePluginStubPrefix}${source}`;
     }
@@ -179,7 +177,7 @@ const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = corePackageRequire.resolve("handlebars");
 const mammothEntry = assistantPackageRequire.resolve("mammoth");
 const markdownItRoot = path.dirname(
-  sharedPackageRequire.resolve("markdown-it/package.json"),
+  corePackageRequire.resolve("markdown-it/package.json"),
 );
 const telegramSessionsEntry = path.join(
   elizaRoot,
@@ -281,30 +279,6 @@ export default defineConfig({
           "auth-store.ts",
         ),
       },
-      // The real agent runtime loads audio-redaction services while this lane
-      // boots the OWNER/USER matrix. This specialized alias list replaces the
-      // base shared-source aliases, so keep these two package subpaths anchored
-      // to their source modules instead of requiring prebuilt shared/core dist.
-      {
-        find: /^@elizaos\/shared\/audio-redaction$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "shared",
-          "src",
-          "audio-redaction.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/audio-redaction-verify$/,
-        replacement: path.join(
-          elizaRoot,
-          "packages",
-          "shared",
-          "src",
-          "audio-redaction-verify.ts",
-        ),
-      },
       {
         find: /^@elizaos\/agent\/api\/connector-account-routes$/,
         replacement: path.join(
@@ -312,6 +286,10 @@ export default defineConfig({
           "api",
           "connector-account-routes.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/loopback-trust$/,
+        replacement: path.join(agentSourceRoot, "api", "loopback-trust.ts"),
       },
       {
         find: /^@elizaos\/agent\/api\/server-helpers$/,
@@ -459,6 +437,12 @@ export default defineConfig({
           "settings-section-meta.ts",
         ),
       },
+      // The real API client imports this leaf; mapping it to the API mock
+      // would make the mock factory await itself during module collection.
+      {
+        find: /^@elizaos\/ui\/logger$/,
+        replacement: path.join(elizaRoot, "packages/ui/src/logger.ts"),
+      },
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
@@ -515,7 +499,7 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
       {
@@ -599,26 +583,6 @@ export default defineConfig({
       // package `exports` map only sends subpaths to ./src under the eliza-source
       // condition, so without dist they resolve to missing ./dist/*.js. Anchor
       // both the barrel and every subpath to source, same as plugin-blocker.
-      {
-        find: /^@elizaos\/plugin-finances\/(.+)$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-finances",
-          "src",
-          "$1.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-finances$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-finances",
-          "src",
-          "index.ts",
-        ),
-      },
       {
         find: /^@elizaos\/plugin-goals\/(.+)$/,
         replacement: path.join(
@@ -862,7 +826,7 @@ export default defineConfig({
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
     ],
@@ -898,7 +862,7 @@ export default defineConfig({
             repoRoot,
             path.join(
               elizaRoot,
-              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.mjs",
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts",
             ),
           )
           .replaceAll(path.sep, "/"),

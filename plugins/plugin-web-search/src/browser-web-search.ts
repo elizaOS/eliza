@@ -14,7 +14,7 @@ export async function searchBrowserFirstWeb(
 ): Promise<
     KeylessWebSearchResult | { provider: "browser"; text: string; truncated: false } | null
 > {
-    const result = await searchAuthorizedBrowser(runtime, query, { limit: options.resultCount });
+    const result = await searchAuthorizedBrowser(runtime, query);
     if (result) return { provider: "browser", text: JSON.stringify(result), truncated: false };
     return (await searchKeylessWeb(query, options)) ?? null;
 }

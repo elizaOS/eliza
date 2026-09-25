@@ -13,26 +13,29 @@ import { createAssistantPlugin } from "../index.ts";
  * candidate selection.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { ElizaError } from "../../../../packages/core/src/errors.ts";
-import type { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,
   ActionResult,
+  AgentRuntime,
   Content,
   HandlerCallback,
   Memory,
   UUID,
-} from "../../../../packages/core/src/types/index.ts";
-import { ModelType } from "../../../../packages/core/src/types/index.ts";
-import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
-import { PROVIDER_CONTEXT_OVERFLOW } from "../../../../packages/core/src/utils/model-errors.ts";
+} from "@elizaos/core";
+import {
+  ChannelType,
+  createCharacter,
+  ElizaError,
+  ModelType,
+  PROVIDER_CONTEXT_OVERFLOW,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlannerToolResult } from "../runtime/planner-loop.ts";
 import {
   answerlessToolTurnReport,
   DefaultMessageService,
   preservedSettledToolResult,
+  runV5MessageRuntimeStage1,
   subAgentCompletionRelayBody,
 } from "./message.ts";
 
@@ -547,7 +550,7 @@ describe("planner-loop death after a completed tool", () => {
     expect(harness.reportedScopes).not.toContain("MessageService.plannerLoop");
   });
 
-  it("does not rescue a partial result when the default tool-call budget stops a batch", async () => {
+  it("preserves partial settlements when an explicit tool-call budget stops a batch", async () => {
     const savedItems: number[] = [];
     let apologyCalls = 0;
     const harness = await createHarness({
@@ -605,12 +608,6 @@ describe("planner-loop death after a completed tool", () => {
       "limit-test",
       200,
     );
-    const reportedErrors: unknown[] = [];
-    const reportError = harness.runtime.reportError.bind(harness.runtime);
-    harness.runtime.reportError = (scope, error, context) => {
-      reportedErrors.push(error);
-      return reportError(scope, error, context);
-    };
     harness.runtime.registerModel(
       ModelType.TEXT_SMALL,
       async () => {
@@ -632,34 +629,40 @@ describe("planner-loop death after a completed tool", () => {
       "limit-test",
       200,
     );
-    await new DefaultMessageService().handleMessage(
+    const message = makeMessage(
       harness.runtime,
-      makeMessage(
-        harness.runtime,
-        "Save all seventeen distinct requested entries in order.",
-      ),
-      harness.callback,
+      "Save all seventeen distinct requested entries in order.",
     );
+    const settled: ActionResult[] = [];
+    const outcome = await runV5MessageRuntimeStage1({
+      runtime: harness.runtime,
+      message,
+      state: await harness.runtime.composeState(message),
+      responseId: "00000000-0000-0000-0000-000000000083" as UUID,
+      callback: harness.callback,
+      plannerLoopConfig: { maxToolCalls: 16 },
+      onSettledActionResult: (result) => {
+        settled.push(result);
+      },
+    });
     expect(savedItems).toEqual(Array.from({ length: 16 }, (_, i) => i));
+    expect(settled).toHaveLength(16);
+    expect(settled.map((result) => result.data?.item)).toEqual(savedItems);
     expect(apologyCalls).toBe(0);
+    expect(outcome.kind).toBe("planned_reply");
+    if (outcome.kind !== "planned_reply")
+      throw new Error("Expected planned result");
+    expect(outcome.result.terminalFailure).toMatchObject({
+      kind: "resource_limit",
+      transient: false,
+    });
+    expect(outcome.result.responseContent?.text).toContain(
+      "before the request was complete",
+    );
     expect(visibleTexts(harness.callbacks).join(" ")).not.toContain(
       "Nothing was completed",
     );
-    expect(reportedErrors).toContainEqual(
-      expect.objectContaining({
-        name: "TrajectoryLimitExceeded",
-        kind: "tool_calls",
-        max: 16,
-        observed: 17,
-      }),
-    );
-    expect(harness.callbacks).toContainEqual(
-      expect.objectContaining({ failureKind: "planner_exhaustion" }),
-    );
     expect(visibleTexts(harness.callbacks)).not.toContain("Item saved.");
-    expect(harness.sent).toContainEqual(
-      expect.objectContaining({ failureKind: "planner_exhaustion" }),
-    );
   });
 
   it.each([

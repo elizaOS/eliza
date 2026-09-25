@@ -17,8 +17,10 @@ const STARTUP_TIMESTAMP_ENV_KEYS = [
   "ELIZA_API_PROCESS_SPAWNED_AT_MS",
   "ELIZA_PROCESS_SPAWNED_AT_MS",
 ] as const;
-
-function readStartupTimestampFromEnv(): { key: string; value: number } | null {
+function readStartupTimestampFromEnv(): {
+  key: string;
+  value: number;
+} | null {
   for (const key of STARTUP_TIMESTAMP_ENV_KEYS) {
     const raw = process.env[key]?.trim();
     if (!raw) continue;
@@ -29,32 +31,43 @@ function readStartupTimestampFromEnv(): { key: string; value: number } | null {
   }
   return null;
 }
-
 const STARTUP_TIMESTAMP = readStartupTimestampFromEnv();
 const STARTUP_TIMING_START = STARTUP_TIMESTAMP?.value ?? MODULE_BODY_START;
 const STARTUP_TIMING_SOURCE = STARTUP_TIMESTAMP
   ? `child-spawn env ${STARTUP_TIMESTAMP.key}`
   : "module-body timestamp";
-
 function elapsedSinceStartupTimingStart(): number {
   return Date.now() - STARTUP_TIMING_START;
 }
-
 function elapsedSinceModuleBodyStart(): number {
   return Date.now() - MODULE_BODY_START;
 }
 
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
-  colorizeDevSettingsStartupBanner,
-  formatError,
   formatUncaughtError,
-  getLogPrefix,
+  shouldIgnoreUnhandledRejection,
+} from "@elizaos/core/error-classification";
+import { setRestartHandler } from "@elizaos/core/restart";
+import {
   resolveApiToken,
   resolveDesktopApiPort,
-  setRestartHandler,
-  shouldIgnoreUnhandledRejection,
   syncResolvedApiPort,
-} from "@elizaos/shared";
+} from "@elizaos/core/runtime-env";
+import { formatError } from "@elizaos/core/utils/format-error";
+import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
+import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
+import { startApiServer } from "../api/server";
+import { colorizeDevSettingsStartupBanner } from "../dev-settings-banner-style.js";
+import {
+  formatApiDevSettingsBannerText,
+  shouldShowApiDevSettingsBanner,
+} from "./api-dev-settings-banner.js";
+import {
+  isRoutineDevMemoryHeartbeatEnabled,
+  logRoutineDevMemoryHeartbeat,
+} from "./dev-memory-heartbeat.js";
+import { warnStalePluginDists } from "./dev-plugin-dist-staleness.js";
 import { resolveRuntimeBootstrapFailure } from "./runtime-bootstrap-policy.js";
 import {
   mergedRecoverySkipPlugins,
@@ -81,19 +94,6 @@ import path from "node:path";
  *        (or via the dev script: bun run dev)
  */
 import process from "node:process";
-import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
-import { startApiServer } from "../api/server";
-import {
-  formatApiDevSettingsBannerText,
-  shouldShowApiDevSettingsBanner,
-} from "./api-dev-settings-banner.js";
-import {
-  isRoutineDevMemoryHeartbeatEnabled,
-  logRoutineDevMemoryHeartbeat,
-} from "./dev-memory-heartbeat.js";
-import { warnStalePluginDists } from "./dev-plugin-dist-staleness.js";
 
 /**
  * The `./eliza` module is the entire agent-runtime / startEliza graph
@@ -111,25 +111,19 @@ function loadElizaRuntimeModule(): Promise<typeof import("./eliza")> {
   }
   return elizaRuntimeModulePromise;
 }
-
 console.log(
   `${getLogPrefix()} Static imports complete (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
 );
-
 // Load .env files for parity with CLI mode (which loads via run-main.ts).
 const { config: loadDotenv } = await import("dotenv");
 loadDotenv({ quiet: true });
-
 console.log(
   `${getLogPrefix()} dotenv loaded (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
 );
-
 const port = resolveDesktopApiPort(process.env);
 const hadUserApiTokenInEnv = !!resolveApiToken(process.env);
-
 /** The currently active runtime — swapped on restart. */
 let currentRuntime: AgentRuntime | null = null;
-
 /** The API server's `updateRuntime` handle (set after startup). */
 let apiUpdateRuntime: ((rt: AgentRuntime) => void) | null = null;
 /** API server startup diagnostics updater (set after startup). */
@@ -150,13 +144,10 @@ let apiUpdateStartup:
         | "error";
     }) => void)
   | null = null;
-
 /** Guards against concurrent restart attempts (bun --watch + API restart). */
 let isRestarting = false;
-
 /** Tracks whether the process is shutting down to prevent restart during exit. */
 let isShuttingDown = false;
-
 /** Runtime bootstrap loop state (initial startup + retries). */
 let runtimeBootAttempt = 0;
 let runtimeBootInProgress = false;
@@ -164,7 +155,6 @@ let runtimeBootTimer: ReturnType<typeof setTimeout> | null = null;
 let runtimeBootFirstFailureAt: number | null = null;
 let runtimeBootPgliteAutoResetAttempted = false;
 let runtimeBootPgliteRecoverySkipPlugins: string[] = [];
-
 // The operator's own ELIZA_SKIP_PLUGINS, captured before the PGlite-recovery
 // retry ever touches the env var. The recovery path reuses the same variable
 // to skip crash-implicated plugins on its one retry; without this capture,
@@ -172,14 +162,12 @@ let runtimeBootPgliteRecoverySkipPlugins: string[] = [];
 // any later in-process runtime re-bootstrap silently resurrected every
 // operator-skipped plugin.
 const operatorSkipPlugins = process.env.ELIZA_SKIP_PLUGINS;
-
 function clearRuntimeBootTimer(): void {
   if (runtimeBootTimer) {
     clearTimeout(runtimeBootTimer);
     runtimeBootTimer = null;
   }
 }
-
 function scheduleRuntimeBootstrap(delayMs: number, reason: string): void {
   if (isShuttingDown) return;
   clearRuntimeBootTimer();
@@ -191,7 +179,6 @@ function scheduleRuntimeBootstrap(delayMs: number, reason: string): void {
     Math.max(0, delayMs),
   );
 }
-
 async function bootstrapRuntime(reason: string): Promise<void> {
   if (isShuttingDown || isRestarting || runtimeBootInProgress) return;
   runtimeBootInProgress = true;
@@ -205,10 +192,8 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     nextRetryAt: undefined,
     state: "starting",
   });
-
   try {
     logger.info(`${getLogPrefix()} Runtime bootstrap starting (${reason})`);
-
     // Apply the GitHub PAT saved via Settings → Coding Agents → GitHub
     // before the runtime loads. The orchestrator's existing
     // `runtime.getSetting("GITHUB_TOKEN")` resolution and any sub-agent
@@ -217,7 +202,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     // GITHUB_TOKEN always wins.
     try {
       const { applySavedTokenToEnv } = await import(
-        "../services/github-credentials.js"
+        "@elizaos/plugin-github/github-credentials"
       );
       const result = await applySavedTokenToEnv();
       if (result.applied) {
@@ -236,13 +221,11 @@ async function bootstrapRuntime(reason: string): Promise<void> {
         `${getLogPrefix()} Failed to apply saved GitHub token (runtime continues without it): ${formatError(err)}`,
       );
     }
-
     const rt = await createRuntime();
     logger.info(
       `${getLogPrefix()} Runtime created in ${Date.now() - bootstrapStart}ms`,
     );
     const agentName = rt.character.name ?? "Eliza";
-
     if (isShuttingDown) {
       try {
         const { shutdownRuntime } = await loadElizaRuntimeModule();
@@ -256,7 +239,6 @@ async function bootstrapRuntime(reason: string): Promise<void> {
       }
       return;
     }
-
     if (apiUpdateRuntime) {
       apiUpdateRuntime(rt);
     }
@@ -320,7 +302,6 @@ async function bootstrapRuntime(reason: string): Promise<void> {
         );
       }
     }
-
     const now = Date.now();
     runtimeBootAttempt += 1;
     if (!runtimeBootFirstFailureAt) {
@@ -354,7 +335,6 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     runtimeBootInProgress = false;
   }
 }
-
 /**
  * Create a fresh runtime via startEliza (headless).
  * If a runtime is already running, stop it first.
@@ -367,7 +347,6 @@ const devTrajectoryRecoveryRequested =
 // Only this launched dev-server owns the parent's IPC channel. Helpers started
 // by its runtime must not inherit the instruction to register with that parent.
 delete process.env.ELIZA_DEV_TRAJECTORY_RECOVERY;
-
 async function createRuntime(): Promise<AgentRuntime> {
   const runtimeModule = await loadElizaRuntimeModule();
   const { shutdownRuntime, startEliza } = runtimeModule;
@@ -375,12 +354,10 @@ async function createRuntime(): Promise<AgentRuntime> {
     await shutdownRuntime(currentRuntime, "dev-server createRuntime");
     currentRuntime = null;
   }
-
   const result = await startEliza({ headless: true });
   if (!result) {
     throw new Error("startEliza returned null — runtime failed to initialize");
   }
-
   if (devTrajectoryRecoveryRequested) {
     const { createDevTrajectoryRecoveryIpc } = await import(
       "./dev-trajectory-recovery-ipc"
@@ -403,21 +380,17 @@ async function createRuntime(): Promise<AgentRuntime> {
   currentRuntime = result as AgentRuntime;
   return currentRuntime;
 }
-
 let restartPromise: Promise<void> | null = null;
-
 async function handleRestart(reason?: string): Promise<void> {
   if (isShuttingDown) {
     throw new Error("Restart skipped — process is shutting down");
   }
-
   if (restartPromise) {
     logger.info(
       `${getLogPrefix()} Restart already in progress, awaiting existing restart...`,
     );
     return restartPromise;
   }
-
   restartPromise = (async () => {
     isRestarting = true;
     try {
@@ -427,7 +400,6 @@ async function handleRestart(reason?: string): Promise<void> {
           "Restart requested while runtime bootstrap is in progress. Please wait for startup to complete.",
         );
       }
-
       logger.info(
         `${getLogPrefix()} Restart requested${reason ? ` (${reason})` : ""} — bouncing runtime…`,
       );
@@ -461,11 +433,9 @@ async function handleRestart(reason?: string): Promise<void> {
         nextRetryAt: undefined,
         state: "starting",
       });
-
       const rt = await createRuntime();
       const agentName = rt.character.name ?? "Eliza";
       logger.info(`${getLogPrefix()} Runtime restarted — agent: ${agentName}`);
-
       // Hot-swap the API server's runtime reference.
       if (apiUpdateRuntime) {
         apiUpdateRuntime(rt);
@@ -475,10 +445,8 @@ async function handleRestart(reason?: string): Promise<void> {
       restartPromise = null;
     }
   })();
-
   return restartPromise;
 }
-
 /**
  * Graceful shutdown for the dev-server process.
  *
@@ -490,16 +458,14 @@ async function shutdown(): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
   clearRuntimeBootTimer();
-
   // Force exit if graceful shutdown hangs for more than 10 seconds.
   const forceExitTimer = setTimeout(() => {
     logger.warn(
       `${getLogPrefix()} Shutdown timed out after 10s — forcing exit`,
     );
     process.exit(1);
-  }, 10_000);
+  }, 10000);
   forceExitTimer.unref();
-
   logger.info(`${getLogPrefix()} Dev server shutting down…`);
   if (currentRuntime) {
     try {
@@ -519,18 +485,14 @@ async function shutdown(): Promise<void> {
   clearTimeout(forceExitTimer);
   process.exit(0);
 }
-
 process.once("SIGINT", () => void shutdown());
 process.once("SIGTERM", () => void shutdown());
-
 async function main() {
   const startupStart = Date.now();
-
   // Register the in-process restart handler so the RESTART_AGENT action
   // (and the POST /api@elizaos/agent/restart endpoint) work without killing the
   // process.
   setRestartHandler(handleRestart);
-
   // 1. Start the API server first (no runtime yet) so the UI can connect
   //    immediately while the heavier agent runtime boots in the background.
   const apiStart = Date.now();
@@ -569,7 +531,6 @@ async function main() {
     );
   }
   syncResolvedApiPort(process.env, actualPort);
-
   // Boot the elizaOS agent runtime without blocking server readiness. Scheduled
   // here — before the CORS dynamic import and the cosmetic banner/pairing block
   // below — because `scheduleRuntimeBootstrap` only queues a macrotask: the lone
@@ -581,7 +542,6 @@ async function main() {
   // any cross-origin request can reach the agent. The resolved API port is
   // already synced into env above, so the runtime reads the correct port.
   scheduleRuntimeBootstrap(0, "startup");
-
   // The API is already bound and runtime bootstrap is queued before this
   // diagnostic performs filesystem work. It follows the same source condition
   // as the dev child and therefore warns only for entries that still resolve
@@ -606,12 +566,10 @@ async function main() {
       );
     }
   });
-
   // Invalidate cached CORS port set so the new port is allowed.
   const { invalidateCorsAllowedPorts } = await import("../api/server-cors.js");
   invalidateCorsAllowedPorts();
   const pairing = ensureAuthPairingCodeForRemoteAccess();
-
   // Keep the default ready signal compact. Credential and pairing details are
   // separate because they are conditional and operationally necessary.
   const apiToken = resolveApiToken(process.env);
@@ -626,7 +584,6 @@ async function main() {
   if (pairing) {
     console.log(`${getLogPrefix()} Pairing code: ${pairing.code}`);
   }
-
   if (shouldShowApiDevSettingsBanner(process.env)) {
     console.log(
       colorizeDevSettingsStartupBanner(
@@ -636,12 +593,10 @@ async function main() {
       ),
     );
   }
-
   console.log(
     `${getLogPrefix()} Startup init complete in ${Date.now() - startupStart}ms, agent bootstrapping...`,
   );
 }
-
 // ── Global error handlers (match CLI behavior from run-main.ts) ──
 process.on("unhandledRejection", (reason) => {
   if (shouldIgnoreUnhandledRejection(reason)) {
@@ -655,7 +610,6 @@ process.on("unhandledRejection", (reason) => {
     `${getLogPrefix()} Unhandled rejection: ${formatUncaughtError(reason)}`,
   );
 });
-
 process.on("uncaughtException", (error) => {
   console.error(
     `${getLogPrefix()} Uncaught exception:`,
@@ -663,7 +617,6 @@ process.on("uncaughtException", (error) => {
   );
   process.exit(1);
 });
-
 // ── Dev memory instrumentation ──────────────────────────────────────
 // Agents cannot see the native window; surface RSS/heap so a runaway child
 // (a stuck boot was observed climbing 399MB→1.8GB over minutes) is visible in
@@ -679,10 +632,9 @@ if (isRoutineDevMemoryHeartbeatEnabled(process.env.ELIZA_DEV_HEAP_REPORT)) {
       global.gc();
     }
     logRoutineDevMemoryHeartbeat(logger, getLogPrefix(), process.memoryUsage());
-  }, 60_000);
+  }, 60000);
   heapReportTimer.unref();
 }
-
 main().catch((err: unknown) => {
   const error = err instanceof Error ? err : new Error(String(err));
   console.error(`${getLogPrefix()} Fatal error:`, error.stack ?? error.message);

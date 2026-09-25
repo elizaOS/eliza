@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -26,10 +26,1375 @@
 	"sideEffects": true,
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
 			"eliza-source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
+		},
+		"./activity-plaintext": {
+			"eliza-source": "./src/activity-plaintext.ts",
+			"types": "./dist/activity-plaintext.d.ts",
+			"import": "./dist/activity-plaintext.js",
+			"default": "./dist/activity-plaintext.js"
+		},
+		"./agent-backup-limits": {
+			"eliza-source": "./src/agent-backup-limits.ts",
+			"types": "./dist/agent-backup-limits.d.ts",
+			"import": "./dist/agent-backup-limits.js",
+			"default": "./dist/agent-backup-limits.js"
+		},
+		"./api/agent-api-types": {
+			"eliza-source": "./src/api/agent-api-types.ts",
+			"types": "./dist/api/agent-api-types.d.ts",
+			"import": "./dist/api/agent-api-types.js",
+			"default": "./dist/api/agent-api-types.js"
+		},
+		"./api/app-route-plugin-registry": {
+			"eliza-source": "./src/api/app-route-plugin-registry.ts",
+			"types": "./dist/api/app-route-plugin-registry.d.ts",
+			"import": "./dist/api/app-route-plugin-registry.js",
+			"default": "./dist/api/app-route-plugin-registry.js"
+		},
+		"./api/command-transport-types": {
+			"eliza-source": "./src/api/command-transport-types.ts",
+			"types": "./dist/api/command-transport-types.d.ts",
+			"import": "./dist/api/command-transport-types.js",
+			"default": "./dist/api/command-transport-types.js"
+		},
+		"./api/drain-app-route-plugins": {
+			"eliza-source": "./src/api/drain-app-route-plugins.ts",
+			"types": "./dist/api/drain-app-route-plugins.d.ts",
+			"import": "./dist/api/drain-app-route-plugins.js",
+			"default": "./dist/api/drain-app-route-plugins.js"
+		},
+		"./api/http-helpers": {
+			"eliza-source": "./src/api/http-helpers.ts",
+			"types": "./dist/api/http-helpers.d.ts",
+			"import": "./dist/api/http-helpers.js",
+			"default": "./dist/api/http-helpers.js"
+		},
+		"./api/http-plugin-runtime": {
+			"eliza-source": "./src/api/http-plugin-runtime.ts",
+			"types": "./dist/api/http-plugin-runtime.d.ts",
+			"import": "./dist/api/http-plugin-runtime.js",
+			"default": "./dist/api/http-plugin-runtime.js"
+		},
+		"./api/http-plugin": {
+			"eliza-source": "./src/api/http-plugin.ts",
+			"types": "./dist/api/http-plugin.d.ts",
+			"import": "./dist/api/http-plugin.js",
+			"default": "./dist/api/http-plugin.js"
+		},
+		"./api/route-helpers": {
+			"eliza-source": "./src/api/route-helpers.ts",
+			"types": "./dist/api/route-helpers.d.ts",
+			"import": "./dist/api/route-helpers.js",
+			"default": "./dist/api/route-helpers.js"
+		},
+		"./api/runtime-route-context": {
+			"eliza-source": "./src/api/runtime-route-context.ts",
+			"types": "./dist/api/runtime-route-context.d.ts",
+			"import": "./dist/api/runtime-route-context.js",
+			"default": "./dist/api/runtime-route-context.js"
+		},
+		"./audio-redaction-verify": {
+			"eliza-source": "./src/audio-redaction-verify.ts",
+			"types": "./dist/audio-redaction-verify.d.ts",
+			"import": "./dist/audio-redaction-verify.js",
+			"default": "./dist/audio-redaction-verify.js"
+		},
+		"./audio-redaction": {
+			"eliza-source": "./src/audio-redaction.ts",
+			"types": "./dist/audio-redaction.d.ts",
+			"import": "./dist/audio-redaction.js",
+			"default": "./dist/audio-redaction.js"
+		},
+		"./automation-node-contributors": {
+			"eliza-source": "./src/automation-node-contributors.ts",
+			"types": "./dist/automation-node-contributors.d.ts",
+			"import": "./dist/automation-node-contributors.js",
+			"default": "./dist/automation-node-contributors.js"
+		},
+		"./awareness/registry": {
+			"eliza-source": "./src/awareness/registry.ts",
+			"types": "./dist/awareness/registry.d.ts",
+			"import": "./dist/awareness/registry.js",
+			"default": "./dist/awareness/registry.js"
+		},
+		"./canonical-json": {
+			"eliza-source": "./src/canonical-json.ts",
+			"types": "./dist/canonical-json.d.ts",
+			"import": "./dist/canonical-json.js",
+			"default": "./dist/canonical-json.js"
+		},
+		"./catalog/channel-plugin-map.json": {
+			"eliza-source": "./src/catalog/channel-plugin-map.json",
+			"default": "./dist/catalog/channel-plugin-map.json"
+		},
+		"./catalog/curated-app-definitions.json": {
+			"eliza-source": "./src/catalog/curated-app-definitions.json",
+			"default": "./dist/catalog/curated-app-definitions.json"
+		},
+		"./catalog/generate": {
+			"eliza-source": "./src/catalog/generate.ts",
+			"types": "./dist/catalog/generate.d.ts",
+			"import": "./dist/catalog/generate.js",
+			"default": "./dist/catalog/generate.js"
+		},
+		"./catalog/generated.json": {
+			"eliza-source": "./src/catalog/generated.json",
+			"default": "./dist/catalog/generated.json"
+		},
+		"./catalog/loader": {
+			"eliza-source": "./src/catalog/loader.ts",
+			"types": "./dist/catalog/loader.d.ts",
+			"import": "./dist/catalog/loader.js",
+			"default": "./dist/catalog/loader.js"
+		},
+		"./catalog/provider-plugin-map.json": {
+			"eliza-source": "./src/catalog/provider-plugin-map.json",
+			"default": "./dist/catalog/provider-plugin-map.json"
+		},
+		"./catalog/runtime-kernel": {
+			"eliza-source": "./src/catalog/runtime-kernel.ts",
+			"types": "./dist/catalog/runtime-kernel.d.ts",
+			"import": "./dist/catalog/runtime-kernel.js",
+			"default": "./dist/catalog/runtime-kernel.js"
+		},
+		"./catalog/schema": {
+			"eliza-source": "./src/catalog/schema.ts",
+			"types": "./dist/catalog/schema.d.ts",
+			"import": "./dist/catalog/schema.js",
+			"default": "./dist/catalog/schema.js"
+		},
+		"./catalog/short-id-plugin-map.json": {
+			"eliza-source": "./src/catalog/short-id-plugin-map.json",
+			"default": "./dist/catalog/short-id-plugin-map.json"
+		},
+		"./character-language": {
+			"eliza-source": "./src/character-language.ts",
+			"types": "./dist/character-language.d.ts",
+			"import": "./dist/character-language.js",
+			"default": "./dist/character-language.js"
+		},
+		"./character-presets.characters": {
+			"eliza-source": "./src/character-presets.characters.ts",
+			"types": "./dist/character-presets.characters.d.ts",
+			"import": "./dist/character-presets.characters.js",
+			"default": "./dist/character-presets.characters.js"
+		},
+		"./character-presets.shared": {
+			"eliza-source": "./src/character-presets.shared.ts",
+			"types": "./dist/character-presets.shared.d.ts",
+			"import": "./dist/character-presets.shared.js",
+			"default": "./dist/character-presets.shared.js"
+		},
+		"./character-presets": {
+			"eliza-source": "./src/character-presets.ts",
+			"types": "./dist/character-presets.d.ts",
+			"import": "./dist/character-presets.js",
+			"default": "./dist/character-presets.js"
+		},
+		"./chat-upload-limits": {
+			"eliza-source": "./src/chat-upload-limits.ts",
+			"types": "./dist/chat-upload-limits.d.ts",
+			"import": "./dist/chat-upload-limits.js",
+			"default": "./dist/chat-upload-limits.js"
+		},
+		"./checkout": {
+			"eliza-source": "./src/checkout/index.ts",
+			"types": "./dist/checkout/index.d.ts",
+			"import": "./dist/checkout/index.js",
+			"default": "./dist/checkout/index.js"
+		},
+		"./cli/parse-duration": {
+			"eliza-source": "./src/cli/parse-duration.ts",
+			"types": "./dist/cli/parse-duration.d.ts",
+			"import": "./dist/cli/parse-duration.js",
+			"default": "./dist/cli/parse-duration.js"
+		},
+		"./config/allowed-hosts": {
+			"eliza-source": "./src/config/allowed-hosts.ts",
+			"types": "./dist/config/allowed-hosts.d.ts",
+			"import": "./dist/config/allowed-hosts.js",
+			"default": "./dist/config/allowed-hosts.js"
+		},
+		"./config/api-key-prefix-hints": {
+			"eliza-source": "./src/config/api-key-prefix-hints.ts",
+			"types": "./dist/config/api-key-prefix-hints.d.ts",
+			"import": "./dist/config/api-key-prefix-hints.js",
+			"default": "./dist/config/api-key-prefix-hints.js"
+		},
+		"./config/app-config": {
+			"eliza-source": "./src/config/app-config.ts",
+			"types": "./dist/config/app-config.d.ts",
+			"import": "./dist/config/app-config.js",
+			"default": "./dist/config/app-config.js"
+		},
+		"./config/boot-config-store": {
+			"eliza-source": "./src/config/boot-config-store.ts",
+			"types": "./dist/config/boot-config-store.d.ts",
+			"import": "./dist/config/boot-config-store.js",
+			"default": "./dist/config/boot-config-store.js"
+		},
+		"./config/brand-env-aliases": {
+			"eliza-source": "./src/config/brand-env-aliases.ts",
+			"types": "./dist/config/brand-env-aliases.d.ts",
+			"import": "./dist/config/brand-env-aliases.js",
+			"default": "./dist/config/brand-env-aliases.js"
+		},
+		"./config/branding": {
+			"eliza-source": "./src/config/branding.ts",
+			"types": "./dist/config/branding.d.ts",
+			"import": "./dist/config/branding.js",
+			"default": "./dist/config/branding.js"
+		},
+		"./config/cloud-only": {
+			"eliza-source": "./src/config/cloud-only.ts",
+			"types": "./dist/config/cloud-only.d.ts",
+			"import": "./dist/config/cloud-only.js",
+			"default": "./dist/config/cloud-only.js"
+		},
+		"./config/config-catalog": {
+			"eliza-source": "./src/config/config-catalog.ts",
+			"types": "./dist/config/config-catalog.d.ts",
+			"import": "./dist/config/config-catalog.js",
+			"default": "./dist/config/config-catalog.js"
+		},
+		"./config/config-paths": {
+			"eliza-source": "./src/config/config-paths.ts",
+			"types": "./dist/config/config-paths.d.ts",
+			"import": "./dist/config/config-paths.js",
+			"default": "./dist/config/config-paths.js"
+		},
+		"./config/legacy-cloud-config": {
+			"eliza-source": "./src/config/legacy-cloud-config.ts",
+			"types": "./dist/config/legacy-cloud-config.d.ts",
+			"import": "./dist/config/legacy-cloud-config.js",
+			"default": "./dist/config/legacy-cloud-config.js"
+		},
+		"./config/distribution-profile": {
+			"eliza-source": "./src/config/distribution-profile.ts",
+			"types": "./dist/config/distribution-profile.d.ts",
+			"import": "./dist/config/distribution-profile.js",
+			"default": "./dist/config/distribution-profile.js"
+		},
+		"./config/plugin-auto-enable-engine": {
+			"eliza-source": "./src/config/plugin-auto-enable-engine.ts",
+			"types": "./dist/config/plugin-auto-enable-engine.d.ts",
+			"import": "./dist/config/plugin-auto-enable-engine.js",
+			"default": "./dist/config/plugin-auto-enable-engine.js"
+		},
+		"./config/plugin-ui-spec": {
+			"eliza-source": "./src/config/plugin-ui-spec.ts",
+			"types": "./dist/config/plugin-ui-spec.d.ts",
+			"import": "./dist/config/plugin-ui-spec.js",
+			"default": "./dist/config/plugin-ui-spec.js"
+		},
+		"./config/runtime-mode": {
+			"eliza-source": "./src/config/runtime-mode.ts",
+			"types": "./dist/config/runtime-mode.d.ts",
+			"import": "./dist/config/runtime-mode.js",
+			"default": "./dist/config/runtime-mode.js"
+		},
+		"./config/runtime-overrides": {
+			"eliza-source": "./src/config/runtime-overrides.ts",
+			"types": "./dist/config/runtime-overrides.d.ts",
+			"import": "./dist/config/runtime-overrides.js",
+			"default": "./dist/config/runtime-overrides.js"
+		},
+		"./config/schema": {
+			"eliza-source": "./src/config/schema.ts",
+			"types": "./dist/config/schema.d.ts",
+			"import": "./dist/config/schema.js",
+			"default": "./dist/config/schema.js"
+		},
+		"./config/ui-spec": {
+			"eliza-source": "./src/config/ui-spec.ts",
+			"types": "./dist/config/ui-spec.d.ts",
+			"import": "./dist/config/ui-spec.js",
+			"default": "./dist/config/ui-spec.js"
+		},
+		"./config/zod-schema.agent-runtime": {
+			"eliza-source": "./src/config/zod-schema.agent-runtime.ts",
+			"types": "./dist/config/zod-schema.agent-runtime.d.ts",
+			"import": "./dist/config/zod-schema.agent-runtime.js",
+			"default": "./dist/config/zod-schema.agent-runtime.js"
+		},
+		"./config/zod-schema.core": {
+			"eliza-source": "./src/config/zod-schema.core.ts",
+			"types": "./dist/config/zod-schema.core.d.ts",
+			"import": "./dist/config/zod-schema.core.js",
+			"default": "./dist/config/zod-schema.core.js"
+		},
+		"./connector-account-catalog": {
+			"eliza-source": "./src/connector-account-catalog.ts",
+			"types": "./dist/connector-account-catalog.d.ts",
+			"import": "./dist/connector-account-catalog.js",
+			"default": "./dist/connector-account-catalog.js"
+		},
+		"./connectors": {
+			"eliza-source": "./src/connectors.ts",
+			"types": "./dist/connectors.d.ts",
+			"import": "./dist/connectors.js",
+			"default": "./dist/connectors.js"
+		},
+		"./contracts/agent-backup-capture-v2": {
+			"eliza-source": "./src/contracts/agent-backup-capture-v2.ts",
+			"types": "./dist/contracts/agent-backup-capture-v2.d.ts",
+			"import": "./dist/contracts/agent-backup-capture-v2.js",
+			"default": "./dist/contracts/agent-backup-capture-v2.js"
+		},
+		"./contracts/agent-backup-manifest-v3": {
+			"eliza-source": "./src/contracts/agent-backup-manifest-v3.ts",
+			"types": "./dist/contracts/agent-backup-manifest-v3.d.ts",
+			"import": "./dist/contracts/agent-backup-manifest-v3.js",
+			"default": "./dist/contracts/agent-backup-manifest-v3.js"
+		},
+		"./contracts/agent-backup-manifest": {
+			"eliza-source": "./src/contracts/agent-backup-manifest.ts",
+			"types": "./dist/contracts/agent-backup-manifest.d.ts",
+			"import": "./dist/contracts/agent-backup-manifest.js",
+			"default": "./dist/contracts/agent-backup-manifest.js"
+		},
+		"./contracts/agent-backup-record-stream-v1": {
+			"eliza-source": "./src/contracts/agent-backup-record-stream-v1.ts",
+			"types": "./dist/contracts/agent-backup-record-stream-v1.d.ts",
+			"import": "./dist/contracts/agent-backup-record-stream-v1.js",
+			"default": "./dist/contracts/agent-backup-record-stream-v1.js"
+		},
+		"./contracts/agent-backup-restore-v3-stream": {
+			"eliza-source": "./src/contracts/agent-backup-restore-v3-stream.ts",
+			"types": "./dist/contracts/agent-backup-restore-v3-stream.d.ts",
+			"import": "./dist/contracts/agent-backup-restore-v3-stream.js",
+			"default": "./dist/contracts/agent-backup-restore-v3-stream.js"
+		},
+		"./contracts/agent-routes": {
+			"eliza-source": "./src/contracts/agent-routes.ts",
+			"types": "./dist/contracts/agent-routes.d.ts",
+			"import": "./dist/contracts/agent-routes.js",
+			"default": "./dist/contracts/agent-routes.js"
+		},
+		"./contracts/app-permissions-routes": {
+			"eliza-source": "./src/contracts/app-permissions-routes.ts",
+			"types": "./dist/contracts/app-permissions-routes.d.ts",
+			"import": "./dist/contracts/app-permissions-routes.js",
+			"default": "./dist/contracts/app-permissions-routes.js"
+		},
+		"./contracts/app-permissions": {
+			"eliza-source": "./src/contracts/app-permissions.ts",
+			"types": "./dist/contracts/app-permissions.d.ts",
+			"import": "./dist/contracts/app-permissions.js",
+			"default": "./dist/contracts/app-permissions.js"
+		},
+		"./contracts/apps-favorites-routes": {
+			"eliza-source": "./src/contracts/apps-favorites-routes.ts",
+			"types": "./dist/contracts/apps-favorites-routes.d.ts",
+			"import": "./dist/contracts/apps-favorites-routes.js",
+			"default": "./dist/contracts/apps-favorites-routes.js"
+		},
+		"./contracts/apps-lifecycle-routes": {
+			"eliza-source": "./src/contracts/apps-lifecycle-routes.ts",
+			"types": "./dist/contracts/apps-lifecycle-routes.d.ts",
+			"import": "./dist/contracts/apps-lifecycle-routes.js",
+			"default": "./dist/contracts/apps-lifecycle-routes.js"
+		},
+		"./contracts/apps-loading-routes": {
+			"eliza-source": "./src/contracts/apps-loading-routes.ts",
+			"types": "./dist/contracts/apps-loading-routes.d.ts",
+			"import": "./dist/contracts/apps-loading-routes.js",
+			"default": "./dist/contracts/apps-loading-routes.js"
+		},
+		"./contracts/apps-runs-routes": {
+			"eliza-source": "./src/contracts/apps-runs-routes.ts",
+			"types": "./dist/contracts/apps-runs-routes.d.ts",
+			"import": "./dist/contracts/apps-runs-routes.js",
+			"default": "./dist/contracts/apps-runs-routes.js"
+		},
+		"./contracts/apps": {
+			"eliza-source": "./src/contracts/apps.ts",
+			"types": "./dist/contracts/apps.d.ts",
+			"import": "./dist/contracts/apps.js",
+			"default": "./dist/contracts/apps.js"
+		},
+		"./contracts/auth-routes": {
+			"eliza-source": "./src/contracts/auth-routes.ts",
+			"types": "./dist/contracts/auth-routes.d.ts",
+			"import": "./dist/contracts/auth-routes.js",
+			"default": "./dist/contracts/auth-routes.js"
+		},
+		"./contracts/automation-nodes": {
+			"eliza-source": "./src/contracts/automation-nodes.ts",
+			"types": "./dist/contracts/automation-nodes.d.ts",
+			"import": "./dist/contracts/automation-nodes.js",
+			"default": "./dist/contracts/automation-nodes.js"
+		},
+		"./contracts/awareness": {
+			"eliza-source": "./src/contracts/awareness.ts",
+			"types": "./dist/contracts/awareness.d.ts",
+			"import": "./dist/contracts/awareness.js",
+			"default": "./dist/contracts/awareness.js"
+		},
+		"./contracts/calendar": {
+			"eliza-source": "./src/contracts/calendar.ts",
+			"types": "./dist/contracts/calendar.d.ts",
+			"import": "./dist/contracts/calendar.js",
+			"default": "./dist/contracts/calendar.js"
+		},
+		"./contracts/character-routes": {
+			"eliza-source": "./src/contracts/character-routes.ts",
+			"types": "./dist/contracts/character-routes.d.ts",
+			"import": "./dist/contracts/character-routes.js",
+			"default": "./dist/contracts/character-routes.js"
+		},
+		"./contracts/chat": {
+			"eliza-source": "./src/contracts/chat.ts",
+			"types": "./dist/contracts/chat.d.ts",
+			"import": "./dist/contracts/chat.js",
+			"default": "./dist/contracts/chat.js"
+		},
+		"./contracts/cloud-coding-containers": {
+			"eliza-source": "./src/contracts/cloud-coding-containers.ts",
+			"types": "./dist/contracts/cloud-coding-containers.d.ts",
+			"import": "./dist/contracts/cloud-coding-containers.js",
+			"default": "./dist/contracts/cloud-coding-containers.js"
+		},
+		"./contracts/cloud-pair": {
+			"eliza-source": "./src/contracts/cloud-pair.ts",
+			"types": "./dist/contracts/cloud-pair.d.ts",
+			"import": "./dist/contracts/cloud-pair.js",
+			"default": "./dist/contracts/cloud-pair.js"
+		},
+		"./contracts/cloud-topology": {
+			"eliza-source": "./src/contracts/cloud-topology.ts",
+			"types": "./dist/contracts/cloud-topology.d.ts",
+			"import": "./dist/contracts/cloud-topology.js",
+			"default": "./dist/contracts/cloud-topology.js"
+		},
+		"./contracts/coding-agent-capabilities": {
+			"eliza-source": "./src/contracts/coding-agent-capabilities.ts",
+			"types": "./dist/contracts/coding-agent-capabilities.d.ts",
+			"import": "./dist/contracts/coding-agent-capabilities.js",
+			"default": "./dist/contracts/coding-agent-capabilities.js"
+		},
+		"./contracts/config": {
+			"eliza-source": "./src/contracts/config.ts",
+			"types": "./dist/contracts/config.d.ts",
+			"import": "./dist/contracts/config.js",
+			"default": "./dist/contracts/config.js"
+		},
+		"./contracts/connector-routes": {
+			"eliza-source": "./src/contracts/connector-routes.ts",
+			"types": "./dist/contracts/connector-routes.d.ts",
+			"import": "./dist/contracts/connector-routes.js",
+			"default": "./dist/contracts/connector-routes.js"
+		},
+		"./contracts/content-pack": {
+			"eliza-source": "./src/contracts/content-pack.ts",
+			"types": "./dist/contracts/content-pack.d.ts",
+			"import": "./dist/contracts/content-pack.js",
+			"default": "./dist/contracts/content-pack.js"
+		},
+		"./contracts/conversation-routes": {
+			"eliza-source": "./src/contracts/conversation-routes.ts",
+			"types": "./dist/contracts/conversation-routes.d.ts",
+			"import": "./dist/contracts/conversation-routes.js",
+			"default": "./dist/contracts/conversation-routes.js"
+		},
+		"./contracts/deployment-types": {
+			"eliza-source": "./src/contracts/deployment-types.ts",
+			"types": "./dist/contracts/deployment-types.d.ts",
+			"import": "./dist/contracts/deployment-types.js",
+			"default": "./dist/contracts/deployment-types.js"
+		},
+		"./contracts/diagnostics-routes": {
+			"eliza-source": "./src/contracts/diagnostics-routes.ts",
+			"types": "./dist/contracts/diagnostics-routes.d.ts",
+			"import": "./dist/contracts/diagnostics-routes.js",
+			"default": "./dist/contracts/diagnostics-routes.js"
+		},
+		"./contracts/drop": {
+			"eliza-source": "./src/contracts/drop.ts",
+			"types": "./dist/contracts/drop.d.ts",
+			"import": "./dist/contracts/drop.js",
+			"default": "./dist/contracts/drop.js"
+		},
+		"./contracts/feature-result": {
+			"eliza-source": "./src/contracts/feature-result.ts",
+			"types": "./dist/contracts/feature-result.d.ts",
+			"import": "./dist/contracts/feature-result.js",
+			"default": "./dist/contracts/feature-result.js"
+		},
+		"./contracts/first-run-options": {
+			"eliza-source": "./src/contracts/first-run-options.ts",
+			"types": "./dist/contracts/first-run-options.d.ts",
+			"import": "./dist/contracts/first-run-options.js",
+			"default": "./dist/contracts/first-run-options.js"
+		},
+		"./contracts/first-run-routes": {
+			"eliza-source": "./src/contracts/first-run-routes.ts",
+			"types": "./dist/contracts/first-run-routes.d.ts",
+			"import": "./dist/contracts/first-run-routes.js",
+			"default": "./dist/contracts/first-run-routes.js"
+		},
+		"./contracts/inbox-routes": {
+			"eliza-source": "./src/contracts/inbox-routes.ts",
+			"types": "./dist/contracts/inbox-routes.d.ts",
+			"import": "./dist/contracts/inbox-routes.js",
+			"default": "./dist/contracts/inbox-routes.js"
+		},
+		"./contracts/inbox": {
+			"eliza-source": "./src/contracts/inbox.ts",
+			"types": "./dist/contracts/inbox.d.ts",
+			"import": "./dist/contracts/inbox.js",
+			"default": "./dist/contracts/inbox.js"
+		},
+		"./contracts/lifeops-connector-degradation": {
+			"eliza-source": "./src/contracts/lifeops-connector-degradation.ts",
+			"types": "./dist/contracts/lifeops-connector-degradation.d.ts",
+			"import": "./dist/contracts/lifeops-connector-degradation.js",
+			"default": "./dist/contracts/lifeops-connector-degradation.js"
+		},
+		"./contracts/memory-routes": {
+			"eliza-source": "./src/contracts/memory-routes.ts",
+			"types": "./dist/contracts/memory-routes.d.ts",
+			"import": "./dist/contracts/memory-routes.js",
+			"default": "./dist/contracts/memory-routes.js"
+		},
+		"./contracts/misc-routes": {
+			"eliza-source": "./src/contracts/misc-routes.ts",
+			"types": "./dist/contracts/misc-routes.d.ts",
+			"import": "./dist/contracts/misc-routes.js",
+			"default": "./dist/contracts/misc-routes.js"
+		},
+		"./contracts/native-personal-data": {
+			"eliza-source": "./src/contracts/native-personal-data.ts",
+			"types": "./dist/contracts/native-personal-data.d.ts",
+			"import": "./dist/contracts/native-personal-data.js",
+			"default": "./dist/contracts/native-personal-data.js"
+		},
+		"./contracts/page-scope": {
+			"eliza-source": "./src/contracts/page-scope.ts",
+			"types": "./dist/contracts/page-scope.d.ts",
+			"import": "./dist/contracts/page-scope.js",
+			"default": "./dist/contracts/page-scope.js"
+		},
+		"./contracts/permissions-routes": {
+			"eliza-source": "./src/contracts/permissions-routes.ts",
+			"types": "./dist/contracts/permissions-routes.d.ts",
+			"import": "./dist/contracts/permissions-routes.js",
+			"default": "./dist/contracts/permissions-routes.js"
+		},
+		"./contracts/permissions": {
+			"eliza-source": "./src/contracts/permissions.ts",
+			"types": "./dist/contracts/permissions.d.ts",
+			"import": "./dist/contracts/permissions.js",
+			"default": "./dist/contracts/permissions.js"
+		},
+		"./contracts/personal-assistant": {
+			"eliza-source": "./src/contracts/personal-assistant.ts",
+			"types": "./dist/contracts/personal-assistant.d.ts",
+			"import": "./dist/contracts/personal-assistant.js",
+			"default": "./dist/contracts/personal-assistant.js"
+		},
+		"./contracts/plugin-routes": {
+			"eliza-source": "./src/contracts/plugin-routes.ts",
+			"types": "./dist/contracts/plugin-routes.d.ts",
+			"import": "./dist/contracts/plugin-routes.js",
+			"default": "./dist/contracts/plugin-routes.js"
+		},
+		"./contracts/relationships-routes": {
+			"eliza-source": "./src/contracts/relationships-routes.ts",
+			"types": "./dist/contracts/relationships-routes.d.ts",
+			"import": "./dist/contracts/relationships-routes.js",
+			"default": "./dist/contracts/relationships-routes.js"
+		},
+		"./contracts/remote-agent-request": {
+			"eliza-source": "./src/contracts/remote-agent-request.ts",
+			"types": "./dist/contracts/remote-agent-request.d.ts",
+			"import": "./dist/contracts/remote-agent-request.js",
+			"default": "./dist/contracts/remote-agent-request.js"
+		},
+		"./contracts/remote-control": {
+			"eliza-source": "./src/contracts/remote-control.ts",
+			"types": "./dist/contracts/remote-control.d.ts",
+			"import": "./dist/contracts/remote-control.js",
+			"default": "./dist/contracts/remote-control.js"
+		},
+		"./contracts/runtime-management": {
+			"eliza-source": "./src/contracts/runtime-management.ts",
+			"types": "./dist/contracts/runtime-management.d.ts",
+			"import": "./dist/contracts/runtime-management.js",
+			"default": "./dist/contracts/runtime-management.js"
+		},
+		"./contracts/scheduled-task-execution": {
+			"eliza-source": "./src/contracts/scheduled-task-execution.ts",
+			"types": "./dist/contracts/scheduled-task-execution.d.ts",
+			"import": "./dist/contracts/scheduled-task-execution.js",
+			"default": "./dist/contracts/scheduled-task-execution.js"
+		},
+		"./contracts/screen-capture": {
+			"eliza-source": "./src/contracts/screen-capture.ts",
+			"types": "./dist/contracts/screen-capture.d.ts",
+			"import": "./dist/contracts/screen-capture.js",
+			"default": "./dist/contracts/screen-capture.js"
+		},
+		"./contracts/service-routing-types": {
+			"eliza-source": "./src/contracts/service-routing-types.ts",
+			"types": "./dist/contracts/service-routing-types.d.ts",
+			"import": "./dist/contracts/service-routing-types.js",
+			"default": "./dist/contracts/service-routing-types.js"
+		},
+		"./contracts/service-routing": {
+			"eliza-source": "./src/contracts/service-routing.ts",
+			"types": "./dist/contracts/service-routing.d.ts",
+			"import": "./dist/contracts/service-routing.js",
+			"default": "./dist/contracts/service-routing.js"
+		},
+		"./contracts/skills-routes": {
+			"eliza-source": "./src/contracts/skills-routes.ts",
+			"types": "./dist/contracts/skills-routes.d.ts",
+			"import": "./dist/contracts/skills-routes.js",
+			"default": "./dist/contracts/skills-routes.js"
+		},
+		"./contracts/subscription-routes": {
+			"eliza-source": "./src/contracts/subscription-routes.ts",
+			"types": "./dist/contracts/subscription-routes.d.ts",
+			"import": "./dist/contracts/subscription-routes.js",
+			"default": "./dist/contracts/subscription-routes.js"
+		},
+		"./contracts/synthetic-environment-lease": {
+			"eliza-source": "./src/contracts/synthetic-environment-lease.ts",
+			"types": "./dist/contracts/synthetic-environment-lease.d.ts",
+			"import": "./dist/contracts/synthetic-environment-lease.js",
+			"default": "./dist/contracts/synthetic-environment-lease.js"
+		},
+		"./contracts/tail-routes": {
+			"eliza-source": "./src/contracts/tail-routes.ts",
+			"types": "./dist/contracts/tail-routes.d.ts",
+			"import": "./dist/contracts/tail-routes.js",
+			"default": "./dist/contracts/tail-routes.js"
+		},
+		"./contracts/theme": {
+			"eliza-source": "./src/contracts/theme.ts",
+			"types": "./dist/contracts/theme.d.ts",
+			"import": "./dist/contracts/theme.js",
+			"default": "./dist/contracts/theme.js"
+		},
+		"./contracts/update-status": {
+			"eliza-source": "./src/contracts/update-status.ts",
+			"types": "./dist/contracts/update-status.d.ts",
+			"import": "./dist/contracts/update-status.js",
+			"default": "./dist/contracts/update-status.js"
+		},
+		"./contracts/verification": {
+			"eliza-source": "./src/contracts/verification.ts",
+			"types": "./dist/contracts/verification.d.ts",
+			"import": "./dist/contracts/verification.js",
+			"default": "./dist/contracts/verification.js"
+		},
+		"./contracts/wallet-routes": {
+			"eliza-source": "./src/contracts/wallet-routes.ts",
+			"types": "./dist/contracts/wallet-routes.d.ts",
+			"import": "./dist/contracts/wallet-routes.js",
+			"default": "./dist/contracts/wallet-routes.js"
+		},
+		"./contracts/wallet-types": {
+			"eliza-source": "./src/contracts/wallet-types.ts",
+			"types": "./dist/contracts/wallet-types.d.ts",
+			"import": "./dist/contracts/wallet-types.js",
+			"default": "./dist/contracts/wallet-types.js"
+		},
+		"./contracts/wallet": {
+			"eliza-source": "./src/contracts/wallet.ts",
+			"types": "./dist/contracts/wallet.d.ts",
+			"import": "./dist/contracts/wallet.js",
+			"default": "./dist/contracts/wallet.js"
+		},
+		"./contracts/workbench-routes": {
+			"eliza-source": "./src/contracts/workbench-routes.ts",
+			"types": "./dist/contracts/workbench-routes.d.ts",
+			"import": "./dist/contracts/workbench-routes.js",
+			"default": "./dist/contracts/workbench-routes.js"
+		},
+		"./conversation-chat-marker": {
+			"eliza-source": "./src/conversation-chat-marker.ts",
+			"types": "./dist/conversation-chat-marker.d.ts",
+			"import": "./dist/conversation-chat-marker.js",
+			"default": "./dist/conversation-chat-marker.js"
+		},
+		"./discord-dm-policy": {
+			"eliza-source": "./src/discord-dm-policy.ts",
+			"types": "./dist/discord-dm-policy.d.ts",
+			"import": "./dist/discord-dm-policy.js",
+			"default": "./dist/discord-dm-policy.js"
+		},
+		"./text/untrusted-email-content": {
+			"eliza-source": "./src/text/untrusted-email-content.ts",
+			"types": "./dist/text/untrusted-email-content.d.ts",
+			"import": "./dist/text/untrusted-email-content.js",
+			"default": "./dist/text/untrusted-email-content.js"
+		},
+		"./env-utils": {
+			"eliza-source": "./src/env-utils.ts",
+			"types": "./dist/env-utils.d.ts",
+			"import": "./dist/env-utils.js",
+			"default": "./dist/env-utils.js"
+		},
+		"./error-classification": {
+			"eliza-source": "./src/error-classification.ts",
+			"types": "./dist/error-classification.d.ts",
+			"import": "./dist/error-classification.js",
+			"default": "./dist/error-classification.js"
+		},
+		"./events": {
+			"eliza-source": "./src/events.ts",
+			"types": "./dist/events.d.ts",
+			"import": "./dist/events.js",
+			"default": "./dist/events.js"
+		},
+		"./utils/format-error": {
+			"eliza-source": "./src/utils/format-error.ts",
+			"types": "./dist/utils/format-error.d.ts",
+			"import": "./dist/utils/format-error.js",
+			"default": "./dist/utils/format-error.js"
+		},
+		"./host-execution-env": {
+			"eliza-source": "./src/host-execution-env.ts",
+			"types": "./dist/host-execution-env.d.ts",
+			"import": "./dist/host-execution-env.js",
+			"default": "./dist/host-execution-env.js"
+		},
+		"./i18n/keyword-matching-core": {
+			"eliza-source": "./src/i18n/keyword-matching-core.ts",
+			"types": "./dist/i18n/keyword-matching-core.d.ts",
+			"import": "./dist/i18n/keyword-matching-core.js",
+			"default": "./dist/i18n/keyword-matching-core.js"
+		},
+		"./i18n/keyword-matching": {
+			"eliza-source": "./src/i18n/keyword-matching.ts",
+			"types": "./dist/i18n/keyword-matching.d.ts",
+			"import": "./dist/i18n/keyword-matching.js",
+			"default": "./dist/i18n/keyword-matching.js"
+		},
+		"./i18n/keywords": {
+			"eliza-source": "./src/i18n/keywords.ts",
+			"types": "./dist/i18n/keywords.d.ts",
+			"import": "./dist/i18n/keywords.js",
+			"default": "./dist/i18n/keywords.js"
+		},
+		"./i18n/language": {
+			"eliza-source": "./src/i18n/language.ts",
+			"types": "./dist/i18n/language.d.ts",
+			"import": "./dist/i18n/language.js",
+			"default": "./dist/i18n/language.js"
+		},
+		"./i18n/recurrence-markers": {
+			"eliza-source": "./src/i18n/recurrence-markers.ts",
+			"types": "./dist/i18n/recurrence-markers.d.ts",
+			"import": "./dist/i18n/recurrence-markers.js",
+			"default": "./dist/i18n/recurrence-markers.js"
+		},
+		"./integration-observability": {
+			"eliza-source": "./src/integration-observability.ts",
+			"types": "./dist/integration-observability.d.ts",
+			"import": "./dist/integration-observability.js",
+			"default": "./dist/integration-observability.js"
+		},
+		"./knowledge-graph/entity-types": {
+			"eliza-source": "./src/knowledge-graph/entity-types.ts",
+			"types": "./dist/knowledge-graph/entity-types.d.ts",
+			"import": "./dist/knowledge-graph/entity-types.js",
+			"default": "./dist/knowledge-graph/entity-types.js"
+		},
+		"./knowledge-graph/merge": {
+			"eliza-source": "./src/knowledge-graph/merge.ts",
+			"types": "./dist/knowledge-graph/merge.d.ts",
+			"import": "./dist/knowledge-graph/merge.js",
+			"default": "./dist/knowledge-graph/merge.js"
+		},
+		"./knowledge-graph/relationship-types": {
+			"eliza-source": "./src/knowledge-graph/relationship-types.ts",
+			"types": "./dist/knowledge-graph/relationship-types.d.ts",
+			"import": "./dist/knowledge-graph/relationship-types.js",
+			"default": "./dist/knowledge-graph/relationship-types.js"
+		},
+		"./lifeops-constants/service-constants": {
+			"eliza-source": "./src/lifeops-constants/service-constants.ts",
+			"types": "./dist/lifeops-constants/service-constants.d.ts",
+			"import": "./dist/lifeops-constants/service-constants.js",
+			"default": "./dist/lifeops-constants/service-constants.js"
+		},
+		"./lifeops-normalize/calendar-time-zone": {
+			"eliza-source": "./src/lifeops-normalize/calendar-time-zone.ts",
+			"types": "./dist/lifeops-normalize/calendar-time-zone.d.ts",
+			"import": "./dist/lifeops-normalize/calendar-time-zone.js",
+			"default": "./dist/lifeops-normalize/calendar-time-zone.js"
+		},
+		"./lifeops-normalize/owner-entity": {
+			"eliza-source": "./src/lifeops-normalize/owner-entity.ts",
+			"types": "./dist/lifeops-normalize/owner-entity.d.ts",
+			"import": "./dist/lifeops-normalize/owner-entity.js",
+			"default": "./dist/lifeops-normalize/owner-entity.js"
+		},
+		"./lifeops-normalize/service-error": {
+			"eliza-source": "./src/lifeops-normalize/service-error.ts",
+			"types": "./dist/lifeops-normalize/service-error.d.ts",
+			"import": "./dist/lifeops-normalize/service-error.js",
+			"default": "./dist/lifeops-normalize/service-error.js"
+		},
+		"./lifeops-normalize/service-normalize": {
+			"eliza-source": "./src/lifeops-normalize/service-normalize.ts",
+			"types": "./dist/lifeops-normalize/service-normalize.d.ts",
+			"import": "./dist/lifeops-normalize/service-normalize.js",
+			"default": "./dist/lifeops-normalize/service-normalize.js"
+		},
+		"./lifeops-normalize/time-util": {
+			"eliza-source": "./src/lifeops-normalize/time-util.ts",
+			"types": "./dist/lifeops-normalize/time-util.d.ts",
+			"import": "./dist/lifeops-normalize/time-util.js",
+			"default": "./dist/lifeops-normalize/time-util.js"
+		},
+		"./lifeops-normalize/time-zone": {
+			"eliza-source": "./src/lifeops-normalize/time-zone.ts",
+			"types": "./dist/lifeops-normalize/time-zone.d.ts",
+			"import": "./dist/lifeops-normalize/time-zone.js",
+			"default": "./dist/lifeops-normalize/time-zone.js"
+		},
+		"./contracts/local-inference-providers": {
+			"eliza-source": "./src/contracts/local-inference-providers.ts",
+			"types": "./dist/contracts/local-inference-providers.d.ts",
+			"import": "./dist/contracts/local-inference-providers.js",
+			"default": "./dist/contracts/local-inference-providers.js"
+		},
+		"./contracts/local-inference": {
+			"eliza-source": "./src/contracts/local-inference.ts",
+			"types": "./dist/contracts/local-inference.d.ts",
+			"import": "./dist/contracts/local-inference.js",
+			"default": "./dist/contracts/local-inference.js"
+		},
+		"./logger": {
+			"eliza-source": "./src/logger.ts",
+			"types": "./dist/logger.d.ts",
+			"import": "./dist/logger.js",
+			"default": "./dist/logger.js"
+		},
+		"./markdown/chunk": {
+			"eliza-source": "./src/markdown/chunk.ts",
+			"types": "./dist/markdown/chunk.d.ts",
+			"import": "./dist/markdown/chunk.js",
+			"default": "./dist/markdown/chunk.js"
+		},
+		"./markdown/code-spans": {
+			"eliza-source": "./src/markdown/code-spans.ts",
+			"types": "./dist/markdown/code-spans.d.ts",
+			"import": "./dist/markdown/code-spans.js",
+			"default": "./dist/markdown/code-spans.js"
+		},
+		"./markdown/fences": {
+			"eliza-source": "./src/markdown/fences.ts",
+			"types": "./dist/markdown/fences.d.ts",
+			"import": "./dist/markdown/fences.js",
+			"default": "./dist/markdown/fences.js"
+		},
+		"./markdown/frontmatter": {
+			"eliza-source": "./src/markdown/frontmatter.ts",
+			"types": "./dist/markdown/frontmatter.d.ts",
+			"import": "./dist/markdown/frontmatter.js",
+			"default": "./dist/markdown/frontmatter.js"
+		},
+		"./markdown/ir": {
+			"eliza-source": "./src/markdown/ir.ts",
+			"types": "./dist/markdown/ir.d.ts",
+			"import": "./dist/markdown/ir.js",
+			"default": "./dist/markdown/ir.js"
+		},
+		"./meeting-artifacts": {
+			"eliza-source": "./src/meeting-artifacts.ts",
+			"types": "./dist/meeting-artifacts.d.ts",
+			"import": "./dist/meeting-artifacts.js",
+			"default": "./dist/meeting-artifacts.js"
+		},
+		"./meetings": {
+			"eliza-source": "./src/meetings.ts",
+			"types": "./dist/meetings.d.ts",
+			"import": "./dist/meetings.js",
+			"default": "./dist/meetings.js"
+		},
+		"./platform/aosp-user-agent": {
+			"eliza-source": "./src/platform/aosp-user-agent.ts",
+			"types": "./dist/platform/aosp-user-agent.d.ts",
+			"import": "./dist/platform/aosp-user-agent.js",
+			"default": "./dist/platform/aosp-user-agent.js"
+		},
+		"./platform/build-variant": {
+			"eliza-source": "./src/platform/build-variant.ts",
+			"types": "./dist/platform/build-variant.d.ts",
+			"import": "./dist/platform/build-variant.js",
+			"default": "./dist/platform/build-variant.js"
+		},
+		"./platform/eliza-os": {
+			"eliza-source": "./src/platform/eliza-os.ts",
+			"types": "./dist/platform/eliza-os.d.ts",
+			"import": "./dist/platform/eliza-os.js",
+			"default": "./dist/platform/eliza-os.js"
+		},
+		"./platform/is-native-server": {
+			"eliza-source": "./src/platform/is-native-server.ts",
+			"types": "./dist/platform/is-native-server.d.ts",
+			"import": "./dist/platform/is-native-server.js",
+			"default": "./dist/platform/is-native-server.js"
+		},
+		"./platform/native-library-policy": {
+			"eliza-source": "./src/platform/native-library-policy.ts",
+			"types": "./dist/platform/native-library-policy.d.ts",
+			"import": "./dist/platform/native-library-policy.js",
+			"default": "./dist/platform/native-library-policy.js"
+		},
+		"./platform/sandbox-policy": {
+			"eliza-source": "./src/platform/sandbox-policy.ts",
+			"types": "./dist/platform/sandbox-policy.d.ts",
+			"import": "./dist/platform/sandbox-policy.js",
+			"default": "./dist/platform/sandbox-policy.js"
+		},
+		"./process-guards": {
+			"eliza-source": "./src/process-guards.ts",
+			"types": "./dist/process-guards.d.ts",
+			"import": "./dist/process-guards.js",
+			"default": "./dist/process-guards.js"
+		},
+		"./recent-messages-state": {
+			"eliza-source": "./src/recent-messages-state.ts",
+			"types": "./dist/recent-messages-state.d.ts",
+			"import": "./dist/recent-messages-state.js",
+			"default": "./dist/recent-messages-state.js"
+		},
+		"./restart-exit-code.json": "./dist/restart-exit-code.json",
+		"./restart": {
+			"eliza-source": "./src/restart.ts",
+			"types": "./dist/restart.d.ts",
+			"import": "./dist/restart.js",
+			"default": "./dist/restart.js"
+		},
+		"./runtime-env": {
+			"eliza-source": "./src/runtime-env.ts",
+			"types": "./dist/runtime-env.d.ts",
+			"import": "./dist/runtime-env.js",
+			"default": "./dist/runtime-env.js"
+		},
+		"./self-edit": {
+			"eliza-source": "./src/self-edit.ts",
+			"types": "./dist/self-edit.d.ts",
+			"import": "./dist/self-edit.js",
+			"default": "./dist/self-edit.js"
+		},
+		"./settings-debug": {
+			"eliza-source": "./src/settings-debug.ts",
+			"types": "./dist/settings-debug.d.ts",
+			"import": "./dist/settings-debug.js",
+			"default": "./dist/settings-debug.js"
+		},
+		"./speaker-name-inference": {
+			"eliza-source": "./src/speaker-name-inference.ts",
+			"types": "./dist/speaker-name-inference.d.ts",
+			"import": "./dist/speaker-name-inference.js",
+			"default": "./dist/speaker-name-inference.js"
+		},
+		"./spoken-text": {
+			"eliza-source": "./src/spoken-text.ts",
+			"types": "./dist/spoken-text.d.ts",
+			"import": "./dist/spoken-text.js",
+			"default": "./dist/spoken-text.js"
+		},
+		"./test-env-config": {
+			"eliza-source": "./src/test-env-config.ts",
+			"types": "./dist/test-env-config.d.ts",
+			"import": "./dist/test-env-config.js",
+			"default": "./dist/test-env-config.js"
+		},
+		"./test-support/process-helpers": {
+			"eliza-source": "./src/test-support/process-helpers.ts",
+			"types": "./dist/test-support/process-helpers.d.ts",
+			"import": "./dist/test-support/process-helpers.js",
+			"default": "./dist/test-support/process-helpers.js"
+		},
+		"./text/model-output": {
+			"eliza-source": "./src/text/model-output.ts",
+			"types": "./dist/text/model-output.d.ts",
+			"import": "./dist/text/model-output.js",
+			"default": "./dist/text/model-output.js"
+		},
+		"./todo-cutover": {
+			"eliza-source": "./src/todo-cutover.ts",
+			"types": "./dist/todo-cutover.d.ts",
+			"import": "./dist/todo-cutover.js",
+			"default": "./dist/todo-cutover.js"
+		},
+		"./transcripts": {
+			"eliza-source": "./src/transcripts.ts",
+			"types": "./dist/transcripts.d.ts",
+			"import": "./dist/transcripts.js",
+			"default": "./dist/transcripts.js"
+		},
+		"./type-guards": {
+			"eliza-source": "./src/type-guards.ts",
+			"types": "./dist/type-guards.d.ts",
+			"import": "./dist/type-guards.js",
+			"default": "./dist/type-guards.js"
+		},
+		"./contracts/host-types": {
+			"eliza-source": "./src/contracts/host-types.ts",
+			"types": "./dist/contracts/host-types.d.ts",
+			"import": "./dist/contracts/host-types.js",
+			"default": "./dist/contracts/host-types.js"
+		},
+		"./utils/assistant-text": {
+			"eliza-source": "./src/utils/assistant-text.ts",
+			"types": "./dist/utils/assistant-text.d.ts",
+			"import": "./dist/utils/assistant-text.js",
+			"default": "./dist/utils/assistant-text.js"
+		},
+		"./utils/character-message-examples": {
+			"eliza-source": "./src/utils/character-message-examples.ts",
+			"types": "./dist/utils/character-message-examples.d.ts",
+			"import": "./dist/utils/character-message-examples.js",
+			"default": "./dist/utils/character-message-examples.js"
+		},
+		"./utils/deadline": {
+			"eliza-source": "./src/utils/deadline.ts",
+			"types": "./dist/utils/deadline.d.ts",
+			"import": "./dist/utils/deadline.js",
+			"default": "./dist/utils/deadline.js"
+		},
+		"./utils/eliza-globals": {
+			"eliza-source": "./src/utils/eliza-globals.ts",
+			"types": "./dist/utils/eliza-globals.d.ts",
+			"import": "./dist/utils/eliza-globals.js",
+			"default": "./dist/utils/eliza-globals.js"
+		},
+		"./utils/eliza-root": {
+			"eliza-source": "./src/utils/eliza-root.ts",
+			"types": "./dist/utils/eliza-root.d.ts",
+			"import": "./dist/utils/eliza-root.js",
+			"default": "./dist/utils/eliza-root.js"
+		},
+		"./utils/env": {
+			"eliza-source": "./src/utils/env.ts",
+			"types": "./dist/utils/env.d.ts",
+			"import": "./dist/utils/env.js",
+			"default": "./dist/utils/env.js"
+		},
+		"./utils/errors": {
+			"eliza-source": "./src/utils/errors.ts",
+			"types": "./dist/utils/errors.d.ts",
+			"import": "./dist/utils/errors.js",
+			"default": "./dist/utils/errors.js"
+		},
+		"./utils/filesystem": {
+			"eliza-source": "./src/utils/filesystem.ts",
+			"types": "./dist/utils/filesystem.d.ts",
+			"import": "./dist/utils/filesystem.js",
+			"default": "./dist/utils/filesystem.js"
+		},
+		"./utils/log-prefix": {
+			"eliza-source": "./src/utils/log-prefix.ts",
+			"types": "./dist/utils/log-prefix.d.ts",
+			"import": "./dist/utils/log-prefix.js",
+			"default": "./dist/utils/log-prefix.js"
+		},
+		"./utils/name-tokens": {
+			"eliza-source": "./src/utils/name-tokens.ts",
+			"types": "./dist/utils/name-tokens.d.ts",
+			"import": "./dist/utils/name-tokens.js",
+			"default": "./dist/utils/name-tokens.js"
+		},
+		"./utils/number-parsing": {
+			"eliza-source": "./src/utils/number-parsing.ts",
+			"types": "./dist/utils/number-parsing.d.ts",
+			"import": "./dist/utils/number-parsing.js",
+			"default": "./dist/utils/number-parsing.js"
+		},
+		"./utils/path-component": {
+			"eliza-source": "./src/utils/path-component.ts",
+			"types": "./dist/utils/path-component.d.ts",
+			"import": "./dist/utils/path-component.js",
+			"default": "./dist/utils/path-component.js"
+		},
+		"./utils/permission-deep-links": {
+			"eliza-source": "./src/utils/permission-deep-links.ts",
+			"types": "./dist/utils/permission-deep-links.d.ts",
+			"import": "./dist/utils/permission-deep-links.js",
+			"default": "./dist/utils/permission-deep-links.js"
+		},
+		"./utils/safe-diagnostic-error": {
+			"eliza-source": "./src/utils/safe-diagnostic-error.ts",
+			"types": "./dist/utils/safe-diagnostic-error.d.ts",
+			"import": "./dist/utils/safe-diagnostic-error.js",
+			"default": "./dist/utils/safe-diagnostic-error.js"
+		},
+		"./utils/serialise": {
+			"eliza-source": "./src/utils/serialise.ts",
+			"types": "./dist/utils/serialise.d.ts",
+			"import": "./dist/utils/serialise.js",
+			"default": "./dist/utils/serialise.js"
+		},
+		"./utils/string-boundaries": {
+			"eliza-source": "./src/utils/string-boundaries.ts",
+			"types": "./dist/utils/string-boundaries.d.ts",
+			"import": "./dist/utils/string-boundaries.js",
+			"default": "./dist/utils/string-boundaries.js"
+		},
+		"./utils/string-hash": {
+			"eliza-source": "./src/utils/string-hash.ts",
+			"types": "./dist/utils/string-hash.d.ts",
+			"import": "./dist/utils/string-hash.js",
+			"default": "./dist/utils/string-hash.js"
+		},
+		"./utils/tts-debug": {
+			"eliza-source": "./src/utils/tts-debug.ts",
+			"types": "./dist/utils/tts-debug.d.ts",
+			"import": "./dist/utils/tts-debug.js",
+			"default": "./dist/utils/tts-debug.js"
+		},
+		"./views/host-external-contract": {
+			"eliza-source": "./src/views/host-external-contract.ts",
+			"types": "./dist/views/host-external-contract.d.ts",
+			"import": "./dist/views/host-external-contract.js",
+			"default": "./dist/views/host-external-contract.js"
+		},
+		"./views/shared-nav-targets": {
+			"eliza-source": "./src/views/shared-nav-targets.ts",
+			"types": "./dist/views/shared-nav-targets.d.ts",
+			"import": "./dist/views/shared-nav-targets.js",
+			"default": "./dist/views/shared-nav-targets.js"
+		},
+		"./views/surface-manifest": {
+			"eliza-source": "./src/views/surface-manifest.ts",
+			"types": "./dist/views/surface-manifest.d.ts",
+			"import": "./dist/views/surface-manifest.js",
+			"default": "./dist/views/surface-manifest.js"
+		},
+		"./views/view-command-matcher": {
+			"eliza-source": "./src/views/view-command-matcher.ts",
+			"types": "./dist/views/view-command-matcher.d.ts",
+			"import": "./dist/views/view-command-matcher.js",
+			"default": "./dist/views/view-command-matcher.js"
+		},
+		"./views/view-declarations": {
+			"eliza-source": "./src/views/view-declarations.ts",
+			"types": "./dist/views/view-declarations.d.ts",
+			"import": "./dist/views/view-declarations.js",
+			"default": "./dist/views/view-declarations.js"
+		},
+		"./views/view-interact-protocol": {
+			"eliza-source": "./src/views/view-interact-protocol.ts",
+			"types": "./dist/views/view-interact-protocol.d.ts",
+			"import": "./dist/views/view-interact-protocol.js",
+			"default": "./dist/views/view-interact-protocol.js"
+		},
+		"./views/view-kind": {
+			"eliza-source": "./src/views/view-kind.ts",
+			"types": "./dist/views/view-kind.d.ts",
+			"import": "./dist/views/view-kind.js",
+			"default": "./dist/views/view-kind.js"
+		},
+		"./voice-eot": {
+			"eliza-source": "./src/voice-eot.ts",
+			"types": "./dist/voice-eot.d.ts",
+			"import": "./dist/voice-eot.js",
+			"default": "./dist/voice-eot.js"
+		},
+		"./voice-wer": {
+			"eliza-source": "./src/voice-wer.ts",
+			"types": "./dist/voice-wer.d.ts",
+			"import": "./dist/voice-wer.js",
+			"default": "./dist/voice-wer.js"
+		},
+		"./voice": {
+			"eliza-source": "./src/voice.ts",
+			"types": "./dist/voice.d.ts",
+			"import": "./dist/voice.js",
+			"default": "./dist/voice.js"
+		},
+		"./voice/aec/delay-calibrator": {
+			"eliza-source": "./src/voice/aec/delay-calibrator.ts",
+			"types": "./dist/voice/aec/delay-calibrator.d.ts",
+			"import": "./dist/voice/aec/delay-calibrator.js",
+			"default": "./dist/voice/aec/delay-calibrator.js"
+		},
+		"./voice/aec/echo-alignment": {
+			"eliza-source": "./src/voice/aec/echo-alignment.ts",
+			"types": "./dist/voice/aec/echo-alignment.d.ts",
+			"import": "./dist/voice/aec/echo-alignment.js",
+			"default": "./dist/voice/aec/echo-alignment.js"
+		},
+		"./voice/aec/echo-delay": {
+			"eliza-source": "./src/voice/aec/echo-delay.ts",
+			"types": "./dist/voice/aec/echo-delay.d.ts",
+			"import": "./dist/voice/aec/echo-delay.js",
+			"default": "./dist/voice/aec/echo-delay.js"
+		},
+		"./voice/aec/echo-metrics": {
+			"eliza-source": "./src/voice/aec/echo-metrics.ts",
+			"types": "./dist/voice/aec/echo-metrics.d.ts",
+			"import": "./dist/voice/aec/echo-metrics.js",
+			"default": "./dist/voice/aec/echo-metrics.js"
+		},
+		"./voice/aec/echo-reference-buffer": {
+			"eliza-source": "./src/voice/aec/echo-reference-buffer.ts",
+			"types": "./dist/voice/aec/echo-reference-buffer.d.ts",
+			"import": "./dist/voice/aec/echo-reference-buffer.js",
+			"default": "./dist/voice/aec/echo-reference-buffer.js"
+		},
+		"./voice/aec": {
+			"eliza-source": "./src/voice/aec/index.ts",
+			"types": "./dist/voice/aec/index.d.ts",
+			"import": "./dist/voice/aec/index.js",
+			"default": "./dist/voice/aec/index.js"
+		},
+		"./voice/aec/nlms-echo-canceller": {
+			"eliza-source": "./src/voice/aec/nlms-echo-canceller.ts",
+			"types": "./dist/voice/aec/nlms-echo-canceller.d.ts",
+			"import": "./dist/voice/aec/nlms-echo-canceller.js",
+			"default": "./dist/voice/aec/nlms-echo-canceller.js"
+		},
+		"./voice/first-sentence-snip": {
+			"eliza-source": "./src/voice/first-sentence-snip.ts",
+			"types": "./dist/voice/first-sentence-snip.d.ts",
+			"import": "./dist/voice/first-sentence-snip.js",
+			"default": "./dist/voice/first-sentence-snip.js"
+		},
+		"./voice/owner-inference": {
+			"eliza-source": "./src/voice/owner-inference.ts",
+			"types": "./dist/voice/owner-inference.d.ts",
+			"import": "./dist/voice/owner-inference.js",
+			"default": "./dist/voice/owner-inference.js"
+		},
+		"./voice/respond-gate": {
+			"eliza-source": "./src/voice/respond-gate.ts",
+			"types": "./dist/voice/respond-gate.d.ts",
+			"import": "./dist/voice/respond-gate.js",
+			"default": "./dist/voice/respond-gate.js"
+		},
+		"./voice/voice-cancellation-token": {
+			"eliza-source": "./src/voice/voice-cancellation-token.ts",
+			"types": "./dist/voice/voice-cancellation-token.d.ts",
+			"import": "./dist/voice/voice-cancellation-token.js",
+			"default": "./dist/voice/voice-cancellation-token.js"
+		},
+		"./utils/state-dir": {
+			"eliza-source": "./src/utils/state-dir.ts",
+			"types": "./dist/utils/state-dir.d.ts",
+			"import": "./dist/utils/state-dir.js",
+			"default": "./dist/utils/state-dir.js"
+		},
+		"./utils/exec-safety": {
+			"eliza-source": "./src/utils/exec-safety.ts",
+			"types": "./dist/utils/exec-safety.d.ts",
+			"import": "./dist/utils/exec-safety.js",
+			"default": "./dist/utils/exec-safety.js"
+		},
+		"./errors": {
+			"eliza-source": "./src/errors.ts",
+			"types": "./dist/errors.d.ts",
+			"import": "./dist/errors.js",
+			"default": "./dist/errors.js"
+		},
+		"./utils/unicode": {
+			"eliza-source": "./src/utils/unicode.ts",
+			"types": "./dist/utils/unicode.d.ts",
+			"import": "./dist/utils/unicode.js",
+			"default": "./dist/utils/unicode.js"
+		},
+		"./utils/env-alias": {
+			"eliza-source": "./src/utils/env-alias.ts",
+			"types": "./dist/utils/env-alias.d.ts",
+			"import": "./dist/utils/env-alias.js",
+			"default": "./dist/utils/env-alias.js"
+		},
+		"./name-tokens": {
+			"eliza-source": "./src/name-tokens.ts",
+			"types": "./dist/name-tokens.d.ts",
+			"import": "./dist/name-tokens.js",
+			"default": "./dist/name-tokens.js"
+		},
+		"./inference-trace": {
+			"eliza-source": "./src/inference-trace.ts",
+			"types": "./dist/inference-trace.d.ts",
+			"import": "./dist/inference-trace.js",
+			"default": "./dist/inference-trace.js"
+		},
+		"./messaging/interactions/parse": {
+			"eliza-source": "./src/messaging/interactions/parse.ts",
+			"types": "./dist/messaging/interactions/parse.d.ts",
+			"import": "./dist/messaging/interactions/parse.js",
+			"default": "./dist/messaging/interactions/parse.js"
+		},
+		"./types/effects": {
+			"eliza-source": "./src/types/effects.ts",
+			"types": "./dist/types/effects.d.ts",
+			"import": "./dist/types/effects.js",
+			"default": "./dist/types/effects.js"
+		},
+		"./types/notification": {
+			"eliza-source": "./src/types/notification.ts",
+			"types": "./dist/types/notification.d.ts",
+			"import": "./dist/types/notification.js",
+			"default": "./dist/types/notification.js"
+		},
+		"./types/message-source": {
+			"eliza-source": "./src/types/message-source.ts",
+			"types": "./dist/types/message-source.d.ts",
+			"import": "./dist/types/message-source.js",
+			"default": "./dist/types/message-source.js"
+		},
+		"./access-control/role-primitives": {
+			"eliza-source": "./src/access-control/role-primitives.ts",
+			"types": "./dist/access-control/role-primitives.d.ts",
+			"import": "./dist/access-control/role-primitives.js",
+			"default": "./dist/access-control/role-primitives.js"
+		},
+		"./config/public-endpoints": {
+			"eliza-source": "./src/config/public-endpoints.ts",
+			"types": "./dist/config/public-endpoints.d.ts",
+			"import": "./dist/config/public-endpoints.js",
+			"default": "./dist/config/public-endpoints.js"
+		},
+		"./security/log-redaction": {
+			"eliza-source": "./src/security/log-redaction.ts",
+			"types": "./dist/security/log-redaction.d.ts",
+			"import": "./dist/security/log-redaction.js",
+			"default": "./dist/security/log-redaction.js"
+		},
+		"./capability-catalog": {
+			"eliza-source": "./src/capability-catalog.ts",
+			"types": "./dist/capability-catalog.d.ts",
+			"import": "./dist/capability-catalog.js",
+			"default": "./dist/capability-catalog.js"
+		},
+		"./utils/format-bytes": {
+			"eliza-source": "./src/utils/format-bytes.ts",
+			"types": "./dist/utils/format-bytes.d.ts",
+			"import": "./dist/utils/format-bytes.js",
+			"default": "./dist/utils/format-bytes.js"
+		},
+		"./security/loopback-trust": {
+			"eliza-source": "./src/security/loopback-trust.ts",
+			"types": "./dist/security/loopback-trust.d.ts",
+			"import": "./dist/security/loopback-trust.js",
+			"default": "./dist/security/loopback-trust.js"
+		},
+		"./embedding-vector-space": {
+			"eliza-source": "./src/embedding-vector-space.ts",
+			"types": "./dist/embedding-vector-space.d.ts",
+			"import": "./dist/embedding-vector-space.js",
+			"default": "./dist/embedding-vector-space.js"
+		},
+		"./utils/deterministic": {
+			"eliza-source": "./src/utils/deterministic.ts",
+			"types": "./dist/utils/deterministic.d.ts",
+			"import": "./dist/utils/deterministic.js",
+			"default": "./dist/utils/deterministic.js"
 		}
 	},
 	"files": [
@@ -40,18 +1405,20 @@
 		"build": "bun run build.ts",
 		"build:watch": "bun run build.ts --watch",
 		"dev": "bun run build:watch",
-		"clean": "node ../scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.mjs",
+		"clean": "node ../scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.ts",
 		"perf:providers": "bun run scripts/provider-latency-report.ts",
 		"perf:settings": "bun run scripts/perf-settings.ts",
-		"test": "node ../scripts/run-vitest.mjs run",
-		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.mjs run --coverage",
+		"test": "node ../scripts/run-vitest.ts run",
+		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.ts run --coverage",
 		"test:e2e": "npx playwright test",
-		"test:watch": "node ../scripts/run-vitest.mjs",
+		"test:watch": "node ../scripts/run-vitest.ts",
 		"lint": "bunx @biomejs/biome check --write ./src",
 		"lint:check": "bunx @biomejs/biome check ./src",
 		"typecheck": "tsc --noEmit -p ./tsconfig.json",
 		"format": "bunx @biomejs/biome format --write ./src",
-		"format:check": "bunx @biomejs/biome format ./src"
+		"format:check": "bunx @biomejs/biome format ./src",
+		"generate:first-party": "bun run src/catalog/generate.ts",
+		"generate:first-party:check": "bun run src/catalog/generate.ts --check"
 	},
 	"author": "elizaOS",
 	"license": "MIT",
@@ -64,11 +1431,17 @@
 		"typescript": "^6.0.3",
 		"vitest": "^5.0.1",
 		"tsup": "^8.5.1",
-		"dotenv": "^17.2.3"
+		"dotenv": "^17.2.3",
+		"@types/markdown-it": "^14.1.2"
 	},
 	"dependencies": {
 		"zod": "^4.6.5",
-		"adze": "^2.2.5"
+		"adze": "^2.2.5",
+		"json5": "^2.2.3",
+		"file-type": "^22.0.0",
+		"markdown-it": "^14.1.0",
+		"yaml": "^2.8.2",
+		"uuid": "^14.0.0"
 	},
 	"publishConfig": {
 		"access": "public"

@@ -3,12 +3,17 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ChannelType, MemoryType, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  installHttpPluginLifecycle,
+  MemoryType,
+  type UUID,
+} from "@elizaos/core";
+
 import {
   createDocumentsPlugin,
   type DocumentMemoryMetadata,
 } from "@elizaos/plugin-assistant";
-import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { knowledgePlugin } from "../../../plugins/plugin-knowledge/src/plugin.ts";

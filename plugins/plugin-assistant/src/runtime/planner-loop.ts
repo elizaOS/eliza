@@ -46,6 +46,7 @@ import {
   computePrefixHashes,
   createUnavailableGroundedActionReply,
   DEFAULT_SUBACTION_KEYS,
+  DISCOVER_ACTIONS_NAME,
   DISCOVER_TOOLS_NAME,
   ElizaError,
   emitStreamingHook,
@@ -58,6 +59,7 @@ import {
   hashString,
   hasReasoningResidue,
   inflectionTermKeys,
+  isDiscoveryActionName,
   isModelProviderError,
   isObjectRecord,
   isPlainObject,
@@ -237,7 +239,7 @@ function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
 }
 
 /**
- * Coding-mode tool-call ceiling (default 32): the max number of tool calls a
+ * Optional coding-mode domain-call ceiling: the max number of tool calls a
  * coding build may make before the loop terminates. Overridable via
  * `ELIZA_CODING_MAX_TOOL_CALLS`; a set-but-malformed value throws.
  */
@@ -245,7 +247,7 @@ export function resolveCodingMaxToolCalls(): number {
   return resolvePositivePlannerInt(
     "ELIZA_CODING_MAX_TOOL_CALLS",
     process.env.ELIZA_CODING_MAX_TOOL_CALLS,
-    32,
+    Number.POSITIVE_INFINITY,
   );
 }
 
@@ -315,49 +317,56 @@ export async function runPlannerLoop(
   };
   const trackedParams = { ...params, onModelUsage: observeModelUsage };
   let result: PlannerLoopResult;
+  let liveTrajectory: PlannerTrajectory | undefined;
   try {
-    result = await runPlannerLoopIterations(trackedParams);
+    result = await runPlannerLoopIterations(trackedParams, (trajectory) => {
+      liveTrajectory = trajectory;
+    });
+    const withReply = await ensureToolTurnFinalMessage(trackedParams, result);
+    // Failure-aware synthesis is the final authority. Its grounded answer must
+    // not re-enter the pre-tool acknowledgement heuristic and be replaced by
+    // another synthesis that lacks the recorded failure context.
+    const final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    return { ...final, modelUsage: usage };
   } catch (error) {
-    // A coding planner model call that blew its wall-clock deadline is a
-    // terminal boundary: return an honest fail-fast reply instead of letting
-    // the timeout propagate. message.ts bare-rethrows a coding-mode planner
-    // error (no preserved Stage-1 answer to degrade to), which would leave the
-    // user with silence after a 60s+ hang — the exact failure this guards.
-    if (
-      params.codingMode === true &&
-      error instanceof ElizaError &&
-      error.code === PLANNER_MODEL_CALL_TIMEOUT
-    ) {
-      params.runtime.logger?.warn?.(
-        { src: "planner-loop", ...(error.context ?? {}) },
-        "[planner-loop] coding planner turn timed out; returning honest fail-fast reply",
-      );
+    // error-policy:J4 Preserve settled effects and pending work at a resource boundary.
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    const timeout =
+      error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
+    const budget =
+      error instanceof TrajectoryLimitExceeded &&
+      (error.kind === "tool_calls" ||
+        error.kind === "trajectory_token_budget" ||
+        error.kind === "repeated_observations" ||
+        error.kind === "memory_search_rounds");
+    if (liveTrajectory && (timeout || budget)) {
+      const message = timeout
+        ? PLANNER_MODEL_CALL_TIMEOUT_MESSAGE
+        : error instanceof TrajectoryLimitExceeded &&
+            error.kind === "repeated_observations"
+          ? "Planning stopped after repeated checks returned unchanged results. The request remains incomplete; earlier recorded outcomes are preserved."
+          : "Planning reached its configured resource limit before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
       return {
         status: "finished",
-        trajectory: {
-          context: normalizePlannerContext(params.context),
-          codingMode: true,
-          steps: [],
-          archivedSteps: [],
-          plannedQueue: [],
-          evaluatorOutputs: [],
+        trajectory: liveTrajectory,
+        evaluator: { success: false, decision: "FINISH", thought: message },
+        terminalFailure: {
+          kind: timeout ? "planner_timeout" : "resource_limit",
+          transient: false,
+          code: timeout ? PLANNER_MODEL_CALL_TIMEOUT : "PLANNER_RESOURCE_LIMIT",
+          message,
         },
-        finalMessage: PLANNER_MODEL_CALL_TIMEOUT_MESSAGE,
+        finalMessage: message,
         modelUsage: usage,
       };
     }
     throw error;
   }
-  const withReply = await ensureToolTurnFinalMessage(trackedParams, result);
-  // Failure-aware synthesis is the final authority. Its grounded answer must
-  // not re-enter the pre-tool acknowledgement heuristic and be replaced by
-  // another synthesis that lacks the recorded failure context.
-  const final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
-  return { ...final, modelUsage: usage };
 }
 
 async function runPlannerLoopIterations(
   params: PlannerLoopParams,
+  onTrajectory: (trajectory: PlannerTrajectory) => void,
 ): Promise<PlannerLoopResult> {
   const plannerContext = normalizePlannerContext(params.context);
   // Tool success proves execution, not fulfillment of the user's intent.
@@ -370,12 +379,7 @@ async function runPlannerLoopIterations(
   // arguments: runtime-known secrets composed with the shared tool-shape
   // patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
   const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
-  // Coding/full-surface mode: a real build legitimately makes many
-  // tool calls (read several files, write several, run tests). The chat default
-  // (maxToolCalls=16) caps that mid-build, ending the turn on a
-  // TrajectoryLimitExceeded with no terminal REPLY → an EMPTY relay to the user.
-  // Raise the ceiling for coding builds (still bounded). Overridable via
-  // ELIZA_CODING_MAX_TOOL_CALLS.
+  // Explicit operator ceilings override the shared progress-based defaults.
   const codingMode = params.codingMode === true;
   const codingMaxToolCalls = resolveCodingMaxToolCalls();
   // Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
@@ -390,7 +394,7 @@ async function runPlannerLoopIterations(
     return codingMode
       ? {
           ...merged,
-          maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls),
+          maxToolCalls: params.config?.maxToolCalls ?? codingMaxToolCalls,
           maxRequiredToolMisses: Math.max(
             merged.maxRequiredToolMisses,
             codingMaxRequiredToolMisses,
@@ -438,6 +442,7 @@ async function runPlannerLoopIterations(
     plannedQueue: [],
     evaluatorOutputs: [],
   };
+  onTrajectory(trajectory);
   trajectory.modelHistory = trajectoryStepsToMessages(trajectory.steps, {
     redactText: redactDiagnosticText,
   });
@@ -476,13 +481,15 @@ async function runPlannerLoopIterations(
     !codingMode &&
     isPlainObject(stageOnePlan) &&
     Array.isArray(stageOnePlan.candidateActions) &&
-    stageOnePlan.candidateActions.includes(DISCOVER_TOOLS_NAME);
+    stageOnePlan.candidateActions.some(
+      (name) => typeof name === "string" && isDiscoveryActionName(name),
+    );
   const requireNonTerminalToolCall =
     (params.requireNonTerminalToolCall === true || codingMode) &&
     (hasExposedNonTerminalTool(params.tools) ||
       (discoveryWasRequested &&
-        params.tools?.some(
-          (tool) => getToolDefinitionName(tool) === DISCOVER_TOOLS_NAME,
+        params.tools?.some((tool) =>
+          isDiscoveryActionName(getToolDefinitionName(tool) ?? ""),
         )));
   // A PRESENT but terminal-only surface (REPLY/IGNORE/STOP and nothing else)
   // means every stage-1 candidate failed to resolve to a runnable action —
@@ -504,8 +511,8 @@ async function runPlannerLoopIterations(
     // Discovery is preparatory, not domain execution, but it can still load
     // the missing capability. An unresolved Stage-1 hint must reach planning
     // even when its draft looks like a complete answer.
-    !params.tools.some(
-      (tool) => getToolDefinitionName(tool) === DISCOVER_TOOLS_NAME,
+    !params.tools.some((tool) =>
+      isDiscoveryActionName(getToolDefinitionName(tool) ?? ""),
     )
   ) {
     const stageOneDecline = userSafeCapturedAnswerCandidate(
@@ -910,6 +917,7 @@ async function runPlannerLoopIterations(
   const codingDrainQueue = codingMode;
 
   for (let iteration = 1; ; iteration++) {
+    getStreamingContext()?.abortSignal?.throwIfAborted();
     if (trajectory.plannedQueue.length === 0) {
       const contextBeforePlanner = trajectory.context;
       let synthesizingRequiredModelReply = pendingRequiredModelReply;
@@ -2133,7 +2141,7 @@ async function runPlannerLoopIterations(
       const memoryBudget = partitionMemorySearchBudget(
         validNonTerminalCalls,
         trajectory,
-        config.maxMemorySearchRounds,
+        Number.POSITIVE_INFINITY,
       );
       const skippedSearchCalls = [
         ...memoryBudget.skippedOverBudget,
@@ -2242,7 +2250,7 @@ async function runPlannerLoopIterations(
       }
     }
 
-    const toolCall = trajectory.plannedQueue.shift();
+    const toolCall = trajectory.plannedQueue[0];
     if (!toolCall) {
       continue;
     }
@@ -2257,6 +2265,7 @@ async function runPlannerLoopIterations(
         failures,
         plannerCompleted: lastPlannerExplicitCompleted,
       });
+      getStreamingContext()?.abortSignal?.throwIfAborted();
     } catch (error) {
       // error-policy:J4 the repeated-failure limit is the loop's own stop
       // signal. When the tool that kept failing owns a user-safe clarifying
@@ -2284,9 +2293,39 @@ async function runPlannerLoopIterations(
       };
     }
 
+    // Fresh observations may change, but repeatedly receiving the same result
+    // for the same operation is not progress. Compare complete outcomes; never
+    // suppress a distinct query or a changed observation before it executes.
+    const completed = trajectory.steps.at(-1);
+    if (
+      completed?.result?.success === true &&
+      isRepeatableObservation(completed.result)
+    ) {
+      const identity = toolCallIdentity(toolCall);
+      const outcome = stableJsonStringify(completed.result);
+      let unchanged = 0;
+      const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+      for (let index = steps.length - 1; index >= 0; index--) {
+        const prior = steps[index];
+        if (
+          !prior.toolCall ||
+          !prior.result ||
+          toolCallIdentity(prior.toolCall) !== identity ||
+          stableJsonStringify(prior.result) !== outcome
+        )
+          break;
+        unchanged++;
+      }
+      assertTrajectoryLimit({
+        kind: "repeated_observations",
+        max: config.maxRepeatedToolCalls + 1,
+        observed: unchanged,
+      });
+    }
+
     const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
     if (
-      toolCall.name === DISCOVER_TOOLS_NAME &&
+      isDiscoveryActionName(toolCall.name) &&
       latestResult?.success === true &&
       (!discoveryWasRequested || trajectory.plannedQueue.length > 0)
     ) {
@@ -2342,7 +2381,7 @@ async function runPlannerLoopIterations(
       };
     }
     if (
-      toolCall.name === DISCOVER_TOOLS_NAME &&
+      isDiscoveryActionName(toolCall.name) &&
       !discoveryWasRequested &&
       latestResult?.success === false &&
       latestResult.data?.readOnlyOperation === true &&
@@ -3128,11 +3167,11 @@ export const PLANNER_MODEL_CALL_TIMEOUT = "PLANNER_MODEL_CALL_TIMEOUT";
 
 /**
  * User-facing reply delivered when a coding planner model call is aborted for
- * exceeding {@link resolveCodingPlannerCallTimeoutMs}. Honest and terminal: the
- * turn did no verified work, so the reply says so rather than shipping silence.
+ * exceeding {@link resolveCodingPlannerCallTimeoutMs}. Earlier tool outcomes
+ * remain authoritative; a generation timeout does not roll them back.
  */
 export const PLANNER_MODEL_CALL_TIMEOUT_MESSAGE =
-  "That step timed out before it finished, so nothing was changed. Please try again.";
+  "Planning timed out before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
 
 /**
  * Coding-mode wall-clock ceiling for a single planner model call (default
@@ -4493,18 +4532,34 @@ async function executeQueuedToolCall(params: {
   failures: FailureLike[];
   plannerCompleted?: boolean;
 }): Promise<void> {
-  assertTrajectoryLimit({
-    kind: "tool_calls",
-    max: params.config.maxToolCalls,
-    // Compaction moves settled steps out of `steps` into `archivedSteps`,
-    // so counting only the live half restarts the budget mid-turn. Every
-    // other trajectory-wide read in this file spans both halves.
-    observed:
-      [...params.trajectory.archivedSteps, ...params.trajectory.steps].filter(
-        (step) => step.toolCall,
-      ).length + 1,
-  });
+  getStreamingContext()?.abortSignal?.throwIfAborted();
+  if (!isDiscoveryActionName(params.toolCall.name))
+    assertTrajectoryLimit({
+      kind: "tool_calls",
+      max: params.config.maxToolCalls,
+      // Compaction moves settled steps out of `steps` into `archivedSteps`,
+      // so counting only the live half restarts the budget mid-turn. Every
+      // other trajectory-wide read in this file spans both halves.
+      observed:
+        [...params.trajectory.archivedSteps, ...params.trajectory.steps].filter(
+          (step) => step.toolCall && !isDiscoveryActionName(step.toolCall.name),
+        ).length + 1,
+    });
 
+  if (isMemoryRecallSearchCall(params.toolCall)) {
+    assertTrajectoryLimit({
+      kind: "memory_search_rounds",
+      max: params.config.maxMemorySearchRounds,
+      observed:
+        [...params.trajectory.archivedSteps, ...params.trajectory.steps].filter(
+          (step) =>
+            step.toolCall &&
+            isMemoryRecallSearchCall(step.toolCall) &&
+            step.result?.success === true,
+        ).length + 1,
+    });
+  }
+  params.trajectory.plannedQueue.shift();
   const streamingContext = getStreamingContext();
   const contextEvent = findToolContextEvent(
     params.trajectory.context,
@@ -4550,6 +4605,7 @@ async function executeQueuedToolCall(params: {
         : {}),
     });
   } catch (error) {
+    getStreamingContext()?.abortSignal?.throwIfAborted();
     // error-policy:J1 Tool execution is the planner action boundary; preserve
     // the actual error in an explicit failed tool result.
     result = {
@@ -5546,7 +5602,7 @@ function hasExposedNonTerminalTool(
     tools.some((tool) => {
       const name = getToolDefinitionName(tool);
       return Boolean(
-        name && name !== DISCOVER_TOOLS_NAME && !isTerminalToolCall({ name }),
+        name && !isDiscoveryActionName(name) && !isTerminalToolCall({ name }),
       );
     })
   );
@@ -5556,7 +5612,7 @@ function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
   return trajectory.steps.some(
     (step) =>
       step.toolCall &&
-      step.toolCall.name !== DISCOVER_TOOLS_NAME &&
+      !isDiscoveryActionName(step.toolCall.name) &&
       !isTerminalToolCall(step.toolCall),
   );
 }
@@ -6332,31 +6388,19 @@ function resolveShellFailuresSubsumedBy(
   if (call?.name.toUpperCase() !== "SHELL") return;
   const command = shellCommandParam(call);
   if (!command) return;
-  const cwd = shellCwdParam(call);
+  const cwd = shellCwdParam(call, step.result);
   for (const [key, failed] of [...unresolvedByOperation.entries()]) {
     const failedCall = failed.toolCall;
     if (failedCall?.name.toUpperCase() !== "SHELL") continue;
     const failedCommand = shellCommandParam(failedCall);
-    if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
+    if (!failedCommand || shellCwdParam(failedCall, failed.result) !== cwd)
+      continue;
     if (containsCommandVerbatim(command, failedCommand)) {
       unresolvedByOperation.delete(key);
-      continue;
     }
-    // A narrower successful verifier is a valid recovery for a broader failed
-    // verifier when both commands belong to the same tool family (for example,
-    // `go test ./...` followed by `go test ./internal/config -run TestLoad`).
-    // This is restricted to coding verification commands and an identical
-    // executable prefix so an unrelated deploy/build failure cannot be laundered
-    // by a later test.
-    if (
-      step.result?.verification?.status === "passed" &&
-      failed.result?.verification?.status === "failed" &&
-      step.result.verification.kind === failed.result.verification.kind &&
-      step.result.verification.family !== undefined &&
-      step.result.verification.family === failed.result.verification.family
-    ) {
-      unresolvedByOperation.delete(key);
-    }
+    // A shared verifier family cannot prove coverage: a passing subset may
+    // exclude the case that failed in the broader command. Preserve that
+    // failure until the same operation is successfully re-executed.
   }
 }
 
@@ -6365,7 +6409,13 @@ function shellCommandParam(call: PlannerToolCall): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function shellCwdParam(call: PlannerToolCall): string {
+function shellCwdParam(
+  call: PlannerToolCall,
+  result?: PlannerToolResult,
+): string {
+  // Tool receipts record the resolved directory, including implicit session cwd.
+  const recorded = result?.data?.cwd;
+  if (typeof recorded === "string" && recorded.trim()) return recorded.trim();
   const value = (call.params as Record<string, unknown> | undefined)?.cwd;
   return typeof value === "string" ? value.trim() : "";
 }
@@ -6634,6 +6684,8 @@ function plannerToolOperationKey(
   // authority merely because their schemas reuse a common field name.
   if (toolCall.name.toUpperCase() === "SHELL") {
     delete (params as Record<string, unknown>).description;
+    const cwd = shellCwdParam(toolCall, result);
+    if (cwd) (params as Record<string, unknown>).cwd = cwd;
   }
   return `${toolCall.name.toUpperCase()}|${stableJsonStringify(params)}`;
 }
@@ -6725,7 +6777,10 @@ function canonicalParamsString(value: unknown): string {
 }
 
 function toolCallIdentity(toolCall: PlannerToolCall): string {
-  return `${toolCall.name} ${canonicalParamsString(toolCall.params ?? {})}`;
+  const name = isDiscoveryActionName(toolCall.name)
+    ? DISCOVER_ACTIONS_NAME
+    : toolCall.name;
+  return `${name} ${canonicalParamsString(toolCall.params ?? {})}`;
 }
 
 /** Observations may change; applied effects and committed replays stay settled. */
@@ -7281,7 +7336,7 @@ function hasSuccessfulNonTerminalToolStep(
   return [...trajectory.archivedSteps, ...trajectory.steps].some(
     (step) =>
       step.toolCall !== undefined &&
-      step.toolCall.name !== DISCOVER_TOOLS_NAME &&
+      !isDiscoveryActionName(step.toolCall.name) &&
       !isTerminalToolCall(step.toolCall) &&
       step.result?.success === true,
   );
@@ -8467,6 +8522,14 @@ function splitUnavailableToolCalls(
   // only from that already-gated child surface, never the global action registry.
   // Normalize before availability/replay checks so an alias is the same operation.
   const aliases = new Map<string, string>();
+  // Persisted and in-flight legacy discovery calls remain the same operation,
+  // but only when this turn exposes its freshly admitted canonical schema.
+  if (exposed.has(DISCOVER_ACTIONS_NAME)) {
+    aliases.set(
+      normalizePlannerToolName(DISCOVER_TOOLS_NAME),
+      DISCOVER_ACTIONS_NAME,
+    );
+  }
   if (
     typeof context.metadata?.subPlannerParentAction === "string" &&
     context.metadata.subPlannerParentAction.length > 0

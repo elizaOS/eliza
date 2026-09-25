@@ -13,7 +13,7 @@ import {
   documentMediaFormat,
   knowledgeFacetCounts,
   knowledgeReaderKind,
-} from "./knowledge-media-format";
+} from "./knowledge-media-format.js";
 
 function doc(partial: Partial<DocumentRecord>): DocumentRecord {
   return {

@@ -3,7 +3,7 @@
  * read/switch surface the UI project switcher is wired to.
  *
  * The registry itself is the merged core store in
- * `@elizaos/core/utils/project-registry` (a `projects.json` snapshot under the
+ * `@elizaos/core` (a `projects.json` snapshot under the
  * per-user state dir). This module is a thin HTTP projection over it:
  *
  *   GET  /api/projects            → { projects, activeProjectId }
@@ -18,10 +18,10 @@
 import {
   getActiveProject,
   logger,
+  type RouteRequestContext,
   readProjectRegistry,
   setActiveProject,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
 
 /** DTO for the switcher: only the fields the UI renders + switches on. Internal
  * bookkeeping (bookmark, createdAt) is intentionally not surfaced. */
@@ -33,18 +33,14 @@ export interface ProjectSummaryDTO {
   defaultBranch?: string;
   lastOpenedAt: string;
 }
-
 export interface ProjectListDTO {
   projects: ProjectSummaryDTO[];
   activeProjectId: string | null;
 }
-
 /** Project id path segment: a uuid-ish token; reject anything with a slash or
  * whitespace so the route can't be tricked into matching a nested path. */
 const PROJECT_ID_PATTERN = /^[\w.-]+$/;
-
 const ACTIVATE_SUFFIX = "/activate";
-
 function toSummary(project: {
   id: string;
   name: string;
@@ -62,7 +58,6 @@ function toSummary(project: {
     lastOpenedAt: project.lastOpenedAt,
   };
 }
-
 /**
  * Serve the project registry read + switch endpoints. Returns `true` when the
  * request was handled (so the caller stops the route chain), `false` otherwise.
@@ -78,9 +73,7 @@ export async function handleProjectRoutes(
   } = {},
 ): Promise<boolean> {
   const { method, pathname, res, json, error } = ctx;
-
   if (!pathname.startsWith("/api/projects")) return false;
-
   const readRegistry =
     deps.readRegistry ??
     (() => {
@@ -91,14 +84,12 @@ export async function handleProjectRoutes(
         activeProjectId: active?.id ?? registry?.activeProjectId ?? null,
       } satisfies ProjectListDTO;
     });
-
   const activate =
     deps.activate ??
     ((id: string) => {
       const record = setActiveProject(id);
       return record ? toSummary(record) : null;
     });
-
   // GET /api/projects — list + active pointer for the switcher.
   if (method === "GET" && pathname === "/api/projects") {
     try {
@@ -109,7 +100,6 @@ export async function handleProjectRoutes(
     }
     return true;
   }
-
   // POST /api/projects/:id/activate — switch the active project.
   if (
     method === "POST" &&
@@ -146,6 +136,5 @@ export async function handleProjectRoutes(
     }
     return true;
   }
-
   return false;
 }

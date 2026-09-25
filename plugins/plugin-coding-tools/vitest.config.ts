@@ -10,10 +10,6 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^@elizaos\/core\/edge$/,
-        replacement: path.join(repoRoot, "packages/core/src/index.edge.ts"),
-      },
-      {
         find: /^@elizaos\/cloud-routing$/,
         replacement: path.join(repoRoot, "packages/cloud/routing/src/index.ts"),
       },
@@ -24,14 +20,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(repoRoot, "packages/core/src/$1"),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(repoRoot, "packages/shared/src/$1.ts"),
       },
     ],
     conditions: ["node"],

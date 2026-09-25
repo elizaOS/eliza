@@ -17,37 +17,37 @@
  * a complete response.
  */
 
-import type { PluginListenerHandle } from "@capacitor/core";
-import { BGE_EMBEDDING_MODEL } from "@elizaos/shared";
+import { type PluginListenerHandle } from "@capacitor/core";
 import {
   BGE_SMALL_VECTOR_SPACE,
-  ElizaError,
   identifyEmbeddingVector,
-} from "@elizaos/shared/browser-contracts";
+} from "@elizaos/core/embedding-vector-space";
+import { ElizaError } from "@elizaos/core/errors";
+import {
+  type NativeCompletionParams,
+  type NativeCompletionResult,
+  type NativeContextParams,
+  type NativeEmbeddingParams,
+  type NativeEmbeddingResult,
+  type NativeLlamaContext,
+} from "llama-cpp-capacitor";
+import { BGE_EMBEDDING_MODEL } from "../model-catalog/bge-embedding-model.js";
 import {
   assertBgeTokenAgreement,
   prepareBgeEmbeddingInput,
-} from "@elizaos/shared/local-inference/bge-input";
-import type {
-  NativeCompletionParams,
-  NativeCompletionResult,
-  NativeContextParams,
-  NativeEmbeddingParams,
-  NativeEmbeddingResult,
-  NativeLlamaContext,
-} from "llama-cpp-capacitor";
-import type {
-  EmbedOptions,
-  EmbedResult,
-  GenerateOptions,
-  GenerateResult,
-  GenerateStreamOptions,
-  GenerationEvent,
-  HardwareInfo,
-  LlamaAdapter,
-  LoadOptions,
-  SamplerStage,
-  SetSpecTypeArgs,
+} from "../model-catalog/bge-input.js";
+import {
+  type EmbedOptions,
+  type EmbedResult,
+  type GenerateOptions,
+  type GenerateResult,
+  type GenerateStreamOptions,
+  type GenerationEvent,
+  type HardwareInfo,
+  type LlamaAdapter,
+  type LoadOptions,
+  type SamplerStage,
+  type SetSpecTypeArgs,
 } from "./definitions.js";
 
 // Dynamically imported so the adapter can be bundled into a desktop build
@@ -56,7 +56,6 @@ type NativeGenerateParams = Partial<Omit<NativeCompletionParams, "prompt">>;
 type NativeCompletionProbability = NonNullable<
   NativeCompletionResult["completion_probabilities"]
 >[number];
-
 type TokenEventPayload = {
   token?: string;
   completion_probabilities?: NativeCompletionProbability[];
@@ -65,7 +64,6 @@ type TokenEventPayload = {
     completion_probabilities?: NativeCompletionProbability[];
   };
 };
-
 interface LlamaCppPluginLike {
   initContext: (options: {
     contextId: number;
@@ -103,7 +101,9 @@ interface LlamaCppPluginLike {
     contextId: number;
     text: string;
     imagePaths?: Array<string>;
-  }) => Promise<{ tokens: number[] }>;
+  }) => Promise<{
+    tokens: number[];
+  }>;
   /**
    * Optional - exposed only by the buun-llama-cpp fork. Stock builds
    * lack this method and the adapter feature-detects + warn-no-ops.
@@ -129,7 +129,10 @@ interface LlamaCppPluginLike {
    * stock builds). Backed by a `kernels.json` resource read from
    * the .so's APK assets at first call.
    */
-  getNativeKernels?: () => Promise<{ kernels: string[]; variant?: string }>;
+  getNativeKernels?: () => Promise<{
+    kernels: string[];
+    variant?: string;
+  }>;
   /**
    * Apply the loaded GGUF's chat template (Jinja, from gguf metadata) to
    * the given conversation. Backed by llama.cpp's
@@ -141,21 +144,23 @@ interface LlamaCppPluginLike {
     contextId: number;
     messages: string;
     chatTemplate?: string | null;
-    params?: { jinja?: boolean };
-  }) => Promise<{ prompt: string | null }>;
+    params?: {
+      jinja?: boolean;
+    };
+  }) => Promise<{
+    prompt: string | null;
+  }>;
   addListener: (
     event: string,
     listener: (data: TokenEventPayload) => void,
   ) => Promise<PluginListenerHandle | undefined>;
 }
-
 // completion(contextId=X) must run against the model that was initContext'd
 // with X — every adapter instance owns its own monotonically-allocated id so
 // the chat LLM and the embedding model never collide on the same native
 // context.
 let nextContextId = 1;
 const DEFAULT_MAX_TOKENS = 256;
-
 /**
  * Mobile-side parallel slot count. Mirrors `DEFAULT_CACHE_PARALLEL` in
  * `cache-bridge.ts`; on devices with constrained KV memory we keep a small
@@ -163,7 +168,6 @@ const DEFAULT_MAX_TOKENS = 256;
  * blowing memory.
  */
 const MOBILE_PARALLEL = 4;
-
 /** FNV-1a 32-bit, deterministic across platforms — matches the agent side. */
 function deriveCacheSlotId(key: string): number {
   let hash = 0x811c9dc5;
@@ -174,11 +178,9 @@ function deriveCacheSlotId(key: string): number {
   return Math.abs(hash | 0) % MOBILE_PARALLEL;
 }
 const MOBILE_MAX_TOKENS_CAP = 256;
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function isLlamaCppPluginLike(value: unknown): value is LlamaCppPluginLike {
   return (
     isObject(value) &&
@@ -191,7 +193,6 @@ function isLlamaCppPluginLike(value: unknown): value is LlamaCppPluginLike {
     typeof value.addListener === "function"
   );
 }
-
 function resolveLlamaCppPlugin(mod: unknown): LlamaCppPluginLike | null {
   if (!isObject(mod)) return null;
   if (isLlamaCppPluginLike(mod.LlamaCpp)) return mod.LlamaCpp;
@@ -201,7 +202,6 @@ function resolveLlamaCppPlugin(mod: unknown): LlamaCppPluginLike | null {
   }
   return null;
 }
-
 function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
   return {
     initContext: (options) => plugin.initContext(options),
@@ -230,7 +230,9 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
     tokenize:
       typeof plugin.tokenize === "function"
         ? (options) =>
-            plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
+            plugin.tokenize?.(options) as Promise<{
+              tokens: number[];
+            }>
         : undefined,
     setCacheType:
       typeof plugin.setCacheType === "function"
@@ -251,24 +253,26 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
     addListener: (event, listener) => plugin.addListener(event, listener),
   };
 }
-
 function isCapacitorNative(): boolean {
   const cap = (globalThis as Record<string, unknown>).Capacitor as
-    | { isNativePlatform?: () => boolean; getPlatform?: () => string }
+    | {
+        isNativePlatform?: () => boolean;
+        getPlatform?: () => string;
+      }
     | undefined;
   return Boolean(cap?.isNativePlatform?.());
 }
-
 function detectPlatform(): "ios" | "android" | "web" {
   const cap = (globalThis as Record<string, unknown>).Capacitor as
-    | { getPlatform?: () => string }
+    | {
+        getPlatform?: () => string;
+      }
     | undefined;
   const platform = cap?.getPlatform?.();
   if (platform === "ios") return "ios";
   if (platform === "android") return "android";
   return "web";
 }
-
 function resolveMobileMaxTokens(requested?: number): number {
   if (requested === undefined) return DEFAULT_MAX_TOKENS;
   if (!Number.isSafeInteger(requested) || requested <= 0) {
@@ -283,8 +287,9 @@ function resolveMobileMaxTokens(requested?: number): number {
   }
   return requested;
 }
-
-function incompleteOutputError(maxTokens: number): Error & { code: string } {
+function incompleteOutputError(maxTokens: number): Error & {
+  code: string;
+} {
   return Object.assign(
     new Error(
       `[capacitor-llama] native generation reached maxTokens=${maxTokens} before a stop condition; no partial response was returned`,
@@ -292,29 +297,28 @@ function incompleteOutputError(maxTokens: number): Error & { code: string } {
     { code: "MODEL_OUTPUT_INCOMPLETE" },
   );
 }
-
 function numberFromUnknown(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return value;
 }
-
 function booleanFromUnknown(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
-
 function stringFromUnknown(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
 }
-
 function fallbackHardwareInfo(
   platform = detectPlatform(),
   reason = "native hardware probe unavailable",
 ): HardwareInfo {
   const nav = (
     globalThis as {
-      navigator?: { hardwareConcurrency?: number; deviceMemory?: number };
+      navigator?: {
+        hardwareConcurrency?: number;
+        deviceMemory?: number;
+      };
     }
   ).navigator;
   const totalRamGb = numberFromUnknown(nav?.deviceMemory) ?? 0;
@@ -337,18 +341,15 @@ function fallbackHardwareInfo(
     forkVariant: null,
   };
 }
-
 function defaultNativeGpuEnabled(platform = detectPlatform()): boolean {
   // iOS builds use the Metal-capable native path by default. Android's current
   // Capacitor wrapper is CPU-only unless a forked Vulkan bridge explicitly opts
   // in, so the safe production default is CPU.
   return platform === "ios";
 }
-
 function resolveNativeGpuEnabled(useGpu?: boolean): boolean {
   return typeof useGpu === "boolean" ? useGpu : defaultNativeGpuEnabled();
 }
-
 function normalizeForkVariant(
   value: unknown,
 ): "buun-llama-cpp" | "stock-llama-cpp" | null | undefined {
@@ -356,7 +357,6 @@ function normalizeForkVariant(
   if (value === null) return null;
   return undefined;
 }
-
 function stringArrayFromUnknown(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const out: string[] = [];
@@ -365,7 +365,6 @@ function stringArrayFromUnknown(value: unknown): string[] | undefined {
   }
   return out;
 }
-
 function normalizeHardwareInfo(
   value: Partial<HardwareInfo> | null | undefined,
   platform = detectPlatform(),
@@ -436,11 +435,34 @@ function normalizeHardwareInfo(
     forkVariant: normalizeForkVariant(value.forkVariant) ?? null,
   };
 }
+interface NativeBgeContext {
+  tokenize(text: string): Promise<{
+    tokens: number[];
+  }>;
+  embedding(
+    text: string,
+    params: {
+      expectedTokenIds: number[];
+      embeddingSpace: string;
+    },
+  ): Promise<{
+    embedding: number[];
+    tokens: number;
+    tokenIds?: number[];
+    embeddingSpace: string;
+  }>;
+  release(): Promise<void>;
+}
+interface NativeBgeModule {
+  initBgeEmbedding?: (options: {
+    model: string;
+    n_ctx: number;
+  }) => Promise<NativeBgeContext>;
+}
 
 export class CapacitorLlamaAdapter implements LlamaAdapter {
   private plugin: LlamaCppPluginLike | null = null;
   private lifecycleQueue: Promise<void> = Promise.resolve();
-
   private serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.lifecycleQueue.then(operation);
     this.lifecycleQueue = result.then(
@@ -454,19 +476,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   /** Cached loader promise so concurrent `load()` calls don't race to register duplicate listeners. */
   private pluginLoadPromise: Promise<LlamaCppPluginLike> | null = null;
   private loadedPath: string | null = null;
-  private bgeContext: {
-    tokenize(text: string): Promise<{ tokens: number[] }>;
-    embedding(
-      text: string,
-      params: { expectedTokenIds: number[]; embeddingSpace: string },
-    ): Promise<{
-      embedding: number[];
-      tokens: number;
-      tokenIds?: number[];
-      embeddingSpace: string;
-    }>;
-    release(): Promise<void>;
-  } | null = null;
+  private bgeContext: NativeBgeContext | null = null;
   private bgeContextLimit: number = BGE_EMBEDDING_MODEL.contextSize;
   /**
    * Native context id this adapter owns. Allocated lazily on first `load()`
@@ -496,14 +506,12 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     outputTokens: number;
     durationMs: number;
   } | null = null;
-
   private requireContextId(): number {
     if (this.contextId === null) {
       throw new Error("No model loaded. Call load() first.");
     }
     return this.contextId;
   }
-
   private async loadPlugin(): Promise<LlamaCppPluginLike> {
     if (this.plugin) return this.plugin;
     if (this.pluginLoadPromise) return this.pluginLoadPromise;
@@ -547,7 +555,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       throw err;
     }
   }
-
   /**
    * True on the iOS Simulator, where llama.cpp has no usable Metal GPU backend
    * (loading a model with GPU layers hangs forever). Non-iOS platforms are
@@ -562,7 +569,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     let result = false;
     const env = (
       globalThis as {
-        process?: { env?: Record<string, string | undefined> };
+        process?: {
+          env?: Record<string, string | undefined>;
+        };
       }
     ).process?.env;
     if (
@@ -584,7 +593,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     this.iosSimulatorProbe = result;
     return result;
   }
-
   async getHardwareInfo(): Promise<HardwareInfo> {
     const platform = detectPlatform();
     if (!isCapacitorNative()) return fallbackHardwareInfo(platform);
@@ -631,7 +639,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       );
     }
   }
-
   async setCacheType(typeK: string, typeV: string): Promise<void> {
     if (!isCapacitorNative()) {
       console.warn(
@@ -648,7 +655,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     await plugin.setCacheType({ cacheTypeK: typeK, cacheTypeV: typeV });
   }
-
   async setSpecType(args: SetSpecTypeArgs): Promise<void> {
     if (!isCapacitorNative()) {
       console.warn(
@@ -671,22 +677,21 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       draftMax: args.draftMax,
     });
   }
-
-  async isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }> {
+  async isLoaded(): Promise<{
+    loaded: boolean;
+    modelPath: string | null;
+  }> {
     return {
       loaded: this.loadedPath !== null,
       modelPath: this.loadedPath,
     };
   }
-
   currentModelPath(): string | null {
     return this.loadedPath;
   }
-
   load(options: LoadOptions): Promise<void> {
     return this.serializeLifecycle(() => this.loadContext(options));
   }
-
   private async loadContext(options: LoadOptions): Promise<void> {
     if (!isCapacitorNative()) {
       throw new Error(
@@ -702,7 +707,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       )
         return;
       await this.unloadContext();
-      const native = await import("llama-cpp-capacitor");
+      const native: NativeBgeModule = (await import(
+        "llama-cpp-capacitor"
+      )) as NativeBgeModule;
       if (typeof native.initBgeEmbedding !== "function") {
         throw new ElizaError(
           "Install the fused mobile BGE bridge before embedding",
@@ -715,17 +722,31 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
           code: "EMBEDDING_CONTEXT_INVALID",
         });
       }
-      this.bgeContext = await native.initBgeEmbedding({
+      const context: unknown = await native.initBgeEmbedding({
         model: options.modelPath,
         n_ctx: limit,
       });
+      if (
+        typeof context !== "object" ||
+        context === null ||
+        !("tokenize" in context) ||
+        typeof context.tokenize !== "function" ||
+        !("embedding" in context) ||
+        typeof context.embedding !== "function" ||
+        !("release" in context) ||
+        typeof context.release !== "function"
+      ) {
+        throw new ElizaError("Mobile BGE bridge returned an invalid context", {
+          code: "EMBEDDING_BACKEND_INVALID",
+        });
+      }
+      this.bgeContext = context as NonNullable<typeof this.bgeContext>;
       this.bgeContextLimit = limit;
       this.loadedPath = options.modelPath;
       return;
     }
     if (this.bgeContext) await this.unloadContext();
     const plugin = await this.loadPlugin();
-
     // Release this adapter's own prior context (if any) before reusing the
     // context id for a new model. We do NOT call `releaseAllContexts` here
     // — that would destroy contexts owned by sibling adapter instances
@@ -739,11 +760,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       }
     }
     this.loadedPath = null;
-
     if (this.contextId === null) {
       this.contextId = nextContextId++;
     }
-
     const speculativeSamples = options.mobileSpeculative
       ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
       : (options.speculativeSamples ?? 3);
@@ -799,7 +818,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       ...(options.cacheTypeV ? { cache_type_v: options.cacheTypeV } : {}),
       ...(options.disableThinking ? { reasoning: false } : {}),
     };
-
     try {
       await plugin.initContext({
         contextId: this.contextId,
@@ -817,7 +835,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       }
       throw err;
     }
-
     // Fork builds expose a separate `setSpecType` bridge that configures
     // the MTP drafter after the main context is up. Stock builds lack
     // the method and the setter warns and skips it. We auto-call here so
@@ -843,7 +860,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         );
       }
     }
-
     // Same pattern for cache_type_k/v: fork builds may surface a separate
     // setCacheType bridge; stock builds rely on the params bag only.
     if (
@@ -865,14 +881,11 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         );
       }
     }
-
     this.loadedPath = options.modelPath;
   }
-
   unload(): Promise<void> {
     return this.serializeLifecycle(() => this.unloadContext());
   }
-
   private async unloadContext(): Promise<void> {
     if (this.bgeContext) {
       await this.bgeContext.release();
@@ -892,7 +905,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     this.loadedPath = null;
   }
-
   /**
    * Build the params object for the native completion call. Shared between
    * the legacy `generate()` path and the new `generateStream()` path so the
@@ -931,7 +943,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     return params;
   }
-
   /**
    * Invoke the native completion (or generateText) entry point with a
    * pre-built params bag. Returns the raw native result; callers map this
@@ -968,7 +979,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     return result;
   }
-
   /**
    * Native bridges currently don't honour per-generation sampler-stage
    * injection — the Swift / Kotlin side needs separate wiring. Until that
@@ -984,7 +994,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       );
     }
   }
-
   async generate(options: GenerateOptions): Promise<GenerateResult> {
     // Wrapper over `generateStream` so the cache-key, stop-sequence, and
     // native-call wiring lives in exactly one place. Drains the stream
@@ -1043,7 +1052,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       ...(ttftMs !== undefined ? { ttftMs } : {}),
     };
   }
-
   /**
    * Streaming generation. Subscribes to the native token event bridge,
    * starts the completion call, and yields typed `GenerationEvent`s as
@@ -1065,7 +1073,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     this.tokenIndex = 0;
     this.lastCompletionStats = null;
     this.logUnwiredSamplerStages(options.samplerStages);
-
     const queue: GenerationEvent[] = [];
     let waiter: (() => void) | null = null;
     const wake = (): void => {
@@ -1079,7 +1086,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       queue.push(event);
       wake();
     };
-
     // Subscribe to per-token events. The native bridge fires
     // `@LlamaCpp_onToken`; our existing class-level listener forwards into
     // every `onToken(listener)` consumer. We register one more listener
@@ -1088,7 +1094,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     const unsubscribe = this.onToken((tokenText, index) => {
       push({ kind: "token", text: tokenText, index });
     });
-
     const params = this.buildNativeParams({
       ...options,
       // generateStream implies streaming — force on so the bridge emits
@@ -1096,7 +1101,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       // on the legacy options bag.
       stream: true,
     });
-
     const started = Date.now();
     let completionPromise: Promise<NativeCompletionResult>;
     try {
@@ -1110,14 +1114,15 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       yield { kind: "done", finishReason: "error" };
       return;
     }
-
     // Wrapped in an object so TS's control-flow analysis doesn't widen the
     // closed-over assignments back to `null`/`never` when we read them
     // after the loop. (Plain `let` with `null` init narrows badly after
     // an async assignment.)
     const completionState: {
       result: NativeCompletionResult | null;
-      error: { message: string } | null;
+      error: {
+        message: string;
+      } | null;
       done: boolean;
     } = { result: null, error: null, done: false };
     completionPromise
@@ -1134,7 +1139,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         completionState.done = true;
         wake();
       });
-
     try {
       while (true) {
         const next = queue.shift();
@@ -1150,7 +1154,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     } finally {
       unsubscribe();
     }
-
     if (completionState.error) {
       // Unload-on-failure (#11612): a failed decode (e.g. Metal ret=-3 GPU
       // OOM) must release the model instead of leaving multi-GiB wired
@@ -1179,7 +1182,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       yield { kind: "done", finishReason: "error" };
       return;
     }
-
     if (completionState.result) {
       const r = completionState.result;
       const duration =
@@ -1202,12 +1204,10 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       yield { kind: "done", finishReason };
       return;
     }
-
     // Native call resolved with no payload and no error — defensive
     // terminal event so the consumer's `for await` always ends cleanly.
     yield { kind: "done", finishReason: "stop" };
   }
-
   async setDrafter(drafterPath: string | null): Promise<void> {
     // The native bridge has no live-swap entry point yet; the drafter is
     // bound at `load()` time via `LoadOptions.draftModelPath`. Log so the
@@ -1216,7 +1216,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       `[capacitor-llama] setDrafter(${drafterPath ?? "null"}) not yet supported by native bridge; pass draftModelPath to load() instead`,
     );
   }
-
   async trimMemory(level: "minor" | "major"): Promise<void> {
     // No native hook yet — log so the runtime's pressure plumbing can see
     // the adapter received the signal. Major pressure also clears the
@@ -1228,12 +1227,10 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       `[capacitor-llama] trimMemory(${level}) — bridge hook unavailable`,
     );
   }
-
   async cancelGenerate(): Promise<void> {
     if (!this.plugin || this.contextId === null) return;
     await this.plugin.stopCompletion({ contextId: this.contextId });
   }
-
   /**
    * Round-trip to the loaded GGUF's native chat template via
    * `LlamaCpp.getFormattedChat`. The plugin's Java side serializes
@@ -1242,7 +1239,10 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
    * rendered prompt (or null when the GGUF has no template metadata).
    */
   async formatChat(
-    messages: { role: string; content: string }[],
+    messages: {
+      role: string;
+      content: string;
+    }[],
   ): Promise<string | null> {
     if (!this.plugin || !this.loadedPath) {
       throw new Error("No model loaded. Call load() first.");
@@ -1257,12 +1257,10 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     });
     return result.prompt ?? null;
   }
-
   async embed(options: EmbedOptions): Promise<EmbedResult> {
     // Admission and inference must finish before a queued unload releases their context.
     return this.serializeLifecycle(() => this.embedContext(options));
   }
-
   private async embedContext(options: EmbedOptions): Promise<EmbedResult> {
     if (this.bgeContext) {
       const prepared = prepareBgeEmbeddingInput(
@@ -1360,14 +1358,12 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     return { embedding: result.embedding, tokens: tokenCount };
   }
-
   onToken(listener: (token: string, index: number) => void): () => void {
     this.tokenListeners.add(listener);
     return () => {
       this.tokenListeners.delete(listener);
     };
   }
-
   async dispose(): Promise<void> {
     this.tokenListeners.clear();
     if (this.pluginListenerHandle) {
@@ -1379,7 +1375,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     this.pluginLoadPromise = null;
   }
 }
-
 /**
  * Default singleton kept for back-compat with device-bridge-client and
  * hardware-probe callers that don't distinguish chat vs embedding roles.
@@ -1387,7 +1382,6 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
  * instead — see `registerCapacitorLlamaLoader`.
  */
 export const capacitorLlama: LlamaAdapter = new CapacitorLlamaAdapter();
-
 /**
  * Lightweight heuristic for routing a `loadModel(modelPath)` call to either
  * the chat adapter or the embedding adapter. Embedding GGUFs the runtime
@@ -1408,7 +1402,6 @@ function looksLikeEmbeddingModelPath(modelPath: string): boolean {
     lowered.endsWith("embedding.gguf")
   );
 }
-
 /**
  * Runtime service with separate chat and embedding contexts. It is structural
  * by design so this low-level Capacitor package does not acquire a runtime
@@ -1418,40 +1411,33 @@ export class CapacitorLlamaLoaderRuntimeService {
   static readonly serviceType = "localInferenceLoader";
   readonly capabilityDescription =
     "Owns isolated Capacitor llama.cpp chat and embedding contexts.";
-
   private readonly chatAdapter = new CapacitorLlamaAdapter();
   private readonly embeddingAdapter = new CapacitorLlamaAdapter();
-
   static async start(
     _runtime: unknown,
   ): Promise<CapacitorLlamaLoaderRuntimeService> {
     return new CapacitorLlamaLoaderRuntimeService();
   }
-
   private adapterFor(modelPath: string): CapacitorLlamaAdapter {
     return looksLikeEmbeddingModelPath(modelPath)
       ? this.embeddingAdapter
       : this.chatAdapter;
   }
-
   async loadModel(args: LoadOptions): Promise<void> {
     await this.adapterFor(args.modelPath).load(args);
   }
-
   unloadModel(): Promise<void> {
     // Each adapter manages its own context lifecycle inside `load()`. The
     // runtime calls this before a role swap, so unloading both here would kill
     // the unaffected sibling context.
     return Promise.resolve();
   }
-
   currentModelPath(): string | null {
     return (
       this.chatAdapter.currentModelPath() ??
       this.embeddingAdapter.currentModelPath()
     );
   }
-
   async generate(args: {
     prompt: string;
     stopSequences?: string[];
@@ -1466,13 +1452,12 @@ export class CapacitorLlamaLoaderRuntimeService {
     });
     return result.text;
   }
-
-  async embed(args: {
-    input: string;
-  }): Promise<{ embedding: number[]; tokens: number }> {
+  async embed(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }> {
     return this.embeddingAdapter.embed({ input: args.input });
   }
-
   async stop(): Promise<void> {
     await Promise.all([
       this.chatAdapter.dispose(),
@@ -1480,7 +1465,6 @@ export class CapacitorLlamaLoaderRuntimeService {
     ]);
   }
 }
-
 /**
  * Register the service class without starting it. The runtime may call this
  * before initialization; post-initialize consumers that need it immediately

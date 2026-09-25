@@ -9,15 +9,15 @@
  * boundary — no live model; the store and fact-write path are real
  * (in-memory FakeRuntime).
  */
-import { describe, expect, it, vi } from "vitest";
-import { validateSchema } from "../../../../../../packages/core/src/actions/validate-tool-args.ts";
-import { logger } from "../../../../../../packages/core/src/logger.ts";
+
 import type {
   EvaluatorProcessorContext,
   Memory,
   State,
   UUID,
-} from "../../../../../../packages/core/src/types/index.ts";
+} from "@elizaos/core";
+import { logger, validateSchema } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import type { FakeRuntime } from "../personality/__tests__/test-helpers.ts";
 import { makeFakeRuntime } from "../personality/__tests__/test-helpers.ts";
 import {

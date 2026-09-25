@@ -4,16 +4,17 @@
  * given, otherwise the most recent session that has a transcript.
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  UUID,
+import {
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS, transcriptPlainText } from "@elizaos/shared";
-import type { MeetingService } from "../service.js";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
+import { transcriptPlainText } from "@elizaos/core/transcripts";
+import { type MeetingService } from "../service.js";
 import { readTranscriptRow } from "../transcripts/meeting-transcript-writer.js";
 import {
   messageText,
@@ -73,7 +74,6 @@ async function handler(
     { sessionId: target.id, transcriptId: transcript.id },
   );
 }
-
 export const getMeetingTranscriptAction: Action = {
   name: "GET_MEETING_TRANSCRIPT",
   similes: ["MEETING_NOTES", "SHOW_MEETING_TRANSCRIPT"],

@@ -1,7 +1,7 @@
 /**
  * Silo-ingestor tests against fixture trees replicating each silo's real
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
- * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
+ * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.ts, Playwright
  * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
  * scenario-runner reports). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
@@ -46,7 +46,14 @@ function write(repoRoot: string, relPath: string, content: string): void {
 /** Fixture repo mirroring the real silo layouts inspected on develop. */
 function buildFixtureRepo(): string {
   const repo = tmpDir();
-  // packages/scripts/e2e-recordings/run-all.mjs output: per-package Playwright results.
+  write(repo, "test-results/android-native-agent/runs/run/report.json", "{}");
+  write(repo, "test-results/android-native-sms/run/report.json", "{}");
+  write(
+    repo,
+    "test-results/android-native-plugins/run/emulator/report.json",
+    "{}",
+  );
+  // packages/scripts/e2e-recordings/run-all.ts output: per-package Playwright results.
   write(
     repo,
     "e2e-recordings/app-ui/test-results/chat-flow/video.webm",
@@ -94,8 +101,54 @@ function buildFixtureRepo(): string {
   // Stage-1 group-chat timing evaluation reports.
   write(repo, "reports/group-chat-timing/when2speak.json", "{}\n");
   // Progressive content access corpus, benchmark, and access-ledger output.
-  write(repo, "reports/content-context/benchmark.json", "{}");
-  write(repo, "reports/content-context/page-ledger.jsonl", "{}\n");
+  const contentContextRoot = "reports/content-context/run-1";
+  for (const name of [
+    "content-context-result.json",
+    "completeness-manifest.json",
+    "corpus-manifest.json",
+    "native-realization-ledger.json",
+    "conformance.json",
+    "mutant-kills.json",
+    "source-work.json",
+    "benchmark.json",
+    "cleanup.json",
+    "prompt-tokens.json",
+    "faults.json",
+    "stress.json",
+    "soak.json",
+    "postgres.json",
+    "scenario.json",
+    "e2e.json",
+  ]) {
+    write(repo, `${contentContextRoot}/${name}`, "{}");
+  }
+  for (const name of [
+    "page-ledger.jsonl",
+    "scenario-native.jsonl",
+    "trajectories.jsonl",
+  ]) {
+    write(repo, `${contentContextRoot}/${name}`, "{}\n");
+  }
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/backend/server.log`,
+    "backend evidence",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/browser/trace.zip`,
+    "browser trace",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/network/requests.har`,
+    "network evidence",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/database/rows.json`,
+    "database evidence",
+  );
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
   return repo;
@@ -302,6 +355,9 @@ describe("ingestAllSilos", () => {
         artifactCount,
       ]),
     ).toEqual([
+      ["android-native-agent", "ingested", 1],
+      ["android-native-plugins", "ingested", 1],
+      ["android-native-sms", "ingested", 1],
       ["e2e-recordings", "ingested", 3],
       ["aesthetic-audit", "ingested", 5],
       ["aesthetic-audit-cloud", "absent", 0],
@@ -313,12 +369,23 @@ describe("ingestAllSilos", () => {
       ["walkthrough-reports", "ingested", 1],
       ["live-test-runs", "ingested", 1],
       ["scenario-runner", "ingested", 1],
+      ["cloud-stability", "absent", 0],
       ["group-chat-timing", "ingested", 1],
-      ["content-context", "ingested", 2],
+      ["content-context", "ingested", 23],
     ]);
     const byPath = Object.fromEntries(
       artifacts.map((entry) => [entry.path, entry]),
     );
+
+    // Agent and SMS producers both emit run/report.json in the native lane.
+    expect(byPath["lanes/native/run/report.json"]).toMatchObject({
+      source: "android-native-agent",
+    });
+    expect(byPath["lanes/native/sms/run/report.json"]).toMatchObject({
+      source: "android-native-sms",
+      kind: "report",
+      lane: "native",
+    });
 
     // Manual-review markdown is analysis, not a generated report.
     const review = byPath["misc/aesthetic-audit/manual-review/chat.md"];
@@ -348,15 +415,37 @@ describe("ingestAllSilos", () => {
       source: "group-chat-timing",
       lane: "evaluation",
     });
-    expect(byPath["lanes/content-context/benchmark.json"]).toMatchObject({
+    expect(byPath["lanes/content-context/run-1/benchmark.json"]).toMatchObject({
       kind: "report",
       source: "content-context",
       lane: "content-context",
     });
+    for (const name of [
+      "content-context-result.json",
+      "completeness-manifest.json",
+      "corpus-manifest.json",
+      "native-realization-ledger.json",
+      "conformance.json",
+      "mutant-kills.json",
+      "source-work.json",
+      "cleanup.json",
+    ]) {
+      expect(byPath[`lanes/content-context/run-1/${name}`]).toMatchObject({
+        kind: "report",
+        source: "content-context",
+        lane: "content-context",
+      });
+    }
     expect(
-      byPath["trajectories/content-context/page-ledger.jsonl"],
+      byPath["trajectories/content-context/run-1/page-ledger.jsonl"],
     ).toMatchObject({
       kind: "trajectory",
+      source: "content-context",
+      lane: "content-context",
+    });
+    expect(
+      byPath["misc/content-context/run-1/e2e-artifacts/browser/trace.zip"],
+    ).toMatchObject({
       source: "content-context",
       lane: "content-context",
     });

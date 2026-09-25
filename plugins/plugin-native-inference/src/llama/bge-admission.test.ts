@@ -1,7 +1,7 @@
-/** Exercises mobile BGE routing and admission with the real shared tokenizer and a controlled native boundary. */
+/** Exercises mobile BGE routing and admission with the real native inference tokenizer and a controlled native boundary. */
 import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
-import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { afterEach, expect, it, vi } from "vitest";
+import { prepareBgeEmbeddingInput } from "../model-catalog/bge-input.js";
 
 const originalCapacitor = Object.getOwnPropertyDescriptor(
   globalThis,
@@ -148,5 +148,41 @@ it.each(["tokenize", "embedding"])(
       BGE_SMALL_VECTOR_SPACE,
     );
     expect(release).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each([
+  // Vitest throws for omitted mock exports; native module namespaces return undefined.
+  {
+    bridge: { initBgeEmbedding: undefined },
+    code: "EMBEDDING_BACKEND_UNAVAILABLE",
+  },
+  { bridge: { initBgeEmbedding: true }, code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+  {
+    bridge: { initBgeEmbedding: async () => null },
+    code: "EMBEDDING_BACKEND_INVALID",
+  },
+  {
+    bridge: { initBgeEmbedding: async () => ({ tokenize() {} }) },
+    code: "EMBEDDING_BACKEND_INVALID",
+  },
+])(
+  "rejects a missing or malformed BGE capability ($code)",
+  async ({ bridge, code }) => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, "Capacitor", {
+      configurable: true,
+      value: { isNativePlatform: () => true, getPlatform: () => "android" },
+    });
+    vi.doMock("llama-cpp-capacitor", () => bridge);
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+    const adapter = new CapacitorLlamaAdapter();
+    await expect(
+      adapter.load({ modelPath: "/models/bge-small-en-v1.5-f16.gguf" }),
+    ).rejects.toMatchObject({ code });
+    expect(await adapter.isLoaded()).toEqual({
+      loaded: false,
+      modelPath: null,
+    });
   },
 );

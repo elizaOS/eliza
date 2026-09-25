@@ -1,5 +1,5 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
-import type { KeylessWebSearchProvider } from "@elizaos/plugin-web-search/keyless-web-search";
+import type { KeylessWebSearchProvider } from "@elizaos/plugin-web-search";
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /** Bounded public-read authority retained so a follow-up honors success or unavailability. */
@@ -7,7 +7,8 @@ export type SharedRuntimePublicGrounding =
   | {
       kind: "web_search";
       query: string;
-      provider: KeylessWebSearchProvider;
+      // Retain historical receipts from the retired provider. New searches use Parallel.
+      provider: KeylessWebSearchProvider | "exa";
       text: string;
       observedAt: number;
       /** Traceable public sources extracted from the successful tool receipt. */

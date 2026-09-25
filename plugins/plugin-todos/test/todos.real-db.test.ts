@@ -22,6 +22,16 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import {
+  deserializeTodoMutationRecord,
+  importTodoMutationRecordsInTransaction,
+  serializeTodoMutationRecord,
+  TODO_DUPLICATE_ID_ERROR_CODE,
+  TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
+  TODO_INVALID_PARENT_ERROR_CODE,
+  TODO_PARENT_CYCLE_ERROR_CODE,
+  TodosService,
+} from "@elizaos/plugin-todos";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -32,16 +42,6 @@ import { todoAction } from "../src/actions/todo.ts";
 import { todosTable } from "../src/db/schema.ts";
 import todosPlugin from "../src/index.ts";
 import { currentTodosProvider } from "../src/providers/current-todos.ts";
-import {
-  deserializeTodoMutationRecord,
-  importTodoMutationRecordsInTransaction,
-  serializeTodoMutationRecord,
-  TODO_DUPLICATE_ID_ERROR_CODE,
-  TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
-  TODO_INVALID_PARENT_ERROR_CODE,
-  TODO_PARENT_CYCLE_ERROR_CODE,
-  TodosService,
-} from "../src/service.ts";
 
 // Stable per-user (entityId) UUID; agentId comes from the runtime.
 const ENTITY_ID = "11111111-1111-4111-8111-111111111111" as UUID;

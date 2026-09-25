@@ -1,4 +1,5 @@
 /** Implements Electrobun desktop electrobun behavior for app shell integration. */
+
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,7 +10,6 @@ const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 const PRODUCTION_CLOUD_API_ORIGIN = "https://api.eliza.app";
 const STAGING_CLOUD_ORIGIN = "https://staging.eliza.app";
 const STAGING_CLOUD_API_ORIGIN = "https://api-staging.eliza.app";
-
 function chromiumFlags(
 	flags: Record<string, string | boolean>,
 ): Record<string, string | true> {
@@ -19,7 +19,6 @@ function chromiumFlags(
 			.map(([key, value]) => [key, value === true ? true : value]),
 	) as Record<string, string | true>;
 }
-
 function isTruthyEnv(value: string | undefined): boolean {
 	const normalized = value?.trim().toLowerCase();
 	return (
@@ -29,14 +28,12 @@ function isTruthyEnv(value: string | undefined): boolean {
 		normalized === "on"
 	);
 }
-
 const EXTERNAL_API_BASE_ENV_KEYS = [
 	"ELIZA_DESKTOP_TEST_API_BASE",
 	"ELIZA_DESKTOP_API_BASE",
 	"ELIZA_API_BASE_URL",
 	"ELIZA_API_BASE",
 ] as const;
-
 function normalizeApiBase(raw: string | undefined): string | null {
 	if (!raw?.trim()) return null;
 	try {
@@ -48,7 +45,6 @@ function normalizeApiBase(raw: string | undefined): string | null {
 		return null;
 	}
 }
-
 export function shouldEmbedRuntimeBundle(
 	env: Record<string, string | undefined> = process.env,
 ): boolean {
@@ -64,14 +60,12 @@ export function shouldEmbedRuntimeBundle(
 	}
 	return !isTruthyEnv(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT);
 }
-
 function linuxCefChromiumFlags(): Record<string, string | true> {
 	// Linux CEF WebGPU/Vulkan is still experimental in Electrobun. Keep the
 	// default renderer path stable and let hardware debugging opt in explicitly.
 	if (!isTruthyEnv(process.env.ELIZA_ELECTROBUN_ENABLE_CEF_WEBGPU)) {
 		return {};
 	}
-
 	return chromiumFlags({
 		"enable-unsafe-webgpu": true,
 		"enable-features": "Vulkan",
@@ -86,7 +80,6 @@ function linuxCefChromiumFlags(): Record<string, string | true> {
 		"disable-gpu-memory-buffer-video-frames": false,
 	});
 }
-
 export function resolveLinuxRenderer(
 	env: Record<string, string | undefined> = process.env,
 ): "native" | "cef" {
@@ -97,7 +90,6 @@ export function resolveLinuxRenderer(
 		`ELIZA_ELECTROBUN_LINUX_RENDERER must be "native" or "cef", received: ${requested}`,
 	);
 }
-
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
 	return (
 		fs.existsSync(path.join(candidateDir, "bun.lock")) &&
@@ -115,7 +107,6 @@ export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
 			))
 	);
 }
-
 function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
 	return fs.existsSync(
 		path.join(
@@ -129,7 +120,6 @@ function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
 		),
 	);
 }
-
 function hasDirectElizaElectrobunCheckout(candidateDir: string): boolean {
 	return fs.existsSync(
 		path.join(
@@ -142,7 +132,6 @@ function hasDirectElizaElectrobunCheckout(candidateDir: string): boolean {
 		),
 	);
 }
-
 export function findElizaRepoRoot(startDir: string): string {
 	let current = path.resolve(startDir);
 	const matches: string[] = [];
@@ -170,7 +159,6 @@ export function findElizaRepoRoot(startDir: string): string {
 		current = parent;
 	}
 }
-
 export function resolveElectrobunRepoRoot(startDir: string): string {
 	const override = (process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? "").trim();
 	if (override) {
@@ -182,13 +170,11 @@ export function resolveElectrobunRepoRoot(startDir: string): string {
 		}
 		return resolved;
 	}
-
 	return findElizaRepoRoot(startDir);
 }
-
 const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
 const workspacePackagesRoot = fs.existsSync(
-	path.join(repoRoot, "packages", "shared", "src"),
+	path.join(repoRoot, "packages", "core", "src"),
 )
 	? path.join(repoRoot, "packages")
 	: path.join(repoRoot, "eliza", "packages");
@@ -197,9 +183,8 @@ const rmPathRecursiveScript = path.join(
 	elizaWorkspaceRoot,
 	"packages",
 	"scripts",
-	"rm-path-recursive.mjs",
+	"rm-path-recursive.ts",
 );
-const sharedSourceDir = path.join(workspacePackagesRoot, "shared", "src");
 const coreNodeEntry = fs.existsSync(
 	path.join(workspacePackagesRoot, "core", "dist", "index.js"),
 )
@@ -218,7 +203,6 @@ function hasBrokenSymlink(filePath: string): boolean {
 		return false;
 	}
 }
-
 function resolveRuntimeBundleSourcePath(rootDir: string): string {
 	const runtimeDistPath = path.join(rootDir, "dist");
 	// The runtime dist only exists in packaged/build contexts. In tests and other
@@ -231,7 +215,6 @@ function resolveRuntimeBundleSourcePath(rootDir: string): string {
 	if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
 		return runtimeDistPath;
 	}
-
 	const sanitizedDistPath = path.join(
 		electrobunDir,
 		".generated",
@@ -252,7 +235,6 @@ function resolveRuntimeBundleSourcePath(rootDir: string): string {
 	}
 	return sanitizedDistPath;
 }
-
 function rmRecursive(pathToRemove: string): void {
 	const result = spawnSync(
 		process.execPath,
@@ -274,7 +256,6 @@ function rmRecursive(pathToRemove: string): void {
 		);
 	}
 }
-
 const runtimeBundleSourcePath = resolveRuntimeBundleSourcePath(repoRoot);
 const runtimeBundleDistDir = path.relative(
 	electrobunDir,
@@ -326,7 +307,6 @@ const experimentalExactWindowNotices = path.join(
 	"computeruse-exact-window",
 	"THIRD_PARTY_NOTICES.txt",
 );
-
 export interface ExperimentalExactWindowCopyOptions {
 	enabled: boolean;
 	platform: NodeJS.Platform;
@@ -335,7 +315,6 @@ export interface ExperimentalExactWindowCopyOptions {
 	noticesPath: string;
 	existsSync?: (filePath: string) => boolean;
 }
-
 export function resolveExperimentalExactWindowCopyMap({
 	buildVariant,
 	options,
@@ -375,7 +354,6 @@ export function resolveExperimentalExactWindowCopyMap({
 			"computeruse-exact-window-THIRD_PARTY_NOTICES.txt",
 	};
 }
-
 function readJsonFile(filePath: string): Record<string, unknown> {
 	try {
 		const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -386,7 +364,6 @@ function readJsonFile(filePath: string): Record<string, unknown> {
 		return {};
 	}
 }
-
 export function resolveDesktopAppVersion(
 	env: Record<string, string | undefined> = process.env,
 	manifest: Record<string, unknown> = readJsonFile(
@@ -403,9 +380,7 @@ export function resolveDesktopAppVersion(
 		"Electrobun desktop app version is missing from ELIZA_APP_VERSION and package.json.",
 	);
 }
-
 type EntitlementValue = boolean | string | string[];
-
 /**
  * Parse the small subset of plist XML used by our entitlements files
  * (`<key>` followed by `<true/>`, `<false/>`, `<string>...</string>`, or
@@ -448,54 +423,30 @@ function parseEntitlementsPlist(
 	}
 	return out;
 }
-
 function trimEnv(name: string): string {
 	return (process.env[name] ?? "").trim();
 }
-
-function resolveSharedSourceImport(specifier: string): string | null {
-	if (specifier === "@elizaos/shared") {
-		return path.join(sharedSourceDir, "index.ts");
-	}
-
-	const prefix = "@elizaos/shared/";
-	if (!specifier.startsWith(prefix)) {
-		return null;
-	}
-
-	const subpath = specifier.slice(prefix.length);
-	const candidates = [
-		path.join(sharedSourceDir, `${subpath}.ts`),
-		path.join(sharedSourceDir, `${subpath}.tsx`),
-		path.join(sharedSourceDir, subpath, "index.ts"),
-		path.join(sharedSourceDir, subpath, "index.tsx"),
-	];
-	return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
-}
-
 function createElectrobunWorkspaceResolvePlugin() {
 	return {
 		name: "electrobun-workspace-resolve",
 		setup(build: {
 			onResolve: (
-				options: { filter: RegExp },
-				callback: (args: { path: string }) => { path: string } | undefined,
+				options: {
+					filter: RegExp;
+				},
+				callback: (args: { path: string }) =>
+					| {
+							path: string;
+					  }
+					| undefined,
 			) => void;
 		}) {
-			build.onResolve(
-				{ filter: /^@elizaos\/shared(?:\/.*)?$/ },
-				({ path: specifier }) => {
-					const resolved = resolveSharedSourceImport(specifier);
-					return resolved ? { path: resolved } : undefined;
-				},
-			);
 			build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
 				path: coreNodeEntry,
 			}));
 		},
 	};
 }
-
 export function resolveElectrobunCopyMap({
 	buildVariant,
 	runtimeDistDir,
@@ -517,7 +468,6 @@ export function resolveElectrobunCopyMap({
 		"assets/appIcon.ico": "assets/appIcon.ico",
 		"assets/trayIconTemplate.png": "assets/trayIconTemplate.png",
 	};
-
 	if (buildVariant !== "store" && embedRuntime) {
 		// The runtime bundle dist is produced by the build pipeline before
 		// Electrobun packaging runs. Enumerate its top-level entries when present;
@@ -542,7 +492,6 @@ export function resolveElectrobunCopyMap({
 		}
 		copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
 	}
-
 	Object.assign(
 		copy,
 		resolveExperimentalExactWindowCopyMap({
@@ -550,10 +499,8 @@ export function resolveElectrobunCopyMap({
 			options: experimentalExactWindow,
 		}),
 	);
-
 	return copy;
 }
-
 function resolveBrandConfigCopySource({
 	appName,
 	appId,
@@ -580,11 +527,9 @@ function resolveBrandConfigCopySource({
 			appDescription ||
 			cloudOnly,
 	);
-
 	if (!hasBrandOverride) {
 		return "assets/brand-config.json";
 	}
-
 	const fileConfig = explicitConfigPath
 		? readJsonFile(path.resolve(explicitConfigPath))
 		: readJsonFile(defaultBrandConfigPath);
@@ -619,16 +564,13 @@ function resolveBrandConfigCopySource({
 				? { appDescription: fileConfig.appDescription }
 				: {}),
 	};
-
 	fs.mkdirSync(path.dirname(generatedBrandConfigPath), { recursive: true });
 	fs.writeFileSync(
 		generatedBrandConfigPath,
 		`${JSON.stringify(brandConfig, null, "\t")}\n`,
 	);
-
 	return path.relative(electrobunDir, generatedBrandConfigPath);
 }
-
 export function createElectrobunConfig(): ElectrobunConfig {
 	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
 	const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
@@ -663,7 +605,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	// Note: All paths relative to electrobun.config.ts location
 	// (eliza/packages/app/platforms/electrobun/)
 	// ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
-
 	return {
 		app: {
 			name: appName,
@@ -707,7 +648,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					// src, but workspace TS resolution can drag the source graph in.
 					"@elizaos/agent",
 					"@elizaos/app",
-					"@elizaos/shared",
 					// Plugins — initialized by the API subprocess, never the bun shell.
 					"@elizaos/plugin-sql",
 					"@elizaos/plugin-local-inference",
@@ -772,8 +712,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				//
 				// Child-process entitlements (mas-child.entitlements with
 				// com.apple.security.inherit) are applied after this packaging
-				// step by codesign-mas.mjs, which walks the bundle bottom-up.
-				// See scripts/codesign-mas.mjs. Set ELIZA_MAS_SIGNING_IDENTITY
+				// step by codesign-mas.ts, which walks the bundle bottom-up.
+				// See scripts/codesign-mas.ts. Set ELIZA_MAS_SIGNING_IDENTITY
 				// in the build env (and optionally ELIZA_MAS_INSTALLER_IDENTITY
 				// for productbuild).
 				entitlements:
@@ -827,5 +767,4 @@ export function createElectrobunConfig(): ElectrobunConfig {
 			: {}),
 	} satisfies ElectrobunConfig;
 }
-
 export default createElectrobunConfig();

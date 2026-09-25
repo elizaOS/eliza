@@ -13,7 +13,6 @@
  * mirrors the view catalog, so hidden developer/preview views never leak.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -33,6 +32,7 @@ import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
+import { logger } from "../../logger.ts";
 import type { Tab } from "../../navigation";
 import { useAppSelectorShallow } from "../../state";
 import { TOAST_TTL_MS } from "../../state/action-notice";

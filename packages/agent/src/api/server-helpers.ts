@@ -5,39 +5,37 @@
  * config, and package root resolution. Blocked-object-key sanitization lives
  * in `blocked-object-keys.ts` and is re-exported here for existing callers.
  */
-
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import {
   type AgentRuntime,
+  CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
   type Content,
   ContentType,
+  type ConversationMetadata,
   createMessageMemory,
-  logger,
-  MESSAGE_SOURCE_CLIENT_CHAT,
-  type Media,
-  toWellFormedUnicode,
-  type UUID,
-  validateUuid,
-} from "@elizaos/core";
-import type { ConversationMetadata } from "@elizaos/shared";
-import {
-  CHAT_UPLOAD_MIME_TYPES,
   decodeUrlPathComponent,
+  logger,
   MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
   MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
   MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  type Media,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   sendJsonError,
-} from "@elizaos/shared";
+  toWellFormedUnicode,
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
@@ -63,17 +61,14 @@ export {
   MAX_BLOCKED_OBJECT_DEPTH,
   MAX_BLOCKED_OBJECT_NODES,
 } from "./blocked-object-keys.ts";
-
 // ---------------------------------------------------------------------------
 // Service accessors
 // ---------------------------------------------------------------------------
-
 export function getAgentEventSvc(
   runtime: AgentRuntime | null,
 ): AgentEventServiceLike | null {
   return getAgentEventService(runtime);
 }
-
 export function requirePluginManager(
   runtime: AgentRuntime | null,
 ): PluginManagerLike {
@@ -83,7 +78,6 @@ export function requirePluginManager(
   }
   return service;
 }
-
 export function requireCoreManager(
   runtime: AgentRuntime | null,
 ): CoreManagerLike {
@@ -93,31 +87,25 @@ export function requireCoreManager(
   }
   return service;
 }
-
 // ---------------------------------------------------------------------------
 // UUID validation
 // ---------------------------------------------------------------------------
-
 export function isUuidLike(value: string): value is UUID {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value,
   );
 }
-
 // ---------------------------------------------------------------------------
 // Deleted conversations state management
 // ---------------------------------------------------------------------------
-
 const OG_FILENAME = ".og";
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
 const MAX_DELETED_CONVERSATION_IDS = 5000;
-
 export interface DeletedConversationsStateFile {
   version: 1;
   updatedAt: string;
   ids: string[];
 }
-
 export function readDeletedConversationIdsFromState(): Set<string> {
   const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
   if (!fs.existsSync(filePath)) return new Set();
@@ -137,18 +125,15 @@ export function readDeletedConversationIdsFromState(): Set<string> {
     return new Set();
   }
 }
-
 export function persistDeletedConversationIdsToState(ids: Set<string>): void {
   const dir = resolveStateDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-
   const normalized = Array.from(ids)
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
     .slice(-MAX_DELETED_CONVERSATION_IDS);
-
   const filePath = path.join(dir, DELETED_CONVERSATIONS_FILENAME);
   const tmpFilePath = `${filePath}.${process.pid}.tmp`;
   const payload: DeletedConversationsStateFile = {
@@ -156,29 +141,24 @@ export function persistDeletedConversationIdsToState(ids: Set<string>): void {
     updatedAt: new Date().toISOString(),
     ids: normalized,
   };
-
   fs.writeFileSync(tmpFilePath, `${JSON.stringify(payload, null, 2)}\n`, {
     encoding: "utf-8",
     mode: 0o600,
   });
   fs.renameSync(tmpFilePath, filePath);
 }
-
 // ---------------------------------------------------------------------------
 // OG code state management
 // ---------------------------------------------------------------------------
-
 export function readOGCodeFromState(): string | null {
   const filePath = path.join(resolveStateDir(), OG_FILENAME);
   if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, "utf-8").trim();
 }
-
 export function initializeOGCodeInState(): void {
   const dir = resolveStateDir();
   const filePath = path.join(dir, OG_FILENAME);
   if (fs.existsSync(filePath)) return;
-
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
@@ -187,14 +167,11 @@ export function initializeOGCodeInState(): void {
     mode: 0o600,
   });
 }
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-// AgentStartupDiagnostics is canonical in @elizaos/shared.
-export type { AgentStartupDiagnostics } from "@elizaos/shared";
-
+// AgentStartupDiagnostics is canonical in @elizaos/core.
+export type { AgentStartupDiagnostics } from "@elizaos/core";
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
@@ -204,16 +181,13 @@ export interface ConversationMeta {
   createdAt: string;
   updatedAt: string;
 }
-
 // ---------------------------------------------------------------------------
 // First-run & config helpers
 // ---------------------------------------------------------------------------
-
 export function hasPersistedFirstRunState(config: ElizaConfig): boolean {
   if (config.meta?.firstRunComplete === true) {
     return true;
   }
-
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
@@ -232,33 +206,27 @@ export function hasPersistedFirstRunState(config: ElizaConfig): boolean {
       Boolean(llmText.smallModel?.trim() && llmText.largeModel?.trim())) ||
     (deploymentTarget.runtime === "remote" &&
       Boolean(deploymentTarget.remoteApiBase?.trim()));
-
   if (hasCompleteCanonicalRouting) {
     return true;
   }
-
   const agents = config.agents;
   if (!agents) {
     return false;
   }
-
   if (Array.isArray(agents.list) && agents.list.length > 0) {
     return true;
   }
-
   return Boolean(
     agents.defaults?.workspace?.trim() ||
       agents.defaults?.adminEntityId?.trim(),
   );
 }
-
 /** Resolve the app owner's display name from config, or fall back to "User". */
 export function resolveAppUserName(config: ElizaConfig): string {
   const ownerName = config.ui?.ownerName;
   const normalized = toWellFormedUnicode(ownerName?.trim() ?? "") || undefined;
   return normalized || "User";
 }
-
 export function patchTouchesProviderSelection(
   patch: Record<string, unknown>,
 ): boolean {
@@ -269,7 +237,6 @@ export function patchTouchesProviderSelection(
   ) {
     return true;
   }
-
   const agents =
     patch.agents &&
     typeof patch.agents === "object" &&
@@ -285,17 +252,14 @@ export function patchTouchesProviderSelection(
   if (!defaults) {
     return false;
   }
-
   return (
     Object.hasOwn(defaults, "subscriptionProvider") ||
     Object.hasOwn(defaults, "model")
   );
 }
-
 // ---------------------------------------------------------------------------
 // Conversation greeting
 // ---------------------------------------------------------------------------
-
 /**
  * Preset id to persist when a stream avatar selection is mirrored into
  * eliza.json.
@@ -317,11 +281,9 @@ export function resolveMirroredAvatarPresetId(
   }
   return resolveStylePresetByAvatarIndex(avatarIndex, language)?.id;
 }
-
 // ---------------------------------------------------------------------------
 // Package root resolution (for reading bundled plugins.json)
 // ---------------------------------------------------------------------------
-
 export function findOwnPackageRoot(startDir: string): string {
   // Mobile bundles are single-file — there is no workspace tree to walk.
   // Return startDir immediately to avoid crossing the fs-shim sandbox boundary.
@@ -357,11 +319,9 @@ export function findOwnPackageRoot(startDir: string): string {
   }
   return startDir;
 }
-
 // ---------------------------------------------------------------------------
 // Error helpers
 // ---------------------------------------------------------------------------
-
 export function getErrorMessage(
   err: unknown,
   fallback = "generation failed",
@@ -370,11 +330,9 @@ export function getErrorMessage(
   if (typeof err === "string") return err;
   return fallback;
 }
-
 function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
-
 export function decodePathComponent(
   raw: string,
   res: http.ServerResponse,
@@ -387,16 +345,13 @@ export function decodePathComponent(
   }
   return decoded.value;
 }
-
 // ---------------------------------------------------------------------------
 // Chat image validation
 // ---------------------------------------------------------------------------
-
-// Caps + allowlist live in @elizaos/shared/chat-upload-limits (imported above,
+// Caps + allowlist live in @elizaos/core (imported above,
 // aliased to the historical local names) so the UI composer enforces the exact
 // same numbers pre-send and the two sides cannot drift.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
-
 /**
  * True when a syntactically-valid base64 string decodes to zero bytes. `BASE64_RE`
  * accepts degenerate payloads like `"="`, `"=="`, or a single stray char `"A"`
@@ -416,10 +371,8 @@ function base64DecodesToZeroBytes(data: string): boolean {
 export { CHAT_UPLOAD_MIME_TYPES };
 
 const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
-
 export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
   "Please review the attached file.";
-
 /** Map an upload MIME type to its canonical attachment content type. */
 function contentTypeForUploadMime(mimeType: string): ContentType {
   const mime = mimeType.toLowerCase();
@@ -428,7 +381,6 @@ function contentTypeForUploadMime(mimeType: string): ContentType {
   if (mime.startsWith("video/")) return ContentType.VIDEO;
   return ContentType.DOCUMENT;
 }
-
 /**
  * Validate uploaded chat attachments (images, audio, video, PDFs, text docs).
  * Returns an error message string, or null if valid. Exported for unit tests.
@@ -452,7 +404,7 @@ export function validateChatImages(images: unknown): string | null {
     const isImage = mimeType.toLowerCase().startsWith("image/");
     const maxBytes = isImage ? MAX_IMAGE_DATA_BYTES : MAX_MEDIA_DATA_BYTES;
     if (data.length > maxBytes)
-      return `Attachment too large (max ${maxBytes / 1_048_576} MB)`;
+      return `Attachment too large (max ${maxBytes / 1048576} MB)`;
     if (!BASE64_RE.test(data))
       return "Attachment data contains invalid base64 characters";
     if (base64DecodesToZeroBytes(data))
@@ -472,7 +424,7 @@ export function validateChatImages(images: unknown): string | null {
       if (typeof tData !== "string" || !tData || tData.startsWith("data:"))
         return "Thumbnail data must be raw base64";
       if (tData.length > MAX_IMAGE_DATA_BYTES)
-        return `Thumbnail too large (max ${MAX_IMAGE_DATA_BYTES / 1_048_576} MB)`;
+        return `Thumbnail too large (max ${MAX_IMAGE_DATA_BYTES / 1048576} MB)`;
       if (!BASE64_RE.test(tData))
         return "Thumbnail data contains invalid base64 characters";
       if (
@@ -484,7 +436,6 @@ export function validateChatImages(images: unknown): string | null {
   }
   return null;
 }
-
 export function normalizeIncomingChatPrompt(
   text: string | null | undefined,
   images: ChatImageAttachment[] | null | undefined,
@@ -497,11 +448,9 @@ export function normalizeIncomingChatPrompt(
     ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT
     : null;
 }
-
 // ---------------------------------------------------------------------------
 // Chat attachments
 // ---------------------------------------------------------------------------
-
 export async function buildChatAttachments(
   images: ChatImageAttachment[] | undefined,
 ): Promise<{
@@ -537,9 +486,7 @@ export async function buildChatAttachments(
         }
       } catch (err) {
         logger.warn(
-          `[buildChatAttachments] failed to persist uploaded attachment: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `[buildChatAttachments] failed to persist uploaded attachment: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
       return {
@@ -563,9 +510,7 @@ export async function buildChatAttachments(
   );
   return { attachments, compactAttachments };
 }
-
 type MessageMemory = ReturnType<typeof createMessageMemory>;
-
 /**
  * Constructs the in-memory user message (with image data for action handlers)
  * and the persistence-safe counterpart (image data stripped).
@@ -579,7 +524,10 @@ export async function buildUserMessages(params: {
   channelType: ChannelType;
   messageSource?: string;
   metadata?: Record<string, unknown>;
-}): Promise<{ userMessage: MessageMemory; messageToStore: MessageMemory }> {
+}): Promise<{
+  userMessage: MessageMemory;
+  messageToStore: MessageMemory;
+}> {
   const {
     images,
     prompt,
@@ -613,7 +561,9 @@ export async function buildUserMessages(params: {
       ...(inReplyTo ? { inReplyTo } : {}),
       ...(attachments?.length ? { attachments } : {}),
       ...(metadata ? { metadata } : {}),
-    } as Content & { text: string },
+    } as Content & {
+      text: string;
+    },
   });
   const messageToStore = compactAttachments?.length
     ? createMessageMemory({
@@ -628,21 +578,20 @@ export async function buildUserMessages(params: {
           ...(inReplyTo ? { inReplyTo } : {}),
           attachments: compactAttachments,
           ...(metadata ? { metadata } : {}),
-        } as Content & { text: string },
+        } as Content & {
+          text: string;
+        },
       })
     : userMessage;
   return { userMessage, messageToStore };
 }
-
 // ---------------------------------------------------------------------------
 // Conversation room title persistence
 // ---------------------------------------------------------------------------
-
 type ConversationRoomTitleRef = Pick<
   ConversationMeta,
   "id" | "title" | "roomId"
 >;
-
 export async function persistConversationRoomTitle(
   runtime: Pick<AgentRuntime, "getRoom" | "adapter"> | null | undefined,
   conversation: ConversationRoomTitleRef,
@@ -651,12 +600,10 @@ export async function persistConversationRoomTitle(
   const room = await runtime.getRoom(conversation.roomId);
   if (!room) return false;
   if (room.name === conversation.title) return false;
-
   const adapter = runtime.adapter as {
     updateRoom?: (nextRoom: typeof room) => Promise<void>;
   };
   if (typeof adapter.updateRoom !== "function") return false;
-
   await adapter.updateRoom({ ...room, name: conversation.title });
   return true;
 }

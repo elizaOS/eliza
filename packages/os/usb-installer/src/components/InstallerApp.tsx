@@ -1,5 +1,5 @@
 // Renders the USB installer workflow and destructive-write safeguards.
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/ui/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ElizaOsImage,

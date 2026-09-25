@@ -5,18 +5,19 @@
  */
 
 import {
-  getElizaApiBase,
-  getElizaApiToken,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared";
-import { logger } from "@elizaos/shared/logger";
+} from "@elizaos/core/contracts/cloud-pair";
+import {
+  getElizaApiBase,
+  getElizaApiToken,
+} from "@elizaos/core/utils/eliza-globals";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
 import {
   cloudTokenSecsRemaining,
@@ -45,6 +46,7 @@ import {
 } from "../first-run/mobile-runtime-mode";
 import { primeAuthStatusProbe } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
+import { logger } from "../logger.ts";
 import {
   clearForceFreshFirstRun,
   isAndroid,
@@ -90,7 +92,6 @@ import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 
 const DESKTOP_RESTORE_RPC_TIMEOUT_MS =
   STARTUP_TIMING_POLICY.desktopRestoreRpcTimeoutMs;
-
 /**
  * A stored Steward JWT with at least this many seconds of life left restores
  * as-is (no refresh). Below it — or already expired — the restore boundary
@@ -114,7 +115,6 @@ const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS =
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
 const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
-
 function recoverCloudAgentId(active: PersistedActiveServer): string | null {
   const runtimeId = active.cloudRuntimeAgentId?.trim() ?? "";
   if (isCloudPairAgentId(runtimeId) || isPersonalSharedElizaId(runtimeId)) {
@@ -127,7 +127,6 @@ function recoverCloudAgentId(active: PersistedActiveServer): string | null {
   const baseAgentId = dedicatedCloudAgentIdFromBase(active.apiBase);
   return isCloudPairAgentId(baseAgentId) ? baseAgentId : null;
 }
-
 /**
  * Repair an older persisted dedicated-looking base when the owner record says
  * it is actually a temporary shared bridge. This runs off the startup critical
@@ -178,7 +177,6 @@ async function reconcileLegacyDedicatedCloudApiBase(
     return null;
   }
 }
-
 /**
  * Repair a restored managed-cloud target using the current environment and,
  * for legacy dedicated-looking records, the server-authoritative runtime tier.
@@ -229,14 +227,12 @@ function backfillCloudApiBase(
   // Unknown hosts remain structurally unchanged here so the restore trust gate
   // can reject them without fabricating a canonical server-owned address.
   if (!managedBase) return active;
-
   const useSharedApiBase =
     active.cloudRuntime === "shared" ||
     isDirectCloudSharedAgentBase(active.apiBase);
   const repairedApiBase = useSharedApiBase ? sharedApiBase : dedicatedApiBase;
   if (!repairedApiBase) return active;
   if (active.apiBase === repairedApiBase) return active;
-
   const updated: PersistedActiveServer = {
     ...active,
     apiBase: repairedApiBase,
@@ -244,7 +240,6 @@ function backfillCloudApiBase(
   savePersistedActiveServer(updated);
   return updated;
 }
-
 export interface RestoringSessionDeps {
   setStartupError: (v: null) => void;
   setAuthRequired: (v: boolean) => void;
@@ -255,18 +250,15 @@ export interface RestoringSessionDeps {
   firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
 }
-
 export interface RestoringSessionCtx {
   persistedActiveServer: ReturnType<typeof loadPersistedActiveServer>;
   restoredActiveServer: PersistedActiveServer;
   shouldPreserveCompletedFirstRun: boolean;
   hadPriorFirstRun: boolean;
 }
-
 function isMobileLocalAgentApiBase(value: string | undefined): boolean {
   return isMobileLocalAgentUrl(value);
 }
-
 function isMobileLocalActiveServer(
   server: PersistedActiveServer,
   mobileRuntimeMode = readPersistedMobileRuntimeMode(),
@@ -274,16 +266,13 @@ function isMobileLocalActiveServer(
   if (server.kind === "local" || isMobileLocalAgentIpcUrl(server.apiBase)) {
     return true;
   }
-
   // The remote-Mac developer target deliberately reuses the desktop agent's
   // loopback identity inside Simulator. Runtime mode is therefore the owner of
   // that ambiguous URL: treating it as bundled IPC clears the saved server and
   // boots the iOS Bun runtime on every cold launch.
   if (mobileRuntimeMode === "remote-mac") return false;
-
   return isMobileLocalAgentApiBase(server.apiBase);
 }
-
 // Re-resolve a persisted loopback apiBase against whatever port the
 // dev orchestrator / Electrobun bridge actually bound this run. A
 // previous session may have captured a stale port (e.g. 31337) when
@@ -305,9 +294,7 @@ function reconcilePersistedApiBaseWithLive(
     return apiBase;
   }
 }
-
 type MobileNativePlatform = "android" | "ios";
-
 function mobileLocalActiveServer(
   platform: MobileNativePlatform = isAndroid ? "android" : "ios",
 ): PersistedActiveServer {
@@ -319,7 +306,6 @@ function mobileLocalActiveServer(
     apiBase: android ? ANDROID_LOCAL_AGENT_IPC_BASE : IOS_LOCAL_AGENT_IPC_BASE,
   };
 }
-
 export function reconcileMobileRestoredActiveServer(args: {
   server: PersistedActiveServer;
   mobileRuntimeMode: ReturnType<typeof readPersistedMobileRuntimeMode>;
@@ -339,7 +325,6 @@ export function reconcileMobileRestoredActiveServer(args: {
   if (mobileLocal && !isCommittedOnDeviceMobileRuntimeMode(mobileRuntimeMode)) {
     return null;
   }
-
   const expectedMobileIpcBase =
     platform === "android"
       ? ANDROID_LOCAL_AGENT_IPC_BASE
@@ -350,34 +335,29 @@ export function reconcileMobileRestoredActiveServer(args: {
   ) {
     return mobileLocalActiveServer(platform);
   }
-
   if (!server.apiBase) {
     return null;
   }
-
   return undefined;
 }
-
 function restoredLocalApiBase(): string | null {
   if (isAndroid || isIOS) {
     return null;
   }
   return getElizaApiBase() ?? null;
 }
-
 async function getDesktopRuntimeModeForStartup(): Promise<{
   mode?: string;
 } | null> {
-  const result = await invokeDesktopBridgeRequestWithTimeout<{ mode?: string }>(
-    {
-      rpcMethod: "desktopGetRuntimeMode",
-      ipcChannel: "desktop:getRuntimeMode",
-      timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
-    },
-  );
+  const result = await invokeDesktopBridgeRequestWithTimeout<{
+    mode?: string;
+  }>({
+    rpcMethod: "desktopGetRuntimeMode",
+    ipcChannel: "desktop:getRuntimeMode",
+    timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
+  });
   return result.status === "ok" ? result.value : null;
 }
-
 async function requestDesktopAgentStartForStartup(): Promise<void> {
   await invokeDesktopBridgeRequestWithTimeout({
     rpcMethod: "agentStart",
@@ -385,7 +365,6 @@ async function requestDesktopAgentStartForStartup(): Promise<void> {
     timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
   });
 }
-
 /**
  * Resolve the Steward refresh endpoint for the current target. Hosted web uses
  * the same-origin cookie path (the HttpOnly `steward-refresh-token` cookie
@@ -406,7 +385,6 @@ function resolveRestoreStewardRefreshEndpoint(): string | undefined {
     return undefined;
   }
 }
-
 /**
  * Pick the Steward token to hand the client when restoring a cloud session.
  *
@@ -468,7 +446,6 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   if (secs === null) return stored;
   // Comfortably valid → restore instantly.
   if (secs >= STEWARD_RESTORE_REFRESH_AHEAD_SECS) return stored;
-
   const refreshProbe = await runStartupProbeWithTimeout(
     () =>
       refreshCloudStewardSession({
@@ -483,7 +460,6 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
       "[startup-phase-restore] stored Steward token refresh did not complete",
     );
   }
-
   if (refreshed?.token) {
     await writeStoredStewardToken(refreshed.token);
     // Let the native Steward auth context + any storage listeners pick up the
@@ -498,7 +474,6 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
     }
     return refreshed.token;
   }
-
   // Refresh failed / timed out. A truly-expired token is a dead credential —
   // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
   if (secs <= 0) {
@@ -508,7 +483,6 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   }
   return stored;
 }
-
 /**
  * Drop a near-expiry Steward JWT that a rotation attempt shadowed, through the
  * same protected-storage adapter every other Steward removal uses. A raw
@@ -527,14 +501,12 @@ async function dropShadowingStewardToken(reason: string): Promise<void> {
     );
   }
 }
-
 export async function applyRestoredConnection(args: {
   restoredActiveServer: PersistedActiveServer;
   clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
   startLocalRuntime?: () => Promise<void>;
 }) {
   const { restoredActiveServer, clientRef, startLocalRuntime } = args;
-
   if (restoredActiveServer.kind === "local") {
     // Don't clear an already-set token: "local" means the agent runs
     // on this machine, not that the dashboard is unauthenticated.
@@ -544,7 +516,6 @@ export async function applyRestoredConnection(args: {
     }
     return;
   }
-
   if (restoredActiveServer.kind === "cloud") {
     // Environment reconciliation is synchronous. The selected target's known
     // credential is cleared before the base changes, then the selected record's
@@ -681,7 +652,6 @@ export async function applyRestoredConnection(args: {
     });
     return;
   }
-
   if (
     isMobileLocalAgentIpcUrl(restoredActiveServer.apiBase) ||
     (isNative && isMobileLocalActiveServer(restoredActiveServer))
@@ -695,7 +665,6 @@ export async function applyRestoredConnection(args: {
     clientRef.setBaseUrl(restoredActiveServer.apiBase ?? null);
     return;
   }
-
   const reconciled = reconcilePersistedApiBaseWithLive(
     restoredActiveServer.apiBase,
   );
@@ -719,12 +688,10 @@ export async function applyRestoredConnection(args: {
   clientRef.setBaseUrl(reconciled ?? null);
   clientRef.setToken(restoredActiveServer.accessToken ?? null);
 }
-
 function activeServerToTarget(
   server: PersistedActiveServer,
 ): "embedded-local" | "cloud-managed" | "remote-backend" {
   if (isMobileLocalActiveServer(server)) return "embedded-local";
-
   switch (server.kind) {
     case "local":
       return "embedded-local";
@@ -734,7 +701,6 @@ function activeServerToTarget(
       return "remote-backend";
   }
 }
-
 export function canRestoreActiveServer(args: {
   server: PersistedActiveServer;
   clientApiAvailable: boolean;
@@ -768,11 +734,9 @@ export function canRestoreActiveServer(args: {
     }
     return true;
   }
-
   if (args.server.kind === "local") {
     return args.isDesktop || args.clientApiAvailable;
   }
-
   if (args.server.kind === "cloud") {
     // A persisted cloud agent without a concrete apiBase is still restorable
     // when its id carries a real agent id: applyRestoredConnection →
@@ -790,10 +754,8 @@ export function canRestoreActiveServer(args: {
       isPersonalSharedElizaId(rawId)
     );
   }
-
   return false;
 }
-
 function preserveCloudAuthTokenForFirstRun(
   server: PersistedActiveServer,
 ): void {
@@ -809,7 +771,6 @@ function preserveCloudAuthTokenForFirstRun(
   );
   client.setToken(token);
 }
-
 /**
  * Runs the restoring-session phase.
  * Probes the local Eliza install and/or API to detect an existing connection,
@@ -824,12 +785,13 @@ export async function runRestoringSession(
   deps: RestoringSessionDeps,
   dispatch: (event: StartupEvent) => void,
   ctxRef: React.MutableRefObject<RestoringSessionCtx | null>,
-  cancelled: { current: boolean },
+  cancelled: {
+    current: boolean;
+  },
 ): Promise<void> {
   deps.setStartupError(null);
   deps.setAuthRequired(false);
   deps.setConnected(false);
-
   // Restore the onboarding-complete flag from the durable native store when a
   // WebView-storage wipe dropped it from localStorage (issue #11506), BEFORE
   // reading `hadPrior` below — so an already set-up mobile install is not
@@ -868,24 +830,24 @@ export async function runRestoringSession(
     }
   }
   if (cancelled.current) return;
-
   const isDesktop = isElectrobunRuntime();
-
   // One desktop runtime-mode RPC per restore run: both consumers (the local
   // agent autostart gate in startLocalRuntime and the embedded-local target
   // reclassification before dispatch) share this memo instead of dialing the
   // 5s-timeout bridge twice. Per-run — not module-scoped — because the shell's
   // mode can change between restore retries. The mode is shell config, stable
   // within a single startup, so sharing one result is safe.
-  let desktopRuntimeModePromise: Promise<{ mode?: string } | null> | null =
-    null;
-  const desktopRuntimeMode = (): Promise<{ mode?: string } | null> => {
+  let desktopRuntimeModePromise: Promise<{
+    mode?: string;
+  } | null> | null = null;
+  const desktopRuntimeMode = (): Promise<{
+    mode?: string;
+  } | null> => {
     desktopRuntimeModePromise ??= getDesktopRuntimeModeForStartup().catch(
       () => null,
     );
     return desktopRuntimeModePromise;
   };
-
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
@@ -908,10 +870,10 @@ export async function runRestoringSession(
         client,
         cloudOnlyBranding: getBootConfig().branding.cloudOnly === true,
         timeoutMs: isDesktop
-          ? Math.min(getBackendStartupTimeoutMs(), 30_000)
+          ? Math.min(getBackendStartupTimeoutMs(), 30000)
           : committedMobileOnDeviceMode
-            ? Math.min(getBackendStartupTimeoutMs(), 45_000)
-            : Math.min(getBackendStartupTimeoutMs(), 3_500),
+            ? Math.min(getBackendStartupTimeoutMs(), 45000)
+            : Math.min(getBackendStartupTimeoutMs(), 3500),
         waitForBootingAgent: committedMobileOnDeviceMode,
       });
     } catch (err) {
@@ -932,10 +894,8 @@ export async function runRestoringSession(
     }
   }
   if (cancelled.current) return;
-
   let restoredActiveServer =
     persistedActiveServer ?? (probed ? probed.activeServer : null);
-
   if ((isAndroid || isIOS) && restoredActiveServer) {
     const reconciledMobileServer = reconcileMobileRestoredActiveServer({
       server: restoredActiveServer,
@@ -955,7 +915,6 @@ export async function runRestoringSession(
       savePersistedActiveServer(restoredActiveServer);
     }
   }
-
   if (
     restoredActiveServer &&
     !canRestoreActiveServer({
@@ -972,12 +931,10 @@ export async function runRestoringSession(
     hadPrior = false;
     deps.firstRunCompletionCommittedRef.current = false;
   }
-
   const preserveCompleted =
     hadPrior &&
     !deps.firstRunCompletionCommittedRef.current &&
     !isOnboardingReplayRequested();
-
   if (!restoredActiveServer) {
     // No saved backend found — let the user (re-)onboard.
     deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
@@ -986,7 +943,6 @@ export async function runRestoringSession(
     dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });
     return;
   }
-
   // Only a restored kind:"local" server ever consumes the runtime mode (both
   // call sites below), so kick the RPC off for exactly that case — it then
   // runs while the sync restore gates above settle instead of serializing
@@ -994,7 +950,6 @@ export async function runRestoringSession(
   if (isDesktop && restoredActiveServer.kind === "local") {
     void desktopRuntimeMode();
   }
-
   await applyRestoredConnection({
     restoredActiveServer,
     clientRef: client,
@@ -1012,7 +967,6 @@ export async function runRestoringSession(
       }
     },
   });
-
   if (
     isManagedCloudSharedAgentBase(restoredActiveServer.apiBase) &&
     !loadPersistedActiveServer()
@@ -1023,7 +977,6 @@ export async function runRestoringSession(
     dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });
     return;
   }
-
   // The connection is applied (base URL + token are what the post-paint auth
   // gate will use), so start the /api/auth/me probe now — it overlaps the
   // polling/hydration phases instead of serializing after first paint. See
@@ -1039,7 +992,6 @@ export async function runRestoringSession(
   ) {
     primeAuthStatusProbe();
   }
-
   ctxRef.current = {
     persistedActiveServer,
     restoredActiveServer,

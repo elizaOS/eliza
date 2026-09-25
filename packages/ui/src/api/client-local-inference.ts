@@ -15,30 +15,30 @@ import type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
-  ProviderStatus,
+  VerifyResult,
+} from "@elizaos/core/contracts/local-inference";
+import type { ProviderStatus } from "@elizaos/core/contracts/local-inference-providers";
+import { ElizaError } from "@elizaos/core/errors";
+import type {
   RoutingPolicy,
   RoutingPreferences,
-} from "@elizaos/shared";
-import { ElizaError } from "@elizaos/shared/browser-contracts";
-import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
-import type { PublicRegistration } from "../services/local-inference/handler-registry";
-import type { VerifyResult } from "../services/local-inference/verify";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import { ElizaClient } from "./client-base";
+import type {
+  DeviceBridgeStatus,
+  PublicRegistration,
+} from "./local-inference-response-types";
 
 let localInferenceHubRequest: Promise<ModelHubSnapshot> | null = null;
-
 /** Stable classification for an invalid hardware section in the hub response. */
 export const LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE =
   "LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID";
-
 const GPU_BACKENDS = new Set(["cuda", "metal", "vulkan"]);
 const MODEL_BUCKETS = new Set(["small", "mid", "large", "xl"]);
 const HARDWARE_PROBE_SOURCES = new Set(["capacitor-llama", "os-fallback"]);
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function invalidHardware(path: string, expected: string): never {
   throw new ElizaError(
     "Hardware details are unavailable because the agent returned invalid data. Retry after the device check finishes.",
@@ -48,7 +48,6 @@ function invalidHardware(path: string, expected: string): never {
     },
   );
 }
-
 function assertFiniteNonNegativeNumber(
   value: unknown,
   path: string,
@@ -57,7 +56,6 @@ function assertFiniteNonNegativeNumber(
     invalidHardware(path, "a finite non-negative number");
   }
 }
-
 function assertSupportedString(
   value: unknown,
   supported: ReadonlySet<string>,
@@ -68,10 +66,8 @@ function assertSupportedString(
     invalidHardware(path, expected);
   }
 }
-
 function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   if (!isRecord(value)) invalidHardware("response.hardware", "an object");
-
   assertFiniteNonNegativeNumber(
     value.totalRamGb,
     "response.hardware.totalRamGb",
@@ -104,7 +100,6 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
     "response.hardware.source",
     "a supported hardware probe source",
   );
-
   if (value.gpu !== null) {
     if (!isRecord(value.gpu)) {
       invalidHardware("response.hardware.gpu", "an object or null");
@@ -125,7 +120,6 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
     );
   }
 }
-
 /** Validates the hardware subsection; other hub fields keep their own owners. */
 function parseModelHubSnapshotHardware(value: unknown): ModelHubSnapshot {
   if (!isRecord(value)) invalidHardware("response", "an object");
@@ -150,10 +144,8 @@ export type {
   RoutingPreferences,
   VerifyResult,
 };
-
 /** Hardware classification tier (mirrors the plugin `DeviceTier`). */
 export type DeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
-
 /**
  * Resolved device tier for the UI. `reason` is a short human line explaining
  * the classification (e.g. "16.0 GB free · dGPU"); `cpuOnly` and `mobile` drive
@@ -182,7 +174,6 @@ export interface DeviceTierResult {
     contextDownscaled: boolean;
   } | null;
 }
-
 /**
  * Classify a `HardwareProbe` into a coarse device tier for UI display.
  *
@@ -204,14 +195,12 @@ export function classifyDeviceTierFromProbe(
     : probe.gpu
       ? Math.max(vramGb, probe.totalRamGb * 0.5)
       : probe.totalRamGb * 0.5;
-
   const accelerator = probe.appleSilicon
     ? `Apple Silicon ${probe.totalRamGb.toFixed(0)} GB`
     : probe.gpu
       ? `${vramGb.toFixed(0)} GB VRAM`
       : `${probe.totalRamGb.toFixed(0)} GB RAM, ${probe.cpuCores} cores`;
   const reason = `${effectiveMemoryGb.toFixed(1)} GB effective · ${probe.freeRamGb.toFixed(1)} GB free · ${accelerator}`;
-
   const tier = ((): DeviceTier => {
     // Mobile clamps to OKAY at best (OS background-task limits).
     if (mobile) {
@@ -233,10 +222,8 @@ export function classifyDeviceTierFromProbe(
     const meetsOkay = effectiveMemoryGb >= 6 && probe.freeRamGb >= 3;
     return meetsOkay ? "OKAY" : "POOR";
   })();
-
   return { tier, reason, cpuOnly, mobile };
 }
-
 declare module "./client-base" {
   interface ElizaClient {
     getLocalInferenceHub(): Promise<ModelHubSnapshot>;
@@ -247,30 +234,44 @@ declare module "./client-base" {
      * resolution in the routing matrix.
      */
     getLocalInferenceDeviceTier(): Promise<DeviceTierResult>;
-    getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
-    getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
-    startLocalInferenceDownload(modelId: string): Promise<{ job: DownloadJob }>;
+    getLocalInferenceCatalog(): Promise<{
+      models: CatalogModel[];
+    }>;
+    getLocalInferenceInstalled(): Promise<{
+      models: InstalledModel[];
+    }>;
+    startLocalInferenceDownload(modelId: string): Promise<{
+      job: DownloadJob;
+    }>;
     searchHuggingFaceGguf(
       query: string,
       limit?: number,
       hub?: "huggingface" | "modelscope",
-    ): Promise<{ models: CatalogModel[] }>;
-    cancelLocalInferenceDownload(
-      modelId: string,
-    ): Promise<{ cancelled: boolean }>;
+    ): Promise<{
+      models: CatalogModel[];
+    }>;
+    cancelLocalInferenceDownload(modelId: string): Promise<{
+      cancelled: boolean;
+    }>;
     getLocalInferenceActive(): Promise<ActiveModelState>;
     setLocalInferenceActive(modelId: string): Promise<ActiveModelState>;
     clearLocalInferenceActive(): Promise<ActiveModelState>;
-    uninstallLocalInferenceModel(id: string): Promise<{ removed: boolean }>;
+    uninstallLocalInferenceModel(id: string): Promise<{
+      removed: boolean;
+    }>;
     getLocalInferenceDeviceStatus(): Promise<DeviceBridgeStatus>;
-    getLocalInferenceProviders(): Promise<{ providers: ProviderStatus[] }>;
+    getLocalInferenceProviders(): Promise<{
+      providers: ProviderStatus[];
+    }>;
     getLocalInferenceAssignments(): Promise<{
       assignments: ModelAssignments;
     }>;
     setLocalInferenceAssignment(
       slot: AgentModelSlot,
       modelId: string | null,
-    ): Promise<{ assignments: ModelAssignments }>;
+    ): Promise<{
+      assignments: ModelAssignments;
+    }>;
     verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
     getLocalInferenceRouting(): Promise<{
       registrations: PublicRegistration[];
@@ -279,25 +280,30 @@ declare module "./client-base" {
     setLocalInferencePreferredProvider(
       slot: AgentModelSlot,
       provider: string | null,
-    ): Promise<{ preferences: RoutingPreferences }>;
+    ): Promise<{
+      preferences: RoutingPreferences;
+    }>;
     setLocalInferenceTextRouting(
       provider: string,
       policy?: RoutingPolicy,
-    ): Promise<{ preferences: RoutingPreferences }>;
+    ): Promise<{
+      preferences: RoutingPreferences;
+    }>;
     setLocalInferencePolicy(
       slot: AgentModelSlot,
       policy: RoutingPolicy | null,
-    ): Promise<{ preferences: RoutingPreferences }>;
+    ): Promise<{
+      preferences: RoutingPreferences;
+    }>;
   }
 }
-
 ElizaClient.prototype.getLocalInferenceHub = async function (
   this: ElizaClient,
 ) {
   localInferenceHubRequest ??= this.fetch<unknown>(
     "/api/local-inference/hub",
     undefined,
-    { timeoutMs: 30_000 },
+    { timeoutMs: 30000 },
   )
     .then(parseModelHubSnapshotHardware)
     .finally(() => {
@@ -305,7 +311,6 @@ ElizaClient.prototype.getLocalInferenceHub = async function (
     });
   return localInferenceHubRequest;
 };
-
 ElizaClient.prototype.getLocalInferenceHardware = async function (
   this: ElizaClient,
 ) {
@@ -313,7 +318,6 @@ ElizaClient.prototype.getLocalInferenceHardware = async function (
   assertHardwareProbe(hardware);
   return hardware;
 };
-
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
   this: ElizaClient,
 ) {
@@ -357,19 +361,16 @@ ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
   const probe = await this.getLocalInferenceHardware();
   return classifyDeviceTierFromProbe(probe);
 };
-
 ElizaClient.prototype.getLocalInferenceCatalog = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/catalog");
 };
-
 ElizaClient.prototype.getLocalInferenceInstalled = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/installed");
 };
-
 ElizaClient.prototype.startLocalInferenceDownload = async function (
   this: ElizaClient,
   modelId: string,
@@ -379,7 +380,6 @@ ElizaClient.prototype.startLocalInferenceDownload = async function (
     body: JSON.stringify({ modelId }),
   });
 };
-
 ElizaClient.prototype.searchHuggingFaceGguf = async function (
   this: ElizaClient,
   query: string,
@@ -391,7 +391,6 @@ ElizaClient.prototype.searchHuggingFaceGguf = async function (
   params.set("hub", hub);
   return this.fetch(`/api/local-inference/hf-search?${params.toString()}`);
 };
-
 ElizaClient.prototype.cancelLocalInferenceDownload = async function (
   this: ElizaClient,
   modelId: string,
@@ -401,13 +400,11 @@ ElizaClient.prototype.cancelLocalInferenceDownload = async function (
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.getLocalInferenceActive = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/active");
 };
-
 ElizaClient.prototype.setLocalInferenceActive = async function (
   this: ElizaClient,
   modelId: string,
@@ -417,7 +414,6 @@ ElizaClient.prototype.setLocalInferenceActive = async function (
     body: JSON.stringify({ modelId }),
   });
 };
-
 ElizaClient.prototype.clearLocalInferenceActive = async function (
   this: ElizaClient,
 ) {
@@ -425,7 +421,6 @@ ElizaClient.prototype.clearLocalInferenceActive = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.uninstallLocalInferenceModel = async function (
   this: ElizaClient,
   id: string,
@@ -435,25 +430,21 @@ ElizaClient.prototype.uninstallLocalInferenceModel = async function (
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.getLocalInferenceDeviceStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/device");
 };
-
 ElizaClient.prototype.getLocalInferenceProviders = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/providers");
 };
-
 ElizaClient.prototype.getLocalInferenceAssignments = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/assignments");
 };
-
 ElizaClient.prototype.setLocalInferenceAssignment = async function (
   this: ElizaClient,
   slot: AgentModelSlot,
@@ -464,7 +455,6 @@ ElizaClient.prototype.setLocalInferenceAssignment = async function (
     body: JSON.stringify({ slot, modelId }),
   });
 };
-
 ElizaClient.prototype.verifyLocalInferenceModel = async function (
   this: ElizaClient,
   id: string,
@@ -474,13 +464,11 @@ ElizaClient.prototype.verifyLocalInferenceModel = async function (
     { method: "POST" },
   );
 };
-
 ElizaClient.prototype.getLocalInferenceRouting = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/routing");
 };
-
 ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
   this: ElizaClient,
   slot: AgentModelSlot,
@@ -491,7 +479,6 @@ ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
     body: JSON.stringify({ slot, provider }),
   });
 };
-
 ElizaClient.prototype.setLocalInferenceTextRouting = async function (
   this: ElizaClient,
   provider: string,
@@ -502,7 +489,6 @@ ElizaClient.prototype.setLocalInferenceTextRouting = async function (
     body: JSON.stringify({ provider, policy }),
   });
 };
-
 ElizaClient.prototype.setLocalInferencePolicy = async function (
   this: ElizaClient,
   slot: AgentModelSlot,

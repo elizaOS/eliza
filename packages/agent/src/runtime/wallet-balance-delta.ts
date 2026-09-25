@@ -52,8 +52,14 @@
  * EVM/Solana wallet surface, mirroring the /api/wallet route gate).
  */
 
-import type { AgentRuntime, NotificationInput } from "@elizaos/core";
-import { logger, ServiceType } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  type NotificationInput,
+  ServiceType,
+  type WalletBalancesResponse,
+} from "@elizaos/core";
+
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
 import {
   getScheduledTaskRunner,
@@ -63,7 +69,6 @@ import {
   ScheduledTaskRunnerService,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import type { WalletBalancesResponse } from "@elizaos/shared";
 
 /** Contributed dispatch channel the watcher's escalation step names. */
 export const WALLET_BALANCE_DELTA_CHANNEL = "wallet_balance_delta";

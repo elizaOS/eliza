@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveDesktopBuildConcurrency } from "./desktop-preflight.mjs";
+import { resolveDesktopBuildConcurrency } from "./desktop-preflight.ts";
 
 test("desktop package concurrency preserves its default and accepts bounded overrides", () => {
   assert.equal(resolveDesktopBuildConcurrency(undefined), 8);
