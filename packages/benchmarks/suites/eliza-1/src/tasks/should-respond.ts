@@ -115,6 +115,7 @@ export async function runShouldRespondTask(args: {
           parse_success: parseSuccess,
           schema_valid: schemaValid,
           label_match: labelMatch,
+          expected_label: fixture.expected,
         }),
       );
     }

@@ -30,6 +30,7 @@ import {
   processBenchmarkImages,
 } from "./benchmark-images.js";
 import { autoWireCerebras } from "./cerebras-autowire.js";
+import { probeBenchmarkEmbedding } from "./embedding-capability.js";
 import {
   LIFECYCLE_TASK_CONTEXTS,
   LIFECYCLE_TASKS_TOOL_CONTRACT,
@@ -1172,12 +1173,6 @@ export async function startBenchmarkServer() {
   if (skipEmbeddingPlugin) {
     skipPlugins.add("@elizaos/plugin-local-inference");
   }
-  if (initialCerebrasIntent && !skipEmbeddingPlugin) {
-    skipPlugins.add("@elizaos/plugin-local-inference");
-    elizaLogger.info(
-      "[bench] Cerebras benchmark mode: using @elizaos/plugin-openai's deterministic local TEXT_EMBEDDING fallback instead of @elizaos/plugin-local-inference without an active backend.",
-    );
-  }
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
   const corePluginsToLoadBase = lifecycleProfile
     ? ["@elizaos/plugin-sql"]
@@ -1409,7 +1404,7 @@ export async function startBenchmarkServer() {
             : cerebrasApiKey
               ? "CEREBRAS_API_KEY"
               : "none"
-        }${baseUrlIsCerebras || providerIsCerebras ? ", TEXT_EMBEDDING local fallback (cerebras)" : ""})`,
+        }${baseUrlIsCerebras || providerIsCerebras ? ", embeddings require a separate provider (cerebras)" : ""})`,
       );
       if (subscriptionChatOnly) {
         elizaLogger.info(
@@ -1418,7 +1413,7 @@ export async function startBenchmarkServer() {
       }
       if (baseUrlIsCerebras || providerIsCerebras) {
         elizaLogger.info(
-          "[bench] Cerebras detected: keeping openai plugin's deterministic local TEXT_EMBEDDING fallback because Cerebras does not expose /v1/embeddings.",
+          "[bench] Cerebras does not supply embeddings; a configured embedding endpoint or local provider is required.",
         );
       }
     } catch (error: unknown) {
@@ -1663,16 +1658,8 @@ export async function startBenchmarkServer() {
       `Lifecycle profile requires an exact one-action TASKS catalog; registered ${JSON.stringify(registeredActionCatalog)}`,
     );
   }
-  // Wire the local-inference loader subsystem the same way the main app boot
-  // does (eliza/packages/app-core/src/runtime/eliza.ts). Without this, the
-  // bench-server's @elizaos/plugin-local-inference Plugin.init() never
-  // registers a `localInferenceLoader` service, so its TEXT_EMBEDDING handler
-  // falls all the way through to the zero-vector path even when an Eliza-1
-  // bundle is installed locally. Calling it here makes the bench-server use
-  // the eliza-1 embedding model (text/eliza-1-2b-32k.gguf) when present,
-  // and harmlessly skips handler upgrades when no backend is available —
-  // matching the main app's behavior so benchmark runs reflect real
-  // retrieval semantics.
+  // Register the same local inference subsystem as the host. Registration
+  // alone does not establish availability; probe real text below.
   if (!skipEmbeddingPlugin && !subscriptionChatOnly && !lifecycleProfile) {
     try {
       const { ensureLocalInferenceHandler } = await import(
@@ -1698,6 +1685,20 @@ export async function startBenchmarkServer() {
   } else {
     elizaLogger.info(
       "[bench] Skipping @elizaos/plugin-local-inference runtime wiring because benchmark embedding skip is enabled",
+    );
+  }
+  const embeddingCapability = await probeBenchmarkEmbedding({
+    disabled: subscriptionChatOnly,
+    standIn: skipEmbeddingPlugin || mockBenchmarkEnabled,
+    generate: () =>
+      runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text: "Benchmark embedding availability probe.",
+        signal: AbortSignal.timeout(30_000),
+      }),
+  });
+  if (embeddingCapability.status === "unavailable") {
+    elizaLogger.warn(
+      `[bench] Embedding generation unavailable: ${embeddingCapability.error}`,
     );
   }
   const modelHandlers = (
@@ -2149,7 +2150,8 @@ export async function startBenchmarkServer() {
             : skipEmbeddingPlugin
               ? "stand-in"
               : "runtime-provider",
-          semanticMemoryEnabled: !(subscriptionChatOnly || skipEmbeddingPlugin),
+          semanticMemoryEnabled: embeddingCapability.status === "available",
+          embeddingCapability,
           subscription_chat_only: subscriptionChatOnly,
           model_handlers: modelHandlerSummary,
           releaseEvidence: !(skipEmbeddingPlugin || mockBenchmarkEnabled),
@@ -2510,6 +2512,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -2615,6 +2618,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -2714,6 +2718,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -2815,6 +2820,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -2914,6 +2920,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -3005,6 +3012,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -3078,6 +3086,7 @@ export async function startBenchmarkServer() {
             });
             trajectoriesBySession.set(key, trajectory);
             const metadata = benchmarkTurnMetadata({
+              embeddingCapability,
               session,
               step: trajectory.length,
               context: benchmarkContext,
@@ -3107,6 +3116,7 @@ export async function startBenchmarkServer() {
             id: stringToUuid(`benchmark-msg:${Date.now()}:${Math.random()}`),
             content: {
               text: composedPrompt,
+              ...(lifecycleProfile ? {} : { currentMessageText: text }),
               source: "benchmark",
               ...(lifecycleProfile
                 ? {}
@@ -3114,6 +3124,7 @@ export async function startBenchmarkServer() {
                     metadata: {
                       benchmark: session.benchmark,
                       taskId: session.taskId,
+                      benchmarkPrompt: composedPrompt,
                       ...(context
                         ? { contextJson: JSON.stringify(context) }
                         : {}),
@@ -3279,6 +3290,7 @@ export async function startBenchmarkServer() {
           });
           trajectoriesBySession.set(key, trajectory);
           const metadata = benchmarkTurnMetadata({
+            embeddingCapability,
             session,
             step: trajectory.length,
             context: benchmarkContext,

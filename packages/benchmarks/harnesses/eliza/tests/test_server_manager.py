@@ -296,7 +296,7 @@ def test_server_manager_prefers_bun_for_typescript_server(
         lambda name: "/usr/bin/bun" if name == "bun" else None,
     )
 
-    assert _server_command(server) == ["bun", "--no-env-file", "run", str(server)]
+    assert _server_command(server) == ["bun", "run", "--conditions=eliza-source", "--no-env-file", str(server)]
 
 
 def test_server_manager_falls_back_to_node_tzx(monkeypatch, tmp_path: Path) -> None:
@@ -406,3 +406,27 @@ def test_normalize_model_env_non_cerebras_setdefault_path_keeps_preset() -> None
     }
     _normalize_model_env(env)
     assert env["OPENAI_BASE_URL"] == "https://elizacloud.ai/api/v1"
+
+
+def test_start_preserves_other_process_transformer_cache(monkeypatch, tmp_path):
+    server = tmp_path / "packages/app-core/src/benchmark/server.ts"
+    server.parent.mkdir(parents=True)
+    server.write_text("// controlled launcher fixture\n")
+    shared_tmp = tmp_path / "shared-tmp"
+    cached_file = shared_tmp / "tsx-other-process" / "active-transform"
+    cached_file.parent.mkdir(parents=True)
+    cached_file.write_bytes(b"owned by another running task")
+    monkeypatch.setattr("eliza_adapter.server_manager.tempfile.gettempdir", lambda: str(shared_tmp))
+    monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", lambda *a, **kw: _FakeProcess())
+    manager = ElizaServerManager(repo_root=tmp_path, port=0)
+    monkeypatch.setattr(manager.client, "is_ready", lambda: True)
+    monkeypatch.setattr(manager.client, "health", lambda **kw: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "reset", lambda *a, **kw: None)
+    try:
+        manager.start()
+        assert cached_file.read_bytes() == b"owned by another running task"
+    finally:
+        manager._proc = None
+        for handle in (manager._stdout_handle, manager._stderr_handle):
+            if handle:
+                handle.close()

@@ -15,7 +15,6 @@
  * Skipped (with a logged reason) when `CEREBRAS_API_KEY` is absent so the
  * bench is safe to run in CI without secrets.
  */
-import { approxTokens } from "../metrics.ts";
 import type {
   JsonValue,
   ModeAdapter,
@@ -108,7 +107,7 @@ interface CerebrasAttempt {
 
 interface ExtractedOutput {
   rawOutput: string;
-  tokens: number;
+  tokens: number | null;
   emptyDiagnostic: string | null;
 }
 
@@ -172,7 +171,7 @@ export class CerebrasMode implements ModeAdapter {
     const warnings: string[] = [];
     const transportErrors: string[] = [];
     const emptyDiagnostics: string[] = [];
-    let lastTokens = 0;
+    let observedTokens: number | null = 0;
     const effectiveMaxTokens = Math.max(req.maxTokens, 256);
     const attempts = buildAttempts({
       model: this.model,
@@ -188,7 +187,10 @@ export class CerebrasMode implements ModeAdapter {
         const response = await this.client.chatCompletions(attempt.request);
         const totalLatencyMs = Date.now() - startedAt;
         const extracted = extractRawOutput(response, attempt.kind);
-        lastTokens = extracted.tokens;
+        observedTokens =
+          observedTokens !== null && extracted.tokens !== null
+            ? observedTokens + extracted.tokens
+            : null;
         if (extracted.emptyDiagnostic) {
           emptyDiagnostics.push(extracted.emptyDiagnostic);
           warnings.push(extracted.emptyDiagnostic);
@@ -198,10 +200,11 @@ export class CerebrasMode implements ModeAdapter {
           rawOutput: extracted.rawOutput,
           firstTokenLatencyMs: null,
           totalLatencyMs,
-          tokensGenerated: extracted.tokens,
+          tokensGenerated: observedTokens,
           warnings: warnings.length > 0 ? warnings : undefined,
         };
       } catch (err) {
+        observedTokens = null;
         const message = `${attempt.kind}: ${formatErrorMessage(err)}`;
         transportErrors.push(message);
         warnings.push(message);
@@ -224,7 +227,7 @@ export class CerebrasMode implements ModeAdapter {
       rawOutput: "",
       firstTokenLatencyMs: null,
       totalLatencyMs,
-      tokensGenerated: lastTokens,
+      tokensGenerated: observedTokens,
       warnings,
       error: [
         "cerebras returned empty output after tool-use, json-schema, and prompt-only attempts",
@@ -398,6 +401,15 @@ function responseFormatName(toolName: string): string {
   return cleaned || "eliza_1_response";
 }
 
+function observedCompletionTokens(response: CerebrasResponse): number | null {
+  const tokens = response.usage?.completion_tokens;
+  return typeof tokens === "number" &&
+    Number.isSafeInteger(tokens) &&
+    tokens >= 0
+    ? tokens
+    : null;
+}
+
 function extractRawOutput(
   response: CerebrasResponse,
   attemptKind: CerebrasAttemptKind,
@@ -409,7 +421,7 @@ function extractRawOutput(
     if (typeof args === "string" && args.trim().length > 0) {
       return {
         rawOutput: args,
-        tokens: response.usage?.completion_tokens ?? approxTokens(args),
+        tokens: observedCompletionTokens(response),
         emptyDiagnostic: null,
       };
     }
@@ -419,12 +431,12 @@ function extractRawOutput(
   if (typeof content === "string" && content.trim().length > 0) {
     return {
       rawOutput: content,
-      tokens: response.usage?.completion_tokens ?? approxTokens(content),
+      tokens: observedCompletionTokens(response),
       emptyDiagnostic: null,
     };
   }
 
-  const tokens = response.usage?.completion_tokens ?? 0;
+  const tokens = observedCompletionTokens(response);
   return {
     rawOutput: "",
     tokens,
@@ -435,7 +447,7 @@ function extractRawOutput(
 function describeEmptyResponse(
   response: CerebrasResponse,
   attemptKind: CerebrasAttemptKind,
-  completionTokens: number,
+  completionTokens: number | null,
 ): string {
   const first = response.choices[0];
   const content = first?.message.content;
@@ -527,7 +539,7 @@ function emptyResult(message: string): ModeResult {
     rawOutput: "",
     firstTokenLatencyMs: null,
     totalLatencyMs: 0,
-    tokensGenerated: 0,
+    tokensGenerated: null,
     error: message,
   };
 }

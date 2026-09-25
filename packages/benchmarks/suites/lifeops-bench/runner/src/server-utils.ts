@@ -11,6 +11,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { BenchmarkEmbeddingCapability } from "./embedding-capability.js";
 import type { BenchmarkContext, CapturedAction } from "./plugin";
 
 export { coerceParams } from "./params";
@@ -182,6 +183,7 @@ export interface BenchmarkTurnMetadata {
   release_evidence: boolean;
   embedding_mode: "disabled-text-only" | "runtime-provider" | "stand-in";
   semantic_memory_enabled: boolean;
+  embedding_capability: BenchmarkEmbeddingCapability;
   benchmark: string;
   task_id: string;
   room_id: UUID;
@@ -982,6 +984,7 @@ function benchmarkToolName(tool: Record<string, unknown>): string {
 }
 
 export function benchmarkTurnMetadata(params: {
+  embeddingCapability?: BenchmarkEmbeddingCapability;
   session: BenchmarkSession;
   step: number;
   context?: Record<string, unknown>;
@@ -1027,7 +1030,12 @@ export function benchmarkTurnMetadata(params: {
     stand_in: standIn,
     release_evidence: !standIn,
     embedding_mode: embeddingMode,
-    semantic_memory_enabled: embeddingMode === "runtime-provider",
+    semantic_memory_enabled:
+      embeddingMode === "runtime-provider" &&
+      params.embeddingCapability?.status === "available",
+    embedding_capability: params.embeddingCapability ?? {
+      status: "unverified",
+    },
     benchmark: params.session.benchmark,
     task_id: params.session.taskId,
     room_id: params.session.roomId,
