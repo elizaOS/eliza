@@ -71,6 +71,7 @@ class PhoneDialerInstrumentedTest {
                 SystemClock.sleep(50); observed = window()
             }
             receipt("phone-native-dialer.json", JSONObject().put("expectedNumber", expected).put("dialerPackage", dialerPackage).put("reply", reply).put("intents", intents).put("window", observed))
+            InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5000)
             val screenshot = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
             val png = java.io.ByteArrayOutputStream()
             try { assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, png)) } finally { screenshot.recycle() }
