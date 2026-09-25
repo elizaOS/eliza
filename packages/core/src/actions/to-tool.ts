@@ -92,7 +92,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome with no work remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
 		},
 		candidateActionNames: {
 			type: "array",
