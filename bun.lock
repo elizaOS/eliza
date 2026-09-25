@@ -1088,6 +1088,9 @@
     "packages/os": {
       "name": "@elizaos/os",
       "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/ui": "workspace:*",
+      },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
         "@fontsource/poppins": "^5.2.7",

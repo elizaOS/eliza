@@ -1,19 +1,9 @@
 /**
  * Wake-word detection (openWakeWord) — opt-in, local-mode only.
  *
- * Replaces the previous `onnxruntime-node`-backed implementation with a
- * pure GGML / llama.cpp path. The three-stage openWakeWord pipeline (mel
- * filterbank → speech embedding model → per-phrase classifier head) is
- * compiled into one combined GGUF
- * (`wake/openwakeword.gguf`, produced by
- * `packages/training/scripts/wakeword/convert_openwakeword_to_gguf.py`)
- * and executed natively by the fused `libelizainference` build via the
- * `eliza_inference_wakeword_*` FFI surface (ABI v5).
- *
- * The JS side is now a thin adapter over that surface — there is NO ONNX
- * fallback. When the fused library was built without the wake-word
- * runtime, the JS path throws a structured `WakeWordUnavailableError`
- * (AGENTS.md §3, §8 — no silent fallbacks).
+ * The fused native runtime loads three GGUFs from the active context bundle:
+ * `wake/<head>.{melspec,embedding,classifier}.gguf`. JavaScript feeds complete
+ * PCM frames through the existing eliza_inference_wakeword_* ABI.
  *
  * Per `packages/inference/AGENTS.md` §1 + the three-mode rules (§1, §5):
  *   - openWakeWord (Apache-2.0, ~3 MB) ships in the bundle but is
@@ -55,17 +45,6 @@ import {
 } from "./wake-word-ggml";
 /** Directory holding the bundled openWakeWord GGUF inside a bundle. */
 export const OPENWAKEWORD_DIR_REL_PATH = "wake";
-/**
- * Combined wake-word GGUF: contains the mel filterbank constants, the
- * speech embedding model weights, AND every per-phrase classifier head
- * (`head.<name>.*` tensors). The fused `libelizainference` build mmaps
- * this file from `<bundleRoot>/wake/openwakeword.gguf` (or the shared
- * cache at `<state-dir>/local-inference/wake/openwakeword.gguf`).
- */
-export const OPENWAKEWORD_GGUF_REL_PATH = path.join(
-	OPENWAKEWORD_DIR_REL_PATH,
-	"openwakeword.gguf",
-);
 /**
  * Default wake-phrase head shipped with a voice bundle. The documented
  * default Eliza-1 wake phrase is **"hey eliza"** — a two-word,
@@ -168,11 +147,11 @@ export class WakeWordUnavailableError extends Error {
 		this.code = code;
 	}
 }
-/** Path to the combined wake-word GGUF and the name of the head to bind. */
+/** Model files resolved inside the active native context's bundle. */
 export interface WakeWordModelPaths {
-	/** Absolute path to `wake/openwakeword.gguf`. */
-	gguf: string;
-	/** Name of the classifier head inside the GGUF (e.g. "hey-eliza"). */
+	melspec: string;
+	embedding: string;
+	classifier: string;
 	head: string;
 }
 /**
@@ -290,37 +269,27 @@ export class GgmlWakeWordModel implements WakeWordModel {
 	}
 }
 /**
- * Resolve the bundled wake-word GGUF. Unlike the VAD model this is
- * *optional* — a missing file means "wake word unavailable for this
- * bundle", not "broken bundle". Returns null when the GGUF is absent so
- * callers keep voice mode working (push-to-talk / VAD-gated) without it.
- *
- * Search order:
- *   1. `<bundleRoot>/wake/openwakeword.gguf`
- *   2. `<state-dir>/local-inference/wake/openwakeword.gguf` (shared cache)
- *
- * `head` defaults to the bundle's default wake phrase. The head name is
- * resolved by the native runtime against tensors inside the GGUF, so it
- * is validated at open time, not here.
- *
- * MUST only be called in `local` mode. The cloud-mode router does not
- * reach this (the wake-word setting is rejected there) — see AGENTS.md §5
- * hide-not-disable.
+ * Resolve the exact three files opened by the fused native context. Shared
+ * cache files cannot make this bundle ready: the FFI open call receives only
+ * the context and head, not an alternate model path. Missing files leave the
+ * optional detector unavailable; malformed model contents fail at native open.
  */
 export function resolveWakeWordModel(opts: {
 	bundleRoot?: string;
 	head?: string;
 }): WakeWordModelPaths | null {
-	const headName = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
-	const candidates: string[] = [];
-	if (opts.bundleRoot) {
-		candidates.push(path.join(opts.bundleRoot, OPENWAKEWORD_GGUF_REL_PATH));
-	}
-	candidates.push(path.join(localInferenceRoot(), OPENWAKEWORD_GGUF_REL_PATH));
-	for (const c of candidates) {
-		if (existsSync(c)) return { gguf: path.resolve(c), head: headName };
-	}
-	return null;
+	if (!opts.bundleRoot) return null;
+	const head = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+	const root = path.resolve(opts.bundleRoot, OPENWAKEWORD_DIR_REL_PATH);
+	const paths = {
+		melspec: path.join(root, `${head}.melspec.gguf`),
+		embedding: path.join(root, `${head}.embedding.gguf`),
+		classifier: path.join(root, `${head}.classifier.gguf`),
+		head,
+	};
+	return [paths.melspec, paths.embedding, paths.classifier].every(existsSync)
+		? paths
+		: null;
 }
 /**
  * Resolve the standalone wakeword-cpp library + three-GGUF bundle.
@@ -428,9 +397,9 @@ export function resolveWakeWordStandalonePaths(opts: {
  *
  * Provider order:
  *   1. `GgmlWakeWordModel` (this file) — the fused-`libelizainference` path
- *      that consumes `wake/openwakeword.gguf` from the bundle cache via the
- *      `eliza_inference_wakeword_*` ABI. Tried first whenever the bundled GGUF
- *      is on disk; uses the same `ffi`/`ctx` as VAD / speaker / TTS / ASR.
+ *      that consumes the active bundle’s three head GGUFs via the
+ *      `eliza_inference_wakeword_*` ABI. Tried first whenever all three model files
+ *      are on disk; uses the same `ffi`/`ctx` as VAD / speaker / TTS / ASR.
  *   2. `OpenWakeWordGgmlModel` from `./wake-word-ggml.ts` — the standalone
  *      `plugins/plugin-local-inference/native/wakeword-cpp` build (three GGUFs). Guarded
  *      fallback for paths where the fused build lacks the wake-word runtime.

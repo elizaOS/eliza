@@ -24,5 +24,8 @@ describe("provider tokenizer", () => {
     const tokens = tokenizeText(owner, ModelType.TEXT_SMALL, text);
     expect(detokenizeText(owner, ModelType.TEXT_SMALL, tokens)).toBe(text);
     expect(countTokensForModel("gpt-4o", text)).toBe(tokens.length);
-  }, 30_000);
+    // Two complete BPE encodes of one 140k-character piece are CPU-heavy on
+    // hosted runners. Keep the full input and parity checks; this is a
+    // correctness regression, not a 30-second performance budget.
+  }, 120_000);
 });

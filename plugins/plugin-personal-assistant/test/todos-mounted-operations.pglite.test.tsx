@@ -16,10 +16,24 @@ import {
   type LifeOpsRouteContext,
 } from "../src/routes/lifeops-routes.ts";
 
-vi.mock(
-  "@elizaos/ui/api",
-  async () => import("../../../packages/ui/src/api/client.ts"),
-);
+// PA aliases the UI root and API barrel to one stub. Keep the real mounted
+// renderer and client together so this override cannot erase spatial exports.
+vi.mock("@elizaos/ui", async () => {
+  const api = await import("../../../packages/ui/src/api/client.ts");
+  const spatial = await import(
+    "../../../packages/ui/src/spatial/primitives.tsx"
+  );
+  return {
+    ...api,
+    SpatialButton: spatial.Button,
+    SpatialCard: spatial.Card,
+    SpatialDivider: spatial.Divider,
+    SpatialHStack: spatial.HStack,
+    SpatialList: spatial.List,
+    SpatialText: spatial.Text,
+    SpatialVStack: spatial.VStack,
+  };
+});
 
 import { client } from "../../../packages/ui/src/api/client.ts";
 import { TodosView } from "../../plugin-todos/src/components/todos/TodosView.tsx";
