@@ -427,8 +427,8 @@
       "default": "./dist/index.js"
     },
     "./desktop-shell": {
-      "types": "./dist/desktop-shell.d.ts",
       "eliza-source": "./src/desktop-shell.ts",
+      "types": "./dist/desktop-shell.d.ts",
       "import": "./dist/desktop-shell.js",
       "default": "./dist/desktop-shell.js"
     },
@@ -438,8 +438,8 @@
       "default": "./dist/entry.js"
     },
     "./account-pool": {
-      "types": "./src/account-pool.ts",
       "eliza-source": "./src/account-pool.ts",
+      "types": "./src/account-pool.ts",
       "bun": "./src/account-pool.ts",
       "import": "./dist/account-pool.js",
       "default": "./dist/account-pool.js"
@@ -490,8 +490,8 @@
       "default": "./dist/services/vault-mirror.js"
     },
     "./services/auth-store": {
-      "types": "./dist/services/auth-store.d.ts",
       "eliza-source": "./src/services/auth-store.ts",
+      "types": "./dist/services/auth-store.d.ts",
       "import": "./dist/services/auth-store.js",
       "default": "./dist/services/auth-store.js"
     },
@@ -546,32 +546,32 @@
       "default": "./dist/ui-compat.js"
     },
     "./dev-settings-banner-style": {
-      "types": "./dist/dev-settings-banner-style.d.ts",
       "eliza-source": "./src/dev-settings-banner-style.ts",
+      "types": "./dist/dev-settings-banner-style.d.ts",
       "import": "./dist/dev-settings-banner-style.js",
       "default": "./dist/dev-settings-banner-style.js"
     },
     "./dev-settings-figlet-heading": {
-      "types": "./dist/dev-settings-figlet-heading.d.ts",
       "eliza-source": "./src/dev-settings-figlet-heading.ts",
+      "types": "./dist/dev-settings-figlet-heading.d.ts",
       "import": "./dist/dev-settings-figlet-heading.js",
       "default": "./dist/dev-settings-figlet-heading.js"
     },
     "./dev-settings-table": {
-      "types": "./dist/dev-settings-table.d.ts",
       "eliza-source": "./src/dev-settings-table.ts",
+      "types": "./dist/dev-settings-table.d.ts",
       "import": "./dist/dev-settings-table.js",
       "default": "./dist/dev-settings-table.js"
     },
     "./terminal/links": {
-      "types": "./dist/terminal/links.d.ts",
       "eliza-source": "./src/terminal/links.ts",
+      "types": "./dist/terminal/links.d.ts",
       "import": "./dist/terminal/links.js",
       "default": "./dist/terminal/links.js"
     },
     "./terminal/theme": {
-      "types": "./dist/terminal/theme.d.ts",
       "eliza-source": "./src/terminal/theme.ts",
+      "types": "./dist/terminal/theme.d.ts",
       "import": "./dist/terminal/theme.js",
       "default": "./dist/terminal/theme.js"
     }

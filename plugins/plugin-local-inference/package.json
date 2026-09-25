@@ -7,57 +7,57 @@
 	"types": "src/index.ts",
 	"exports": {
 		".": {
-			"types": "./src/index.ts",
 			"eliza-source": "./src/index.ts",
+			"types": "./src/index.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./voice-wake": {
-			"types": "./src/voice-wake.ts",
 			"eliza-source": "./src/voice-wake.ts",
+			"types": "./src/voice-wake.ts",
 			"import": "./dist/voice-wake.js",
 			"default": "./dist/voice-wake.js"
 		},
 		"./runtime": {
-			"types": "./src/runtime/index.ts",
 			"eliza-source": "./src/runtime/index.ts",
+			"types": "./src/runtime/index.ts",
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
 		"./runtime/embedding-presets": {
-			"types": "./src/runtime/embedding-presets.ts",
 			"eliza-source": "./src/runtime/embedding-presets.ts",
+			"types": "./src/runtime/embedding-presets.ts",
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
 		"./routes": {
-			"types": "./src/routes/index.ts",
 			"eliza-source": "./src/routes/index.ts",
+			"types": "./src/routes/index.ts",
 			"import": "./dist/routes/index.js",
 			"default": "./dist/routes/index.js"
 		},
 		"./local-inference-routes": {
-			"types": "./src/local-inference-routes.ts",
 			"eliza-source": "./src/local-inference-routes.ts",
+			"types": "./src/local-inference-routes.ts",
 			"import": "./dist/local-inference-routes.js",
 			"default": "./dist/local-inference-routes.js"
 		},
 		"./services": {
-			"types": "./src/services/index.ts",
 			"eliza-source": "./src/services/index.ts",
+			"types": "./src/services/index.ts",
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
 		"./voice-workbench": {
-			"types": "./src/voice-workbench.ts",
 			"eliza-source": "./src/voice-workbench.ts",
+			"types": "./src/voice-workbench.ts",
 			"import": "./dist/voice-workbench.js",
 			"default": "./dist/voice-workbench.js"
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {
-			"types": "./src/*.ts",
 			"eliza-source": "./src/*.ts",
+			"types": "./src/*.ts",
 			"import": "./dist/*.js",
 			"default": "./dist/*.js"
 		}

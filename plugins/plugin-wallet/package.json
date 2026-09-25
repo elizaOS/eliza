@@ -14,16 +14,16 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "default": "./dist/index.mjs"
     },
     "./package.json": "./package.json",
     "./*.css": "./dist/*.css",
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }

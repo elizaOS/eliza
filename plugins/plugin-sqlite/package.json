@@ -11,15 +11,15 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
     "./portable": {
-      "types": "./dist/portable.d.ts",
       "eliza-source": "./portable.ts",
+      "types": "./dist/portable.d.ts",
       "import": "./dist/portable.js",
       "default": "./dist/portable.js"
     }

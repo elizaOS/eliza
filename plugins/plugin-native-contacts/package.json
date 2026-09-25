@@ -21,27 +21,27 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "types": "./dist/plugin.d.ts",
       "eliza-source": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./bridge": {
-      "types": "./dist/bridge.d.ts",
       "eliza-source": "./src/bridge.ts",
+      "types": "./dist/bridge.d.ts",
       "import": "./dist/bridge.js",
       "default": "./dist/bridge.js"
     }
