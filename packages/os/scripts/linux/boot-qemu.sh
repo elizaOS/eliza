@@ -38,21 +38,46 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${ISO}" ]]; then
-  ISO="$(ls -t "${ROOT}"/out/elizaos-linux-${ARCH}-*.iso 2>/dev/null | head -1 || true)"
-fi
-[[ -f "${ISO}" ]] || { echo "no ${ARCH} ISO found; pass one explicitly" >&2; exit 1; }
-[[ "${FIRMWARE}" == uefi || "${FIRMWARE}" == bios ]] || {
-  echo "ELIZAOS_QEMU_FIRMWARE must be uefi or bios" >&2; exit 64;
+case "$ARCH" in
+  amd64|arm64|riscv64) ;;
+  *) echo "unsupported architecture: $ARCH" >&2; exit 64 ;;
+esac
+[[ "$FIRMWARE" == uefi || ( "$FIRMWARE" == bios && "$ARCH" == amd64 ) ]] || {
+  echo "firmware must be uefi, or bios on amd64" >&2; exit 64;
 }
+[[ "$MEMORY" =~ ^[1-9][0-9]*[MGT]?$ && "$CPUS" =~ ^[1-9][0-9]*$ ]] || {
+  echo "memory must be a positive size in MiB (or M/G/T); CPUs must be a positive count" >&2; exit 64;
+}
+[[ "$SSH_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( SSH_PORT <= 65535 )) || {
+  echo "SSH port must be between 1 and 65535" >&2; exit 64;
+}
+if [[ -z "$ISO" ]]; then
+  shopt -s nullglob
+  for candidate in "$ROOT"/out/elizaos-linux-"$ARCH"-*.iso; do
+    if [[ -f "$candidate" && ( -z "$ISO" || "$candidate" -nt "$ISO" ) ]]; then
+      ISO="$candidate"
+    fi
+  done
+fi
+[[ -f "$ISO" && -s "$ISO" ]] || { echo "no nonempty $ARCH ISO found; pass one explicitly" >&2; exit 1; }
+
+# QEMU parses commas inside drive arguments even when the shell quotes them.
+check_drive_path() {
+  if [[ "$1" == *','* || "$1" == *$'\n'* || "$1" == *$'\r'* ]]; then
+    echo "QEMU drive paths cannot contain commas or line breaks: $1" >&2
+    exit 64
+  fi
+}
+check_drive_path "$ISO"
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "${tmp}"' EXIT
+trap 'rm -rf -- "${tmp}"' EXIT
+check_drive_path "$tmp"
 
 common=(
   -m "${MEMORY}" -smp "${CPUS}" -boot d
-  -drive "file=${ISO},media=cdrom,readonly=on"
-  -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22"
+  -drive "file=${ISO},format=raw,media=cdrom,readonly=on"
+  -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
   -device virtio-net-pci,netdev=net0
   -device virtio-keyboard-pci -device virtio-tablet-pci
   -display "${DISPLAY_BACKEND}"
@@ -93,8 +118,8 @@ case "${ARCH}" in
     ;;
   riscv64)
     [[ "${FIRMWARE}" == uefi ]] || { echo "riscv64 requires UEFI" >&2; exit 64; }
-    code="${ELIZAOS_RISCV_CODE:-/usr/share/qemu/RISCV_VIRT_CODE.fd}"
-    vars="${ELIZAOS_RISCV_VARS:-/usr/share/qemu/RISCV_VIRT_VARS.fd}"
+    code="${ELIZAOS_RISCV_CODE:-/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd}"
+    vars="${ELIZAOS_RISCV_VARS:-/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd}"
     cp "${vars}" "${tmp}/RISCV_VIRT_VARS.fd"
     command=(qemu-system-riscv64 -machine virt -cpu rv64 -device virtio-gpu-pci "${common[@]}"
       -drive "if=pflash,format=raw,readonly=on,file=${code}"
@@ -102,6 +127,11 @@ case "${ARCH}" in
     ;;
   *) echo "unsupported architecture: ${ARCH}" >&2; exit 64 ;;
 esac
+
+if [[ "$FIRMWARE" == uefi ]]; then
+  check_drive_path "$code"
+  [[ -f "$code" && -s "$code" ]] || { echo "missing firmware code: $code" >&2; exit 1; }
+fi
 
 echo "booting ${ISO} (${ARCH}, ${FIRMWARE}); ssh localhost:${SSH_PORT}"
 "${command[@]}"

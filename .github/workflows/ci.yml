@@ -14,6 +14,9 @@ env:
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: --max-old-space-size=8192
 jobs:
+  os:
+    name: OS verification
+    uses: ./.github/workflows/os.yml
   quality:
     name: Quality
     runs-on: ubuntu-24.04
@@ -417,6 +420,7 @@ jobs:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
     needs:
+      - os
       - quality
       - tests
       - tests_server
@@ -441,6 +445,7 @@ jobs:
       - name: Require every CI job to succeed
         env:
           RESULTS: |-
+            os=${{ needs.os.result }}
             quality=${{ needs.quality.result }}
             tests=${{ needs.tests.result }}
             tests_server=${{ needs.tests_server.result }}

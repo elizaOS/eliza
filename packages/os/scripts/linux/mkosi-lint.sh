@@ -44,12 +44,15 @@ require_text 'Checksum=yes' "${MKOSI_DIR}/mkosi.conf"
 require_text '    python3-cryptography' "${MKOSI_DIR}/mkosi.conf"
 require_text '    gdisk' "${MKOSI_DIR}/mkosi.conf"
 require_text '    e2fsprogs' "${MKOSI_DIR}/mkosi.conf"
+require_text '    dosfstools' "${MKOSI_DIR}/mkosi.conf"
+require_text '    mtools' "${MKOSI_DIR}/mkosi.conf"
 require_text '    btrfs-progs' "${MKOSI_DIR}/mkosi.conf"
 require_text '    ntfs-3g' "${MKOSI_DIR}/mkosi.conf"
 require_text '    zstd' "${MKOSI_DIR}/mkosi.conf"
-for package in gdm3 gnome-core gnome-initial-setup speech-dispatcher-espeak-ng xdg-desktop-portal-gnome; do
+for package in plymouth plymouth-label gdm3 gnome-core gnome-initial-setup speech-dispatcher-espeak-ng xdg-desktop-portal-gnome; do
     require_text "    ${package}" "${MKOSI_DIR}/mkosi.conf"
 done
+require_text '    wireless-regdb' "${MKOSI_DIR}/mkosi.conf"
 require_text 'ShimBootloader=signed' "${MKOSI_DIR}/mkosi.conf.d/10-arch-amd64.conf"
 require_text 'BiosBootloader=grub' "${MKOSI_DIR}/mkosi.conf.d/10-arch-amd64.conf"
 require_text 'ShimBootloader=signed' "${MKOSI_DIR}/mkosi.conf.d/10-arch-arm64.conf"
@@ -89,9 +92,16 @@ require_text '($1 * 512) + $2' \
 for unit in elizaos-session.target elizaos-agent.service elizaos-desktop.service; do
     require_file "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user/${unit}"
 done
-require_text 'ConditionPathIsExecutable=/opt/elizaos/bin/eliza-agent' \
+if command -v systemd-analyze >/dev/null 2>&1; then
+    "${ROOT}/../packaging/debian/validate-user-units" \
+        "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user" /opt/elizaos \
+        && ok "systemd user units validate" || bad "invalid systemd user units"
+else
+    echo "[mkosi-lint] skip: systemd-analyze is unavailable"
+fi
+require_text 'ConditionFileIsExecutable=/opt/elizaos/bin/eliza-agent' \
     "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user/elizaos-agent.service"
-require_text 'ConditionPathIsExecutable=/opt/elizaos/bin/eliza-desktop' \
+require_text 'ConditionFileIsExecutable=/opt/elizaos/bin/eliza-desktop' \
     "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user/elizaos-desktop.service"
 require_text 'ExecStart=/usr/bin/eliza-desktop --tray --overlay' \
     "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user/elizaos-desktop.service"
@@ -106,6 +116,7 @@ require_text 'enable elizaos-session.target' \
 require_file "${MKOSI_DIR}/mkosi.extra/etc/grub.d/42_elizaos_recovery"
 [ -x "${MKOSI_DIR}/mkosi.extra/etc/grub.d/42_elizaos_recovery" ] || bad "recovery GRUB generator is not executable"
 require_text 'systemd.unit=rescue.target' "${MKOSI_DIR}/mkosi.extra/etc/grub.d/42_elizaos_recovery"
+require_text 'ro systemd.volatile=state' "${MKOSI_DIR}/mkosi.extra/etc/grub.d/42_elizaos_recovery"
 require_text '--hotkey=r' "${MKOSI_DIR}/mkosi.extra/etc/grub.d/42_elizaos_recovery"
 recovery_verify_unit="${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/system/elizaos-recovery-verify.service"
 recovery_verify_helper="${MKOSI_DIR}/mkosi.extra/usr/libexec/elizaos-recovery-verify"
@@ -134,15 +145,23 @@ require_text 'logo_blue_nobg.svg' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'glib-compile-schemas /usr/share/glib-2.0/schemas' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'gtk-update-icon-cache --force /usr/share/icons/elizaOS' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'systemctl set-default graphical.target' "${MKOSI_DIR}/mkosi.postinst.chroot"
+network_preset="${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/system-preset/00-elizaos-network.preset"
+require_file "$network_preset"
+for unit in systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service; do
+    require_text "disable $unit" "$network_preset"
+done
+for unit in NetworkManager.service NetworkManager-wait-online.service systemd-resolved.service; do
+    require_text "enable $unit" "$network_preset"
+done
 require_text 'systemctl --global enable elizaos-session.target' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'systemctl enable eliza-control-broker.socket' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'systemctl enable elizaos-grow-persistent.service' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'systemctl enable elizaos-recovery-verify.service' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'control_source="${source_root}/linux/control"' "${MKOSI_DIR}/mkosi.postinst.chroot"
-require_text 'eliza_control/installer.py' "${MKOSI_DIR}/mkosi.postinst.chroot"
-require_text 'eliza_control/provision.py' "${MKOSI_DIR}/mkosi.postinst.chroot"
-require_text 'systemd/eliza-control-provision.service' "${MKOSI_DIR}/mkosi.postinst.chroot"
-require_text 'protocol/installer-execution.schema.json' "${MKOSI_DIR}/mkosi.postinst.chroot"
+require_text 'eliza_control/installer.py' "${MKOSI_DIR}/../../control-inputs.list"
+require_text 'eliza_control/provision.py' "${MKOSI_DIR}/../../control-inputs.list"
+require_text 'systemd/eliza-control-provision.service' "${MKOSI_DIR}/../../control-inputs.list"
+require_text 'protocol/installer-execution.schema.json' "${MKOSI_DIR}/../../control-inputs.list"
 require_text '/etc/sudoers.d/010-elizaos-agent' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'ELIZAOS_BUILD_MODE=development' "${MKOSI_DIR}/mkosi.conf"
 require_text 'desktop-artifact-manifest.json' "${MKOSI_DIR}/mkosi.postinst.chroot"
@@ -200,8 +219,8 @@ require_text 'terminationReason' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify
 require_text '"firmwareMode": args.firmware_mode' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
 require_text '"version": version_line' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
 require_text 'virt,accel=hvf,gic-version=max' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'Started gdm.service - GNOME Display Manager' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'Reached target Graphical Interface' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'Started gdm.service - GNOME Display Manager' "${ROOT}/../../scripts/linux/mkosi_console.py"
+require_text 'Reached target Graphical Interface' "${ROOT}/../../scripts/linux/mkosi_console.py"
 require_text 'choices=("graphical", "recovery")' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
 require_text 'qemu_recovery_selection_and_service_unavailability_only' \
     "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
@@ -214,7 +233,7 @@ require_text 'virtual USB expanded-byte readback digest mismatch' \
     "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'home sentinel did not survive the second boot' \
     "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
-require_text 'Reached target Graphical Interface' \
+require_text 'from mkosi_console import' \
     "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'work image must not already exist' \
     "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
@@ -232,7 +251,6 @@ require_text 'all input and output paths must be distinct' \
     "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'document.get("returnCode") != 0' \
     "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
-require_text 'Secure Boot is unsupported on riscv64' "${ROOT}/mkosi/README.md"
 require_text 'elizaos-system' "${ROOT}/../../scripts/linux/generate-mkosi-sbom.sh"
 require_text 'mount --read-only --options noload' \
     "${ROOT}/../../scripts/linux/generate-mkosi-sbom.sh"
@@ -270,10 +288,14 @@ secure_gui_packages="$(sed -n '/^Packages=/,$p' "${MKOSI_DIR}/mkosi.profiles/sec
 
 if command -v mkosi >/dev/null 2>&1; then
     for arch in x86-64 arm64 riscv64; do
-        (cd "$MKOSI_DIR" && mkosi --architecture "$arch" summary >/dev/null) \
-            || bad "mkosi summary failed for $arch"
+        for profile in default gui secure secure-gui; do
+            args=(--architecture "$arch")
+            if [ "$profile" != default ]; then args+=(--profile "$profile"); fi
+            (cd "$MKOSI_DIR" && mkosi "${args[@]}" summary >/dev/null) \
+                || bad "mkosi summary failed for $arch/$profile"
+        done
     done
-    ok "mkosi parsed all architecture configurations"
+    ok "mkosi architecture/profile parsing checks finished"
 else
     echo "[mkosi-lint] skip: mkosi is unavailable; static checks only"
 fi

@@ -61,11 +61,7 @@ function serializeError(err: unknown): SerializedError {
 }
 
 function getRequestOrigin(req: Request): string | null {
-  const origin = req.headers.get("origin");
-  if (!origin || origin === "null") {
-    return null;
-  }
-  return origin;
+  return req.headers.get("origin");
 }
 
 function configuredAllowedOrigins(
@@ -141,6 +137,9 @@ function addExpectedDriveSnapshot(request: WriteRequest, plan: WritePlan) {
       sizeBytes: plan.drive.sizeBytes,
       name: plan.drive.name,
       ...(plan.drive.stableId ? { stableId: plan.drive.stableId } : {}),
+      ...(plan.drive.kernelDeviceIdentity
+        ? { kernelDeviceIdentity: plan.drive.kernelDeviceIdentity }
+        : {}),
     },
   };
 }

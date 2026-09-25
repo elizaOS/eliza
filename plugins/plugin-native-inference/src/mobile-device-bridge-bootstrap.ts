@@ -1536,9 +1536,9 @@ export function resolveBionicStopSequences(
   return Array.from(
     new Set([
       ...(requested ?? []).filter((stop) => stop.length > 0),
-      "<end_of_turn>",
-      "<start_of_turn>",
-      "<endoftext>",
+      "<turn|>",
+      "<|turn>",
+      "<eos>",
     ]),
   );
 }
@@ -1642,27 +1642,24 @@ function renderGemmaPromptMessages(
   for (const m of messages) {
     const content = m.content.trim();
     if (!content) continue;
-    out += `<start_of_turn>${roleForGemmaPrompt(m.role)}\n${content}<end_of_turn>\n`;
+    out += `<|turn>${roleForGemmaPrompt(m.role)}\n${content}<turn|>\n`;
   }
-  return `${out}<start_of_turn>model\n`;
+  return `${out}<|turn>model\n`;
 }
 
-/** Gemma fallback prompt for bionic paths built without device-bridge templating. */
+/** Gemma 4 framing from the shipped GGUF chat template. Older Gemma turn
+ * markers tokenize as ordinary text with this model and must not be rendered. */
 export function buildGemmaBionicPrompt(params: GenerateTextParams): string {
   const prompt = typeof params.prompt === "string" ? params.prompt : "";
-  const trimmedPrompt = prompt.trimEnd();
   // If the caller already handed us a complete Gemma prompt, use it verbatim.
-  if (
-    trimmedPrompt.includes("<start_of_turn>") &&
-    trimmedPrompt.includes("<start_of_turn>model")
-  ) {
-    return trimmedPrompt;
+  if (prompt.includes("<|turn>") && prompt.includes("<|turn>model")) {
+    return prompt;
   }
   const msgs = prompt.includes("<|im_start|>")
     ? collectChatMlPromptMessages(prompt, params.system)
     : collectMessagesForNativeTemplate(params);
   if (!msgs || msgs.length === 0) {
-    return `<start_of_turn>user\n${flattenChatParamsForPrompt(params).trim()}<end_of_turn>\n<start_of_turn>model\n`;
+    return `<|turn>user\n${flattenChatParamsForPrompt(params).trim()}<turn|>\n<|turn>model\n`;
   }
   return renderGemmaPromptMessages(msgs);
 }

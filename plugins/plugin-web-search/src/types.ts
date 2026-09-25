@@ -34,6 +34,8 @@ export type SearchResponse = Omit<CoreSearchResponse, "results"> & {
     responseTime?: number;
     images: SearchImage[];
     results: SearchResult[];
+    /** Exact user-authorized browser search session; absent for API providers. */
+    browser?: { targetId: string; profileId: string; tabId: string; url: string };
 };
 
 export interface SearchOptions extends CoreSearchOptions {

@@ -6,7 +6,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isMainModule } from "./is-main.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(here, "../..");
@@ -222,7 +221,7 @@ function parseArgs(argv) {
   return args;
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   const args = parseArgs(process.argv.slice(2));
   if (args) {
     const result = provisionCuttlefishE1(args);

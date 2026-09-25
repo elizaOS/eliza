@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "repository": "elizaOS/eliza",
+  "sourceRef": "shaw/mega-refactor",
+  "commit": "18f34d2d66fbc0a3c676a86d910e84ac1b8e35c6",
+  "commitTimestamp": "2026-09-24T03:27:12Z",
+  "submodules": "recursive"
+}

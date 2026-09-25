@@ -268,3 +268,38 @@ test("confirmed=true with byte-backed recompute is CONFIRMED", async () => {
   assert.equal(result.blocked, false);
   assert.equal(result.verified.length, 4);
 });
+
+test("double-build CLI cannot report reproducible without both sets of component bytes", async () => {
+  const { mkdir } = await import("node:fs/promises");
+  const { spawnSync } = await import("node:child_process");
+  const dir = path.join(workDir, "cli-proof");
+  await mkdir(dir);
+  const manifest = await buildFixture(dir, deterministicComponents());
+  const manifestPath = path.join(dir, "manifest.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const command = [
+    new URL("../verify-image-reproducibility.mjs", import.meta.url).pathname,
+    "--build-a",
+    manifestPath,
+    "--build-b",
+    manifestPath,
+    "--allow-absent",
+  ];
+  const blocked = spawnSync(process.execPath, command, { encoding: "utf8" });
+  assert.equal(blocked.status, 3, blocked.stderr);
+  assert.match(blocked.stderr, /BLOCKED.*component bytes remain unverified/);
+  assert.doesNotMatch(blocked.stdout, /REPRODUCIBLE/);
+  const half = spawnSync(
+    process.execPath,
+    [...command, "--components-dir-a", dir],
+    { encoding: "utf8" },
+  );
+  assert.equal(half.status, 3, half.stderr);
+  const complete = spawnSync(
+    process.execPath,
+    [...command, "--components-dir-a", dir, "--components-dir-b", dir],
+    { encoding: "utf8" },
+  );
+  assert.equal(complete.status, 0, complete.stderr);
+  assert.match(complete.stdout, /REPRODUCIBLE/);
+});

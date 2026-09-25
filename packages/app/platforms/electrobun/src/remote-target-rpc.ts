@@ -16,6 +16,7 @@ import {
 	TailscaleCliManagedNetworkJoiner,
 } from "./remote-target-managed-network";
 import {
+	type RemoteTargetCommandExecutor,
 	RemoteTargetRunner,
 	type RemoteTargetRunnerStatus,
 } from "./remote-target-runner";
@@ -85,7 +86,7 @@ interface RemoteTargetLoopbackConfiguration {
 }
 
 interface PreparedRemoteTargetLoopbackConfiguration {
-	executor: LoopbackRemoteTargetExecutor;
+	executor: RemoteTargetCommandExecutor;
 	key: string;
 	pollIntervalMs?: number;
 }
@@ -184,6 +185,73 @@ export class RemoteTargetDesktopService {
 		});
 	}
 
+	/** App-owned background hosts inject their executor; keys and replay state stay in the same runner. */
+	async configureBackgroundExecutor(
+		executor: RemoteTargetCommandExecutor,
+	): Promise<void> {
+		await this.enqueueConfiguration(async () => {
+			await this.installLoopbackConfiguration({
+				executor,
+				key: "background-host",
+			});
+		});
+	}
+
+	async resumeEligibleBackground(): Promise<DesktopRemoteTargetResumeResult> {
+		const runner = this.requireRunner();
+		return this.resumeEligibleRunner(runner);
+	}
+
+	private async resumeEligibleRunner(
+		runner: RemoteTargetRunner,
+	): Promise<DesktopRemoteTargetResumeResult> {
+		const enrollmentBeforeRecovery = await this.vault.load();
+		if (enrollmentBeforeRecovery?.status === "enrolled") {
+			await runner.recoverStagedActivations();
+		}
+		const [enrollment, state] = await Promise.all([
+			this.vault.load(),
+			this.stateStore.read(),
+		]);
+		const activeSessions = Object.values(state.sessions).filter(
+			(session) =>
+				session.activationState !== "staged" &&
+				session.stoppedAt === null &&
+				session.grant.revokedAt === null &&
+				(session.grant.expiresAt === null ||
+					session.grant.expiresAt >= this.now()),
+		);
+		const stagedSessions = Object.values(state.sessions).filter(
+			(session) =>
+				session.activationState === "staged" &&
+				session.stoppedAt === null &&
+				session.grant.revokedAt === null,
+		);
+		if (enrollment?.status !== "enrolled") {
+			if (activeSessions.length > 0) {
+				throw new Error(
+					"Remote target credentials are unavailable for the durable active session.",
+				);
+			}
+			return {
+				resumed: false,
+				reason: "not_enrolled" as const,
+			};
+		}
+		if (activeSessions.length === 0) {
+			if (stagedSessions.length > 0) {
+				await runner.start();
+				return { resumed: true, reason: "activation_recovery" as const };
+			}
+			return {
+				resumed: false,
+				reason: "no_active_authority" as const,
+			};
+		}
+		await runner.start();
+		return { resumed: true, reason: "active_authority" as const };
+	}
+
 	/**
 	 * Rebuild the ephemeral runner after a desktop-process restart, but only
 	 * when both halves of its durable authority still exist: an enrolled host
@@ -197,51 +265,7 @@ export class RemoteTargetDesktopService {
 		const prepared = this.prepareLoopbackConfiguration(input);
 		return this.enqueueConfiguration(async () => {
 			const runner = await this.installLoopbackConfiguration(prepared);
-			const enrollmentBeforeRecovery = await this.vault.load();
-			if (enrollmentBeforeRecovery?.status === "enrolled") {
-				await runner.recoverStagedActivations();
-			}
-			const [enrollment, state] = await Promise.all([
-				this.vault.load(),
-				this.stateStore.read(),
-			]);
-			const activeSessions = Object.values(state.sessions).filter(
-				(session) =>
-					session.activationState !== "staged" &&
-					session.stoppedAt === null &&
-					session.grant.revokedAt === null &&
-					(session.grant.expiresAt === null ||
-						session.grant.expiresAt >= this.now()),
-			);
-			const stagedSessions = Object.values(state.sessions).filter(
-				(session) =>
-					session.activationState === "staged" &&
-					session.stoppedAt === null &&
-					session.grant.revokedAt === null,
-			);
-			if (enrollment?.status !== "enrolled") {
-				if (activeSessions.length > 0) {
-					throw new Error(
-						"Remote target credentials are unavailable for the durable active session.",
-					);
-				}
-				return {
-					resumed: false,
-					reason: "not_enrolled" as const,
-				};
-			}
-			if (activeSessions.length === 0) {
-				if (stagedSessions.length > 0) {
-					await runner.start();
-					return { resumed: true, reason: "activation_recovery" as const };
-				}
-				return {
-					resumed: false,
-					reason: "no_active_authority" as const,
-				};
-			}
-			await runner.start();
-			return { resumed: true, reason: "active_authority" as const };
+			return this.resumeEligibleRunner(runner);
 		});
 	}
 
@@ -261,7 +285,8 @@ export class RemoteTargetDesktopService {
 		if (
 			platform !== "macos" &&
 			platform !== "windows" &&
-			platform !== "linux"
+			platform !== "linux" &&
+			platform !== "android"
 		) {
 			throw new Error("Remote target desktop platform is invalid.");
 		}
@@ -470,6 +495,7 @@ export class RemoteTargetDesktopService {
 	private async finishActivation(
 		enrollment: EnrolledRemoteTargetVaultRecord,
 		activation: RemoteTargetActivationResponse,
+		browserProfileId?: string,
 	): Promise<DesktopRemoteTargetActivationResult> {
 		const installer =
 			this.runner ??
@@ -487,7 +513,7 @@ export class RemoteTargetDesktopService {
 			);
 		this.runner ??= installer;
 		try {
-			await installer.installActivation(activation);
+			await installer.installActivation(activation, browserProfileId);
 		} catch (installError) {
 			try {
 				await this.transport.compensateActivation({
@@ -563,7 +589,13 @@ export class RemoteTargetDesktopService {
 				enrollment,
 				sessionId,
 			});
-			return this.finishActivation(enrollment, activation);
+			return this.finishActivation(
+				enrollment,
+				activation,
+				value.browserProfileId === undefined
+					? undefined
+					: requireString(value.browserProfileId, "browser profile id", 256),
+			);
 		});
 	}
 
@@ -589,7 +621,13 @@ export class RemoteTargetDesktopService {
 				...(sessionId ? { sessionId } : {}),
 				code,
 			});
-			return this.finishActivation(enrollment, activation);
+			return this.finishActivation(
+				enrollment,
+				activation,
+				value.browserProfileId === undefined
+					? undefined
+					: requireString(value.browserProfileId, "browser profile id", 256),
+			);
 		});
 	}
 

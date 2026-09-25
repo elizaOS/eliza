@@ -327,6 +327,12 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           devicePath: selectedDrive.devicePath,
           sizeBytes: selectedDrive.sizeBytes,
           name: selectedDrive.name,
+          ...(selectedDrive.stableId
+            ? { stableId: selectedDrive.stableId }
+            : {}),
+          ...(selectedDrive.kernelDeviceIdentity
+            ? { kernelDeviceIdentity: selectedDrive.kernelDeviceIdentity }
+            : {}),
         },
       });
       setWritePlan(plan);
@@ -352,6 +358,12 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           devicePath: selectedDrive.devicePath,
           sizeBytes: selectedDrive.sizeBytes,
           name: selectedDrive.name,
+          ...(selectedDrive.stableId
+            ? { stableId: selectedDrive.stableId }
+            : {}),
+          ...(selectedDrive.kernelDeviceIdentity
+            ? { kernelDeviceIdentity: selectedDrive.kernelDeviceIdentity }
+            : {}),
         },
       });
       setWritePlan(plan);

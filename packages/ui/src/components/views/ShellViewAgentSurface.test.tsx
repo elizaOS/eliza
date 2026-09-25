@@ -21,7 +21,14 @@ vi.mock("../../api", () => ({
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({
-    views: ["browser", "settings", "character"].map((id) => ({
+    views: [
+      "browser",
+      "settings",
+      "character",
+      "contacts",
+      "messages",
+      "phone",
+    ].map((id) => ({
       id,
       viewType: "gui",
       installationId: "fixture-installation",
@@ -112,6 +119,7 @@ describe("ShellViewAgentSurface", () => {
         read,
         undefined,
         `${viewId}-native-read`,
+        "fixture-installation",
       );
       expect(sendWsMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -133,6 +141,7 @@ describe("ShellViewAgentSurface", () => {
           capability,
           { id: "send" },
           `${viewId}-denied-${capability}`,
+          "fixture-installation",
         );
         expect(sendWsMessage).toHaveBeenLastCalledWith(
           expect.objectContaining({

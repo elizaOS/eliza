@@ -1,53 +1,18 @@
 #!/usr/bin/env node
 
-/**
- * verify-grizzly-artifacts.mjs — deterministic image↔intent verification for
- * Pixel 11 Pro (grizzly) bring-up.
- *
- * Motivation: a full flash cycle was lost when a vendor.img believed to carry
- * debug.renderengine.backend=skiavkthreaded actually packaged the GL backend —
- * the tree was edited after the image was built. Every flash must be provable:
- * the image content, the prepare stamp it was built under, and the bytes that
- * reach fastboot must be one attested chain.
- *
- * Two modes:
- *
- * 1. Attest (build host, after `m`):
- *      node verify-grizzly-artifacts.mjs attest \
- *        --aosp-root "$HOME/aosp-grizzly" [--out grizzly-artifacts.json]
- *    Verifies the staged product output against the prepare stamp
- *    (.elizaos-prepare-stamp.json), fails closed on any mismatch, then writes
- *    a manifest with sha256 of every image so the flash host can prove it is
- *    flashing exactly what was attested. Copy the manifest alongside the
- *    images.
- *
- * 2. Check (flash host, before fastboot):
- *      node verify-grizzly-artifacts.mjs check \
- *        --manifest grizzly-artifacts.json --artifact-dir ./images
- *    Recomputes sha256 of each local image named in the manifest and refuses
- *    on any mismatch or absence. Prints the attested stamp so the operator
- *    knows exactly which renderer/probe/fstab stance is about to be flashed.
- *
- * Checks performed by attest (all fail closed unless noted):
- *  - prepare stamp exists and is parseable
- *  - staged vendor/build.prop renderengine lines match the stamp
- *    (backend override present iff stamp requests one, graphite value equal)
- *  - staged vendor fstab userdata stance matches the stamp
- *    (conservativeF2fs=false ⇒ stock encryption options intact)
- *  - probe init rc staged iff earlyBootProbes in the stamp
- *  - every image is newer than the newest relevant staged input (a stale
- *    image is exactly the failure this tool exists to prevent)
- *  - ELF max page-size alignment of staged system/vendor binaries we add
- *    (16 KiB kernels reject 4 KiB-aligned ELFs; warn-only when no readelf)
+/** Attest packaged Grizzly images against their prepare stamp and record hashes.
+ * Usage: attest --aosp-root <checkout> [--out <manifest>]
+ *        check --manifest <manifest> --artifact-dir <images>
+ * Staged ELF inspection covers unpacked Eliza libraries only; it does not
+ * qualify APK-contained libraries or demonstrate device boot success.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { isMainModule } from "./is-main.mjs";
 
 const PRODUCT_DEVICE = "grizzly";
 const STAMP_RELATIVE_PATH =
@@ -91,8 +56,9 @@ function sha256File(filePath) {
   const fd = fs.openSync(filePath, "r");
   try {
     const buffer = Buffer.alloc(1024 * 1024);
-    let length;
-    while ((length = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+    while (true) {
+      const length = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (length === 0) break;
       hash.update(buffer.subarray(0, length));
     }
   } finally {
@@ -135,8 +101,9 @@ function newestMtimeUnder(dir, filterRegex = null) {
     let entries;
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
+    } catch (error) {
+      if (error.code === "ENOENT" && current === dir) continue;
+      throw error;
     }
     for (const entry of entries) {
       const full = path.join(current, entry.name);
@@ -189,23 +156,38 @@ function readImageEntry(aospRoot, imagePath, entryPath) {
     } finally {
       fs.closeSync(fd);
     }
-    const sourcePath =
-      header.equals(Buffer.from([0x3a, 0xff, 0x26, 0xed])) &&
-      fs.existsSync(simg2img)
-        ? (execFileSync(simg2img, [imagePath, rawPath]), rawPath)
-        : imagePath;
-    try {
-      const contents = execFileSync(
-        "debugfs",
-        ["-R", `cat /${entryPath}`, sourcePath],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
-      // debugfs can exit zero for a missing entry. Empty output is not proof
-      // that a required file exists, nor that a probe was packaged.
-      return contents.length ? contents : null;
-    } catch {
-      return null;
+    let sourcePath = imagePath;
+    if (header.equals(Buffer.from([0x3a, 0xff, 0x26, 0xed]))) {
+      if (!fs.existsSync(simg2img))
+        throw new Error(`Sparse image conversion requires ${simg2img}`);
+      execFileSync(simg2img, [imagePath, rawPath]);
+      sourcePath = rawPath;
     }
+    const result = spawnSync(
+      "debugfs",
+      ["-R", `cat /${entryPath}`, sourcePath],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    if (result.error || result.status !== 0)
+      throw new Error(
+        `Cannot read ${entryPath} from ${imagePath}: ${result.stderr}`,
+        { cause: result.error },
+      );
+    const diagnostic = result.stderr
+      .split("\n")
+      .filter((line) => !/^debugfs \d/.test(line))
+      .join("\n")
+      .trim();
+    if (
+      diagnostic === `/${entryPath}: File not found by ext2_lookup` &&
+      result.stdout === ""
+    )
+      return null;
+    if (diagnostic)
+      throw new Error(
+        `Cannot read ${entryPath} from ${imagePath}: ${diagnostic}`,
+      );
+    return result.stdout;
   } finally {
     fs.rmSync(temporaryDir, { recursive: true, force: true });
   }
@@ -339,8 +321,7 @@ function assertPackagedVendorEntries(aospRoot, productDir, stamp) {
       .split("\n")
       .find((line) => /\s\/data\s/.test(line) && !line.trim().startsWith("#"));
     if (
-      !userdataLine ||
-      !userdataLine.includes("fileencryption=") ||
+      !userdataLine?.includes("fileencryption=") ||
       !userdataLine.includes("metadata_encryption=")
     )
       fail("packaged vendor fstab lost the stock /data encryption contract");
@@ -358,10 +339,8 @@ function assertPackagedVendorEntries(aospRoot, productDir, stamp) {
 }
 
 // 16 KiB page-size kernels refuse to map ELFs whose LOAD segments are aligned
-// below 16384. Stock vendor blobs are Google's problem; the binaries WE add
-// (Eliza app JNI, inference runtimes) are ours. Uses llvm-readelf from the
-// AOSP host toolchain when present.
-function checkElfAlignment(aospRoot, stagedProductDir) {
+// below 16384. Inspect unpacked Eliza libraries with the AOSP host toolchain.
+export function checkElfAlignment(aospRoot, stagedProductDir) {
   const readelfCandidates = [
     path.join(
       aospRoot,
@@ -371,12 +350,6 @@ function checkElfAlignment(aospRoot, stagedProductDir) {
   const readelf = readelfCandidates.find((candidate) =>
     fs.existsSync(candidate),
   );
-  if (!readelf) {
-    warn(
-      "llvm-readelf not found; skipping 16KiB ELF alignment check — run it manually with system/extras/tools/check_elf_alignment.sh",
-    );
-    return;
-  }
   const targets = [];
   const elizaApp = path.join(stagedProductDir, "system", "priv-app", "Eliza");
   const stack = [elizaApp];
@@ -385,8 +358,9 @@ function checkElfAlignment(aospRoot, stagedProductDir) {
     let entries;
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
+    } catch (error) {
+      if (error.code === "ENOENT" && current === elizaApp) continue;
+      throw error;
     }
     for (const entry of entries) {
       const full = path.join(current, entry.name);
@@ -394,33 +368,32 @@ function checkElfAlignment(aospRoot, stagedProductDir) {
       else if (entry.name.endsWith(".so")) targets.push(full);
     }
   }
-  let misaligned = 0;
-  for (const target of targets) {
-    let output;
-    try {
-      output = execFileSync(readelf, ["-l", target], { encoding: "utf8" });
-    } catch {
-      continue;
-    }
-    for (const line of output.split("\n")) {
-      if (!line.trimStart().startsWith("LOAD")) continue;
-      const align = line.trim().split(/\s+/).at(-1);
-      const value = Number.parseInt(align, 16);
-      if (Number.isFinite(value) && value < 16384) {
-        misaligned += 1;
-        warn(`ELF LOAD alignment ${align} < 0x4000: ${target}`);
-        break;
-      }
-    }
-  }
-  if (misaligned > 0) {
-    fail(
-      `${misaligned} of our shipped ELF(s) are aligned below 16KiB; on a 16KiB-page kernel these fail to load. Rebuild them with -Wl,-z,max-page-size=16384.`,
+  if (targets.length === 0) {
+    info(
+      "No unpacked Eliza libraries available for the staged ELF alignment check.",
     );
+    return;
   }
-  info(
-    `ELF 16KiB alignment verified for ${targets.length} shipped librarie(s)`,
-  );
+  if (!readelf)
+    fail("llvm-readelf is required to inspect staged Eliza libraries");
+  for (const target of targets) {
+    const output = execFileSync(readelf, ["-W", "-l", target], {
+      encoding: "utf8",
+    });
+    const loads = output.split("\n").filter((line) => /^\s*LOAD\s/.test(line));
+    if (loads.length === 0) fail(`No ELF LOAD segments found: ${target}`);
+    for (const line of loads) {
+      const alignment = line.trim().split(/\s+/).at(-1);
+      const value = /^0x[0-9a-f]+$/i.test(alignment) ? Number(alignment) : NaN;
+      if (
+        !Number.isSafeInteger(value) ||
+        value < 16384 ||
+        !Number.isInteger(Math.log2(value))
+      )
+        fail(`Invalid or sub-16KiB ELF LOAD alignment ${alignment}: ${target}`);
+    }
+  }
+  info(`ELF 16KiB alignment verified for ${targets.length} staged libraries`);
 }
 
 function attest({ aospRoot, out }) {
@@ -608,7 +581,7 @@ function check({ manifest: manifestPath, artifactDir }) {
   );
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   const args = parseArgs(process.argv.slice(2));
   if (args.mode === "attest") attest(args);
   else check(args);

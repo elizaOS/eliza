@@ -34,7 +34,6 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.mjs";
 import { resolveAdb } from "./capture-screens.mjs";
-import { isMainModule } from "./is-main.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -208,13 +207,17 @@ function adbArgs(serial, args) {
   return serial ? ["-s", serial, ...args] : args;
 }
 
-function adbRun(adb, serial, args) {
+function adbRun(adb, serial, args, timeout) {
   const result = spawnSync(adb, adbArgs(serial, args), {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
+    timeout,
+    killSignal: "SIGKILL",
   });
   if (result.error) {
-    throw new Error(`adb ${args.join(" ")} failed: ${result.error.message}`);
+    throw new Error(`adb ${args.join(" ")} failed: ${result.error.message}`, {
+      cause: result.error,
+    });
   }
   if (result.status !== 0) {
     throw new Error(
@@ -224,18 +227,21 @@ function adbRun(adb, serial, args) {
   return result.stdout.trim();
 }
 
-function listRunningEmulators(adb) {
-  const stdout = adbRun(adb, null, ["devices"]);
+function listRunningEmulators(adb, timeout = 30_000) {
+  const stdout = adbRun(adb, null, ["devices"], timeout);
   return stdout
     .split(/\r?\n/)
     .filter((line) => /^emulator-\d+\s+device/.test(line))
     .map((line) => line.split(/\s+/)[0]);
 }
 
-function emulatorAvdName(adb, serial) {
+function emulatorAvdName(adb, serial, timeout = 30_000) {
   try {
-    return adbRun(adb, serial, ["emu", "avd", "name"]).split(/\r?\n/)[0].trim();
-  } catch {
+    return adbRun(adb, serial, ["emu", "avd", "name"], timeout)
+      .split(/\r?\n/)[0]
+      .trim();
+  } catch (error) {
+    if (error.cause?.code === "ETIMEDOUT") throw error;
     return null;
   }
 }
@@ -244,26 +250,33 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForBoot(adb, serial, timeoutMs) {
-  adbRun(adb, serial, ["wait-for-device"]);
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+export async function waitForBoot(adb, serial, timeoutMs) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Boot timeout must be a positive integer.");
+  }
+  const deadline = performance.now() + timeoutMs;
+  const run = (args) => {
+    const remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0) throw new Error("Emulator boot deadline elapsed.");
+    return adbRun(adb, serial, args, remaining);
+  };
+  run(["wait-for-device"]);
+  let lastError;
+  while (performance.now() < deadline) {
     try {
-      const completed = adbRun(adb, serial, [
-        "shell",
-        "getprop sys.boot_completed",
-      ]).trim();
+      const completed = run(["shell", "getprop sys.boot_completed"]).trim();
       if (completed === "1") {
-        adbRun(adb, serial, ["shell", "wm dismiss-keyguard"]);
+        run(["shell", "wm dismiss-keyguard"]);
         return;
       }
-    } catch {
-      // keep polling
+    } catch (error) {
+      lastError = error;
     }
-    await sleep(2_000);
+    await sleep(Math.max(0, Math.min(2_000, deadline - performance.now())));
   }
   throw new Error(
     `Emulator did not report sys.boot_completed=1 within ${timeoutMs}ms.`,
+    { cause: lastError },
   );
 }
 
@@ -280,14 +293,21 @@ function startEmulator(emulatorBin, avdName) {
   );
 }
 
-async function findEmulatorSerial(adb, avdName, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const serial of listRunningEmulators(adb)) {
-      const name = emulatorAvdName(adb, serial);
+export async function findEmulatorSerial(adb, avdName, timeoutMs) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Emulator discovery timeout must be a positive integer.");
+  }
+  const deadline = performance.now() + timeoutMs;
+  while (true) {
+    const queryBudget = Math.ceil(deadline - performance.now());
+    if (queryBudget <= 0) break;
+    for (const serial of listRunningEmulators(adb, queryBudget)) {
+      const remaining = Math.ceil(deadline - performance.now());
+      if (remaining <= 0) break;
+      const name = emulatorAvdName(adb, serial, remaining);
       if (name === avdName) return serial;
     }
-    await sleep(2_000);
+    await sleep(Math.max(0, Math.min(2_000, deadline - performance.now())));
   }
   throw new Error(`Could not find a running emulator for AVD ${avdName}.`);
 }
@@ -367,7 +387,6 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-const isMain = isMainModule(import.meta);
-if (isMain) {
+if (import.meta.main) {
   await main();
 }

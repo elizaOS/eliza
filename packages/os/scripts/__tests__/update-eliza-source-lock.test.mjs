@@ -13,10 +13,13 @@ const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 test("source lock updater changes only immutable identity fields", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "eliza-lock-"));
   const lock = path.join(directory, "lock.json");
-  await writeFile(
-    lock,
-    await readFile(path.join(repoRoot, "release/eliza-source.lock.json")),
+  const original = JSON.parse(
+    await readFile(
+      path.join(repoRoot, "release/eliza-source.lock.json"),
+      "utf8",
+    ),
   );
+  await writeFile(lock, JSON.stringify(original));
   await execFileAsync(
     process.execPath,
     [
@@ -34,6 +37,6 @@ test("source lock updater changes only immutable identity fields", async () => {
   assert.equal(updated.commit, "a".repeat(40));
   assert.equal(updated.commitTimestamp, "2026-08-17T12:00:00Z");
   assert.equal(updated.repository, "elizaOS/eliza");
-  assert.equal(updated.sourceRef, "develop");
+  assert.equal(updated.sourceRef, original.sourceRef);
   assert.equal(updated.submodules, "recursive");
 });

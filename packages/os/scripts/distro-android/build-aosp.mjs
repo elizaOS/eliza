@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
 import {
   aospLockPath,
   assertExtractedVendorTree,
@@ -27,17 +28,17 @@ import {
   verifyProprietaryArchive,
 } from "./bootstrap-aosp.mjs";
 import { loadBrandFromArgv } from "./brand-config.mjs";
-import { isMainModule } from "./is-main.mjs";
 import { provisionCuttlefishE1 } from "./provision-cuttlefish-e1.mjs";
 import { withSisoCompatibility } from "./siso-env.mjs";
+import {
+  admitBrowserVendor,
+  bindBrowserCertificate,
+} from "./stage-browser-apps.mjs";
 import { main as syncToAospMain } from "./sync-to-aosp.mjs";
 import { main as validateMain } from "./validate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
-const elizaRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(repoRoot, ".eliza-source"),
-);
 
 // soong_build is single-process and routinely peaks at ~25 GB RSS for a
 // trunk_staging build. Once the kati/clang phases start they fan out to -jN
@@ -152,21 +153,33 @@ function openTrustedDirectoryChain(canonicalDirectory) {
     }
     return { handles, rootOwnerUid };
   } catch (error) {
-    closeDirectoryHandles(handles);
+    try {
+      closeDirectoryHandles(handles);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "AOSP directory validation and cleanup failed.",
+      );
+    }
     throw error;
   }
 }
 
+function throwFailures(errors, message) {
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, message);
+}
+
 function closeDirectoryHandles(handles) {
-  let firstError;
+  const errors = [];
   for (const handle of [...handles].reverse()) {
     try {
       fs.closeSync(handle.fd);
     } catch (error) {
-      firstError ??= error;
+      errors.push(error);
     }
   }
-  if (firstError) throw firstError;
+  throwFailures(errors, "AOSP directory handle cleanup failed.");
 }
 
 function sameFile(left, right) {
@@ -223,20 +236,24 @@ export function prepareAospBuildEnvironment(aospRoot, env = process.env) {
       );
     }
   } catch (error) {
+    const errors = [error];
     try {
       if (tempFd !== undefined) fs.closeSync(tempFd);
-    } catch {
-      // Preserve the preparation failure while still closing ancestor handles.
+    } catch (cleanupError) {
+      errors.push(cleanupError);
     }
     try {
       closeDirectoryHandles(outputPathHandles);
-    } catch {
-      // Preserve the preparation failure after making every cleanup attempt.
+    } catch (cleanupError) {
+      errors.push(cleanupError);
     }
-    throw error;
+    throwFailures(errors, "AOSP environment preparation and cleanup failed.");
   }
 
-  buildEnv.OUT_DIR = canonicalOutputRoot;
+  // Soong derives Siso's configuration repository from OUT_DIR. Siso requires
+  // a source-relative path; retain canonical paths for all identity checks.
+  buildEnv.OUT_DIR =
+    path.relative(fs.realpathSync(aospRoot), canonicalOutputRoot) || ".";
   buildEnv.TMPDIR = canonicalTemp;
   buildEnv.TMP = canonicalTemp;
   buildEnv.TEMP = canonicalTemp;
@@ -303,18 +320,18 @@ export function revalidateAospBuildEnvironment(prepared) {
 }
 
 export function closeAospBuildEnvironment(prepared) {
-  let firstError;
+  const errors = [];
   try {
     fs.closeSync(prepared.tempFd);
   } catch (error) {
-    firstError = error;
+    errors.push(error);
   }
   try {
     closeDirectoryHandles(prepared.outputPathHandles);
   } catch (error) {
-    firstError ??= error;
+    errors.push(error);
   }
-  if (firstError) throw firstError;
+  throwFailures(errors, "AOSP environment cleanup failed.");
 }
 
 export function parseSubArgs(argv) {
@@ -325,16 +342,16 @@ export function parseSubArgs(argv) {
     skipBuild: false,
     launch: false,
     bootValidate: false,
-    skipStopCvd: false,
     // When set, also re-run `<brand.buildAndroidSystemCmd>` with AOSP env
     // flags so the privileged APK staged into vendor/<brand> is rebuilt
     // with libllama.so + BuildConfig.AOSP_BUILD=true.
     rebuildPrivilegedApk: false,
+    allowDevelopmentBrowser: false,
   };
 
   const readFlagValue = (flag, index) => {
     const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
+    if (!value || value.startsWith("-")) {
       throw new Error(`${flag} requires a value`);
     }
     return value;
@@ -361,16 +378,16 @@ export function parseSubArgs(argv) {
       args.launch = true;
     } else if (arg === "--boot-validate") {
       args.bootValidate = true;
-    } else if (arg === "--skip-stop-cvd") {
-      args.skipStopCvd = true;
+    } else if (arg === "--allow-development-browser") {
+      args.allowDevelopmentBrowser = true;
     } else if (arg === "--rebuild-privileged-apk") {
       args.rebuildPrivilegedApk = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/distro-android/build-aosp.mjs [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--skip-stop-cvd] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
+        "Usage: node scripts/distro-android/build-aosp.mjs [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
       );
       process.exit(0);
-    } else if (arg.startsWith("--")) {
+    } else if (arg.startsWith("-")) {
       throw new Error(`Unknown argument: ${arg}`);
     } else if (!args.aospRoot) {
       args.aospRoot = path.resolve(arg);
@@ -411,54 +428,58 @@ function assertAospRoot(aospRoot) {
   }
 }
 
+export class AospCommandError extends Error {
+  code = "ELIZAOS_AOSP_COMMAND_ERROR";
+
+  constructor(command, result) {
+    const detail = result.error
+      ? `failed: ${result.error.message}`
+      : result.signal
+        ? `terminated by ${result.signal}`
+        : `exited with code ${result.status}`;
+    super(`${command} ${detail}`, { cause: result.error });
+    this.name = "AospCommandError";
+    this.command = command;
+    this.exitCode = result.status;
+    this.signal = result.signal;
+  }
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repoRoot,
     env: options.env ?? process.env,
     stdio: "inherit",
   });
-  if (result.error) {
-    throw new Error(`${command} failed: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} exited with code ${result.status}`,
-    );
-  }
-}
-
-// A previous --launch run leaves crosvm + cuttlefish workers holding several
-// GB of RAM. If we then re-enter `m`, soong_build stacks on top and OOMs the
-// host. Tear them down before compiling. cvd 1.x exposes `cvd reset -y`;
-// older host packages used `stop_cvd`. Best-effort: never fail the build if
-// no device is running.
-function stopRunningCvd() {
-  spawnSync(
-    "bash",
-    ["-lc", "cvd reset -y >/dev/null 2>&1 || stop_cvd >/dev/null 2>&1 || true"],
-    {
-      cwd: repoRoot,
-      env: process.env,
-      stdio: "inherit",
-    },
-  );
+  if (result.error || result.signal || result.status !== 0)
+    throw new AospCommandError(command, result);
 }
 
 function runAospBuild(aospRoot, jobs, brand) {
   const prepared = prepareAospBuildEnvironment(aospRoot);
+  const errors = [];
   try {
     revalidateAospBuildEnvironment(prepared);
     run(
       "bash",
       [
         "-lc",
-        `source build/envsetup.sh && lunch ${brand.lunchTarget} && m -j${jobs}`,
+        'source build/envsetup.sh && lunch "$1" && m "-j$2"',
+        "elizaos-aosp-build",
+        brand.lunchTarget,
+        String(jobs),
       ],
       { cwd: aospRoot, env: prepared.env },
     );
-  } finally {
-    closeAospBuildEnvironment(prepared);
+  } catch (error) {
+    errors.push(error);
   }
+  try {
+    closeAospBuildEnvironment(prepared);
+  } catch (error) {
+    errors.push(error);
+  }
+  throwFailures(errors, "AOSP build and environment cleanup failed.");
 }
 
 const CUTTLEFISH_GPU_MODES = new Set([
@@ -501,7 +522,7 @@ export function cuttlefishLaunchCommand(brand, env = process.env) {
   const launchArgs = `--daemon --gpu_mode=${gpuMode}${rendererFeatures ? ` --gpu_renderer_features='${rendererFeatures}'` : ""}`;
   return [
     "source build/envsetup.sh",
-    `lunch ${brand.lunchTarget}`,
+    `lunch '${brand.lunchTarget.replaceAll("'", "'\\''")}'`,
     `if command -v cvd >/dev/null 2>&1; then cvd start ${launchArgs}; else launch_cvd ${launchArgs}; fi`,
   ].join(" && ");
 }
@@ -522,35 +543,20 @@ function launchCuttlefish(aospRoot, brand) {
  * APK picks up BuildConfig.AOSP_BUILD=true and the agent bundle is
  * produced with <BRAND>_AOSP_BUILD=1.
  */
-function rebuildPrivilegedApk(brand) {
-  if (!fs.existsSync(path.join(elizaRoot, "packages/app/package.json"))) {
-    throw new Error(
-      "Set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout before rebuilding the privileged APK.",
-    );
-  }
+export function rebuildPrivilegedApk(brand, browserPin) {
+  const elizaRoot = resolveElizaSourceRoot();
+
   const env = {
-    ...process.env,
+    ...(browserPin
+      ? bindBrowserCertificate(process.env, browserPin)
+      : process.env),
     ELIZAOS_OS_REPO_ROOT: repoRoot,
     [`${brand.envPrefix}_APP_ID`]: brand.packageName,
     [`${brand.envPrefix}_AOSP_BUILD`]: "1",
     [`${brand.envPrefix}_GRADLE_AOSP_BUILD`]: "true",
   };
   const [cmd, ...rest] = brand.buildAndroidSystemCmd;
-  const result = spawnSync(cmd, rest, {
-    cwd: elizaRoot,
-    env,
-    stdio: "inherit",
-  });
-  if (result.error) {
-    throw new Error(
-      `${brand.buildAndroidSystemCmd.join(" ")} failed: ${result.error.message}`,
-    );
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      `${brand.buildAndroidSystemCmd.join(" ")} exited with code ${result.status}`,
-    );
-  }
+  run(cmd, rest, { cwd: elizaRoot, env });
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -598,11 +604,18 @@ export async function main(argv = process.argv.slice(2)) {
   // to ElizaBionicInferenceServer, so the OS-image bun process never dlopens
   // its own libllama.so.
 
+  const browserAdmission = admitBrowserVendor(
+    args.sourceVendor ?? path.resolve(repoRoot, brand.vendorDir),
+    brand,
+    { allowDevelopmentBrowser: args.allowDevelopmentBrowser },
+  );
   if (args.rebuildPrivilegedApk) {
-    rebuildPrivilegedApk(brand);
+    rebuildPrivilegedApk(brand, browserAdmission?.chromium);
   }
 
   const syncArgs = [...brandConfigArgs];
+  if (args.allowDevelopmentBrowser)
+    syncArgs.push("--allow-development-browser");
   if (args.sourceVendor) syncArgs.push("--source-vendor", args.sourceVendor);
   syncArgs.push(args.aospRoot);
   await syncToAospMain(syncArgs);
@@ -611,10 +624,6 @@ export async function main(argv = process.argv.slice(2)) {
   if (args.sourceVendor) validateArgs.push("--vendor-dir", args.sourceVendor);
   validateArgs.push("--aosp-root", args.aospRoot);
   await validateMain(validateArgs);
-
-  if (!args.skipStopCvd) {
-    stopRunningCvd();
-  }
 
   if (!args.skipBuild) {
     runAospBuild(args.aospRoot, args.jobs, brand);
@@ -631,8 +640,6 @@ export async function main(argv = process.argv.slice(2)) {
   }
 }
 
-const isMain = isMainModule(import.meta);
-
-if (isMain) {
+if (import.meta.main) {
   await main();
 }

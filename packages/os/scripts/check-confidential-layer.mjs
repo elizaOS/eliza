@@ -1,25 +1,7 @@
 #!/usr/bin/env node
-// OS-1 gate: confidential-layer-check (plan §1.3 / OS-1).
-//
-// Lightweight validator for the meta-elizaos Yocto layer. It does NOT run
-// bitbake (the full image build is BLOCKED on a build host); it asserts the two
-// things that can drift without a build host and that would make the layer
-// silently broken or larp:
-//
-//   1. conf/layer.conf declares the required OE collection directives with the
-//      collection name "meta-elizaos" (BBFILE_COLLECTIONS, BBFILE_PATTERN_*,
-//      BBFILE_PRIORITY_*, LAYERSERIES_COMPAT_*, LAYERDEPENDS_*), and BBFILES is
-//      set. A layer missing these is not parseable by bitbake.
-//   2. every `file://` SRC_URI entry in every shipped .bb recipe resolves to a
-//      file that actually exists in-tree (relative to the recipe's
-//      FILESEXTRAPATHS / the confidential dir). A recipe that references a
-//      nonexistent install source is larp and fails closed here.
-//
-// Runner: plain `node` (no third-party deps). node --test for the tests.
-//   node scripts/check-confidential-layer.mjs
+// Check layer directives and local recipe inputs; this does not run BitBake.
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { fileExists, repoRoot } from "./os-release-lib.mjs";
 
 const LAYER_DIR = path.join(repoRoot, "linux/confidential/meta-elizaos");
@@ -136,6 +118,6 @@ async function main() {
 
 export { extractFileUris, LAYER_DIR };
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

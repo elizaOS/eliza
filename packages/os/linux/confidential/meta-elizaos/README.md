@@ -1,17 +1,5 @@
-# meta-elizaos — elizaOS confidential-profile Yocto layer
+# meta-elizaos
 
-Status: **layer is real and parseable; the full image build is BLOCKED** on a Yocto/meta-dstack build host (gate `confidential-image-reproducibility`).
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Yocto layer configuration and a recipe for the [confidential profile data](../README.md).
+Static source checks do not prove BitBake compatibility, measured boot, or a
+working guest. No application or attestation-agent recipe is supplied here.

@@ -35,7 +35,10 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
 
   assert.match(dockerfile, /^FROM \$\{DEBIAN_BASE_IMAGE\}$/m);
   assert.match(dockerfile, /^ {8}mkosi \\/m);
-  assert.match(makefile, /^builder:\n\tdocker build --pull/m);
+  assert.match(
+    makefile,
+    /^builder: check-arch check-profile\n\tdocker build --pull/m,
+  );
   assert.match(makefile, /DEBIAN_SNAPSHOT_SERIAL=\$\(DEBIAN_SNAPSHOT_SERIAL\)/);
   assert.match(makefile, /DEBIAN_BASE_IMAGE=\$\(DEBIAN_BASE_IMAGE\)/);
   assert.match(dockerfile, /^ {8}qemu-user-binfmt \\/m);
@@ -53,18 +56,13 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
   assert.match(riscvFinalize, /BOOTRISCV64\.EFI/);
   assert.match(riscvFinalize, /root=LABEL=elizaos-system/);
   assert.match(riscvFinalize, /kernel-modules\.initrd/);
-  assert.match(qemuQualify, /You are in emergency mode/);
-  assert.match(qemuQualify, /Failed to start initrd-switch-root\.service/);
-  assert.match(persistenceQualify, /You are in emergency mode/);
-  assert.match(
-    persistenceQualify,
-    /Failed to start initrd-switch-root\.service/,
-  );
+  const consoleMarkers = await read("scripts/linux/mkosi_console.py");
+  assert.match(consoleMarkers, /You are in emergency mode/);
+  assert.match(qemuQualify, /from mkosi_console import/);
+  assert.match(consoleMarkers, /Failed to start initrd-switch-root\.service/);
+  assert.match(persistenceQualify, /from mkosi_console import/);
   assert.match(persistenceQualify, /normalized_console_text/);
-  assert.match(
-    persistenceQualify,
-    /Started gdm\.service - GNOME Display Manager/,
-  );
+  assert.match(consoleMarkers, /Started gdm\.service - GNOME Display Manager/);
   assert.match(snapshot.baseImage, /^debian:trixie@sha256:[a-f0-9]{64}$/);
   assert.match(snapshot.serial, /^[0-9]{8}T[0-9]{6}Z$/);
 });

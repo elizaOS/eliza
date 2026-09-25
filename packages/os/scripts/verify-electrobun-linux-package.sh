@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-  echo "usage: $0 <electrobun-linux-installer.tar.gz>" >&2
+if [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; then
+  echo "usage: $0 <electrobun-linux-installer.tar.gz> [new-native-writer-output]" >&2
   exit 2
 fi
 
@@ -69,5 +69,48 @@ test -f "$stage/installer" && test ! -L "$stage/installer" && test -x "$stage/in
 test -f "$stage/README.txt" && test ! -L "$stage/README.txt" && test -s "$stage/README.txt"
 grep --binary-files=text --fixed-strings --quiet ELECTROBUN_METADATA_V1 "$stage/installer"
 grep --binary-files=text --fixed-strings --quiet ELECTROBUN_ARCHIVE_V1 "$stage/installer"
+
+if [ "$#" -eq 2 ]; then
+  python3 - "$stage/installer" "$2" <<'PY'
+import mmap
+import pathlib
+import subprocess
+import sys
+import tarfile
+
+target = "elizaOSUSBInstaller/Resources/app/native/linux-raw-writer"
+writer = None
+with open(sys.argv[1], "rb") as installer:
+    with mmap.mmap(installer.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
+        marker = b"ELECTROBUN_ARCHIVE_V1"
+        offset = mapped.rfind(marker)
+        if offset < 0:
+            raise SystemExit("missing embedded archive")
+    installer.seek(offset + len(marker))
+    decoder = subprocess.Popen(["zstd", "-d", "-c"], stdin=installer, stdout=subprocess.PIPE)
+    try:
+        with tarfile.open(fileobj=decoder.stdout, mode="r|") as archive:
+            for member in archive:
+                if member.name != target:
+                    continue
+                if writer is not None or not member.isfile() or not member.mode & 0o111:
+                    raise SystemExit("invalid or duplicate packaged native writer")
+                writer = archive.extractfile(member).read()
+        # Drain the decompressor even when tar stops at its end marker.
+        while decoder.stdout.read(1024 * 1024):
+            pass
+        if decoder.wait() != 0:
+            raise SystemExit("embedded archive decompression failed")
+    finally:
+        decoder.stdout.close()
+        if decoder.poll() is None:
+            decoder.kill()
+        decoder.wait()
+if not writer or not writer.startswith(b"\x7fELF"):
+    raise SystemExit("packaged Linux writer is missing or not ELF")
+with pathlib.Path(sys.argv[2]).open("xb") as output:
+    output.write(writer)
+PY
+fi
 
 echo "Verified Electrobun Linux package: $payload"

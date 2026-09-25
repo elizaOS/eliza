@@ -36,7 +36,6 @@
 //   node scripts/verify-image-reproducibility.mjs --input <manifest>
 //   node scripts/verify-image-reproducibility.mjs --build-a A --build-b B
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   fileExists,
   parseArgs,
@@ -102,11 +101,7 @@ export async function recomputeComponents(
 
 // Single-manifest verification. confirmed=false ⇒ BLOCKED (exit 3); confirmed=true
 // requires real recomputation (bytes present + match), else hard FAIL.
-export async function verifyManifest(
-  manifest,
-  componentsDir,
-  { allowAbsent = false } = {},
-) {
+export async function verifyManifest(manifest, componentsDir) {
   const confirmed = manifest.reproducibility?.confirmed === true;
 
   if (confirmed) {
@@ -129,9 +124,6 @@ export async function verifyManifest(
     const recompute = await recomputeComponents(manifest, componentsDir, {
       allowAbsent: false,
     });
-    if (!recompute.ok) {
-      return { ...recompute, blocked: false };
-    }
     return { ...recompute, blocked: false };
   }
 
@@ -212,6 +204,8 @@ export async function compareDoubleBuild(
     errors,
     verifiedA: recomputeA.verified,
     verifiedB: recomputeB.verified,
+    unverifiedA: recomputeA.unverified,
+    unverifiedB: recomputeB.unverified,
   };
 }
 
@@ -254,6 +248,12 @@ async function main() {
       );
       process.exit(1);
     }
+    if (result.unverifiedA.length > 0 || result.unverifiedB.length > 0) {
+      console.error(
+        `confidential-image-reproducibility (double-build): BLOCKED — declared digests match, but component bytes remain unverified: A=[${result.unverifiedA.join(", ")}] B=[${result.unverifiedB.join(", ")}]`,
+      );
+      process.exit(3);
+    }
     console.log(
       `confidential-image-reproducibility (double-build): REPRODUCIBLE — ` +
         `all component + measurement digests of build A and build B are identical`,
@@ -275,7 +275,7 @@ async function main() {
       ? args["components-dir"]
       : undefined;
   const manifest = await readJson(input);
-  const result = await verifyManifest(manifest, componentsDir, { allowAbsent });
+  const result = await verifyManifest(manifest, componentsDir);
 
   if (!result.ok && !result.blocked) {
     for (const error of result.errors) console.error(`error: ${error}`);
@@ -298,6 +298,6 @@ async function main() {
   );
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 OS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ELIZA_ROOT="${ELIZAOS_ELIZA_ROOT:-${OS_ROOT}/.eliza-source}"
 LINUX_DIR="${OS_ROOT}/linux/elizaos"
 RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/scripts/rm-path-recursive.mjs"
 
@@ -30,6 +29,14 @@ EOF
 }
 
 while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --arch|--out|--bun-source|--riscv64-bun-zip|--riscv64-musl-runtime|--riscv64-icu-data)
+            if [ "$#" -lt 2 ] || [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo "ERROR: $1 requires a value" >&2
+                exit 64
+            fi
+            ;;
+    esac
     case "$1" in
         --arch)
             ARCH="$2"
@@ -84,6 +91,7 @@ if [ -z "${OUT}" ]; then
     OUT="${LINUX_DIR}/artifacts/${ARCH}"
 fi
 
+ELIZA_ROOT="$(node "$OS_ROOT/scripts/eliza-source.mjs")"
 AGENT_BUNDLE="${ELIZA_ROOT}/packages/agent/dist-mobile/agent-bundle.js"
 if [ "${SKIP_BUILD}" != "1" ]; then
     (cd "${ELIZA_ROOT}" && bun run --cwd packages/agent build:mobile)
@@ -96,19 +104,6 @@ fi
 
 sha256_file() {
     sha256sum "$1" | awk '{print $1}'
-}
-
-relpath() {
-    python3 - "$OS_ROOT" "$1" <<'PY'
-from pathlib import Path
-import sys
-root = Path(sys.argv[1]).resolve()
-path = Path(sys.argv[2]).resolve()
-try:
-    print(path.relative_to(root).as_posix())
-except ValueError:
-    print(path.as_posix())
-PY
 }
 
 rm_path_recursive() {
@@ -127,7 +122,7 @@ import sys
 
 source = Path(sys.argv[1])
 dest = Path(sys.argv[2])
-text = source.read_text(encoding="utf-8", errors="replace")
+text = source.read_text(encoding="utf-8")
 shim = (
     'import { createRequire as __elizaCreateRequire } from "node:module";\n'
     "const __elizaNodeRequire = import.meta.require ? import.meta.require : "
@@ -135,7 +130,11 @@ shim = (
     "import.meta.require = __elizaNodeRequire;\n"
 )
 if 'import { createRequire as __elizaCreateRequire } from "node:module";' not in text:
-    text = shim + text
+    if text.startswith("#!"):
+        first_line, _, body = text.partition("\n")
+        text = first_line + "\n" + shim + body
+    else:
+        text = shim + text
 dest.write_text(text, encoding="utf-8")
 PY
 }
@@ -173,7 +172,7 @@ write_manifest() {
 write_riscv64_provenance() {
     local zip_path="$1"
     local staged_bun="$2"
-    python3 - "${OS_ROOT}" "${OUT}/riscv64-bun-provenance.json" "${zip_path}" "${staged_bun}" "${RISCV64_MUSL_RUNTIME}" "${RISCV64_ICU_DATA}" <<'PY'
+    python3 - "${OS_ROOT}" "${OUT}/riscv64-bun-provenance.json" "${zip_path}" "${staged_bun}" "${RISCV64_MUSL_RUNTIME}" "${RISCV64_ICU_DATA}" "${FINAL_OUT}/elizaos-app/musl-runtime/bun" <<'PY'
 from datetime import UTC, datetime
 from pathlib import Path
 import hashlib
@@ -225,7 +224,7 @@ data = {
         "zip_sha256": digest(zip_path),
         "musl_runtime": musl_runtime,
         "icu_data": icu_data,
-        "staged_bun": rel(staged_bun),
+        "staged_bun": rel(Path(sys.argv[7])),
         "staged_bun_sha256": digest(staged_bun),
     },
 }
@@ -233,8 +232,50 @@ out.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-
 PY
 }
 
-rm_path_recursive "${OUT}"
-mkdir -p "${OUT}"
+# Build beside the destination so failed validation preserves its old contents.
+# Default musl-runtime inputs also remain alive until they have been copied.
+FINAL_OUT="$(python3 - "$OUT" "$OS_ROOT" "$ELIZA_ROOT" "$AGENT_BUNDLE" <<'PY'
+from pathlib import Path
+import sys
+out = Path(sys.argv[1]).absolute()
+if out.is_symlink():
+    raise SystemExit("ERROR: output directory must not be a symlink")
+if out.exists() and not out.is_dir():
+    raise SystemExit("ERROR: output must be a directory")
+out = out.resolve()
+for source in sys.argv[2:]:
+    if Path(source).resolve().is_relative_to(out):
+        raise SystemExit(f"ERROR: output would remove source input: {source}")
+print(out)
+PY
+)"
+mkdir -p "$(dirname "$FINAL_OUT")"
+STAGING="$(mktemp -d "$(dirname "$FINAL_OUT")/.elizaos-stage.XXXXXX")"
+BACKUP=""
+COMMITTED=0
+cleanup() {
+    local rc=$?
+    trap - EXIT
+    if [ -n "$BACKUP" ] && [ -e "$BACKUP/previous" ]; then
+        if [ "$COMMITTED" = 1 ]; then
+            rm_path_recursive "$BACKUP" || rc=1
+        elif [ ! -e "$FINAL_OUT" ]; then
+            mv -- "$BACKUP/previous" "$FINAL_OUT" || rc=1
+        else
+            echo "ERROR: previous artifacts retained at $BACKUP/previous" >&2
+            rc=1
+        fi
+    fi
+    if [ -d "$BACKUP" ] && [ ! -e "$BACKUP/previous" ]; then
+        rmdir -- "$BACKUP" || rc=1
+    fi
+    rm_path_recursive "$STAGING" || rc=1
+    exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+OUT="$STAGING"
 copy_agent_bundle
 
 if [ "${ARCH}" = "riscv64" ]; then
@@ -276,7 +317,8 @@ PY
         fi
         mkdir -p "${OUT}/elizaos-app/musl-runtime"
         python3 - "${RISCV64_BUN_ZIP}" "${OUT}/elizaos-app/musl-runtime/bun" <<'PY'
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import shutil
 import stat
 import sys
 import zipfile
@@ -284,15 +326,22 @@ import zipfile
 zip_path = Path(sys.argv[1])
 dest = Path(sys.argv[2])
 with zipfile.ZipFile(zip_path) as archive:
-    member = next(
-        (name for name in archive.namelist() if name.rstrip("/").endswith("bun") and not name.endswith("/")),
-        None,
-    )
-    if member is None:
-        raise SystemExit("ERROR: riscv64 Bun zip does not contain bun")
-    dest.write_bytes(archive.read(member))
+    members = [entry for entry in archive.infolist()
+               if not entry.is_dir() and PurePosixPath(entry.filename).name == "bun"]
+    if len(members) != 1:
+        raise SystemExit("ERROR: riscv64 Bun zip must contain exactly one bun file")
+    member = members[0]
+    kind = stat.S_IFMT(member.external_attr >> 16)
+    if kind not in (0, stat.S_IFREG) or member.file_size == 0:
+        raise SystemExit("ERROR: riscv64 Bun zip entry must be a nonempty regular file")
+    with archive.open(member) as source, dest.open("xb") as target:
+        shutil.copyfileobj(source, target, 1024 * 1024)
 dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 PY
+        if ! bash "${OS_ROOT}/scripts/verify-riscv64-elf.sh" --executable "${OUT}/elizaos-app/musl-runtime/bun"; then
+            echo "ERROR: riscv64 Bun zip must contain an ELF64 RISC-V double-float executable" >&2
+            exit 65
+        fi
         if [ -d "${RISCV64_MUSL_RUNTIME}" ]; then
             find "${RISCV64_MUSL_RUNTIME}" -maxdepth 1 -type f ! -name bun -exec cp -a {} "${OUT}/elizaos-app/musl-runtime/" \;
         fi
@@ -319,4 +368,10 @@ else
 fi
 
 write_app_hashes
-echo "staged ${ARCH} agent artifacts: ${OUT}"
+if [ -e "$FINAL_OUT" ]; then
+    BACKUP="$(mktemp -d "$(dirname "$FINAL_OUT")/.elizaos-stage-backup.XXXXXX")"
+    mv -- "$FINAL_OUT" "$BACKUP/previous"
+fi
+mv -T -- "$OUT" "$FINAL_OUT"
+COMMITTED=1
+echo "staged ${ARCH} agent artifacts: ${FINAL_OUT}"

@@ -89,7 +89,10 @@ const OUT_DIRS = {
 };
 const outDir = path.join(agentRoot, OUT_DIRS[TARGET]);
 const stubsDir = path.join(here, "mobile-stubs");
-const entry = path.join(agentRoot, "src", "bin.ts");
+const entry =
+  TARGET === "android"
+    ? path.join(agentRoot, "../app/src/mobile-agent-entry.ts")
+    : path.join(agentRoot, "src", "bin.ts");
 let mobileWorkspacePackageDirCache = null;
 
 function collectMobileWorkspacePackageDirs() {
@@ -437,12 +440,11 @@ const optionalPluginStubs = {
   "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
-  // Browser bridge can still be resolved through workspace/plugin fallback
-  // paths when core plugins are collected. Mobile doesn't run a headless
-  // browser, and the runtime's plugin filter strips browser-bridge from the
-  // load set anyway, so a null stub prevents Chromium plumbing from entering
-  // the bundle if that optional resolution path is reached.
-  "@elizaos/plugin-browser": path.join(stubsDir, "null-plugin.cjs"),
+  // Native control has no Chromium, Playwright, JSDOM, or server-profile imports.
+  "@elizaos/plugin-browser": path.join(
+    repoRoot,
+    "plugins/plugin-browser/src/mobile.ts",
+  ),
   // Desktop/server-only optional integrations. The mobile agent does not host
   // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
   // imports both optional modules lazily. Resolve them to the shared no-op
@@ -589,6 +591,7 @@ const corePackages = [
   "@elizaos/ui",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-wallet",
+  "@elizaos/plugin-relationships",
 ];
 
 // Inside the eliza repo the source trees live directly under the repo
@@ -650,6 +653,12 @@ const dedupeTargets = {
     "index.ts",
   ),
   "@elizaos/ui": path.resolve(repoRoot, "packages", "ui", "src", "index.ts"),
+  // Graph services run in the background agent; renderer registration and
+  // React views belong to the app's separate renderer bundle.
+  "@elizaos/plugin-relationships": path.resolve(
+    repoRoot,
+    "plugins/plugin-relationships/src/index.node.ts",
+  ),
   // Pin plugin-sql to its src as well. The published `dist/node/index.node.js`
   // was compiled against an older `@elizaos/core` API (pre-`getAgentsByIds`),
   // so the bundled `BaseDrizzleAdapter` is missing methods the current runtime
@@ -1489,7 +1498,10 @@ if (!buildResult.success) {
 const bundleFilename =
   TARGET === "ios-jsc" ? "agent-bundle-ios.js" : "agent-bundle.js";
 const bundlePath = path.join(outDir, bundleFilename);
-const defaultEntryPath = path.join(outDir, "bin.js");
+const defaultEntryPath = path.join(
+  outDir,
+  TARGET === "android" ? "mobile-agent-entry.js" : "bin.js",
+);
 if (!existsSync(bundlePath) && existsSync(defaultEntryPath)) {
   await rename(defaultEntryPath, bundlePath);
 }

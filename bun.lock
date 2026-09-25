@@ -258,6 +258,7 @@
         "@elizaos/plugin-trajectory-logger": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/remote-control-host": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
@@ -363,9 +364,13 @@
       "name": "eliza-cloud-agent",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/remote-control-host": "workspace:*",
         "tsx": "4.21.0",
       },
     },
@@ -709,6 +714,15 @@
         "@elizaos/testing": "workspace:*",
       },
     },
+    "packages/browser-bridge-extension": {
+      "name": "@elizaos/browser-bridge-extension",
+      "version": "2.0.4",
+      "devDependencies": {
+        "@types/node": "^25.2.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/cloud/api": {
       "name": "@elizaos/cloud-api",
       "version": "2.0.3-beta.0",
@@ -823,10 +837,14 @@
       "dependencies": {
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/remote-control-host": "workspace:*",
         "elysia": "^1.1.0",
         "ioredis": "^5.10.1",
         "zod": "^4.6.5",
@@ -1070,7 +1088,88 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "turbo": "^2.9.16",
         "typescript": "^6.0.3",
-        "vitest": "4.1.5",
+        "vitest": "^5.0.1",
+      },
+    },
+    "packages/os/linux/installer": {
+      "name": "@elizaos/linux-installer-plan",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "^25.0.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.1",
+      },
+    },
+    "packages/os/setup": {
+      "name": "@elizaos/setup",
+      "version": "1.0.0",
+      "dependencies": {
+        "@fontsource/poppins": "^5.2.7",
+        "vite": "^8.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "@types/node": "^25.0.0",
+        "@types/react": "^18.0.0 || ^19.0.0",
+        "@types/react-dom": "^18.0.0 || ^19.0.0",
+        "@types/three": "0.165.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "electrobun": "1.18.1",
+        "jsdom": "^29.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.1",
+      },
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0",
+      },
+    },
+    "packages/os/usb-installer": {
+      "name": "@elizaos/os-usb-installer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/shared": "workspace:*",
+        "@fontsource/poppins": "^5.2.7",
+        "vite": "^8.0.0",
+      },
+      "devDependencies": {
+        "@playwright/test": "^1.59.1",
+        "@types/bun": "^1.3.14",
+        "@types/node": "^25.0.0",
+        "@types/react": "^18.0.0 || ^19.0.0",
+        "@types/react-dom": "^18.0.0 || ^19.0.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "electrobun": "1.18.1",
+        "jsdom": "^29.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "sharp": "^0.35.3",
+        "typescript": "^6.0.3",
+        "vitest": "^5.0.1",
+      },
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0",
+      },
+    },
+    "packages/remote-control-host": {
+      "name": "@elizaos/remote-control-host",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
+        "@types/node": "^25.2.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "1.3.14",
+        "typescript": "^6.0.3",
       },
     },
     "packages/shared": {
@@ -1189,6 +1288,7 @@
         "@elizaos/auth": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/remote-control-host": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
         "@json-render/core": "0.20.0",
@@ -3528,6 +3628,8 @@
 
     "@elizaos/benchmark-framework": ["@elizaos/benchmark-framework@workspace:packages/benchmarks/framework/typescript"],
 
+    "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge-extension"],
+
     "@elizaos/capacitor-agent": ["@elizaos/capacitor-agent@workspace:plugins/plugin-native-agent"],
 
     "@elizaos/capacitor-appblocker": ["@elizaos/capacitor-appblocker@workspace:plugins/plugin-native-appblocker"],
@@ -3606,6 +3708,8 @@
 
     "@elizaos/lifeops-quality-bench": ["@elizaos/lifeops-quality-bench@workspace:packages/benchmarks/suites/lifeops-quality"],
 
+    "@elizaos/linux-installer-plan": ["@elizaos/linux-installer-plan@workspace:packages/os/linux/installer"],
+
     "@elizaos/macosreminders": ["@elizaos/macosreminders@workspace:plugins/plugin-native-reminders"],
 
     "@elizaos/native-activity-tracker": ["@elizaos/native-activity-tracker@workspace:plugins/plugin-native-activity-tracker"],
@@ -3615,6 +3719,8 @@
     "@elizaos/operator": ["@elizaos/operator@workspace:packages/cloud/services/operator"],
 
     "@elizaos/os": ["@elizaos/os@workspace:packages/os"],
+
+    "@elizaos/os-usb-installer": ["@elizaos/os-usb-installer@workspace:packages/os/usb-installer"],
 
     "@elizaos/personality-bench": ["@elizaos/personality-bench@workspace:packages/benchmarks/suites/personality-bench"],
 
@@ -3726,7 +3832,11 @@
 
     "@elizaos/recall-bench": ["@elizaos/recall-bench@workspace:packages/benchmarks/suites/recall-bench"],
 
+    "@elizaos/remote-control-host": ["@elizaos/remote-control-host@workspace:packages/remote-control-host"],
+
     "@elizaos/searchbench": ["@elizaos/searchbench@workspace:packages/benchmarks/suites/searchbench"],
+
+    "@elizaos/setup": ["@elizaos/setup@workspace:packages/os/setup"],
 
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
 

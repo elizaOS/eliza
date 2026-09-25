@@ -1,34 +1,71 @@
 #!/usr/bin/env node
-import { writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
-import { readElizaSourceLock } from "./read-eliza-source-lock.mjs";
+import {
+  defaultElizaSourceLockPath,
+  readElizaSourceLock,
+  validateElizaSourceLock,
+} from "./read-eliza-source-lock.mjs";
 
-const values = new Map();
-for (let index = 2; index < process.argv.length; index += 2) {
-  const name = process.argv[index];
-  const value = process.argv[index + 1];
-  if (!name?.startsWith("--") || value === undefined) {
-    throw new Error("arguments must be --name value pairs");
+export function parseSourceLockUpdateArguments(argv) {
+  const values = new Map();
+  const allowed = new Set(["--lock", "--commit", "--commit-timestamp"]);
+  for (let index = 0; index < argv.length; index += 2) {
+    const name = argv[index];
+    const value = argv[index + 1];
+    if (
+      !allowed.has(name) ||
+      values.has(name) ||
+      value === undefined ||
+      value.startsWith("--")
+    ) {
+      throw new Error(
+        `Unknown, duplicate, or incomplete source-lock option: ${name}`,
+      );
+    }
+    values.set(name, value);
   }
-  values.set(name.slice(2), value);
+  return {
+    lockPath: values.has("--lock")
+      ? path.resolve(values.get("--lock"))
+      : defaultElizaSourceLockPath,
+    commit: values.get("--commit"),
+    commitTimestamp: values.get("--commit-timestamp"),
+  };
 }
 
-const lockPath = path.resolve(
-  values.get("lock") ?? "release/eliza-source.lock.json",
-);
-const commit = values.get("commit");
-const commitTimestamp = values.get("commit-timestamp");
-if (!/^[0-9a-f]{40}$/.test(commit ?? "")) {
-  throw new Error("--commit must be a full lowercase Git SHA");
-}
-if (
-  !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(commitTimestamp ?? "") ||
-  Number.isNaN(Date.parse(commitTimestamp))
-) {
-  throw new Error("--commit-timestamp must be an RFC 3339 UTC timestamp");
+export function updateElizaSourceLock({ lockPath, commit, commitTimestamp }) {
+  const current = readElizaSourceLock(lockPath);
+  const updated = validateElizaSourceLock({
+    ...current,
+    commit,
+    commitTimestamp,
+  });
+  const mode = statSync(lockPath).mode & 0o777;
+  const directory = mkdtempSync(
+    path.join(path.dirname(lockPath), ".eliza-source-lock-"),
+  );
+  const temporary = path.join(directory, "lock.json");
+  try {
+    writeFileSync(temporary, `${JSON.stringify(updated, null, 2)}\n`, {
+      flag: "wx",
+      mode,
+    });
+    chmodSync(temporary, mode);
+    renameSync(temporary, lockPath);
+  } finally {
+    rmSync(directory, { recursive: true });
+  }
+  return updated;
 }
 
-const current = readElizaSourceLock(lockPath);
-const updated = { ...current, commit, commitTimestamp };
-writeFileSync(lockPath, `${JSON.stringify(updated, null, 2)}\n`);
-readElizaSourceLock(lockPath);
+if (import.meta.main) {
+  updateElizaSourceLock(parseSourceLockUpdateArguments(process.argv.slice(2)));
+}

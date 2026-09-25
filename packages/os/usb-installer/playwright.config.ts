@@ -1,17 +1,25 @@
-// Configures the USB installer build, server, and tests.
-import path from "node:path";
+/** Runs desktop and mobile installer flows and stores generated evidence under the repository test-results root. */
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../../scripts/lib/test-output";
 
 const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: "./tests",
-  outputDir: recording
-    ? path.resolve(
-        import.meta.dirname,
-        "../e2e-recordings/os-usb-installer/test-results",
-      )
-    : "./test-results",
+  outputDir: testOutputPath(
+    "os-usb-installer",
+    recording ? "recordings" : "playwright",
+  ),
+  reporter: [
+    ["list"],
+    [
+      "html",
+      {
+        outputFolder: testOutputPath("os-usb-installer", "report"),
+        open: "never",
+      },
+    ],
+  ],
   expect: {
     toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
   },

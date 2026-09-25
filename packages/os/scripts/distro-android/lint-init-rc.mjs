@@ -12,7 +12,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { isMainModule } from "./is-main.mjs";
 
 // init.cpp recognises specific top-level section keywords. Any other
 // keyword at column zero is a syntax error at boot.
@@ -247,7 +246,6 @@ async function main(argv = process.argv.slice(2)) {
   process.exit(hardErrors > 0 ? 1 : 0);
 }
 
-const isMain = isMainModule(import.meta);
-if (isMain) {
+if (import.meta.main) {
   await main();
 }

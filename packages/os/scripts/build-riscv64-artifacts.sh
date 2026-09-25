@@ -4,18 +4,18 @@
 #
 # Walks the same artifact list as scripts/check-riscv64-artifacts.sh and
 # runs the relevant cross-build for each artifact that's missing. Each
-# step is idempotent: if the output already exists and is rv64 ELF, the
-# step is skipped (so callers can re-run cheaply).
+# step is idempotent: cached outputs must contain ELF64 little-endian RISC-V double-float code.
+# Use --force after source or toolchain changes; ELF checks do not prove freshness.
 #
 # Gated on ELIZA_RISCV64_SMOKE=1 by default (same posture as the smoke
 # harness). Unset = skip all builds.
 #
 # Tooling requirements (caller's job to install):
-#   - zig 0.13.0       (known-good shared-link toolchain; provides
+#   - zig 0.13+        (provides
 #                       riscv64-linux-musl — every cross-build here is
 #                       zig/musl, so no Android NDK is needed)
 #   - cmake 3.21+      (drives every package's cross-build)
-#   - node 20+         (drives compile-libllama.mjs)
+#   - Node 24.15.0         (drives compile-libllama.mjs)
 #
 # Usage:
 #   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
@@ -29,26 +29,29 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-eliza_root="$(cd "${ELIZAOS_ELIZA_ROOT:-$repo_root/.eliza-source}" 2>/dev/null && pwd || true)"
-if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/packages/native" ]; then
-    echo "[build-riscv64-artifacts] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
-    exit 2
-fi
-cd "$repo_root"
-
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 FORCE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --jobs) JOBS="$2"; shift 2;;
+        --jobs)
+            if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+                echo "--jobs requires a positive integer" >&2
+                exit 2
+            fi
+            JOBS="$2"; shift 2;;
         --force) FORCE=1; shift;;
         -h|--help)
-            awk '/^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$0"
+            awk 'NR == 1 {next} /^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$repo_root/scripts/build-riscv64-artifacts.sh"
             exit 0;;
         *) echo "unknown argument: $1" >&2; exit 2;;
     esac
 done
+
+if [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "JOBS must be a positive integer" >&2
+    exit 2
+fi
 
 if [ "${ELIZA_RISCV64_SMOKE:-0}" != "1" ]; then
     echo "[build-riscv64-artifacts] ELIZA_RISCV64_SMOKE not set; nothing to do."
@@ -56,58 +59,63 @@ if [ "${ELIZA_RISCV64_SMOKE:-0}" != "1" ]; then
     exit 0
 fi
 
+NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+if [ -z "$NODE_BIN" ]; then
+    echo "[build-riscv64-artifacts] node not on PATH. Install Node 24.15.0." >&2
+    exit 2
+fi
+eliza_root="$("$NODE_BIN" "$repo_root/scripts/eliza-source.mjs")"
+if [ -z "$eliza_root" ] || [ ! -d "$eliza_root/plugins/plugin-local-inference/native" ]; then
+    echo "[build-riscv64-artifacts] set ELIZAOS_ELIZA_ROOT to an elizaOS/eliza checkout." >&2
+    exit 2
+fi
+cd "$repo_root"
+
 # ── Toolchain pre-flight ─────────────────────────────────────────────
 ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
 if [ -z "$ZIG_BIN" ]; then
-    cat >&2 <<'EOF'
-[build-riscv64-artifacts] zig not on PATH.
-
-Install pinned Zig 0.13.0 from https://ziglang.org/download/ — every cross-build
-in this harness drives `zig cc --target=riscv64-linux-musl` directly. Zig
-0.14.x is not eligible here because its riscv64 compiler_rt archive is non-PIC
-and cannot link the required libggml shared objects.
-
-EOF
+    echo "[build-riscv64-artifacts] install Zig 0.13+ or set ZIG_BIN; libllama selects scalar/RVV options for that version." >&2
     exit 2
 fi
-ZIG_VERSION="$($ZIG_BIN version)"
+ZIG_VERSION="$("$ZIG_BIN" version)"
 ZIG_MAJOR_MINOR="$(printf '%s' "$ZIG_VERSION" | awk -F. '{ print $1"."$2 }')"
+# Imported application builders invoke zig by name; bind them to the same
+# executable used by the native plugin CMake toolchain.
+ZIG_BIN="$(readlink -f "$(command -v "$ZIG_BIN")")"
 export ZIG_BIN
+zig_path="$(mktemp -d "${TMPDIR:-/tmp}/eliza-riscv-zig.XXXXXX")"
+trap 'rm -rf -- "$zig_path"' EXIT
+ln -s "$ZIG_BIN" "$zig_path/zig"
+export PATH="$zig_path:$PATH"
+
+if ! command -v readelf >/dev/null 2>&1; then
+    echo "[build-riscv64-artifacts] readelf is required to validate build outputs." >&2
+    exit 2
+fi
 
 if ! command -v cmake >/dev/null 2>&1; then
     echo "[build-riscv64-artifacts] cmake not on PATH. Install cmake 3.21+." >&2
     exit 2
 fi
 
-NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
-if [ -z "$NODE_BIN" ]; then
-    echo "[build-riscv64-artifacts] node not on PATH. Install node 20+." >&2
-    exit 2
-fi
 RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.mjs"
 
 remove_path_recursive() {
     "$NODE_BIN" "$RM_PATH_RECURSIVE" "$@"
 }
 
-echo "[build-riscv64-artifacts] zig=$ZIG_VERSION  cmake=$(cmake --version | head -1)  node=$($NODE_BIN --version)"
+echo "[build-riscv64-artifacts] zig=$ZIG_VERSION  cmake=$(cmake --version | head -1)  node=$("$NODE_BIN" --version)"
 echo "[build-riscv64-artifacts] jobs=$JOBS  force=$FORCE"
 
 # ── Helpers ──────────────────────────────────────────────────────────
 FAIL_N=0
 
-is_riscv64_elf() {
-    local f="$1"
-    [ -f "$f" ] || return 1
-    file -b "$f" 2>/dev/null | grep -q "UCB RISC-V"
-}
-
 should_build() {
     # $1 = sentinel path. Returns 0 if we should build, 1 if we should skip.
     local sentinel="$1"
     if [ "$FORCE" = "1" ]; then return 0; fi
-    if [ -e "$sentinel" ]; then
-        echo "  → up-to-date: $sentinel"
+    if bash "$repo_root/scripts/verify-riscv64-elf.sh" "$sentinel" >/dev/null 2>&1; then
+        echo "  → present (use --force to rebuild): $sentinel"
         return 1
     fi
     return 0
@@ -115,7 +123,7 @@ should_build() {
 
 build_native_plugin() {
     local pkg="$1"; local extra_flag="${2:-}"
-    local pkgdir="$eliza_root/packages/native/plugins/$pkg"
+    local pkgdir="$eliza_root/plugins/plugin-local-inference/native/plugins/$pkg"
     local builddir="$pkgdir/build/riscv64"
     if [ ! -f "$pkgdir/CMakeLists.txt" ]; then
         echo "  ✗ $pkg: $pkgdir/CMakeLists.txt missing"
@@ -156,6 +164,10 @@ build_native_plugin() {
     fi
     if ! cmake --build "$builddir" -j"$JOBS" >"$build_log" 2>&1; then
         echo "  ✗ $pkg: cmake build failed (see $build_log)"
+        FAIL_N=$((FAIL_N+1)); return
+    fi
+    if ! bash "$repo_root/scripts/verify-riscv64-elf.sh" "$sentinel_a"; then
+        echo "  ✗ $pkg: build did not produce a valid RISC-V archive" >&2
         FAIL_N=$((FAIL_N+1)); return
     fi
     echo "  ✓ $pkg: $builddir"
@@ -223,7 +235,8 @@ else
         if "$NODE_BIN" "$COMPILE_LIBLLAMA" --target android-riscv64-cpu \
             --assets-dir "$libllama_assets_dir" \
             "${libllama_src_args[@]}" \
-            >"$repo_root/build/libllama-riscv64.log" 2>&1; then
+            >"$repo_root/build/libllama-riscv64.log" 2>&1 && \
+            bash "$repo_root/scripts/verify-riscv64-elf.sh" "$libllama_sentinel"; then
             echo "  ✓ libllama riscv64"
         else
             echo "  ✗ libllama riscv64 (see build/libllama-riscv64.log)"
@@ -239,7 +252,8 @@ else
         if "$NODE_BIN" "$COMPILE_LIBLLAMA" --target android-riscv64-cpu-fused \
             --assets-dir "$libllama_assets_dir" \
             "${libllama_src_args[@]}" \
-            >"$repo_root/build/libelizainference-riscv64.log" 2>&1; then
+            >"$repo_root/build/libelizainference-riscv64.log" 2>&1 && \
+            bash "$repo_root/scripts/verify-riscv64-elf.sh" "$fused_sentinel"; then
             echo "  ✓ fused inference riscv64"
         else
             echo "  ✗ fused inference riscv64 (see build/libelizainference-riscv64.log)"
@@ -260,7 +274,8 @@ else
     if should_build "$shim_sentinel"; then
         echo "→ Building libsigsys-handler (riscv64) …"
         mkdir -p "$repo_root/build"
-        if "$NODE_BIN" "$COMPILE_SHIM" --abi riscv64 >"$repo_root/build/libsigsys-handler-riscv64.log" 2>&1; then
+        if "$NODE_BIN" "$COMPILE_SHIM" --abi riscv64 >"$repo_root/build/libsigsys-handler-riscv64.log" 2>&1 && \
+            bash "$repo_root/scripts/verify-riscv64-elf.sh" "$shim_sentinel"; then
             echo "  ✓ libsigsys-handler riscv64"
         else
             echo "  ✗ libsigsys-handler riscv64 (see build/libsigsys-handler-riscv64.log)"

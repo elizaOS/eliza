@@ -52,6 +52,8 @@ test("runs the guarded USB write wizard with a mocked backend", async ({
       devicePath: mockDrive.devicePath,
       sizeBytes: mockDrive.sizeBytes,
       name: mockDrive.name,
+      stableId: mockDrive.stableId,
+      kernelDeviceIdentity: mockDrive.kernelDeviceIdentity,
     },
   });
   expect(calls.executeRequests).toEqual([{ planId: "playwright-plan-id" }]);

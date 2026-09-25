@@ -46,7 +46,7 @@ case "$*" in
   *"getprop ro.product.device"*) echo tegu ;;
   *"getprop ro.build.fingerprint"*) echo 'elizaOS/eliza_tegu_phone/tegu:15/example:userdebug/test-keys' ;;
   *"getprop ro.boot.slot_suffix"*) echo '_a' ;;
-  *"getprop sys.boot_completed"*) echo 1 ;;
+  *"getprop sys.boot_completed"*) echo "${FAKE_BOOT_COMPLETED:-1}" ;;
   *"pm path ai.elizaos.app"*) echo 'package:/system/priv-app/Eliza/Eliza.apk' ;;
   *"cmd role get-role-holders android.app.role.HOME"*) echo 'ai.elizaos.app' ;;
   *"cmd package resolve-activity"*) echo 'ai.elizaos.app/.MainActivity' ;;
@@ -230,6 +230,15 @@ if grep -Fq "shell curl" "$VALIDATE_EXEC_OUT"; then
 fi
 pass "post-flash validator execute path works with fake adb"
 
+for boot_state in 0 unknown; do
+  if FAKE_BOOT_COMPLETED="$boot_state" "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
+    --device TEST123 --execute >"$TMP_DIR/boot-incomplete.out" 2>&1; then
+    fail "post-flash validator accepted incomplete boot without a manifest"
+  fi
+  assert_contains "$TMP_DIR/boot-incomplete.out" "Android boot is incomplete"
+done
+pass "post-flash validation requires boot completion even without a manifest"
+
 UNHEALTHY_OUT="$TMP_DIR/validate-unhealthy.out"
 if FAKE_AGENT_HEALTH_STATUS=503 "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
   --device TEST123 \
@@ -249,6 +258,43 @@ if FAKE_AGENT_HEALTH_BODY='{"status":"unhealthy"}' "$REPO_ROOT/scripts/android-i
 fi
 assert_contains "$UNHEALTHY_BODY_OUT" "agent health probe body did not return ready/ok/healthy"
 pass "post-flash validator rejects unhealthy HTTP 200 body"
+
+for body in '{"status":"ready"' '{"nested":{"status":"ready"}}' \
+  '[{"status":"ready"}]' '{"status":"ready","ready":false}' \
+  '{"status":"ready"} trailing' $'{"status":"rea\rdy"}'; do
+  if FAKE_AGENT_HEALTH_BODY="$body" "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
+    --device TEST123 --execute >"$TMP_DIR/invalid-health.out" 2>&1; then
+    fail "post-flash validator accepted malformed or non-ready health JSON"
+  fi
+  assert_contains "$TMP_DIR/invalid-health.out" "agent health probe body did not return"
+done
+pass "post-flash validator parses top-level health JSON and respects readiness"
+
+# Execute the actual generated remote printf through a fake toybox. This checks
+# request bytes, not merely whether the printed plan contains the URL.
+cat >"$BIN_DIR/toybox" <<'EOF'
+#!/usr/bin/env bash
+cat >"$HEALTH_REQUEST_FILE"
+printf 'HTTP/1.0 200 OK\r\n\r\n{"status":"ready"}\n'
+EOF
+chmod +x "$BIN_DIR/toybox"
+export HEALTH_REQUEST_FILE="$TMP_DIR/health-request"
+# Delegate only the health shell command to the local fixture shell.
+cp "$BIN_DIR/adb" "$BIN_DIR/adb-fixture"
+cat >"$BIN_DIR/adb" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"toybox nc"* ]]; then
+  exec bash -c "${@: -1}"
+fi
+exec "$(dirname "$0")/adb-fixture" "$@"
+EOF
+"$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \
+  --device TEST123 --agent-health-url 'http://127.0.0.1:03137/api/health?path=%2F&count=%s' \
+  --execute >"$TMP_DIR/encoded-health.out"
+assert_contains "$HEALTH_REQUEST_FILE" 'GET /api/health?path=%2F&count=%s HTTP/1.0'
+assert_contains "$HEALTH_REQUEST_FILE" 'Host: 127.0.0.1:3137'
+mv "$BIN_DIR/adb-fixture" "$BIN_DIR/adb"
+pass "post-flash health requests preserve percent escapes and parse decimal ports"
 
 UNSAFE_HEALTH_OUT="$TMP_DIR/validate-unsafe-health-url.out"
 if "$REPO_ROOT/scripts/android-installer/validate-post-flash.sh" \

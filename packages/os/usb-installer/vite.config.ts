@@ -2,6 +2,9 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  resolve: {
+    conditions: ["eliza-source", "module", "browser", "development|production"],
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

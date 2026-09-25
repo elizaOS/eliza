@@ -4,6 +4,13 @@
   "private": true,
   "description": "Electrobun application for preparing bootable elizaOS USB installers.",
   "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -20,7 +27,7 @@
     "test": "vitest run --config ./vitest.config.ts",
     "test:packaged-runtime:macos": "bash ../scripts/usb-installer/test-packaged-runtime.sh",
     "test:e2e": "playwright test",
-    "lint": "bunx @biomejs/biome check --write --unsafe src tests electrobun scripts server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe src tests electrobun server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "server": "bun run server.ts",
     "start": "bash run-dev.sh",
     "verify:release-key": "bun run ../scripts/usb-installer/verify-release-key.ts",
@@ -29,14 +36,15 @@
     "package:linux": "bun run verify:release-key && electrobun build --env=stable --platform linux",
     "package:win32": "bun run verify:release-key && electrobun build --env=stable --platform win32",
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
-    "lint:check": "bunx @biomejs/biome check src tests electrobun scripts server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
-    "lint:fix": "bunx @biomejs/biome check --write --unsafe src tests electrobun scripts server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
+    "lint:check": "bunx @biomejs/biome check src tests electrobun server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe src tests electrobun server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "format": "bunx @biomejs/biome format --write src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "format:check": "bunx @biomejs/biome format src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts"
   },
   "dependencies": {
+    "@fontsource/poppins": "^5.2.7",
     "vite": "^8.0.0",
-    "@elizaos/shared": "2.0.11-beta.7"
+    "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
@@ -55,6 +63,6 @@
     "sharp": "^0.35.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^5.0.1"
   }
 }

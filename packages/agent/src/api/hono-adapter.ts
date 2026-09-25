@@ -21,6 +21,8 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { dispatchRoute } from "./dispatch-route.ts";
 
 export interface HonoAdapterOptions {
+  /** Native transport provenance, supplied only by the authenticated host adapter. */
+  inProcess?: (req: Request) => boolean;
   /** Predicate that decides whether the incoming request has a valid token. */
   isAuthorized: (req: Request) => boolean;
   /** Predicate that decides whether the incoming request is trusted loopback/local. */
@@ -143,7 +145,7 @@ export function mountRoutesOnHono(
         query: searchParamsToQuery(url),
         body,
         rawBody,
-        inProcess: false,
+        inProcess: options.inProcess?.(request) ?? false,
         isAuthorized: () => options.isAuthorized(request),
         isTrustedLocal: () => options.isTrustedLocal?.(request) ?? false,
         accessContext: options.resolveAccessContext?.(request),

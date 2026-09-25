@@ -41,7 +41,12 @@ while [ $# -gt 0 ]; do
         --no-cache) NO_CACHE="--no-cache"; shift ;;
         --c-loop|--cloop) FORCE_CLOOP="1"; shift ;;
         --baseline-jit) FORCE_CLOOP="0"; shift ;;
-        --jobs) JOBS="$2"; shift 2 ;;
+        --jobs)
+            if [ "$#" -lt 2 ] || [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+                echo "--jobs requires a positive integer" >&2
+                exit 2
+            fi
+            JOBS="$2"; shift 2 ;;
         --image-only) IMAGE_ONLY=1; shift ;;
         --shell) SHELL_MODE=1; shift ;;
         # Build the post-rewrite Rust-core bun (rust_core_port.target_commit +
@@ -135,6 +140,14 @@ DOCKER_RUN_ARGS=(
     -v "$HERE/dist:/artifact"
     -v "$HERE/dist/src-cache:/work/src"
 )
+
+# Keep shared WebKit patches and JIT recipe gates; overlay revision-specific fixes.
+if [ "$RUST_CORE" = "1" ]; then
+    for patch in "$HERE/rust-core/webkit-patches/"*.patch; do
+        [ -f "$patch" ] || { echo "FATAL: Rust-core WebKit overrides are missing" >&2; exit 1; }
+        DOCKER_RUN_ARGS+=(-v "$patch:/opt/webkit-patches/${patch##*/}:ro")
+    done
+fi
 
 if [ -n "$JOBS" ]; then
     DOCKER_RUN_ARGS+=(-e "JOBS=${JOBS}")

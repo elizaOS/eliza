@@ -2,7 +2,6 @@
 /** Fail-closed verifier for Gradle connected-Android-test JUnit XML. */
 import fs from "node:fs";
 import path from "node:path";
-import { isMainModule } from "../distro-android/is-main.mjs";
 
 function usage(message) {
   if (message) console.error(`[android-instrumentation-results] ${message}`);
@@ -79,7 +78,7 @@ function collectXml(directory) {
   return documents;
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   const results = value("--results");
   const requiredClass = value("--required-class");
   const minTests = Number(value("--min-tests"));

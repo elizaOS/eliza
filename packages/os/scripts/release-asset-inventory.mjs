@@ -5,9 +5,8 @@
  * proves the downloaded directory and post-download API state still match.
  */
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   parseArgs,
   readJson,
@@ -531,12 +530,41 @@ function requiredArg(args, name) {
   return value;
 }
 
+/** Compare every publication byte, including metadata outside SHA256SUMS. */
+export async function assertReleaseBundlesEqual(expectedRoot, observedRoot) {
+  async function inventory(root) {
+    if (!(await lstat(root)).isDirectory()) {
+      fail(`release bundle must be a non-symlink directory: ${root}`);
+    }
+    const names = (await readdir(root)).sort();
+    if (names.length === 0) fail("release bundle must not be empty");
+    const records = [];
+    for (const name of names) {
+      normalizeAssetName(name, "bundle filename");
+      const file = path.join(root, name);
+      const info = await lstat(file);
+      if (!info.isFile() || info.size === 0) {
+        fail(`bundle asset must be a nonempty regular file: ${name}`);
+      }
+      records.push({ name, size: info.size, sha256: await sha256File(file) });
+    }
+    return records;
+  }
+  const expected = await inventory(expectedRoot);
+  const observed = await inventory(observedRoot);
+  if (JSON.stringify(expected) !== JSON.stringify(observed)) {
+    fail("staged release bundle differs from the verified publication input");
+  }
+  return expected;
+}
+
 function usage() {
   process.stdout.write(`Usage:
   node scripts/release-asset-inventory.mjs capture --repository <owner/repo> --release <release.json> --assets <assets.json> --output <inventory.json>
   node scripts/release-asset-inventory.mjs plan --inventory <inventory.json>
   node scripts/release-asset-inventory.mjs verify --inventory <inventory.json> --artifact-root <dir> --receipt <receipt.json> --markdown <receipt.md>
   node scripts/release-asset-inventory.mjs compare --expected <inventory.json> --observed <inventory.json>
+  node scripts/release-asset-inventory.mjs compare-bundles --expected <dir> --observed <dir>
   node scripts/release-asset-inventory.mjs render-pr --inventory <inventory.json> --receipt <receipt.json> --base-sha <sha> --tag-sha <sha> --tag <tag> --manifest <path> --run-url <url> --log <log> --output <body.md>
 `);
 }
@@ -547,6 +575,17 @@ async function main() {
   if (!command || command === "help" || args.help) {
     usage();
     if (!command || args.help) process.exitCode = command ? 0 : 2;
+    return;
+  }
+
+  if (command === "compare-bundles") {
+    const records = await assertReleaseBundlesEqual(
+      requiredArg(args, "expected"),
+      requiredArg(args, "observed"),
+    );
+    process.stdout.write(
+      `Verified ${records.length} exact release bundle files\n`,
+    );
     return;
   }
 
@@ -627,9 +666,6 @@ async function main() {
   fail(`unknown command ${command}`);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (import.meta.main) {
   await main();
 }

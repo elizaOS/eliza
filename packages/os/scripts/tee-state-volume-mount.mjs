@@ -33,7 +33,6 @@
 // exercise the logic off-hardware.
 
 import { spawn } from "node:child_process";
-import { pathToFileURL } from "node:url";
 
 export const STATE_VOLUME_KEY_ID = "state-volume";
 
@@ -180,6 +179,6 @@ async function main() {
   process.exit(2);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

@@ -1,17 +1,10 @@
-# ELIZAOS_PROFILE=confidential — meta-elizaos / Yocto confidential guest
+# Confidential guest inputs
 
-Status: **scaffold only.** The reproducible image build is **BLOCKED** on a build host (gate `confidential-image-reproducibility`).
+Policy, kernel settings, dstack pins, and a Yocto data layer for confidential
+images. This tree does not supply a complete guest build or an attestation agent.
+`image-manifest.example.json` is example metadata, not release evidence.
 
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+The [layer](meta-elizaos/README.md) requires an external Yocto/meta-dstack build
+context. Validate supplied manifests with `scripts/check-confidential-profile.mjs
+--manifest /absolute/manifest.json --release` from the OS package directory.
+The release check requires actual image and reproducibility evidence.

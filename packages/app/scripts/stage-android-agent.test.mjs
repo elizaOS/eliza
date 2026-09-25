@@ -14,6 +14,7 @@ import {
 
 import {
   __testables,
+  selectAndroidRuntimeTargets,
   stageSeccompShimForAbi,
 } from "./lib/stage-android-agent.mjs";
 
@@ -541,4 +542,140 @@ test("artifact downloads preserve GitHub binary content negotiation", async () =
   } finally {
     removePathRecursive(tmp);
   }
+});
+
+test("Pixel runtime selection excludes RISC-V without weakening defaults", () => {
+  assert.deepEqual(
+    selectAndroidRuntimeTargets("arm64-v8a").map((t) => t.bunArch),
+    ["aarch64"],
+  );
+  assert.ok(
+    selectAndroidRuntimeTargets(undefined).some((t) => t.bunArch === "riscv64"),
+  );
+  assert.deepEqual(
+    selectAndroidRuntimeTargets("riscv64").map((t) => t.bunArch),
+    ["riscv64"],
+  );
+});
+test("runtime selection rejects empty, unknown, and duplicate ABI inputs", () => {
+  for (const value of ["", "arm64", "arm64-v8a,", "arm64-v8a,arm64-v8a"]) {
+    assert.throws(() => selectAndroidRuntimeTargets(value), /unique supported/);
+  }
+});
+
+test("native asset provenance binds configured and retained bytes without admitting unknown files", () => {
+  const tmp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-native-provenance-"),
+  );
+  const configured = path.join(tmp, "configured");
+  const staged = path.join(tmp, "staged");
+  fs.mkdirSync(configured);
+  fs.mkdirSync(staged);
+  const values = {};
+  for (const key of [
+    "ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR",
+    "ELIZA_AOSP_LLAMA_ASSET_DIR",
+    "ELIZA_MTP_ANDROID_LIBDIR",
+  ]) {
+    values[key] = null;
+    values[`${key}_X86_64`] = null;
+  }
+  const stage = () =>
+    __testables.stageNativeLlamaAssetsForAbi({
+      androidAbi: "x86_64",
+      abiAssetsDir: staged,
+      log: () => {},
+    });
+  const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  try {
+    fs.writeFileSync(
+      path.join(configured, "libelizainference.so"),
+      "configured native bytes",
+    );
+    fs.writeFileSync(path.join(configured, "unknown.so"), "must not copy");
+    fs.writeFileSync(path.join(staged, "llama-server"), "retained server");
+    fs.writeFileSync(path.join(staged, "OMNIVOICE_FUSE_VERIFY.json"), "{}");
+    fs.writeFileSync(
+      path.join(staged, "unrecognized.bin"),
+      "must remain unrecorded",
+    );
+    const result = withEnv(
+      { ...values, ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR_X86_64: configured },
+      stage,
+    );
+    assert.equal(result.changes, 1);
+    assert.equal(result.files.length, 3);
+    const native = result.files.find((f) =>
+      f.path.endsWith("libelizainference.so"),
+    );
+    assert.equal(native.source.kind, "configured-native-llama-asset");
+    assert.equal(
+      native.source.environment_key,
+      "ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR_X86_64",
+    );
+    assert.equal(native.sha256, hash("configured native bytes"));
+    assert.equal(
+      native.size_bytes,
+      Buffer.byteLength("configured native bytes"),
+    );
+    for (const file of result.files.filter((f) => f !== native)) {
+      assert.equal(file.source.kind, "retained-native-llama-asset");
+      assert.equal(file.source.build_origin, "unknown");
+    }
+    assert.equal(fs.existsSync(path.join(staged, "unknown.so")), false);
+    assert.equal(
+      result.files.some((f) => f.path.endsWith("unrecognized.bin")),
+      false,
+    );
+    const known = new Set(result.files.map((f) => path.basename(f.path)));
+    assert.deepEqual(
+      fs.readdirSync(staged).filter((n) => !known.has(n)),
+      ["unrecognized.bin"],
+    );
+    const retained = withEnv(values, stage);
+    assert.equal(retained.changes, 0);
+    assert(
+      retained.files.every(
+        (f) => f.source.kind === "retained-native-llama-asset",
+      ),
+    );
+    fs.writeFileSync(
+      path.join(staged, "llama-server"),
+      "changed retained server",
+    );
+    const changed = withEnv(values, stage).files.find((f) =>
+      f.path.endsWith("llama-server"),
+    );
+    assert.equal(changed.sha256, hash("changed retained server"));
+    assert.equal(
+      changed.size_bytes,
+      Buffer.byteLength("changed retained server"),
+    );
+    assert.notEqual(
+      changed.sha256,
+      retained.files.find((f) => f.path === changed.path).sha256,
+    );
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
+test("runtime provenance deduplicates identical paths and refuses conflicting receipts", () => {
+  const row = {
+    path: "assets/agent/x86_64/llama-server",
+    sha256: "a".repeat(64),
+    size_bytes: 10,
+    source: { kind: "retained-native-llama-asset" },
+  };
+  assert.deepEqual(__testables.deduplicateProvenanceFiles([row, { ...row }]), [
+    row,
+  ]);
+  assert.throws(
+    () =>
+      __testables.deduplicateProvenanceFiles([
+        row,
+        { ...row, sha256: "b".repeat(64) },
+      ]),
+    /Conflicting runtime provenance/,
+  );
 });

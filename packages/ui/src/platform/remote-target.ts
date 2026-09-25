@@ -1,6 +1,108 @@
-/** Public-only renderer adapter for this desktop's native remote-target lifecycle. */
+/** Native device lifecycle stays on the local host even when the selected agent is remote. */
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { RemoteTargetPublicIdentity } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+
+interface NativeLocalReply {
+  status: number;
+  body?: string | null;
+}
+const localAgent = registerPlugin<{
+  request(input: {
+    path: string;
+    method: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeoutMs: number;
+  }): Promise<NativeLocalReply>;
+}>("Agent");
+
+export function supportsNativeRemoteTarget(): boolean {
+  return Capacitor.getPlatform() === "android" || isElectrobunRuntime();
+}
+
+async function requestLocalDevice<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+): Promise<T> {
+  const input = {
+    path,
+    method,
+    timeoutMs: 30000,
+    ...(body === undefined
+      ? {}
+      : {
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        }),
+  };
+  // Android's Agent.request injects the device token in native code and always
+  // dispatches to its local socket. It cannot inherit a selected Cloud URL/token.
+  const response =
+    Capacitor.getPlatform() === "android"
+      ? await localAgent.request(input)
+      : await invokeDesktopBridgeRequest<NativeLocalReply>({
+          rpcMethod: "localAgentRequest",
+          ipcChannel: "agent:localAgentRequest",
+          params: input,
+        });
+  if (!response || response.status < 200 || response.status >= 300)
+    throw new Error(
+      `Local device request failed${response ? ` (${response.status})` : ""}.`,
+    );
+  let value: unknown;
+  try {
+    value = JSON.parse(response.body ?? "null");
+  } catch {
+    // error-policy:J3 Do not expose malformed native response contents in UI errors.
+    throw new Error("Local device returned an invalid response.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Local device returned an invalid response.");
+  return value as T;
+}
+
+const androidRoutes: Record<string, string> = {
+  remoteTargetEnroll: "enroll",
+  remoteTargetGetIdentity: "identity",
+  remoteTargetStatus: "status",
+  remoteTargetCreatePairingChallenge: "pairing",
+  remoteTargetReadPairingChallenge: "pairing-status",
+  remoteTargetConfirmPairing: "confirm",
+  remoteTargetActivate: "activate",
+  remoteTargetCompensateActivation: "compensate",
+  remoteTargetCommitActivation: "commit",
+  remoteTargetStart: "start",
+  remoteTargetStop: "stop",
+  remoteTargetRevoke: "revoke",
+  remoteTargetFinalizeHostRevoke: "finalize-revoke",
+};
+
+async function invokeRemoteTargetRequest<T>(input: {
+  rpcMethod: string;
+  ipcChannel: string;
+  params: Record<string, unknown>;
+}): Promise<T | null> {
+  if (Capacitor.getPlatform() !== "android")
+    return invokeDesktopBridgeRequest<T>(input);
+  const route = androidRoutes[input.rpcMethod];
+  if (!route) throw new Error("Unsupported local device operation.");
+  const read = route === "identity" || route === "status";
+  return requestLocalDevice<T>(
+    `/api/remote-target/${route}`,
+    read ? "GET" : "POST",
+    read ? undefined : input.params,
+  );
+}
+
+export async function getLocalBrowserProfile(): Promise<string | null> {
+  const value = await requestLocalDevice<{
+    connected: { profileId: string } | null;
+  }>("/api/browser-device/profile");
+  return value.connected?.profileId ?? null;
+}
 
 export interface RemoteTargetStatus {
   running: boolean;
@@ -37,10 +139,10 @@ export async function enrollRemoteTarget(input: {
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
-  platform: "macos" | "windows" | "linux";
+  platform: "macos" | "windows" | "linux" | "android";
   managedNetwork?: boolean;
 }): Promise<{ hostId: string; identity: RemoteTargetPublicIdentity }> {
-  const result = await invokeDesktopBridgeRequest<{
+  const result = await invokeRemoteTargetRequest<{
     hostId: string;
     status: "active";
     identity: RemoteTargetPublicIdentity;
@@ -59,7 +161,7 @@ export async function getRemoteTargetIdentity(): Promise<{
   identity?: RemoteTargetPublicIdentity;
 }> {
   return (
-    (await invokeDesktopBridgeRequest<{
+    (await invokeRemoteTargetRequest<{
       enrolled: boolean;
       identity?: RemoteTargetPublicIdentity;
     }>({
@@ -71,13 +173,11 @@ export async function getRemoteTargetIdentity(): Promise<{
 }
 
 export async function createRemoteTargetPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
-  const result = await invokeDesktopBridgeRequest<RemoteTargetPairingChallenge>(
-    {
-      rpcMethod: "remoteTargetCreatePairingChallenge",
-      ipcChannel: "remoteTarget:createPairingChallenge",
-      params: {},
-    },
-  );
+  const result = await invokeRemoteTargetRequest<RemoteTargetPairingChallenge>({
+    rpcMethod: "remoteTargetCreatePairingChallenge",
+    ipcChannel: "remoteTarget:createPairingChallenge",
+    params: {},
+  });
   if (!result) throw new Error("Remote pairing challenge is unavailable.");
   return result;
 }
@@ -86,7 +186,7 @@ export async function readRemoteTargetPairingChallenge(
   sessionId: string,
 ): Promise<RemoteTargetPairingChallengeStatus> {
   const result =
-    await invokeDesktopBridgeRequest<RemoteTargetPairingChallengeStatus>({
+    await invokeRemoteTargetRequest<RemoteTargetPairingChallengeStatus>({
       rpcMethod: "remoteTargetReadPairingChallenge",
       ipcChannel: "remoteTarget:readPairingChallenge",
       params: { sessionId },
@@ -97,19 +197,21 @@ export async function readRemoteTargetPairingChallenge(
 
 export async function confirmRemoteTargetPairing(
   sessionId: string,
+  browserProfileId?: string,
 ): ReturnType<typeof activateRemoteTarget> {
-  const result = await invokeDesktopBridgeRequest<
+  const result = await invokeRemoteTargetRequest<
     Awaited<ReturnType<typeof activateRemoteTarget>>
   >({
     rpcMethod: "remoteTargetConfirmPairing",
     ipcChannel: "remoteTarget:confirmPairing",
-    params: { sessionId },
+    params: { sessionId, ...(browserProfileId ? { browserProfileId } : {}) },
   });
   if (!result) throw new Error("Remote pairing confirmation is unavailable.");
   return result;
 }
 
 export async function activateRemoteTarget(input: {
+  browserProfileId?: string;
   sessionId?: string;
   code: string;
 }): Promise<
@@ -130,7 +232,7 @@ export async function activateRemoteTarget(input: {
       errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
     }
 > {
-  const result = await invokeDesktopBridgeRequest<
+  const result = await invokeRemoteTargetRequest<
     | {
         sessionId: string;
         status: "active";
@@ -162,7 +264,7 @@ export async function compensateRemoteTargetActivation(
   status: "denied" | "revoked";
   alreadyCompensated: boolean;
 }> {
-  const result = await invokeDesktopBridgeRequest<{
+  const result = await invokeRemoteTargetRequest<{
     sessionId: string;
     status: "denied" | "revoked";
     alreadyCompensated: boolean;
@@ -179,7 +281,7 @@ export async function compensateRemoteTargetActivation(
 export async function commitRemoteTargetActivation(
   sessionId: string,
 ): Promise<{ status: "active"; alreadyCommitted: boolean }> {
-  const result = await invokeDesktopBridgeRequest<{
+  const result = await invokeRemoteTargetRequest<{
     sessionId: string;
     status: "active";
     alreadyCommitted: boolean;
@@ -195,7 +297,7 @@ export async function commitRemoteTargetActivation(
 
 export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
   return (
-    (await invokeDesktopBridgeRequest<RemoteTargetStatus>({
+    (await invokeRemoteTargetRequest<RemoteTargetStatus>({
       rpcMethod: "remoteTargetStatus",
       ipcChannel: "remoteTarget:status",
       params: {},
@@ -211,7 +313,7 @@ export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
 }
 
 export async function startRemoteTarget(): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ running: true }>({
+  const result = await invokeRemoteTargetRequest<{ running: true }>({
     rpcMethod: "remoteTargetStart",
     ipcChannel: "remoteTarget:start",
     params: {},
@@ -220,7 +322,7 @@ export async function startRemoteTarget(): Promise<boolean> {
 }
 
 export async function stopRemoteTarget(): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ running: false }>({
+  const result = await invokeRemoteTargetRequest<{ running: false }>({
     rpcMethod: "remoteTargetStop",
     ipcChannel: "remoteTarget:stop",
     params: {},
@@ -231,7 +333,7 @@ export async function stopRemoteTarget(): Promise<boolean> {
 export async function revokeRemoteTargetSession(
   sessionId: string,
 ): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ revoked: true }>({
+  const result = await invokeRemoteTargetRequest<{ revoked: true }>({
     rpcMethod: "remoteTargetRevoke",
     ipcChannel: "remoteTarget:revoke",
     params: { sessionId },
@@ -242,7 +344,7 @@ export async function revokeRemoteTargetSession(
 export async function finalizeRemoteTargetHostRevoke(
   hostId: string,
 ): Promise<boolean> {
-  const result = await invokeDesktopBridgeRequest<{ cleaned: true }>({
+  const result = await invokeRemoteTargetRequest<{ cleaned: true }>({
     rpcMethod: "remoteTargetFinalizeHostRevoke",
     ipcChannel: "remoteTarget:finalizeHostRevoke",
     params: { hostId },

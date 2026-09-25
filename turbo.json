@@ -603,7 +603,11 @@
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },
     "memperf-suite#typecheck": {
-      "dependsOn": ["typecheck:deps", "@elizaos/shared#build"]
+      "dependsOn": [
+        "typecheck:deps",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-assistant#build"
+      ]
     },
     "@elizaos/ui#typecheck": {
       "dependsOn": [

@@ -10,7 +10,6 @@ import {
   statSync,
 } from "node:fs";
 import { resolve } from "node:path";
-import { isMainModule } from "../distro-android/is-main.mjs";
 
 const ABI_BY_ARCH = Object.freeze({
   arm64: "arm64-v8a",
@@ -146,4 +145,4 @@ export function main(argv = process.argv.slice(2)) {
   return results;
 }
 
-if (isMainModule(import.meta)) main();
+if (import.meta.main) main();

@@ -2817,6 +2817,20 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-calendar/src/api/client-calendar.ts",
         ],
         ["@elizaos/plugin-calendar/ui", "plugins/plugin-calendar/src/ui.ts"],
+        // Native host bridge modules must resolve before their optional plugin
+        // bundles are built; the renderer imports these literal entrypoints.
+        [
+          "@elizaos/plugin-native-messages/bridge",
+          "plugins/plugin-native-messages/src/bridge.ts",
+        ],
+        [
+          "@elizaos/plugin-native-contacts/bridge",
+          "plugins/plugin-native-contacts/src/bridge.ts",
+        ],
+        [
+          "@elizaos/plugin-native-phone/bridge",
+          "plugins/plugin-native-phone/src/bridge.ts",
+        ],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),

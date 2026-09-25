@@ -2,6 +2,7 @@
 /** Generate the Pixel 11 Pro vendor/device module from pinned stock inputs. */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -14,7 +15,6 @@ import {
   materializeLockedSourceOverlays,
   verifyLockedArtifact,
 } from "./bootstrap-aosp.mjs";
-import { isMainModule } from "./is-main.mjs";
 import { lintInitRc } from "./lint-init-rc.mjs";
 import { withSisoCompatibility } from "./siso-env.mjs";
 
@@ -25,23 +25,109 @@ const defaultLockPath = path.join(
   "android/pixel11pro.lock.json",
 );
 
+// A newer factory build may precede adevtool's reviewed device reference.
+// Supply the separately pinned reference only while generating; preserve the
+// upstream checkout and retain backups if the process is forcibly interrupted.
+export function withLockedVendorReference(
+  aospRoot,
+  lock,
+  operation,
+  sourceRoot = repositoryRoot,
+) {
+  const reference = lock.generatedVendor?.referenceSpec;
+  if (!reference) return operation();
+  const source = fs.realpathSync(path.resolve(sourceRoot, reference.path));
+  const canonicalRoot = fs.realpathSync(sourceRoot);
+  if (!source.startsWith(`${canonicalRoot}${path.sep}`))
+    fail("Vendor reference must remain inside the source checkout");
+  const bytes = fs.readFileSync(source);
+  if (
+    bytes.length !== reference.sizeBytes ||
+    createHash("sha256").update(bytes).digest("hex") !== reference.sha256
+  )
+    fail("Locked vendor reference size or digest mismatch");
+  const factory = lock.referenceFactoryImage;
+  if (
+    lock.device?.codename !== "grizzly" ||
+    !/^[A-Z0-9]+\.[0-9]+\.[0-9]+(?:\.[A-Z0-9]+)?$/.test(lock.device.buildId) ||
+    factory?.buildId !== lock.device.buildId ||
+    !/^[a-z0-9.-]+\.zip$/.test(factory.filename) ||
+    !/^[a-f0-9]{64}$/.test(factory.sha256) ||
+    factory.url !== `https://dl.google.com/dl/android/aosp/${factory.filename}`
+  )
+    fail("Vendor reference requires the exact locked Google factory input");
+  const root = path.join(aospRoot, "vendor/adevtool");
+  const spec = path.join(root, "vendor-specs/google_devices/grizzly.yml");
+  const index = path.join(root, "config/build-index/build-index-main.yml");
+  const originalSpec = fs.readFileSync(spec);
+  const originalIndex = fs.readFileSync(index);
+  if (
+    createHash("sha256").update(originalSpec).digest("hex") !==
+    reference.baseSha256
+  )
+    fail("Upstream vendor reference differs from the locked base");
+  const key = `grizzly ${factory.buildId}:`;
+  if (originalIndex.toString("utf8").split(/\r?\n/).includes(key))
+    fail(
+      "Factory already exists upstream; review the vendor reference override",
+    );
+  const backup = path.join(root, ".elizaos-vendor-reference");
+  fs.mkdirSync(backup, { mode: 0o700 });
+  let backedUp = false;
+  try {
+    fs.writeFileSync(path.join(backup, "grizzly.yml"), originalSpec, {
+      flag: "wx",
+    });
+    fs.writeFileSync(path.join(backup, "build-index-main.yml"), originalIndex, {
+      flag: "wx",
+    });
+    backedUp = true;
+    fs.writeFileSync(spec, bytes);
+    fs.writeFileSync(
+      index,
+      `${originalIndex.toString("utf8")}\n${key}\n  factory: ${factory.sha256} ${factory.filename}\n`,
+    );
+    return operation();
+  } finally {
+    if (backedUp) {
+      fs.writeFileSync(spec, originalSpec);
+      fs.writeFileSync(index, originalIndex);
+    }
+    fs.rmSync(backup, { recursive: true });
+  }
+}
+
 // The generated Pixel makefile carries the factory image's BUILD_ID guard.
 // Android 17's product configuration owns BUILD_ID as a readonly value and
 // uses a different source-tree release ID, so preserving the guard as a
 // warning is required for a custom AOSP build. The original guard text stays
 // in the file (and in the lock contract) for provenance and reviewability.
-function normalizeGeneratedBuildIdGuard(aospRoot) {
+export function normalizeGeneratedBuildIdGuard(aospRoot, buildId) {
+  if (
+    typeof buildId !== "string" ||
+    !/^[A-Z0-9]+\.[0-9]+\.[0-9]+(?:\.[A-Z0-9]+)?$/.test(buildId)
+  ) {
+    throw new Error(
+      "A locked factory build ID is required for the generated build guard",
+    );
+  }
   const makefilePath = path.join(
     aospRoot,
     "vendor/google_devices/grizzly/grizzly.mk",
   );
   if (!fs.existsSync(makefilePath)) return;
   const contents = fs.readFileSync(makefilePath, "utf8");
-  const strictError =
-    "  $(error BUILD_ID: expected CD1A.260714.001.A9, got $(BUILD_ID))";
-  const warning =
-    "  $(warning BUILD_ID: factory CD1A.260714.001.A9; using AOSP $(BUILD_ID))";
-  if (!contents.includes(strictError) || contents.includes(warning)) return;
+  const strictError = `  $(error BUILD_ID: expected ${buildId}, got $(BUILD_ID))`;
+  const warning = `  $(warning BUILD_ID: factory ${buildId}; using AOSP $(BUILD_ID))`;
+  if (
+    !contents.includes(`ifneq ($(BUILD_ID),${buildId})`) ||
+    (!contents.includes(strictError) && !contents.includes(warning))
+  ) {
+    throw new Error(
+      `Generated vendor build guard does not match locked factory ${buildId}`,
+    );
+  }
+  if (contents.includes(warning)) return;
   fs.writeFileSync(makefilePath, contents.replace(strictError, warning));
 }
 
@@ -133,22 +219,48 @@ function normalizeGeneratedSePolicy(aospRoot) {
   if (normalized !== contents) fs.writeFileSync(typesPath, normalized);
 }
 
-// The stock A9 vendor manifest advertises the previous sepolicy API level
-// (202604), while Android 17's board contract builds against 202704. Keep the
-// generated HAL declarations unchanged and update only the manifest's
-// sepolicy version so assemble_vintf can validate the device tree.
-function normalizeGeneratedVintf(aospRoot) {
+// Preserve the stock policy contract. A mismatched development release must
+// be corrected in the lunch configuration, not hidden by rewriting VINTF.
+export function assertGeneratedVintfApi(aospRoot, expectedApi) {
+  if (!/^[0-9]{6}$/.test(expectedApi ?? ""))
+    fail("Missing locked vendor API level");
   const manifestPath = path.join(
     aospRoot,
     "vendor/google_devices/grizzly/vintf/vendor/manifest.xml",
   );
-  if (!fs.existsSync(manifestPath)) return;
   const contents = fs.readFileSync(manifestPath, "utf8");
-  const normalized = contents.replace(
-    /(<sepolicy>\s*<version>)202604(<\/version>\s*<\/sepolicy>)/,
-    "$1202704$2",
+  const versions = [
+    ...contents.matchAll(
+      /<sepolicy>\s*<version>([0-9]+)<\/version>\s*<\/sepolicy>/g,
+    ),
+  ];
+  if (versions.length !== 1 || versions[0][1] !== expectedApi)
+    fail(`Generated vendor VINTF policy must retain locked API ${expectedApi}`);
+}
+
+export function grizzlyLunchTarget(aospRoot, lock) {
+  const { releaseConfig, vendorApiLevel, productName } = lock.device ?? {};
+  if (
+    !/^[a-z0-9_]+$/.test(releaseConfig ?? "") ||
+    !/^[0-9]{6}$/.test(vendorApiLevel ?? "") ||
+    !/^[a-z0-9_]+$/.test(productName ?? "")
+  )
+    fail("A locked Pixel release configuration and vendor API are required");
+  const flag = fs.readFileSync(
+    path.join(
+      aospRoot,
+      "build/release/flag_values",
+      releaseConfig,
+      "RELEASE_BOARD_API_LEVEL.textproto",
+    ),
+    "utf8",
   );
-  if (normalized !== contents) fs.writeFileSync(manifestPath, normalized);
+  const values = [...flag.matchAll(/string_value:\s*"([0-9]+)"/g)];
+  if (values.length !== 1 || values[0][1] !== vendorApiLevel)
+    fail(
+      `Pixel release ${releaseConfig} does not match stock vendor API ${vendorApiLevel}`,
+    );
+  return `${productName}-${releaseConfig}-userdebug`;
 }
 
 // DIAGNOSTIC-ONLY fstab rewrite, opt-in via ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS=1.
@@ -739,6 +851,7 @@ export async function prepareGrizzly({
   }
   materializeExternalProjects(aospRoot, lock);
   assertPinnedAospCheckout(aospRoot, lock);
+  grizzlyLunchTarget(aospRoot, lock);
   const overlayResult = await materializeLockedSourceOverlays(aospRoot, lock);
   const overlayStamp = JSON.stringify(
     overlayResult.overlays.map(({ path: overlayPath, sha256 }) => ({
@@ -792,10 +905,10 @@ export async function prepareGrizzly({
   }
   if (fs.existsSync(generatedRoot)) {
     try {
-      normalizeGeneratedBuildIdGuard(aospRoot);
+      normalizeGeneratedBuildIdGuard(aospRoot, lock.device.buildId);
       normalizeGeneratedProprietaryNamespace(aospRoot);
       normalizeGeneratedSePolicy(aospRoot);
-      normalizeGeneratedVintf(aospRoot);
+      assertGeneratedVintfApi(aospRoot, lock.device.vendorApiLevel);
       normalizeAospKeymasterInit(aospRoot, keymasterNonblocking);
       if (conservativeF2fs) normalizeGeneratedF2fsMountOptions(aospRoot);
       normalizeGeneratedGraphicsProperties(aospRoot);
@@ -817,14 +930,16 @@ export async function prepareGrizzly({
       commandName === "adevtool"
         ? path.join(adevtoolRoot, "bin/run")
         : commandName;
-    run(command, commandArguments, {
-      cwd: aospRoot,
-      env: withSisoCompatibility(),
-    });
-    normalizeGeneratedBuildIdGuard(aospRoot);
+    withLockedVendorReference(aospRoot, lock, () =>
+      run(command, commandArguments, {
+        cwd: aospRoot,
+        env: withSisoCompatibility(),
+      }),
+    );
+    normalizeGeneratedBuildIdGuard(aospRoot, lock.device.buildId);
     normalizeGeneratedProprietaryNamespace(aospRoot);
     normalizeGeneratedSePolicy(aospRoot);
-    normalizeGeneratedVintf(aospRoot);
+    assertGeneratedVintfApi(aospRoot, lock.device.vendorApiLevel);
     normalizeAospKeymasterInit(aospRoot, keymasterNonblocking);
     if (conservativeF2fs) normalizeGeneratedF2fsMountOptions(aospRoot);
     normalizeGeneratedGraphicsProperties(aospRoot);
@@ -867,6 +982,6 @@ export async function prepareGrizzly({
   return { lock, files };
 }
 
-if (isMainModule(import.meta)) {
+if (import.meta.main) {
   await prepareGrizzly(parseArgs(process.argv.slice(2)));
 }

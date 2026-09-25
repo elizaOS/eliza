@@ -17,10 +17,7 @@ import {
   HandoffService,
   PendingPromptsService,
 } from "@elizaos/plugin-assistant";
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships";
+import { KnowledgeGraphService } from "@elizaos/plugin-relationships";
 import type { HttpPlugin as Plugin } from "@elizaos/shared";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
@@ -80,6 +77,7 @@ import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { preparePluginForSelectedDatabase } from "./database-selection.ts";
+import { elizaSchema } from "./eliza-schema.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
@@ -116,9 +114,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
     // migrates the runtime data model whenever the agent runs.
-    schema: {
-      ...knowledgeGraphSchema,
-    },
+    schema: elizaSchema,
 
     services: [
       AgentEventService as ServiceClass,

@@ -20,11 +20,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const osRepoRoot = path.resolve(here, "../..");
-const repoRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
-);
+const repoRoot = resolveElizaSourceRoot();
 const reqFromApp = createRequire(
   path.join(repoRoot, "packages/app/package.json"),
 );

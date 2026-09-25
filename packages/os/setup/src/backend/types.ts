@@ -1,4 +1,5 @@
-// Implements backend device and HTTP operations for the AOSP setup flasher.
+import type { ReleaseFile } from "./signed-release";
+
 export interface ConnectedDevice {
   serial: string;
   model: string;
@@ -27,6 +28,10 @@ export interface AospBuild {
   manifestPath?: string;
   /** release manifest retained from authoritative discovery */
   manifest?: AndroidReleaseManifest;
+  /** Exact authenticated v2 envelope bytes; never reconstructed from a summary. */
+  signedManifest?: string;
+  /** Complete signed installation and recovery file set. */
+  signedFiles?: ReleaseFile[];
   /** GitHub release asset URLs keyed by exact artifact filename */
   artifactUrls?: Record<string, string>;
   sizeBytes: number;

@@ -1,15 +1,14 @@
-/** Exercises staged Android database and skill payloads through their real runtime consumers. */
+/** Exercises staged Android database payloads through their real runtime consumers. */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  stageAndroidBundledSkills,
-  stageAndroidPgliteAssets,
-} from "./lib/stage-android-agent.mjs";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { stageAndroidPgliteAssets } from "./lib/stage-android-agent.mjs";
 
 test("staged trigram archive loads and executes the SQL extension", async () => {
   const repo = path.resolve(
@@ -35,17 +34,47 @@ test("staged trigram archive loads and executes the SQL extension", async () => 
       path.join(path.dirname(pgliteEntry), "pg_trgm.tar.gz"),
       path.join(source, "pg_trgm.tar.gz"),
     );
-    stageAndroidPgliteAssets({
+    // Exercise migration from a prior stage's compressed asset as well.
+    await fs.copyFile(
+      path.join(source, "pg_trgm.tar.gz"),
+      path.join(staged, "pg_trgm.tar.gz"),
+    );
+    const resultStage = stageAndroidPgliteAssets({
       distMobileDir: source,
       assetsAgentDir: staged,
       androidMainDir: main,
     });
+    const tar = await fs.readFile(path.join(staged, "pg_trgm.tar"));
+    assert.deepEqual(
+      tar,
+      gunzipSync(await fs.readFile(path.join(source, "pg_trgm.tar.gz"))),
+    );
+    await assert.rejects(fs.stat(path.join(staged, "pg_trgm.tar.gz")), {
+      code: "ENOENT",
+    });
+    assert.equal(resultStage.stagedFiles[0].path, "assets/agent/pg_trgm.tar");
+    assert.equal(resultStage.stagedFiles[0].size_bytes, tar.length);
+    assert.equal(
+      resultStage.stagedFiles[0].sha256,
+      createHash("sha256").update(tar).digest("hex"),
+    );
+    assert.equal(
+      stageAndroidPgliteAssets({
+        distMobileDir: source,
+        assetsAgentDir: staged,
+        androidMainDir: main,
+      }).stagedCount,
+      0,
+    );
+    // Match ElizaAgentService: gzip the packaged tar into the runtime directory.
+    const extracted = path.join(root, "pg_trgm.tar.gz");
+    await fs.writeFile(extracted, gzipSync(tar));
     db = new PGlite({
       extensions: {
         pg_trgm: {
           name: "pg_trgm",
           setup: async () => ({
-            bundlePath: pathToFileURL(path.join(staged, "pg_trgm.tar.gz")),
+            bundlePath: pathToFileURL(extracted),
           }),
         },
       },
@@ -57,60 +86,6 @@ test("staged trigram archive loads and executes the SQL extension", async () => 
     assert.ok(result.rows[0].score > 0 && result.rows[0].score < 1);
   } finally {
     if (db) await db.close();
-    await fs.rm(root, { recursive: true, force: true });
-  }
-});
-
-test("bundled skill staging preserves complete parser input and replaces stale skills", async () => {
-  const { loadSkillsFromDir } = await import("../../skills/dist/index.js");
-  const root = await fs.mkdtemp(
-    path.join(os.tmpdir(), "android-skills-stage-"),
-  );
-  try {
-    const source = path.join(root, "dist-mobile");
-    const main = path.join(root, "android/app/src/main");
-    const staged = path.join(main, "assets/agent");
-    const skill = path.join(source, "skills", "packaging-check", "SKILL.md");
-    await fs.mkdir(path.dirname(skill), { recursive: true });
-    const content =
-      "---\nname: packaging-check\ndescription: Validate packaged runtime input\n---\nRead all input files before executing the requested check.\n";
-    await fs.writeFile(skill, content);
-    const options = {
-      distMobileDir: source,
-      assetsAgentDir: staged,
-      androidMainDir: main,
-    };
-    stageAndroidBundledSkills(options);
-    const loaded = loadSkillsFromDir({
-      dir: path.join(staged, "skills"),
-      source: "bundled",
-    });
-    const original = loadSkillsFromDir({
-      dir: path.join(source, "skills"),
-      source: "bundled",
-    });
-    assert.equal(loaded.diagnostics.length, 0);
-    assert.equal(loaded.skills[0].content, original.skills[0].content);
-    await fs.rename(
-      path.dirname(skill),
-      path.join(source, "skills", "replacement-check"),
-    );
-    await fs.writeFile(
-      path.join(source, "skills", "replacement-check", "SKILL.md"),
-      content.replace("name: packaging-check", "name: replacement-check"),
-    );
-    stageAndroidBundledSkills(options);
-    const replaced = loadSkillsFromDir({
-      dir: path.join(staged, "skills"),
-      source: "bundled",
-    });
-    assert.deepEqual(
-      replaced.skills.map((entry) => entry.name),
-      ["replacement-check"],
-    );
-    await fs.rm(path.join(source, "skills"), { recursive: true });
-    assert.throws(() => stageAndroidBundledSkills(options), /ENOENT/);
-  } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });

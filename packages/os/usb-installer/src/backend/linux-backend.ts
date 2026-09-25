@@ -1,10 +1,6 @@
-// Implements platform-specific USB installer backend safety behavior.
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
-import * as http from "node:http";
-import * as https from "node:https";
+import { constants, promises as fs } from "node:fs";
 import * as path from "node:path";
 import { Readable } from "node:stream";
 import { promisify } from "node:util";
@@ -15,6 +11,9 @@ import {
   WriteCancelledError,
   WriteIncompleteError,
 } from "./errors";
+import { downloadFile } from "./image-download";
+import { sha256File } from "./image-file";
+import { withTemporaryImageDirectory } from "./image-workspace";
 import {
   type RawImageTarget,
   writeVerifiedRawImage,
@@ -45,7 +44,10 @@ const STEP_LABELS: Record<InstallerStepId, string> = {
   complete: "Complete",
 };
 
-const INSTALLER_TMP_DIR = "/tmp/elizaos-installer";
+const DEFAULT_RAW_WRITER = path.resolve(
+  import.meta.dirname,
+  "../../native/build/linux-raw-writer",
+);
 const SYSTEM_MOUNTPOINTS = new Set([
   "/",
   "/boot",
@@ -57,16 +59,19 @@ const SYSTEM_MOUNTPOINTS = new Set([
 
 interface LsblkDevice {
   name: string;
-  size: string;
+  size: string | number;
   type: string;
   rm: boolean | string;
   model: string | null;
   serial?: string | null;
+  "maj:min"?: string;
+  "disk-seq"?: number;
+  "log-sec"?: number;
   wwn?: string | null;
   tran: string | null;
   hotplug: boolean | string;
   mountpoint?: string | null;
-  mountpoints?: string[] | string | null;
+  mountpoints?: (string | null)[] | string | null;
   children?: LsblkDevice[];
 }
 
@@ -161,8 +166,9 @@ async function sysfsBlockAncestors(
         names.add(name);
       }
     }
-  } catch {
-    // Devices without mapper/slave ancestry simply do not have this directory.
+  } catch (error) {
+    // Partitions may omit this directory; other failures leave ancestry unknown.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
   try {
@@ -174,7 +180,8 @@ async function sysfsBlockAncestors(
         names.add(name);
       }
     }
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const fallback = fallbackParentDiskName(blockName);
     if (fallback) {
       names.add(fallback);
@@ -186,12 +193,7 @@ async function sysfsBlockAncestors(
 
 async function currentSystemDiskNamesFromMountInfo(): Promise<Set<string>> {
   const diskNames = new Set<string>();
-  let mountInfo: string;
-  try {
-    mountInfo = await fs.readFile("/proc/self/mountinfo", "utf8");
-  } catch {
-    return diskNames;
-  }
+  const mountInfo = await fs.readFile("/proc/self/mountinfo", "utf8");
 
   for (const line of mountInfo.split("\n")) {
     if (!line.trim()) {
@@ -220,7 +222,8 @@ async function currentSystemDiskNamesFromMountInfo(): Promise<Set<string>> {
     let realSource = source;
     try {
       realSource = await fs.realpath(source);
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       // Some mount sources may not resolve in constrained containers; use the
       // visible source path as a conservative fallback.
     }
@@ -240,7 +243,49 @@ async function currentSystemDiskNamesFromMountInfo(): Promise<Set<string>> {
 
 function parseLsblkOutput(stdout: string): LsblkOutput {
   try {
-    return JSON.parse(stdout) as LsblkOutput;
+    const parsed: unknown = JSON.parse(stdout);
+    const record = (value: unknown): value is Record<string, unknown> =>
+      typeof value === "object" && value !== null && !Array.isArray(value);
+    if (!record(parsed) || !Array.isArray(parsed.blockdevices)) {
+      throw new Error("Missing block-device inventory.");
+    }
+    const validate = (value: unknown): void => {
+      if (
+        !record(value) ||
+        typeof value.name !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9_.:+-]*$/.test(value.name) ||
+        typeof value.type !== "string" ||
+        !value.type ||
+        !["number", "string"].includes(typeof value.size) ||
+        !Number.isSafeInteger(Number(value.size)) ||
+        Number(value.size) < 0
+      ) {
+        throw new Error("Invalid block-device identity or size.");
+      }
+      const mounts = value.mountpoints;
+      if (
+        !Array.isArray(mounts) ||
+        mounts.some((mount) => mount !== null && typeof mount !== "string")
+      ) {
+        throw new Error(`Missing or invalid mount state for ${value.name}.`);
+      }
+      for (const key of ["model", "serial", "wwn", "tran"]) {
+        if (
+          value[key] !== undefined &&
+          value[key] !== null &&
+          typeof value[key] !== "string"
+        ) {
+          throw new Error(`Invalid ${key} for ${value.name}.`);
+        }
+      }
+      if (value.children !== undefined) {
+        if (!Array.isArray(value.children))
+          throw new Error("Invalid child-device inventory.");
+        value.children.forEach(validate);
+      }
+    };
+    parsed.blockdevices.forEach(validate);
+    return parsed as unknown as LsblkOutput;
   } catch (error) {
     throw new LsblkParseError(
       stdout,
@@ -264,6 +309,13 @@ function removableDriveFromLsblkDevice(
   systemDiskNames: Set<string>,
 ): RemovableDrive {
   const removable = isRemovable(device);
+  const kernelDeviceIdentity =
+    /^\d+:\d+$/.test(device["maj:min"] ?? "") &&
+    Number.isSafeInteger(device["disk-seq"]) &&
+    (device["disk-seq"] ?? 0) > 0 &&
+    (device["log-sec"] === 512 || device["log-sec"] === 4096)
+      ? `${device["maj:min"]}:${device["disk-seq"]}:${device["log-sec"]}`
+      : undefined;
   const systemMountpoint = currentSystemMountpoint(device);
   const isCurrentSystemDevice = systemDiskNames.has(device.name);
   const description = [
@@ -280,81 +332,20 @@ function removableDriveFromLsblkDevice(
     bus: busForLsblkDevice(device),
     platform: "linux",
     safety:
-      removable && !systemMountpoint && !isCurrentSystemDevice
+      removable &&
+      kernelDeviceIdentity &&
+      !systemMountpoint &&
+      !isCurrentSystemDevice
         ? "safe-removable"
         : "blocked-system",
   };
+  if (kernelDeviceIdentity) entry.kernelDeviceIdentity = kernelDeviceIdentity;
   if (description.length > 0) {
     entry.description = description.join("; ");
   }
   const hardwareIdentity = device.wwn?.trim() || device.serial?.trim();
   if (hardwareIdentity) entry.stableId = `linux:${hardwareIdentity}`;
   return entry;
-}
-
-async function downloadFile(
-  url: string,
-  destPath: string,
-  onProgress: (bytes: number, total: number) => void,
-): Promise<void> {
-  await fs.mkdir(path.dirname(destPath), { recursive: true });
-
-  return new Promise((resolve, reject) => {
-    function doRequest(requestUrl: string): void {
-      const protocol = requestUrl.startsWith("https://") ? https : http;
-      protocol
-        .get(
-          requestUrl,
-          { headers: { "User-Agent": "elizaos-usb-installer/1.0" } },
-          (res) => {
-            if (
-              res.statusCode === 301 ||
-              res.statusCode === 302 ||
-              res.statusCode === 307 ||
-              res.statusCode === 308
-            ) {
-              const location = res.headers.location;
-              if (!location) {
-                reject(
-                  new Error(
-                    `Redirect with no location header from ${requestUrl}`,
-                  ),
-                );
-                return;
-              }
-              doRequest(location);
-              return;
-            }
-            if (res.statusCode !== 200) {
-              reject(
-                new Error(
-                  `HTTP ${res.statusCode ?? "?"} downloading ${requestUrl}`,
-                ),
-              );
-              return;
-            }
-            const total = Number(res.headers["content-length"] ?? 0);
-            let received = 0;
-            const writeStream = require("node:fs").createWriteStream(destPath);
-            res.on("data", (chunk: Buffer) => {
-              received += chunk.length;
-              onProgress(received, total);
-            });
-            res.pipe(writeStream);
-            writeStream.on("finish", resolve);
-            writeStream.on("error", reject);
-            res.on("error", reject);
-          },
-        )
-        .on("error", reject);
-    }
-    doRequest(url);
-  });
-}
-
-async function sha256File(filePath: string): Promise<string> {
-  const data = await fs.readFile(filePath);
-  return createHash("sha256").update(data).digest("hex");
 }
 
 function pendingSteps(): InstallerStep[] {
@@ -466,6 +457,8 @@ export interface ExecFileResult {
 }
 
 export interface LinuxBackendDeps {
+  /** Absolute path to the packaged native Linux writer. */
+  rawWriterPath?: string;
   /** Override the privilege escalator probe (defaults to `findPrivilegeEscalator`). */
   findEscalator?: () => Promise<PrivilegeEscalator>;
   /** Override `execFile` for lsblk/umount/sync calls. */
@@ -572,7 +565,12 @@ async function terminateTrackedChildren(
   const snapshot = [...children].filter((tracked) => !tracked.settled);
   if (snapshot.length === 0) return;
 
-  for (const { child } of snapshot) signalChildProcessGroup(child, "SIGTERM");
+  for (const { child } of snapshot) {
+    // Closing the streams also stops an elevated helper we cannot signal by UID.
+    child.stdin?.destroy();
+    child.stdout?.destroy();
+    signalChildProcessGroup(child, "SIGTERM");
+  }
   const completed = Promise.allSettled(
     snapshot.map(({ completion }) => completion),
   );
@@ -594,6 +592,41 @@ async function terminateTrackedChildren(
   await completed;
 }
 
+function linuxRawWriterArguments(
+  image: ElizaOsImage,
+  drive: RemovableDrive,
+  rawWriterPath: string,
+): string[] {
+  const identity = drive.kernelDeviceIdentity?.match(
+    /^(0|[1-9]\d*):(0|[1-9]\d*):([1-9]\d*):(512|4096)$/,
+  );
+  const [, major, minor, diskseq, sector] = identity ?? [];
+  if (
+    !major ||
+    !minor ||
+    !diskseq ||
+    !sector ||
+    !Number.isSafeInteger(drive.sizeBytes) ||
+    !Number.isSafeInteger(image.expandedSize)
+  ) {
+    throw new Error(
+      "Raw Linux writes require the selected kernel device identity and exact image size.",
+    );
+  }
+  if (!path.isAbsolute(rawWriterPath))
+    throw new Error("Native writer path must be absolute.");
+  return [
+    rawWriterPath,
+    drive.devicePath,
+    major,
+    minor,
+    diskseq,
+    String(drive.sizeBytes),
+    sector,
+    String(image.expandedSize),
+  ];
+}
+
 export async function writeCanonicalRawImageToLinuxDevice(
   image: ElizaOsImage,
   drive: RemovableDrive,
@@ -603,13 +636,10 @@ export async function writeCanonicalRawImageToLinuxDevice(
     args: readonly string[],
     options?: SpawnOptions,
   ) => ChildProcess,
-  execFileFn: (
-    command: string,
-    args: readonly string[],
-  ) => Promise<ExecFileResult>,
   onProgress: (step: InstallerStepId, progress: number) => void,
   rawWriter: typeof writeVerifiedRawImage = writeVerifiedRawImage,
   options: WriteExecutionOptions = {},
+  rawWriterPath = DEFAULT_RAW_WRITER,
 ): Promise<void> {
   if (escalator.command === "kdesu") {
     throw new Error(
@@ -617,6 +647,8 @@ export async function writeCanonicalRawImageToLinuxDevice(
     );
   }
 
+  const writerArgs = linuxRawWriterArguments(image, drive, rawWriterPath);
+  let synced: Promise<void> | undefined;
   let writeProcess: TrackedChild | undefined;
   const activeChildren = new Set<TrackedChild>();
   const trackChild = (child: ChildProcess, label: string): TrackedChild => {
@@ -657,18 +689,14 @@ export async function writeCanonicalRawImageToLinuxDevice(
         throw new Error("Raw image write stream was opened twice.");
       const child = spawnFn(
         escalator.command,
-        [
-          ...escalator.argsPrefix,
-          "dd",
-          `of=${drive.devicePath}`,
-          "bs=4M",
-          "status=none",
-          "conv=fsync",
-        ],
+        [...escalator.argsPrefix, ...writerArgs],
         { detached: process.platform !== "win32" },
       );
+      writeProcess = trackChild(
+        child,
+        "privileged raw image write and readback",
+      );
       if (!child.stdin) {
-        child.kill();
         throw new Error("Privileged raw image writer did not expose stdin.");
       }
       child.stdin.once("close", () => {
@@ -676,35 +704,40 @@ export async function writeCanonicalRawImageToLinuxDevice(
           signalChildProcessGroup(child, "SIGTERM");
         }
       });
-      writeProcess = trackChild(child, "privileged raw image write");
+      const completion = writeProcess.completion;
+      synced = new Promise<void>((resolve, reject) => {
+        let pending = "";
+        const onData = (chunk: Buffer) => {
+          pending += chunk.toString();
+          const lines = pending.split("\n");
+          pending = lines.pop() ?? "";
+          if (pending.length > 16_384) {
+            child.stderr?.off("data", onData);
+            reject(
+              new Error("Native writer status exceeded its protocol bound."),
+            );
+          } else if (lines.includes("ELIZAOS_RAW_SYNCED")) {
+            child.stderr?.off("data", onData);
+            resolve();
+          }
+        };
+        child.stderr?.on("data", onData);
+        void completion.then(
+          () =>
+            reject(new Error("Native writer exited before confirming sync.")),
+          reject,
+        );
+      });
+      void synced.catch(() => {});
       return child.stdin;
     },
     openReadbackStream(byteLength: number) {
-      const child = spawnFn(
-        escalator.command,
-        [
-          ...escalator.argsPrefix,
-          "dd",
-          `if=${drive.devicePath}`,
-          "bs=4M",
-          "iflag=count_bytes",
-          `count=${byteLength}`,
-          "status=none",
-        ],
-        { detached: process.platform !== "win32" },
-      );
-      const stdout = child.stdout;
-      if (!stdout) {
-        child.kill();
-        throw new Error("Privileged raw image readback did not expose stdout.");
-      }
-      stdout.once("close", () => {
-        if (!stdout.readableEnded) signalChildProcessGroup(child, "SIGTERM");
-      });
-      const completion = trackChild(
-        child,
-        "privileged raw image readback",
-      ).completion;
+      if (!writeProcess || byteLength !== image.expandedSize)
+        throw new Error("Invalid retained-device readback.");
+      const stdout = writeProcess.child.stdout;
+      if (!stdout)
+        throw new Error("Native writer did not expose readback stdout.");
+      const completion = writeProcess.completion;
       return Readable.from(
         (async function* verifiedReadback() {
           for await (const chunk of stdout) yield chunk;
@@ -713,13 +746,8 @@ export async function writeCanonicalRawImageToLinuxDevice(
       );
     },
     async sync() {
-      if (!writeProcess) throw new Error("Raw image write never started.");
-      await writeProcess.completion;
-      await execFileFn(escalator.command, [
-        ...escalator.argsPrefix,
-        "sync",
-        drive.devicePath,
-      ]);
+      if (!synced) throw new Error("Raw image write never started.");
+      await synced;
     },
   };
 
@@ -775,7 +803,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     const { stdout } = await execFileFn("lsblk", [
       "--json",
       "--output",
-      "NAME,SIZE,TYPE,RM,MODEL,SERIAL,WWN,TRAN,HOTPLUG,MOUNTPOINTS",
+      "NAME,SIZE,TYPE,RM,MODEL,SERIAL,WWN,TRAN,HOTPLUG,MOUNTPOINTS,MAJ:MIN,DISK-SEQ,LOG-SEC",
       "--bytes",
     ]);
 
@@ -849,12 +877,18 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     onProgress: (step: InstallerStepId, progress: number) => void,
     options: WriteExecutionOptions = {},
   ): Promise<void> {
+    plan = structuredClone(plan);
     options.signal?.throwIfAborted();
     assertWritePlanAllowed(plan, { canonicalRawZstdSupported: true });
 
     const { image, drive } = plan;
     const isCanonicalRawImage = image.format === "raw.zst";
-    const imagePath = path.join(INSTALLER_TMP_DIR, `${image.id}.iso`);
+    if (isCanonicalRawImage && !this.deps.writeCanonicalRawImage) {
+      const helper = this.deps.rawWriterPath ?? DEFAULT_RAW_WRITER;
+      linuxRawWriterArguments(image, drive, helper);
+      // Refuse a missing packaged helper before privilege prompts or unmounts.
+      await fs.access(helper, constants.X_OK);
+    }
 
     const execFileFn =
       this.deps.execFile ??
@@ -880,38 +914,36 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     // checksum, umount). Failing late would leave the device in a partially
     // unmounted state with no path to recover.
     const escalator = await findEscalatorFn();
+    options.signal?.throwIfAborted();
 
-    if (!isCanonicalRawImage) {
-      // Legacy ISO path. Canonical raw.zst inputs are never materialized under
-      // an .iso name or passed to the unverified direct-dd path below.
-      onProgress("resolve-image", 0);
-      if (this.deps.resolveImage) {
-        await this.deps.resolveImage(image, imagePath, (pct) =>
-          onProgress("resolve-image", pct),
-        );
-      } else {
-        let needsDownload = false;
-        try {
-          await fs.access(imagePath);
-        } catch {
-          needsDownload = true;
+    await withTemporaryImageDirectory(async (directory) => {
+      const imagePath = path.join(directory, `${image.checksumSha256}.iso`);
+      if (!isCanonicalRawImage) {
+        // Legacy ISO path. Canonical raw.zst inputs are never materialized under
+        // an .iso name or passed to the unverified direct-dd path below.
+        onProgress("resolve-image", 0);
+        if (this.deps.resolveImage) {
+          await this.deps.resolveImage(image, imagePath, (pct) =>
+            onProgress("resolve-image", pct),
+          );
+        } else {
+          await downloadFile(
+            image.url,
+            imagePath,
+            image.sizeBytes,
+            (received, total) => {
+              const pct = total > 0 ? received / total : 0;
+              onProgress("resolve-image", pct);
+            },
+            options.signal,
+          );
         }
+        onProgress("resolve-image", 1);
 
-        if (needsDownload) {
-          await downloadFile(image.url, imagePath, (received, total) => {
-            const pct = total > 0 ? received / total : 0;
-            onProgress("resolve-image", pct);
-          });
-        }
-      }
-      onProgress("resolve-image", 1);
-
-      onProgress("checksum", 0);
-      if (this.deps.verifyChecksum) {
-        await this.deps.verifyChecksum(image, imagePath);
-      } else {
-        const ZEROED_CHECKSUM = "0".repeat(64);
-        if (image.checksumSha256 !== ZEROED_CHECKSUM) {
+        onProgress("checksum", 0);
+        if (this.deps.verifyChecksum) {
+          await this.deps.verifyChecksum(image, imagePath);
+        } else {
           const actual = await sha256File(imagePath);
           if (actual !== image.checksumSha256) {
             throw new Error(
@@ -919,157 +951,187 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
             );
           }
         }
+        onProgress("checksum", 1);
       }
-      onProgress("checksum", 1);
-    }
 
-    // Unmount all mounted partitions of the target disk. A busy/failed
-    // unmount must abort the write — dd into a mounted FS corrupts data.
-    const { stdout: childStdout } = await execFileFn("lsblk", [
-      "--json",
-      "--output",
-      "NAME,MOUNTPOINT",
-      drive.devicePath,
-    ]);
-    let childData: {
-      blockdevices: Array<{
-        name: string;
-        children?: Array<{ name: string; mountpoint?: string | null }>;
-      }>;
-    };
-    try {
-      childData = JSON.parse(childStdout);
-    } catch (error) {
-      throw new LsblkParseError(
-        childStdout,
-        error instanceof Error ? error : new Error(String(error)),
-      );
-    }
-    const targetDevice = childData.blockdevices[0];
-    if (targetDevice?.children) {
-      for (const child of targetDevice.children) {
-        if (!child.mountpoint) continue;
-        const partPath = `/dev/${child.name}`;
-        try {
-          await execFileFn("umount", [partPath]);
-        } catch (err) {
-          const e = err as { code?: number; stderr?: string };
-          const stderr = e.stderr ?? "";
-          // Exit code 32 / "not mounted" is acceptable (race vs. lsblk).
-          if (e.code !== 32 && !/not mounted/i.test(stderr)) {
-            throw new UnmountFailedError(
-              partPath,
-              stderr.trim() || "unknown error",
-            );
-          }
+      // Unmount all mounted partitions of the target disk. A busy/failed
+      // unmount must abort the write — dd into a mounted FS corrupts data.
+      options.signal?.throwIfAborted();
+      const { stdout: childStdout } = await execFileFn("lsblk", [
+        "--json",
+        "--output",
+        "NAME,PKNAME,TYPE,MOUNTPOINT",
+        drive.devicePath,
+      ]);
+      let mountedPartitions: string[];
+      try {
+        const childData = JSON.parse(childStdout);
+        const devices = childData?.blockdevices;
+        if (!Array.isArray(devices) || devices.length !== 1) {
+          throw new Error("Expected exactly one selected disk.");
         }
-      }
-    }
-
-    if (isCanonicalRawImage) {
-      const writer = this.deps.writeCanonicalRawImage;
-      if (writer) {
-        await writer(image, drive, onProgress, options);
-      } else {
-        await writeCanonicalRawImageToLinuxDevice(
-          image,
-          drive,
-          escalator,
-          spawnFn,
-          execFileFn,
-          onProgress,
-          writeVerifiedRawImage,
-          options,
+        const target = devices[0];
+        if (
+          target?.name !== path.basename(drive.devicePath) ||
+          target.type !== "disk" ||
+          target.mountpoint !== null ||
+          (target.children !== undefined && !Array.isArray(target.children))
+        ) {
+          throw new Error("Selected disk identity or mount state is invalid.");
+        }
+        const seen = new Set<string>();
+        mountedPartitions = [];
+        for (const child of target.children ?? []) {
+          if (
+            child?.type !== "part" ||
+            child.pkname !== target.name ||
+            typeof child.name !== "string" ||
+            !/^[A-Za-z0-9][A-Za-z0-9_.:+-]*$/.test(child.name) ||
+            child.name === target.name ||
+            seen.has(child.name) ||
+            (child.mountpoint !== null &&
+              typeof child.mountpoint !== "string") ||
+            (child.children !== undefined &&
+              (!Array.isArray(child.children) || child.children.length > 0))
+          ) {
+            throw new Error("Invalid or stacked target partition inventory.");
+          }
+          if (
+            child.mountpoint !== null &&
+            SYSTEM_MOUNTPOINTS.has(child.mountpoint)
+          ) {
+            throw new Error("Selected disk contains a current system mount.");
+          }
+          seen.add(child.name);
+          if (child.mountpoint) mountedPartitions.push(`/dev/${child.name}`);
+        }
+      } catch (error) {
+        throw new LsblkParseError(
+          childStdout,
+          error instanceof Error ? error : new Error(String(error)),
         );
       }
-      onProgress("complete", 1);
-      return;
-    }
-
-    // Step: write using a privilege escalator + dd with progress
-    onProgress("write", 0);
-    let finalBytesWritten = 0;
-    await new Promise<void>((resolve, reject) => {
-      const ddArgs = [
-        "dd",
-        `if=${imagePath}`,
-        `of=${drive.devicePath}`,
-        "bs=4M",
-        "status=progress",
-        "conv=fsync",
-      ];
-      const proc = spawnFn(escalator.command, [
-        ...escalator.argsPrefix,
-        ...ddArgs,
-      ]);
-
-      let lastProgress = 0;
-      let lastProgressAt = Date.now();
-      // Heartbeat: if dd output is buffered and no update arrives for >stall,
-      // re-emit the last known progress so the UI knows we are still alive.
-      const heartbeat = setInterval(() => {
-        if (Date.now() - lastProgressAt >= heartbeatStall) {
-          onProgress("write", lastProgress);
-          lastProgressAt = Date.now();
+      for (const partPath of mountedPartitions) {
+        options.signal?.throwIfAborted();
+        try {
+          await execFileFn(escalator.command, [
+            ...escalator.argsPrefix,
+            "umount",
+            partPath,
+          ]);
+        } catch (err) {
+          const e = err as { stderr?: string; message?: string };
+          throw new UnmountFailedError(
+            partPath,
+            e.stderr?.trim() || e.message || "unknown error",
+          );
         }
-      }, heartbeatInterval);
+      }
 
-      let stderrBuf = "";
-      let stderrAll = "";
-      proc.stderr?.on("data", (chunk: Buffer) => {
-        const text = chunk.toString();
-        stderrAll += text;
-        stderrBuf += text;
-        const segments = stderrBuf.split(/[\r\n]/);
-        stderrBuf = segments.pop() ?? "";
-        for (const seg of segments) {
-          const bytes = parseDdBytesWritten(seg);
-          if (bytes !== null) {
-            finalBytesWritten = bytes;
-            if (image.sizeBytes > 0) {
-              const pct = Math.min(bytes / image.sizeBytes, 0.99);
-              lastProgress = pct;
-              lastProgressAt = Date.now();
-              onProgress("write", pct);
+      options.signal?.throwIfAborted();
+      if (isCanonicalRawImage) {
+        const writer = this.deps.writeCanonicalRawImage;
+        if (writer) {
+          await writer(image, drive, onProgress, options);
+        } else {
+          await writeCanonicalRawImageToLinuxDevice(
+            image,
+            drive,
+            escalator,
+            spawnFn,
+            onProgress,
+            writeVerifiedRawImage,
+            options,
+            this.deps.rawWriterPath,
+          );
+        }
+        return;
+      }
+
+      // Step: write using a privilege escalator + dd with progress
+      onProgress("write", 0);
+      let finalBytesWritten = 0;
+      await new Promise<void>((resolve, reject) => {
+        const ddArgs = [
+          "dd",
+          `if=${imagePath}`,
+          `of=${drive.devicePath}`,
+          "bs=4M",
+          "status=progress",
+          "conv=fsync",
+        ];
+        const proc = spawnFn(escalator.command, [
+          ...escalator.argsPrefix,
+          ...ddArgs,
+        ]);
+
+        let lastProgress = 0;
+        let lastProgressAt = Date.now();
+        // Heartbeat: if dd output is buffered and no update arrives for >stall,
+        // re-emit the last known progress so the UI knows we are still alive.
+        const heartbeat = setInterval(() => {
+          if (Date.now() - lastProgressAt >= heartbeatStall) {
+            onProgress("write", lastProgress);
+            lastProgressAt = Date.now();
+          }
+        }, heartbeatInterval);
+
+        let stderrBuf = "";
+        let stderrAll = "";
+        let processError: Error | undefined;
+        proc.stderr?.on("data", (chunk: Buffer) => {
+          const text = chunk.toString();
+          stderrAll += text;
+          stderrBuf += text;
+          const segments = stderrBuf.split(/[\r\n]/);
+          stderrBuf = segments.pop() ?? "";
+          for (const seg of segments) {
+            const bytes = parseDdBytesWritten(seg);
+            if (bytes !== null) {
+              finalBytesWritten = bytes;
+              if (image.sizeBytes > 0) {
+                const pct = Math.min(bytes / image.sizeBytes, 0.99);
+                lastProgress = pct;
+                lastProgressAt = Date.now();
+                onProgress("write", pct);
+              }
             }
           }
-        }
+        });
+
+        proc.on("close", (code) => {
+          clearInterval(heartbeat);
+          // Final dd summary line lives in stderrBuf or stderrAll.
+          const tailBytes =
+            parseDdBytesWritten(stderrBuf) ??
+            parseDdLastBytesWritten(stderrAll);
+          if (tailBytes !== null) {
+            finalBytesWritten = tailBytes;
+          }
+          if (processError) {
+            reject(processError);
+          } else if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`dd exited with code ${code ?? "?"}`));
+          }
+        });
+        proc.on("error", (err) => {
+          // Keep ownership until close confirms the child and stdio settled.
+          processError = err;
+        });
       });
 
-      proc.on("close", (code) => {
-        clearInterval(heartbeat);
-        // Final dd summary line lives in stderrBuf or stderrAll.
-        const tailBytes =
-          parseDdBytesWritten(stderrBuf) ?? parseDdLastBytesWritten(stderrAll);
-        if (tailBytes !== null) {
-          finalBytesWritten = tailBytes;
-        }
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`dd exited with code ${code ?? "?"}`));
-        }
-      });
-      proc.on("error", (err) => {
-        clearInterval(heartbeat);
-        reject(err);
-      });
-    });
-
-    if (image.sizeBytes > 0) {
-      const drift = Math.abs(finalBytesWritten - image.sizeBytes);
-      if (drift > 1024 * 1024) {
+      if (finalBytesWritten !== image.sizeBytes) {
         throw new WriteIncompleteError(image.sizeBytes, finalBytesWritten);
       }
-    }
-    onProgress("write", 1);
+      onProgress("write", 1);
 
-    // Step: verify (sync)
-    onProgress("verify", 0);
-    await execFileFn("sync", []);
-    onProgress("verify", 1);
-
-    // Step: complete
+      // Step: verify (sync)
+      onProgress("verify", 0);
+      await execFileFn("sync", []);
+      onProgress("verify", 1);
+    });
     onProgress("complete", 1);
   }
 }

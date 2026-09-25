@@ -1,0 +1,371 @@
+name: Publish to apt Repository
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+      channel:
+        description: apt repo codename (stable | beta)
+        required: false
+        type: string
+        default: stable
+      dry_run:
+        description: Build and validate signed repository metadata without pushing or deploying it
+        required: false
+        type: boolean
+        default: false
+      artifact_pattern:
+        description: Actions artifact pattern containing all Debian architectures for a same-run rehearsal
+        required: false
+        type: string
+        default: ""
+      source_ref:
+        description: Source ref containing the apt configuration (defaults to tag)
+        required: false
+        type: string
+        default: ""
+    secrets:
+      # Keep these optional at workflow-call validation time so the job can
+      # report the exact missing credential. The first step fails closed if
+      # any required signing input is absent.
+      DEBIAN_GPG_PRIVATE_KEY:
+        required: false
+      DEBIAN_GPG_KEY_ID:
+        required: false
+      DEBIAN_GPG_PASSPHRASE:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+      channel:
+        description: apt repo codename (stable | beta)
+        required: false
+        type: string
+        default: stable
+      dry_run:
+        description: Build and validate signed repository metadata without pushing or deploying it
+        required: false
+        type: boolean
+        default: false
+
+env:
+  APT_CHANNEL: ${{ inputs.channel }}
+  APT_VERSION: ${{ inputs.version }}
+  APT_RELEASE_TAG: ${{ inputs.tag }}
+  APT_DRY_RUN: ${{ inputs.dry_run }}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  publish-apt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+
+    steps:
+      - name: Validate apt channel
+        run: |
+          case "$APT_CHANNEL" in stable|beta) ;; *) echo "::error::Unsupported apt channel"; exit 1 ;; esac
+      - name: Check GPG credentials
+        env:
+          DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
+          DEBIAN_GPG_KEY_ID: ${{ secrets.DEBIAN_GPG_KEY_ID }}
+        run: |
+          if [[ -z "$DEBIAN_GPG_PRIVATE_KEY" ]]; then
+            echo "::error::DEBIAN_GPG_PRIVATE_KEY is required to publish the apt repository"
+            exit 1
+          fi
+          if [[ -z "$DEBIAN_GPG_KEY_ID" ]]; then
+            echo "::error::DEBIAN_GPG_KEY_ID is required to publish the apt repository"
+            exit 1
+          fi
+
+      - name: Checkout main repo (to create apt-repo branch if needed)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          path: main-repo
+
+      - name: Inspect apt-repo branch
+        id: apt-branch
+        run: |
+          if git -C main-repo ls-remote --exit-code --heads origin apt-repo > "$RUNNER_TEMP/apt-branch.txt"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure apt-repo branch exists
+        if: inputs.dry_run != true && steps.apt-branch.outputs.exists == 'false'
+        run: |
+          cd main-repo
+          git config user.name "elizaOS CI"
+          git config user.email "ci@elizaos.ai"
+          empty_tree="$(git hash-object -t tree /dev/null)"
+          empty_commit="$(printf 'Initialize signed apt repository\n' | git commit-tree "$empty_tree")"
+          git push origin "${empty_commit}:refs/heads/apt-repo"
+
+      - name: Stage current apt repository for rehearsal
+        if: inputs.dry_run == true
+        env:
+          APT_BRANCH_EXISTS: ${{ steps.apt-branch.outputs.exists }}
+        run: |
+          mkdir -p apt-repo
+          if [ "$APT_BRANCH_EXISTS" = true ]; then
+            git -C main-repo fetch origin refs/heads/apt-repo
+            git -C main-repo archive FETCH_HEAD | tar -x -C apt-repo
+          else
+            echo "No apt-repo branch exists; rehearsing first publication from an empty repository"
+          fi
+
+      - name: Checkout apt-repo branch
+        if: inputs.dry_run != true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: apt-repo
+          path: apt-repo
+          fetch-depth: 0
+
+      - name: Checkout release tag (for conf files)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_ref != '' && inputs.source_ref || inputs.tag }}
+          path: src-repo
+          submodules: false
+
+      - name: Import GPG key
+        env:
+          DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
+          DEBIAN_GPG_KEY_ID: ${{ secrets.DEBIAN_GPG_KEY_ID }}
+          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
+        run: |
+          export GNUPGHOME
+          GNUPGHOME="$(mktemp -d "$RUNNER_TEMP/elizaos-apt-gnupg.XXXXXX")"
+          chmod 700 "$GNUPGHOME"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+
+          configured_key="${DEBIAN_GPG_KEY_ID#0x}"
+          configured_key="${configured_key#0X}"
+          configured_key="${configured_key//[[:space:]]/}"
+          configured_key="${configured_key^^}"
+          if [[ ! "$configured_key" =~ ^[A-F0-9]{40,64}$ ]]; then
+            echo "::error::DEBIAN_GPG_KEY_ID must be the full primary-key fingerprint (40 or 64 hexadecimal characters)"
+            exit 1
+          fi
+
+          printf '%s' "$DEBIAN_GPG_PRIVATE_KEY" | gpg --batch --import
+          imported_fingerprint="$({
+            gpg --batch --with-colons --list-secret-keys "$configured_key"
+          } | awk -F: '$1 == "fpr" { print toupper($10); exit }')"
+          if [[ "$imported_fingerprint" != "$configured_key" ]]; then
+            echo "::error::Imported primary-key fingerprint does not match DEBIAN_GPG_KEY_ID"
+            exit 1
+          fi
+
+          printf '%s:6:\n' "$imported_fingerprint" | gpg --import-ownertrust
+          echo "APT_GPG_FINGERPRINT=$imported_fingerprint" >> "$GITHUB_ENV"
+
+      - name: Install reprepro
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends reprepro
+
+      - name: Create package download directory
+        id: package-directory
+        run: |
+          DEB_DIR="$(mktemp -d "$RUNNER_TEMP/elizaos-deb.XXXXXX")"
+          echo "DEB_DIR=$DEB_DIR" >> "$GITHUB_ENV"
+          echo "path=$DEB_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Download .deb from same-run artifact
+        if: inputs.artifact_pattern != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: ${{ inputs.artifact_pattern }}
+          path: ${{ steps.package-directory.outputs.path }}
+          merge-multiple: true
+
+      - name: Download .deb from release
+        if: inputs.artifact_pattern == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern "*.deb" --dir "$DEB_DIR" -- "$APT_RELEASE_TAG"
+
+      - name: Require one valid package for every supported architecture
+        run: |
+          mapfile -d '' packages < <(find "$DEB_DIR" -type f -name '*.deb' -print0)
+          if [[ "${#packages[@]}" -ne 3 ]]; then
+            echo "::error::Expected exactly three Debian packages in the release, found ${#packages[@]}"
+            exit 1
+          fi
+          declare -A seen=()
+          package_version=
+          for package in "${packages[@]}"; do
+            dpkg-deb --info "$package" >/dev/null
+            test "$(dpkg-deb --field "$package" Package)" = elizaos-app
+            architecture="$(dpkg-deb --field "$package" Architecture)"
+            version="$(dpkg-deb --field "$package" Version)"
+            if [[ -z "$package_version" ]]; then
+              package_version="$version"
+            elif [[ "$version" != "$package_version" ]]; then
+              echo "::error::Mixed Debian package versions: $package_version and $version"
+              exit 1
+            fi
+            case "$architecture" in amd64|arm64|riscv64) ;; *) echo "::error::Unexpected Debian architecture: $architecture"; exit 1 ;; esac
+            if [[ -n "${seen[$architecture]:-}" ]]; then
+              echo "::error::Duplicate Debian architecture: $architecture"
+              exit 1
+            fi
+            seen[$architecture]="$package"
+          done
+          for architecture in amd64 arm64 riscv64; do test -n "${seen[$architecture]:-}"; done
+
+      - name: Add .deb to reprepro
+        env:
+          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
+        run: |
+          CODENAME="$APT_CHANNEL"
+          if [ "$APT_DRY_RUN" = true ]; then
+            mkdir -p apt-repo
+          fi
+          # Ensure conf/ exists in apt-repo branch
+          mkdir -p apt-repo/conf
+          cp src-repo/packages/os/linux/packaging/debian/apt-repo-config/conf/distributions apt-repo/conf/distributions
+          sed -i "s/^SignWith:.*/SignWith: $APT_GPG_FINGERPRINT/" apt-repo/conf/distributions
+          if ! awk -v codename="$CODENAME" '
+            $1 == "Codename:" && $2 == codename { found = 1 }
+            END { exit found ? 0 : 1 }
+          ' apt-repo/conf/distributions; then
+            echo "::error::Unknown apt channel: $CODENAME"
+            exit 1
+          fi
+          if grep -q '^SignWith: default$' apt-repo/conf/distributions; then
+            echo "::error::apt distribution still uses the ambiguous default signing key"
+            exit 1
+          fi
+
+          # Add every architecture from the one authenticated package version.
+          cd apt-repo
+          while IFS= read -r -d '' package; do
+            if [[ -n "$DEBIAN_GPG_PASSPHRASE" ]]; then
+              printf '%s\n' "$DEBIAN_GPG_PASSPHRASE" | reprepro --ask-passphrase includedeb "$CODENAME" "$package"
+            else
+              reprepro includedeb "$CODENAME" "$package"
+            fi
+          done < <(find "$DEB_DIR" -type f -name '*.deb' -print0)
+
+      - name: Export GPG public key
+        run: |
+          gpg --batch --armor --export "$APT_GPG_FINGERPRINT" > apt-repo/gpg.key
+          test -s apt-repo/gpg.key
+          touch apt-repo/.nojekyll
+
+      - name: Verify signed apt repository
+        run: |
+          test -s "apt-repo/dists/$APT_CHANNEL/InRelease"
+          gpg --batch --verify "apt-repo/dists/$APT_CHANNEL/InRelease"
+
+      - name: Commit and push apt-repo branch
+        if: inputs.dry_run != true
+        run: |
+          cd apt-repo
+          git config user.name "elizaOS CI"
+          git config user.email "ci@elizaos.ai"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Signed apt repository already contains this exact state"
+          else
+            git commit -m "chore: publish apt package for OS $APT_VERSION"
+          fi
+          git push origin apt-repo
+
+      - name: Validate GitHub Pages configuration
+        if: inputs.dry_run == true
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+
+      - name: Upload signed apt rehearsal
+        if: inputs.dry_run == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-apt-repository-rehearsal
+          path: apt-repo
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          case "${GNUPGHOME:-}" in
+            "$RUNNER_TEMP"/elizaos-apt-gnupg.*) rm -rf -- "$GNUPGHOME" ;;
+          esac
+          case "${DEB_DIR:-}" in
+            "$RUNNER_TEMP"/elizaos-deb.*) rm -rf -- "$DEB_DIR" ;;
+          esac
+
+  deploy-pages:
+    name: Deploy signed apt repository to GitHub Pages
+    needs: publish-apt
+    if: inputs.dry_run != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: apt-repository-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout published apt repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: apt-repo
+          path: apt-repo
+          fetch-depth: 1
+
+      - name: Stage tracked repository content
+        run: |
+          mkdir -p apt-site
+          git -C apt-repo archive HEAD | tar -x -C apt-site
+          test -s apt-site/gpg.key
+          test -s "apt-site/dists/$APT_CHANNEL/InRelease"
+          test -f apt-site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
+        with:
+          path: apt-site
+          include-hidden-files: true
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

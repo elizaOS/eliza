@@ -9,6 +9,7 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
+    implementation project(':capacitor-community-sqlite')
     implementation project(':capacitor-app')
     implementation project(':capacitor-background-runner')
     implementation project(':capacitor-barcode-scanner')
@@ -29,21 +30,14 @@ dependencies {
     implementation project(':elizaos-capacitor-bun-runtime')
     implementation project(':elizaos-capacitor-camera')
     implementation project(':elizaos-capacitor-canvas')
-    implementation project(':elizaos-plugin-native-contacts')
     implementation project(':elizaos-capacitor-gateway')
     implementation project(':elizaos-capacitor-location')
-    implementation project(':elizaos-plugin-native-messages')
-    implementation project(':elizaos-plugin-native-inference')
-    implementation project(':elizaos-capacitor-mobile-agent-bridge')
     implementation project(':elizaos-capacitor-mobile-signals')
-    implementation project(':elizaos-plugin-native-phone')
-    implementation project(':elizaos-capacitor-screencapture')
     implementation project(':elizaos-capacitor-secure-store')
     implementation project(':elizaos-capacitor-swabble')
     implementation project(':elizaos-capacitor-system')
     implementation project(':elizaos-capacitor-talkmode')
     implementation project(':elizaos-capacitor-websiteblocker')
-    implementation project(':elizaos-plugin-native-wifi')
 
 }
 

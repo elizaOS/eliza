@@ -17,3 +17,8 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
+
+For a system APK targeting Pixel/Cuttlefish ARM64 and x86_64, set
+`ELIZA_ANDROID_TARGET_ABIS=x86_64,arm64-v8a` when running
+`bun run --cwd packages/app build:android:system`. Omitting the variable retains
+all runtime targets, including the separately pinned RISC-V artifact requirement.

@@ -14,6 +14,7 @@ AGENT_HEALTH_COMMAND=""
 EXPECTED_PM_PATH=""
 declare -a EXPECTED_PROPS=()
 declare -a PLAN=()
+declare -a ADB_COMMAND=(adb)
 
 usage() {
   cat <<'EOF'
@@ -53,14 +54,6 @@ shell_join() {
     fi
   done
   echo "$out"
-}
-
-adb_base() {
-  if [[ -n "$DEVICE_SERIAL" ]]; then
-    echo adb -s "$DEVICE_SERIAL"
-  else
-    echo adb
-  fi
 }
 
 add_plan() {
@@ -220,7 +213,7 @@ NODE
 build_agent_health_command() {
   local health_port health_path
   if [[ "$AGENT_HEALTH_URL" =~ ^http://127\.0\.0\.1:([0-9]{1,5})(/[A-Za-z0-9._~/?&=%+-]*)$ ]]; then
-    health_port="${BASH_REMATCH[1]}"
+    health_port="$((10#${BASH_REMATCH[1]}))"
     health_path="${BASH_REMATCH[2]}"
   else
     die "agent health URL must be an explicit http://127.0.0.1:PORT/PATH endpoint"
@@ -228,34 +221,33 @@ build_agent_health_command() {
   (( health_port >= 1 && health_port <= 65535 )) \
     || die "agent health URL port is outside 1..65535"
   printf -v AGENT_HEALTH_COMMAND \
-    "printf 'GET %s HTTP/1.0\\r\\nHost: 127.0.0.1:%s\\r\\nConnection: close\\r\\n\\r\\n' | toybox nc -w 5 127.0.0.1 %s" \
+    "printf '%%s\\r\\n' 'GET %s HTTP/1.0' 'Host: 127.0.0.1:%s' 'Connection: close' '' | toybox nc -w 5 127.0.0.1 %s" \
     "$health_path" "$health_port" "$health_port"
 }
 
 build_plan() {
-  local adb_cmd
-  read -r -a adb_cmd <<<"$(adb_base)"
+  local emit="${1:-add_plan}"
   local timeout_prefix=()
   if [[ -n "$BOOT_TIMEOUT" ]]; then
     timeout_prefix=(timeout "$BOOT_TIMEOUT")
   fi
 
-  add_plan "${timeout_prefix[@]}" "${adb_cmd[@]}" wait-for-device
-  add_plan "${adb_cmd[@]}" get-state
-  add_plan "${adb_cmd[@]}" shell getprop ro.product.device
-  add_plan "${adb_cmd[@]}" shell getprop ro.build.fingerprint
-  add_plan "${adb_cmd[@]}" shell getprop ro.boot.slot_suffix
-  add_plan "${adb_cmd[@]}" shell getprop sys.boot_completed
-  add_plan "${adb_cmd[@]}" shell pm path "$LAUNCHER_PACKAGE"
-  add_plan "${adb_cmd[@]}" shell cmd role get-role-holders android.app.role.HOME
-  add_plan "${adb_cmd[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
-  add_plan "${adb_cmd[@]}" shell dumpsys package "$LAUNCHER_PACKAGE"
-  add_plan "${adb_cmd[@]}" shell dumpsys activity activities
-  add_plan "${adb_cmd[@]}" shell pidof "$LAUNCHER_PACKAGE"
+  "$emit" "${timeout_prefix[@]}" "${ADB_COMMAND[@]}" wait-for-device
+  "$emit" "${ADB_COMMAND[@]}" get-state
+  "$emit" "${ADB_COMMAND[@]}" shell getprop ro.product.device
+  "$emit" "${ADB_COMMAND[@]}" shell getprop ro.build.fingerprint
+  "$emit" "${ADB_COMMAND[@]}" shell getprop ro.boot.slot_suffix
+  "$emit" "${ADB_COMMAND[@]}" shell getprop sys.boot_completed
+  "$emit" "${ADB_COMMAND[@]}" shell pm path "$LAUNCHER_PACKAGE"
+  "$emit" "${ADB_COMMAND[@]}" shell cmd role get-role-holders android.app.role.HOME
+  "$emit" "${ADB_COMMAND[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+  "$emit" "${ADB_COMMAND[@]}" shell dumpsys package "$LAUNCHER_PACKAGE"
+  "$emit" "${ADB_COMMAND[@]}" shell dumpsys activity activities
+  "$emit" "${ADB_COMMAND[@]}" shell pidof "$LAUNCHER_PACKAGE"
   # The printed diagnostic must not preempt the explicit status/body checks
   # below when the endpoint is absent or unhealthy.
-  add_plan "${adb_cmd[@]}" shell "${AGENT_HEALTH_COMMAND} || true"
-  add_plan "${adb_cmd[@]}" logcat -d
+  "$emit" "${ADB_COMMAND[@]}" shell "${AGENT_HEALTH_COMMAND} || true"
+  "$emit" "${ADB_COMMAND[@]}" logcat -d
 }
 
 print_plan() {
@@ -281,13 +273,14 @@ print_plan() {
 
 getprop_value() {
   local prop="$1"
-  local adb_cmd
-  read -r -a adb_cmd <<<"$(adb_base)"
-  "${adb_cmd[@]}" shell getprop "$prop" 2>/dev/null | tr -d '\r'
+  "${ADB_COMMAND[@]}" shell getprop "$prop" 2>/dev/null | tr -d '\r'
 }
 
 validate_expectations() {
   [[ "$DRY_RUN" -eq 0 ]] || return 0
+  local boot_completed
+  boot_completed="$(getprop_value sys.boot_completed)" || die "could not read Android boot readiness"
+  [[ "$boot_completed" == 1 ]] || die "Android boot is incomplete: sys.boot_completed='$boot_completed'"
   local expected key want actual
   for expected in "${EXPECTED_PROPS[@]}"; do
     if [[ "$expected" == *"^="* ]]; then
@@ -307,11 +300,9 @@ validate_expectations() {
 
 validate_launcher_agent_liveness() {
   [[ "$DRY_RUN" -eq 0 ]] || return 0
-  local adb_cmd
-  read -r -a adb_cmd <<<"$(adb_base)"
   local pm_path health_response
 
-  pm_path="$("${adb_cmd[@]}" shell pm path "$LAUNCHER_PACKAGE" | tr -d '\r')"
+  pm_path="$("${ADB_COMMAND[@]}" shell pm path "$LAUNCHER_PACKAGE" | tr -d '\r')"
   if [[ -n "$EXPECTED_PM_PATH" ]]; then
     [[ "$pm_path" == "$EXPECTED_PM_PATH" ]] \
       || die "launcher package path '$pm_path' does not match '$EXPECTED_PM_PATH'"
@@ -319,23 +310,33 @@ validate_launcher_agent_liveness() {
     grep -F "package:" <<<"$pm_path" >/dev/null \
       || die "launcher package is not installed: $LAUNCHER_PACKAGE"
   fi
-  "${adb_cmd[@]}" shell cmd role get-role-holders android.app.role.HOME | grep -Fx "$LAUNCHER_PACKAGE" >/dev/null \
+  "${ADB_COMMAND[@]}" shell cmd role get-role-holders android.app.role.HOME | grep -Fx "$LAUNCHER_PACKAGE" >/dev/null \
     || die "launcher package is not a HOME role holder: $LAUNCHER_PACKAGE"
-  "${adb_cmd[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \
+  "${ADB_COMMAND[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \
     | grep -F "$LAUNCHER_PACKAGE" >/dev/null \
     || die "HOME intent does not resolve to launcher package: $LAUNCHER_PACKAGE"
-  "${adb_cmd[@]}" shell dumpsys activity activities | grep -F "$LAUNCHER_ACTIVITY" >/dev/null \
+  "${ADB_COMMAND[@]}" shell dumpsys activity activities | grep -F "$LAUNCHER_ACTIVITY" >/dev/null \
     || die "expected launcher foreground activity was not found: $LAUNCHER_ACTIVITY"
-  "${adb_cmd[@]}" shell pidof "$LAUNCHER_PACKAGE" >/dev/null \
+  "${ADB_COMMAND[@]}" shell pidof "$LAUNCHER_PACKAGE" >/dev/null \
     || die "launcher/agent process is not running: $LAUNCHER_PACKAGE"
-  health_response="$("${adb_cmd[@]}" shell "$AGENT_HEALTH_COMMAND" | tr -d '\r')" \
+  health_response="$("${ADB_COMMAND[@]}" shell "$AGENT_HEALTH_COMMAND")" \
     || die "agent health probe transport failed: $AGENT_HEALTH_URL"
-  grep -Eq '^HTTP/1\.[01] 200([[:space:]]|$)' <<<"$health_response" \
+  [[ "${health_response%%$'\n'*}" =~ ^HTTP/1\.[01]\ 200(\ |$) ]] \
     || die "agent health probe did not return HTTP 200: $AGENT_HEALTH_URL"
-  grep -Ei '"status"[[:space:]]*:[[:space:]]*"(ready|ok|healthy)"' <<<"$health_response" >/dev/null \
-    || die "agent health probe body did not return ready/ok/healthy: $AGENT_HEALTH_URL"
+  node -e '
+    const response = require("node:fs").readFileSync(0, "utf8");
+    const separator = /\r?\n\r?\n/.exec(response);
+    if (!separator) process.exit(1);
+    try {
+      const body = JSON.parse(response.slice(separator.index + separator[0].length));
+      if (!body || Array.isArray(body) ||
+          !["ready", "ok", "healthy"].includes(body.status) ||
+          ("ready" in body && body.ready !== true)) process.exit(1);
+    } catch { process.exit(1); }
+  ' <<<"$health_response" \
+    || die "agent health probe body did not return ready/ok/healthy JSON: $AGENT_HEALTH_URL"
   local device_log
-  device_log="$("${adb_cmd[@]}" logcat -d)" || die "could not read device logcat"
+  device_log="$("${ADB_COMMAND[@]}" logcat -d)" || die "could not read device logcat"
   ! grep -Ei 'FATAL EXCEPTION|AndroidRuntime|crash' <<<"$device_log" >/dev/null \
     || die "fatal Android runtime/crash log entries were found"
   ! grep -i 'avc: denied' <<<"$device_log" >/dev/null \
@@ -346,15 +347,15 @@ execute_plan() {
   [[ "$DRY_RUN" -eq 0 ]] || return 0
   command -v adb >/dev/null 2>&1 || die "required tool 'adb' was not found in PATH"
 
-  local command
-  for command in "${PLAN[@]}"; do
-    eval "run_cmd $command"
-  done
+  command -v node >/dev/null 2>&1 || die "node is required to validate agent health JSON"
+
+  build_plan run_cmd
   validate_expectations
   validate_launcher_agent_liveness
 }
 
 parse_args "$@"
+if [[ -n "$DEVICE_SERIAL" ]]; then ADB_COMMAND+=(-s "$DEVICE_SERIAL"); fi
 load_manifest_expectations
 # adb shell joins its arguments into a remote shell command. Validate tokens
 # after reading the manifest too: local quoting alone does not protect Android.

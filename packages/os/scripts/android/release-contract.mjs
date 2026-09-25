@@ -4,7 +4,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertSafeFlashMetadata } from "../aosp/build-grizzly-bundle.mjs";
+import { assertSafeFlashMetadata } from "./flash-metadata.mjs";
 import { verifyRevocations } from "./revocations.mjs";
 
 export const root = path.resolve(
@@ -240,6 +240,16 @@ export function validateReleaseShape(release) {
     "unreviewed grizzly SKU",
   );
   requireThat(
+    [undefined, "fastboot-sku", "adb-stock-before-reboot"].includes(
+      r.target.identityMethod,
+    ),
+    "unsupported physical identity method",
+  );
+  requireThat(
+    [undefined, "battery-level", "battery-soc"].includes(r.batteryQuery),
+    "unsupported battery query",
+  );
+  requireThat(
     strings(r.target.storageBytes) &&
       r.target.storageBytes.every((v) => /^\d+$/.test(v) && BigInt(v) > 0n),
     "missing qualified userdata capacities",
@@ -302,6 +312,15 @@ export function validateReleaseShape(release) {
       "invalid firmware state",
     );
     ids.add(state.id);
+    if (r.target.identityMethod === "adb-stock-before-reboot") {
+      requireThat(
+        typeof state.stockFingerprint === "string" &&
+          /^google\/grizzly\/grizzly:[^\s]+:user\/release-keys$/.test(
+            state.stockFingerprint,
+          ),
+        "missing exact stock fingerprint for Android identity",
+      );
+    }
     requireThat(
       state.rollback &&
         state.rollback.method === "qualified-firmware-state" &&

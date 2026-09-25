@@ -2,7 +2,16 @@
 
 set -eu
 
-packaging_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "$#" in
+    0|2) ;;
+    *) echo "usage: $0 [unit-directory payload-prefix]" >&2; exit 2 ;;
+esac
+packaging_dir=$(CDPATH= cd -- "${1:-$(dirname -- "$0")}" && pwd)
+payload_prefix=${2:-/usr/lib/elizaos}
+case "$payload_prefix" in
+    /usr/lib/elizaos|/opt/elizaos) ;;
+    *) echo "unsupported Eliza payload prefix: $payload_prefix" >&2; exit 2 ;;
+esac
 validation_root=$(mktemp -d "${TMPDIR:-/tmp}/elizaos-debian-units.XXXXXX")
 trap 'rm -rf -- "$validation_root"' EXIT HUP INT TERM
 
@@ -14,7 +23,7 @@ trap 'rm -rf -- "$validation_root"' EXIT HUP INT TERM
 for executable in eliza-agent eliza-desktop; do
 	install -D -m 0755 /bin/true "$validation_root/usr/bin/$executable"
 	install -D -m 0755 /bin/true \
-		"$validation_root/usr/lib/elizaos/bin/$executable"
+		"$validation_root$payload_prefix/bin/$executable"
 done
 for unit in \
 	elizaos-agent.service \

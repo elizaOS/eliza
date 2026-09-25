@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Canonical elizaOS Debian image entrypoint.
-#
-# The release image is owned by ./elizaos. No inherited alternate build tree
-# exists, so every entry point reaches the same Debian live-build source.
+# Canonical persistent mkosi image entrypoint.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="${ELIZAOS_ARCH:-amd64}"
 PROFILE="${ELIZAOS_PROFILE:-gui}"
-PACKAGED_APP="${ELIZAOS_APP_ARTIFACT:-}"
 STAGE="${1:-build}"
+
+if [ "$#" -gt 1 ]; then
+    printf 'ERROR: expected at most one stage: build, config, or lint.\n' >&2
+    exit 64
+fi
+if [ -n "${ELIZAOS_APP_ARTIFACT:-}" ]; then
+    printf 'ERROR: ELIZAOS_APP_ARTIFACT is obsolete; use scripts/linux/mkosi-linux-build.py for signed desktop artifact inputs.\n' >&2
+    exit 64
+fi
 
 case "${STAGE}" in
     build)
@@ -24,14 +29,6 @@ case "${STAGE}" in
         ;;
 esac
 
-if [ "${PROFILE}" = "gui" ]; then
-    if [ -z "${PACKAGED_APP}" ] || [ ! -x "${PACKAGED_APP}/bin/launcher" ]; then
-        printf 'ERROR: GUI image requires ELIZAOS_APP_ARTIFACT with bin/launcher\n' >&2
-        exit 66
-    fi
-fi
-
 exec make -C "${HERE}/elizaos" build \
     ARCH="${ARCH}" \
-    PROFILE="${PROFILE}" \
-    PACKAGED_APP="${PACKAGED_APP}"
+    PROFILE="${PROFILE}"

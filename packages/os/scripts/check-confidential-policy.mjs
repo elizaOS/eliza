@@ -1,17 +1,6 @@
 #!/usr/bin/env node
-// OS-3 gate: confidential-policy-check (plan §3-§4).
-//
-// Validates linux/confidential/policy/confidential-policy.json:
-//   1. structurally against confidential-policy.schema.json, and
-//   2. against the security-critical memory + side-channel invariants that MUST
-//      hold for the ELIZAOS_PROFILE=confidential guest. This file is the source
-//      of measurements.policy; a relaxed setting here would silently weaken the
-//      policy digest, so every invariant is enforced fail-closed.
-//
-// Runner: plain `node` (no third-party deps).
-//   node scripts/check-confidential-policy.mjs
+/** Validates confidential guest policy and its binding to an explicit release manifest. */
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { validateAgainstSchema } from "./json-schema-lite.mjs";
 import {
   parseArgs,
@@ -27,10 +16,6 @@ const DEFAULT_POLICY = path.join(
 const SCHEMA_PATH = path.join(
   repoRoot,
   "release/schema/confidential-policy.schema.json",
-);
-const RELEASE_MANIFEST = path.join(
-  repoRoot,
-  "release/confidential-2026-05-21/manifest.json",
 );
 const IMAGE_MANIFEST = path.join(
   repoRoot,
@@ -259,11 +244,16 @@ export function checkPolicyDigestConsistency(policy, manifests) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (typeof args.manifest !== "string" || args.manifest.trim() === "") {
+    throw new Error(
+      "--manifest must identify the confidential release being checked.",
+    );
+  }
   const input = typeof args.input === "string" ? args.input : DEFAULT_POLICY;
   const [policy, schema, releaseManifest, imageManifest] = await Promise.all([
     readJson(input),
     readJson(SCHEMA_PATH),
-    readJson(RELEASE_MANIFEST),
+    readJson(path.resolve(args.manifest)),
     readJson(IMAGE_MANIFEST),
   ]);
   const result = checkConfidentialPolicy(policy, schema);
@@ -275,7 +265,7 @@ async function main() {
 
   const digestResult = checkPolicyDigestConsistency(policy, [
     {
-      name: "release/confidential-2026-05-21/manifest.json tee.measurements.policy",
+      name: "release manifest tee.measurements.policy",
       digest: releaseManifest?.tee?.measurements?.policy,
     },
     {
@@ -295,6 +285,6 @@ async function main() {
   console.log(`  policy digest: ${digestResult.expected}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

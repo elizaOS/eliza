@@ -1,17 +1,6 @@
-# Bun Rust-core → riscv64-linux-musl port (in progress)
+# Experimental Bun Rust-core port
 
-Bun core patches and build material for the RISC-V toolchain.
-
-This directory is part of `packages/os`.
-
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+The [cross-build wrapper](../README.md) selects this patch series with `--rust-core`.
+Its upstream commit and Rust toolchain are pinned in [bun-version.json](../bun-version.json).
+WebKit uses the shared patch series with replacements from `webkit-patches/`
+for this revision. The wrapper retains the shared JIT recipe checks.

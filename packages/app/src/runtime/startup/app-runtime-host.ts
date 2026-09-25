@@ -24,6 +24,7 @@ import {
   isMobilePlatform,
 } from "@elizaos/shared";
 import { registerSubAgentCredentialBridgeAdapter } from "../../services/credential-tunnel-service";
+import { restoreRemoteBrowserController } from "../../services/remote-browser-controller";
 import { registerCoreSensitiveRequestAdapters } from "../../services/sensitive-requests/index.js";
 import { isRuntimeAutonomyEnabled } from "../autonomy-policy.js";
 import { registerSubAgentCredentialBridge } from "../sub-agent-credential-bridge-wiring.js";
@@ -134,7 +135,10 @@ function createPostReadyBootSteps(
 ): PostReadyBootSteps {
   return {
     registerAppRoutePlugins,
-    registerRuntimeHooks,
+    registerRuntimeHooks: async (runtime) => {
+      await registerRuntimeHooks(runtime);
+      await restoreRemoteBrowserController(runtime);
+    },
     registerCoreSensitiveRequestAdapters,
     registerSubAgentCredentialBridge,
     registerSubAgentCredentialBridgeAdapter,

@@ -586,6 +586,26 @@
       "import": "./dist/db/raw-sql.js",
       "default": "./dist/db/raw-sql.js"
     },
+    "./api/app-route-plugin-registry": {
+      "types": "./dist/api/app-route-plugin-registry.d.ts",
+      "eliza-source": {
+        "types": "./src/api/app-route-plugin-registry.ts",
+        "import": "./src/api/app-route-plugin-registry.ts",
+        "default": "./src/api/app-route-plugin-registry.ts"
+      },
+      "import": "./dist/api/app-route-plugin-registry.js",
+      "default": "./dist/api/app-route-plugin-registry.js"
+    },
+    "./api/drain-app-route-plugins": {
+      "types": "./dist/api/drain-app-route-plugins.d.ts",
+      "eliza-source": {
+        "types": "./src/api/drain-app-route-plugins.ts",
+        "import": "./src/api/drain-app-route-plugins.ts",
+        "default": "./src/api/drain-app-route-plugins.ts"
+      },
+      "import": "./dist/api/drain-app-route-plugins.js",
+      "default": "./dist/api/drain-app-route-plugins.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",

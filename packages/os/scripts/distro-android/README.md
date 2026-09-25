@@ -1,17 +1,19 @@
-# scripts/distro-android — Brand-aware AOSP/Cuttlefish toolchain
+# AOSP build orchestration
 
-This directory contains the toolchain for building a brand-customised Android AOSP image — Cuttlefish (virtual phone) for CI validation, and real device targets (Pixel codenames) for installs.
+Brand configuration, privileged APK staging, vendor sync, and image builds for
+Cuttlefish and supported Pixel targets. Use the [Android Makefile commands](../../android/README.md).
+Application source is resolved by [eliza-source.mjs](../eliza-source.mjs).
+The application build owns launcher icons and app splash assets; OS builds
+consume its staged privileged APK.
 
-This directory is part of `packages/os`.
+Browser staging binds the launcher package and certificate to one reviewed APK
+pin. Upstream snapshots use `org.chromium.chrome`; owned components use
+`ai.elizaos.chromium` and require the matching `chrome_public_manifest_package`
+GN argument. The owned package starts a new profile; retain the upstream app for
+rollback and select the new profile explicitly rather than copying profile grants.
 
-Build from the repository root:
-
-```bash
-bun run --cwd packages/os build
-```
-
-Test from the repository root:
-
-```bash
-bun run --cwd packages/os test
-```
+Use `node packages/os/scripts/distro-android/sim.mjs --aosp-root /path/to/aosp`
+from the repository root to launch and validate Cuttlefish. It shares the image
+builder's GPU configuration and `OUT_DIR`/`OUT_DIR_COMMON_BASE` resolution, and writes evidence to `test-results/os-aosp-sim/`.
+An existing instance must be stopped explicitly before launching another;
+`--stop-after` stops the selected environment after validation and reports failures.

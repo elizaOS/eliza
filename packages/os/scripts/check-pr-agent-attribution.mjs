@@ -7,7 +7,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 
 const ATTRIBUTION_MARKER = "contribution-attribution:v1";
 const ATTRIBUTION_MARKER_RE = /<!--\s*contribution-attribution:v1\s*-->/gi;
@@ -352,6 +351,6 @@ export function runCli(argv = process.argv.slice(2)) {
   return 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+if (import.meta.main) {
   process.exitCode = runCli();
 }

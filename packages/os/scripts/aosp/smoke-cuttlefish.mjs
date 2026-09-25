@@ -32,13 +32,14 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-import {
-  loadAospVariantConfig,
-  resolveAppConfigPath,
-} from "../../../app/scripts/aosp/lib/load-variant-config.ts";
-import { isMainModule } from "../distro-android/is-main.mjs";
+import { pathToFileURL } from "node:url";
+import { resolveElizaSourceRoot } from "../eliza-source.mjs";
 import { androidSocketFetch } from "./lib/android-socket-fetch.mjs";
+import {
+  inspectFreshLocalGeneration,
+  inspectFreshNativeGeneration,
+  inspectSmokeResponse,
+} from "./lib/smoke-inference-evidence.mjs";
 
 // Node 22+ ships undici as the fetch implementation but does NOT
 // expose it under the bare `undici` specifier — it lives behind the
@@ -82,13 +83,7 @@ async function configureUndiciIfAvailable(timeoutMs) {
   }
 }
 
-const osRepoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
-const repoRoot = path.resolve(
-  process.env.ELIZAOS_ELIZA_ROOT ?? path.join(osRepoRoot, ".eliza-source"),
-);
+const repoRoot = resolveElizaSourceRoot();
 
 const AGENT_PORT = 31337;
 // adb forward picks an arbitrary host port; we always pin to AGENT_PORT
@@ -518,6 +513,35 @@ export async function runSmoke({
     detail: `agentState=${health.body.agentState ?? "?"} runtime=${health.body.runtime ?? "?"}`,
   });
 
+  const readAgentLog = () =>
+    adbImpl(
+      [
+        "shell",
+        "su",
+        "0",
+        "cat",
+        `/data/data/${packageName}/files/agent/agent.log`,
+      ],
+      { serial },
+    );
+  const logBeforeChat = readAgentLog();
+  const readNativeLog = () =>
+    adbImpl(["logcat", "-d", "-v", "threadtime", "-s", "ElizaBionicInfer:V"], {
+      serial,
+    });
+  const readAppPid = () => adbImpl(["shell", "pidof", packageName], { serial });
+  const nativeBeforeChat = readNativeLog();
+  const pidBeforeChat = readAppPid();
+  if (logBeforeChat.status !== 0) {
+    results.push({
+      step: 6,
+      label: "Local generation evidence",
+      ok: false,
+      detail: "Cannot capture the agent log before this chat",
+    });
+    return results;
+  }
+
   // Step 6: POST a chat message to /v1/chat/completions.
   // The OpenAI-compat agent server accepts any model identifier in
   // the request body; the server-side router resolves the actual
@@ -631,19 +655,17 @@ export async function runSmoke({
   // Step 7: assert the chat response contains a non-empty message.
   logStep(7, "Asserting response shape");
   const chatJson = await chatResp.json().catch(() => null);
-  const messageContent =
-    chatJson?.choices?.[0]?.message?.content ??
-    chatJson?.choices?.[0]?.delta?.content ??
-    "";
-  if (!messageContent || typeof messageContent !== "string") {
+  const responseEvidence = inspectSmokeResponse(chatJson);
+  if (!responseEvidence.ok) {
     results.push({
       step: 7,
       label: "Response shape",
       ok: false,
-      detail: `choices[0].message.content was empty or non-string. Body: ${JSON.stringify(chatJson).slice(0, 200)}`,
+      detail: responseEvidence.reason,
     });
     return results;
   }
+  const messageContent = responseEvidence.text;
   results.push({
     step: 7,
     label: "Response shape",
@@ -651,48 +673,44 @@ export async function runSmoke({
     detail: `${messageContent.length} chars: "${messageContent.slice(0, 60).replace(/\n/g, " ")}..."`,
   });
 
-  // ── Step 8: verify the response was LOCAL, not cloud-routed ─────────
-  logStep(8, "Verifying provider is local (via on-device agent log)");
-  // The agent bundle uses the standalone agent server (not the
-  // app-core wrapper), so `/api/local-inference/active` doesn't exist
-  // on the AOSP runtime — that route lives in app-core and is only
-  // active on the desktop / Capacitor wrapper. On AOSP we verify
-  // local inference via the agent.log: presence of `[aosp-llama]
-  // Loaded ...gguf` AND `[aosp-llama] gen done` proves a real local
-  // FFI call ran. No-network host (cvd has no Internet) plus no
-  // ANTHROPIC_API_KEY / OPENAI_API_KEY / ELIZAOS_CLOUD_API_KEY is the
-  // belt-and-braces argument; the log line is the ground truth.
-  // The regex contains a space and parens, so the device shell interprets
-  // unquoted `(Loaded|gen done)` as a subshell and exits with a syntax
-  // error (logging zero matches even when local inference fired). Single-
-  // quote the pattern so the device shell hands it to grep verbatim.
-  const logCheck = adbImpl(
-    [
-      "shell",
-      "su",
-      "0",
-      "grep",
-      "-cE",
-      "'aosp-llama. (Loaded|gen done)'",
-      `/data/data/${packageName}/files/agent/agent.log`,
-    ],
-    { serial },
+  // Snapshot only this isolated request's interval. A historical load or
+  // generation cannot qualify a new chat, and log rotation fails closed.
+  logStep(8, "Verifying fresh local generation evidence");
+  const logAfterChat = readAgentLog();
+  const nativeAfterChat = readNativeLog();
+  const pidAfterChat = readAppPid();
+  // Android's native log records one request thread and its complete result.
+  // Prefer it for Bionic: the agent's file can have concurrent stdout/logger
+  // writers, so its byte prefix is not a reliable append-only journal.
+  const hasNativeHost = [nativeBeforeChat, nativeAfterChat].some((snapshot) =>
+    snapshot.stdout.includes("ElizaBionicInfer:"),
   );
-  const aospLogLines = Number.parseInt(logCheck.stdout.trim(), 10);
-  if (!Number.isFinite(aospLogLines) || aospLogLines < 2) {
-    results.push({
-      step: 8,
-      label: "Provider is local",
-      ok: false,
-      detail: `agent.log has ${aospLogLines || 0} aosp-llama Loaded/gen-done lines (need ≥2 for a real chat-with-local-inference round)`,
-    });
-    return results;
-  }
+  const nativeReadable = [
+    nativeBeforeChat,
+    nativeAfterChat,
+    pidBeforeChat,
+    pidAfterChat,
+  ].every((snapshot) => snapshot.status === 0);
+  const proof = !nativeReadable
+    ? { ok: false, reason: "Cannot capture native inference evidence" }
+    : hasNativeHost
+      ? inspectFreshNativeGeneration({
+          before: nativeBeforeChat.stdout,
+          after: nativeAfterChat.stdout,
+          pidBefore: pidBeforeChat.stdout.trim(),
+          pidAfter: pidAfterChat.stdout.trim(),
+          responseText: messageContent,
+        })
+      : logAfterChat.status === 0
+        ? inspectFreshLocalGeneration(logBeforeChat.stdout, logAfterChat.stdout)
+        : { ok: false, reason: "Cannot read the agent log after this chat" };
   results.push({
     step: 8,
     label: "Provider is local",
-    ok: true,
-    detail: `agent.log shows ${aospLogLines} aosp-llama Loaded/gen-done lines`,
+    ok: proof.ok,
+    detail: proof.ok
+      ? `Fresh completed generations: Bionic=${proof.bionicCompletions}, FFI=${proof.ffiCompletions}`
+      : proof.reason,
   });
   return results;
 }
@@ -748,6 +766,14 @@ export async function main(argv = process.argv.slice(2)) {
   let packageName = parsed.packageName;
   let appName = parsed.appName;
   if (!packageName) {
+    const { loadAospVariantConfig, resolveAppConfigPath } = await import(
+      pathToFileURL(
+        path.join(
+          repoRoot,
+          "packages/app/scripts/aosp/lib/load-variant-config.ts",
+        ),
+      ).href
+    );
     const cfgPath = resolveAppConfigPath({
       repoRoot,
       flagValue: parsed.appConfigPath,
@@ -783,9 +809,7 @@ export async function main(argv = process.argv.slice(2)) {
   process.exit(allPassed ? 0 : 1);
 }
 
-const isMain = isMainModule(import.meta);
-
-if (isMain) {
+if (import.meta.main) {
   await main();
 }
 

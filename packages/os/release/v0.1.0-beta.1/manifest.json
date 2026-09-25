@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 2,
+  "release": {
+    "id": "elizaos-os-v0.1.0-beta.1",
+    "channel": "beta",
+    "version": "0.1.0-beta.1",
+    "availableDate": "2026-08-17",
+    "status": "candidate",
+    "requiredArtifactKinds": [
+      "raw-image",
+      "package",
+      "sbom",
+      "setup-installer",
+      "usb-installer",
+      "signature",
+      "release-metadata"
+    ]
+  },
+  "artifacts": [
+    {
+      "id": "linux-mkosi-x86_64",
+      "kind": "raw-image",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "x86_64" },
+      "filename": "elizaos-0.1.0-beta.1-x86_64.raw.zst",
+      "source": {
+        "artifact": "elizaos-linux-mkosi-x86_64",
+        "pattern": "*.raw.zst"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "mkosi-release-build",
+          "qemu-uefi-usb",
+          "persistent-reboot",
+          "usb-expanded-readback",
+          "whole-disk-install",
+          "alongside-install",
+          "desktop-acceptance",
+          "hardware-qualification",
+          "slsa-provenance"
+        ],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-x86_64-signature",
+      "kind": "signature",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "x86_64" },
+      "filename": "elizaos-0.1.0-beta.1-x86_64.raw.zst.sig",
+      "source": {
+        "artifact": "elizaos-linux-mkosi-x86_64",
+        "pattern": "*.raw.zst.sig"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "ed25519-signature", "image-release-verified"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-x86_64-sbom",
+      "kind": "sbom",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "x86_64" },
+      "filename": "elizaos-0.1.0-beta.1-x86_64.spdx.json",
+      "source": {
+        "artifact": "elizaos-linux-mkosi-x86_64",
+        "pattern": "*.spdx.json"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "syft-sbom", "slsa-provenance"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-arm64",
+      "kind": "raw-image",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "arm64" },
+      "filename": "elizaos-0.1.0-beta.1-arm64.raw.zst",
+      "source": { "artifact": "elizaos-linux-mkosi-arm64", "pattern": "*.raw.zst" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "mkosi-release-build",
+          "qemu-uefi-usb",
+          "persistent-reboot",
+          "usb-expanded-readback",
+          "whole-disk-install",
+          "alongside-install",
+          "desktop-acceptance",
+          "hardware-qualification",
+          "slsa-provenance"
+        ],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-arm64-signature",
+      "kind": "signature",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "arm64" },
+      "filename": "elizaos-0.1.0-beta.1-arm64.raw.zst.sig",
+      "source": { "artifact": "elizaos-linux-mkosi-arm64", "pattern": "*.raw.zst.sig" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "ed25519-signature", "image-release-verified"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-arm64-sbom",
+      "kind": "sbom",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "arm64" },
+      "filename": "elizaos-0.1.0-beta.1-arm64.spdx.json",
+      "source": { "artifact": "elizaos-linux-mkosi-arm64", "pattern": "*.spdx.json" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "syft-sbom", "slsa-provenance"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-riscv64",
+      "kind": "raw-image",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "riscv64" },
+      "filename": "elizaos-0.1.0-beta.1-riscv64.raw.zst",
+      "source": { "artifact": "elizaos-linux-mkosi-riscv64", "pattern": "*.raw.zst" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "mkosi-release-build",
+          "qemu-uefi-usb",
+          "persistent-reboot",
+          "usb-expanded-readback",
+          "whole-disk-install",
+          "alongside-install",
+          "desktop-acceptance",
+          "hardware-qualification",
+          "slsa-provenance"
+        ],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-riscv64-signature",
+      "kind": "signature",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "riscv64" },
+      "filename": "elizaos-0.1.0-beta.1-riscv64.raw.zst.sig",
+      "source": { "artifact": "elizaos-linux-mkosi-riscv64", "pattern": "*.raw.zst.sig" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "ed25519-signature", "image-release-verified"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-mkosi-riscv64-sbom",
+      "kind": "sbom",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "riscv64" },
+      "filename": "elizaos-0.1.0-beta.1-riscv64.spdx.json",
+      "source": { "artifact": "elizaos-linux-mkosi-riscv64", "pattern": "*.spdx.json" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "syft-sbom", "slsa-provenance"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-image-release-manifest",
+      "kind": "release-metadata",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "all" },
+      "filename": "elizaos-0.1.0-beta.1-images.json",
+      "source": {
+        "artifact": "elizaos-linux-image-metadata",
+        "pattern": "elizaos-0.1.0-beta.1-images.json"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "ed25519-signature", "image-release-verified"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "linux-image-release-manifest-signature",
+      "kind": "signature",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "all" },
+      "filename": "elizaos-0.1.0-beta.1-images.json.sig",
+      "source": {
+        "artifact": "elizaos-linux-image-metadata",
+        "pattern": "elizaos-0.1.0-beta.1-images.json.sig"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "ed25519-signature", "image-release-verified"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "debian-package-amd64",
+      "kind": "package",
+      "status": "candidate",
+      "target": { "platform": "debian", "architecture": "amd64" },
+      "filename": "elizaos-app_2.0.3~beta.7-1_amd64.deb",
+      "source": {
+        "artifact": "elizaos-debian-package-amd64",
+        "pattern": "*_amd64.deb"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "lintian",
+          "slsa-provenance",
+          "upstream-ed25519-artifact"
+        ],
+        "evidence": []
+      }
+    },
+    {
+      "id": "debian-package-arm64",
+      "kind": "package",
+      "status": "candidate",
+      "target": { "platform": "debian", "architecture": "arm64" },
+      "filename": "elizaos-app_2.0.3~beta.7-1_arm64.deb",
+      "source": {
+        "artifact": "elizaos-debian-package-arm64",
+        "pattern": "*_arm64.deb"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "lintian",
+          "slsa-provenance",
+          "upstream-ed25519-artifact"
+        ],
+        "evidence": []
+      }
+    },
+    {
+      "id": "debian-package-riscv64",
+      "kind": "package",
+      "status": "candidate",
+      "target": { "platform": "debian", "architecture": "riscv64" },
+      "filename": "elizaos-app_2.0.3~beta.7-1_riscv64.deb",
+      "source": {
+        "artifact": "elizaos-debian-package-riscv64",
+        "pattern": "*_riscv64.deb"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "lintian",
+          "slsa-provenance",
+          "upstream-ed25519-artifact"
+        ],
+        "evidence": []
+      }
+    },
+    {
+      "id": "setup-macos-arm64",
+      "kind": "setup-installer",
+      "status": "candidate",
+      "target": { "platform": "macos", "architecture": "arm64" },
+      "filename": "elizaos-setup-v0.1.0-beta.1-macos-arm64.dmg",
+      "source": { "artifact": "elizaos-setup-macos", "pattern": "*.dmg" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "package-test"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "setup-linux-x64",
+      "kind": "setup-installer",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "x64" },
+      "filename": "elizaos-setup-v0.1.0-beta.1-linux-x64.tar.gz",
+      "source": { "artifact": "elizaos-setup-linux", "pattern": "*.tar.gz" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "package-test"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "setup-windows-x64",
+      "kind": "setup-installer",
+      "status": "candidate",
+      "target": { "platform": "windows", "architecture": "x64" },
+      "filename": "elizaos-setup-v0.1.0-beta.1-windows-x64.zip",
+      "source": { "artifact": "elizaos-setup-windows", "pattern": "*.zip" },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": ["sha256-generated", "package-test"],
+        "evidence": []
+      }
+    },
+    {
+      "id": "usb-installer-linux-x64",
+      "kind": "usb-installer",
+      "status": "candidate",
+      "target": { "platform": "linux", "architecture": "x64" },
+      "filename": "elizaos-usb-installer-v0.1.0-beta.1-linux-x64.tar.gz",
+      "source": {
+        "artifact": "elizaos-usb-installer-linux",
+        "pattern": "*.tar.gz"
+      },
+      "downloadUrl": null,
+      "sha256": null,
+      "sizeBytes": null,
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "package-test",
+          "browser-e2e",
+          "virtual-block-device"
+        ],
+        "evidence": []
+      }
+    }
+  ],
+  "checksumPolicy": {
+    "algorithm": "sha256",
+    "generatedFile": "SHA256SUMS",
+    "verificationScript": "packages/os/scripts/verify-release-checksums.mjs"
+  },
+  "validation": {
+    "evidenceDirectory": "evidence",
+    "promotionGates": [
+      "all-required-workflows-green",
+      "all-artifacts-bound",
+      "checksums-verified",
+      "provenance-attested"
+    ]
+  },
+  "tee": { "enabled": false }
+}

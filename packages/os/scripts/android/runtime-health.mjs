@@ -46,15 +46,29 @@ export async function probeAndroidHealth(
   ]).trim();
   if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)
     throw new Error("invalid ADB forward port");
+  const failures = [];
+  let result;
   try {
     const response = await fetchHealth(`http://127.0.0.1:${port}/api/health`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5000),
     });
-    return { status: response.status, body: await response.text() };
-  } finally {
-    run(adb, ["-s", serial, "forward", "--remove", `tcp:${port}`]);
+    result = { status: response.status, body: await response.text() };
+  } catch (error) {
+    failures.push(error);
   }
+  try {
+    run(adb, ["-s", serial, "forward", "--remove", `tcp:${port}`]);
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(
+      failures,
+      "Agent health probe and ADB forward cleanup failed",
+    );
+  return result;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === script) {

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -1235,11 +1236,26 @@ static jfloatArray embed_utf8(JNIEnv* env, jlong handle, jbyteArray input, jint 
     std::vector<float> values(384);
     int dimension = 0;
     char* error = nullptr;
-    const int rc = with_options
-        ? eliza_inference_embed_with_options(reinterpret_cast<EliInferenceContext*>(handle),
-            text.data(), text.size(), pooling, parse_special ? 1 : 0, values.data(), values.size(), &dimension, &error)
-        : eliza_inference_embed(reinterpret_cast<EliInferenceContext*>(handle),
+    int rc;
+    if (with_options) {
+        // This additive entrypoint is absent in older externally supplied fused
+        // libraries. Never substitute legacy embedding: its token semantics
+        // differ and it cannot uphold complete-input admission.
+        using EmbedWithOptions = int (*)(EliInferenceContext*, const char*, size_t,
+            int, int, float*, size_t, int*, char**);
+        auto embed = reinterpret_cast<EmbedWithOptions>(
+            dlsym(RTLD_DEFAULT, "eliza_inference_embed_with_options"));
+        if (!embed) {
+            throw_runtime(env, "embedding: installed fused inference library lacks complete-input embedding; install ABI 16 or newer", nullptr);
+            return nullptr;
+        }
+        rc = embed(reinterpret_cast<EliInferenceContext*>(handle), text.data(),
+            text.size(), pooling, parse_special ? 1 : 0, values.data(),
+            values.size(), &dimension, &error);
+    } else {
+        rc = eliza_inference_embed(reinterpret_cast<EliInferenceContext*>(handle),
             text.data(), text.size(), pooling, values.data(), values.size(), &dimension, &error);
+    }
     if (rc != ELIZA_OK) {
         throw_runtime(env, "embedding: encode failed", error);
         return nullptr;

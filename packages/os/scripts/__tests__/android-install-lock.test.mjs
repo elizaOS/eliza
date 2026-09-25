@@ -5,12 +5,98 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { withDeviceInstallLock } from "../android/install-lock.mjs";
+import { openInstallJournal } from "../android/install-release.mjs";
 
 function directory(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "android-lock-test-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }
+
+test("journal creation flushes its data and every ancestor before returning", (t) => {
+  const root = directory(t);
+  const parent = path.join(root, "new", "attempt");
+  fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
+  const file = path.join(parent, "journal.jsonl");
+  const opened = new Map();
+  const flushed = [];
+  const open = fs.openSync;
+  const sync = fs.fsyncSync;
+  t.mock.method(fs, "openSync", (...args) => {
+    const fd = open(...args);
+    opened.set(fd, args[0]);
+    return fd;
+  });
+  t.mock.method(fs, "fsyncSync", (fd) => {
+    flushed.push(opened.get(fd));
+    sync(fd);
+  });
+  const authorization = { event: "authorized", serial: "SERIAL" };
+  const fd = openInstallJournal(file, authorization);
+  try {
+    const expected = [file];
+    let current = parent;
+    while (true) {
+      expected.push(current);
+      if (path.dirname(current) === current) break;
+      current = path.dirname(current);
+    }
+    assert.deepEqual(flushed, expected);
+    assert.equal(fs.fstatSync(fd).mode & 0o777, 0o600);
+    assert.equal(
+      fs.readFileSync(file, "utf8"),
+      `${JSON.stringify(authorization)}\n`,
+    );
+    assert.throws(() => openInstallJournal(file, {}), { code: "EEXIST" });
+  } finally {
+    fs.closeSync(fd);
+  }
+});
+
+test("directory flush failure closes the journal and prevents device admission", (t) => {
+  const root = directory(t);
+  const file = path.join(root, "journal.jsonl");
+  const failure = Object.assign(new Error("fixture directory sync failure"), {
+    code: "EIO",
+  });
+  const open = fs.openSync;
+  const sync = fs.fsyncSync;
+  let journal;
+  t.mock.method(fs, "openSync", (...args) => {
+    const fd = open(...args);
+    if (args[0] === file) journal = fd;
+    return fd;
+  });
+  let fail = true;
+  t.mock.method(fs, "fsyncSync", (fd) => {
+    if (fail && fs.fstatSync(fd).isDirectory()) {
+      fail = false;
+      throw failure;
+    }
+    sync(fd);
+  });
+  assert.throws(
+    () => openInstallJournal(file, { event: "authorized" }),
+    (error) => error === failure,
+  );
+  assert.throws(() => fs.fstatSync(journal), { code: "EBADF" });
+  fail = true;
+  let admitted = false;
+  assert.throws(
+    () =>
+      withDeviceInstallLock(
+        "SERIAL",
+        {},
+        () => {
+          admitted = true;
+        },
+        root,
+      ),
+    (error) => error === failure,
+  );
+  assert.equal(admitted, false);
+  assert.equal(fs.readFileSync(file, "utf8"), '{"event":"authorized"}\n');
+});
 
 test("same serial is exclusive across processes; other serials remain independent", (t) => {
   const root = directory(t);

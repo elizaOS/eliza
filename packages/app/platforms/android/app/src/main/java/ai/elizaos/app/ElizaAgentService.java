@@ -747,6 +747,9 @@ public class ElizaAgentService extends Service {
             || "content-length".equalsIgnoreCase(key);
     }
 
+    private AgentSecureStore agentSecureStore;
+    private ChromiumBrowserConnection chromiumBrowserConnection;
+
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     @Override
@@ -796,6 +799,14 @@ public class ElizaAgentService extends Service {
             stopSelf();
             return;
         }
+
+        try {
+            agentSecureStore = new AgentSecureStore(this);
+        } catch (IOException error) {
+            Log.e(TAG, "Android Keystore agent bridge unavailable", error);
+        }
+        chromiumBrowserConnection = new ChromiumBrowserConnection(this);
+        chromiumBrowserConnection.start();
 
         // FGS is up; these diagnostic reads can no longer trip the FGS-start
         // timeout.
@@ -854,6 +865,8 @@ public class ElizaAgentService extends Service {
 
     @Override
     public void onDestroy() {
+        if (chromiumBrowserConnection != null) chromiumBrowserConnection.close();
+        if (agentSecureStore != null) agentSecureStore.close();
         // Only an explicit stop (ACTION_STOP → shuttingDown) may tear the
         // agent process down. The FGS-denial path also sets shuttingDown, but
         // its contract is the opposite — "a surviving detached agent process
@@ -1234,7 +1247,6 @@ public class ElizaAgentService extends Service {
         if (!bundle.isFile() || bundle.length() <= 0) {
             return false;
         }
-        if (!new File(root, "skills").isDirectory()) return false;
         File launch = new File(root, AGENT_LAUNCH_SCRIPT);
         if (!launch.isFile() || launch.length() <= 0) {
             return false;
@@ -1286,8 +1298,6 @@ public class ElizaAgentService extends Service {
             new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
-
-        copyBundledSkillAssets(assets, "agent/skills", new File(stagingRoot, "skills"));
 
         // ABI-specific binaries: bun + musl loader + libstdc++ + libgcc.
         String abiAssetDir = "agent/" + abi;
@@ -1674,17 +1684,6 @@ public class ElizaAgentService extends Service {
         } catch (ReflectiveOperationException error) {
             Log.w(TAG, "SELinux.restoreconRecursive unavailable: " + error.getMessage());
         }
-    }
-
-    /** Copies packaged skill inputs inside the atomic runtime extraction. */
-    private void copyBundledSkillAssets(AssetManager assets, String assetPath, File target) throws IOException {
-        String[] children = assets.list(assetPath);
-        if (children == null || children.length == 0) {
-            copyAssetIfMissing(assets, assetPath, target);
-            return;
-        }
-        if (!target.isDirectory() && !target.mkdirs()) throw new IOException("Could not create " + target);
-        for (String child : children) copyBundledSkillAssets(assets, assetPath + "/" + child, new File(target, child));
     }
 
     private void copyAssetIfMissing(AssetManager assets, String assetPath, File target) throws IOException {
@@ -2091,7 +2090,6 @@ public class ElizaAgentService extends Service {
             agentEnv.put("BUN_PATH", bun.getAbsolutePath());
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
-            agentEnv.put("ELIZAOS_BUNDLED_SKILLS_DIR", new File(root, "skills").getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put(
                 "DIAGNOSTICS_FILE",

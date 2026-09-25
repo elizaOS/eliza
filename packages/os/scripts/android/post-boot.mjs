@@ -19,7 +19,15 @@ export function readHealthToken(file) {
         stat.size <= 4096,
       "health token must be a private regular file",
     );
-    const token = fs.readFileSync(fd, "utf8").trim();
+    const bytes = Buffer.alloc(4097);
+    let length = 0;
+    while (length < bytes.length) {
+      const count = fs.readSync(fd, bytes, length, bytes.length - length, null);
+      if (count === 0) break;
+      length += count;
+    }
+    requireThat(length <= 4096, "health token exceeds the 4096-byte limit");
+    const token = bytes.subarray(0, length).toString("utf8").trim();
     requireThat(
       /^[A-Za-z0-9._~+/-]{1,4096}={0,2}$/.test(token),
       "invalid health token",

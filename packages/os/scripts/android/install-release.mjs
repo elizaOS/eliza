@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseFastbootInfoArtifacts } from "../aosp/build-grizzly-bundle.mjs";
-import { withDeviceInstallLock } from "./install-lock.mjs";
+import { parseFastbootInfoArtifacts } from "./flash-metadata.mjs";
+import { syncDirectoryTree, withDeviceInstallLock } from "./install-lock.mjs";
 import { readHealthToken, verifyPostBoot } from "./post-boot.mjs";
 import {
   canonical,
@@ -32,6 +32,7 @@ export function parseOptions(argv) {
     "--tool-dir": "toolDir",
     "--recovery-dir": "recoveryDir",
     "--health-token-file": "healthTokenFile",
+    "--expected-subject-sha256": "expectedSubjectSha256",
   };
   const seen = new Set();
   for (let i = 0; i < argv.length; i++) {
@@ -45,6 +46,7 @@ export function parseOptions(argv) {
     else if (a === "--confirm-flash") o.confirm = true;
     else if (a === "--wipe-data") o.wipe = true;
     else if (a === "--reboot-after-flash") o.reboot = true;
+    else if (a === "--describe") o.describe = true;
     else if (a === "--dry-run") {
       requireThat(!o.execute, "conflicting execution flags");
     } else if (a !== "--assume-bootloader")
@@ -55,8 +57,13 @@ export function parseOptions(argv) {
     "conflicting execution flags",
   );
   requireThat(
-    o.manifest && o.directory,
-    "--manifest and --artifact-dir required",
+    o.manifest && (o.describe || o.directory),
+    "--manifest and --artifact-dir required (or --describe with --manifest)",
+  );
+  requireThat(
+    !o.describe ||
+      [...seen].every((a) => ["--manifest", "--describe"].includes(a)),
+    "--describe only accepts --manifest and cannot perform installation",
   );
   requireThat(!o.confirm || o.execute, "--confirm-flash requires --execute");
   return o;
@@ -72,6 +79,26 @@ export function assertExecutionOptions(o) {
         o.recoveryDir,
       "confirmed installation requires --device, --journal, --tool-dir and --recovery-dir",
     );
+}
+
+export function openInstallJournal(file, authorization) {
+  const fd = fs.openSync(
+    file,
+    fs.constants.O_WRONLY |
+      fs.constants.O_CREAT |
+      fs.constants.O_EXCL |
+      fs.constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    fs.writeFileSync(fd, `${JSON.stringify(authorization)}\n`);
+    fs.fsyncSync(fd);
+    syncDirectoryTree(path.dirname(file));
+    return fd;
+  } catch (error) {
+    fs.closeSync(fd);
+    throw error;
+  }
 }
 
 export function compilePlan(
@@ -114,13 +141,17 @@ export function compilePlan(
       });
     else if (c.command === "reboot")
       continue; // Reboot is an explicit operator choice after verification.
-    else if (c.command === "update-super")
+    else if (c.command === "update-super") {
+      requireThat(
+        wipe,
+        "non-wiping super metadata updates are not supported by this CLI executor",
+      );
       plan.push({
         mode: "fastbootd",
-        args: ["update-super", "super_empty.img", ...(wipe ? ["wipe"] : [])],
+        args: ["--slot", state.targetSlot, "wipe-super", "super_empty.img"],
         file: "super_empty.img",
       });
-    else if (c.command === "if-wipe") {
+    } else if (c.command === "if-wipe") {
       if (wipe) plan.push({ mode: "fastbootd", args: ["erase", c.tokens[1]] });
     } else throw new Error(`unsupported executable task ${c.command}`);
   }
@@ -147,10 +178,23 @@ export function parseGetvar(output, key) {
   );
   return values[0];
 }
+export class AndroidCommandError extends Error {
+  code = "ELIZAOS_ANDROID_COMMAND_FAILED";
+
+  constructor(message, cause) {
+    super(`[android-contract] ${message}`, { cause });
+    this.name = "AndroidCommandError";
+  }
+}
+
 export function checkedRun(command, args, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 30000;
+  requireThat(
+    Number.isSafeInteger(timeoutMs) && timeoutMs > 0,
+    "command timeout must be a positive integer",
+  );
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    timeout: options.timeoutMs ?? 30000,
     maxBuffer: 16 * 1024 * 1024,
     env: {
       ...process.env,
@@ -158,11 +202,16 @@ export function checkedRun(command, args, options = {}) {
       FASTBOOT_FORCE_FLASH: undefined,
     },
     ...options,
+    timeout: timeoutMs,
+    // spawnSync otherwise waits indefinitely when a tool ignores SIGTERM.
+    killSignal: "SIGKILL",
   });
-  requireThat(
-    !result.error && result.status === 0,
-    `command failed (${result.status ?? result.error?.code}): ${path.basename(command)} ${JSON.stringify(args)}\n${result.stderr ?? ""}`,
-  );
+  if (result.error || result.status !== 0) {
+    throw new AndroidCommandError(
+      `command failed (${result.status ?? result.error?.code ?? result.signal}): ${path.basename(command)} ${JSON.stringify(args)}\n${result.stderr ?? ""}`,
+      result.error,
+    );
+  }
   return `${result.stdout ?? ""}${result.stderr ?? ""}`;
 }
 export function toolPaths(dir, release, run) {
@@ -191,7 +240,18 @@ export function pinnedToolRunner(tools, release, run = checkedRun) {
       hashFile(command).sha256 === release.tools[name].sha256,
       `${name} changed during installation`,
     );
-    return run(command, args, options);
+    const output = run(command, args, options);
+    // Some platform-tools versions exit zero after a bootloader FAIL reply.
+    // Never journal a write as successful or dispatch the next operation then.
+    if (name === "fastboot") {
+      requireThat(
+        !/(?:^|\n)[^\r\n]*\bFAILED(?:\s|$)|(?:^|\n)fastboot:\s*error:/m.test(
+          output,
+        ),
+        `fastboot protocol failure: ${JSON.stringify(args)}\n${output}`,
+      );
+    }
+    return output;
   };
 }
 
@@ -203,17 +263,69 @@ export function deviceReader(tools, serial, run) {
   const fb = (args, options = {}) =>
     run(tools.fastboot, ["-s", serial, ...args], options);
   const get = (key) => parseGetvar(fb(["getvar", key]), key);
+  let androidIdentity;
   return {
     fb,
     get,
-    mode(expected, release) {
-      const inventory = run(tools.fastboot, ["devices"])
+    prepare(release) {
+      if (release.target.identityMethod !== "adb-stock-before-reboot") return;
+      androidIdentity = undefined;
+      const adb = (args) => run(tools.adb, ["-s", serial, ...args]).trim();
+      requireThat(
+        adb(["get-state"]) === "device",
+        "stock Android must be connected for SKU verification",
+      );
+      const prop = (name) => adb(["shell", "getprop", name]);
+      const identity = {
+        serial: prop("ro.boot.serialno"),
+        product: prop("ro.product.device"),
+        sku: prop("ro.boot.hardware.sku"),
+        fingerprint: prop("ro.build.fingerprint"),
+      };
+      requireThat(
+        identity.serial === serial &&
+          identity.product === release.target.codename,
+        "Android device identity mismatch",
+      );
+      requireThat(
+        release.target.skus.includes(identity.sku),
+        "unqualified Android SKU",
+      );
+      requireThat(
+        release.startingStates.some(
+          (state) => state.stockFingerprint === identity.fingerprint,
+        ),
+        "unqualified stock Android fingerprint",
+      );
+      adb(["reboot", "bootloader"]);
+      waitUntil(
+        (remaining) => this.mode("bootloader", release, remaining),
+        90_000,
+      );
+      androidIdentity = identity;
+    },
+    mode(expected, release, timeoutMs = 30000) {
+      const remaining = commandBudget(timeoutMs);
+      const get = (key) =>
+        parseGetvar(
+          fb(["getvar", key], {
+            timeoutMs: Math.min(30000, remaining()),
+          }),
+          key,
+        );
+      const inventory = run(tools.fastboot, ["devices"], {
+        timeoutMs: Math.min(30000, remaining()),
+      })
         .trim()
         .split(/\r?\n/)
         .map((l) => l.trim().split(/\s+/));
       requireThat(
-        inventory.filter((row) => row[0] === serial && row[1] === "fastboot")
-          .length === 1,
+        inventory.filter(
+          (row) =>
+            row[0] === serial &&
+            (row[1] === "fastboot" ||
+              (expected === "fastbootd" && row[1] === "fastbootd")),
+        ).length === 1,
         "selected serial absent from fastboot",
       );
       requireThat(
@@ -232,10 +344,17 @@ export function deviceReader(tools, serial, run) {
         get("snapshot-update-status") === "none",
         "pending/unknown snapshot state",
       );
+      remaining();
     },
     inspect(release) {
       this.mode("bootloader", release);
-      const sku = get("sku");
+      const fromAndroid =
+        release.target.identityMethod === "adb-stock-before-reboot";
+      requireThat(
+        !fromAndroid || androidIdentity?.serial === serial,
+        "missing live Android identity before reboot",
+      );
+      const sku = fromAndroid ? androidIdentity.sku : get("sku");
       requireThat(release.target.skus.includes(sku), "unqualified SKU");
       const storage = get("partition-size:userdata");
       requireThat(
@@ -243,7 +362,11 @@ export function deviceReader(tools, serial, run) {
           release.target.storageBytes.includes(BigInt(storage).toString()),
         "unqualified userdata capacity",
       );
-      const level = get("battery-level");
+      const rawLevel = get(release.batteryQuery ?? "battery-level");
+      const level =
+        release.batteryQuery === "battery-soc"
+          ? (/^(\d+) %$/.exec(rawLevel)?.[1] ?? "")
+          : rawLevel;
       requireThat(
         /^\d+$/.test(level) &&
           Number(level) <= 100 &&
@@ -262,6 +385,10 @@ export function deviceReader(tools, serial, run) {
         "firmware/slot starting state is unknown or ambiguous",
       );
       const state = states[0];
+      requireThat(
+        !fromAndroid || state.stockFingerprint === androidIdentity.fingerprint,
+        "stock Android and firmware state disagree",
+      );
       for (const [k, v] of Object.entries(state.getvars))
         requireThat(get(k) === v, `starting state mismatch: ${k}`);
       for (const [p, size] of Object.entries(release.geometry.partitionSizes)) {
@@ -276,19 +403,44 @@ export function deviceReader(tools, serial, run) {
   };
 }
 
+function commandBudget(timeoutMs) {
+  requireThat(
+    Number.isSafeInteger(timeoutMs) && timeoutMs > 0,
+    "command timeout must be a positive integer",
+  );
+  const deadline = performance.now() + timeoutMs;
+  return () => {
+    const remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0)
+      throw new AndroidCommandError("command deadline exceeded");
+    return remaining;
+  };
+}
+
 export function waitUntil(check, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
+  const remaining = commandBudget(timeoutMs);
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  let lastError;
   for (;;) {
+    let budget;
     try {
-      return check();
+      budget = remaining();
     } catch (error) {
-      if (Date.now() >= deadline) throw error;
-      Atomics.wait(
-        new Int32Array(new SharedArrayBuffer(4)),
-        0,
-        0,
-        Math.min(500, deadline - Date.now()),
-      );
+      throw lastError ?? error;
+    }
+    try {
+      const result = check(budget);
+      remaining();
+      return result;
+    } catch (error) {
+      lastError = error;
+      let delay;
+      try {
+        delay = Math.min(500, remaining());
+      } catch {
+        throw lastError;
+      }
+      Atomics.wait(sleeper, 0, 0, delay);
     }
   }
 }
@@ -307,7 +459,7 @@ export function executePlan({
   requestHealth = (token) => readAndroidHealth(tools.adb, serial, token),
 }) {
   const record = (event) => {
-    fs.writeSync(
+    fs.writeFileSync(
       journal,
       `${JSON.stringify({ ...event, time: new Date().toISOString() })}\n`,
     );
@@ -365,9 +517,10 @@ export function executePlan({
         record({ event: "active-slot-verified", slot: activeSlot });
       }
       if (step.transition && step.transition !== "adb") {
-        // Fastboot reconnect is bounded by each command's timeout; wrong or
-        // missing state fails closed. Operators may retry after inspection.
-        waitUntil(() => reader.mode(step.transition, release), 30000);
+        waitUntil(
+          (remaining) => reader.mode(step.transition, release, remaining),
+          30000,
+        );
         checkState();
       }
     }
@@ -377,18 +530,23 @@ export function executePlan({
         hashFile(tools.adb).sha256 === release.tools.adb.sha256,
         "adb changed during installation",
       );
+      const bootRemaining = commandBudget(
+        release.validation.bootTimeoutSeconds * 1000,
+      );
       run(tools.adb, ["-s", serial, "wait-for-device"], {
-        timeoutMs: release.validation.bootTimeoutSeconds * 1000,
+        timeoutMs: bootRemaining(),
       });
-      const prop = (k) =>
-        run(tools.adb, ["-s", serial, "shell", "getprop", k]).trim();
+      const prop = (k, timeoutMs) =>
+        run(tools.adb, ["-s", serial, "shell", "getprop", k], {
+          timeoutMs,
+        }).trim();
       waitUntil(
-        () =>
+        (remaining) =>
           requireThat(
-            prop("sys.boot_completed") === "1",
+            prop("sys.boot_completed", remaining) === "1",
             "Android boot not complete",
           ),
-        release.validation.bootTimeoutSeconds * 1000,
+        bootRemaining(),
       );
       const active = plan
         .find((p) => p.args[0].startsWith("--set-active="))
@@ -413,10 +571,44 @@ export function executePlan({
   }
 }
 
+export function verifyRequiredPartitions(release, state, requirements, reader) {
+  for (const partition of requirements.get("partition-exists")) {
+    const sizes = release.geometry.partitionSizes;
+    const name = Object.hasOwn(sizes, partition)
+      ? partition
+      : `${partition}_${state.targetSlot}`;
+    requireThat(
+      Object.hasOwn(sizes, name),
+      "required partition geometry missing",
+    );
+    const size = reader.get(`partition-size:${name}`);
+    requireThat(
+      /^0x[0-9a-fA-F]+$/.test(size) &&
+        BigInt(size) > 0n &&
+        BigInt(size) === BigInt(sizes[name]),
+      "required partition missing/zero or geometry changed",
+    );
+  }
+}
+
+export function describeRelease(envelope, policy = loadPolicy()) {
+  const { release, subjectSha256 } = validateEnvelope(envelope, policy);
+  return { release, subjectSha256, issuedAt: envelope.qualification.issuedAt };
+}
+
 export function main(argv = process.argv.slice(2)) {
   const o = parseOptions(argv);
   const envelope = readJson(o.manifest);
+  if (o.describe) {
+    process.stdout.write(`${JSON.stringify(describeRelease(envelope))}\n`);
+    return;
+  }
   const { release, subjectSha256 } = validateEnvelope(envelope, loadPolicy());
+  requireThat(
+    o.expectedSubjectSha256 === undefined ||
+      o.expectedSubjectSha256 === subjectSha256,
+    "release differs from the reviewed subject digest",
+  );
   requireThat(
     release.target.kind === "physical",
     "use the Cuttlefish runner for virtual artifacts",
@@ -440,19 +632,14 @@ export function main(argv = process.argv.slice(2)) {
     o.serial,
     { journal: path.resolve(o.journal), subjectSha256 },
     ({ beforeWrites }) => {
+      reader.prepare(release);
       const state = reader.inspect(release);
       requireThat(
         !o.slot || o.slot === state.targetSlot,
         "requested slot conflicts with qualified transition",
       );
       verifyFile(o.recoveryDir, state.recovery.archive);
-      for (const partition of metadata.requirements.get("partition-exists")) {
-        const size = reader.get(`partition-size:${partition}`);
-        requireThat(
-          /^0x[0-9a-fA-F]+$/.test(size) && BigInt(size) > 0n,
-          "required partition missing/zero",
-        );
-      }
+      verifyRequiredPartitions(release, state, metadata.requirements, reader);
       const plan = compilePlan(release, metadata.fastbootInfo, state, o);
       const capacity = fs.statfsSync(os.tmpdir());
       const bytes = release.files.reduce((sum, f) => sum + f.sizeBytes, 0);
@@ -474,19 +661,13 @@ export function main(argv = process.argv.slice(2)) {
           fs.chmodSync(path.join(stage, f.filename), 0o400);
         }
         verifyInstallFiles(release, stage);
-        journal = fs.openSync(
-          o.journal,
-          fs.constants.O_WRONLY |
-            fs.constants.O_CREAT |
-            fs.constants.O_EXCL |
-            fs.constants.O_NOFOLLOW,
-          0o600,
-        );
-        fs.writeSync(
-          journal,
-          `${JSON.stringify({ event: "authorized", serial: o.serial, stateId: state.id, subjectSha256, plan })}\n`,
-        );
-        fs.fsyncSync(journal);
+        journal = openInstallJournal(o.journal, {
+          event: "authorized",
+          serial: o.serial,
+          stateId: state.id,
+          subjectSha256,
+          plan,
+        });
         // Revalidate authorization, recovery and starting state immediately before writes.
         validateEnvelope(envelope, loadPolicy());
         verifyFile(o.recoveryDir, state.recovery.archive);

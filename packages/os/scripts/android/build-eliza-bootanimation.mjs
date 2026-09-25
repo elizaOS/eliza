@@ -1,90 +1,25 @@
 #!/usr/bin/env node
-// Pack the rendered elizaOS boot-splash frames into bootanimation.zip in the
-// uncompressed-store format AOSP's bootanimation daemon requires.
-//
-// This is the elizaOS-specific companion to
-// generate-eliza-bootanimation.mjs: that script renders the white logo on the
-// elizaOS blue field into vendor/eliza/bootanimation/{part0,part1}/, and this
-// one packs those frames + desc.txt into
-// vendor/eliza/bootanimation/bootanimation.zip (consumed by `make
-// bootanimation`). Frame layout inspection + zip packing reuse the
-// brand-agnostic helpers in
-// scripts/distro-android/build-bootanimation.mjs.
-//
-// Usage:
-//   node scripts/android/build-eliza-bootanimation.mjs
-//   node scripts/android/build-eliza-bootanimation.mjs --check
-//
-// Flags:
-//   --frames <dir>   Override the frame directory (defaults to the eliza
-//                    vendor bootanimation dir).
-//   --out <path>     Override the output zip (defaults to <frames>/bootanimation.zip).
-//   --check          Verify the frame layout without writing the zip.
-
-import path from "node:path";
-import process from "node:process";
+// Eliza defaults for the shared Android boot-animation packer.
 import { fileURLToPath } from "node:url";
 import {
-  buildBootAnimationZip,
-  inspectBootAnimationDir,
+  main as packAnimation,
+  parseArgs as parsePackingArgs,
 } from "../distro-android/build-bootanimation.mjs";
-import { isMainModule } from "../distro-android/is-main.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_FRAMES = path.resolve(
-  here,
-  "../../android/vendor/eliza/bootanimation",
-);
+const options = {
+  defaultFrames: fileURLToPath(
+    new URL("../../android/vendor/eliza/bootanimation", import.meta.url),
+  ),
+  usage:
+    "Usage: node scripts/android/build-eliza-bootanimation.mjs [--frames <DIR>] [--out <ZIP>] [--check]",
+};
 
-function parseArgs(argv) {
-  const args = { framesDir: DEFAULT_FRAMES, outPath: null, check: false };
-  const readFlagValue = (flag, index) => {
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${flag} requires a value`);
-    }
-    return value;
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--frames") {
-      args.framesDir = path.resolve(readFlagValue(arg, i));
-      i += 1;
-    } else if (arg === "--out") {
-      args.outPath = path.resolve(readFlagValue(arg, i));
-      i += 1;
-    } else if (arg === "--check") {
-      args.check = true;
-    } else if (arg === "-h" || arg === "--help") {
-      console.log(
-        "Usage: node scripts/android/build-eliza-bootanimation.mjs [--frames <DIR>] [--out <ZIP>] [--check]",
-      );
-      process.exit(0);
-    } else {
-      throw new Error(`Unknown argument: ${arg}`);
-    }
-  }
-  args.outPath ??= path.join(args.framesDir, "bootanimation.zip");
-  return args;
+export function parseArgs(argv) {
+  return parsePackingArgs(argv, options);
 }
 
-function main(argv = process.argv.slice(2)) {
-  const args = parseArgs(argv);
-  if (args.check) {
-    const { issues } = inspectBootAnimationDir(args.framesDir);
-    if (issues.length > 0) {
-      console.error(`[bootanimation:check] FAIL\n - ${issues.join("\n - ")}`);
-      process.exit(1);
-    }
-    console.log(`[bootanimation:check] ${args.framesDir} is well-formed.`);
-    return;
-  }
-  buildBootAnimationZip(args);
+export function main(argv = process.argv.slice(2)) {
+  return packAnimation(argv, options);
 }
 
-const isMain = isMainModule(import.meta);
-if (isMain) {
-  main();
-}
-
-export { main, parseArgs };
+if (import.meta.main) main();

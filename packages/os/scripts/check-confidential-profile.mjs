@@ -41,7 +41,6 @@
 const FLOOR_GATES = new Set(["confidential-image-reproducibility"]);
 
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   checkConfidentialArtifacts,
   loadArtifacts,
@@ -53,7 +52,7 @@ import {
   checkPolicyDigestConsistency,
 } from "./check-confidential-policy.mjs";
 import { checkDstackPins } from "./check-dstack-pins.mjs";
-import { readJson, repoRoot } from "./os-release-lib.mjs";
+import { parseArgs, readJson, repoRoot } from "./os-release-lib.mjs";
 import { verifyManifest } from "./verify-image-reproducibility.mjs";
 
 const FILES = {
@@ -75,10 +74,6 @@ const FILES = {
   ),
   pins: path.join(repoRoot, "linux/confidential/dstack-pins.json"),
   pinsSchema: path.join(repoRoot, "release/schema/dstack-pins.schema.json"),
-  confidentialManifest: path.join(
-    repoRoot,
-    "release/confidential-2026-05-21/manifest.json",
-  ),
 };
 
 function report(name, result) {
@@ -92,6 +87,12 @@ function report(name, result) {
 }
 
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (typeof args.manifest !== "string" || args.manifest.trim() === "") {
+    throw new Error(
+      "--manifest must identify the confidential release being checked.",
+    );
+  }
   const [
     policy,
     policySchema,
@@ -108,7 +109,7 @@ async function main() {
     readJson(FILES.imageManifestSchema),
     readJson(FILES.pins),
     readJson(FILES.pinsSchema),
-    readJson(FILES.confidentialManifest),
+    readJson(path.resolve(args.manifest)),
     loadArtifacts(),
   ]);
 
@@ -193,6 +194,6 @@ async function main() {
   console.log("check-confidential-profile: ALL GATES PASS");
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   await main();
 }

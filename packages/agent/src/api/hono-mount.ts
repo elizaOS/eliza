@@ -13,6 +13,7 @@ import type { Route } from "@elizaos/shared";
 import type { Hono } from "hono";
 
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
+import { isAuthenticatedInProcessRequest } from "./in-process-request.ts";
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 
 interface RuntimeHonoCache {
@@ -23,6 +24,7 @@ interface RuntimeHonoCache {
 let cached: RuntimeHonoCache | null = null;
 const INTERNAL_AUTHORIZED_HEADER = "x-eliza-internal-authorized";
 const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
+const INTERNAL_IN_PROCESS_HEADER = "x-eliza-internal-in-process";
 // Carries the boundary-resolved AccessContext (JSON) from the Node listener
 // into the Hono app (#14781). Like the two headers above it is INTERNAL-ONLY:
 // tryHandleHonoRuntimeRoute always overwrites/deletes it before dispatch, so a
@@ -82,6 +84,7 @@ function getHonoApp(runtime: IAgentRuntime): Hono {
     return cached.app;
   }
   const app = buildHonoAppForRuntime(runtime, {
+    inProcess: (req) => req.headers.get(INTERNAL_IN_PROCESS_HEADER) === "1",
     isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
     isTrustedLocal: (req) =>
       req.headers.get(INTERNAL_TRUSTED_LOCAL_HEADER) === "1",
@@ -328,6 +331,11 @@ export async function tryHandleHonoRuntimeRoute(options: {
   // handler, which re-matches against the same normalized path).
   url.pathname = pathname;
   const headers = nodeHeadersToWeb(req.headers);
+  // Always overwrite attacker-supplied values; only the native dispatcher marks the Node request.
+  headers.set(
+    INTERNAL_IN_PROCESS_HEADER,
+    isAuthenticatedInProcessRequest(req) ? "1" : "0",
+  );
   headers.set(INTERNAL_AUTHORIZED_HEADER, options.isAuthorized() ? "1" : "0");
   headers.set(
     INTERNAL_TRUSTED_LOCAL_HEADER,

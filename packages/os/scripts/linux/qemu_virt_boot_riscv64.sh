@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # elizaOS Debian RISC-V 64 — qemu-system-riscv64 -M virt boot harness.
 #
-# Boots the live ISO produced by `build.sh` on top of OpenSBI + EDK2 UEFI
+# Boots the live ISO produced by `build-live-iso.sh` on top of OpenSBI + EDK2 UEFI
 # under qemu-system-riscv64 -M virt, captures the serial transcript, checks
 # the transcript for the expected boot markers, and writes a JSON evidence
 # record at --evidence.
@@ -17,7 +17,7 @@
 #     is present.
 #
 # Usage:
-#   qemu_virt_boot.sh --iso <path> [--memory <MB>] [--cpus <N>]
+#   qemu_virt_boot_riscv64.sh --iso <path> [--memory <MB>] [--cpus <N>]
 #                     [--timeout <sec>] [--evidence <path>]
 #                     [--u-boot <path>] [--transcript <path>]
 #
@@ -25,17 +25,15 @@
 #   --memory     4096   (MB)
 #   --cpus       4
 #   --timeout    600    (seconds)
-#   --evidence   evidence/qemu_virt_boot.json  (relative to variant dir)
+#   --evidence   test-results/os-riscv64-boot/report.json (repository root)
 #   --u-boot     unsupported with the UEFI ISO path; retained as a rejected
 #                compatibility flag so older callers fail clearly.
-#   --transcript evidence/qemu_virt_boot.transcript.log
+#   --transcript test-results/os-riscv64-boot/transcript.log (repository root)
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIANT_DIR="$(cd "${HERE}/../../linux/elizaos" && pwd)"
-EVIDENCE_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.json"
-TRANSCRIPT_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.transcript.log"
 # RISC-V EDK2 UEFI firmware. Resolution order, first existing wins:
 #   1. explicit ELIZAOS_QEMU_EFI_CODE / ELIZAOS_QEMU_EFI_VARS overrides
 #   2. the Debian qemu-efi-riscv64 system path
@@ -90,7 +88,7 @@ die() {
 }
 
 usage() {
-    sed -n '1,40p' "${BASH_SOURCE[0]}"
+    awk 'NR == 1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "${BASH_SOURCE[0]}"
 }
 
 while [ $# -gt 0 ]; do
@@ -139,8 +137,15 @@ esac
 [ "${CPUS}" -ge 1 ] || die "--cpus must be >= 1"
 [ "${TIMEOUT_SECS}" -ge 1 ] || die "--timeout must be >= 1"
 
-EVIDENCE_PATH="${EVIDENCE_PATH:-${EVIDENCE_DEFAULT}}"
-TRANSCRIPT_PATH="${TRANSCRIPT_PATH:-${TRANSCRIPT_DEFAULT}}"
+if [ -z "$EVIDENCE_PATH" ] || [ -z "$TRANSCRIPT_PATH" ]; then
+    eliza_root="$(node "${HERE}/../eliza-source.mjs")"
+    output_root="$(node --input-type=module -e '
+        const { testOutputPath } = await import(process.argv[1]);
+        console.log(testOutputPath("os-riscv64-boot"));
+    ' "$eliza_root/packages/scripts/lib/test-output.ts")"
+    EVIDENCE_PATH="${EVIDENCE_PATH:-$output_root/report.json}"
+    TRANSCRIPT_PATH="${TRANSCRIPT_PATH:-$output_root/transcript.log}"
+fi
 
 mkdir -p "$(dirname "${EVIDENCE_PATH}")"
 mkdir -p "$(dirname "${TRANSCRIPT_PATH}")"
@@ -239,7 +244,28 @@ QEMU_CMD=(qemu-system-riscv64
 [ -f "${UEFI_VARS_DEFAULT}" ] \
     || die "RISC-V EDK2 vars firmware not found: ${UEFI_VARS_DEFAULT}"
 
-UEFI_VARS_RUNTIME="$(mktemp)"
+for drive_path in "$ISO" "$UEFI_CODE_DEFAULT" "${TMPDIR:-/tmp}"; do
+    case "$drive_path" in
+        *','*|*$'\n'*|*$'\r'*) die "QEMU drive paths cannot contain commas or line breaks" ;;
+    esac
+done
+runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/eliza-riscv-boot.XXXXXX")"
+QEMU_PID=""
+QEMU_STDIN_PID=""
+cleanup() {
+    local pid
+    for pid in "$QEMU_PID" "$QEMU_STDIN_PID"; do
+        if [ -n "$pid" ]; then
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
+    rm -rf -- "$runtime_dir"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+UEFI_VARS_RUNTIME="$runtime_dir/vars.fd"
 cp "${UEFI_VARS_DEFAULT}" "${UEFI_VARS_RUNTIME}"
 QEMU_FIRMWARE_DESC="${UEFI_CODE_DEFAULT}"
 QEMU_CMD+=(
@@ -264,7 +290,7 @@ fi
 
 START_EPOCH="$(date -u +%s)"
 START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-QEMU_STDIN_FIFO="$(mktemp -u)"
+QEMU_STDIN_FIFO="$runtime_dir/console.fifo"
 mkfifo "${QEMU_STDIN_FIFO}"
 
 : > "${TRANSCRIPT_PATH}"
@@ -298,15 +324,15 @@ forbidden_marker_present() {
 }
 
 set +e
-(
-    sleep 8
-    printf '\n\r'
-    sleep 8
-    printf '\n\r'
-    sleep 10
-    printf '\n\r'
-    sleep "${TIMEOUT_SECS}"
-) > "${QEMU_STDIN_FIFO}" &
+python3 -c '
+import sys
+import time
+for delay in (8, 8, 10):
+    time.sleep(delay)
+    sys.stdout.write("\n\r")
+    sys.stdout.flush()
+time.sleep(int(sys.argv[1]))
+' "${TIMEOUT_SECS}" > "${QEMU_STDIN_FIFO}" &
 QEMU_STDIN_PID=$!
 "${QEMU_CMD[@]}" <"${QEMU_STDIN_FIFO}" >> "${TRANSCRIPT_PATH}" 2>&1 &
 QEMU_PID=$!
@@ -347,11 +373,11 @@ if [ "${QEMU_RC}" -eq 124 ] && [ "${QEMU_TIMED_OUT}" -eq 0 ] && ! kill -0 "${QEM
     QEMU_RC=$?
 fi
 set -e
+QEMU_PID=""
 kill "${QEMU_STDIN_PID}" >/dev/null 2>&1 || true
-rm -f "${QEMU_STDIN_FIFO}"
-if [ -n "${UEFI_VARS_RUNTIME}" ]; then
-    rm -f "${UEFI_VARS_RUNTIME}"
-fi
+wait "${QEMU_STDIN_PID}" 2>/dev/null || true
+QEMU_STDIN_PID=""
+rm -rf -- "$runtime_dir"
 
 END_EPOCH="$(date -u +%s)"
 DURATION_S=$(( END_EPOCH - START_EPOCH ))
@@ -408,7 +434,8 @@ for m in "${MARKERS_FOUND[@]}"; do
 done
 
 BOOT_COMPLETED="false"
-if [ ${#FORBIDDEN_HIT[@]} -eq 0 ] \
+if [ "${QEMU_RC}" -eq 0 ] \
+   && [ ${#FORBIDDEN_HIT[@]} -eq 0 ] \
    && [ "${HAS_LINUX}" -eq 1 ] \
    && [ "${HAS_READY}" -eq 1 ] \
    && [ "${HAS_CURL}" -eq 1 ] \

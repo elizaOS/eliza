@@ -1,5 +1,6 @@
 /** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
+import { Capacitor } from "@capacitor/core";
 import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -13,12 +14,13 @@ import {
   RemoteControlAuthenticationRequiredError,
 } from "../../api/remote-control-cloud-client";
 import { createDefaultRemoteControlCloudClient } from "../../api/remote-control-cloud-default";
-import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getOrCreateRemoteControllerIdentity } from "../../platform/remote-controller";
 import {
+  getLocalBrowserProfile,
   getRemoteTargetIdentity,
   getRemoteTargetStatus,
   readRemoteTargetPairingChallenge,
+  supportsNativeRemoteTarget,
 } from "../../platform/remote-target";
 import { subscribeRemoteControllerPairingIntents } from "../../platform/remote-target-pairing-intent";
 import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
@@ -110,7 +112,13 @@ function platformName(platform: RemoteHostSummary["platform"]): string {
   return "Web runtime";
 }
 
-function desktopTargetPlatform(): "macos" | "windows" | "linux" | null {
+function desktopTargetPlatform():
+  | "macos"
+  | "windows"
+  | "linux"
+  | "android"
+  | null {
+  if (Capacitor.getPlatform() === "android") return "android";
   const platform = navigator.platform.toLowerCase();
   if (platform.includes("mac")) return "macos";
   if (platform.includes("win")) return "windows";
@@ -309,7 +317,7 @@ function hostTarget(
     error: revoked
       ? "This host was revoked and cannot accept new sessions."
       : undefined,
-    canPair: !revoked && !activeHere,
+    canPair: Boolean(controller) && !revoked && !activeHere,
     canRevoke: !revoked && Boolean(activeHere),
   };
 }
@@ -517,16 +525,32 @@ export function DevicesRuntimesContainer({
     );
     setSshStatuses(new Map(statuses));
     const targetPlatform = desktopTargetPlatform();
-    if (isElectrobunRuntime() && targetPlatform) {
-      const [status, identity] = await Promise.all([
-        getRemoteTargetStatus(),
-        getRemoteTargetIdentity(),
-      ]);
-      setLinuxTarget({
-        ...status,
-        hostId: identity.identity?.runtimeId ?? null,
-        platform: targetPlatform,
-      });
+    if (supportsNativeRemoteTarget() && targetPlatform) {
+      try {
+        const [status, identity, browserProfileId] = await Promise.all([
+          getRemoteTargetStatus(),
+          getRemoteTargetIdentity(),
+          getLocalBrowserProfile().then(
+            (profileId) => ({ profileId, error: null }),
+            () => ({
+              profileId: null,
+              error:
+                "Could not read the connected browser profile. Refresh before granting browser access.",
+            }),
+          ),
+        ]);
+        setLinuxTarget({
+          ...status,
+          hostId: identity.identity?.runtimeId ?? null,
+          platform: targetPlatform,
+          browserProfileId: browserProfileId.profileId,
+          browserProfileError: browserProfileId.error,
+        });
+      } catch (cause) {
+        // error-policy:J4 Missing local runtime remains visible; Cloud is not a fallback device.
+        setLinuxTarget(null);
+        setError(messageFor(cause));
+      }
     } else {
       setLinuxTarget(null);
     }
@@ -534,9 +558,14 @@ export function DevicesRuntimesContainer({
     try {
       const cloud = createDefaultRemoteControlCloudClient();
       const nextDirectory = await cloud.listHosts();
-      const nextController = await getOrCreateRemoteControllerIdentity({
-        ownerId: nextDirectory.ownerId,
-      });
+      // Android currently enrolls as a target. Listing owner devices must not
+      // require a desktop/iOS controller identity that this shell cannot create.
+      const nextController =
+        Capacitor.getPlatform() === "android"
+          ? null
+          : await getOrCreateRemoteControllerIdentity({
+              ownerId: nextDirectory.ownerId,
+            });
       const nextSessions = new Map<string, RemoteSessionSummary[]>();
       await Promise.all(
         nextDirectory.hosts.map(async (host) => {
@@ -555,6 +584,7 @@ export function DevicesRuntimesContainer({
         for (const session of nextSessions.get(host.id) ?? []) {
           if (session.status !== "active") continue;
           if (
+            !nextController ||
             session.controllerDeviceId !== nextController.deviceId ||
             session.controllerKeyId !== nextController.keyId
           ) {
@@ -693,7 +723,9 @@ export function DevicesRuntimesContainer({
     run(async () => {
       const platform = desktopTargetPlatform();
       if (!platform) {
-        throw new Error("Remote host enrollment requires a desktop platform.");
+        throw new Error(
+          "Remote host enrollment requires a native device platform.",
+        );
       }
       const outcome = await executeRuntimeManagementCommand({
         op: "enroll_host",
@@ -721,7 +753,7 @@ export function DevicesRuntimesContainer({
         | undefined;
       const identity = await getRemoteTargetIdentity();
       if (!challenge || !identity.identity) {
-        throw new Error("This computer could not create a pairing challenge.");
+        throw new Error("This device could not create a pairing challenge.");
       }
       const params = new URLSearchParams({
         session: challenge.sessionId,
@@ -734,7 +766,9 @@ export function DevicesRuntimesContainer({
             ? "This Mac"
             : linuxTarget?.platform === "windows"
               ? "This Windows PC"
-              : "This Linux computer",
+              : linuxTarget?.platform === "android"
+                ? "This Android device"
+                : "This Linux computer",
         sessionId: challenge.sessionId,
         code: challenge.code,
         expiresAt: new Date(challenge.expiresAt).toISOString(),
@@ -784,14 +818,32 @@ export function DevicesRuntimesContainer({
     };
   }, [pairingSessionId]);
 
-  const onConfirmTargetPairing = (sessionId: string) =>
+  const onConfirmTargetPairing = (
+    sessionId: string,
+    browserProfileId?: string,
+  ) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
         op: "confirm_pairing",
         sessionId,
+        ...(browserProfileId ? { browserProfileId } : {}),
       });
       if (!outcome.ok) throw new Error(outcome.error);
       setPairing(null);
+      await refresh();
+    });
+
+  const onApproveTargetPairing = (input: {
+    sessionId: string;
+    code: string;
+    browserProfileId?: string;
+  }) =>
+    run(async () => {
+      const outcome = await executeRuntimeManagementCommand({
+        op: "approve_pairing",
+        ...input,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
 
@@ -874,6 +926,7 @@ export function DevicesRuntimesContainer({
       onCreateTargetPairing={onCreateTargetPairing}
       onConfirmTargetPairing={onConfirmTargetPairing}
       onDenyTargetPairing={onDenyTargetPairing}
+      onApproveTargetPairing={onApproveTargetPairing}
       onSetLinuxTargetRunning={onSetLinuxTargetRunning}
       onRevokeLinuxTarget={onRevokeLinuxTarget}
     />

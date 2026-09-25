@@ -4,6 +4,29 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+export function syncDirectory(directory) {
+  const fd = fs.openSync(
+    directory,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** Include new ancestor directory entries, not just the leaf's contents. */
+export function syncDirectoryTree(directory) {
+  let current = path.resolve(directory);
+  while (true) {
+    syncDirectory(current);
+    const parent = path.dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+
 export function withDeviceInstallLock(
   serial,
   metadata,
@@ -48,30 +71,17 @@ export function withDeviceInstallLock(
     throw error;
   }
   const identity = fs.fstatSync(fd);
-  const syncDirectory = () => {
-    const parent = fs.openSync(
-      directory,
-      fs.constants.O_RDONLY |
-        fs.constants.O_DIRECTORY |
-        fs.constants.O_NOFOLLOW,
-    );
-    try {
-      fs.fsyncSync(parent);
-    } finally {
-      fs.closeSync(parent);
-    }
-  };
   const removeOwnedLock = () => {
     const current = fs.lstatSync(lock);
     if (current.dev !== identity.dev || current.ino !== identity.ino)
       throw new Error("installation lock identity changed; refusing removal");
     fs.unlinkSync(lock);
-    syncDirectory();
+    syncDirectory(directory);
   };
   let writesStarted = false;
   let completed = false;
   const record = (phase) => {
-    fs.writeSync(
+    fs.writeFileSync(
       fd,
       `${JSON.stringify({ ...metadata, serial, pid: process.pid, phase, time: new Date().toISOString() })}\n`,
     );
@@ -79,7 +89,7 @@ export function withDeviceInstallLock(
   };
   try {
     record("preflight");
-    syncDirectory();
+    syncDirectoryTree(directory);
     const result = action({
       beforeWrites() {
         writesStarted = true;

@@ -21,6 +21,7 @@ export default {
       "Flash elizaOS AOSP builds onto Pixel devices via ADB and fastboot.",
   },
   build: {
+    bunVersion: "1.3.14",
     bun: {
       entrypoint: "src/main/electrobun-main.ts",
       // Electrobun's launcher always starts `app/bun/index.js`. Bun otherwise
@@ -28,24 +29,34 @@ export default {
       // `electrobun-main.js`, leaving the packaged app running without its
       // backend or window.
       naming: "index.[ext]",
-      // The bun shell only needs the HTTP server + Electrobun bindings. The
-      // renderer is pre-built by Vite and copied into `renderer/` (see
-      // `copy` below) — it must not be re-bundled into the bun process.
-      external: ["electrobun"],
     },
     views: {},
     copy: {
       // The Vite build (`bun run build`) writes the renderer to `./dist`.
       // Electrobun copies that directory into the packaged app, where the
-      // main process loads `renderer/index.html` via a `file://` URL.
+      // main process serves renderer/index.html over loopback HTTP.
       dist: "renderer",
       "../android/hardware-targets.json": "android/hardware-targets.json",
+      "../android/release-trust.json": "android/release-trust.json",
       "../android/installer/install-elizaos-android.sh":
-        "android-installer/install-elizaos-android.sh",
+        "android/installer/install-elizaos-android.sh",
       "../scripts/android-installer/validate-release-manifest.mjs":
-        "android-installer/scripts/validate-release-manifest.mjs",
+        "scripts/android-installer/validate-release-manifest.mjs",
       "../scripts/android-installer/validate-post-flash.sh":
-        "android-installer/scripts/validate-post-flash.sh",
+        "scripts/android-installer/validate-post-flash.sh",
+      "../scripts/android/install-release.mjs":
+        "scripts/android/install-release.mjs",
+      "../scripts/android/release-contract.mjs":
+        "scripts/android/release-contract.mjs",
+      "../scripts/android/flash-metadata.mjs":
+        "scripts/android/flash-metadata.mjs",
+      "../scripts/android/revocations.mjs": "scripts/android/revocations.mjs",
+      "../scripts/android/install-lock.mjs": "scripts/android/install-lock.mjs",
+      "../scripts/android/post-boot.mjs": "scripts/android/post-boot.mjs",
+      "../scripts/android/runtime-health.mjs":
+        "scripts/android/runtime-health.mjs",
+      "../scripts/aosp/lib/android-socket-fetch.mjs":
+        "scripts/aosp/lib/android-socket-fetch.mjs",
     },
     mac: {
       codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),

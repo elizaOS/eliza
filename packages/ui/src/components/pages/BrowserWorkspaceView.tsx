@@ -11,6 +11,7 @@ import {
   EllipsisVertical,
   ExternalLink,
   Globe,
+  KeyRound,
   Plus,
   RefreshCw,
   X,
@@ -24,6 +25,10 @@ import {
 } from "../../api";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import {
+  openBrowserWebsite,
+  usesOwnedChromiumBrowser,
+} from "../../bridge/system-browser";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
 import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
@@ -48,6 +53,9 @@ import {
 import { Input } from "../ui/input";
 import { TooltipHint } from "../ui/tooltip";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { AndroidChromiumBrowser } from "./AndroidChromiumBrowser";
+import { BrowserPasswordsDialog } from "./BrowserPasswordsDialog";
+import { BrowserSearchSettings } from "./BrowserSearchSettings";
 import {
   type BrowserSwitcherTab,
   BrowserTabFoldControl,
@@ -69,6 +77,7 @@ import {
   parseBrowserWorkspaceEvmChainId,
   resolveBrowserWorkspaceSignMessage,
 } from "./browser-workspace-wallet";
+import { LinuxChromiumBrowser } from "./LinuxChromiumBrowser";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -577,6 +586,17 @@ function BrowserAddressInput({
 
 export function BrowserWorkspaceView(): React.JSX.Element {
   const authority = useActiveAgentAuthority();
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    return <AndroidChromiumBrowser key={authority} />;
+  }
+  if (usesOwnedChromiumBrowser()) {
+    return (
+      <LinuxChromiumBrowser
+        key={authority}
+        workspace={<BrowserWorkspaceForAuthority handleInitialBrowse={false} />}
+      />
+    );
+  }
   return <BrowserWorkspaceForAuthority key={authority} />;
 }
 
@@ -587,7 +607,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
  * profile disappears before the next paint and its late promises target an
  * unmounted tree instead of the newly active agent.
  */
-function BrowserWorkspaceForAuthority(): React.JSX.Element {
+function BrowserWorkspaceForAuthority({
+  handleInitialBrowse = true,
+}: {
+  handleInitialBrowse?: boolean;
+} = {}): React.JSX.Element {
   useRenderGuard("BrowserWorkspaceView");
   const {
     getStewardPending,
@@ -659,6 +683,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   const iframeFocusTimersRef = useRef(new Set<number>());
   const browserActionFocusReturnTargetRef = useRef<HTMLElement | null>(null);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [passwordsOpen, setPasswordsOpen] = useState(false);
   const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileActionsFocusRef = useRef<HTMLElement | null>(null);
   const pendingIframeFocusReturnTargetsRef = useRef(
@@ -707,7 +732,9 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   const previousSelectedTabIdRef = useRef<string | null>(null);
 
   if (typeof initialBrowseUrlRef.current === "undefined") {
-    const browseParam = readBrowserWorkspaceQueryParam("browse");
+    const browseParam = handleInitialBrowse
+      ? readBrowserWorkspaceQueryParam("browse")
+      : null;
     try {
       initialBrowseUrlRef.current = browseParam
         ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
@@ -1757,7 +1784,9 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
   const { confirm: vaultAutofillConfirm, modalProps: vaultAutofillModalProps } =
     useConfirm();
   const browserWorkspaceConfirmOpen =
-    walletActionModalProps.open || vaultAutofillModalProps.open;
+    walletActionModalProps.open ||
+    vaultAutofillModalProps.open ||
+    passwordsOpen;
 
   // Mobile native tab surfaces: iOS gives each Browser tab a fresh WKProcessPool
   // and data store; Android uses an out-of-app sandboxed renderer (which the OS
@@ -2831,7 +2860,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           onActivate={() =>
             void runBrowserWorkspaceAction("open:external", async () => {
               if (!selectedTab) return;
-              await openExternalUrl(selectedTab.url);
+              await openBrowserWebsite(selectedTab.url);
             })
           }
           variant="ghost"
@@ -2844,7 +2873,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           onClick={() =>
             void runBrowserWorkspaceAction("open:external", async () => {
               if (!selectedTab) return;
-              await openExternalUrl(selectedTab.url);
+              await openBrowserWebsite(selectedTab.url);
             })
           }
         >
@@ -2854,6 +2883,15 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       {/* Mobile overflow (#29261): the toolbar stays one 44px row, so the
           secondary actions live behind one touch-sized menu instead of a
           second row. */}
+      {isElectrobunRuntime() && (
+        <Button
+          variant="ghost"
+          className="hidden min-h-11 shrink-0 gap-2 md:inline-flex"
+          onClick={() => setPasswordsOpen(true)}
+        >
+          <KeyRound className="size-4" aria-hidden /> Passwords
+        </Button>
+      )}
       <span className="shrink-0 max-md:inline-flex md:hidden">
         <DropdownMenu
           open={mobileActionsOpen}
@@ -2963,7 +3001,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
               onSelect={() =>
                 void runBrowserWorkspaceAction("open:external", async () => {
                   if (!selectedTab) return;
-                  await openExternalUrl(selectedTab.url);
+                  await openBrowserWebsite(selectedTab.url);
                 })
               }
             >
@@ -2972,6 +3010,14 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
                 defaultValue: "Open external",
               })}
             </DropdownMenuItem>
+            {isElectrobunRuntime() && (
+              <DropdownMenuItem
+                className="min-h-12 gap-3"
+                onSelect={() => setPasswordsOpen(true)}
+              >
+                <KeyRound className="size-4" aria-hidden /> Passwords
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </span>
@@ -3137,7 +3183,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
                       void runBrowserWorkspaceAction(
                         `open:external:${selectedTab.id}`,
                         async () => {
-                          await openExternalUrl(selectedTab.url);
+                          await openBrowserWebsite(selectedTab.url);
                         },
                       )
                     }
@@ -3215,7 +3261,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
                       void runBrowserWorkspaceAction(
                         `open:external:${tab.id}`,
                         async () => {
-                          await openExternalUrl(tab.url);
+                          await openBrowserWebsite(tab.url);
                         },
                       )
                     }
@@ -3369,6 +3415,16 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
           {navNode}
         </div>
       )}
+      {isElectrobunRuntime() && (
+        <details className="shrink-0 rounded-xl border border-border bg-card text-sm">
+          <summary className="cursor-pointer px-4 py-3 text-txt">
+            Agent browser connection
+          </summary>
+          <div className="max-h-[40vh] overflow-auto p-3">
+            <BrowserSearchSettings />
+          </div>
+        </details>
+      )}
       <div
         data-testid="browser-workspace-surface-panel"
         className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card"
@@ -3419,6 +3475,10 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       />
       <ConfirmDialog {...vaultAutofillModalProps} />
       <ConfirmDialog {...walletActionModalProps} />
+      <BrowserPasswordsDialog
+        open={passwordsOpen}
+        onOpenChange={setPasswordsOpen}
+      />
     </ShellViewAgentSurface>
   );
 }
