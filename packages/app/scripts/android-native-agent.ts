@@ -161,6 +161,18 @@ try {
       ],
       120000,
     );
+    logged(
+      "filesystem-browser-build.log",
+      "bun",
+      [
+        "packages/app/test/android-native-filesystem/build-browser.ts",
+        path.join(assets, "filesystem-browser-contract.js"),
+      ],
+      120000,
+    );
+    report.filesystemBrowserBundleSha256 = hash(
+      path.join(assets, "filesystem-browser-contract.js"),
+    );
     report.filesystemBundleSha256 = hash(
       path.join(assets, "filesystem-contract.js"),
     );
@@ -197,6 +209,10 @@ try {
   fs.writeFileSync(
     path.join(assets, "capacitor.plugins.json"),
     JSON.stringify([
+      {
+        pkg: "@capacitor/filesystem",
+        classpath: "com.capacitorjs.plugins.filesystem.FilesystemPlugin",
+      },
       {
         pkg: "@elizaos/capacitor-agent",
         classpath: "ai.eliza.plugins.agent.AgentPlugin",
@@ -315,12 +331,12 @@ try {
         ? "ai.elizaos.app.BionicEmbeddingInstrumentedTest,ai.elizaos.app.CapacitorBgeInstrumentedTest"
         : speech
           ? "ai.elizaos.app.BionicSpeechInstrumentedTest"
-          : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest,ai.elizaos.app.NativeFilesystemInstrumentedTest",
+          : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest,ai.elizaos.app.NativeFilesystemInstrumentedTest,ai.elizaos.app.CapacitorFilesystemInstrumentedTest",
       "ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner",
     ],
     360000,
   );
-  const parsed = parseInstrumentation(result, speech ? 1 : 2);
+  const parsed = parseInstrumentation(result, speech ? 1 : embedding ? 2 : 3);
   report.tests = parsed.tests;
   report.problems.push(...parsed.problems);
   for (const artifact of parseNativeArtifacts(result)) {
@@ -342,7 +358,12 @@ try {
     }
   }
   if (!nativeInference) {
-    for (const name of ["filesystem-write.json", "filesystem-reopen.json"]) {
+    for (const name of [
+      "filesystem-write.json",
+      "filesystem-reopen.json",
+      "capacitor-filesystem-write.json",
+      "capacitor-filesystem-reopen.json",
+    ]) {
       if (!report.artifacts.some((artifact) => artifact.path === name))
         report.problems.push(`Missing app-sandbox filesystem proof: ${name}`);
     }

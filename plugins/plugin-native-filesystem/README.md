@@ -23,5 +23,7 @@ path/symlink rejection. Full results go to `test-results/android-native-filesyst
 This fast lane runs under the shell UID. The `android-native-agent.ts --serial
 <emulator>` lane also runs the same contract inside the installed app, verifies
 the child UID and application SELinux domain, and exports both process results
-under `test-results/android-native-agent/`. Device E2E runs both lanes. The
-alternate Capacitor backend still needs separate verification.
+under `test-results/android-native-agent/`. That lane also exercises the Capacitor
+backend across recreated WebViews and independently checks native Documents bytes.
+Its isolated browser bundle uses real core leaves and the renderer bootstrap;
+this does not certify the full renderer bundle. Device E2E runs both lanes.

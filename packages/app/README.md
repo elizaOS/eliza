@@ -74,8 +74,10 @@ startup, authenticated requests and shutdown, then removes its APKs. Reports and
 complete runtime logs go to `test-results/android-native-agent/`. It also runs the production filesystem service in two child Bun processes using
 the packaged runtime and private app storage, checking persistence, invalid paths,
 and symlink rejection. Proof includes the actual app UID and SELinux context.
-This lane does not claim the alternate Capacitor filesystem backend, model
-inference, the full renderer flow, or physical-device coverage.
+A third test exercises the Capacitor filesystem backend across recreated WebViews,
+with native Documents byte checks and fixture cleanup. It bundles the production
+service with real core leaves and the renderer bootstrap. This lane does not claim
+model inference, the full renderer flow, or physical-device coverage.
 
 Add `--embedding` to run the production framed inference host and JNI encoder
 against the BGE model packaged in the APK. This builds CPU libraries for ARM64
