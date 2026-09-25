@@ -5,7 +5,7 @@
     {
       "id": "agent-image-staging",
       "workflow": "build-agent-image.yml",
-      "surfaces": ["canonical", "cloud", "docker"],
+      "surfaces": ["canonical", "cloud"],
       "shaInput": "source_sha",
       "inputs": {
         "publication_target": "canonical"
@@ -32,7 +32,7 @@
     {
       "id": "cloud-staging",
       "workflow": "cloud-cf-deploy.yml",
-      "surfaces": ["canonical", "cloud", "quality", "ui-core"],
+      "surfaces": ["canonical", "cloud", "ui-core"],
       "shaInput": "source_sha",
       "inputs": {
         "environment": "staging",
