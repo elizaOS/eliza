@@ -40,7 +40,10 @@ import {
   shouldSuppressActionResultClipboard,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
+import {
+  parentAliasesForCandidateAction,
+  preferredOperationNames,
+} from "../../runtime/action-retrieval.ts";
 import type {
   EvaluatorEffects,
   EvaluatorOutput,
@@ -640,6 +643,7 @@ export function collectPlannerTools(
   options: {
     expandSubActions?: boolean;
     canonicalFamilies?: boolean;
+    directActionNames?: ReadonlySet<string>;
   } = {},
 ): ToolDefinition[] {
   const hasAnyAction = context.events.some(
@@ -654,7 +658,7 @@ export function collectPlannerTools(
   const actions = narrowedActions ?? collectActionsFromContext(context);
   const tierAParents = readTierAParentsFromContext(context);
   const wireActions = options.canonicalFamilies
-    ? collectCanonicalPlannerActions(actions)
+    ? collectCanonicalPlannerActions(actions, options.directActionNames)
     : actions;
   const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
     tierAParents,
@@ -891,10 +895,12 @@ function canonicalJson(value: unknown): string {
  */
 export function collectCanonicalPlannerActions(
   actions: readonly Action[],
+  directActionNames?: ReadonlySet<string>,
 ): Action[] {
   const authorized = new Map(actions.map((action) => [action.name, action]));
   return actions.filter((action) => {
     const parentName = promotedSubactionParent(action);
+    if (directActionNames?.has(action.name)) return true;
     if (!parentName) return true;
     const parent = authorized.get(parentName);
     // A required child operand cannot become optional on the native tool
@@ -984,6 +990,8 @@ export function collectBudgetedStageOneCandidateActions(args: {
    * operation inline and the family discoverable; explicit discovery never
    * uses this projection. */
   deferParentHints?: boolean;
+  /** Refine Stage-1 family hints using already interpreted outcomes. */
+  intents?: readonly string[];
 }): Action[] {
   if (args.candidateActions.length === 0) return [];
 
@@ -1016,6 +1024,24 @@ export function collectBudgetedStageOneCandidateActions(args: {
     // exposes DISCOVER_ACTIONS for the remaining authorized catalog.
     if (resolved.length === 0) continue;
     for (const action of resolved) {
+      if (args.deferUnselectedContexts && args.intents?.length) {
+        const children = new Set(
+          action.subActions?.map((child) =>
+            typeof child === "string" ? child : child.name,
+          ),
+        );
+        const preferred = preferredOperationNames(
+          args.intents.join("\n"),
+          args.actions
+            .filter((child) => children.has(child.name))
+            .map((child) => child.name),
+        );
+        if (preferred.size > 0) {
+          for (const name of preferred)
+            selectedNames.add(normalizeActionIdentifier(name));
+          continue;
+        }
+      }
       selectedNames.add(normalizeActionIdentifier(action.name));
     }
   }
