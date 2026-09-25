@@ -24,6 +24,20 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 class CanvasTestActivity : BridgeActivity() {
+    var captureNativeTouches = false
+    val nativeTouchSamples = JSONArray()
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (captureNativeTouches) {
+            val pointers = JSONArray()
+            for (index in 0 until event.pointerCount) pointers.put(JSONObject()
+                .put("id", event.getPointerId(index))
+                .put("rawX", event.getX(index) + event.rawX - event.x)
+                .put("rawY", event.getY(index) + event.rawY - event.y)
+                .put("force", event.getPressure(index)))
+            nativeTouchSamples.put(JSONObject().put("action", event.actionMasked).put("pointers", pointers))
+        }
+        return super.dispatchTouchEvent(event)
+    }
     override fun onCreate(state: Bundle?) {
         registerPlugin(CanvasPlugin::class.java)
         super.onCreate(state)
@@ -301,6 +315,128 @@ class CanvasLifecycleInstrumentedTest {
             assertEquals(2,events.length())
             assertEquals("start",events.getJSONObject(0).getString("type"))
             assertEquals("end",events.getJSONObject(1).getString("type"))
+        }
+    }
+
+    @Test fun multiplePointersKeepIdentityAndCancelOnlyTheRemainingFinger() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            val id = create(scenario)
+            val target = JSONObject().put("canvasId", id)
+            success(scenario, "attach", target)
+            success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", true))
+            evaluate(scenario, "window.multiEvents=[];window.multiListener=window.Capacitor.addListener('ElizaCanvas','touch',event=>window.multiEvents.push(event))")
+            val origin=IntArray(2)
+            scenario.onActivity {it.bridge.webView.getLocationOnScreen(origin);it.captureNativeTouches=true}
+            val downTime=SystemClock.uptimeMillis()
+            data class Finger(val id: Int,val x: Float,val y: Float,val force: Float)
+            var physical=listOf(Finger(3,20f,40f,0.4f))
+            fun inject(action: Int, fingers: List<Finger>) {
+                val properties=fingers.map {finger->MotionEvent.PointerProperties().apply {this.id=finger.id;toolType=MotionEvent.TOOL_TYPE_FINGER}}.toTypedArray()
+                val coordinates=fingers.map {finger->MotionEvent.PointerCoords().apply {x=origin[0]+finger.x;y=origin[1]+finger.y;pressure=finger.force;size=0.1f}}.toTypedArray()
+                val event=MotionEvent.obtain(downTime,SystemClock.uptimeMillis(),action,fingers.size,properties,coordinates,0,0,1f,1f,0,0,InputDevice.SOURCE_TOUCHSCREEN,0)
+                try {assertTrue("Multi-pointer injection failed",InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(event,true))} finally {event.recycle()}
+            }
+            inject(MotionEvent.ACTION_DOWN,physical)
+            try {
+                waitFor(scenario,"window.multiEvents.length >= 1")
+                physical=listOf(Finger(3,20f,40f,0.4f),Finger(7,60f,50f,0.8f))
+                inject(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),physical)
+                waitFor(scenario,"window.multiEvents.length >= 2")
+                physical=listOf(Finger(3,25f,42f,0.4f),Finger(7,65f,52f,0.8f))
+                inject(MotionEvent.ACTION_MOVE,physical)
+                waitFor(scenario,"window.multiEvents.length >= 3")
+                inject(MotionEvent.ACTION_POINTER_UP,physical)
+                physical=listOf(Finger(7,65f,52f,0.8f))
+                waitFor(scenario,"window.multiEvents.length >= 4")
+                physical=listOf(Finger(7,70f,55f,0.8f))
+                inject(MotionEvent.ACTION_MOVE,physical)
+                waitFor(scenario,"window.multiEvents.length >= 5")
+                success(scenario,"setTouchEnabled",JSONObject().put("canvasId",id).put("enabled",false))
+                waitFor(scenario,"window.multiEvents.length >= 6")
+            } finally {inject(MotionEvent.ACTION_CANCEL,physical)}
+            SystemClock.sleep(100)
+            val events=JSONArray(JSONTokener(evaluate(scenario,"JSON.stringify(window.multiEvents)")).nextValue() as String)
+            var nativeSamples=JSONArray()
+            scenario.onActivity {nativeSamples=JSONArray(it.nativeTouchSamples.toString());it.captureNativeTouches=false}
+            receipt("canvas-multitouch.json",JSONObject().put("events",events).put("nativeSamples",nativeSamples).put("viewOrigin",JSONArray().put(origin[0]).put(origin[1])).put("injectedPointerIds",JSONArray().put(3).put(7)))
+            evaluate(scenario,"window.multiListener.remove()")
+            success(scenario,"destroy",target)
+            assertEquals(6,events.length())
+            val types=listOf("start","start","move","end","move","cancel")
+            for(index in types.indices) assertEquals(types[index],events.getJSONObject(index).getString("type"))
+            val initial=events.getJSONObject(0).getJSONArray("touches")
+            assertEquals(1,initial.length())
+            assertEquals(3,initial.getJSONObject(0).getInt("id"))
+            val moved=events.getJSONObject(2).getJSONArray("touches")
+            assertEquals(2,moved.length())
+            assertEquals(3,moved.getJSONObject(0).getInt("id"))
+            assertEquals(7,moved.getJSONObject(1).getInt("id"))
+            val nativeMoves=(0 until nativeSamples.length()).map {nativeSamples.getJSONObject(it)}.filter {it.getInt("action")==MotionEvent.ACTION_MOVE}
+            assertEquals(2,nativeMoves.size)
+            for(index in 0..1) {
+                val received=nativeMoves[0].getJSONArray("pointers").getJSONObject(index)
+                assertEquals(received.getInt("id"),moved.getJSONObject(index).getInt("id"))
+                assertEquals(received.getDouble("rawX")-origin[0],moved.getJSONObject(index).getDouble("x"),0.01)
+                assertEquals(received.getDouble("rawY")-origin[1],moved.getJSONObject(index).getDouble("y"),0.01)
+            }
+            val cancelled=events.getJSONObject(5).getJSONArray("touches")
+            assertEquals("Only the still-active pointer is cancelled",1,cancelled.length())
+            assertEquals(7,cancelled.getJSONObject(0).getInt("id"))
+            val finalNative=nativeMoves.last().getJSONArray("pointers").getJSONObject(0)
+            val finalMove=events.getJSONObject(4).getJSONArray("touches").getJSONObject(0)
+            assertEquals(finalNative.getDouble("rawX")-origin[0],finalMove.getDouble("x"),0.01)
+            assertEquals(finalNative.getDouble("rawY")-origin[1],finalMove.getDouble("y"),0.01)
+            assertEquals(finalMove.getDouble("x"),cancelled.getJSONObject(0).getDouble("x"),0.01)
+            assertEquals(finalMove.getDouble("y"),cancelled.getJSONObject(0).getDouble("y"),0.01)
+            assertEquals(0.8,cancelled.getJSONObject(0).getDouble("force"),0.01)
+        }
+    }
+
+    @Test fun twoCanvasesKeepSeparateViewsAndPixelsDuringInterleavedCleanup() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            val first=create(scenario)
+            val second=create(scenario)
+            val firstTarget=JSONObject().put("canvasId",first)
+            val secondTarget=JSONObject().put("canvasId",second)
+            try {
+                for((id,color) in listOf(first to "#00ff00",second to "#0000ff")) {
+                    val layerId=success(scenario,"createLayer",JSONObject().put("canvasId",id).put("layer",JSONObject().put("name",id))).getString("layerId")
+                    success(scenario,"drawRect",JSONObject().put("canvasId",id).put("rect",JSONObject().put("x",0).put("y",0).put("width",96).put("height",64)).put("fill",JSONObject().put("color",color)).put("drawOptions",JSONObject().put("layerId",layerId)))
+                    success(scenario,"attach",JSONObject().put("canvasId",id))
+                    success(scenario,"navigate",JSONObject().put("canvasId",id).put("url","about:blank"))
+                }
+                val firstBefore=success(scenario,"toImage",firstTarget)
+                val secondBefore=success(scenario,"toImage",secondTarget)
+                val attached=hierarchy(scenario)
+                success(scenario,"detach",firstTarget)
+                val firstDetached=hierarchy(scenario)
+                val secondAfterDetach=success(scenario,"toImage",secondTarget)
+                success(scenario,"attach",firstTarget)
+                success(scenario,"destroy",secondTarget)
+                val secondDestroyed=hierarchy(scenario)
+                val firstAfterDestroy=success(scenario,"toImage",firstTarget)
+                success(scenario,"destroy",firstTarget)
+                val cleared=hierarchy(scenario)
+                val missingFirst=call(scenario,"getPixelData",firstTarget)
+                val missingSecond=call(scenario,"getPixelData",secondTarget)
+                receipt("canvas-multiple-owners.json",JSONObject().put("first",first).put("second",second).put("attached",attached).put("firstDetached",firstDetached).put("secondDestroyed",secondDestroyed).put("cleared",cleared).put("firstBefore",firstBefore).put("firstAfterDestroy",firstAfterDestroy).put("secondBefore",secondBefore).put("secondAfterDetach",secondAfterDetach).put("missingFirst",missingFirst).put("missingSecond",missingSecond))
+                assertEquals(4,attached.getInt("surfaces"))
+                assertEquals(3,attached.getInt("webViews"))
+                for(state in listOf(firstDetached,secondDestroyed)) {
+                    assertEquals(2,state.getInt("surfaces"))
+                    assertEquals(2,state.getInt("webViews"))
+                }
+                assertEquals(0,cleared.getInt("surfaces"))
+                assertEquals(1,cleared.getInt("webViews"))
+                assertNotEquals(firstBefore.getString("base64"),secondBefore.getString("base64"))
+                assertEquals(firstBefore.getString("base64"),firstAfterDestroy.getString("base64"))
+                assertEquals(secondBefore.getString("base64"),secondAfterDetach.getString("base64"))
+                assertFalse(missingFirst.getBoolean("ok"))
+                assertFalse(missingSecond.getBoolean("ok"))
+            } finally {
+                success(scenario,"destroy",firstTarget)
+                success(scenario,"destroy",secondTarget)
+            }
         }
     }
 
