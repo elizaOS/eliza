@@ -14,6 +14,7 @@ import {
   parseGetvar,
   parseOptions,
   pinnedToolRunner,
+  verifyRequiredPartitions,
 } from "../android/install-release.ts";
 import { readHealthToken, verifyPostBoot } from "../android/post-boot.ts";
 import { generateUpdateManifest } from "../android/publish-update-manifest.ts";
@@ -149,7 +150,7 @@ function fixture(t, physical = true) {
         baseband: "radio1",
         currentSlot: "a",
         targetSlot: "b",
-        wipeRequired: false,
+        wipeRequired: true,
         rollback: { method: "qualified-firmware-state", evidenceSha256: h },
         recovery: {
           method: "oem-documented",
@@ -450,8 +451,142 @@ function fakeReader(release, overrides = {}) {
   function require(ok) {
     if (!ok) throw new Error("missing variable");
   }
-  return { reader: deviceReader({ fastboot: "fake" }, "SERIAL", run), calls };
+  return {
+    reader: deviceReader({ fastboot: "fake" }, "SERIAL", run),
+    calls,
+    run,
+  };
 }
+test("required partitions use signed slot geometry and reject missing or changed capacity", (t) => {
+  const f = fixture(t);
+  const requirements = new Map([["partition-exists", ["vendor_kernel_boot"]]]);
+  const state = f.release.startingStates[0];
+  for (const slotted of [false, true]) {
+    const name = slotted ? "vendor_kernel_boot_b" : "vendor_kernel_boot";
+    f.release.geometry.partitionSizes = { [name]: "0x4000000" };
+    let observed = "0x4000000";
+    const reader = {
+      get(key) {
+        assert.equal(key, `partition-size:${name}`);
+        return observed;
+      },
+    };
+    verifyRequiredPartitions(f.release, state, requirements, reader);
+    for (const invalid of ["0x0", "0x1000000", "unknown", ""]) {
+      observed = invalid;
+      assert.throws(() =>
+        verifyRequiredPartitions(f.release, state, requirements, reader),
+      );
+    }
+  }
+  f.release.geometry.partitionSizes = { vendor_kernel_boot_a: "0x4000000" };
+  assert.throws(
+    () =>
+      verifyRequiredPartitions(f.release, state, requirements, {
+        get() {
+          assert.fail("Unqualified target partition must not be queried");
+        },
+      }),
+    /required partition geometry missing/,
+  );
+});
+
+test("fastbootd inventory labels retain live mode and serial checks", (t) => {
+  const f = fixture(t);
+  for (const label of ["fastboot", "fastbootd"]) {
+    const transport = fakeReader(f.release, { "is-userspace": "yes" });
+    let inventory = `SERIAL\t${label}\n`;
+    const reader = deviceReader({ fastboot: "fake" }, "SERIAL", (cmd, args) =>
+      args[0] === "devices" ? inventory : transport.run(cmd, args),
+    );
+    reader.mode("fastbootd", f.release);
+    assert.throws(() => reader.mode("bootloader", f.release));
+    inventory = `OTHER\t${label}\n`;
+    assert.throws(() => reader.mode("fastbootd", f.release), /selected serial/);
+    inventory = `SERIAL\t${label}\nSERIAL\t${label}\n`;
+    assert.throws(() => reader.mode("fastbootd", f.release), /selected serial/);
+  }
+  for (const overrides of [
+    { "is-userspace": "no" },
+    { "is-userspace": "yes", unlocked: "no" },
+    { "is-userspace": "yes", product: "other" },
+  ]) {
+    const transport = fakeReader(f.release, overrides);
+    const reader = deviceReader({ fastboot: "fake" }, "SERIAL", (cmd, args) =>
+      args[0] === "devices" ? "SERIAL\tfastbootd\n" : transport.run(cmd, args),
+    );
+    assert.throws(() => reader.mode("fastbootd", f.release));
+  }
+});
+
+test("stock Android SKU evidence must be observed live before the same serial enters fastboot", (t) => {
+  const f = fixture(t);
+  f.release.target.identityMethod = "adb-stock-before-reboot";
+  f.release.batteryQuery = "battery-soc";
+  const fingerprint =
+    "google/grizzly/grizzly:17/CD1A.260905.001.B1/16238327:user/release-keys";
+  f.release.startingStates[0].stockFingerprint = fingerprint;
+  const makeReader = (properties = {}, battery = "100 %") => {
+    const base = fakeReader(f.release, { "battery-soc": battery });
+    const props = {
+      "ro.boot.serialno": "SERIAL",
+      "ro.product.device": "grizzly",
+      "ro.boot.hardware.sku": "G7SWN",
+      "ro.build.fingerprint": fingerprint,
+      ...properties,
+    };
+    const commands = [];
+    const reader = deviceReader(
+      { fastboot: "fake", adb: "fake-adb" },
+      "SERIAL",
+      (command, args) => {
+        commands.push([command, ...args]);
+        if (command !== "fake-adb") return base.run(command, args);
+        assert.deepEqual(args.slice(0, 2), ["-s", "SERIAL"]);
+        if (args[2] === "get-state") return "device\n";
+        if (args[2] === "shell") return props[args.at(-1)] + "\n";
+        assert.deepEqual(args.slice(2), ["reboot", "bootloader"]);
+        return "";
+      },
+    );
+    return { reader, commands };
+  };
+  const good = makeReader();
+  assert.throws(
+    () => good.reader.inspect(f.release),
+    /missing live Android identity/,
+  );
+  good.reader.prepare(f.release);
+  assert.equal(good.reader.inspect(f.release).id, "stock1");
+  assert.ok(
+    !good.commands.some((args) =>
+      ["sku", "battery-level"].includes(args.at(-1)),
+    ),
+  );
+  for (const properties of [
+    { "ro.boot.serialno": "OTHER" },
+    { "ro.product.device": "other" },
+    { "ro.boot.hardware.sku": "unknown" },
+    { "ro.build.fingerprint": "unqualified" },
+  ]) {
+    const bad = makeReader(properties);
+    assert.throws(() => bad.reader.prepare(f.release));
+    assert.ok(!bad.commands.some((args) => args.includes("reboot")));
+  }
+  for (const battery of ["unknown", "10 %", "101 %", "100", "100 % extra"]) {
+    const bad = makeReader({}, battery);
+    bad.reader.prepare(f.release);
+    assert.throws(() => bad.reader.inspect(f.release), /low\/unknown battery/);
+  }
+  f.release.startingStates[0].stockFingerprint = fingerprint.replace(
+    "B1",
+    "B2",
+  );
+  assert.throws(
+    () => good.reader.inspect(f.release),
+    /firmware state disagree/,
+  );
+});
 test("device preflight fails closed on mode, SKU, battery, firmware, slot, geometry and snapshots", (t) => {
   const f = fixture(t);
   assert.equal(fakeReader(f.release).reader.inspect(f.release).id, "stock1");
@@ -485,7 +620,7 @@ test("device preflight fails closed on mode, SKU, battery, firmware, slot, geome
 test("plan follows generated layout, binds slots, forbids unqualified wipes and never relocks", (t) => {
   const { release } = fixture(t);
   const state = release.startingStates[0];
-  const tasks = compilePlan(release, plan, state);
+  const tasks = compilePlan(release, plan, state, { wipe: true });
   assert.equal(tasks[0].args.join(" "), "--slot b flash boot boot.img");
   assert(
     tasks.some(
@@ -493,15 +628,30 @@ test("plan follows generated layout, binds slots, forbids unqualified wipes and 
     ),
   );
   assert(
-    tasks.findIndex((p) => p.args[0] === "update-super") <
+    tasks.findIndex((p) => p.args.includes("wipe-super")) <
       tasks.findIndex((p) => p.args.includes("system")),
   );
   assert(
-    !tasks.some((p) => p.args.includes("erase") || p.args.includes("lock")),
+    !tasks.some(
+      (p) => p.args.includes("lock") || p.args.includes("update-super"),
+    ),
   );
   assert.equal(tasks.at(-1).args[0], "--set-active=b");
+  assert.deepEqual(tasks.find((p) => p.args.includes("wipe-super")).args, [
+    "--slot",
+    "b",
+    "wipe-super",
+    "super_empty.img",
+  ]);
+  const nonWipingRelease = structuredClone(release);
+  nonWipingRelease.startingStates[0].wipeRequired = false;
   assert.throws(
-    () => compilePlan(release, plan, state, { wipe: true }),
+    () =>
+      compilePlan(nonWipingRelease, plan, nonWipingRelease.startingStates[0]),
+    /non-wiping super metadata updates/,
+  );
+  assert.throws(
+    () => compilePlan(release, plan, state, { wipe: false }),
     /wipe choice/,
   );
   assert.throws(
@@ -530,6 +680,7 @@ test("failure at every flash-plan command stops subsequent writes, activation an
   fs.writeFileSync(tool, "tool fixture");
   f.release.tools.fastboot.sha256 = hashFile(tool).sha256;
   const tasks = compilePlan(f.release, plan, f.release.startingStates[0], {
+    wipe: true,
     reboot: true,
   });
   for (let failure = 0; failure < tasks.length; failure++) {
@@ -635,6 +786,7 @@ test("firmware and slot drift after reconnect stop writes; ignored activation ca
             release: f.release,
             state: f.release.startingStates[0],
             plan: compilePlan(f.release, plan, f.release.startingStates[0], {
+              wipe: true,
               reboot: true,
             }),
             reader,
@@ -699,7 +851,9 @@ test("changed image/tool and wrong mode fail before any write", (t) => {
       executePlan({
         release: f.release,
         state: f.release.startingStates[0],
-        plan: compilePlan(f.release, plan, f.release.startingStates[0]),
+        plan: compilePlan(f.release, plan, f.release.startingStates[0], {
+          wipe: true,
+        }),
         reader,
         stage: f.directory,
         journal,
@@ -836,6 +990,7 @@ test("complete fake-transport installation verifies runtime and journals every t
     release: f.release,
     state: f.release.startingStates[0],
     plan: compilePlan(f.release, plan, f.release.startingStates[0], {
+      wipe: true,
       reboot: true,
     }),
     reader,
@@ -970,6 +1125,31 @@ test("transport timeouts and unsuccessful exits are failures, never empty succes
   );
 });
 
+test("zero-exit fastboot protocol failures cannot admit subsequent operations", (t) => {
+  const f = fixture(t);
+  const tool = path.join(f.directory, "fastboot");
+  for (const response of [
+    "getvar:rollback-index:0 FAILED (remote: 'variable not found')\nFinished. Total time: 0.000s\n",
+    "Writing 'boot_b' FAILED (remote: 'write failure')\n",
+    "fastboot: error: Command failed\n",
+  ]) {
+    fs.writeFileSync(
+      tool,
+      `#!/usr/bin/env node\nprocess.stderr.write(${JSON.stringify(response)});\n`,
+      { mode: 0o700 },
+    );
+    f.release.tools.fastboot.sha256 = hashFile(tool).sha256;
+    assert.equal(checkedRun(tool, ["getvar", "product"]), response);
+    const run = pinnedToolRunner({ fastboot: tool }, f.release);
+    let continued = false;
+    assert.throws(() => {
+      run(tool, ["-s", "SERIAL", "flash", "boot", "fixture.img"]);
+      continued = true;
+    }, /fastboot protocol failure/);
+    assert.equal(continued, false);
+  }
+});
+
 test("health credentials stay out of argv and errors; readiness must be explicit", (t) => {
   const { release, directory } = fixture(t);
   const file = path.join(directory, "health-token");
@@ -1051,6 +1231,7 @@ test("production CLI and shell entrypoint reject fixture authorization before in
     ["bash", "android/installer/install-elizaos-android.sh"],
   ]) {
     const result = spawnSync(command, [entry, ...args], {
+      cwd: new URL("../../", import.meta.url),
       encoding: "utf8",
       env: {
         ...process.env,
@@ -1116,7 +1297,7 @@ test("image and credential named pipes fail without waiting for a writer", {
   const made = spawnSync("mkfifo", ["-m", "600", pipe]);
   assert.equal(made.status, 0);
   for (const [module, method] of [
-    ["release-contract.mjs", "hashFile"],
+    ["release-contract.ts", "hashFile"],
     ["post-boot.ts", "readHealthToken"],
   ]) {
     const url = new URL(`../android/${module}`, import.meta.url).href;
@@ -1164,7 +1345,9 @@ test("slot drift during image hashing is detected before the first write", (t) =
       executePlan({
         release: f.release,
         state: f.release.startingStates[0],
-        plan: compilePlan(f.release, plan, f.release.startingStates[0]),
+        plan: compilePlan(f.release, plan, f.release.startingStates[0], {
+          wipe: true,
+        }),
         reader: {
           mode() {},
           get(key) {
