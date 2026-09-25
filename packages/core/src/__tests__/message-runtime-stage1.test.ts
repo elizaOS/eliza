@@ -34,6 +34,7 @@ import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { normalizeActionJsonSchema } from "../actions/action-schema";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
@@ -13271,7 +13272,7 @@ describe("explicit discovery survives planner surface construction", () => {
 	);
 
 	it.each([false, true])(
-		"canonicalizes discovered families across repeated reads with an initial child=%s",
+		"preserves selected native children across family discovery and repeated operation reads with an initial child=%s",
 		async (selectedChild) => {
 			const answer = "Ledger entry created.";
 			const discover = (id: string, names: string[]) => ({
@@ -13298,6 +13299,10 @@ describe("explicit discovery survives planner surface construction", () => {
 				}),
 				discover("discover-ledger", ["LEDGER"]),
 				discover("rediscover-ledger-operations", [
+					"LEDGER_CREATE",
+					"LEDGER_DELETE",
+				]),
+				discover("repeat-ledger-operations", [
 					"LEDGER_CREATE",
 					"LEDGER_DELETE",
 				]),
@@ -13384,12 +13389,19 @@ describe("explicit discovery survives planner surface construction", () => {
 				ModelType.ACTION_PLANNER,
 				ModelType.ACTION_PLANNER,
 				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
 			const plannerTools = (index: number) =>
 				(
 					calls[index]?.[1] as
-						| { tools?: Array<{ name: string; description?: string }> }
+						| {
+								tools?: Array<{
+									name: string;
+									description?: string;
+									parameters?: JSONSchema;
+								}>;
+						  }
 						| undefined
 				)?.tools ?? [];
 			const initial = plannerTools(1);
@@ -13398,21 +13410,61 @@ describe("explicit discovery survives planner surface construction", () => {
 			expect(initialNames).toContain("DISCOVER_ACTIONS");
 			expect(initialNames.includes("LEDGER_CREATE")).toBe(selectedChild);
 			expect(initialNames).not.toContain("LEDGER");
-			for (const expanded of [plannerTools(2), plannerTools(3)]) {
+			const familyNames = (index: number) =>
+				plannerTools(index)
+					.filter(({ name }) => name.startsWith("LEDGER"))
+					.map(({ name }) => name);
+			expect(familyNames(2)).toEqual(
+				selectedChild ? ["LEDGER_CREATE", "LEDGER"] : ["LEDGER"],
+			);
+			const firstUmbrella = plannerTools(2).find(
+				({ name }) => name === "LEDGER",
+			);
+			expect(firstUmbrella?.description).toContain("LEDGER_DELETE");
+			expect(
+				firstUmbrella?.description?.includes('"name":"LEDGER_CREATE"'),
+			).toBe(!selectedChild);
+			for (const index of [3, 4]) {
+				expect(familyNames(index)).toEqual(
+					selectedChild
+						? ["LEDGER_CREATE", "LEDGER", "LEDGER_DELETE"]
+						: ["LEDGER", "LEDGER_CREATE", "LEDGER_DELETE"],
+				);
+			}
+			for (const index of [1, 2, 3, 4]) {
+				const expanded = plannerTools(index);
 				expect(expanded.find(({ name }) => name === "CHECK_RUNTIME")).toEqual(
 					initial.find(({ name }) => name === "CHECK_RUNTIME"),
 				);
 				expect(expanded.map(({ name }) => name)).toContain("DISCOVER_ACTIONS");
-				expect(
-					expanded
-						.filter(({ name }) => name.startsWith("LEDGER"))
-						.map(({ name }) => name),
-				).toEqual(["LEDGER"]);
-				const umbrella = expanded.find(({ name }) => name === "LEDGER");
-				expect(umbrella?.description).toContain("LEDGER_CREATE");
-				expect(umbrella?.description).toContain("LEDGER_DELETE");
+				for (const tool of expanded.filter(({ name }) =>
+					name.startsWith("LEDGER"),
+				)) {
+					const action = runtime.actions.find(
+						(action) => action.name === tool.name,
+					);
+					if (!action || !tool.parameters)
+						throw new Error("Missing ledger action schema");
+					const schema = structuredClone(tool.parameters);
+					expect(schema.properties?.eliza_turn_scope).toBeDefined();
+					expect(schema.required).toContain("eliza_turn_scope");
+					delete schema.properties?.eliza_turn_scope;
+					schema.required = schema.required?.filter(
+						(name) => name !== "eliza_turn_scope",
+					);
+					expect(schema).toEqual(normalizeActionJsonSchema(action));
+					expect(schema.required).toContain("id");
+					if (tool.name !== "LEDGER") {
+						const pin = tool.name === "LEDGER_CREATE" ? "create" : "delete";
+						expect(schema.properties?.action).toMatchObject({
+							enum: [pin],
+							default: pin,
+						});
+						expect(tool.description).not.toContain("Complete alias contracts:");
+					}
+				}
 			}
-			expect(plannerTools(3)).toEqual(plannerTools(2));
+			expect(plannerTools(4)).toEqual(plannerTools(3));
 		},
 	);
 

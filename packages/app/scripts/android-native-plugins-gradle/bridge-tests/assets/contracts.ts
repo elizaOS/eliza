@@ -1224,6 +1224,109 @@
           session: "wrong-session",
           id,
         });
+        const bounds = { x: 0, y: 0, width: 320, height: 240 };
+        await call("setBounds", {
+          ...identity,
+          id,
+          ...bounds,
+          outerClip: {
+            ...bounds,
+            cornerRadii: {
+              topLeft: 0,
+              topRight: 0,
+              bottomLeft: 0,
+              bottomRight: 0,
+            },
+          },
+        });
+        await call("presentSurface", { ...identity, id });
+        const page = (title, text) =>
+          `data:text/html;charset=utf-8,${encodeURIComponent(
+            `<html><head><title>${title}</title></head><body><main>${text}</main><div id="loaded"></div><script>document.querySelector("#loaded").textContent=String(performance.timeOrigin)+"-"+Math.random()</script><span hidden>hidden fixture</span><input value="private fixture"></body></html>`,
+          )}`;
+        const firstUrl = page("First fixture", "First visible café 漢字");
+        const secondUrl = page("Second fixture", "Second visible page");
+        const waitForPage = async (title, previousText) => {
+          const deadline = Date.now() + 8000;
+          let result;
+          let error;
+          while (Date.now() < deadline) {
+            try {
+              result = await call("readPage", { ...identity, id });
+              if (result.title === title && result.text !== previousText)
+                return result;
+            } catch (caught) {
+              error = String(caught);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error(
+            `Page did not become readable: ${title}; ${error}; ${JSON.stringify(result)}`,
+          );
+        };
+        await call("navigate", { ...identity, id, url: firstUrl });
+        const first = await waitForPage("First fixture");
+        assert(
+          first.text.startsWith("First visible café 漢字\n") &&
+            !first.text.includes("fixture") &&
+            first.truncated === false,
+          "native page reader preserves complete visible Unicode text and excludes hidden/input content",
+        );
+        const selected = await call("readPage", {
+          ...identity,
+          id,
+          selector: "main",
+        });
+        assert(
+          selected.text === "First visible café 漢字",
+          "native page selector reads the requested element",
+        );
+        await rejects("readPage", { ...identity, id, selector: "[" });
+        await rejects("readPage", { ...identity, id, selector: ".missing" });
+        const capturePresentation = async (name) => {
+          window.nativeBrowserCapture = { name, done: false };
+          const deadline = Date.now() + 5000;
+          while (!window.nativeBrowserCapture.done) {
+            if (Date.now() >= deadline)
+              throw new Error(`Screenshot did not complete: ${name}`);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        };
+        await capturePresentation("browser-before-invalid-present.png");
+        await rejects("presentSurface", { ...identity, id: "missing-surface" });
+        await capturePresentation("browser-after-invalid-present.png");
+        assert(
+          (await call("getSurfaceState", { ...identity, id })).foregrounded,
+          "rejected presentation preserves the currently visible surface",
+        );
+        await call("navigate", { ...identity, id, url: secondUrl });
+        const second = await waitForPage("Second fixture");
+        await call("goBack", { ...identity, id });
+        const back = await waitForPage("First fixture");
+        assert(
+          back.text.startsWith(`${selected.text}\n`),
+          "native history restores the earlier page",
+        );
+        await call("reloadSurface", { ...identity, id });
+        const reloaded = await waitForPage("First fixture", back.text);
+        assert(
+          reloaded.text.startsWith(`${selected.text}\n`) &&
+            reloaded.text !== back.text,
+          "native reload preserves readable page content",
+        );
+        await call("presentSurface", { ...identity });
+        await rejects("readPage", { ...identity, id });
+        await call("presentSurface", { ...identity, id });
+        const restored = await waitForPage("First fixture");
+        window.nativeBrowserEvidence = {
+          first,
+          selected,
+          second,
+          back,
+          reloaded,
+          restored,
+          state: await call("getSurfaceState", { ...identity, id }),
+        };
       } finally {
         await call("destroySurface", { ...identity, id });
       }
