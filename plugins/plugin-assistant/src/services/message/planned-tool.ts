@@ -264,13 +264,17 @@ export async function executeV5PlannedToolCall(
     args.executorCtx.message.id.length > 0 &&
     args.plannerContext.metadata?.roomId === args.executorCtx.message.roomId &&
     args.plannerContext.metadata?.messageId === args.executorCtx.message.id;
+  const actionSelection =
+    args.plannerContext.metadata?.plannerQueryTokensRestored === true
+      ? null
+      : toolCall.completionContext;
   const actionContext =
-    toolCall.completionContext !== undefined
+    actionSelection !== undefined
       ? {
           ...args.plannerContext,
           metadata: {
             ...args.plannerContext.metadata,
-            completionContext: toolCall.completionContext ?? undefined,
+            completionContext: actionSelection ?? undefined,
           },
         }
       : args.plannerContext;

@@ -2838,6 +2838,7 @@ function renderPlannerModelInput(params: {
   const actionSources =
     params.allowSourceSelection &&
     !selected.applied &&
+    original.metadata?.plannerQueryTokensRestored !== true &&
     !params.codingMode &&
     !params.replyOnly &&
     params.tools?.some(
@@ -3962,6 +3963,7 @@ async function dispatchPlannerModelCall(params: {
       ? parsed.toolCalls[0]?.completionContext
       : previous.selection;
     const unanimous =
+      original.metadata?.plannerQueryTokensRestored !== true &&
       selection?.mode === "selected" &&
       selection.complete &&
       ((!newReview && !submitted) ||

@@ -266,3 +266,135 @@ it("cancellation before planning performs no selection call or domain effect", a
   expect(useModel).not.toHaveBeenCalled();
   expect(executeToolCall).not.toHaveBeenCalled();
 });
+
+it.each(["history", "full"] as const)(
+  "restored %s stays complete despite a later unsolicited valid selector",
+  async (scope) => {
+    const context: ContextObject = {
+      id: "restore-then-action",
+      metadata: { roomId: "room", messageId: "request" },
+      events: [0, 1].map((i) => ({
+        id: `history:restore-${i}`,
+        type: "segment",
+        source: "prior-dialogue",
+        createdAt: i,
+        segment: {
+          id: `history:restore-${i}`,
+          label: "prior_message:user",
+          content:
+            i === 0
+              ? "Standing instruction."
+              : "Older correction must remain restored.",
+          stable: false,
+        },
+      })),
+    };
+    const selection = {
+      mode: "selected" as const,
+      complete: true,
+      sourceSetId: completionContextSources(context).sourceSetId,
+      relevantSourceIds: ["h1"],
+      constraintSourceIds: [],
+      referentSourceIds: [],
+      pendingIntentSourceIds: [],
+    };
+    context.metadata = { ...context.metadata, completionContext: selection };
+    const original = structuredClone(context);
+    let requests = 0;
+    let evaluations = 0;
+    let effects = 0;
+    const result = await runPlannerLoop({
+      context,
+      tools: [
+        {
+          name: "READ",
+          description: "Read record",
+          parameters: { type: "object", properties: {} },
+        },
+        {
+          name: "REPLY",
+          description: "Reply",
+          parameters: {
+            type: "object",
+            properties: { text: { type: "string" } },
+          },
+        },
+      ],
+      runtime: {
+        useModel: async (_type, params) => {
+          requests++;
+          if (requests === 1)
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "restore",
+                  name: "RESTORE_CONTEXT",
+                  arguments: {
+                    scope,
+                    reason: "Need original correction",
+                    eliza_turn_scope: "more_work_pending",
+                  },
+                },
+              ],
+            };
+          const wire = JSON.stringify(params.messages);
+          expect(wire).toContain("Standing instruction.");
+          expect(wire).toContain("Older correction must remain restored.");
+          expect(
+            params.tools?.find((t) => t.name === "READ")?.parameters
+              ?.properties,
+          ).not.toHaveProperty(ACTION_CONTEXT_ARG);
+          return {
+            text: "",
+            toolCalls:
+              requests === 2
+                ? [
+                    {
+                      id: "read",
+                      name: "READ",
+                      arguments: {
+                        eliza_turn_scope: "final",
+                        [ACTION_CONTEXT_ARG]: selection,
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      id: "reply",
+                      name: "REPLY",
+                      arguments: { eliza_turn_scope: "final", text: "Done." },
+                    },
+                  ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        effects++;
+        expect(call.completionContext).toBeNull();
+        return { success: true, data: { readOnlyOperation: true } };
+      },
+      evaluate: async ({ trajectory }) => {
+        evaluations++;
+        const base = trajectory.modelBaseContext ?? trajectory.context;
+        expect(
+          selectCompletionContext(base).context.events.filter(
+            (e) => e.source === "prior-dialogue",
+          ),
+        ).toEqual(original.events);
+        expect(base.metadata?.plannerQueryTokensRestored).toBe(true);
+        return {
+          success: true,
+          decision: "FINISH",
+          messageToUser: "Done.",
+          raw: {},
+        };
+      },
+    });
+    expect(result.terminalFailure).toBeUndefined();
+    expect(effects).toBe(1);
+    expect(evaluations).toBeGreaterThan(0);
+    expect(requests).toBeGreaterThanOrEqual(2);
+    expect(context).toEqual(original);
+  },
+);

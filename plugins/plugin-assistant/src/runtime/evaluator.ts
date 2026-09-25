@@ -751,7 +751,9 @@ export async function runEvaluator(
         ...restored,
         metadata: {
           ...original.metadata,
-          ...(readHistory ? { completionContext: undefined } : {}),
+          ...(readHistory
+            ? { completionContext: undefined, plannerQueryTokensRestored: true }
+            : {}),
           ...(readProviders ? { providerDiscoveryEnabled: false } : {}),
         },
       };

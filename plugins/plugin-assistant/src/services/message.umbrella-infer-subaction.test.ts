@@ -422,13 +422,24 @@ it("does not substitute an umbrella for an independently implemented child", () 
 // Domain extraction must see the same reviewed originals as the planner while
 // cached provider state stays complete and reusable by later turns.
 describe("action-local conversation evidence", () => {
-  it.each(["selected", "incomplete", "stale", "unknown", "empty"] as const)(
+  it.each([
+    "selected",
+    "incomplete",
+    "stale",
+    "unknown",
+    "empty",
+    "restored",
+  ] as const)(
     "uses action-local %s review over 361 originals without changing reply context",
     async (mode) => {
       const { actions, states } = ledgerFamily();
       const plannerContext: ContextObject = {
         id: message.id,
-        metadata: { roomId: message.roomId, messageId: message.id },
+        metadata: {
+          roomId: message.roomId,
+          messageId: message.id,
+          ...(mode === "restored" ? { plannerQueryTokensRestored: true } : {}),
+        },
         events: Array.from({ length: 361 }, (_, i) => ({
           id: `history:source-${i}`,
           type: "segment" as const,
