@@ -524,6 +524,71 @@ class CanvasLifecycleInstrumentedTest {
         }
     }
 
+    @Test fun activityRecreationReleasesOwnedViewsAndStartsAFreshBridge() {
+        val observations = JSONArray()
+        for (placement in listOf("inline", "fullscreen", "popup")) {
+            ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+                val id = create(scenario)
+                val target = JSONObject().put("canvasId", id)
+                success(scenario, "createLayer", JSONObject().put("canvasId", id).put("layer", JSONObject().put("name", "old-owner")))
+                success(scenario, "attach", target)
+                success(scenario, "navigate", JSONObject().put("canvasId", id).put("url", "about:blank"))
+                success(scenario, "navigate", JSONObject().put("url", "about:blank").put("placement", placement))
+                success(scenario, "eval", JSONObject().put("script", "document.body.textContent='before recreation'; 42"))
+                val before = hierarchy(scenario)
+                var previousActivity: CanvasTestActivity? = null
+                val previousOwnedViews = mutableListOf<View>()
+                scenario.onActivity { activity ->
+                    previousActivity = activity
+                    fun visit(view: View) {
+                        if (view is CanvasPlugin.CanvasView || (view is WebView && view !== activity.bridge.webView)) previousOwnedViews.add(view)
+                        if (view is ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
+                    }
+                    visit(activity.window.decorView)
+                }
+                scenario.recreate()
+                waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+                var replaced = false
+                var detached = false
+                scenario.onActivity { activity ->
+                    replaced = activity !== previousActivity && previousActivity!!.isDestroyed
+                    detached = previousOwnedViews.all { it.parent == null }
+                }
+                val recreated = hierarchy(scenario)
+                val staleCanvas = call(scenario, "getPixelData", target)
+                val staleWeb = call(scenario, "eval", JSONObject().put("script", "42"))
+                val replacement = create(scenario)
+                val replacementTarget = JSONObject().put("canvasId", replacement)
+                success(scenario, "attach", replacementTarget)
+                success(scenario, "drawRect", JSONObject().put("canvasId", replacement)
+                    .put("rect", JSONObject().put("x", 0).put("y", 0).put("width", 96).put("height", 64))
+                    .put("fill", JSONObject().put("color", "#00ff00")))
+                val pixels = success(scenario, "getPixelData", replacementTarget)
+                success(scenario, "navigate", JSONObject().put("url", "about:blank").put("placement", placement))
+                val evaluated = success(scenario, "eval", JSONObject().put("script", "6 * 7"))
+                success(scenario, "destroy", replacementTarget)
+                val observation = JSONObject().put("placement", placement).put("before", before).put("recreated", recreated)
+                    .put("oldActivityDestroyedAndReplaced", replaced).put("oldOwnedViewCount", previousOwnedViews.size).put("oldOwnedViewsDetached", detached)
+                    .put("staleCanvas", staleCanvas).put("staleWeb", staleWeb).put("replacementPixels", pixels).put("replacementEval", evaluated)
+                observations.put(observation)
+                receipt("canvas-recreation-$placement.json", observation)
+                assertTrue(replaced)
+                assertTrue(detached)
+                assertEquals(2, before.getInt("surfaces"))
+                assertEquals(if (placement == "popup") 3 else 4, previousOwnedViews.size)
+                assertEquals(0, recreated.getInt("surfaces"))
+                assertEquals(1, recreated.getInt("webViews"))
+                assertFalse(staleCanvas.getBoolean("ok"))
+                assertFalse(staleWeb.getBoolean("ok"))
+                assertEquals("WEBVIEW_NOT_READY", staleWeb.getString("code"))
+                val bytes = Base64.decode(pixels.getString("data"), Base64.DEFAULT)
+                for (offset in bytes.indices step 4) assertArrayEquals(byteArrayOf(0, -1, 0, -1), bytes.copyOfRange(offset, offset + 4))
+                assertEquals("42", evaluated.getString("result"))
+            }
+        }
+        receipt("canvas-recreation.json", JSONObject().put("placements", observations))
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
