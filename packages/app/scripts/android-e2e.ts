@@ -84,6 +84,7 @@ function defaultAndroidEvidenceOutputDir() {
 const HOST_EMULATOR_PROBES = [
   "test/android/route-coverage.android.spec.ts",
   "test/android/native-plugin-view-smoke.android.spec.ts",
+  "test/android/native-system-intents.android.spec.ts",
 ];
 const ARM64_LOCAL_PROBES = [
   "test/android/local-runtime.android.spec.ts",

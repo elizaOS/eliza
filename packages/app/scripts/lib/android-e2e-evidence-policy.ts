@@ -163,6 +163,7 @@ export function reportAndroidPlaywrightResults(reportPath, boundary) {
     "onboarding-to-home.android.spec.ts",
     "route-coverage.android.spec.ts",
     "native-plugin-view-smoke.android.spec.ts",
+    "native-system-intents.android.spec.ts",
   ];
   const statuses = new Map([
     ["passed", "PLAYWRIGHT_PASSED"],
