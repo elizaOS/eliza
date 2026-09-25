@@ -24,7 +24,7 @@ import { personalAssistantPlugin } from "../src/plugin.ts";
  * deterministic.
  */
 
-// The plugins PA integrates. calendar/finances/inbox/goals/health
+// The plugins PA integrates. calendar/inbox/goals/health
 // are auto-registered by PA.init(); calendar/goals are registered in that
 // topology without their standalone action arrays so their scaffold/standalone
 // parents cannot shadow PA's richer owner-operation umbrellas. Health registers

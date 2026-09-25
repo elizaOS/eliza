@@ -203,7 +203,6 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
       ["Focus", "@elizaos/plugin-blocker", "lucide-focus"],
       ["Calendar", "@elizaos/plugin-calendar", "lucide-calendar-days"],
       ["Documents", "@elizaos/plugin-knowledge", "lucide-files"],
-      ["Finances", "@elizaos/plugin-finances", "lucide-circle-dollar-sign"],
       ["Form", "@elizaos/plugin-form", "lucide-clipboard-list"],
       ["Goals", "@elizaos/plugin-goals", "lucide-target"],
       ["Inbox", "@elizaos/plugin-inbox", "lucide-inbox"],
