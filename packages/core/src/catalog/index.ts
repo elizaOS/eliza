@@ -2,9 +2,7 @@
  * First-party curated registry — runtime entry point.
  *
  * Reads the aggregated `generated.json`, validates, caches, and exposes typed
- * accessors. This is the single import path the rest of the codebase consumes
- * (`@elizaos/core/catalog`, re-exported by `@elizaos/app/registry`
- * for backwards compatibility).
+ * accessors exposed through the `@elizaos/core` root barrel.
  *
  * Registration is plugin-side: bundled JSON is the default, and any plugin can
  * contribute or override an entry at runtime via `registerRegistryEntry()`
@@ -25,7 +23,11 @@ import {
 } from "./loader.js";
 import { type RegistryEntry, registryEntrySchema } from "./schema.js";
 
-export * from "./app-registry.js";
+export {
+	type ElizaCuratedAppDefinition,
+	getRegisteredCuratedApps,
+	registerCuratedApp,
+} from "../contracts/apps.js";
 export {
 	getApps,
 	getConnectors,

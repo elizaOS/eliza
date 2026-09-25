@@ -14,8 +14,13 @@
  * rather than abort startup.
  */
 
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { getApps, getPlugins, loadRegistry } from "@elizaos/core/catalog";
+import {
+  type AgentRuntime,
+  getApps,
+  getPlugins,
+  loadRegistry,
+  logger,
+} from "@elizaos/core";
 
 export interface BootHookDeclaration {
   id: string;
