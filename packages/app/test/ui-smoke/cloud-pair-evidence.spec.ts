@@ -55,23 +55,23 @@ function evidenceModulesBundle(): Promise<string> {
       ...builtinModules,
       ...builtinModules.map((name) => `node:${name}`),
     ]);
-    // `@elizaos/core` is never imported by the modules under test (verified —
-    // it only enters transitively through i18n/api barrel collaterals), and
-    // its plugin-manager subtree is node-only, so the whole package becomes an
-    // inert proxy as well.
+    // Storage/auth contracts execute as real browser-safe core source. Only the
+    // unrelated runtime barrel reached through UI collaterals is stubbed.
     const stubElizaCore: EsbuildPlugin = {
       name: "stub-eliza-core",
       setup(b) {
         b.onResolve(
-          { filter: /^@elizaos\/core\/contracts\/first-run-options$/ },
-          () => ({
+          {
+            filter:
+              /^@elizaos\/core\/(contracts\/(first-run-options|cloud-pair)|utils\/eliza-globals|type-guards)$/,
+          },
+          (args) => ({
             path: join(
               REPO_ROOT,
               "packages",
               "core",
               "src",
-              "contracts",
-              "first-run-options.ts",
+              `${args.path.slice("@elizaos/core/".length)}.ts`,
             ),
           }),
         );
@@ -148,6 +148,7 @@ function evidenceModulesBundle(): Promise<string> {
       format: "iife",
       globalName: "__cloudPairEvidenceModules",
       platform: "browser",
+      conditions: ["eliza-source"],
       jsx: "automatic",
       define: { "process.env.NODE_ENV": '"production"' },
       loader: {
