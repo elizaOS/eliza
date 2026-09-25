@@ -624,6 +624,15 @@ async function startTranscriptionViaTypedCommand(page: Page): Promise<void> {
   await expect(page.getByTestId("chat-transcribing-badge")).toBeInViewport({
     ratio: 1,
   });
+  await expect
+    .poll(async () => {
+      const badge = await page
+        .getByTestId("chat-transcribing-badge")
+        .boundingBox();
+      const handle = await page.getByTestId("chat-sheet-grabber").boundingBox();
+      return badge && handle ? badge.y - (handle.y + handle.height) : -1;
+    })
+    .toBeGreaterThanOrEqual(0);
   await page.screenshot({
     path: test.info().outputPath("typed-transcription-active.png"),
     fullPage: true,

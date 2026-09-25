@@ -6048,7 +6048,7 @@ export function ChatOverlay({
                         variant="statusMuted"
                         size="pill"
                         data-testid="chat-transcribing-badge"
-                        className="pointer-events-none mx-auto my-1 whitespace-normal text-center"
+                        className="pointer-events-none mx-auto mt-7 mb-1 whitespace-normal text-center"
                       >
                         {transcriptionFinishing
                           ? "Finishing transcription…"
