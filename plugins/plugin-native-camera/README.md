@@ -26,3 +26,9 @@ sample completed captures at approximately 2 Hz and stop with camera inactivity;
 they are notifications, not image buffers or proof of display. Device acceptance
 uses a fresh isolated ai.eliza.plugins.camera.test APK and actual CameraX,
 MediaStore, readable video and the microphone-denial dialog.
+
+Android direct zoom, focus and exposure controls require an active preview and
+validate numeric inputs. Zoom uses device-supported ratios; metering runs on the
+main thread and awaits CameraX completion. Cancellation rejects without changing
+cached settings. Device tests compare ratios with CameraX, exercise metering and
+cancellation, and do not certify optical focus quality on a physical camera.

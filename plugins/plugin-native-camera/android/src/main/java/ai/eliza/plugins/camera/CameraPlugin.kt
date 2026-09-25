@@ -37,6 +37,7 @@ import androidx.camera.video.*
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.LifecycleOwner
+import com.google.common.util.concurrent.ListenableFuture
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -96,14 +97,14 @@ class CameraPlugin : Plugin() {
     private var currentPreviewWidth = 1920
     private var currentPreviewHeight = 1080
 
-    private var currentSettings = mutableMapOf<String, Any>(
+    private val currentSettings = Collections.synchronizedMap(mutableMapOf<String, Any>(
         "flash" to "off",
         "zoom" to 1.0f,
         "focusMode" to "continuous",
         "exposureMode" to "continuous",
         "exposureCompensation" to 0f,
         "whiteBalance" to "auto"
-    )
+    ))
 
     // ---- Device Enumeration ----
 
@@ -825,14 +826,16 @@ class CameraPlugin : Plugin() {
     fun getSettings(call: PluginCall) {
         call.resolve(JSObject().apply {
             put("settings", JSObject().apply {
-                currentSettings.forEach { (key, value) ->
-                    when (value) {
-                        is Float -> put(key, value.toDouble())
-                        is Double -> put(key, value)
-                        is Int -> put(key, value)
-                        is String -> put(key, value)
-                        is Boolean -> put(key, value)
-                        else -> put(key, value.toString())
+                synchronized(currentSettings) {
+                    currentSettings.forEach { (key, value) ->
+                        when (value) {
+                            is Float -> put(key, value.toDouble())
+                            is Double -> put(key, value)
+                            is Int -> put(key, value)
+                            is String -> put(key, value)
+                            is Boolean -> put(key, value)
+                            else -> put(key, value.toString())
+                        }
                     }
                 }
             })
@@ -885,74 +888,103 @@ class CameraPlugin : Plugin() {
 
     @PluginMethod
     fun setZoom(call: PluginCall) {
-        val zoom = call.getFloat("zoom") ?: run {
-            call.reject("Missing zoom parameter")
+        val zoom = (call.data.opt("zoom") as? Number)?.toFloat()
+        if (zoom == null || !zoom.isFinite() || zoom <= 0f) {
+            call.reject("zoom must be a positive finite number", "INVALID_ARGUMENT")
             return
         }
-        applyZoom(zoom)
-        currentSettings["zoom"] = zoom
-        call.resolve()
+        withActiveCamera(call) { owner ->
+            val bounds = owner.cameraInfo.zoomState.value
+            if (bounds == null || zoom < bounds.minZoomRatio || zoom > bounds.maxZoomRatio) {
+                call.reject("zoom is outside this camera's supported ratio range", "ZOOM_OUT_OF_RANGE")
+            } else {
+                settleCameraControl(call, owner, owner.cameraControl.setZoomRatio(zoom)) {
+                    currentSettings["zoom"] = zoom
+                }
+            }
+        }
     }
 
     private fun applyZoom(zoom: Float) {
-        // CameraX setLinearZoom expects 0..1 range. Map 1..maxZoom to 0..1.
-        val zoomState = camera?.cameraInfo?.zoomState?.value
-        val maxZoom = zoomState?.maxZoomRatio ?: 10f
-        val minZoom = zoomState?.minZoomRatio ?: 1f
-        val linearZoom = ((zoom - minZoom) / (maxZoom - minZoom)).coerceIn(0f, 1f)
-        camera?.cameraControl?.setLinearZoom(linearZoom)
+        val owner = camera ?: return
+        val bounds = owner.cameraInfo.zoomState.value ?: return
+        // The public API specifies a ratio; CameraX linear zoom is not linear in ratio.
+        owner.cameraControl.setZoomRatio(zoom.coerceIn(bounds.minZoomRatio, bounds.maxZoomRatio))
     }
-
-    // ---- Focus ----
 
     @PluginMethod
     fun setFocusPoint(call: PluginCall) {
-        val x = call.getFloat("x") ?: run {
-            call.reject("Missing x coordinate")
-            return
-        }
-        val y = call.getFloat("y") ?: run {
-            call.reject("Missing y coordinate")
-            return
-        }
-
-        previewView?.let { view ->
-            val factory = view.meteringPointFactory
-            val point = factory.createPoint(x * view.width, y * view.height)
-            val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF)
-                .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS)
-                .build()
-            camera?.cameraControl?.startFocusAndMetering(action)
-        }
-
-        currentSettings["focusMode"] = "manual"
-        call.resolve()
+        setMeteringPoint(call, FocusMeteringAction.FLAG_AF, "focusMode")
     }
-
-    // ---- Exposure ----
 
     @PluginMethod
     fun setExposurePoint(call: PluginCall) {
-        val x = call.getFloat("x") ?: run {
-            call.reject("Missing x coordinate")
+        setMeteringPoint(call, FocusMeteringAction.FLAG_AE, "exposureMode")
+    }
+
+    private fun setMeteringPoint(call: PluginCall, flag: Int, setting: String) {
+        val x = (call.data.opt("x") as? Number)?.toDouble()
+        val y = (call.data.opt("y") as? Number)?.toDouble()
+        if (x == null || y == null || !x.isFinite() || !y.isFinite() || x !in 0.0..1.0 || y !in 0.0..1.0) {
+            call.reject("x and y must be finite numbers between 0 and 1", "INVALID_ARGUMENT")
             return
         }
-        val y = call.getFloat("y") ?: run {
-            call.reject("Missing y coordinate")
+        withActiveCamera(call) { owner ->
+            val view = previewView
+            if (view == null || view.width <= 0 || view.height <= 0) {
+                call.reject("Camera preview has no metering surface", "CAMERA_NOT_READY")
+                return@withActiveCamera
+            }
+            val point = view.meteringPointFactory.createPoint((x * view.width).toFloat(), (y * view.height).toFloat())
+            // Give CameraX's autofocus completion deadline room to settle before
+            // automatic metering cancellation; three seconds cancelled pending AF.
+            val action = FocusMeteringAction.Builder(point, flag)
+                .setAutoCancelDuration(10, java.util.concurrent.TimeUnit.SECONDS).build()
+            if (!owner.cameraInfo.isFocusMeteringSupported(action)) {
+                call.reject("This camera does not support the requested metering operation", "METERING_UNSUPPORTED")
+                return@withActiveCamera
+            }
+            settleCameraControl(call, owner, owner.cameraControl.startFocusAndMetering(action)) {
+                currentSettings[setting] = "manual"
+            }
+        }
+    }
+
+    private fun withActiveCamera(call: PluginCall, operation: (Camera) -> Unit) {
+        val host = activity
+        if (host == null) {
+            call.reject("Camera preview is not active", "CAMERA_INACTIVE")
             return
         }
-
-        previewView?.let { view ->
-            val factory = view.meteringPointFactory
-            val point = factory.createPoint(x * view.width, y * view.height)
-            val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AE)
-                .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS)
-                .build()
-            camera?.cameraControl?.startFocusAndMetering(action)
+        host.runOnUiThread {
+            val owner = camera
+            if (owner == null || destroyed) {
+                call.reject("Camera preview is not active", "CAMERA_INACTIVE")
+                return@runOnUiThread
+            }
+            try {
+                operation(owner)
+            } catch (error: Exception) {
+                call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error)
+            }
         }
+    }
 
-        currentSettings["exposureMode"] = "manual"
-        call.resolve()
+    private fun settleCameraControl(call: PluginCall, owner: Camera, future: ListenableFuture<*>, onSuccess: () -> Unit) {
+        val epoch = previewEpoch
+        future.addListener({
+            try {
+                future.get()
+                if (destroyed || camera !== owner || previewEpoch != epoch) {
+                    call.reject("Camera preview changed before control completed", "CAMERA_INACTIVE")
+                } else {
+                    onSuccess()
+                    call.resolve()
+                }
+            } catch (error: Exception) {
+                call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error)
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     private fun applyExposureCompensation(ev: Float) {
