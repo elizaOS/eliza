@@ -12,7 +12,10 @@ import {
   createCalendarActionRunner,
 } from "../src/index.js";
 import { detailString } from "../src/internal/detail.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 const CREATED_EVENT: LifeOpsCalendarEvent = {
   id: "agent-1:google:owner:calendar:primary:event-1",
@@ -75,6 +78,9 @@ async function runCreate(
     }),
   );
   const service = {
+    listCalendars: vi.fn(async () =>
+      calendarSummariesForEvents([CREATED_EVENT]),
+    ),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "primary",
       events: [],

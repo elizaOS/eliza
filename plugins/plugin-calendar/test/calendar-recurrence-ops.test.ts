@@ -28,7 +28,10 @@ import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 function fakeDeps(service: StubService): CalendarActionDeps {
   return {
@@ -110,6 +113,9 @@ const LUNCH = event({ externalId: "evt-lunch", title: "Lunch with Maya" });
 
 function stubService(feedEvents: LifeOpsCalendarEvent[]) {
   return {
+    listCalendars: vi.fn(async () =>
+      calendarSummariesForEvents(feedEvents.length ? feedEvents : [LUNCH]),
+    ),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "all",
       events: feedEvents,

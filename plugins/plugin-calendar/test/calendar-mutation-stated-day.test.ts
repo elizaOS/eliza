@@ -24,7 +24,10 @@ import {
   type CalendarActionDeps,
   createCalendarActionRunner,
 } from "../src/index.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 /** Wednesday 2026-08-12, 05:00 in America/Los_Angeles. */
 const PINNED_NOW = new Date("2026-08-12T12:00:00.000Z");
@@ -92,6 +95,11 @@ function localEvent(source: LifeOpsCalendarEvent): LifeOpsCalendarEvent {
 
 function stubService(feedEvents: LifeOpsCalendarEvent[]) {
   return {
+    listCalendars: vi.fn(async () =>
+      calendarSummariesForEvents(
+        feedEvents.length ? feedEvents : [HAIRCUT_FRIDAY],
+      ),
+    ),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "all",
       events: feedEvents,

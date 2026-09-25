@@ -24,7 +24,10 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "../src/internal/eliza-calendar.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 /** Saturday 2026-09-05, 11:00 in America/Los_Angeles. */
 const PINNED_NOW = new Date("2026-09-05T18:00:00.000Z");
@@ -62,6 +65,7 @@ function utcEvent(externalId: string, startAt: string): LifeOpsCalendarEvent {
 
 function stubService(feedEvents: LifeOpsCalendarEvent[] = []) {
   return {
+    listCalendars: vi.fn(async () => calendarSummariesForEvents(feedEvents)),
     getCalendarFeed: vi.fn(async () => ({
       calendarId: "all",
       events: feedEvents,

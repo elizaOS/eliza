@@ -22,7 +22,10 @@ import {
   createCalendarActionRunner,
 } from "../src/index.js";
 import { CalendarServiceError } from "../src/internal/errors.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000501";
 const ENTITY_ID = "00000000-0000-0000-0000-000000000502";
@@ -167,7 +170,14 @@ function runtime(
     },
     reportError,
     getService: (serviceType: string) =>
-      serviceType === "calendar" ? service : null,
+      serviceType === "calendar"
+        ? {
+            listCalendars: vi.fn(async () =>
+              calendarSummariesForEvents([EVENT, ELIZA_EVENT]),
+            ),
+            ...service,
+          }
+        : null,
   } as unknown as IAgentRuntime;
 }
 
@@ -545,7 +555,9 @@ describe("CALENDAR effect receipt settlement", () => {
       text: "Approval request calendar-approval-request-1 is ready.",
     };
     const schedule = vi.fn(async () => approval);
-    const getCalendarFeed = vi.fn(async () => feed([]));
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _options: Record<string, unknown>) => feed([]),
+    );
     const prepareCalendarEventCreate = vi.fn(
       async (_url: URL, request: Record<string, unknown>) => ({
         ...request,
@@ -592,8 +604,14 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(schedule, JSON.stringify(result)).toHaveBeenCalledOnce();
     expect(getCalendarFeed).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ calendarId: undefined }),
+      expect.objectContaining({
+        includeHiddenCalendars: true,
+        forceSync: true,
+      }),
     );
+    for (const key of ["grantId", "calendarId", "mode", "side"]) {
+      expect(getCalendarFeed.mock.calls[0]?.[1]).not.toHaveProperty(key);
+    }
     expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
       expect.any(URL),
       expect.objectContaining({
