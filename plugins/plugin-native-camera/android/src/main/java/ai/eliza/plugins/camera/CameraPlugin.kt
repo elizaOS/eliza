@@ -1091,20 +1091,25 @@ class CameraPlugin : Plugin() {
                     try {
                         future.get()
                         check(stillOwnsCamera()) { "Camera changed during white balance restoration" }
-                        restoreExposure(owner, epoch, {
-                            val zoom = (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f
-                            validateZoom(owner.cameraInfo, zoom)
-                            awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), {
-                                applyFlash(owner, epoch, currentSettings["flash"] as? String ?: "off", {
-                                    val focus = restoredFocus(owner.cameraInfo)
-                                    applyFocus(owner, epoch, focus, {
-                                        if (confirmedFocus != null) confirmFocus(owner.cameraInfo, focus)
-                                        currentSettings["focusMode"] = focus.preset
-                                        val sensor = confirmedSensor
-                                        if (sensor == null) ready()
-                                        else applySensorExposure(owner, epoch, sensor, { applied ->
-                                            confirmSensorExposure(applied, sensor)
-                                            ready()
+                        // A cancelled manual request can leave Camera2 overrides
+                        // alive across unbind/rebind. Release them before CameraX
+                        // waits for an automatic AE state during EV restoration.
+                        applySensorExposure(owner, epoch, SensorExposure("continuous"), { _ ->
+                            restoreExposure(owner, epoch, {
+                                val zoom = (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f
+                                validateZoom(owner.cameraInfo, zoom)
+                                awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), {
+                                    applyFlash(owner, epoch, currentSettings["flash"] as? String ?: "off", {
+                                        val focus = restoredFocus(owner.cameraInfo)
+                                        applyFocus(owner, epoch, focus, {
+                                            if (confirmedFocus != null) confirmFocus(owner.cameraInfo, focus)
+                                            currentSettings["focusMode"] = focus.preset
+                                            val sensor = confirmedSensor
+                                            if (sensor == null) ready()
+                                            else applySensorExposure(owner, epoch, sensor, { applied ->
+                                                confirmSensorExposure(applied, sensor)
+                                                ready()
+                                            }, failed)
                                         }, failed)
                                     }, failed)
                                 }, failed)
