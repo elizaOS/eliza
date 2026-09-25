@@ -3097,8 +3097,6 @@ async function loadCreateEventCalendarContext(
   const requestTimeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
-    mode: connectorModeDetail(details),
-    side: connectorSideDetail(details),
     // A planner-proposed destination must not hide other authorized sources
     // before extraction resolves the account from the user request.
     timeZone: requestTimeZone,

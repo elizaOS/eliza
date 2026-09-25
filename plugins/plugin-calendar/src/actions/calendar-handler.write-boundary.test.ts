@@ -146,6 +146,8 @@ describe("calendar conversational write boundary", () => {
         details: {
           grantId: "connector-account:guessed",
           calendarId: "guessed",
+          mode: "remote",
+          side: "agent",
         },
       },
     );
@@ -153,6 +155,8 @@ describe("calendar conversational write boundary", () => {
     expect(options).toBeDefined();
     expect(options).not.toHaveProperty("grantId");
     expect(options).not.toHaveProperty("calendarId");
+    expect(options).not.toHaveProperty("mode");
+    expect(options).not.toHaveProperty("side");
     expect(result).toMatchObject({
       success: false,
       data: { requiresInput: true },
