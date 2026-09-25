@@ -14,18 +14,16 @@
 import type http from "node:http";
 import {
   type AgentRuntime,
+  isElizaSettingsDebugEnabled,
   logger,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   type ReadJsonBodyOptions,
-} from "@elizaos/core";
-
-import {
-  isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core/settings-debug";
+} from "@elizaos/core";
+
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {

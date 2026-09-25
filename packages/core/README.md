@@ -19,6 +19,11 @@ Host configuration is exported from the root as well. `AppMemoryConfig` and
 names configuration UI patches. `getAppBootConfigEnvAliases` and
 `resolveAppAliasedEnvValue` retain the host store's initialization behavior.
 
+Settings debug sanitizers, macOS permission links, and generated channel, provider,
+and short-ID plugin maps are available through the root. Process crash guards also
+use the root API and require the Node/Bun process host; importing core does not
+install them.
+
 Event names, payload contracts, and navigation-frame normalization are exported
 from the root. DOM event creation and dispatch belong to the UI host.
 

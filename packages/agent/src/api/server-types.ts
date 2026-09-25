@@ -15,9 +15,11 @@ import type {
   ConversationMetadata,
   AgentLogEntry as LogEntry,
   Media,
+  PermissionState,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
+  TradePermissionMode,
   UUID,
 } from "@elizaos/core";
 
@@ -43,15 +45,13 @@ export type {
   AgentStartupDiagnostics,
   AgentStreamEventType as StreamEventType,
   ChatImageAttachment,
+  ConversationAutomationType,
+  ConversationMetadata,
+  ConversationScope,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
 } from "@elizaos/core";
-export type {
-  ConversationAutomationType,
-  ConversationMetadata,
-  ConversationScope,
-} from "@elizaos/core/contracts/conversation-routes";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
@@ -81,7 +81,7 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export type { TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+export type { TradePermissionMode } from "@elizaos/core";
 
 export interface PluginEntry {
   id: string;
@@ -209,16 +209,13 @@ export interface ServerState {
   _codexFlow?: import("@elizaos/auth/auth/openai-codex").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
-  permissionStates?: Record<
-    string,
-    import("@elizaos/core/contracts/permissions").PermissionState
-  >;
+  permissionStates?: Record<string, PermissionState>;
   /** Whether shell access is enabled (can be toggled in UI). */
   shellEnabled?: boolean;
   /** Agent automation permission mode for self-directed config changes. */
   agentAutomationMode?: AgentAutomationMode;
   /** Wallet trade execution permission mode (user-sign/manual/agent-auto). */
-  tradePermissionMode?: import("@elizaos/core/contracts/wallet-types").TradePermissionMode;
+  tradePermissionMode?: TradePermissionMode;
   /** Reasons a restart is pending. Empty array = no restart needed. */
   pendingRestartReasons: string[];
   /** Route handlers registered by connector plugins (loaded dynamically). */

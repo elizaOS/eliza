@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  channelPluginMap,
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -22,21 +23,14 @@ import {
   lifeOpsPassiveConnectorsSetting,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
+  providerPluginMap,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
+  shortIdPluginMap,
 } from "@elizaos/core";
-import channelPluginMap from "@elizaos/core/catalog/channel-plugin-map.json" with {
-  type: "json",
-};
-import providerPluginMap from "@elizaos/core/catalog/provider-plugin-map.json" with {
-  type: "json",
-};
-import shortIdPluginMap from "@elizaos/core/catalog/short-id-plugin-map.json" with {
-  type: "json",
-};
 
 import type { ElizaConfig } from "../config/config.ts";
 import {

@@ -16,6 +16,7 @@
 import {
   type AgentRuntime,
   assertNativePersonalDataProjectionMetadataOnly,
+  getMacPermissionDeepLink,
   type IPermissionsRegistry,
   isPermissionId,
   PERMISSION_IDS,
@@ -30,7 +31,6 @@ import {
   type RouteRequestContext,
 } from "@elizaos/core";
 
-import { getMacPermissionDeepLink } from "@elizaos/core/utils/permission-deep-links";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 
