@@ -43,8 +43,7 @@ type RuntimeWithScenarioModelFixtures = AgentRuntime & {
 function goalsRouteFixtures(): DeterministicModelFixture[] {
   return [
     ...strictActionRouteFixtures({
-      actionName: "OWNER_GOALS",
-      plannerToolName: OWNER_GOALS,
+      actionName: OWNER_GOALS,
       args: { action: "create", title: "Run a marathon", confirmed: true },
       input: GOAL_INPUT,
       messageToUser: "Added your goal.",

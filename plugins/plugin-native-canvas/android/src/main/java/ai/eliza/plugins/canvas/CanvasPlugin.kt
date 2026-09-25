@@ -17,6 +17,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
+import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
@@ -179,18 +180,30 @@ class CanvasPlugin : Plugin() {
         }
     }
 
+    private fun readCanvasSize(call: PluginCall): CanvasSize? {
+        val value = call.data.opt("size") as? JSONObject
+        fun dimension(name: String): Int? {
+            val raw = value?.opt(name) as? Number ?: return null
+            val number = raw.toDouble()
+            if (!number.isFinite() || number < 1 || number > Int.MAX_VALUE || number % 1.0 != 0.0) return null
+            return number.toInt()
+        }
+        val width = dimension("width")
+        val height = dimension("height")
+        if (width == null || height == null || width.toLong() * height > Int.MAX_VALUE / 4) {
+            call.reject("size requires positive integer width and height within the RGBA bitmap byte-count limit", "INVALID_ARGUMENT")
+            return null
+        }
+        return CanvasSize(width, height)
+    }
+
     // ---- Create / Destroy ----
 
     @PluginMethod
     fun create(call: PluginCall) {
-        val sizeObj = call.getObject("size") ?: run {
-            call.reject("Missing size parameter")
-            return
-        }
-
-        val width = sizeObj.int("width", 100)
-        val height = sizeObj.int("height", 100)
-        val size = CanvasSize(width, height)
+        val size = readCanvasSize(call) ?: return
+        val width = size.width
+        val height = size.height
 
         val canvasId = "canvas_${nextCanvasId++}"
 
@@ -283,25 +296,22 @@ class CanvasPlugin : Plugin() {
             return
         }
 
-        val sizeObj = call.getObject("size") ?: run {
-            call.reject("Missing size")
-            return
-        }
+        val newSize = readCanvasSize(call) ?: return
 
         val canvas = canvases[canvasId] ?: run {
             call.reject("Canvas not found")
             return
         }
 
-        val width = sizeObj.int("width", canvas.size.width)
-        val height = sizeObj.int("height", canvas.size.height)
-        val newSize = CanvasSize(width, height)
-
         activity.runOnUiThread {
             canvas.size = newSize
             canvas.view.resize(newSize)
-            canvas.webView?.layoutParams =
-                FrameLayout.LayoutParams(width, height)
+            canvas.webView?.let { webView ->
+                webView.layoutParams = webView.layoutParams.apply {
+                    width = newSize.width
+                    height = newSize.height
+                }
+            }
             canvas.layers.values.forEach { it.view.resize(newSize) }
             call.resolve()
         }
@@ -1372,6 +1382,25 @@ class CanvasPlugin : Plugin() {
         }
     }
 
+    private fun emitDeepLink(canvasId: String, url: android.net.Uri) {
+        val params = JSObject()
+        // URLSearchParams semantics: decode form-style spaces before percent escapes,
+        // preserve encoded literal plus signs, and let the last repeated value win.
+        for (field in (url.encodedQuery ?: "").split('&')) {
+            if (field.isEmpty()) continue
+            val parts = field.split('=', limit = 2)
+            val key = android.net.Uri.decode(parts[0].replace("+", " "))
+            val value = android.net.Uri.decode(parts.getOrElse(1) { "" }.replace("+", " "))
+            params.put(key, value)
+        }
+        notifyListeners("deepLink", JSObject().apply {
+            put("canvasId", canvasId)
+            put("url", url.toString())
+            put("path", url.encodedPath ?: "")
+            put("params", params)
+        })
+    }
+
     // ---- Navigate ----
 
     @PluginMethod
@@ -1394,6 +1423,12 @@ class CanvasPlugin : Plugin() {
         activity.runOnUiThread {
             val canvas = webCanvas(call, createStandalone = true) ?: return@runOnUiThread
             try {
+                val parsedUrl = android.net.Uri.parse(url)
+                if (parsedUrl.scheme.equals("eliza", ignoreCase = true)) {
+                    emitDeepLink(canvas.id, parsedUrl)
+                    call.resolve(JSObject().put("url", url))
+                    return@runOnUiThread
+                }
                 val wv = ensureWebView(canvas)
                 if (!explicitCanvas) placeStandaloneWebView(canvas, wv, placement)
                 if (placementObj != null) {
@@ -1635,18 +1670,61 @@ class CanvasPlugin : Plugin() {
         wv.addJavascriptInterface(object {
             @JavascriptInterface
             fun postAction(actionJson: String) {
+                var correlationId = ""
                 try {
-                    val json = JSONObject(actionJson)
-                    val userAction = json.optJSONObject("userAction") ?: json
-                    val actionName = extractActionName(userAction)
-                    val actionId = userAction.optString("id", UUID.randomUUID().toString())
-                    val surfaceId = userAction.optString("surfaceId", "main")
+                    // JSONObject accepts comments, unquoted keys and other non-JSON forms.
+                    // Validate the original transport text with Android's strict reader first.
+                    android.util.JsonReader(java.io.StringReader(actionJson)).use { reader ->
+                        reader.isLenient = false
+                        if (reader.peek() != android.util.JsonToken.BEGIN_OBJECT) {
+                            throw InvalidA2uiAction("Action message must be an object")
+                        }
+                        reader.skipValue()
+                        if (reader.peek() != android.util.JsonToken.END_DOCUMENT) {
+                            throw InvalidA2uiAction("Action message has trailing content")
+                        }
+                    }
+                    val tokener = JSONTokener(actionJson)
+                    val json = tokener.nextValue() as? JSONObject
+                        ?: throw InvalidA2uiAction("Action message must be an object")
+                    if (tokener.nextClean() != '\u0000') throw InvalidA2uiAction("Action message has trailing content")
+                    correlationId = (json.opt("id") as? String) ?: (json.opt("messageId") as? String) ?: ""
+                    val userAction = if (json.has("userAction")) {
+                        json.opt("userAction") as? JSONObject
+                            ?: throw InvalidA2uiAction("userAction must be an object")
+                    } else json
+                    correlationId = (userAction.opt("id") as? String) ?: (userAction.opt("messageId") as? String) ?: ""
+                    fun optionalString(key: String): String? {
+                        if (!userAction.has(key)) return null
+                        return userAction.opt(key) as? String
+                            ?: throw InvalidA2uiAction("$key must be a string")
+                    }
+                    val name = optionalString("name")?.trim()
+                    val action = optionalString("action")?.trim()
+                    val actionName = name?.takeIf { it.isNotEmpty() } ?: action?.takeIf { it.isNotEmpty() }
+                        ?: throw InvalidA2uiAction("A non-empty action or name is required")
+                    val legacyId = optionalString("id")
+                    val messageId = optionalString("messageId") ?: legacyId
+                    val actionId = legacyId ?: messageId ?: UUID.randomUUID().toString()
+                    val actionData = if (userAction.has("data")) {
+                        userAction.opt("data") as? JSONObject ?: throw InvalidA2uiAction("data must be an object")
+                    } else JSONObject()
+                    for (key in actionData.keys()) {
+                        val value = actionData.get(key)
+                        if (value !is String && value !is Boolean && !(value is Number && value.toDouble().isFinite())) {
+                            throw InvalidA2uiAction("data values must be strings, finite numbers or booleans")
+                        }
+                    }
+                    val surfaceId = optionalString("surfaceId") ?: "main"
 
                     Handler(Looper.getMainLooper()).post {
                         pluginRef.notifyListeners("a2uiAction", JSObject().apply {
                             put("canvasId", canvasId)
                             put("actionId", actionId)
-                            put("actionName", actionName ?: "")
+                            put("actionName", actionName)
+                            put("action", actionName)
+                            put("data", jsObjectFromJSON(actionData))
+                            messageId?.let { put("messageId", it) }
                             put("surfaceId", surfaceId)
                             put("userAction", jsObjectFromJSON(userAction))
                         })
@@ -1660,7 +1738,12 @@ class CanvasPlugin : Plugin() {
                         """.trimIndent()
                         wv.evaluateJavascript(statusJS, null)
                     }
-                } catch (_: Exception) {
+                } catch (error: InvalidA2uiAction) {
+                    rejectA2uiAction(wv, correlationId, error.message ?: "Invalid action message")
+                } catch (_: org.json.JSONException) {
+                    rejectA2uiAction(wv, correlationId, "Action message is not valid JSON")
+                } catch (_: java.io.IOException) {
+                    rejectA2uiAction(wv, correlationId, "Action message is not valid JSON")
                 }
             }
         }, "elizaCanvasA2UIBridge")
@@ -1673,10 +1756,7 @@ class CanvasPlugin : Plugin() {
             ): Boolean {
                 val url = request.url
                 if (url.scheme?.lowercase() == "eliza") {
-                    pluginRef.notifyListeners("deepLink", JSObject().apply {
-                        put("canvasId", canvasId)
-                        put("url", url.toString())
-                    })
+                    pluginRef.emitDeepLink(canvasId, url)
                     return true
                 }
                 return false
@@ -1715,7 +1795,10 @@ class CanvasPlugin : Plugin() {
                 super.onReceivedError(view, request, error)
                 pluginRef.notifyListeners("navigationError", JSObject().apply {
                     put("canvasId", canvasId)
-                    put("error", error.description?.toString() ?: "Unknown error")
+                    val message = error.description?.toString() ?: "Unknown error"
+                    put("code", error.errorCode)
+                    put("message", message)
+                    put("error", message)
                     put("url", request.url?.toString() ?: "")
                 })
             }
@@ -2053,14 +2136,17 @@ class CanvasPlugin : Plugin() {
         return result
     }
 
-    // ---- A2UI Action Name ----
+    private class InvalidA2uiAction(message: String) : Exception(message)
 
-    private fun extractActionName(userAction: JSONObject): String? {
-        for (key in listOf("name", "action")) {
-            val raw = userAction.optString(key, "").trim()
-            if (raw.isNotEmpty()) return raw
+    private fun rejectA2uiAction(webView: WebView, id: String, message: String) {
+        val status = JSObject().put("id", id).put("ok", false)
+            .put("code", "INVALID_ARGUMENT").put("error", message)
+        Logger.warn("ElizaCanvas", JSObject().put("event", "a2uiActionRejected")
+            .put("code", "INVALID_ARGUMENT").put("message", message).toString())
+        Handler(Looper.getMainLooper()).post {
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('eliza:a2ui-action-status', {detail: $status}));", null)
         }
-        return null
     }
 
     // ---- JS String Escape (matches iOS jsStringLiteral) ----

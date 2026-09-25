@@ -440,6 +440,325 @@ class CanvasLifecycleInstrumentedTest {
         }
     }
 
+    @Test fun invalidSizesRejectWithoutChangingPixelsAndValidResizeRecovers() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            val id = create(scenario)
+            val target = JSONObject().put("canvasId", id)
+            success(scenario, "drawRect", JSONObject().put("canvasId", id)
+                .put("rect", JSONObject().put("x", 0).put("y", 0).put("width", 96).put("height", 64))
+                .put("fill", JSONObject().put("color", "#00ff00")))
+            val layerId = success(scenario, "createLayer", JSONObject().put("canvasId", id).put("layer", JSONObject().put("name", "resize-layer"))).getString("layerId")
+            success(scenario, "drawRect", JSONObject().put("canvasId", id)
+                .put("rect", JSONObject().put("x", 0).put("y", 0).put("width", 96).put("height", 64))
+                .put("fill", JSONObject().put("color", "#0000ff"))
+                .put("drawOptions", JSONObject().put("layerId", layerId)))
+            val layerTarget = JSONObject().put("canvasId", id).put("layerIds", JSONArray().put(layerId))
+            val layerBefore = success(scenario, "toImage", layerTarget)
+            val before = success(scenario, "getPixelData", target)
+            val results = JSONArray()
+            val invalid = listOf<Any>(
+                JSONObject().put("width", 0).put("height", 64),
+                JSONObject().put("width", -1).put("height", 64),
+                JSONObject().put("width", 96).put("height", 0),
+                JSONObject().put("width", 96).put("height", -1),
+                JSONObject().put("width", 1.5).put("height", 64),
+                JSONObject().put("width", 96).put("height", 2.5),
+                JSONObject().put("width", "96").put("height", 64),
+                JSONObject().put("width", 96).put("height", true),
+                JSONObject().put("width", JSONObject.NULL).put("height", 64),
+                JSONObject().put("width", 96), JSONObject(),
+                JSONObject().put("width", 2147483648L).put("height", 1),
+                JSONObject().put("width", 32768).put("height", 32768),
+                JSONObject.NULL, JSONArray(), "size")
+            for ((index, size) in invalid.withIndex()) {
+                for (method in listOf("create", "resize")) {
+                    receipt("canvas-size-request-$index-$method.json", JSONObject().put("method", method).put("size", size))
+                    val args = JSONObject().put("size", size)
+                    if (method == "resize") args.put("canvasId", id)
+                    val result = call(scenario, method, args)
+                    results.put(JSONObject().put("method", method).put("size", size).put("result", result))
+                    if (method == "create" && result.getBoolean("ok")) {
+                        success(scenario, "destroy", JSONObject().put("canvasId", result.getJSONObject("value").getString("canvasId")))
+                    }
+                }
+            }
+            val after = success(scenario, "getPixelData", target)
+            val layerAfter = success(scenario, "toImage", layerTarget)
+            success(scenario, "attach", target)
+            success(scenario, "navigate", JSONObject().put("canvasId", id).put("url", "about:blank"))
+            success(scenario, "resize", JSONObject().put("canvasId", id).put("size", JSONObject().put("width", 120).put("height", 80)))
+            val grown = success(scenario, "getPixelData", target)
+            val layerGrown = success(scenario, "toImage", layerTarget)
+            success(scenario, "resize", JSONObject().put("canvasId", id).put("size", JSONObject().put("width", 1).put("height", 1)))
+            val shrunk = success(scenario, "getPixelData", target)
+            receipt("canvas-size-validation.json", JSONObject().put("results", results).put("before", before).put("after", after).put("grown", grown).put("shrunk", shrunk).put("layerBefore", layerBefore).put("layerAfter", layerAfter).put("layerGrown", layerGrown))
+            for (index in 0 until results.length()) {
+                val result = results.getJSONObject(index).getJSONObject("result")
+                assertFalse(results.getJSONObject(index).toString(), result.getBoolean("ok"))
+                assertEquals("INVALID_ARGUMENT", result.getString("code"))
+            }
+            assertEquals(before.toString(), after.toString())
+            assertEquals(layerBefore.toString(), layerAfter.toString())
+            assertEquals(120, grown.getInt("width"))
+            assertEquals(80, grown.getInt("height"))
+            val pixels = Base64.decode(grown.getString("data"), Base64.DEFAULT)
+            val encoded = Base64.decode(layerGrown.getString("base64"), Base64.DEFAULT)
+            val layerBitmap = android.graphics.BitmapFactory.decodeByteArray(encoded, 0, encoded.size)
+            try {
+                assertEquals(120, layerBitmap.width)
+                assertEquals(80, layerBitmap.height)
+                for (y in 0 until 80) for (x in 0 until 120) {
+                    val inside = x < 96 && y < 64
+                    val offset = (y * 120 + x) * 4
+                    assertEquals(0, pixels[offset].toInt())
+                    assertEquals(if (inside) 255 else 0, pixels[offset + 1].toInt() and 255)
+                    assertEquals(0, pixels[offset + 2].toInt())
+                    assertEquals(if (inside) 255 else 0, pixels[offset + 3].toInt() and 255)
+                    assertEquals(if (inside) android.graphics.Color.BLUE else android.graphics.Color.TRANSPARENT, layerBitmap.getPixel(x, y))
+                }
+            } finally { layerBitmap.recycle() }
+            assertEquals(1, shrunk.getInt("width"))
+            assertEquals(1, shrunk.getInt("height"))
+            assertArrayEquals(byteArrayOf(0, -1, 0, -1), Base64.decode(shrunk.getString("data"), Base64.DEFAULT))
+            success(scenario, "destroy", target)
+        }
+    }
+
+    @Test fun activityRecreationReleasesOwnedViewsAndStartsAFreshBridge() {
+        val observations = JSONArray()
+        for (placement in listOf("inline", "fullscreen", "popup")) {
+            ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+                val id = create(scenario)
+                val target = JSONObject().put("canvasId", id)
+                success(scenario, "createLayer", JSONObject().put("canvasId", id).put("layer", JSONObject().put("name", "old-owner")))
+                success(scenario, "attach", target)
+                success(scenario, "navigate", JSONObject().put("canvasId", id).put("url", "about:blank"))
+                success(scenario, "navigate", JSONObject().put("url", "about:blank").put("placement", placement))
+                success(scenario, "eval", JSONObject().put("script", "document.body.textContent='before recreation'; 42"))
+                val before = hierarchy(scenario)
+                var previousActivity: CanvasTestActivity? = null
+                val previousOwnedViews = mutableListOf<View>()
+                scenario.onActivity { activity ->
+                    previousActivity = activity
+                    fun visit(view: View) {
+                        if (view is CanvasPlugin.CanvasView || (view is WebView && view !== activity.bridge.webView)) previousOwnedViews.add(view)
+                        if (view is ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
+                    }
+                    visit(activity.window.decorView)
+                }
+                scenario.recreate()
+                waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+                var replaced = false
+                var detached = false
+                scenario.onActivity { activity ->
+                    replaced = activity !== previousActivity && previousActivity!!.isDestroyed
+                    detached = previousOwnedViews.all { it.parent == null }
+                }
+                val recreated = hierarchy(scenario)
+                val staleCanvas = call(scenario, "getPixelData", target)
+                val staleWeb = call(scenario, "eval", JSONObject().put("script", "42"))
+                val replacement = create(scenario)
+                val replacementTarget = JSONObject().put("canvasId", replacement)
+                success(scenario, "attach", replacementTarget)
+                success(scenario, "drawRect", JSONObject().put("canvasId", replacement)
+                    .put("rect", JSONObject().put("x", 0).put("y", 0).put("width", 96).put("height", 64))
+                    .put("fill", JSONObject().put("color", "#00ff00")))
+                val pixels = success(scenario, "getPixelData", replacementTarget)
+                success(scenario, "navigate", JSONObject().put("url", "about:blank").put("placement", placement))
+                val evaluated = success(scenario, "eval", JSONObject().put("script", "6 * 7"))
+                success(scenario, "destroy", replacementTarget)
+                val observation = JSONObject().put("placement", placement).put("before", before).put("recreated", recreated)
+                    .put("oldActivityDestroyedAndReplaced", replaced).put("oldOwnedViewCount", previousOwnedViews.size).put("oldOwnedViewsDetached", detached)
+                    .put("staleCanvas", staleCanvas).put("staleWeb", staleWeb).put("replacementPixels", pixels).put("replacementEval", evaluated)
+                observations.put(observation)
+                receipt("canvas-recreation-$placement.json", observation)
+                assertTrue(replaced)
+                assertTrue(detached)
+                assertEquals(2, before.getInt("surfaces"))
+                assertEquals(if (placement == "popup") 3 else 4, previousOwnedViews.size)
+                assertEquals(0, recreated.getInt("surfaces"))
+                assertEquals(1, recreated.getInt("webViews"))
+                assertFalse(staleCanvas.getBoolean("ok"))
+                assertFalse(staleWeb.getBoolean("ok"))
+                assertEquals("WEBVIEW_NOT_READY", staleWeb.getString("code"))
+                val bytes = Base64.decode(pixels.getString("data"), Base64.DEFAULT)
+                for (offset in bytes.indices step 4) assertArrayEquals(byteArrayOf(0, -1, 0, -1), bytes.copyOfRange(offset, offset + 4))
+                assertEquals("42", evaluated.getString("result"))
+            }
+        }
+        receipt("canvas-recreation.json", JSONObject().put("placements", observations))
+    }
+
+    @Test fun navigationEventsExposePublicDeepLinkAndErrorFields() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            evaluate(scenario, "window.navigationEvents={deep:[],errors:[],ready:[]};window.navigationListeners=['deepLink','navigationError','webViewReady'].map((name,i)=>window.Capacitor.addListener('ElizaCanvas',name,event=>window.navigationEvents[['deep','errors','ready'][i]].push(event)))")
+            fun events(): JSONObject = JSONObject(JSONTokener(evaluate(scenario, "JSON.stringify(window.navigationEvents)")).nextValue() as String)
+            fun observe(condition: String) {
+                val deadline = SystemClock.elapsedRealtime() + 3000
+                while (evaluate(scenario, "Boolean($condition)") != "true" && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20)
+            }
+            val direct = "eliza://open/tools%20panel?x=first&x=last&q=a%20b&flag=&encoded=%E2%9C%93&plus=a+b&literal=a%2Bb&%E2%9C%93=unicode-key"
+            val page = "eliza://open/from-page?value=hello%20world"
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#initial"))
+            waitFor(scenario, "window.navigationEvents.ready.length > 0")
+            success(scenario, "eval", JSONObject().put("script", "window.navigationSentinel='preserved';42"))
+            success(scenario, "navigate", JSONObject().put("url", direct))
+            observe("window.navigationEvents.deep.some(e=>e.url === ${JSONObject.quote(direct)})")
+            val afterDirect = events()
+            val sentinel = success(scenario, "eval", JSONObject().put("script", "window.navigationSentinel || null"))
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#page"))
+            waitFor(scenario, "window.navigationEvents.ready.some(e=>e.url === 'about:blank#page')")
+            success(scenario, "eval", JSONObject().put("script", "location.href=${JSONObject.quote(page)};42"))
+            observe("window.navigationEvents.deep.some(e=>e.url === ${JSONObject.quote(page)})")
+            val port = java.net.ServerSocket(0).use { it.localPort }
+            val failedUrl = "https://127.0.0.1:$port/unavailable"
+            success(scenario, "navigate", JSONObject().put("url", failedUrl))
+            observe("window.navigationEvents.errors.some(e=>e.url === ${JSONObject.quote(failedUrl)})")
+            val observed = events()
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#recovery"))
+            waitFor(scenario, "window.navigationEvents.ready.some(e=>e.url === 'about:blank#recovery')")
+            val recovered = success(scenario, "eval", JSONObject().put("script", "6 * 7"))
+            receipt("canvas-navigation-events.json", JSONObject().put("directUrl", direct).put("pageUrl", page).put("failedUrl", failedUrl).put("afterDirect", afterDirect).put("sentinel", sentinel).put("events", observed).put("recovered", recovered))
+            val deep = observed.getJSONArray("deep")
+            assertEquals(2, deep.length())
+            assertEquals(direct, deep.getJSONObject(0).getString("url"))
+            assertEquals("/tools%20panel", deep.getJSONObject(0).getString("path"))
+            val params = deep.getJSONObject(0).getJSONObject("params")
+            assertEquals("last", params.getString("x"))
+            assertEquals("a b", params.getString("q"))
+            assertEquals("", params.getString("flag"))
+            assertEquals("✓", params.getString("encoded"))
+            assertEquals("a b", params.getString("plus"))
+            assertEquals("a+b", params.getString("literal"))
+            assertEquals("unicode-key", params.getString("✓"))
+            assertEquals(0, afterDirect.getJSONArray("errors").length())
+            assertEquals("/from-page", deep.getJSONObject(1).getString("path"))
+            assertEquals("hello world", deep.getJSONObject(1).getJSONObject("params").getString("value"))
+            assertEquals("\"preserved\"", sentinel.getString("result"))
+            val errors = observed.getJSONArray("errors")
+            val error = (0 until errors.length()).map { errors.getJSONObject(it) }.first { it.getString("url") == failedUrl }
+            assertEquals(android.webkit.WebViewClient.ERROR_CONNECT, error.getInt("code"))
+            assertTrue(error.getString("message").isNotBlank())
+            assertEquals(error.getString("message"), error.getString("error"))
+            assertEquals("42", recovered.getString("result"))
+            evaluate(scenario, "window.navigationListeners.forEach(listener=>listener.remove())")
+        }
+    }
+
+    @Test fun a2uiActionsExposePublicFieldsAndRetainLegacyReceipts() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            evaluate(scenario, "window.actionEvents=[];window.actionReady=false;window.actionListener=window.Capacitor.addListener('ElizaCanvas','a2uiAction',event=>window.actionEvents.push(event));window.actionReadyListener=window.Capacitor.addListener('ElizaCanvas','webViewReady',()=>window.actionReady=true)")
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#a2ui"))
+            waitFor(scenario, "window.actionReady")
+            success(scenario, "eval", JSONObject().put("script", "window.actionStatuses=[];window.addEventListener('eliza:a2ui-action-status',event=>window.actionStatuses.push(event.detail));42"))
+            val data = JSONObject().put("accepted", true).put("count", 3).put("label", "quote \" and Unicode ✓")
+            val publicAction = JSONObject().put("action", "confirm").put("data", data).put("messageId", "public-message")
+            val legacyAction = JSONObject().put("name", "legacy-save").put("id", "legacy-id").put("surfaceId", "settings").put("data", JSONObject().put("saved", true))
+            val noIdAction = JSONObject().put("action", "refresh")
+            val messages = listOf(publicAction, JSONObject().put("userAction", legacyAction), noIdAction)
+            for ((index, message) in messages.withIndex()) {
+                val argument = if (index == 1) JSONObject.quote(message.toString()) else message.toString()
+                success(scenario, "eval", JSONObject().put("script", "window.webkit.messageHandlers.elizaCanvasA2UIAction.postMessage($argument);42"))
+                waitFor(scenario, "window.actionEvents.length === ${index + 1}")
+            }
+            val events = JSONArray(JSONTokener(evaluate(scenario, "JSON.stringify(window.actionEvents)")).nextValue() as String)
+            var statuses = JSONArray()
+            val deadline = SystemClock.elapsedRealtime() + 3000
+            do {
+                val response = success(scenario, "eval", JSONObject().put("script", "JSON.stringify(window.actionStatuses)"))
+                statuses = JSONArray(JSONTokener(response.getString("result")).nextValue() as String)
+                if (statuses.length() == 3) break
+                SystemClock.sleep(20)
+            } while (SystemClock.elapsedRealtime() < deadline)
+            receipt("canvas-a2ui-events.json", JSONObject().put("messages", JSONArray(messages)).put("events", events).put("statuses", statuses))
+            assertEquals(3, events.length())
+            val first = events.getJSONObject(0)
+            assertEquals("confirm", first.getString("action"))
+            assertEquals(data.toString(), first.getJSONObject("data").toString())
+            assertEquals("public-message", first.getString("messageId"))
+            assertEquals("public-message", first.getString("actionId"))
+            assertEquals(publicAction.toString(), first.getJSONObject("userAction").toString())
+            val legacy = events.getJSONObject(1)
+            assertEquals("legacy-save", legacy.getString("action"))
+            assertTrue(legacy.getJSONObject("data").getBoolean("saved"))
+            assertEquals("legacy-id", legacy.getString("messageId"))
+            assertEquals("legacy-id", legacy.getString("actionId"))
+            assertEquals("settings", legacy.getString("surfaceId"))
+            assertEquals(legacyAction.toString(), legacy.getJSONObject("userAction").toString())
+            assertEquals("refresh", events.getJSONObject(2).getString("action"))
+            assertEquals(0, events.getJSONObject(2).getJSONObject("data").length())
+            assertFalse(events.getJSONObject(2).has("messageId"))
+            assertEquals(3, statuses.length())
+            for (index in 0 until 3) {
+                assertEquals(events.getJSONObject(index).getString("actionId"), statuses.getJSONObject(index).getString("id"))
+                assertTrue(statuses.getJSONObject(index).getBoolean("ok"))
+            }
+            evaluate(scenario, "window.actionListener.remove();window.actionReadyListener.remove()")
+        }
+    }
+
+    @Test fun malformedA2uiMessagesRejectAndValidDeliveryRecovers() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            evaluate(scenario, "window.invalidActionEvents=[];window.invalidActionReady=false;window.invalidActionListener=window.Capacitor.addListener('ElizaCanvas','a2uiAction',event=>window.invalidActionEvents.push(event));window.invalidActionReadyListener=window.Capacitor.addListener('ElizaCanvas','webViewReady',()=>window.invalidActionReady=true)")
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#invalid-a2ui"))
+            waitFor(scenario, "window.invalidActionReady")
+            success(scenario, "eval", JSONObject().put("script", "window.invalidActionStatuses=[];window.addEventListener('eliza:a2ui-action-status',event=>window.invalidActionStatuses.push(event.detail));42"))
+            val invalid = mutableListOf<JSONObject>()
+            invalid.add(JSONObject())
+            for (value in listOf<Any>("", "   ", 12, true, JSONObject(), JSONArray(), JSONObject.NULL)) invalid.add(JSONObject().put("action", value))
+            invalid.add(JSONObject().put("name", 12))
+            for (value in listOf<Any>(JSONObject.NULL, JSONArray(), "data", JSONObject().put("nested", JSONObject()), JSONObject().put("null", JSONObject.NULL), JSONObject().put("array", JSONArray()))) invalid.add(JSONObject().put("action", "confirm").put("data", value))
+            invalid.add(JSONObject().put("action", "confirm").put("messageId", 12))
+            invalid.add(JSONObject().put("action", "confirm").put("id", 12))
+            invalid.add(JSONObject().put("action", "confirm").put("surfaceId", 12))
+            invalid.add(JSONObject().put("userAction", JSONObject.NULL))
+            invalid.add(JSONObject().put("userAction", "action"))
+            val sent = JSONArray()
+            for ((index, payload) in invalid.withIndex()) {
+                val id = "invalid-$index"
+                if (payload.has("messageId")) payload.put("id", id) else payload.put("messageId", id)
+                sent.put(JSONObject().put("expectedId", id).put("payload", payload))
+                success(scenario, "eval", JSONObject().put("script", "window.webkit.messageHandlers.elizaCanvasA2UIAction.postMessage($payload);42"))
+            }
+            val malformed = listOf("{", "null", "[]", "42", "{\"action\":\"confirm\"} trailing",
+                "{action:\"confirm\"}", "{\"action\":\"confirm\",}", "{\"action\":\"confirm\",\"data\":{\"count\":01}}",
+                "/* comment */ {\"action\":\"confirm\"}", "{\"action\":\"confirm\",\"data\":{\"count\":NaN}}")
+            for (raw in malformed) {
+                sent.put(JSONObject().put("expectedId", "").put("raw", raw))
+                success(scenario, "eval", JSONObject().put("script", "elizaCanvasA2UIBridge.postAction(${JSONObject.quote(raw)});42"))
+            }
+            val recovery = JSONObject().put("action", "recovery").put("messageId", "recovery-id").put("data", JSONObject().put("complete", true))
+            success(scenario, "eval", JSONObject().put("script", "window.webkit.messageHandlers.elizaCanvasA2UIAction.postMessage($recovery);42"))
+            waitFor(scenario, "window.invalidActionEvents.some(event=>event.action === 'recovery')")
+            var statuses = JSONArray()
+            val deadline = SystemClock.elapsedRealtime() + 3000
+            do {
+                val reply = success(scenario, "eval", JSONObject().put("script", "JSON.stringify(window.invalidActionStatuses)"))
+                statuses = JSONArray(JSONTokener(reply.getString("result")).nextValue() as String)
+                if ((0 until statuses.length()).any { statuses.getJSONObject(it).optString("id") == "recovery-id" }) break
+                SystemClock.sleep(20)
+            } while (SystemClock.elapsedRealtime() < deadline)
+            val events = JSONArray(JSONTokener(evaluate(scenario, "JSON.stringify(window.invalidActionEvents)")).nextValue() as String)
+            receipt("canvas-a2ui-invalid.json", JSONObject().put("sent", sent).put("events", events).put("statuses", statuses).put("recovery", recovery))
+            assertEquals("Only valid recovery may reach action listeners", 1, events.length())
+            assertEquals("recovery", events.getJSONObject(0).getString("action"))
+            assertEquals(sent.length() + 1, statuses.length())
+            for (index in 0 until sent.length()) {
+                val status = statuses.getJSONObject(index)
+                assertEquals(sent.getJSONObject(index).getString("expectedId"), status.getString("id"))
+                assertFalse(status.getBoolean("ok"))
+                assertEquals("INVALID_ARGUMENT", status.getString("code"))
+                assertTrue(status.getString("error").isNotBlank())
+            }
+            assertTrue(statuses.getJSONObject(sent.length()).getBoolean("ok"))
+            assertEquals("recovery-id", statuses.getJSONObject(sent.length()).getString("id"))
+            evaluate(scenario, "window.invalidActionListener.remove();window.invalidActionReadyListener.remove()")
+        }
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")

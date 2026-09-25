@@ -11,6 +11,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { ownerRemindersAction } from "@elizaos/plugin-personal-assistant";
 import type { ScenarioContext } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
 
@@ -34,7 +35,7 @@ const reminderArgs = {
   },
 };
 const plannerToolNames = [
-  "OWNER_REMINDERS_CREATE",
+  `${ownerRemindersAction.name}_CREATE`,
   "DISCOVER_ACTIONS",
   ...CORE_PLANNER_TERMINALS.map((tool) => tool.name),
 ];
