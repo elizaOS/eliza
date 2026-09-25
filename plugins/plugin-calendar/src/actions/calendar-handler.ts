@@ -3099,8 +3099,8 @@ async function loadCreateEventCalendarContext(
     includeHiddenCalendars: true,
     mode: connectorModeDetail(details),
     side: connectorSideDetail(details),
-    grantId: connectorGrantIdDetail(details),
-    calendarId: calendarIdDetail(details),
+    // A planner-proposed destination must not hide other authorized sources
+    // before extraction resolves the account from the user request.
     timeZone: requestTimeZone,
     forceSync: true,
     ...buildLocalDayRange(requestTimeZone, 0, 14),

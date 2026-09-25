@@ -40,13 +40,17 @@ function fixture(
   sourceKey = key,
 ) {
   const service = {
-    getCalendarFeed: vi.fn(async () => ({
-      events,
-      state: status === "fresh" ? "complete" : "partial",
-      source: "synced",
-      syncedAt: new Date().toISOString(),
-      sources: [{ key: sourceKey, status, visibility: "details", error: null }],
-    })),
+    getCalendarFeed: vi.fn(
+      async (_url: string, _options: Record<string, unknown>) => ({
+        events,
+        state: status === "fresh" ? "complete" : "partial",
+        source: "synced",
+        syncedAt: new Date().toISOString(),
+        sources: [
+          { key: sourceKey, status, visibility: "details", error: null },
+        ],
+      }),
+    ),
     prepareCalendarEventCreate: vi.fn(async (_url, request) => ({
       ...request,
       startAt: request.startAt,
@@ -79,7 +83,11 @@ function fixture(
 async function create(
   extracted: Record<string, unknown>,
   events: LifeOpsCalendarEvent[] = [],
-  request?: { text: string; createdAt: number },
+  request?: {
+    text: string;
+    createdAt: number;
+    details?: Record<string, unknown>;
+  },
   sourceKey = key,
 ) {
   const { runtime, service, reportError } = fixture(events, "fresh", sourceKey);
@@ -121,13 +129,38 @@ async function create(
     parameters: {
       subaction: "create_event",
       title: "Call dad",
-      details: { start, end },
+      details: { start, end, ...request?.details },
     },
   });
   return { result, service, runJsonModel, schedule, reportError };
 }
 
 describe("calendar conversational write boundary", () => {
+  it("does not hide calendar sources behind a planner-proposed destination", async () => {
+    const { service, result } = await create(
+      { requiresInput: true, grantId: null, calendarId: null },
+      [],
+      {
+        text: "Create an event on Google Calendar tomorrow at 3pm.",
+        createdAt: Date.parse("2027-09-17T12:00:00Z"),
+        details: {
+          grantId: "connector-account:guessed",
+          calendarId: "guessed",
+        },
+      },
+    );
+    const options = service.getCalendarFeed.mock.calls[0]?.[1];
+    expect(options).toBeDefined();
+    expect(options).not.toHaveProperty("grantId");
+    expect(options).not.toHaveProperty("calendarId");
+    expect(result).toMatchObject({
+      success: false,
+      data: { requiresInput: true },
+    });
+    expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+    expect(service.createCalendarEvent).not.toHaveBeenCalled();
+  });
+
   it("prepares the extracted connected account when planner arguments omit its grant", async () => {
     const sourceKey = {
       ...key,
@@ -393,7 +426,11 @@ describe("calendar conversational update boundary", () => {
     identifyTarget = true,
     plannerFields: Record<string, unknown> = {},
     targetSelector?: { query?: string; eventId?: string },
-    request?: { text: string; createdAt: number },
+    request?: {
+      text: string;
+      createdAt: number;
+      details?: Record<string, unknown>;
+    },
   ) {
     const { service, runtime } = fixture(
       targetSelector?.query ? [{ ...busy, metadata: { etag: '"1"' } }] : [],

@@ -55,6 +55,7 @@ export function renderPendingApprovalsText(
   return [
     "# Pending Approvals (queued actions awaiting the owner's decision)",
     ...lines,
+    'If RESOLVE_REQUEST is absent from the available tools, first call DISCOVER_ACTIONS with mode="load" and names=["RESOLVE_REQUEST"], then resolve the pending request. An approval decision is not a new calendar creation or booking request; do not call the original creation action again.',
     'When the owner decides on one of these, resolve it with RESOLVE_REQUEST: approve dispatches the queued action; reject leaves it permanently un-dispatched. A hold — "don\'t send it", "not yet", "hold off until I confirm" — is a rejection: nothing is lost, a fresh request can be queued later. Never leave a decided request pending.',
   ].join("\n");
 }
