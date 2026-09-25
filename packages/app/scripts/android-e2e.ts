@@ -84,7 +84,6 @@ function defaultAndroidEvidenceOutputDir() {
 const HOST_EMULATOR_PROBES = [
   "test/android/route-coverage.android.spec.ts",
   "test/android/native-plugin-view-smoke.android.spec.ts",
-  "test/android/native-system-intents.android.spec.ts",
 ];
 const ARM64_LOCAL_PROBES = [
   "test/android/local-runtime.android.spec.ts",
@@ -754,6 +753,58 @@ async function main() {
         const videoPath = await routeRecording.stop();
         routeRecording = null;
         if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      }
+      if (hostEmulatorProbes) {
+        // Restoring a role can revoke Android permissions and kill the app's
+        // WebView. Give this mandatory lane its own worker/session so route
+        // coverage never inherits a dead CDP page.
+        const systemReport = path.join(
+          bundle.reportsDir,
+          "android-system-intents.json",
+        );
+        try {
+          run(
+            bundle,
+            "Android native system intents",
+            "node",
+            [
+              "scripts/run-ui-playwright.ts",
+              "--config",
+              "playwright.android.config.ts",
+              "test/android/native-system-intents.android.spec.ts",
+            ],
+            {
+              ANDROID_SERIAL: serial,
+              ELIZA_ANDROID_ALLOW_FIRST_RUN: "0",
+              ELIZA_ANDROID_CLEAR_APP_DATA: "1",
+              ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(
+                bundle.root,
+                "test-results",
+                "system-intents",
+              ),
+              ELIZA_ANDROID_ARTIFACT_DIR: path.join(
+                bundle.root,
+                "test-results",
+                "system-intents",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR: path.join(
+                bundle.root,
+                "playwright-system-intents",
+              ),
+              ELIZA_ANDROID_PLAYWRIGHT_JSON: systemReport,
+              ELIZA_ANDROID_PLAYWRIGHT_JUNIT: path.join(
+                bundle.reportsDir,
+                "android-system-intents.junit.xml",
+              ),
+              PLAYWRIGHT_HTML_REPORT: path.join(
+                bundle.reportsDir,
+                "android-system-intents-html",
+              ),
+            },
+          );
+        } finally {
+          reportAndroidPlaywrightResults(systemReport, evidenceBoundary);
+        }
       }
     }
 

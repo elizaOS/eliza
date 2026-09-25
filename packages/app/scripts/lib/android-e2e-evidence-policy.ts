@@ -75,6 +75,7 @@ const STEP_PHASES = new Map([
   ["stage Android voice models", "voice-model-stage"],
   ["local chat smoke", "local-chat"],
   ["Android route coverage", "route-capture"],
+  ["Android native system intents", "route-capture"],
   ["Android launcher loop", "launcher-loop"],
   ["cloud provisioning", "cloud-provisioning"],
 ]);

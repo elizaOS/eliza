@@ -23,5 +23,6 @@ packages/app/scripts/android-e2e.ts --serial <emulator> --build --skip-local-cha
 --host-emulator-probes --start-host-agent --no-emulator-boot`) checks all five
 settings intents against actual Android screens, including an existing Wi-Fi task
 covered by Sound settings. It also verifies invalid roles, dialer-picker cancellation,
-grant and already-held results, then restores the original phone app. This lane
+grant and already-held results, restores the original phone app, and reattaches to
+the app after permission revocation. The role tests use a separate session. This lane
 requires an isolated stock emulator and exports native screenshots and observations.

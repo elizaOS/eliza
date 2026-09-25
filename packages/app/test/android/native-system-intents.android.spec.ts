@@ -8,6 +8,7 @@ import { captureAndroidScreenshot } from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   adbDevice,
+  appPid,
   foregroundApp,
   resolveAdb,
 } from "../../scripts/lib/android-device.ts";
@@ -395,9 +396,28 @@ test("granting the dialer role returns the Android result and restores the origi
     await expect.poll(holders).toBe(before);
     await device.input.press("Back");
     foregroundApp(adb, device.serial());
+    // Role revocation can kill the app process. Reattach to the real new
+    // WebView instead of pretending the previous worker page survived.
+    let recoveredStatus: unknown;
+    await expect(async () => {
+      foregroundApp(adb, device.serial());
+      const webview = await device.webView({ pkg: APP_ID }, { timeout: 2_000 });
+      const recoveredPage = await webview.page();
+      await waitForShellReady(recoveredPage, 10_000);
+      const status = await recoveredPage.evaluate(() =>
+        window.Capacitor.Plugins.ElizaSystem.getStatus(),
+      );
+      expect(status).toMatchObject({ packageName: APP_ID });
+      expect(
+        status.roles.find((role: { role: string }) => role.role === "dialer"),
+      ).toMatchObject({ held: false, holders: [before] });
+      recoveredStatus = status;
+    }).toPass({ timeout: 30_000 });
     await attachNativeState(device, info, "dialer-restored", {
       before,
       restored: holders(),
+      recoveredStatus,
+      recoveredAppPid: appPid(adb, device.serial()),
     });
   }
 });
