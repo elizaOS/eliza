@@ -10,7 +10,8 @@ import path from "node:path";
  *
  * App plugins that need to register UI surfaces/pages at app boot self-declare
  * `"elizaos": { "appRegister": { "export": "registerApp" } }` names an
- * explicit function on the package root. Legacy `"register"` and `"ui"`
+ * explicit function on the package root. Add `"entry": "register"` or `"ui"`
+ * to call the function from that public renderer subpath. Legacy `"register"` and `"ui"`
  * markers remain readable while those plugins migrate their public surfaces.
  * The renderer build scans for that marker instead of the app shell hardcoding a
  * loader list, so adding or deleting a plugin directory needs zero app-side edits.
@@ -37,7 +38,10 @@ export type SideEffectAppModule = {
   /** Declared registration mode from `elizaos.appRegister`. */
   /** Absolute path to the renderer registration entry imported at boot. */
   entry: string;
-} & ({ mode: "register" | "ui" } | { mode: "root"; exportName: string });
+} & (
+  | { mode: "register" | "ui" }
+  | { mode: "root"; exportName: string; importSpecifier: string }
+);
 
 const UI_ENTRY_CANDIDATES = ["src/ui.ts", "src/ui/index.ts"];
 const REGISTER_ENTRY = "src/register.ts";
@@ -102,21 +106,35 @@ export function discoverSideEffectAppModules(
             `[app-side-effect-modules] ${name} appRegister must name a root export`,
           );
         }
-        const entry = ["src/index.ts", "src/index.tsx", "index.ts"]
-          .map((relative) => path.join(pkgDir, relative))
-          .find((candidate) => fs.existsSync(candidate));
+        const declaredEntry =
+          "entry" in declaration ? declaration.entry : undefined;
+        if (
+          declaredEntry !== undefined &&
+          declaredEntry !== "register" &&
+          declaredEntry !== "ui"
+        ) {
+          throw new Error(
+            `[app-side-effect-modules] ${name} appRegister entry must be register or ui`,
+          );
+        }
+        const entry = declaredEntry
+          ? resolveRegistrationEntry(pkgDir, declaredEntry)
+          : ["src/index.ts", "src/index.tsx", "index.ts"]
+              .map((relative) => path.join(pkgDir, relative))
+              .find((candidate) => fs.existsSync(candidate));
         if (!entry) {
           throw new Error(
-            `[app-side-effect-modules] ${name} has no package root source entry`,
+            `[app-side-effect-modules] ${name} has no ${declaredEntry ?? "package root"} source entry`,
           );
         }
         seen.add(name);
         discovered.push({
-          key: `${name}#root:${declaration.export}`,
+          key: `${name}#${declaredEntry ?? "root"}:${declaration.export}`,
           packageName: name,
           mode: "root",
           entry,
           exportName: declaration.export,
+          importSpecifier: declaredEntry ? `${name}/${declaredEntry}` : name,
         });
         continue;
       }
@@ -174,7 +192,7 @@ export function appSideEffectModulesPlugin(packageRoots: readonly string[]) {
         .map((module) => {
           const key = JSON.stringify(module.key);
           if (module.mode === "root") {
-            const specifier = JSON.stringify(module.packageName);
+            const specifier = JSON.stringify(module.importSpecifier);
             return `  { key: ${key}, load: () => import(${specifier}).then(({ ${module.exportName}: register }) => { if (typeof register !== "function") throw new Error(${JSON.stringify(`${module.packageName} must export callable ${module.exportName}`)}); return register(); }) },`;
           }
           return `  { key: ${key}, load: () => import(${JSON.stringify(module.entry)}) },`;

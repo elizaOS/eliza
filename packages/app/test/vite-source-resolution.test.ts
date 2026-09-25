@@ -64,6 +64,59 @@ async function createAppResolutionServer(
 }
 
 describe("workspace package resolution", () => {
+  test.each(["serve", "build"] as const)(
+    "resolves the Calendar HTTP client entry with %s conditions",
+    async (command) => {
+      const { server } = await createAppResolutionServer(command);
+      try {
+        const resolved =
+          await server.environments.client.pluginContainer.resolveId(
+            "@elizaos/plugin-calendar/api/client-calendar",
+            path.resolve(appRoot, "src/main.tsx"),
+          );
+        const entry =
+          command === "serve"
+            ? "src/api/client-calendar.ts"
+            : "dist/api/client-calendar.js";
+        expect(resolved?.id).toBe(
+          normalizePath(
+            path.resolve(appRoot, "../../plugins/plugin-calendar", entry),
+          ),
+        );
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
+  test.each(["relationships", "knowledge", "calendar", "notes"])(
+    "loads the %s renderer registration through its public source entry",
+    async (name) => {
+      const { server } = await createAppResolutionServer("serve");
+      try {
+        const resolved =
+          await server.environments.client.pluginContainer.resolveId(
+            `@elizaos/plugin-${name}/register`,
+            path.resolve(appRoot, "src/main.tsx"),
+          );
+        expect(resolved?.id).toBe(
+          normalizePath(
+            path.resolve(
+              appRoot,
+              `../../plugins/plugin-${name}/src/register.ts`,
+            ),
+          ),
+        );
+        const transformed = await server.transformRequest(
+          `/@fs/${resolved?.id}`,
+        );
+        expect(transformed?.code).toContain("registerAppShellPage");
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   test.each([
     [
       "@elizaos/plugin-elizacloud/steward-session-client",

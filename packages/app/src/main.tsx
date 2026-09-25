@@ -33,7 +33,7 @@ import "@elizaos/ui/styles";
 // Relationships owns the canonical /apps/relationships route. Its registration
 // metadata is tiny and must be available before the first route capture; the
 // page component itself remains lazy-loaded by the plugin registration.
-import { registerRelationshipsApp } from "@elizaos/plugin-relationships";
+import { registerRelationshipsApp } from "@elizaos/plugin-relationships/register";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves

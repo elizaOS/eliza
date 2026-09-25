@@ -16,6 +16,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./register": {
+      "types": "./dist/register.d.ts",
+      "eliza-source": {
+        "types": "./src/register.ts",
+        "import": "./src/register.ts",
+        "default": "./src/register.ts"
+      },
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -58,6 +68,7 @@
   },
   "elizaos": {
     "appRegister": {
+      "entry": "register",
       "export": "registerNotesApp"
     }
   },

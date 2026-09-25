@@ -23,7 +23,11 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
-function fixture(registration: unknown, source: string) {
+function fixture(
+  registration: unknown,
+  source: string,
+  rendererSource?: string,
+) {
   const directory = mkdtempSync(
     path.join(os.tmpdir(), "app-root-registration-"),
   );
@@ -36,11 +40,13 @@ function fixture(registration: unknown, source: string) {
     JSON.stringify({
       name: "fixture-app-registration",
       type: "module",
-      exports: { ".": "./src/index.ts" },
+      exports: { ".": "./src/index.ts", "./register": "./src/register.ts" },
       elizaos: { appRegister: registration },
     }),
   );
   writeFileSync(path.join(plugin, "src/index.ts"), source);
+  if (rendererSource !== undefined)
+    writeFileSync(path.join(plugin, "src/register.ts"), rendererSource);
   mkdirSync(path.join(directory, "node_modules"));
   symlinkSync(
     plugin,
@@ -58,6 +64,34 @@ function fixture(registration: unknown, source: string) {
 }
 
 describe("root app registration", () => {
+  it("calls a renderer subpath without evaluating the runtime root", () => {
+    const { directory } = fixture(
+      { entry: "register", export: "registerApp" },
+      "throw new Error('Runtime root must not enter the renderer');",
+      "export function registerApp() { return 'registered'; }",
+    );
+    const runner = path.join(directory, "runner.ts");
+    writeFileSync(
+      runner,
+      `
+      import assert from 'node:assert/strict';
+      import { loaders } from './registration.mjs';
+      assert.equal(loaders[0].key, 'fixture-app-registration#register:registerApp');
+      assert.equal(await loaders[0].load(), 'registered');
+    `,
+    );
+    execFileSync(process.execPath, [runner], { encoding: "utf8" });
+  });
+
+  it("rejects unsupported and missing renderer entries", () => {
+    expect(() =>
+      fixture({ entry: "../server", export: "registerApp" }, ""),
+    ).toThrow(/entry must be register or ui/);
+    expect(() =>
+      fixture({ entry: "register", export: "registerApp" }, ""),
+    ).toThrow(/no register source entry/);
+  });
+
   it("calls the named root export only when the generated loader runs", () => {
     const { directory } = fixture(
       { export: "registerApp" },
