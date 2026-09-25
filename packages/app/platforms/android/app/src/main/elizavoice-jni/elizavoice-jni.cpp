@@ -988,11 +988,17 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineSelfTest(JNIEnv* env, jclass,
     s->turns.clear(); s->turnEmbeddings.clear(); s->turnLabels.clear();
     if (s->seg.forceEnd()) {
         s->capturing = false;
-        eliza_inference_vad_reset(s->vad, &outError);
-        if (outError) { std::free(outError); outError = nullptr; }
-        if (finalize_turn(s, &outError)) {
-            for (auto& t : s->turns) allTurns.push_back(t);
-        } else if (outError) { std::free(outError); outError = nullptr; }
+        if (eliza_inference_vad_reset(s->vad, &outError) != ELIZA_OK) {
+            cleanup_session_for_selftest(s, ctx);
+            throw_runtime(env, "pipelineSelfTest: reset", outError);
+            return nullptr;
+        }
+        if (!finalize_turn(s, &outError)) {
+            cleanup_session_for_selftest(s, ctx);
+            throw_runtime(env, "pipelineSelfTest: finalize", outError);
+            return nullptr;
+        }
+        for (auto& t : s->turns) allTurns.push_back(t);
     }
     std::string json = "[";
     for (size_t i = 0; i < allTurns.size(); ++i) {
@@ -1016,6 +1022,13 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordSelfTest(JNIEnv* env, jclass,
                                                             jstring jBundleDir,
                                                             jfloatArray jPos,
                                                             jfloatArray jNeg) {
+    const std::vector<float> positive = read_float_array(env, jPos);
+    const std::vector<float> negative = read_float_array(env, jNeg);
+    if (positive.empty() || negative.empty() ||
+        positive.size() % kWakeFrame != 0 || negative.size() % kWakeFrame != 0) {
+        throw_runtime(env, "wakewordSelfTest: both clips must contain nonempty complete 1280-sample frames", nullptr);
+        return nullptr;
+    }
     const std::string bundleDir = from_jstring(env, jBundleDir);
     char* outError = nullptr;
     EliInferenceContext* ctx =
@@ -1031,27 +1044,43 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordSelfTest(JNIEnv* env, jclass,
         throw_runtime(env, "wakewordSelfTest: wakeword_open", outError);
         return nullptr;
     }
-    auto scoreMax = [&](jfloatArray jPcm) -> float {
-        const std::vector<float> pcm = read_float_array(env, jPcm);
-        const size_t frames = pcm.size() / kWakeFrame;
-        float maxP = 0.0f;
-        for (size_t f = 0; f < frames; ++f) {
-            float p = -1.0f;
-            char* e = nullptr;
-            if (eliza_inference_wakeword_score(wake, pcm.data() + f * kWakeFrame,
-                                               kWakeFrame, &p, &e) == ELIZA_OK) {
-                maxP = std::max(maxP, p);
-            }
-            if (e) std::free(e);
-        }
-        return maxP;
+    auto cleanup = [&]() {
+        eliza_inference_wakeword_close(wake);
+        eliza_inference_destroy(ctx);
     };
-    const float posMax = scoreMax(jPos);
-    eliza_inference_wakeword_reset(wake, &outError);
-    if (outError) { std::free(outError); outError = nullptr; }
-    const float negMax = scoreMax(jNeg);
-    eliza_inference_wakeword_close(wake);
-    eliza_inference_destroy(ctx);
+    auto scoreMax = [&](const std::vector<float>& pcm, float& maxP) -> bool {
+        for (size_t off = 0; off < pcm.size(); off += kWakeFrame) {
+            float p = -1.0f;
+            if (eliza_inference_wakeword_score(wake, pcm.data() + off,
+                                               kWakeFrame, &p, &outError) != ELIZA_OK) {
+                return false;
+            }
+            if (!std::isfinite(p) || p < 0.0f || p > 1.0f) {
+                throw_runtime(env, "wakewordSelfTest: invalid probability", outError);
+                outError = nullptr;
+                return false;
+            }
+            maxP = std::max(maxP, p);
+        }
+        return true;
+    };
+    float posMax = 0.0f, negMax = 0.0f;
+    if (!scoreMax(positive, posMax)) {
+        cleanup();
+        if (!env->ExceptionCheck()) throw_runtime(env, "wakewordSelfTest: positive score", outError);
+        return nullptr;
+    }
+    if (eliza_inference_wakeword_reset(wake, &outError) != ELIZA_OK) {
+        cleanup();
+        throw_runtime(env, "wakewordSelfTest: reset", outError);
+        return nullptr;
+    }
+    if (!scoreMax(negative, negMax)) {
+        cleanup();
+        if (!env->ExceptionCheck()) throw_runtime(env, "wakewordSelfTest: negative score", outError);
+        return nullptr;
+    }
+    cleanup();
     LOGI("WAKEWORD SELFTEST: posMax=%.4f negMax=%.4f (pos should >> neg)",
          posMax, negMax);
     std::string j = "{\"posMax\":" + std::to_string(posMax) +
