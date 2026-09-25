@@ -3168,6 +3168,19 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(emptySelfControlStatus()),
     });
   });
+  // This deterministic browser fixture disables host process spawning. Model
+  // the production PTY gate explicitly so cockpit retries exercise its error
+  // UI instead of the stub server's unhandled-route 501.
+  await page.route("**/api/pty/sessions", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      status: 403,
+      json: {
+        error:
+          "Interactive PTY sessions are disabled (PTY_INTERACTIVE_ENABLED=false or store build).",
+      },
+    });
+  });
   // Coding-project registry read by the tasks/cockpit surfaces; the keyless
   // stub 501s it, which trips the issue guards on any route that mounts them.
   await page.route("**/api/projects", async (route) => {

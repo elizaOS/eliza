@@ -343,6 +343,9 @@ export {
 	readCanonicalArrayLength,
 	stableJsonString,
 } from "./canonical-json.js";
+export { default as channelPluginMap } from "./catalog/channel-plugin-map.json" with {
+	type: "json",
+};
 export {
 	type AccountAuthKind,
 	type AccountConfig,
@@ -382,6 +385,9 @@ export {
 	resourcesSchema,
 	type SecondarySurface,
 } from "./catalog/index.js";
+export { default as providerPluginMap } from "./catalog/provider-plugin-map.json" with {
+	type: "json",
+};
 export {
 	AGENT_REGISTRY_SEARCH_POLICY,
 	CORE_REGISTRY_SEARCH_POLICY,
@@ -396,6 +402,9 @@ export {
 	runtimeRegistryEntrySchema,
 	searchRegistryEntries,
 } from "./catalog/runtime-kernel.js";
+export { default as shortIdPluginMap } from "./catalog/short-id-plugin-map.json" with {
+	type: "json",
+};
 export {
 	buildElizaCharacterCatalog,
 	CHARACTER_PRESET_META,
@@ -2750,6 +2759,12 @@ export {
 	isLocalCodeExecutionAllowed,
 } from "./platform/sandbox-policy.js";
 export {
+	installProcessCrashGuards,
+	type ProcessCrashGuardOptions,
+	resetProcessCrashGuardsForTest,
+	type UncaughtExceptionPolicy,
+} from "./process-guards.js";
+export {
 	RESTART_EXIT_CODE,
 	type RestartHandler,
 	requestRestart,
@@ -3343,6 +3358,13 @@ export {
 	type SessionStore,
 } from "./sessions/types.js";
 export * from "./settings";
+export {
+	isElizaSettingsDebugEnabled,
+	MAX_STRING,
+	sanitizeDebugString,
+	sanitizeForSettingsDebug,
+	settingsDebugCloudSummary,
+} from "./settings-debug.js";
 export * from "./streaming-context";
 export {
 	CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
@@ -3696,6 +3718,7 @@ export {
 	decodeUrlPathComponent,
 	type PathComponentDecodeResult,
 } from "./utils/path-component.js";
+export { getMacPermissionDeepLink } from "./utils/permission-deep-links.js";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 export * from "./utils/project-registry";

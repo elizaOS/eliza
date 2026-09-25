@@ -15,15 +15,13 @@ import path from "node:path";
 import {
   type ElizaConfig,
   ElizaError,
+  isElizaSettingsDebugEnabled,
   logger,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/core";
-
-import {
-  isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core/settings-debug";
+} from "@elizaos/core";
+
 import JSON5 from "json5";
 import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";

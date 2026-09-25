@@ -8,6 +8,7 @@ Configure providers and connectors through the host configuration; never expose 
 secrets to ungranted agents.
 
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
+Agent code imports core APIs and catalog maps through `@elizaos/core`.
 `RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying
 registry shapes; `RegistryPluginInfo` and `RegistrySearchResult` retain the
 plugin manager's extensions. The roles plugin is exported as `rolesPlugin`.

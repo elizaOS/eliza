@@ -80,7 +80,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/core";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 
