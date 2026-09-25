@@ -78,12 +78,12 @@ import { createApiSupervisor } from "./lib/api-supervisor.ts";
 import { resolveMainAppDir } from "./lib/app-dir.ts";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.ts";
 import { configureDevCloudEnvironment } from "./lib/dev-cloud-target.ts";
+import { assertDevPortsAvailable } from "./lib/dev-port-ownership.ts";
 import { resolveViteCommand } from "./lib/dev-ui-vite.ts";
 import {
   isSpawnedProcessGroupAlive,
   signalSpawnedProcessGroup,
 } from "./lib/kill-process-tree.ts";
-import { killUiListenPort } from "./lib/kill-ui-listen-port.ts";
 import {
   claimMacApplicationAtPath,
   inspectMacApplicationsAtPath,
@@ -776,7 +776,10 @@ async function launch() {
   const preferredUi = resolveDesktopUiPort(process.env);
   let uiDevPort = preferredUi;
   if (viteDevServer) {
-    uiDevPort = await allocateFirstFreeLoopbackPort(preferredUi);
+    uiDevPort = await allocateDistinctLoopbackPort(
+      preferredUi,
+      new Set([resolvedApiPort]),
+    );
     if (uiDevPort !== preferredUi) {
       console.log(
         `[eliza] UI port ${preferredUi} in use — Vite dev server using ${uiDevPort}`,
@@ -998,7 +1001,7 @@ async function launch() {
   }
 
   if (viteDevServer) {
-    killUiListenPort(uiDevPort);
+    await assertDevPortsAvailable([uiDevPort]);
     console.log(
       "\n[eliza] Vite dev server (HMR) for desktop — Electrobun loads ELIZA_RENDERER_URL.\n" +
         `    (Slow Rollup watch: ELIZA_DESKTOP_VITE_BUILD_WATCH=1 with ELIZA_DESKTOP_VITE_WATCH=1)\n`,

@@ -10,39 +10,35 @@ import fs from "node:fs";
 import http from "node:http";
 import {
   type AgentRuntime,
+  createIntegrationTelemetrySpan,
   ElizaError,
   EventType,
   formatError,
+  getHttpRuntime,
+  getStylePresets,
   type IAgentRuntime,
+  isMobilePlatform,
   logger,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
-  resolveOwnerEntityIdOrDefault,
-  ServiceType,
-} from "@elizaos/core";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/core/agent-backup-limits";
-import {
+  normalizeCharacterLanguage,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
+  type ReadJsonBodyOptions,
+  type Route,
+  readAliasedEnv,
   readRequestBody,
+  resolveApiBindHost,
+  resolveDesktopApiPort,
+  resolveOwnerEntityIdOrDefault,
+  resolveServerOnlyPort,
+  ServiceType,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/core/api/http-helpers";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/core/character-presets";
-import {
-  isMobilePlatform,
-  resolveApiBindHost,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+} from "@elizaos/core";
+
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import { WebSocket, WebSocketServer } from "ws";
@@ -59,7 +55,6 @@ import {
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -75,14 +70,14 @@ import {
 } from "../runtime/model-resolution.ts";
 import {
   type ClassifyContext,
-  createColdStrategy,
-  createHotStrategy,
-  DefaultRuntimeOperationManager,
   defaultClassifier,
-  getDefaultHealthChecker,
-  getDefaultRepository,
-  type RuntimeOperationManager,
-} from "../runtime/operations/index.ts";
+} from "../runtime/operations/classifier.ts";
+import { createColdStrategy } from "../runtime/operations/cold-strategy.ts";
+import { getDefaultHealthChecker } from "../runtime/operations/health.ts";
+import { DefaultRuntimeOperationManager } from "../runtime/operations/manager.ts";
+import { createHotStrategy } from "../runtime/operations/reload-hot.ts";
+import { getDefaultRepository } from "../runtime/operations/repository.ts";
+import type { RuntimeOperationManager } from "../runtime/operations/types.ts";
 import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.ts";
 import {
   getViewClientScope,
@@ -113,7 +108,7 @@ import {
 } from "../services/agent-export.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
-import { type ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
+import type { ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
@@ -147,7 +142,7 @@ import {
 } from "../triggers/scheduling.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
-import { type AwarenessRegistryLike } from "./agent-status-routes.ts";
+import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
 import {
   AgentBackupClientDisconnectedError,
   writeAgentBackupJsonResponse,
@@ -337,11 +332,11 @@ import {
 } from "./server-lazy-routes.ts";
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
-import {
-  type AgentAutomationMode,
-  type AgentStartupDiagnostics,
-  type LogEntry,
-  type ServerState,
+import type {
+  AgentAutomationMode,
+  AgentStartupDiagnostics,
+  LogEntry,
+  ServerState,
 } from "./server-types.ts";
 import {
   injectApiBaseIntoHtml,
@@ -381,7 +376,7 @@ import {
   parseEventCursor,
   selectReplayEvents,
 } from "./ws-event-replay.ts";
-import { type X402PluginModule } from "./x402-contract.ts";
+import type { X402PluginModule } from "./x402-contract.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
 function tokenMatches(expected: string, provided: string): boolean {

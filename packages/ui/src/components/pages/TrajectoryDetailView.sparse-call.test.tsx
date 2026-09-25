@@ -68,6 +68,42 @@ describe("sparse trajectory call rendering", () => {
     cleanup();
   });
 
+  it("renders the exact native user body instead of its flattened alternative", () => {
+    const body = "# People in the Room\nEliza\n[user] is literal user text.";
+    const call = sparseCall({
+      systemPrompt: "System instructions",
+      userPrompt: `[system] System instructions\n[user] ${body}`,
+      messages: [{ role: "user", content: body }],
+      response: "Ready",
+    });
+    const recorded = JSON.stringify(call);
+
+    renderCall(call);
+
+    expect(screen.getByText(/# People in the Room/).textContent).toBe(body);
+    expect(buildTrajectoryCallText(call).inputText).toBe(body);
+    expect(JSON.stringify(call)).toBe(recorded);
+  });
+
+  it("preserves multiple roles and nontext message fields in recorded alternatives", () => {
+    for (const messages of [
+      [
+        { role: "user", content: "Question" },
+        { role: "assistant", content: "Answer" },
+      ],
+      [{ role: "user", content: "Question", name: "Alice" }],
+      [{ role: "user", content: [{ type: "text", text: "Question" }] }],
+    ]) {
+      const call = sparseCall({
+        messages,
+        userPrompt: "Complete recorded alternative",
+      });
+      expect(buildTrajectoryCallText(call).inputText).toBe(
+        "Complete recorded alternative",
+      );
+    }
+  });
+
   it("reports zero lines instead of a fabricated single line", () => {
     renderCall(
       sparseCall({

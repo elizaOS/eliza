@@ -523,7 +523,15 @@ export interface LifeOpsCalendarAllDayRange {
 	startDate: string;
 	endDateExclusive: string;
 }
+/** Exact Notes content used to prepare a calendar event; timestamps are not revisions. */
+export interface CalendarNoteSourceReference {
+	agentId: string;
+	noteId: string;
+	contentHash: string;
+}
+
 export interface CreateLifeOpsCalendarEventRequest {
+	sourceNote?: CalendarNoteSourceReference;
 	side?: LifeOpsConnectorSide;
 	mode?: LifeOpsConnectorMode;
 	calendarId?: string;

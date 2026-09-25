@@ -26,15 +26,22 @@ import {
   authorizeOwnerExclusiveDisclosure,
   bindIncomingMessagePersistence,
   ChannelType,
+  type ChatFailureKind,
+  type ChatTerminalFailure,
   type Content,
   composeToolDiagnosticRedactor,
+  conversationClientUserMemoryId,
   createMessageMemory,
   createUniqueUuid,
+  type DurableConversationChatMarker,
   ElizaError,
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
   InferenceTurnTimer,
+  isChatFailureKind,
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -44,6 +51,15 @@ import {
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+  parsePositiveInteger,
+  parseSharedTodoCutoverSnapshot,
   projectCompleteToolValueForModel,
   type RoleGrantSource,
   type RolesWorldMetadata,
@@ -51,46 +67,21 @@ import {
   RoomHandlerQueueClosedError,
   RoomHandlerQueueGlobalSaturatedError,
   RoomHandlerQueueSaturatedError,
+  type RouteRequestContext,
+  readDurableConversationChatMarker,
   recordOwnerGrant,
   recordRoleGrant,
   resolveAppliedUserFacingEffectReceipts,
   runWithInferenceTiming,
   stringToUuid,
+  TodoCutoverContractError,
   type TrustedApiPrincipal,
   timeInferenceSpan,
   type UUID,
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
-import {
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  isChatFailureKind,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-} from "@elizaos/core/contracts/chat";
-import {
-  PatchConversationRequestSchema,
-  PostConversationCleanupEmptyRequestSchema,
-  PostConversationRequestSchema,
-  PostConversationTruncateRequestSchema,
-  PostSeedMessagesRequestSchema,
-} from "@elizaos/core/contracts/conversation-routes";
-import {
-  conversationClientUserMemoryId,
-  type DurableConversationChatMarker,
-  readDurableConversationChatMarker,
-} from "@elizaos/core/conversation-chat-marker";
-import {
-  parseSharedTodoCutoverSnapshot,
-  TodoCutoverContractError,
-} from "@elizaos/core/todo-cutover";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
-import {
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
-} from "@elizaos/core/voice";
+
 import {
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,

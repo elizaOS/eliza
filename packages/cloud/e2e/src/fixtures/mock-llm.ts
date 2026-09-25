@@ -122,24 +122,29 @@ function legacyFixtures(options: MockLlmOptions): DeterministicModelFixture[] {
             .map((message) => contentToText(message.content))
             .join("\n");
           const currentMessages = [
-            ...context.matchAll(/^message:user:\n([^\n]+)$/gm),
+            ...context.matchAll(/^# Current message\n([^\n]+)$/gm),
           ];
           if (currentMessages.length !== 1) {
             throw new Error(
               "Context echo requires exactly one framed current user message",
             );
           }
-          const current: unknown = JSON.parse(currentMessages[0][1]);
+          const framed = currentMessages[0][1];
+          const current: unknown = framed.startsWith("{")
+            ? JSON.parse(framed)
+            : { text: framed.replace(/^user: /, "") };
           if (!isRecord(current) || typeof current.text !== "string") {
             throw new Error(
               "Context echo requires the complete current message text",
             );
           }
-          const priorUsers = [
-            ...context.matchAll(
-              /^(?:prior_message:user:|\[h[1-9]\d* user(?:; same_text_as=h[1-9]\d*)?\])/gm,
-            ),
-          ].length;
+          // Count only original dialogue, never the current-message frame or
+          // policy examples. The handler now renders plain speaker/text records.
+          const conversation =
+            context.match(
+              /^# Conversation\n([\s\S]*?)(?=^# Current message\n)/m,
+            )?.[1] ?? "";
+          const priorUsers = [...conversation.matchAll(/^user: /gm)].length;
           return {
             finishReason: "tool_calls",
             toolCalls: [
@@ -151,18 +156,6 @@ function legacyFixtures(options: MockLlmOptions): DeterministicModelFixture[] {
                   contexts: ["simple"],
                   contextRequests: [],
                   intents: [],
-                  completionContext: {
-                    mode: "all_prior_dialogue",
-                    sourceSetId:
-                      context.match(
-                        /^completion_source_set: ([a-f0-9]{64})/m,
-                      )?.[1] ?? "",
-                    complete: false,
-                    relevantSourceIds: [],
-                    constraintSourceIds: [],
-                    referentSourceIds: [],
-                    pendingIntentSourceIds: [],
-                  },
                   replyText: `turn ${priorUsers + 1} (prior user turns: ${priorUsers}): ${current.text}`,
                   replyEffectStatus: "none",
                   candidateActionNames: [],

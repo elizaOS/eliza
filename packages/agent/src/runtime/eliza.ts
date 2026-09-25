@@ -19,50 +19,46 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
+  buildDefaultElizaCloudServiceRouting,
   ChannelType,
   type Component,
+  captureHostExecutionBaseline,
   createMessageMemory,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  drainAppRoutePluginLoaders,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
   formatError,
+  getFirstRunProviderOption,
   type IAgentRuntime,
+  isMobilePlatform,
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   type Plugin,
   type Provider,
   type RuntimeStopOptions,
+  readAliasedEnv,
   requireConfirmedSendHandlerDelivery,
+  resolveDeploymentTargetInConfig,
+  resolveDesktopApiPort,
+  resolveElizaCloudTopology,
+  resolveServerOnlyPort,
+  resolveServiceRoutingInConfig,
   stringToUuid,
   type TargetInfo,
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-import { drainAppRoutePluginLoaders } from "@elizaos/core/api/drain-app-route-plugins";
-import { resolveElizaCloudTopology } from "@elizaos/core/contracts/cloud-topology";
-import {
-  getFirstRunProviderOption,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunProviderId,
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
-import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
-import {
-  isMobilePlatform,
-  resolveDesktopApiPort,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
+
 import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
 } from "@elizaos/core/settings-debug";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -105,12 +101,8 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
-import {
-  createHookEvent,
-  type LoadHooksOptions,
-  loadHooks,
-  triggerHook,
-} from "../hooks/index.ts";
+import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
+import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
 import { EscalationService } from "../services/escalation.ts";
@@ -251,10 +243,8 @@ import {
   resolveSandboxRouteAgentId,
 } from "./sandbox-character.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
-import {
-  installDatabaseTrajectoryLogger,
-  shouldEnableTrajectoryLoggingByDefault,
-} from "./trajectory-persistence.ts";
+import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-internals.ts";
+import { installDatabaseTrajectoryLogger } from "./trajectory-storage.ts";
 import { validateViewActionMap } from "./view-action-affinity.ts";
 
 // ---------------------------------------------------------------------------
@@ -372,7 +362,7 @@ async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule>
   )) as RemoteCodingRunnerModule;
 }
 
-import rolesPlugin from "./roles.ts";
+import { default as rolesPlugin } from "./roles/src/index.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

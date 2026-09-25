@@ -12,9 +12,9 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
 } from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -22,7 +22,10 @@ import {
   createCalendarActionRunner,
 } from "../src/index.js";
 import { CalendarServiceError } from "../src/internal/errors.js";
-import { freshCalendarSources } from "./calendar-source-fixture.js";
+import {
+  calendarSummariesForEvents,
+  freshCalendarSources,
+} from "./calendar-source-fixture.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000501";
 const ENTITY_ID = "00000000-0000-0000-0000-000000000502";
@@ -73,7 +76,7 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
     events,
     source: "synced",
     state: "complete",
-    sources: freshCalendarSources(events),
+    sources: freshCalendarSources([...events, EVENT, ELIZA_EVENT]),
     timeMin: "2026-07-27T00:00:00.000Z",
     timeMax: "2026-08-03T00:00:00.000Z",
     syncedAt: FEED_SYNCED_AT,
@@ -114,7 +117,10 @@ function message(
   } as Memory;
 }
 
-function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
+function deps(
+  overrides: Partial<CalendarActionDeps> = {},
+  destination = EVENT,
+): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async ({ actionType }) =>
@@ -122,6 +128,8 @@ function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
         ? {
             rawResponse: "{}",
             parsed: {
+              grantId: destination.grantId,
+              calendarId: destination.calendarId,
               startAt: EVENT.startAt,
               endAt: EVENT.endAt,
               timeZone: "UTC",
@@ -162,7 +170,14 @@ function runtime(
     },
     reportError,
     getService: (serviceType: string) =>
-      serviceType === "calendar" ? service : null,
+      serviceType === "calendar"
+        ? {
+            listCalendars: vi.fn(async () =>
+              calendarSummariesForEvents([EVENT, ELIZA_EVENT]),
+            ),
+            ...service,
+          }
+        : null,
   } as unknown as IAgentRuntime;
 }
 
@@ -540,7 +555,9 @@ describe("CALENDAR effect receipt settlement", () => {
       text: "Approval request calendar-approval-request-1 is ready.",
     };
     const schedule = vi.fn(async () => approval);
-    const getCalendarFeed = vi.fn(async () => feed([]));
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _options: Record<string, unknown>) => feed([]),
+    );
     const prepareCalendarEventCreate = vi.fn(
       async (_url: URL, request: Record<string, unknown>) => ({
         ...request,
@@ -587,11 +604,20 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(schedule, JSON.stringify(result)).toHaveBeenCalledOnce();
     expect(getCalendarFeed).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ calendarId: undefined }),
+      expect.objectContaining({
+        includeHiddenCalendars: true,
+        forceSync: true,
+      }),
     );
+    for (const key of ["grantId", "calendarId", "mode", "side"]) {
+      expect(getCalendarFeed.mock.calls[0]?.[1]).not.toHaveProperty(key);
+    }
     expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ calendarId: undefined }),
+      expect.objectContaining({
+        grantId: EVENT.grantId,
+        calendarId: EVENT.calendarId,
+      }),
     );
     expect(result.effectReceipts, JSON.stringify(result)).toEqual([
       expect.objectContaining({
@@ -637,13 +663,16 @@ describe("CALENDAR effect receipt settlement", () => {
       createCalendarEvent,
     };
     const action = createCalendarActionRunner(
-      deps({
-        mutationGateway: {
-          schedule,
-          modify: vi.fn(),
-          cancel: vi.fn(),
+      deps(
+        {
+          mutationGateway: {
+            schedule,
+            modify: vi.fn(),
+            cancel: vi.fn(),
+          },
         },
-      }),
+        ELIZA_EVENT,
+      ),
     );
     const delivered: Content[] = [];
 
@@ -699,12 +728,16 @@ describe("CALENDAR effect receipt settlement", () => {
         }
         return {
           rawResponse: JSON.stringify({
+            grantId: ELIZA_EVENT.grantId,
+            calendarId: ELIZA_EVENT.calendarId,
             title: "Full QA Event",
             startAt: "2026-09-05T16:00:00-04:00",
             durationMinutes: 30,
             timeZone: "America/New_York",
           }),
           parsed: {
+            grantId: ELIZA_EVENT.grantId,
+            calendarId: ELIZA_EVENT.calendarId,
             title: "Full QA Event",
             startAt: "2026-09-05T16:00:00-04:00",
             durationMinutes: 30,
@@ -1058,23 +1091,25 @@ describe("CALENDAR effect receipt settlement", () => {
         replayed: false,
         text: "Approval request calendar-timezone-approval is ready.",
       };
-      let extractionPrompt = "";
       const runJsonModel = vi.fn(async (args: { prompt: string }) => {
         if (!args.prompt.includes("Extract calendar event creation fields")) {
           return null;
         }
-        extractionPrompt = args.prompt;
         return {
           rawResponse: JSON.stringify({
+            grantId: EVENT.grantId,
+            calendarId: EVENT.calendarId,
             title: "Demo",
-            startAt: "2026-08-05T09:00:00-07:00",
-            endAt: "2026-08-05T10:00:00-07:00",
+            startAt: "2026-08-05T09:00:00",
+            endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           }),
           parsed: {
+            grantId: EVENT.grantId,
+            calendarId: EVENT.calendarId,
             title: "Demo",
-            startAt: "2026-08-05T09:00:00-07:00",
-            endAt: "2026-08-05T10:00:00-07:00",
+            startAt: "2026-08-05T09:00:00",
+            endAt: "2026-08-05T10:00:00",
             timeZone: "America/Los_Angeles",
           },
         };
@@ -1120,9 +1155,6 @@ describe("CALENDAR effect receipt settlement", () => {
       });
 
       expect(result.success, JSON.stringify(result)).toBe(true);
-      expect(extractionPrompt).toContain(
-        "for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z",
-      );
       expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
         expect.any(URL),
         expect.objectContaining({

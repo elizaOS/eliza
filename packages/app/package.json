@@ -5,7 +5,7 @@
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.ts dist web-dist .turbo",
     "prepublishOnly": "bun run build:dist",
-    "build": "bun run build:dist && bun run build:renderer",
+    "build": "bun scripts/build.ts",
     "typecheck": "bun run typecheck:host && bun run typecheck:renderer",
     "check:source-artifacts": "node scripts/check-source-artifacts.ts",
     "test": "bun run test:renderer && bun run test:host",
@@ -208,7 +208,6 @@
     "dev:rebuild": "node scripts/dev-rebuild.ts",
     "dev:status": "node scripts/dev-status.ts",
     "test:dev-server-registry": "node --test scripts/dev-server-registry.test.ts",
-    "build:renderer": "bun scripts/build.ts",
     "test:renderer": "bun test scripts/android-assistant-ime-lane.test.ts scripts/android-cloud-onboarding-command.test.ts scripts/android-e2e-build.test.ts scripts/android-e2e-port-contract.test.ts scripts/android-renderer-stamp.test.ts scripts/audit-views-soak-navigation.test.ts scripts/audit-views-soak-timing.test.ts scripts/build.test.ts scripts/capture-duration-entrypoint.test.ts scripts/desktop-voice-hardware-capture.test.ts scripts/dev-server-registry.test.ts scripts/device-e2e-bundle.test.ts scripts/device-evidence-workflows.test.ts scripts/device-lease.test.ts scripts/devices-status.test.ts scripts/forced-host-mode-guard.test.ts scripts/ios-device-lib.test.ts scripts/ios-device-provision.test.ts scripts/ios-e2e-lib.test.ts scripts/ios-store-engine-gate.test.ts scripts/ios-voice-selftest-lib.test.ts scripts/lib/android-assistant-verify-lib.test.ts scripts/lib/android-capture.test.ts scripts/lib/android-device-apk.test.ts scripts/lib/android-e2e-evidence-policy.test.ts scripts/lib/audit-output.test.ts scripts/lib/capture-output-backend-log-port.test.ts scripts/lib/capture-output.test.ts scripts/lib/chat-failure-strings.test.ts scripts/lib/chat-history-persistence.node.test.ts scripts/lib/chat-history-persistence.test.ts scripts/lib/dev-vite-command.test.ts scripts/lib/ffmpeg.test.ts scripts/lib/host-agent.test.ts scripts/lib/ios-deploy-ledger.test.ts scripts/lib/ios-device-e2e-lib.test.ts scripts/lib/ios-full-bun-smoke-contract.test.ts scripts/lib/ios-mixed-content-smoke-contract.test.ts scripts/lib/ios-simulator-app-product.test.ts scripts/lib/local-inference-readiness.test.ts scripts/lib/playwright-port.test.ts scripts/lib/playwright-shard.test.ts scripts/lib/visual-qa.test.ts scripts/macos-shortcuts/eliza-assistant-handoff.test.ts scripts/mobile-local-chat-smoke-port-policy.test.ts scripts/mobile-local-chat-smoke.test.ts scripts/mvp-visual-verify.test.ts scripts/ocr-real-engine.test.ts scripts/patch-ios-plist.test.ts scripts/playwright-audit-projects.test.ts scripts/playwright-test-match.test.ts scripts/run-ui-playwright-node-resolution.test.ts scripts/verify-viewport-meta.test.ts scripts/visual-qa-live.test.ts scripts/voice-evidence-media.test.ts scripts/walkthrough-device-matrix.test.ts scripts/web-build-workspace-dependencies.test.ts && node ../scripts/run-vitest.ts run --config vitest.config.ts",
     "test:host": "node ../scripts/run-vitest.ts run --config vitest.host.config.ts && bun run test:script-suites",
     "typecheck:renderer": "tsc --noEmit -p tsconfig.typecheck.json",
@@ -428,12 +427,8 @@
       "default": "./dist/index.js"
     },
     "./desktop-shell": {
+      "eliza-source": "./src/desktop-shell.ts",
       "types": "./dist/desktop-shell.d.ts",
-      "eliza-source": {
-        "types": "./src/desktop-shell.ts",
-        "import": "./src/desktop-shell.ts",
-        "default": "./src/desktop-shell.ts"
-      },
       "import": "./dist/desktop-shell.js",
       "default": "./dist/desktop-shell.js"
     },
@@ -443,17 +438,9 @@
       "default": "./dist/entry.js"
     },
     "./account-pool": {
+      "eliza-source": "./src/account-pool.ts",
       "types": "./src/account-pool.ts",
-      "eliza-source": {
-        "types": "./src/account-pool.ts",
-        "import": "./src/account-pool.ts",
-        "default": "./src/account-pool.ts"
-      },
-      "bun": {
-        "types": "./src/account-pool.ts",
-        "import": "./src/account-pool.ts",
-        "default": "./src/account-pool.ts"
-      },
+      "bun": "./src/account-pool.ts",
       "import": "./dist/account-pool.js",
       "default": "./dist/account-pool.js"
     },
@@ -492,23 +479,14 @@
       "import": "./dist/first-run/first-run-config.js",
       "default": "./dist/first-run/first-run-config.js"
     },
-    "./registry": {
-      "types": "./dist/registry/index.d.ts",
-      "import": "./dist/registry/index.js",
-      "default": "./dist/registry/index.js"
-    },
     "./services/vault-mirror": {
       "types": "./dist/services/vault-mirror.d.ts",
       "import": "./dist/services/vault-mirror.js",
       "default": "./dist/services/vault-mirror.js"
     },
     "./services/auth-store": {
+      "eliza-source": "./src/services/auth-store.ts",
       "types": "./dist/services/auth-store.d.ts",
-      "eliza-source": {
-        "types": "./src/services/auth-store.ts",
-        "import": "./src/services/auth-store.ts",
-        "default": "./src/services/auth-store.ts"
-      },
       "import": "./dist/services/auth-store.js",
       "default": "./dist/services/auth-store.js"
     },
@@ -563,32 +541,32 @@
       "default": "./dist/ui-compat.js"
     },
     "./dev-settings-banner-style": {
-      "types": "./dist/dev-settings-banner-style.d.ts",
       "eliza-source": "./src/dev-settings-banner-style.ts",
+      "types": "./dist/dev-settings-banner-style.d.ts",
       "import": "./dist/dev-settings-banner-style.js",
       "default": "./dist/dev-settings-banner-style.js"
     },
     "./dev-settings-figlet-heading": {
-      "types": "./dist/dev-settings-figlet-heading.d.ts",
       "eliza-source": "./src/dev-settings-figlet-heading.ts",
+      "types": "./dist/dev-settings-figlet-heading.d.ts",
       "import": "./dist/dev-settings-figlet-heading.js",
       "default": "./dist/dev-settings-figlet-heading.js"
     },
     "./dev-settings-table": {
-      "types": "./dist/dev-settings-table.d.ts",
       "eliza-source": "./src/dev-settings-table.ts",
+      "types": "./dist/dev-settings-table.d.ts",
       "import": "./dist/dev-settings-table.js",
       "default": "./dist/dev-settings-table.js"
     },
     "./terminal/links": {
-      "types": "./dist/terminal/links.d.ts",
       "eliza-source": "./src/terminal/links.ts",
+      "types": "./dist/terminal/links.d.ts",
       "import": "./dist/terminal/links.js",
       "default": "./dist/terminal/links.js"
     },
     "./terminal/theme": {
-      "types": "./dist/terminal/theme.d.ts",
       "eliza-source": "./src/terminal/theme.ts",
+      "types": "./dist/terminal/theme.d.ts",
       "import": "./dist/terminal/theme.js",
       "default": "./dist/terminal/theme.js"
     }

@@ -6388,31 +6388,19 @@ function resolveShellFailuresSubsumedBy(
   if (call?.name.toUpperCase() !== "SHELL") return;
   const command = shellCommandParam(call);
   if (!command) return;
-  const cwd = shellCwdParam(call);
+  const cwd = shellCwdParam(call, step.result);
   for (const [key, failed] of [...unresolvedByOperation.entries()]) {
     const failedCall = failed.toolCall;
     if (failedCall?.name.toUpperCase() !== "SHELL") continue;
     const failedCommand = shellCommandParam(failedCall);
-    if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
+    if (!failedCommand || shellCwdParam(failedCall, failed.result) !== cwd)
+      continue;
     if (containsCommandVerbatim(command, failedCommand)) {
       unresolvedByOperation.delete(key);
-      continue;
     }
-    // A narrower successful verifier is a valid recovery for a broader failed
-    // verifier when both commands belong to the same tool family (for example,
-    // `go test ./...` followed by `go test ./internal/config -run TestLoad`).
-    // This is restricted to coding verification commands and an identical
-    // executable prefix so an unrelated deploy/build failure cannot be laundered
-    // by a later test.
-    if (
-      step.result?.verification?.status === "passed" &&
-      failed.result?.verification?.status === "failed" &&
-      step.result.verification.kind === failed.result.verification.kind &&
-      step.result.verification.family !== undefined &&
-      step.result.verification.family === failed.result.verification.family
-    ) {
-      unresolvedByOperation.delete(key);
-    }
+    // A shared verifier family cannot prove coverage: a passing subset may
+    // exclude the case that failed in the broader command. Preserve that
+    // failure until the same operation is successfully re-executed.
   }
 }
 
@@ -6421,7 +6409,13 @@ function shellCommandParam(call: PlannerToolCall): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function shellCwdParam(call: PlannerToolCall): string {
+function shellCwdParam(
+  call: PlannerToolCall,
+  result?: PlannerToolResult,
+): string {
+  // Tool receipts record the resolved directory, including implicit session cwd.
+  const recorded = result?.data?.cwd;
+  if (typeof recorded === "string" && recorded.trim()) return recorded.trim();
   const value = (call.params as Record<string, unknown> | undefined)?.cwd;
   return typeof value === "string" ? value.trim() : "";
 }
@@ -6690,6 +6684,8 @@ function plannerToolOperationKey(
   // authority merely because their schemas reuse a common field name.
   if (toolCall.name.toUpperCase() === "SHELL") {
     delete (params as Record<string, unknown>).description;
+    const cwd = shellCwdParam(toolCall, result);
+    if (cwd) (params as Record<string, unknown>).cwd = cwd;
   }
   return `${toolCall.name.toUpperCase()}|${stableJsonStringify(params)}`;
 }

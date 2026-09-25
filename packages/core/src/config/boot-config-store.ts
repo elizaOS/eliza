@@ -16,10 +16,7 @@ export function getBootConfigEnvAliases() {
 export function resolveAliasedEnvValue(
 	key: string,
 	aliases = getBootConfigEnvAliases(),
-	env: Record<string, string | undefined> | null = typeof process ===
-	"undefined"
-		? null
-		: process.env,
+	env: Record<string, string | undefined> | null = process.env,
 ): string | undefined {
 	return resolveEnvAlias(key, aliases, env);
 }
@@ -99,15 +96,12 @@ export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
 };
 
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
-const BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
 
 interface BootConfigStore {
 	current: AppBootConfig;
 }
 
-type GlobalConfigSlot = Record<PropertyKey, unknown> & {
-	[K in typeof BOOT_CONFIG_WINDOW_KEY]?: AppBootConfig;
-};
+type GlobalConfigSlot = Record<PropertyKey, unknown>;
 
 function getGlobalSlot(): GlobalConfigSlot {
 	return globalThis as GlobalConfigSlot;
@@ -116,9 +110,7 @@ function getGlobalSlot(): GlobalConfigSlot {
 function getBootConfigStore(): BootConfigStore {
 	const globalObject = getGlobalSlot();
 
-	// An established store always wins. The window-key mirror is only a pre-boot
-	// seed and must never replace a store that already exists. Core reads the
-	// established process store but does not consume browser bootstrap mirrors.
+	// Hosts and duplicated module instances share the same process store.
 	const existing = globalObject[BOOT_CONFIG_STORE_KEY];
 	if (
 		existing &&
@@ -128,21 +120,17 @@ function getBootConfigStore(): BootConfigStore {
 		return existing as BootConfigStore;
 	}
 
-	// No store yet: seed it once from a cross-bundle window mirror if a bootstrap
-	// set it, otherwise from defaults.
-	const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
+	// Browser bootstrap mirrors are owned by the UI host.
 	const store: BootConfigStore = {
-		current: mirroredWindowConfig ?? DEFAULT_BOOT_CONFIG,
+		current: DEFAULT_BOOT_CONFIG,
 	};
 	globalObject[BOOT_CONFIG_STORE_KEY] = store;
-	globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
 	return store;
 }
 
 export function setBootConfig(config: AppBootConfig): void {
 	const store = getBootConfigStore();
 	store.current = config;
-	getGlobalSlot()[BOOT_CONFIG_WINDOW_KEY] = config;
 }
 
 export function getBootConfig(): AppBootConfig {

@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "allowSyntheticDefaultImports": true,
     "declaration": true,
     "declarationMap": false,
@@ -12,17 +13,7 @@
     "rewriteRelativeImportExtensions": true,
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "paths": {
-      "@elizaos/ui": ["../ui/dist/index.d.ts"],
-      "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/agent": ["./src/index.ts"],
-      "@elizaos/plugin-coding-tools": [
-        "../../plugins/plugin-coding-tools/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/dist/index.d.ts"
-      ]
-    },
+    "paths": {},
     "types": ["node", "bun-types", "react", "react-dom"]
   },
   "exclude": [

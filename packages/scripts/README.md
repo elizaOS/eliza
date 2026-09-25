@@ -1,7 +1,7 @@
 # Repository tooling
 
 `packages/scripts/` is the single home for repository-wide build, test, release,
-security, evidence, and development tools. It has no package manifest; root
+security, evidence, and development tools. Its private package declares tooling dependencies; root
 `package.json` commands invoke its entrypoints. Package-specific scripts remain
 in `packages/*/scripts/`; GitHub helpers live in `packages/scripts/github/`.
 
@@ -25,6 +25,10 @@ tracks source changes without running builds. Typechecks that read generated
 declarations declare the producing build explicitly. Source imports outside
 Turbo's dependency graph, including peer-only packages, need an explicit
 `#typecheck:deps` edge so their changes invalidate cached checks.
+Typechecks use the `eliza-source` export condition from the root TypeScript config;
+package exports own workspace source entrypoints. Keep `paths` only for mappings
+that differ from those exports. Emit configs clear inherited source conditions
+to retain their generated-declaration boundaries.
 Run independent verification commands in separate worktrees: parallel runs in
 one checkout can delete `dist` while another process is checking it.
 

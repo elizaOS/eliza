@@ -8,12 +8,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RouteRequest, RouteResponse } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  type RouteRequest,
+  type RouteResponse,
+  type UUID,
+} from "@elizaos/core";
 import { expect, it } from "vitest";
 import { ConnectorSetupService } from "../../../packages/agent/src/services/connector-setup-service.ts";
-import { createCharacter } from "../../../packages/core/src/character.ts";
-import { AgentRuntime } from "../../../packages/core/src/runtime.ts";
-import type { UUID } from "../../../packages/core/src/types/index.ts";
+
 import { SQLiteDatabaseAdapter } from "../../plugin-sqlite/index.ts";
 import { getTelegramPollerClaim } from "../src/poller-lock.ts";
 import { TelegramService } from "../src/service.ts";

@@ -35,7 +35,10 @@ export const entitiesProvider: Provider = {
     // Get entities details
     const entitiesData = await getEntityDetails({ runtime, roomId });
     // Format entities for display
-    const formattedEntities = formatEntities({ entities: entitiesData ?? [] });
+    const formattedEntities = formatEntities({
+      entities: entitiesData ?? [],
+      includeMetadata: false,
+    });
     // Find sender name
     const sender = entitiesData?.find(
       (entity: Entity) => entity.id === entityId,
@@ -58,7 +61,7 @@ export const entitiesProvider: Provider = {
       values,
       text: entities,
       discoveryText: [
-        `Current sender's registered names: ${JSON.stringify(sender?.names ?? [])}. These are account/participant labels, not proof of a legal name or a newly stated preference.`,
+        `Current sender's registered names: ${sender?.names.join(", ") || "(none registered)"}. These are account/participant labels, not proof of a legal name or a newly stated preference.`,
         "The complete current-room participant context is available through ENTITIES when needed. An absent registered name does not prove no name exists in conversation or memory.",
       ].join("\n"),
     };

@@ -10,9 +10,12 @@
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
-import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
-import { isAndroidMobile } from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import {
+  captureHostExecutionBaseline,
+  isAndroidMobile,
+  readAliasedEnv,
+} from "@elizaos/core";
+
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 
 // Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the

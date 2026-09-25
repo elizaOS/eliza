@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import time
 from collections.abc import Mapping
@@ -45,6 +46,36 @@ def resolve_codex_binary(explicit: str | None = None) -> str:
             "codex executable not found. Install the Codex CLI or set CODEX_BIN."
         )
     return str(candidate)
+
+
+def _run_codex_process(command: list[str], *, input: str, env: Mapping[str, str],
+                       cwd: Path | None, timeout: float) -> subprocess.CompletedProcess[str]:
+    """Own the CLI process group and preserve full timeout output."""
+    with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, text=True, env=env, cwd=cwd,
+                          start_new_session=os.name == "posix") as process:
+        def stop() -> None:
+            try:
+                if os.name == "posix":
+                    # The leader may already have exited while a child keeps a
+                    # captured pipe open; still stop the group in that case.
+                    os.killpg(process.pid, signal.SIGKILL)
+                elif process.poll() is None:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+
+        try:
+            stdout, stderr = process.communicate(input, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            stop()
+            stdout, stderr = process.communicate()
+            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr) from None
+        except BaseException:
+            stop()
+            process.communicate()
+            raise
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 class CodexClient:
@@ -163,14 +194,11 @@ class CodexClient:
         cmd = self.build_command()
         env = self.build_env(account)
         started = time.monotonic()
-        result = subprocess.run(
+        result = _run_codex_process(
             cmd,
             input=prompt,
             env=env,
             cwd=self.cwd,
-            capture_output=True,
-            check=False,
-            text=True,
             timeout=self.timeout_s,
         )
         latency_ms = (time.monotonic() - started) * 1000.0

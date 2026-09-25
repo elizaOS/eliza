@@ -44,8 +44,6 @@ import {
 } from "../../runtime/builtin-field-evaluators";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
-import { getEvaluatorProgressState } from "../evaluator-progress.ts";
-import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";
 import { resolveStage1SenderRole } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
@@ -70,7 +68,6 @@ import {
   type HistoryDiscovery,
   historyReferences,
   loadHistoryReferences,
-  projectReviewedHistory,
   readHistoryContextRequests,
   repairableHistorySourceIds,
   requestedHistory,
@@ -81,8 +78,7 @@ import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
 import {
   createSourceReplySnapshot,
-  resolveSourceReply,
-  SOURCE_REPLY_INSTRUCTIONS,
+  resolveLiteralSourceReply,
   SOURCE_REPLY_SCHEMA,
   type SourceReplyRendering,
 } from "./source-reply.ts";
@@ -201,7 +197,11 @@ export async function generateStage1Decision(
   const selectedResponseHandlerFields =
     args.runtime.responseHandlerFieldRegistry
       .list()
-      .filter((field) => field !== topicsFieldEvaluator || topicsActive);
+      .filter(
+        (field) =>
+          field !== completionContextFieldEvaluator &&
+          (field !== topicsFieldEvaluator || topicsActive),
+      );
   const fieldSelection = {
     includeFieldNames: selectedResponseHandlerFields.map((field) => field.name),
   };
@@ -216,48 +216,8 @@ export async function generateStage1Decision(
   const discoveryEnabled = progressiveContextChannel;
   let history: HistoryDiscovery | undefined;
   let historyReadEvidence: HistoryDiscovery | undefined;
-  if (
-    discoveryEnabled &&
-    args.runtime.evaluators?.some(
-      (evaluator) => evaluator.name === HISTORY_RETENTION_EVALUATOR,
-    ) &&
-    !args.runtime.providers?.some((provider) =>
-      provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
-    )
-  ) {
-    const started = performance.now();
-    try {
-      const checkpoint = await getEvaluatorProgressState(
-        args.runtime,
-        args.message,
-        HISTORY_RETENTION_EVALUATOR,
-      );
-      history = projectReviewedHistory(
-        context,
-        {
-          agentId: args.runtime.agentId,
-          roomId: args.message.roomId,
-          entityId: args.message.entityId,
-          roles: [senderRole],
-        },
-        checkpoint,
-      );
-    } catch (error) {
-      // error-policy:J4 Report the optional index failure and render complete
-      // original history instead; no unavailable source is treated as absent.
-      args.runtime.reportError("MessageService.historyRetention", error, {
-        roomId: args.message.roomId,
-      });
-    }
-    recordInferenceSpan(
-      "message:history-checkpoint",
-      performance.now() - started,
-      {
-        applied: !!history,
-        retainedSourceCount: history?.visibleEventIds.size ?? 0,
-      },
-    );
-  }
+  // Full originals stay inline and flow unchanged into planning. Builtin
+  // source selection is not another responsibility of the reply handler.
   // A plugin that owns this name retains its ordinary provider-reference
   // contract; framework catalog discovery must not shadow its requests.
   let contextCatalogRead = false;
@@ -318,7 +278,7 @@ export async function generateStage1Decision(
     if (!snapshot) return bound;
     const resolveParts = (parsed: Record<string, unknown>) => {
       if (!Array.isArray(parsed.replyText)) return parsed;
-      const resolved = resolveSourceReply(
+      const resolved = resolveLiteralSourceReply(
         discovery.context,
         snapshot,
         parsed,
@@ -418,10 +378,7 @@ export async function generateStage1Decision(
       selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
       canonicalResponseHandlerSchema.properties?.replyText ===
         replyTextFieldEvaluator.schema &&
-      selectedResponseHandlerFields.includes(completionContextFieldEvaluator) &&
       selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
-      canonicalResponseHandlerSchema.properties?.completionContext ===
-        completionContextFieldEvaluator.schema &&
       canonicalResponseHandlerSchema.properties?.contextRequests ===
         contextRequestsFieldEvaluator.schema
     ) {
@@ -445,7 +402,8 @@ export async function generateStage1Decision(
       if (sourceReplySnapshot?.originals.size && replySchema) {
         effectiveReplySchema = {
           ...SOURCE_REPLY_SCHEMA,
-          description: SOURCE_REPLY_INSTRUCTIONS,
+          description:
+            "Ordered reply parts: text is your own prose. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. Preserve speaker attribution. Use [] for no reply.",
         };
         fieldSchema = {
           ...fieldSchema,
@@ -994,6 +952,17 @@ export async function generateStage1Decision(
         args.runtime,
         args.message,
       );
+      // Every reference read rechecks admission, even without a history projection.
+      // The refreshed role also owns the next native schema and field dispatch.
+      if (refreshedRole !== senderRole) {
+        senderRole = refreshedRole;
+        availableContexts = await listAvailableContextsForTurn(
+          args.runtime,
+          args.message,
+          args.state,
+          refreshedRole,
+        );
+      }
       const refreshedContext = await createV5MessageContextObject({
         ...args,
         includeActionDiscovery: false,
@@ -1267,6 +1236,12 @@ export async function generateStage1Decision(
   if (rawFieldParsed) {
     const normalizedRawParsed =
       normalizeRawParsedForFieldRegistry(rawFieldParsed);
+    if (
+      !selectedResponseHandlerFields.some(
+        (field) => field.name === "completionContext",
+      )
+    )
+      delete normalizedRawParsed.completionContext;
     // Reject progress armor before reply formatting can turn it into a partial
     // visible fragment. The original wire output remains in the trajectory.
     if (
@@ -1327,6 +1302,13 @@ export async function generateStage1Decision(
       subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
     });
   }
+  if (
+    messageHandler &&
+    !selectedResponseHandlerFields.some(
+      (field) => field.name === "completionContext",
+    )
+  )
+    messageHandler.plan.completionContext = undefined;
   const stage1CompletionLimitHit = stage1HitCompletionLimit(
     rawMessageHandler,
     stage1ModelParams.maxTokens,

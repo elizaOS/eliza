@@ -18,31 +18,26 @@ import net from "node:net";
 import { promisify } from "node:util";
 import {
   type AgentRuntime,
+  type ColumnInfo,
+  type ConnectionTestResult,
+  type DatabaseConfig,
+  type DatabaseProviderType,
+  type DatabaseStatus,
   isLoopbackHost,
   logger,
   normalizeHostLike,
   normalizeIpForPolicy,
-} from "@elizaos/core";
-import {
-  type ColumnInfo,
-  type ConnectionTestResult,
-  type DatabaseStatus,
-  type QueryResult,
-  type TableInfo,
-} from "@elizaos/core/api/agent-api-types";
-import {
+  type PostgresCredentials,
+  parseClampedInteger,
   readJsonBody as parseJsonBody,
+  type QueryResult,
+  resolveApiBindHost,
   sendJson,
   sendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import { resolveApiBindHost } from "@elizaos/core/runtime-env";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+  type TableInfo,
+} from "@elizaos/core";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import {
-  type DatabaseConfig,
-  type DatabaseProviderType,
-  type PostgresCredentials,
-} from "../config/types.eliza.ts";
 import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 

@@ -5,7 +5,9 @@
  * natural-language keyword matching.
  */
 
-import type { AgentContext, Memory, State } from "../types/index.ts";
+import type { AgentContext } from "../types/contexts.js";
+import type { Memory } from "../types/memory.js";
+import type { State } from "../types/state.js";
 import {
 	getActiveRoutingContextsForTurn,
 	routingContextsOverlap,

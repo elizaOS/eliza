@@ -21,14 +21,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { ElizaError } from "@elizaos/core";
-
-import type {
-  PermissionId,
-  PermissionPlatform,
-  PermissionState,
-  PermissionStatus,
-} from "../contracts.js";
+import {
+  ElizaError,
+  type PermissionId,
+  type Platform as PermissionPlatform,
+  type PermissionState,
+  type PermissionStatus,
+} from "@elizaos/core";
 
 export const PLATFORM: PermissionPlatform =
   process.platform as PermissionPlatform;

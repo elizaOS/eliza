@@ -2,7 +2,7 @@
  * Audio PII redaction — verifier transcriber adapters (#14807).
  *
  * The verifier CONTRACT (and the pure PII-absence / sentinel-presence
- * judgment) lives in `@elizaos/core/audio-redaction-verify`, deliberately
+ * judgment) lives in `@elizaos/core`, deliberately
  * separable from the span producer so verification can run on a different
  * ASR backend. This module supplies the concrete backends the agent host can
  * offer:
@@ -30,15 +30,14 @@ import {
   fetchWithSsrfGuard,
   type IAgentRuntime,
   ModelType,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
-import {
   type RedactionTranscribeInput,
   type RedactionTranscriber,
   type RedactionTranscript,
-} from "@elizaos/core/audio-redaction-verify";
-import { type TranscriptWord } from "@elizaos/core/transcripts";
+  type TranscriptWord,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+
 import { BLEEP_FREQUENCY_HZ, parseWavPcm16 } from "./audio-redaction.ts";
 // ---------------------------------------------------------------------------
 // Runtime TRANSCRIPTION adapter

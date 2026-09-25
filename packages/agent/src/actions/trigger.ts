@@ -33,12 +33,13 @@ import {
   type TriggerConfig,
   type TriggerType,
   type TriggerWakeMode,
+  textStatesExplicitRecurrence,
   toWellFormedUnicode,
   type UUID,
   unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
-import { textStatesExplicitRecurrence } from "@elizaos/core/i18n/recurrence-markers";
+
 import {
   AUTONOMY_SERVICE_TYPE,
   resolveMessageTimeZone,

@@ -26,11 +26,49 @@ export {
   resolveRuntimeMode,
   validateRemoteApiBase,
 } from "@elizaos/agent";
-export * from "@elizaos/core/catalog";
-// `ConfigField` and `getPlugins` also exist in @elizaos/ui. Re-export the
-// app registry versions explicitly so the Node barrel stays authoritative
-// and avoids ambiguous star re-exports.
-export { type ConfigField, getPlugins } from "@elizaos/core/catalog";
+export {
+  type AccountAuthKind,
+  type AccountConfig,
+  type AppEntry,
+  type AppLaunch,
+  accountConfigSchema,
+  appEntrySchema,
+  appLaunchSchema,
+  type ConfigField,
+  type ConnectorEntry,
+  clearRegistryCacheForTests,
+  configFieldSchema,
+  connectorEntrySchema,
+  type ElizaCuratedAppDefinition,
+  getApps,
+  getConnectors,
+  getEntry,
+  getEntryByNpmName,
+  getPlugins,
+  getRegisteredCuratedApps,
+  indexEntries,
+  type LoadedRegistry,
+  loadRegistry,
+  mergeWithRuntime,
+  normalizeConnectorAuth,
+  type PluginEntry,
+  pluginEntrySchema,
+  type RegistryEntry,
+  type RegistryKind,
+  type RegistryRuntimeOverlay,
+  type RegistryValidationError,
+  type RegistryView,
+  type RenderHints,
+  type Resources,
+  registerCuratedApp,
+  registerRegistryEntry,
+  registryEntrySchema,
+  registryRuntimeOverlaySchema,
+  renderSchema,
+  resourcesSchema,
+  type SecondarySurface,
+} from "@elizaos/core";
+
 export {
   type AndroidUserAgentMarker,
   type AospVariantConfig,

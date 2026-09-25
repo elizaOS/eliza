@@ -87,6 +87,36 @@ describe("run-node-runtime node validation", () => {
     ).toEqual({ runtime: "bun", warning: null });
   });
 
+  test("rejects invalid overrides and missing runtimes instead of guessing", () => {
+    expect(() =>
+      chooseElizaRuntime({
+        requestedRuntime: "deno",
+        hasBun: true,
+        hasNode: true,
+      }),
+    ).toThrow("Invalid ELIZA_RUNTIME");
+    expect(() => chooseElizaRuntime({ hasBun: false, hasNode: false })).toThrow(
+      "No JavaScript runtime",
+    );
+  });
+
+  test("probes repeated executable candidates only once", () => {
+    const attempted = [];
+    expect(
+      resolveNodeExecPathFromCandidates({
+        candidates: ["missing", "missing", "node"],
+        platform: "linux",
+        probeNode: (candidate) => {
+          attempted.push(candidate);
+          return candidate === "node"
+            ? { status: 0, stdout: "node:24.15.0" }
+            : { status: 1 };
+        },
+      }),
+    ).toBe("node");
+    expect(attempted).toEqual(["missing", "node"]);
+  });
+
   test("parses Node major versions", () => {
     expect(parseNodeMajor("24.1.0")).toBe(24);
     expect(parseNodeMajor("25")).toBe(25);

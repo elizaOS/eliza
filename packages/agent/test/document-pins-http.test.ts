@@ -3,8 +3,13 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ChannelType, MemoryType, type UUID } from "@elizaos/core";
-import { installHttpPluginLifecycle } from "@elizaos/core/api/http-plugin-runtime";
+import {
+  ChannelType,
+  installHttpPluginLifecycle,
+  MemoryType,
+  type UUID,
+} from "@elizaos/core";
+
 import {
   createDocumentsPlugin,
   type DocumentMemoryMetadata,

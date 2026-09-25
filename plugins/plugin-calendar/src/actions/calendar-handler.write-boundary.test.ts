@@ -1,13 +1,16 @@
 /** Exercises the actual conversational create boundary, before service writes. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/core/contracts/calendar";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import {
   evaluateCalendarWriteAvailability,
   findCalendarFreeSlots,
 } from "./conflict-detect.js";
-import type { CalendarActionDeps } from "./deps.js";
+import type { CalendarActionDeps, CalendarModelCallArgs } from "./deps.js";
 
 const start = "2027-09-18T20:00:00.000Z";
 const end = "2027-09-18T20:30:00.000Z";
@@ -34,22 +37,50 @@ const busy = {
   description: "",
   location: "",
 } as LifeOpsCalendarEvent;
-function fixture(events: LifeOpsCalendarEvent[] = [], status = "fresh") {
+function fixture(
+  events: LifeOpsCalendarEvent[] = [],
+  status = "fresh",
+  sourceKey = key,
+  calendars?: LifeOpsCalendarSummary[],
+) {
   const service = {
-    getCalendarFeed: vi.fn(async () => ({
-      events,
-      state: status === "fresh" ? "complete" : "partial",
-      source: "synced",
-      syncedAt: new Date().toISOString(),
-      sources: [{ key, status, visibility: "details", error: null }],
-    })),
+    listCalendars: vi.fn(
+      async () =>
+        calendars ?? [
+          {
+            ...sourceKey,
+            accountEmail: null,
+            summary: "Primary",
+            description: null,
+            primary: true,
+            accessRole: "owner",
+            backgroundColor: null,
+            foregroundColor: null,
+            timeZone: "America/New_York",
+            selected: true,
+            includeInFeed: true,
+            selectionVersion: 1,
+          },
+        ],
+    ),
+    getCalendarFeed: vi.fn(
+      async (_url: string, _options: Record<string, unknown>) => ({
+        events,
+        state: status === "fresh" ? "complete" : "partial",
+        source: "synced",
+        syncedAt: new Date().toISOString(),
+        sources: [
+          { key: sourceKey, status, visibility: "details", error: null },
+        ],
+      }),
+    ),
     prepareCalendarEventCreate: vi.fn(async (_url, request) => ({
       ...request,
       startAt: request.startAt,
       endAt: request.endAt ?? end,
       timeZone: "America/New_York",
-      grantId: "eliza-calendar",
-      calendarId: "primary",
+      grantId: request.grantId ?? "eliza-calendar",
+      calendarId: request.calendarId ?? "primary",
       side: "owner",
     })),
     createCalendarEvent: vi.fn(async (_url, request) => ({
@@ -62,25 +93,53 @@ function fixture(events: LifeOpsCalendarEvent[] = [], status = "fresh") {
       metadata: { version: 1, etag: '"1"' },
     })),
   };
+  const reportError = vi.fn();
   const runtime = {
+    reportError,
     agentId: "00000000-0000-4000-8000-000000000aaa",
     getService: (name: string) => (name === "calendar" ? service : null),
     getSetting: () => undefined,
     character: { name: "Eliza" },
   } as unknown as IAgentRuntime;
-  return { service, runtime };
+  return { service, runtime, reportError };
 }
 async function create(
   extracted: Record<string, unknown>,
   events: LifeOpsCalendarEvent[] = [],
-  request?: { text: string; createdAt: number },
+  request?: {
+    text: string;
+    createdAt: number;
+    details?: Record<string, unknown>;
+  },
+  sourceKey = key,
+  calendars?: LifeOpsCalendarSummary[],
 ) {
-  const { runtime, service } = fixture(events);
-  const runJsonModel = vi.fn(async () => ({
-    rawResponse: JSON.stringify(extracted),
-    parsed: extracted,
+  const { runtime, service, reportError } = fixture(
+    events,
+    "fresh",
+    sourceKey,
+    calendars,
+  );
+  const parsed = {
+    grantId: key.grantId,
+    calendarId: key.calendarId,
+    ...extracted,
+  };
+  const runJsonModel = vi.fn(async (_args: CalendarModelCallArgs) => ({
+    rawResponse: JSON.stringify(parsed),
+    parsed,
+  }));
+  const schedule = vi.fn(async () => ({
+    requestId: "calendar-approval",
+    action: "schedule_event" as const,
+    state: "pending" as const,
+    acceptedAt: "2027-09-17T12:00:00.000Z",
+    idempotencyKey: "calendar-approval:test",
+    replayed: false,
+    text: "Approval required",
   }));
   const action = createCalendarActionRunner({
+    mutationGateway: { schedule, modify: vi.fn(), cancel: vi.fn() },
     runJsonModel: runJsonModel as CalendarActionDeps["runJsonModel"],
     runTextModel: async () => null,
     recentConversationTexts: async () => [],
@@ -99,13 +158,187 @@ async function create(
     parameters: {
       subaction: "create_event",
       title: "Call dad",
-      details: { start, end },
+      details: { start, end, ...request?.details },
     },
   });
-  return { result, service, runJsonModel };
+  return { result, service, runJsonModel, schedule, reportError };
 }
 
 describe("calendar conversational write boundary", () => {
+  it("grounds same-named calendars in their distinct account identities", async () => {
+    const calendars = ["personal@example.test", "work@company.test"].map(
+      (accountEmail, index) => ({
+        provider: "google" as const,
+        side: "owner" as const,
+        grantId: `connector-account:opaque-${index}`,
+        connectorAccountId: `opaque-${index}`,
+        calendarId: "primary",
+        accountEmail,
+        summary: "Primary",
+        description: null,
+        primary: true,
+        accessRole: "owner",
+        backgroundColor: null,
+        foregroundColor: null,
+        timeZone: "UTC",
+        selected: true,
+        includeInFeed: true,
+        selectionVersion: 1,
+      }),
+    );
+    const { service, runJsonModel } = await create(
+      { requiresInput: true, grantId: null, calendarId: null },
+      [],
+      undefined,
+      key,
+      calendars,
+    );
+    expect(service.listCalendars).toHaveBeenCalledOnce();
+    const prompt = runJsonModel.mock.calls[0]?.[0].prompt;
+    expect(prompt).toContain(
+      `Authorized calendar account identities: ${JSON.stringify(calendars)}`,
+    );
+    expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not hide calendar sources behind a planner-proposed destination", async () => {
+    const { service, result } = await create(
+      { requiresInput: true, grantId: null, calendarId: null },
+      [],
+      {
+        text: "Create an event on Google Calendar tomorrow at 3pm.",
+        createdAt: Date.parse("2027-09-17T12:00:00Z"),
+        details: {
+          grantId: "connector-account:guessed",
+          calendarId: "guessed",
+          mode: "remote",
+          side: "agent",
+        },
+      },
+    );
+    const options = service.getCalendarFeed.mock.calls[0]?.[1];
+    expect(options).toBeDefined();
+    expect(options).not.toHaveProperty("grantId");
+    expect(options).not.toHaveProperty("calendarId");
+    expect(options).not.toHaveProperty("mode");
+    expect(options).not.toHaveProperty("side");
+    expect(result).toMatchObject({
+      success: false,
+      data: { requiresInput: true },
+    });
+    expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+    expect(service.createCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("prepares the extracted connected account when planner arguments omit its grant", async () => {
+    const sourceKey = {
+      ...key,
+      provider: "google",
+      grantId: "connector-account:work",
+      connectorAccountId: "work",
+    };
+    const { result, service, schedule, reportError } = await create(
+      {
+        title: "Call dad",
+        startAt: start,
+        endAt: end,
+        grantId: sourceKey.grantId,
+        calendarId: sourceKey.calendarId,
+      },
+      [],
+      {
+        text: "Use my work Google account, primary calendar, on September 18, 2027 at the requested time.",
+        createdAt: Date.parse("2027-09-17T12:00:00Z"),
+      },
+      sourceKey,
+    );
+    expect(service.prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        grantId: sourceKey.grantId,
+        calendarId: "primary",
+        side: "owner",
+      }),
+    );
+    expect(service.createCalendarEvent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: true },
+    });
+    expect(schedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          grantId: sourceKey.grantId,
+          calendarId: "primary",
+        }),
+      }),
+    );
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { grantId: null, calendarId: null },
+    { grantId: "unavailable-account", calendarId: "primary" },
+    { grantId: "eliza-calendar", calendarId: "unknown-calendar" },
+  ])(
+    "does not write when extracted destination is unresolved: %j",
+    async (destination) => {
+      const { result, service } = await create({
+        title: "Call dad",
+        startAt: start,
+        endAt: end,
+        requiresInput: false,
+        ...destination,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: { requiresInput: true },
+      });
+      expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+      expect(service.createCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["2027-03-14T02:30:00", "CALENDAR_LOCAL_TIME_NONEXISTENT"],
+    ["2027-11-07T01:30:00", "CALENDAR_LOCAL_TIME_AMBIGUOUS"],
+  ])(
+    "requests clarification before preparing a write at %s",
+    async (startAt, code) => {
+      const { result, service } = await create(
+        {
+          title: "Call dad",
+          startAt,
+          timeZone: "America/New_York",
+          durationMinutes: 30,
+        },
+        [],
+        {
+          text: "Schedule Call dad at the requested local time in New York.",
+          createdAt: Date.parse("2027-03-01T12:00:00Z"),
+        },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        effectReceipts: [
+          {
+            outcome: "failed",
+            failure: { code, retryable: false, acceptance: "rejected" },
+          },
+        ],
+        data: {
+          error: code,
+          requiresInput: true,
+          awaitingUserInput: true,
+          retryable: false,
+          timeClarification: { timeZone: "America/New_York" },
+        },
+      });
+      expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
+      expect(service.createCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps the extracted schedule when an event title contains another date", async () => {
     const { result, service } = await create(
       { title: "September 22 QA", startAt: start, endAt: end },
@@ -262,7 +495,11 @@ describe("calendar conversational update boundary", () => {
     identifyTarget = true,
     plannerFields: Record<string, unknown> = {},
     targetSelector?: { query?: string; eventId?: string },
-    request?: { text: string; createdAt: number },
+    request?: {
+      text: string;
+      createdAt: number;
+      details?: Record<string, unknown>;
+    },
   ) {
     const { service, runtime } = fixture(
       targetSelector?.query ? [{ ...busy, metadata: { etag: '"1"' } }] : [],

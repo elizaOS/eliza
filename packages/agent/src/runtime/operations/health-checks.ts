@@ -12,8 +12,12 @@
  *   - Treat real failures (DB ping false, provider unreachable) as failures.
  */
 
-import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { isInsufficientCreditsError } from "../../api/credit-detection.ts";
+import {
+  type AgentRuntime,
+  isInsufficientCreditsError,
+  logger,
+  ModelType,
+} from "@elizaos/core";
 import { probeRuntimeDatabaseLiveness } from "../../api/database-liveness.ts";
 import type { HealthCheck, HealthCheckResult } from "./types.ts";
 

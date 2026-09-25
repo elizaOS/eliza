@@ -9,14 +9,20 @@
  * per channel. `registerEscalationChannel` appends newly paired channels to the
  * escalation order in eliza.json.
  */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
+  createSerialise,
   ElizaError,
+  type EscalationConfig,
+  type IAgentRuntime,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type OwnerContactEntry,
+  type OwnerContactsConfig,
   requireConfirmedSendHandlerDelivery,
+  resolveOwnerEntityId,
+  type UUID,
 } from "@elizaos/core";
-import { createSerialise } from "@elizaos/core/utils/serialise";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -24,12 +30,6 @@ import {
   resolveOwnerContactWithFallback,
   resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
-import type {
-  EscalationConfig,
-  OwnerContactEntry,
-  OwnerContactsConfig,
-} from "../config/types.agent-defaults.ts";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import {
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,

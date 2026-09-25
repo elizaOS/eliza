@@ -140,6 +140,7 @@ def prepare_native_runtime(
     system_prompt: str | None = None,
     state_dir: Path | None = None,
     capture_stop: bool = False,
+    image_input: bool = False,
 ) -> NativeRuntimePaths:
     """Materialize a key-free OpenClaw config, system prompt, and tool plugin.
 
@@ -189,6 +190,7 @@ def prepare_native_runtime(
         max_tokens=max_tokens,
         temperature=temperature,
         thinking_level=thinking_level,
+        image_input=image_input,
     )
     config_text = json.dumps(config, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
     config_path = root / "openclaw.json"
@@ -280,6 +282,7 @@ def inspect_native_session(
     expected_thinking_level: str | None = None,
     expected_runtime_version: str | None = None,
     expected_runtime_git_sha: str | None = None,
+    expected_images: list[dict[str, object]] | None = None,
 ) -> NativeSessionEvidence:
     """Verify the terminal assistant record rather than OpenClaw's summary status.
 
@@ -296,6 +299,8 @@ def inspect_native_session(
         if path.is_file() and not path.name.endswith(".trajectory.jsonl")
     )
     if not session_paths:
+        if expected_images:
+            raise RuntimeError("OpenClaw has no native image-delivery evidence")
         return NativeSessionEvidence(
             status="missing",
             session_sha256=None,
@@ -321,6 +326,7 @@ def inspect_native_session(
     final_assistant: Mapping[str, object] | None = None
     assistant_messages: list[Mapping[str, object]] = []
     thinking_levels: list[str] = []
+    delivered_images = []
     for line_number, raw_line in enumerate(session_bytes.splitlines(), 1):
         if not raw_line.strip():
             continue
@@ -345,9 +351,18 @@ def inspect_native_session(
         if record.get("type") != "message":
             continue
         message = record.get("message")
+        if isinstance(message, Mapping) and message.get("role") == "user":
+            delivered_images = [
+                {"type": "image_url", "image_url": {"url": f"data:{part.get('mimeType')};base64,{part.get('data')}"}}
+                for part in message.get("content", [])
+                if isinstance(part, Mapping) and part.get("type") == "image"
+            ]
         if isinstance(message, Mapping) and message.get("role") == "assistant":
             final_assistant = message
             assistant_messages.append(message)
+
+    if expected_images and delivered_images != expected_images:
+        raise RuntimeError("OpenClaw native image bytes were dropped, changed, or reordered")
 
     if final_assistant is None:
         raise RuntimeError("OpenClaw native session has no assistant record")
@@ -683,6 +698,7 @@ def _runtime_config(
     max_tokens: int | None,
     temperature: float | None,
     thinking_level: str,
+    image_input: bool = False,
 ) -> dict[str, object]:
     model_ref = f"{PROVIDER_ID}/{model}"
     model_max_tokens = (
@@ -713,6 +729,9 @@ def _runtime_config(
                 "models": {model_ref: {"agentRuntime": {"id": "openclaw"}}},
                 "workspace": str(workspace_dir),
                 "skipBootstrap": True,
+                # Preserve source dimensions; transcript equality rejects other
+                # native byte/pixel limits instead of accepting transformed input.
+                **({"imageMaxDimensionPx": 2_147_483_647} if image_input else {}),
                 "contextInjection": "always",
                 "timeoutSeconds": max(1, int(timeout_s)),
                 "thinkingDefault": thinking_level,
@@ -753,7 +772,7 @@ def _runtime_config(
                             "name": model,
                             "reasoning": True,
                             "compat": {"supportsReasoningEffort": True},
-                            "input": ["text"],
+                            "input": ["text", "image"] if image_input else ["text"],
                             "cost": {
                                 "input": 0,
                                 "output": 0,

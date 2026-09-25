@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.host.json",
   "compilerOptions": {
+    "customConditions": [],
     "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": true,
@@ -13,40 +14,12 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
       "@elizaos/app": ["./src/index.ts"],
-      "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
       "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
-      "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/core/*": ["../core/dist/*"],
-      "@elizaos/ui": ["../ui/dist/index.d.ts"],
-      "@elizaos/auth/vault": ["../auth/dist/vault/index.d.ts"],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-elizacloud": [
-        "../../plugins/plugin-elizacloud/dist/index.node.d.ts"
-      ],
       "@elizaos/plugin-elizacloud/*": [
         "../../plugins/plugin-elizacloud/dist/*"
       ],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/capacitor-canvas": [
-        "../../plugins/plugin-native-canvas/dist/esm/index.d.ts"
-      ],
-      "@elizaos/capacitor-location": [
-        "../../plugins/plugin-native-location/dist/esm/index.d.ts"
-      ],
-      "@elizaos/capacitor-mobile-signals": [
-        "../../plugins/plugin-native-mobile-signals/dist/esm/index.d.ts"
-      ],
-      "@elizaos/capacitor-appblocker": [
-        "../../plugins/plugin-native-appblocker/dist/esm/index.d.ts"
-      ],
-      "@elizaos/capacitor-secure-store": [
-        "../../plugins/plugin-native-secure-store/dist/esm/index.d.ts"
-      ],
-      "@elizaos/plugin-native-phone/bridge": [
-        "../../plugins/plugin-native-phone/dist/bridge.d.ts"
-      ]
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"]
     }
   },
   "exclude": [
@@ -61,6 +34,7 @@
     "src/config",
     "src/security",
     "src/entry.ts",
+    "src/dev-settings-figlet-heading.ts",
     "src/platform",
     "src/runtime",
     "src/utils",

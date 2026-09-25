@@ -3,17 +3,16 @@
  * is active (AppManager run and/or overlay heartbeat for local overlay apps).
  */
 
-import type {
-  Action,
-  IAgentRuntime,
-  Plugin,
-  Provider,
-  Service,
-} from "@elizaos/core";
 import {
+  type Action,
   APP_SESSION_SERVICE_TYPE,
   type AppSessionServiceLike,
-} from "@elizaos/core/contracts/apps";
+  type IAgentRuntime,
+  type Plugin,
+  type Provider,
+  type Service,
+} from "@elizaos/core";
+
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
 
 const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);

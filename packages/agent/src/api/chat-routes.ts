@@ -10,14 +10,20 @@ import {
   type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
+  asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
   type Content,
   createMessageMemory,
   type EffectReceipt,
   ElizaError,
   EventType,
   emitInferenceTiming,
+  extractAssistantReplyText,
   getEntityRole,
   getInferenceTimer,
   hasAppliedUserFacingEffectProof,
@@ -26,18 +32,29 @@ import {
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
   inheritIncomingMessagePersistence,
+  isInsufficientCreditsError,
+  isInsufficientCreditsMessage,
+  isLinkedAccountProviderId,
   isRateLimitError,
   isTextGenerationModelType,
+  type LinkedAccountProviderId,
+  type AgentLogEntry as LogEntry,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type MessageReplyRecoveryContext,
   ModelType,
   markInference,
   nextInferenceTurnId,
+  normalizeCharacterLanguage,
   normalizeEffectReceipts,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+  type ReadJsonBodyOptions,
   type RolesWorldMetadata,
   type RoomHandlerLease,
+  type RouteRequestContext,
   readActionReplyFailure,
+  readAliasedEnv,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -56,27 +73,7 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-import type { LogEntry } from "@elizaos/core/api/agent-api-types";
-import type {
-  ReadJsonBodyOptions,
-  RouteRequestContext,
-} from "@elizaos/core/api/route-helpers";
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
-import {
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-} from "@elizaos/core/contracts/chat";
-import {
-  isLinkedAccountProviderId,
-  type LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
-import { asRecord } from "@elizaos/core/type-guards";
-import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+
 import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
@@ -117,10 +114,6 @@ import {
   resolveCompatRoomKey,
   scopeCompatRoomKey,
 } from "./compat-utils.ts";
-import {
-  isInsufficientCreditsError,
-  isInsufficientCreditsMessage,
-} from "./credit-detection.ts";
 import {
   executeFallbackParsedActions,
   parseFallbackActionBlocks,

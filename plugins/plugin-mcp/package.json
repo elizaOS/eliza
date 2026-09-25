@@ -14,78 +14,74 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./protocol-utils/action-naming": {
-      "types": "./dist/protocol-utils/action-naming.d.ts",
       "eliza-source": "./src/protocol-utils/action-naming.ts",
+      "types": "./dist/protocol-utils/action-naming.d.ts",
       "import": "./dist/protocol-utils/action-naming.js",
       "default": "./dist/protocol-utils/action-naming.js"
     },
     "./protocol-utils": {
-      "types": "./dist/protocol-utils/index.d.ts",
       "eliza-source": "./src/protocol-utils/index.ts",
+      "types": "./dist/protocol-utils/index.d.ts",
       "import": "./dist/protocol-utils/index.js",
       "default": "./dist/protocol-utils/index.js"
     },
     "./protocol-utils/json": {
-      "types": "./dist/protocol-utils/json.d.ts",
       "eliza-source": "./src/protocol-utils/json.ts",
+      "types": "./dist/protocol-utils/json.d.ts",
       "import": "./dist/protocol-utils/json.js",
       "default": "./dist/protocol-utils/json.js"
     },
     "./protocol-utils/model-provider": {
-      "types": "./dist/protocol-utils/model-provider.d.ts",
       "eliza-source": "./src/protocol-utils/model-provider.ts",
+      "types": "./dist/protocol-utils/model-provider.d.ts",
       "import": "./dist/protocol-utils/model-provider.js",
       "default": "./dist/protocol-utils/model-provider.js"
     },
     "./protocol-utils/prompts": {
-      "types": "./dist/protocol-utils/prompts.d.ts",
       "eliza-source": "./src/protocol-utils/prompts.ts",
+      "types": "./dist/protocol-utils/prompts.d.ts",
       "import": "./dist/protocol-utils/prompts.js",
       "default": "./dist/protocol-utils/prompts.js"
     },
     "./protocol-utils/protocol": {
-      "types": "./dist/protocol-utils/protocol.d.ts",
       "eliza-source": "./src/protocol-utils/protocol.ts",
+      "types": "./dist/protocol-utils/protocol.d.ts",
       "import": "./dist/protocol-utils/protocol.js",
       "default": "./dist/protocol-utils/protocol.js"
     },
     "./protocol-utils/provider-projection": {
-      "types": "./dist/protocol-utils/provider-projection.d.ts",
       "eliza-source": "./src/protocol-utils/provider-projection.ts",
+      "types": "./dist/protocol-utils/provider-projection.d.ts",
       "import": "./dist/protocol-utils/provider-projection.js",
       "default": "./dist/protocol-utils/provider-projection.js"
     },
     "./protocol-utils/resource-selection": {
-      "types": "./dist/protocol-utils/resource-selection.d.ts",
       "eliza-source": "./src/protocol-utils/resource-selection.ts",
+      "types": "./dist/protocol-utils/resource-selection.d.ts",
       "import": "./dist/protocol-utils/resource-selection.js",
       "default": "./dist/protocol-utils/resource-selection.js"
     },
     "./protocol-utils/schema-budget": {
-      "types": "./dist/protocol-utils/schema-budget.d.ts",
       "eliza-source": "./src/protocol-utils/schema-budget.ts",
+      "types": "./dist/protocol-utils/schema-budget.d.ts",
       "import": "./dist/protocol-utils/schema-budget.js",
       "default": "./dist/protocol-utils/schema-budget.js"
     },
     "./protocol-utils/schema-converter": {
-      "types": "./dist/protocol-utils/schema-converter.d.ts",
       "eliza-source": "./src/protocol-utils/schema-converter.ts",
+      "types": "./dist/protocol-utils/schema-converter.d.ts",
       "import": "./dist/protocol-utils/schema-converter.js",
       "default": "./dist/protocol-utils/schema-converter.js"
     },
     "./protocol-utils/tool-schema-compatibility": {
-      "types": "./dist/protocol-utils/tool-schema-compatibility.d.ts",
       "eliza-source": "./src/protocol-utils/tool-schema-compatibility.ts",
+      "types": "./dist/protocol-utils/tool-schema-compatibility.d.ts",
       "import": "./dist/protocol-utils/tool-schema-compatibility.js",
       "default": "./dist/protocol-utils/tool-schema-compatibility.js"
     }

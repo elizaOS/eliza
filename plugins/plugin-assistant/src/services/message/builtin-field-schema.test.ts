@@ -9,12 +9,15 @@ import type {
 } from "@elizaos/core";
 import {
   ChannelType,
+  completionContextSources,
   ResponseHandlerFieldRegistry,
+  selectCompletionContext,
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as builtins from "../../runtime/builtin-field-evaluators";
 import { runV5MessageRuntimeStage1 } from "../message";
+import { createV5MessageContextObject } from "./context-assembly.ts";
 import { withoutInactiveFields } from "./inactive-field-schema.ts";
 
 const removed = [
@@ -166,6 +169,70 @@ function requestSchemas(runtime: IAgentRuntime): JSONSchema[] {
 afterEach(() => vi.restoreAllMocks());
 
 describe("direct-text builtin schema descriptions", () => {
+  it.each([ChannelType.DM, ChannelType.VOICE_DM])(
+    "keeps every original for %s planning without asking the reply handler to select sources",
+    async (channelType) => {
+      const args = fixture(channelType);
+      const originals = Array.from({ length: 24 }, (_, index) => ({
+        ...args.message,
+        id: `00000000-0000-0000-0001-${String(index).padStart(12, "0")}` as UUID,
+        createdAt: index,
+        content: { text: `Original ${index}: preserve  spaces\nand lines.` },
+      }));
+      args.state.data.providers = {
+        RECENT_MESSAGES: { data: { recentMessages: originals } },
+      };
+      // A stale provider response must not reintroduce an unrequested selection.
+      const stale = response();
+      Object.assign(stale.toolCalls[0].arguments, {
+        completionContext: {
+          mode: "relevant_prior_dialogue",
+          complete: true,
+          sourceSetId: "current_request",
+          relevantSourceIds: [],
+          constraintSourceIds: [],
+          referentSourceIds: [],
+          pendingIntentSourceIds: [],
+        },
+      });
+      vi.mocked(args.runtime.useModel).mockResolvedValueOnce(stale);
+      const result = await runV5MessageRuntimeStage1(args);
+      expect(result.kind).toBe("decision");
+      if (result.kind !== "decision")
+        throw new Error("Expected routing decision");
+      expect(result.messageHandler.plan.completionContext).toBeUndefined();
+      const [schema] = requestSchemas(args.runtime);
+      expect(properties(schema).completionContext).toBeUndefined();
+      expect(schema.required).not.toContain("completionContext");
+      expect(properties(schema).replyText.type).toBe("array");
+      expect(JSON.stringify(properties(schema).replyText)).not.toContain("hN");
+      const modelInput = vi.mocked(args.runtime.useModel).mock.calls[0][1];
+      const wire = JSON.stringify(modelInput.messages);
+      for (const original of originals)
+        expect(wire).toContain(
+          JSON.stringify(original.content.text).slice(1, -1),
+        );
+      expect(wire).not.toContain("History source map");
+      expect(wire).not.toContain("History selection:");
+      const planning = await createV5MessageContextObject({
+        runtime: args.runtime,
+        message: args.message,
+        state: args.state,
+        providerPhase: "planning",
+      });
+      planning.metadata = {
+        ...planning.metadata,
+        completionContext: result.messageHandler.plan.completionContext,
+      };
+      const selected = selectCompletionContext(planning);
+      expect(selected.applied).toBe(false);
+      expect(selected.context).toBe(planning);
+      expect(completionContextSources(selected.context).sources).toHaveLength(
+        originals.length,
+      );
+    },
+  );
+
   it("changes only the ten root descriptions, leaving canonical schemas and nested validation untouched", () => {
     const fields = registry();
     const original = fields.composeSchema();

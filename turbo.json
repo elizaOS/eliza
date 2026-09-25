@@ -2,7 +2,6 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     "package.json",
-    "bun.lock",
     "bunfig.toml",
     "turbo.json",
     "tsconfig.json",
@@ -57,21 +56,9 @@
     "@elizaos/app#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
-        "$TURBO_ROOT$/packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.ts",
-        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.ts",
-        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.ts",
-        "$TURBO_ROOT$/packages/scripts/copy-package-assets.ts",
-        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.ts",
-        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.ts",
-        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
-        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
-        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.ts"
+        "$TURBO_ROOT$/packages/scripts/run-turbo.ts"
       ],
-      "dependsOn": ["^build"],
+      "dependsOn": ["build:dist"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -79,7 +66,7 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": ["dist/**", "web-dist/**"]
+      "outputs": ["web-dist/**"]
     },
     "@elizaos/cloud-api#build": {
       "dependsOn": ["^build"],
@@ -116,7 +103,7 @@
       "outputs": []
     },
     "@elizaos/plugin-assistant#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "lint": {
@@ -317,7 +304,7 @@
         "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
         "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.ts"
       ],
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": ["^build"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",

@@ -28,7 +28,7 @@
  */
 
 import { logger } from "../logger.ts";
-import type { IAgentRuntime } from "../types/index.ts";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { Service, ServiceType } from "../types/service.ts";
 import type {
 	AllowlistResolution,

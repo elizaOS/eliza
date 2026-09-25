@@ -7,13 +7,15 @@
  * contact from the relationships service (preferred channel, channel/room/entity
  * ids), entity platform identities, and recent owner message history.
  */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  type OwnerContactEntry,
+  type OwnerContactsConfig,
+  type UUID,
+} from "@elizaos/core";
 import { loadElizaConfig } from "./config.ts";
-import type {
-  OwnerContactEntry,
-  OwnerContactsConfig,
-} from "./types.agent-defaults.ts";
 
 type OwnerContactsLoadContext = {
   boundary: string;

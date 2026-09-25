@@ -48,8 +48,10 @@ import {
   getConnectorAccountManager,
   type Memory,
   normalizeConnectorSource,
+  PostInboxMessageRequestSchema,
   type RoleGateRole,
   type Room,
+  type RouteHelpers,
   requireConfirmedSendHandlerDelivery,
   roleRank,
   toWellFormedUnicode,
@@ -57,25 +59,18 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
-import { PostInboxMessageRequestSchema } from "@elizaos/core/contracts/inbox-routes";
+
 import {
   resolveEffectiveMuteState,
   setRoomMuteUntil,
   setWorldMuteState,
 } from "@elizaos/plugin-assistant";
-import { type DiscordService as IDiscordService } from "@elizaos/plugin-discord";
+import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord";
 import { z } from "zod";
 
-let discordModulePromise: Promise<{
-  cacheDiscordAvatarUrl: (
-    avatarUrl: string | undefined,
-    options: {
-      fetchImpl: typeof fetch;
-      userId?: string;
-    },
-  ) => Promise<string | undefined>;
-}> | null = null;
+let discordModulePromise: Promise<
+  typeof import("@elizaos/plugin-discord")
+> | null = null;
 // Inlined (not imported from @elizaos/plugin-discord/constants) so the mobile
 // Vite bundle does not statically pull in the Discord plugin. Must stay equal to
 // plugin-discord's DISCORD_SERVICE_NAME — the dynamic import below resolves the
@@ -83,17 +78,7 @@ let discordModulePromise: Promise<{
 const DISCORD_SERVICE_NAME = "discord";
 function getDiscordModule() {
   if (!discordModulePromise) {
-    discordModulePromise = import(
-      /* @vite-ignore */ "@elizaos/plugin-discord"
-    ) as Promise<{
-      cacheDiscordAvatarUrl: (
-        avatarUrl: string | undefined,
-        options: {
-          fetchImpl: typeof fetch;
-          userId?: string;
-        },
-      ) => Promise<string | undefined>;
-    }>;
+    discordModulePromise = import(/* @vite-ignore */ "@elizaos/plugin-discord");
   }
   return discordModulePromise;
 }

@@ -7,8 +7,13 @@
  * coarse "just now / Nm / Nh / Nd ago" string. Non-finite timestamps fail closed
  * to an empty label rather than leaking "NaNd ago" into provider context.
  */
-import type { IAgentRuntime, Memory, Room } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
+import {
+  asNonEmptyString,
+  asObjectRecord as asRecord,
+  type IAgentRuntime,
+  type Memory,
+  type Room,
+} from "@elizaos/core";
 
 const readString = asNonEmptyString;
 

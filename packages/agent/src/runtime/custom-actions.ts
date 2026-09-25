@@ -17,21 +17,18 @@ import { request as requestHttps } from "node:https";
 import net from "node:net";
 import {
   type Action,
+  type CustomActionDef,
+  type CustomActionHandler,
+  createSelfApiRequestHeaders,
   type HandlerOptions,
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
+  resolveServerOnlyPort,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  createSelfApiRequestHeaders,
-  resolveServerOnlyPort,
-} from "@elizaos/core/runtime-env";
+
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "../config/types.eliza.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;

@@ -2,7 +2,7 @@
  * Plugin config/form helpers extracted from server.ts.
  */
 
-import { type UiElement, type UiSpec } from "@elizaos/core/config/ui-spec";
+import type { UiElement, UiSpec } from "@elizaos/core";
 import { isBlockedEnvKey } from "./plugin-discovery-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 

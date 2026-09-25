@@ -6,12 +6,14 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+  ElizaError,
+  isMobilePlatform,
+  logger,
+} from "@elizaos/core";
+
 import { resolveModelsCacheDir } from "../config/paths.ts";
 export const DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS = 10000;
 type ModelOption = {

@@ -1,8 +1,8 @@
 import {
 	getModelFallbackChain,
-	type IAgentRuntime,
 	type ModelTypeName,
-} from "../../types";
+} from "../../types/model.js";
+import type { IAgentRuntime } from "../../types/runtime.js";
 export function resolveProviderModelString(
 	runtime: IAgentRuntime,
 	resolvedModelType: string,

@@ -8,10 +8,11 @@
 import {
   type IAgentRuntime,
   type IFileStorageService,
+  type Route,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
-import { type Route } from "@elizaos/core/api/http-plugin";
+
 import { selectFilesForViewer } from "./files-disclosure.ts";
 
 function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {

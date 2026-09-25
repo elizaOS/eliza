@@ -1,13 +1,14 @@
 import { Buffer } from "node:buffer";
-import { type IncomingMessage, type ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type AccessContext,
+  getHttpRuntime,
   type IAgentRuntime,
+  type Route,
   type UUID,
 } from "@elizaos/core";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
-import { type Hono } from "hono";
+
+import type { Hono } from "hono";
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 

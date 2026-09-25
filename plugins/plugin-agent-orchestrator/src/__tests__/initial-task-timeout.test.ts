@@ -64,6 +64,101 @@ describe("initial-task spawn path applies the detached timeout (real AcpService 
     vi.restoreAllMocks();
   });
 
+  it.each(["closeSession", "stop"] as const)(
+    "%s waits for an in-flight native transport close",
+    async (operation) => {
+      await service.start();
+      const spawned = await service.spawnSession({
+        agentType: "elizaos",
+        workdir,
+        approvalPreset: "permissive",
+      });
+      const clients = (
+        service as unknown as {
+          nativeClients: Map<string, { close(): Promise<void> }>;
+        }
+      ).nativeClients;
+      const client = clients.get(spawned.sessionId);
+      if (!client) throw new Error("Spawned session has no native client");
+      const originalClose = client.close.bind(client);
+      let release!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered = false;
+      vi.spyOn(client, "close").mockImplementation(async () => {
+        entered = true;
+        await barrier;
+        await originalClose();
+      });
+      const first = service.closeSession(spawned.sessionId);
+      let second: Promise<void> | undefined;
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true));
+        let secondFinished = false;
+        second = (
+          operation === "stop"
+            ? service.stop()
+            : service.closeSession(spawned.sessionId)
+        ).then(() => {
+          secondFinished = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(secondFinished).toBe(false);
+        release();
+        await Promise.all([first, second]);
+      } finally {
+        release();
+        await Promise.allSettled([first, ...(second ? [second] : [])]);
+      }
+    },
+    60000,
+  );
+
+  it("stop waits for initial-task terminal cleanup before releasing persistence", async () => {
+    await service.start();
+    const lifecycle = service as unknown as {
+      closeInitialTaskSession(id: string): Promise<void>;
+    };
+    const originalClose = lifecycle.closeInitialTaskSession.bind(service);
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let closeStarted = false;
+    const closeSpy = vi
+      .spyOn(lifecycle, "closeInitialTaskSession")
+      .mockImplementation(async (id) => {
+        closeStarted = true;
+        await barrier;
+        await originalClose(id);
+      });
+    let stopping: Promise<void> | undefined;
+    try {
+      await service.spawnSession({
+        agentType: "elizaos",
+        workdir,
+        approvalPreset: "permissive",
+        initialTask: "Return a completion response.",
+      });
+      await vi.waitFor(() => expect(closeStarted).toBe(true), {
+        timeout: 15000,
+      });
+      let stopped = false;
+      stopping = service.stop().then(() => {
+        stopped = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(stopped).toBe(false);
+      release();
+      await stopping;
+      expect(closeSpy).toHaveResolvedTimes(1);
+    } finally {
+      release();
+      await stopping;
+    }
+  }, 60000);
+
   it("spawn with an initialTask and NO explicit timeout sends the initial prompt with timeoutMs 0", async () => {
     // Pass-through spy: observes the real spawn→sendPrompt wiring without
     // altering behavior — the fake ACP subprocess still answers the prompt.

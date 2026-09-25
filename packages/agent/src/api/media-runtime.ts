@@ -15,8 +15,9 @@ import {
   type Memory,
   nodeLookupFn,
   nodePinnedFetch,
+  type Route,
 } from "@elizaos/core";
-import type { Route } from "@elizaos/core/api/http-plugin";
+
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,

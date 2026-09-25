@@ -170,8 +170,8 @@ def parse_args() -> argparse.Namespace:
                         help="Max steps per task")
     parser.add_argument("--temperature", type=float, default=0.5)
     parser.add_argument("--max_tokens", type=int, default=2048)
-    parser.add_argument("--max_trajectory_length", type=int, default=5)
-    parser.add_argument("--a11y_tree_max_tokens", type=int, default=500)
+    parser.add_argument("--max_trajectory_length", type=int, default=0)
+    parser.add_argument("--a11y_tree_max_tokens", type=int, default=0)
 
     # Execution
     parser.add_argument("--result_dir", type=str, default="./results/eliza",

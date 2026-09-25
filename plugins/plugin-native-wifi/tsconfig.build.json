@@ -4,13 +4,8 @@
     "outDir": "dist",
     "rootDir": "./src",
     "paths": {
-      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/core/*": ["../../packages/core/dist/*"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
-      "@elizaos/capacitor-system": [
-        "../plugin-native-system/dist/esm/index.d.ts"
-      ]
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"]
     }
   },
   "include": ["src"],

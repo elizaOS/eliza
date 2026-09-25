@@ -51,6 +51,7 @@ import {
   type PluginResponseHandlerFieldEvaluatorHandleParams,
   type PluginResponseHandlerFieldEvaluatorParseParams,
   type PluginResponseHandlerFieldEvaluatorShouldRunParams,
+  parsePositiveInteger,
   type RemotePluginCapability,
   type RuntimeBrokerCapabilityMethod,
   RuntimeBrokerCapabilityRouter,
@@ -58,7 +59,7 @@ import {
   type TerminalCapability,
   type TerminalRunParams,
 } from "@elizaos/core";
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+
 import { trimEndCharacters } from "../utils/string-boundaries.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;

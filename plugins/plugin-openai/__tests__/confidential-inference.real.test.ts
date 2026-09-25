@@ -3,21 +3,20 @@
  * This does not certify the separately required SQLite agent-storage migration.
  */
 import { createServer, type Server } from "node:http";
-import { generateText } from "ai";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AgentRuntime } from "../../../packages/core/src/runtime";
 import {
+  AgentRuntime,
+  ChannelType,
   type ConfidentialInferenceAuditRecord,
   ConfidentialInferenceAuthority,
   type ConfidentialInferenceProfile,
   type ConfidentialInferenceTransport,
-} from "../../../packages/core/src/security/confidential-inference";
-import {
-  ChannelType,
   type IAgentRuntime,
   ModelType,
   type UUID,
-} from "../../../packages/core/src/types";
+} from "@elizaos/core";
+import { generateText } from "ai";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import { createIsolatedTestDatabase } from "../../plugin-sql/src/__tests__/test-helpers";
 import { handleTextLarge } from "../models/text";
 import { createOpenAIClient } from "../providers/openai";

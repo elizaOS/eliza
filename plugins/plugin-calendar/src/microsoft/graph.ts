@@ -5,12 +5,12 @@
  * calendar persistence sees it.
  */
 import { createHash } from "node:crypto";
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type LifeOpsCalendarEventAttendee,
+import { ElizaError, type FetchLike, type IAgentRuntime } from "@elizaos/core";
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  LifeOpsCalendarEventAttendee,
 } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import {
   DefaultMicrosoftCalendarTokenResolver,
   listMicrosoftCalendarAccounts,
@@ -143,7 +143,7 @@ export interface MicrosoftGraphCalendarPort {
 
 interface MicrosoftGraphPortOptions {
   tokenResolver?: MicrosoftCalendarTokenResolver;
-  fetch?: typeof fetch;
+  fetch?: FetchLike;
   baseUrl?: string;
   allowTestBaseUrl?: boolean;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -649,7 +649,7 @@ export class DefaultMicrosoftGraphCalendarPort
   implements MicrosoftGraphCalendarPort
 {
   private readonly tokenResolver: MicrosoftCalendarTokenResolver;
-  private readonly transport: typeof fetch;
+  private readonly transport: FetchLike;
   private readonly baseUrl: URL;
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly maxRetries: number;
@@ -662,9 +662,7 @@ export class DefaultMicrosoftGraphCalendarPort
       options.tokenResolver ??
       new DefaultMicrosoftCalendarTokenResolver(runtime);
     this.transport =
-      options.fetch ??
-      (runtime as { fetch?: typeof fetch }).fetch?.bind(runtime) ??
-      globalThis.fetch;
+      options.fetch ?? runtime.fetch?.bind(runtime) ?? globalThis.fetch;
     this.baseUrl = new URL(options.baseUrl ?? DEFAULT_GRAPH_BASE_URL);
     if (
       !options.allowTestBaseUrl &&

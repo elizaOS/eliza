@@ -334,3 +334,58 @@ def test_installed_openclaw_text_turn_stays_single_round(
     assert metadata["native_session_terminal_stop_reason"] == "stop"
     assert metadata["native_session_assistant_model_call_count"] == 1
     assert len(requests) == 1
+
+
+@pytest.mark.skipif(not os.environ.get("OPENCLAW_E2E_BIN"), reason="set OPENCLAW_E2E_BIN for native image qualification")
+@pytest.mark.parametrize("width", [1920, 2400])
+def test_installed_openclaw_preserves_full_image_input(tmp_path, width):
+    import base64
+    import struct
+    import zlib
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, 1080, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress((b"\0" + b"\xff\xff\xff" * width) * 1080)) + chunk(b"IEND", b"")
+    encoded = base64.b64encode(png).decode()
+    requests = []
+    server = _serve_stub(requests, final_fn=lambda body: True)
+    try:
+        client = OpenClawClient(binary_path=Path(os.environ["OPENCLAW_E2E_BIN"]), provider="openai", model="vision-diagnostic", api_key="local-fixture-only", base_url=f"http://127.0.0.1:{server.server_port}", native_state_root=tmp_path/"state", timeout_s=60)
+        assert client.health()["status"] == "ready"
+        response = client.send_message("Describe this screenshot.", {"benchmark":"osworld", "screenshot_base64": encoded})
+        assert response.text == "probe complete"
+        images = [part["image_url"]["url"] for request in requests for message in request.get("messages", []) for part in (message["content"] if isinstance(message.get("content"), list) else []) if part.get("type") == "image_url"]
+        assert images == [f"data:image/png;base64,{encoded}"]
+        assert response.params["_meta"]["openclaw_adapter"]["native_runtime_api"] == "agentCommand(images)"
+        assert response.params["_meta"]["openclaw_adapter"]["native_image_bytes_verified"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not os.environ.get("OPENCLAW_E2E_BIN"), reason="set OPENCLAW_E2E_BIN for native image qualification")
+def test_installed_openclaw_image_provider_failure_is_not_success(tmp_path):
+    import base64
+    class RejectProvider(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("content-length", "0")))
+            raw = json.dumps({"error":{"message":"image-provider-fixture-rejection", "type":"invalid_request_error", "code":"invalid_model"}}).encode()
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        def log_message(self, *_args):
+            pass
+    server = ThreadingHTTPServer(("127.0.0.1",0),RejectProvider)
+    thread = threading.Thread(target=server.serve_forever,daemon=True)
+    thread.start()
+    try:
+        client = OpenClawClient(binary_path=Path(os.environ["OPENCLAW_E2E_BIN"]), provider="openai", model="vision-diagnostic", api_key="local-fixture-only", base_url=f"http://127.0.0.1:{server.server_port}", native_state_root=tmp_path/"state", timeout_s=60)
+        png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
+        assert base64.b64decode(png).startswith(b"\x89PNG")
+        with pytest.raises(RuntimeError,match="image-provider-fixture-rejection"):
+            client.send_message("Describe this screenshot.", {"benchmark":"osworld", "screenshot_base64":png})
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

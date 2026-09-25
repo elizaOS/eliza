@@ -1,5 +1,5 @@
 /**
- * Self-edit gate + path denylist — browser-safe.
+ * Self-edit gate and path denylist for the agent host.
  *
  * "Self-edit" is the dev-mode capability whereby the running agent edits its
  * own source (UI, agent code, plugins, even `node_modules` and the `eliza/`
@@ -16,9 +16,8 @@
  *     Defense in depth so a buggy or adversarial sub-agent cannot remove its
  *     own safety rails and ship a build that self-edits in production.
  *
- * Both functions are pure (env / string in → boolean out) and use no
- * node-only APIs, so this module can be imported anywhere `@elizaos/core`
- * is consumed (browser, agent runtime, CLI).
+ * Callers may supply an environment snapshot; otherwise the gate reads the
+ * host process environment.
  *
  * @module self-edit
  */
@@ -44,9 +43,7 @@ export const DEV_MODE_ENV = "ELIZA_DEV_MODE";
  * `process.env`.
  */
 export function isSelfEditEnabled(
-	env:
-		| NodeJS.ProcessEnv
-		| Record<string, string | undefined> = readProcessEnv(),
+	env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
 ): boolean {
 	if (!isTruthyEnvValue(env[SELF_EDIT_ENABLE_ENV])) return false;
 	const nodeEnv = env.NODE_ENV;
@@ -103,15 +100,6 @@ export function isSelfEditPathDenied(absolutePath: string): boolean {
  */
 export function getSelfEditDeniedSuffixes(): readonly string[] {
 	return DENIED_RELATIVE_SUFFIXES;
-}
-function readProcessEnv():
-	| NodeJS.ProcessEnv
-	| Record<string, string | undefined> {
-	// `process` may not exist in browser builds; fall back to an empty record.
-	if (typeof process === "undefined" || !process || !process.env) {
-		return {};
-	}
-	return process.env;
 }
 function normalizePathSeparators(p: string): string {
 	// Convert Windows-style separators to POSIX for uniform suffix matching.

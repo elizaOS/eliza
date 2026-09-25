@@ -264,15 +264,15 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
   {
     name: "replyEffectStatus",
     description:
-      "Classify current-request work in the reply: pending=independent work executable now; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
+      "Classify current-request work: pending=work executable now, including recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=no current action decision. Historical recall alone is none.",
     descriptionCompressed:
-      "Classify current-request work in the reply: pending=independent work executable now; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
+      "Classify current-request work: pending=work executable now, including recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=no current action decision. Historical recall alone is none.",
     priority: 25,
     schema: {
       type: "string",
       enum: ["none", "applied", "non_applied", "pending"],
       description:
-        "Classify current-request work in the reply: pending=independent work executable now; applied=claims a completed change, never proof; non_applied=failed, unavailable, cancelled, declined, preview or awaiting user input; none=no current action decision. Historical recall alone is none.",
+        "Classify current-request work: pending=work executable now, including recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=no current action decision. Historical recall alone is none.",
     },
     parse: normalizeReplyEffectStatus,
   };

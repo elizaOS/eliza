@@ -12,10 +12,21 @@ function hasPackageJson(dir) {
 }
 
 function firstExistingPackage(candidates) {
-  return candidates.find(hasPackageJson) ?? candidates[0];
+  const found = candidates.find(hasPackageJson);
+  if (!found)
+    throw new Error(`App package not found. Checked: ${candidates.join(", ")}`);
+  return found;
 }
 
 export function resolveMainAppDir(repoRoot, appName = "app") {
+  if (
+    !appName ||
+    appName === "." ||
+    appName === ".." ||
+    /[\\/]/.test(appName)
+  ) {
+    throw new Error(`Invalid app package name: ${appName}`);
+  }
   const isOuterMonorepo = hasPackageJson(path.join(repoRoot, "eliza"));
   if (appName === "app") {
     const localCandidates = [
@@ -56,5 +67,9 @@ export function resolveElectrobunDir(repoRoot) {
   const match = candidates.find((candidate) =>
     fs.existsSync(path.join(candidate, "electrobun.config.ts")),
   );
-  return match ?? candidates[0];
+  if (!match)
+    throw new Error(
+      `Electrobun platform not found. Checked: ${candidates.join(", ")}`,
+    );
+  return match;
 }

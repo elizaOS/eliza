@@ -8,7 +8,7 @@ import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,
 } from "@elizaos/agent/config/dev-cloud-env-authority";
-import { type ElizaConfig } from "@elizaos/core/config/types";
+import type { ElizaConfig } from "@elizaos/core";
 import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export type FirstRunConfigWriteObserver = (

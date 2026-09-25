@@ -8,10 +8,11 @@ import {
   type IAgentRuntime,
   NotificationService,
   PairingService,
+  type HttpPlugin as Plugin,
   promoteSubactionsToActions,
   type ServiceClass,
 } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+
 import {
   ApprovalService,
   GlobalPauseService,

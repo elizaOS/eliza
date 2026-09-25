@@ -4,21 +4,23 @@
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
 import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
 import { ensureAgentVoice } from "../security/voice-gate.ts";
+import type { Memory } from "../types/memory.js";
+import type {
+	SendHandlerFunction,
+	SendHandlerResult,
+	TargetInfo,
+} from "../types/messaging.js";
+import type { Content } from "../types/primitives.js";
 import type {
 	ConnectorPostIdentity,
-	Content,
 	IAgentRuntime,
-	Memory,
 	MessageConnector,
 	MessageConnectorCreateThreadParams,
 	MessageConnectorRegistration,
 	PostConnector,
 	PostConnectorRegistration,
-	SendHandlerFunction,
-	SendHandlerResult,
-	TargetInfo,
 	ThreadHandle,
-} from "../types";
+} from "../types/runtime.js";
 import {
 	cloneMessageConnector,
 	clonePostConnector,

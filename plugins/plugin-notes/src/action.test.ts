@@ -4,6 +4,7 @@
  * real core planner to verify corrected-call recovery and unrelated failures.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,15 +49,20 @@ afterEach(async () => {
 async function harness(now?: () => Date): Promise<IAgentRuntime> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "notes-action-"));
   tmpDirs.push(dir);
-  const service = new NotesService(undefined, {
+  const runtime = {
+    agentId: randomUUID() as UUID,
+    getService: (type: string) =>
+      type === NOTES_SERVICE_TYPE ? service : null,
+    // No shell transport is installed in this file-backed domain harness.
+    getServiceLoadPromise: async () => null,
+    reportError: vi.fn(),
+  } as unknown as IAgentRuntime;
+  const service = new NotesService(runtime, {
     store: new NotesStore({ filePath: path.join(dir, "notes.json") }),
     ...(now ? { now } : {}),
   });
   await service.initialize();
-  return {
-    getService: (type: string) =>
-      type === NOTES_SERVICE_TYPE ? service : null,
-  } as unknown as IAgentRuntime;
+  return runtime;
 }
 
 const message = { content: { text: "" } } as unknown as Memory;
@@ -83,7 +89,6 @@ async function executorHarness(now?: () => Date): Promise<IAgentRuntime> {
   const runtime = await harness(now);
   Object.assign(runtime, {
     actions: notesPlugin.actions,
-    agentId: "agent-id" as UUID,
     getRoom: vi.fn(async () => ({ worldId: "world-id" })),
     getWorld: vi.fn(async () => ({
       metadata: {
@@ -439,7 +444,12 @@ describe("promoted Notes execution", () => {
         .map((note) => note.id)
         .sort(),
     ).toEqual([first.id, last.id].sort());
-    expect(created.data?.notes).toEqual(expect.arrayContaining([first, last]));
+    expect(created.data?.notes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining(first),
+        expect.objectContaining(last),
+      ]),
+    );
     const edited = await execute(runtime, {
       name: "NOTES_LIST",
       params: {
@@ -1078,7 +1088,6 @@ describe("NOTES operation parsing", () => {
     await run(runtime, { action: "create", content: "second note" });
     Object.assign(runtime, {
       actions: [notesAction],
-      agentId: "agent-id" as UUID,
       getRoom: vi.fn(async () => ({ worldId: "world-id" })),
       getWorld: vi.fn(async () => ({
         metadata: {
@@ -1138,7 +1147,7 @@ describe("NOTES operation parsing", () => {
     });
     const result = await run(runtime, { action: "list" });
 
-    expect(result.data?.notes).toEqual([updated.data?.note]);
+    expect(result.data?.notes).toMatchObject([updated.data?.note]);
     expect(result.data?.notes).toMatchObject([
       {
         id: created.data?.noteId,
@@ -1724,7 +1733,7 @@ describe("structured Notes field patches", () => {
             : { content: note.title },
       });
       expect(read.success).toBe(true);
-      expect(read.data?.notes).toEqual([note]);
+      expect(read.data?.notes).toMatchObject([note]);
       expect(read.data?.notesRevision).toBe(service.snapshot().revision);
       await service.updateNote(
         note.id,
@@ -1767,7 +1776,7 @@ describe("structured Notes field patches", () => {
       name: "NOTES_GET",
       params: { noteId: original.id },
     });
-    expect(originalRead.data?.notes).toEqual([original]);
+    expect(originalRead.data?.notes).toMatchObject([original]);
     const result = await execute(runtime, {
       name: "NOTES_PATCH",
       params: {

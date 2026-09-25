@@ -11,9 +11,12 @@
  * plugins into the result.
  */
 
-import { decodeRuntimeRegistry } from "@elizaos/core/catalog/runtime-kernel";
+import {
+  createIntegrationTelemetrySpan,
+  decodeRuntimeRegistry,
+} from "@elizaos/core";
+
 import { isCloudReachable } from "@elizaos/plugin-elizacloud/cloud-config/is-cloud-reachable";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const REGISTRY_FETCH_TIMEOUT_MS = 2_500;

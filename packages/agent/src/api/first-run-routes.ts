@@ -18,26 +18,23 @@
 import type http from "node:http";
 import {
   type AgentRuntime,
+  asObjectRecord as asRecord,
+  type DeploymentTargetConfig,
+  getDirectAccountProviderForFirstRunProvider,
+  isCloudInferenceSelectedInConfig,
   logger,
+  migrateLegacyRuntimeConfig,
+  normalizeDeploymentTargetConfig,
+  normalizeFirstRunCredentialInputs,
+  normalizeLinkedAccountFlagsConfig,
+  normalizeServiceRoutingConfig,
+  PostFirstRunRequestSchema,
+  type ReadJsonBodyOptions,
+  type ServiceRoutingConfig,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import {
-  getDirectAccountProviderForFirstRunProvider,
-  isCloudInferenceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunCredentialInputs,
-} from "@elizaos/core/contracts/first-run-options";
-import { PostFirstRunRequestSchema } from "@elizaos/core/contracts/first-run-routes";
-import {
-  type DeploymentTargetConfig,
-  normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountFlagsConfig,
-  normalizeServiceRoutingConfig,
-  type ServiceRoutingConfig,
-} from "@elizaos/core/contracts/service-routing";
-import { asRecord } from "@elizaos/core/type-guards";
+
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {

@@ -20,9 +20,9 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   EventType,
+  readRequestBodyBuffer,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/core/api/http-helpers";
 
 const MAX_BODY_BYTES = 4 * 1024;
 /** Stable shortcut id: kebab-case, bounded length (e.g. "open-command-palette"). */

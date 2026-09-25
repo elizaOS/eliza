@@ -179,6 +179,8 @@ try {
   assert.ok((await adapter.getParticipantsForRooms([agentId]))[0].entityIds.includes(agentId));
   assert.equal(runtime.messageService, null);
   assert.equal("routes" in runtime, false);
+  assert.equal(Symbol.for('elizaos.http-runtime') in runtime, false, 'HTTP state is installed explicitly');
+
   assert.equal("rerankMemories" in runtime, false);
   assert.equal("companionUrl" in runtime, false);
   assert.equal(runtime.actions.length, 0);
@@ -187,6 +189,14 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  const host = {};
+  publicApi.registerHttpPluginRoutes(host, { name: 'fixture', description: 'HTTP fixture', routes: [{ type: 'GET', path: '/health' }] });
+  assert.equal(publicApi.getPluginHttpRoutes(host, 'fixture')[0].path, '/fixture/health');
+  assert.throws(() => publicApi.registerHttpPluginRoutes(host, { name: 'unsafe', description: 'Invalid public write', routes: [{ type: 'POST', path: '/write', public: true, publicReason: 'fixture' }] }), /publicWrite/);
+  assert.equal(publicApi.getHttpRuntime(host).routes.length, 1, 'rejected routes do not alter host state');
+  const boundaryRecord = new (class BoundaryRecord { value = 1; })();
+  assert.equal(publicApi.asObjectRecord(boundaryRecord), boundaryRecord);
+  assert.equal(publicApi.asRecord(boundaryRecord), null);
   const exportPrompt = 'complete model request 🟠 '.repeat(12000) + 'FINAL-REQUEST';
   const exportResponse = 'complete response with final reference';
   const exportRecord = {
@@ -212,6 +222,29 @@ try {
   assert.deepEqual(publicApi.rerankMemories('automobile', [semanticMemory, attachmentMemory, keywordMemory]), [keywordMemory, semanticMemory, attachmentMemory]);
   assert.equal(new publicApi.BM25([{ title: 'receipt', content: 'automobile receipt' }]).search('automobile', 1)[0].index, 0);
 
+  publicApi.registerCuratedApp({
+    slug: 'packed-core-fixture',
+    canonicalName: '@elizaos/plugin-packed-core-fixture',
+    aliases: ['packed fixture'],
+  });
+  assert.equal(publicApi.getElizaCuratedAppDefinition('packed fixture')?.canonicalName, '@elizaos/plugin-packed-core-fixture');
+  assert.ok(publicApi.getCuratedAppDefinitions().some((entry) => entry.slug === 'packed-core-fixture'));
+  const registry = publicApi.loadRegistry();
+  assert.ok(publicApi.getApps(registry).length > 0, 'packed root reads the shipped first-party catalog');
+
+  const walletFields = Object.freeze({ ALCHEMY_API_KEY: '  fixture-alchemy  ', INFURA_API_KEY: 'fixture-retired' });
+  const walletProviders = Object.freeze({ evm: 'ALCHEMY', bsc: 'eliza-cloud', solana: 'eliza-cloud' });
+  assert.deepEqual(publicApi.buildWalletRpcUpdateRequest({
+    rpcFieldValues: walletFields,
+    selectedProviders: walletProviders,
+    selectedNetwork: 'testnet',
+  }), {
+    selections: { evm: 'alchemy', bsc: 'eliza-cloud', solana: 'eliza-cloud' },
+    walletNetwork: 'testnet',
+    credentials: { ALCHEMY_API_KEY: 'fixture-alchemy', INFURA_API_KEY: '' },
+  });
+  assert.equal(walletFields.ALCHEMY_API_KEY, '  fixture-alchemy  ', 'request construction preserves its input');
+
   for (const retired of ['loadCharacters', 'createRuntimes', 'mergeSettingsInto']) {
     assert.equal(retired in publicApi, false, retired + ' is retired from the v2 public API');
   }
@@ -225,10 +258,10 @@ try {
   }), publicApi.MediaFetchError);
   assert.equal(mediaFetchCalled, false, 'packed media API rejects loopback before transport');
   await assert.rejects(publicApi.readResponseWithLimit(new Response('12345'), 4), { code: 'max_bytes' });
-  for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['buildProviderCachePlan', 'normalizeSchemaForCerebras', 'sanitizeFunctionNameForCerebras', 'cloneSchemaForBoundedTransport', 'MAX_CEREBRAS_SCHEMA_WALK_DEPTH', 'MAX_CEREBRAS_SCHEMA_WALK_NODES', 'CEREBRAS_SCHEMA_UNBOUNDED', 'OptimizedPromptService', 'OPTIMIZED_PROMPT_TASKS', 'LIFEOPS_OPTIMIZED_PROMPT_TASKS', 'parseOptimizedPromptArtifact', 'waitForServerReady', 'pingServer', 'ServerHealthError', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE', 'CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION', 'searchKeylessWeb', 'ManagedProviderHttpClient', 'resolveProviderConnection', 'buildBaseTables', 'createJsonFileTrajectoryRecorder', 'resolveTrajectoryDir', 'computeCallCostUsd', 'MODEL_PRICES_USD_PER_M_TOKENS', 'SQLiteDatabaseAdapter', 'trajectoryToPlaintext', 'messageHandlerTemplate', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
-  for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
+  for (const subpath of ['catalog', 'catalog/app-registry', 'node', 'browser', 'edge', 'testing', 'runtime', 'client-public', 'config/env-vars', 'config', 'config/types', 'config/boot-config', 'config/plugin-auto-enable', 'config/types.agent-defaults', 'config/types.agents', 'config/types.eliza', 'config/types.gateway', 'config/types.hooks', 'config/types.messages', 'config/types.tools', 'awareness', 'contracts/health', 'contracts', 'i18n/validation-keywords', 'knowledge-graph', 'lifeops-constants', 'lifeops-normalize', 'markdown', 'validation-keywords', 'media', 'media/attachments', 'media/fetch', 'media/image-description-cache', 'media/local-store', 'media/mime', 'media/mime-sniffer']) {
     await assert.rejects(import('@elizaos/core/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
   }
 } finally { await runtime.stop(); }
@@ -238,7 +271,19 @@ console.log('Packed kernel host JSON loading, parseCharacter, persisted settings
 	writeFileSync(
 		path.join(consumer, "consumer.ts"),
 		`
-import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID } from '@elizaos/core';
+import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID, type Entity, type KnowledgeGraphEntity, type MessageExample, type FirstRunMessageExample, type AppMemoryConfig, type MemoryConfig } from '@elizaos/core';
+const graphName: KnowledgeGraphEntity['preferredName'] = 'fixture';
+const firstRunSender: FirstRunMessageExample['user'] = 'fixture';
+// @ts-expect-error Runtime entities retain their separate account shape.
+type InvalidRuntimeGraphName = Entity['preferredName'];
+// @ts-expect-error Runtime message examples use name, not the first-run user field.
+type InvalidRuntimeExampleUser = MessageExample['user'];
+const appMemoryBackend: AppMemoryConfig['backend'] = 'builtin';
+// @ts-expect-error Runtime memory settings retain their separate shape.
+type InvalidRuntimeMemoryBackend = MemoryConfig['backend'];
+void appMemoryBackend;
+void graphName;
+void firstRunSender;
 import type { CatalogModel, RuntimeClass } from '@elizaos/core/contracts/local-inference';
 const runtimeClass: RuntimeClass = 'fused-eliza1';
 const catalogRuntimeClass: CatalogModel['runtimeClass'] = runtimeClass;
@@ -246,8 +291,16 @@ const catalogRuntimeClass: CatalogModel['runtimeClass'] = runtimeClass;
 const invalidRuntimeClass: CatalogModel['runtimeClass'] = 'missing-runtime';
 void catalogRuntimeClass;
 void invalidRuntimeClass;
-// @ts-expect-error HTTP contracts are owned by the optional host package.
-import type { Route } from '@elizaos/core';
+import type { Route, AgentStreamEventType, StreamEventType, AgentLogEntry, LogEntry } from '@elizaos/core';
+const hostEvent: AgentStreamEventType = 'agent_event';
+// @ts-expect-error Runtime stream events retain their own discriminator.
+const runtimeEvent: StreamEventType = hostEvent;
+void runtimeEvent;
+const hostRoute: Route = { type: 'GET', path: '/health' };
+void hostRoute;
+const hostLog: AgentLogEntry['source'] = 'host';
+void hostLog;
+void (null as unknown as LogEntry);
 // @ts-expect-error Host composition facade types are retired in v2.
 import type { CreateRuntimesOptions } from '@elizaos/core';
 // @ts-expect-error Host composition facade types are retired in v2.
@@ -266,7 +319,8 @@ void text;
 		process.execPath,
 		[
 			path.join(repository, "node_modules/typescript/bin/tsc"),
-			// This explicit-file consumer must not inherit a parent tsconfig.
+			// The consumer supplies every compiler option and may live below a
+			// repository-local TMPDIR; never inherit an ancestor tsconfig.
 			"--ignoreConfig",
 			"--noEmit",
 			"--strict",

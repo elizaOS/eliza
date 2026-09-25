@@ -9,11 +9,12 @@
  */
 
 import {
+  isSafeExecutableValue,
   ModelDefinitionInputSchema,
   ModelApiSchema as SharedModelApiSchema,
   ModelCompatSchema as SharedModelCompatSchema,
-} from "@elizaos/core/config/zod-schema.core";
-import { isSafeExecutableValue } from "@elizaos/core/utils/exec-safety";
+} from "@elizaos/core";
+
 import * as zod from "zod";
 import { DEFAULT_MODEL_CONTEXT_WINDOW } from "./model-metadata.ts";
 

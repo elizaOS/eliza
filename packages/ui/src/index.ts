@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /** Exposes shared UI primitives, spatial authoring components, API client, and login hooks. */
 
 export { client } from "./api/client.js";

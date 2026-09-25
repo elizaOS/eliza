@@ -13,26 +13,26 @@ import {
   createRuntimeAccountStoragePolicy,
   updateAccountMetadata,
 } from "@elizaos/auth/auth/account-storage";
-import { type AnthropicFlow } from "@elizaos/auth/auth/anthropic";
-import { type CodexFlow } from "@elizaos/auth/auth/openai-codex";
+import type { AnthropicFlow } from "@elizaos/auth/auth/anthropic";
+import type { CodexFlow } from "@elizaos/auth/auth/openai-codex";
 import {
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
 } from "@elizaos/auth/auth/types";
-import { logger, resolveStateDir } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import {
+  type ElizaConfig,
   type LinkedAccountConfig,
   type LinkedAccountHealth,
   type LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
-import {
+  logger,
   PostSubscriptionAnthropicExchangeRequestSchema,
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
-} from "@elizaos/core/contracts/subscription-routes";
-import { type ElizaConfig } from "../config/types.eliza.ts";
+  type RouteRequestContext,
+  resolveStateDir,
+} from "@elizaos/core";
+
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 type AuthModule = typeof import("@elizaos/auth/auth");

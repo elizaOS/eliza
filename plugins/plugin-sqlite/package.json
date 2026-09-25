@@ -11,15 +11,15 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
     "./portable": {
-      "types": "./dist/portable.d.ts",
       "eliza-source": "./portable.ts",
+      "types": "./dist/portable.d.ts",
       "import": "./dist/portable.js",
       "default": "./dist/portable.js"
     }
@@ -37,9 +37,10 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "^25.0.3",
+    "@types/sql.js": "^1.4.11",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "@types/bun": "1.4.2"
+    "bun-types": "1.4.2"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
