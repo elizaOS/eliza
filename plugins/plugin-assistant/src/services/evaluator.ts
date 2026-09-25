@@ -14,6 +14,8 @@ import {
   CONVERSATION_MESSAGES_HEADER_PREFIX,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
+  countSchemaOptionalParameters,
+  DEFAULT_STRUCTURED_OUTPUT_OPTIONAL_PARAM_LIMIT,
   ElizaError,
   type EvaluatorRunContext,
   type EvaluatorRunOptions,
@@ -22,6 +24,7 @@ import {
   hashStableJson,
   type IAgentRuntime,
   isObjectRecord as isRecord,
+  isTruthyEnvValue,
   type JSONSchema,
   type JsonValue,
   type Memory,
@@ -182,20 +185,39 @@ function mergeStates(base: State | undefined, providerState: State): State {
     text: [base.text, providerState.text].filter(Boolean).join("\n"),
   };
 }
-function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
+/** Merge each active evaluator's response schema into the single object schema
+ * the runtime sends as one structured-output request per turn: every evaluator
+ * name is a required top-level property whose value is that evaluator's schema.
+ * Extracted here (and exported) so the strict optional-parameter budget can be
+ * asserted against the exact shape the provider receives, without a live runtime.
+ */
+export function mergeEvaluatorSchemas(
+  active: ReadonlyArray<{
+    name: string;
+    schema: JSONSchema;
+    extraction?: boolean;
+  }>,
+): JSONSchema {
   return {
     type: "object",
     properties: Object.fromEntries(
-      active.map(({ evaluator, options }) => [
-        evaluator.name,
-        options.extraction
-          ? requireIncrementalSourceCitations(evaluator.schema)
-          : evaluator.schema,
+      active.map(({ name, schema, extraction }) => [
+        name,
+        extraction ? requireIncrementalSourceCitations(schema) : schema,
       ]),
     ),
-    required: active.map(({ evaluator }) => evaluator.name),
+    required: active.map(({ name }) => name),
     additionalProperties: false,
   };
+}
+function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
+  return mergeEvaluatorSchemas(
+    active.map(({ evaluator, options }) => ({
+      name: evaluator.name,
+      schema: evaluator.schema,
+      extraction: Boolean(options.extraction),
+    })),
+  );
 }
 type EvaluatorPromptInput = {
   prompt: string;
@@ -608,7 +630,38 @@ function schemaRequestLooksUnsupported(error: unknown): boolean {
 const schemaUnsupportedRuntimes = new WeakSet<object>();
 const schemaRejectionStreak = new WeakMap<object, number>();
 const SCHEMA_UNSUPPORTED_STREAK_THRESHOLD = 2;
-async function generateEvaluationOutput(params: {
+// Optional-parameter budget for the ONE merged structured-output request the
+// evaluator sends per turn. Anthropic's grammar compiler hard-400s a request
+// whose strict tool / structured-output schema carries more than 24 optional
+// (non-required) parameters counted recursively (#16499 fixed this for the tool
+// path; the evaluator's structured-output path was never budgeted). The merged
+// schema flattens every active evaluator's fields into one object, so with the
+// default advanced-capabilities bundle it reaches ~123 optional params and the
+// schema request fails EVERY turn before the json_object fallback retries —
+// three logged 400s and ~4.5s of pure waste per turn. When the merged schema is
+// over budget we skip the doomed schema round-trip up front and go straight to
+// the json_object request (schema is carried inline in that prompt variant), so
+// evaluator output still lands, just via the non-strict protocol. Operators can
+// override the ceiling for providers with a different cap, or disable the guard
+// entirely with 0 / a negative value.
+function structuredOutputOptionalParamLimit(runtime: IAgentRuntime): number {
+  const raw = runtime.getSetting(
+    "ELIZA_STRUCTURED_OUTPUT_OPTIONAL_PARAM_LIMIT",
+  );
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const parsed = Number.parseInt(raw.trim(), 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return DEFAULT_STRUCTURED_OUTPUT_OPTIONAL_PARAM_LIMIT;
+}
+// One WARN per runtime the first time we pre-empt the schema request for being
+// over budget — repeating it every turn would be noise.
+const schemaOverBudgetWarned = new WeakSet<object>();
+// One INFO per runtime the first time the operator escape hatch suppresses
+// post-turn evaluation — the disabled state should be visible without spamming.
+const postTurnEvaluatorsDisabledLogged = new WeakSet<object>();
+export async function generateEvaluationOutput(params: {
   runtime: IAgentRuntime;
   rendered: RenderedEvaluatorPrompt;
   schema: JSONSchema;
@@ -656,6 +709,32 @@ async function generateEvaluationOutput(params: {
     } catch (fallbackError) {
       // error-policy:J1 Both evaluator protocol variants failed; return the
       // explicit invalid evaluator result from the boundary helper.
+      return afterJsonObjectRejected(fallbackError);
+    }
+  }
+  // Pre-flight: a merged schema over the provider's optional-parameter grammar
+  // cap will be hard-400'd ("too many optional parameters"). Skip the doomed
+  // structured request instead of paying the wasted round-trip every turn and
+  // spamming three error logs; the json_object variant carries the schema
+  // inline in its prompt, so evaluator output still lands. A 0/negative limit
+  // disables the guard for providers with no such cap.
+  const optionalParamLimit = structuredOutputOptionalParamLimit(runtime);
+  const optionalParamCount = countSchemaOptionalParameters(schema);
+  if (optionalParamLimit > 0 && optionalParamCount > optionalParamLimit) {
+    if (!schemaOverBudgetWarned.has(runtime)) {
+      schemaOverBudgetWarned.add(runtime);
+      runtime.logger.warn(
+        {
+          src: "service:evaluator",
+          optionalParamCount,
+          optionalParamLimit,
+        },
+        "Post-turn evaluator merged schema exceeds the structured-output optional-parameter budget; skipping the strict schema request and using the json_object protocol (schema carried inline)",
+      );
+    }
+    try {
+      return await requestJsonObject();
+    } catch (fallbackError) {
       return afterJsonObjectRejected(fallbackError);
     }
   }
@@ -2264,6 +2343,33 @@ export async function runPostTurnEvaluators(
     isMobilePlatform() ||
     message.content.channelType === ChannelType.VOICE_GROUP
   ) {
+    return null;
+  }
+  // Operator escape hatch: a self-hosted deployment whose SMALL model rejects
+  // the merged evaluator schema (or that simply doesn't want post-turn memory
+  // extraction) can turn the whole pass off. The over-budget guard above keeps
+  // evaluators working via json_object, but this remains the hard off switch —
+  // e.g. a provider that also rejects json_object, or a latency-sensitive
+  // deployment. Logged once so the disabled state is observable at runtime.
+  const evaluatorsDisabled = runtime.getSetting(
+    "ELIZA_POST_TURN_EVALUATORS_DISABLED",
+  );
+  if (
+    isTruthyEnvValue(
+      typeof evaluatorsDisabled === "string"
+        ? evaluatorsDisabled
+        : evaluatorsDisabled == null
+          ? undefined
+          : String(evaluatorsDisabled),
+    )
+  ) {
+    if (!postTurnEvaluatorsDisabledLogged.has(runtime)) {
+      postTurnEvaluatorsDisabledLogged.add(runtime);
+      runtime.logger.info(
+        { src: "service:evaluator" },
+        "Post-turn evaluators disabled via ELIZA_POST_TURN_EVALUATORS_DISABLED; skipping reflection/memory extraction for this runtime",
+      );
+    }
     return null;
   }
   try {

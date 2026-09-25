@@ -92,6 +92,38 @@ describe("enforceAnthropicStrictToolBudget (#16499)", () => {
     expect((out.REPLY as Record<string, unknown>).strict).toBeUndefined();
   });
 
+  it("counts optionals inside anyOf/oneOf/allOf branches (the evaluator op shape)", () => {
+    // Each extractor op is an `anyOf` of operation objects; the optional fields
+    // live INSIDE those branches, not at `properties`/`items`. A counter that
+    // stops at properties/items sees 0 here and wrongly passes the surface as
+    // under-budget. Two branches of 13 optional each = 26 → over budget →
+    // downgrade.
+    const branch = (n: number) => {
+      const properties: Record<string, unknown> = {};
+      for (let i = 0; i < n; i++) properties[`f_${i}`] = { type: "string" };
+      return { type: "object", properties, required: [] };
+    };
+    const tools = {
+      EXTRACT: {
+        strict: true,
+        parameters: {
+          type: "object",
+          properties: {
+            ops: {
+              type: "array",
+              items: { anyOf: [branch(13), branch(13)] },
+            },
+          },
+          required: ["ops"],
+        },
+      },
+    } as LooseToolSet;
+    const out = enforceAnthropicStrictToolBudget(
+      tools as Parameters<typeof enforceAnthropicStrictToolBudget>[0]
+    ) as LooseToolSet;
+    expect((out.EXTRACT as Record<string, unknown>).strict).toBeUndefined();
+  });
+
   it("downgrades when more than 20 strict tools are present, even with tiny schemas", () => {
     const tools: LooseToolSet = {};
     for (let i = 0; i < 21; i++) tools[`tool_${i}`] = flatStrictTool(1);

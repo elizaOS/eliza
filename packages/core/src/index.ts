@@ -201,6 +201,11 @@ export {
 export * from "./access-control/role-primitives.js";
 export { actionToJsonSchema } from "./actions/action-schema.ts";
 export {
+	countSchemaOptionalParameters,
+	DEFAULT_STRUCTURED_OUTPUT_OPTIONAL_PARAM_LIMIT,
+	schemaExceedsOptionalParameterLimit,
+} from "./schema-optional-params.ts";
+export {
 	pinnedDiscriminatorDescription,
 	pinnedDiscriminatorForPromotedChild,
 	promotedParentRoutingHint,

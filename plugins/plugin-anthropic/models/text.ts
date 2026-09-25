@@ -577,9 +577,43 @@ function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<Too
 const ANTHROPIC_MAX_STRICT_TOOLS = 20;
 const ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS = 24;
 
+/** Schema keywords whose value is a nested schema (single) the grammar compiler
+ * descends into. */
+const NESTED_SCHEMA_KEYS = [
+  "additionalProperties",
+  "additionalItems",
+  "contains",
+  "propertyNames",
+  "if",
+  "then",
+  "else",
+  "not",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+] as const;
+/** Schema keywords whose value is an array OR map of nested schemas. */
+const NESTED_SCHEMA_COLLECTION_KEYS = [
+  "anyOf",
+  "oneOf",
+  "allOf",
+  "prefixItems",
+  "$defs",
+  "definitions",
+  "patternProperties",
+  "dependentSchemas",
+] as const;
+
 /** Optional-parameter count the way Anthropic's grammar compiler counts: every
- * property not listed in `required`, recursing into object properties and
- * array `items` (nested optionals count toward the same request-wide cap). */
+ * property not listed in `required`, recursing through EVERY nested schema
+ * position — object `properties`, array `items`/`prefixItems`, and the
+ * composition keywords (`anyOf`/`oneOf`/`allOf`, `$defs`, `patternProperties`,
+ * conditionals). Optional fields inside `anyOf` branches (each extractor op is
+ * an `anyOf` of operation objects) dominate the real evaluator surface, so a
+ * counter that stops at `properties`/`items` under-counts by an order of
+ * magnitude and lets an over-budget request through. Kept in lockstep with the
+ * provider-neutral `countSchemaOptionalParameters` in `@elizaos/core` (the
+ * assistant evaluator's pre-flight uses that one); both must agree or one path
+ * silently 400s while the other passes. */
 function countOptionalParams(schema: unknown): number {
   if (!isRecord(schema)) return 0;
   let count = 0;
@@ -594,6 +628,20 @@ function countOptionalParams(schema: unknown): number {
     }
   }
   if (isRecord(schema.items)) count += countOptionalParams(schema.items);
+  if (Array.isArray(schema.items)) {
+    for (const item of schema.items) count += countOptionalParams(item);
+  }
+  for (const key of NESTED_SCHEMA_KEYS) {
+    count += countOptionalParams(schema[key]);
+  }
+  for (const key of NESTED_SCHEMA_COLLECTION_KEYS) {
+    const child = schema[key];
+    if (Array.isArray(child)) {
+      for (const item of child) count += countOptionalParams(item);
+    } else if (isRecord(child)) {
+      for (const item of Object.values(child)) count += countOptionalParams(item);
+    }
+  }
   return count;
 }
 
