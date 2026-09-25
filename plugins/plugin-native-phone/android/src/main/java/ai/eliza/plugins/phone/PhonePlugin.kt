@@ -70,12 +70,23 @@ class PhonePlugin : Plugin() {
 
     @PluginMethod
     fun openDialer(call: PluginCall) {
-        val number = call.getString("number")?.trim()
-        val uri = if (number.isNullOrEmpty()) Uri.parse("tel:") else Uri.parse("tel:$number")
+        val rawNumber = call.data.opt("number")
+        if (call.data.has("number") && rawNumber !is String) {
+            call.reject("number must be a string", "INVALID_ARGUMENT")
+            return
+        }
+        val number = (rawNumber as? String)?.trim()
+        val uri = Uri.fromParts("tel", number.orEmpty(), null)
         val intent = Intent(Intent.ACTION_DIAL, uri)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-        call.resolve()
+        try {
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: android.content.ActivityNotFoundException) {
+            call.reject("No dialer application is available", "DIALER_UNAVAILABLE", error)
+        } catch (error: SecurityException) {
+            call.reject("Android denied opening the dialer", "DIALER_PERMISSION_DENIED", error)
+        }
     }
 
     @PluginMethod

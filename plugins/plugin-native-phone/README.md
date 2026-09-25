@@ -32,3 +32,8 @@ The isolated PhoneHistoryInstrumentedTest uses real CallLog and preferences,
 exact-ID synthetic cleanup, corrupt-data rejection and an owned write-failure
 fixture. It does not place a carrier call. Inspect terminal instrumentation
 success rather than treating shell exit 0 as a passing suite.
+
+Android `openDialer` opens the native dialer without placing a call. An optional
+number must be a string; malformed input rejects with `INVALID_ARGUMENT`.
+Telephone characters such as `#` remain part of the number. Missing handlers and
+launch denials reject with `DIALER_UNAVAILABLE` and `DIALER_PERMISSION_DENIED`.

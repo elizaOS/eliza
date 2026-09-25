@@ -26,6 +26,20 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 class PhoneTestActivity : BridgeActivity() {
+    var dialerFailure: String? = null
+    val dialerIntents = org.json.JSONArray()
+    override fun startActivity(intent: android.content.Intent, options: Bundle?) {
+        if (intent.action == android.content.Intent.ACTION_DIAL) {
+            dialerIntents.put(JSONObject().put("action", intent.action).put("uri", intent.data.toString())
+                .put("number", intent.data?.schemeSpecificPart).put("fragment", intent.data?.fragment ?: JSONObject.NULL))
+            when (dialerFailure) {
+                "missing" -> throw android.content.ActivityNotFoundException("Controlled missing dialer")
+                "denied" -> throw SecurityException("Controlled dialer launch denial")
+            }
+        }
+        super.startActivity(intent, options)
+    }
+
     override fun onCreate(state: Bundle?) { registerPlugin(PhonePlugin::class.java); super.onCreate(state) }
 }
 
