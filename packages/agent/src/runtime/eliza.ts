@@ -105,12 +105,8 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "../config/paths.ts";
-import {
-  createHookEvent,
-  type LoadHooksOptions,
-  loadHooks,
-  triggerHook,
-} from "../hooks/index.ts";
+import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
+import { createHookEvent, triggerHook } from "../hooks/registry.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
 import { EscalationService } from "../services/escalation.ts";
@@ -251,10 +247,8 @@ import {
   resolveSandboxRouteAgentId,
 } from "./sandbox-character.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
-import {
-  installDatabaseTrajectoryLogger,
-  shouldEnableTrajectoryLoggingByDefault,
-} from "./trajectory-persistence.ts";
+import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-internals.ts";
+import { installDatabaseTrajectoryLogger } from "./trajectory-storage.ts";
 import { validateViewActionMap } from "./view-action-affinity.ts";
 
 // ---------------------------------------------------------------------------
@@ -372,7 +366,7 @@ async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule>
   )) as RemoteCodingRunnerModule;
 }
 
-import rolesPlugin from "./roles.ts";
+import { default as rolesPlugin } from "./roles/src/index.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

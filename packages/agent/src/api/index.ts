@@ -13,6 +13,11 @@ export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleW
     const walletApi = await import(/* @vite-ignore */ "@elizaos/plugin-wallet");
     return walletApi.handleWalletRoutes(context);
   };
+export {
+  isInsufficientCreditsError,
+  isInsufficientCreditsMessage,
+  isRateLimitError,
+} from "@elizaos/core";
 export * from "./accounts-routes.ts";
 export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
@@ -27,7 +32,6 @@ export * from "./compat-utils.ts";
 export * from "./connector-health.ts";
 export * from "./context-inspector-routes.ts";
 export * from "./conversation-restore.ts";
-export * from "./credit-detection.ts";
 export * from "./database.ts";
 export * from "./diagnostics-routes.ts";
 export {

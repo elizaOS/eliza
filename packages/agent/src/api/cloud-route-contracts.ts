@@ -6,9 +6,9 @@
  * lazily loaded @elizaos/plugin-elizacloud.
  */
 import type http from "node:http";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
-import { type createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import { type ServerState } from "./server-types.ts";
+import type { createIntegrationTelemetrySpan } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/core/api/route-helpers";
+import type { ServerState } from "./server-types.ts";
 export interface AgentCloudProxyRouteState {
   config: ServerState["config"];
   runtime: ServerState["runtime"];
