@@ -1381,6 +1381,25 @@ class CanvasPlugin : Plugin() {
         }
     }
 
+    private fun emitDeepLink(canvasId: String, url: android.net.Uri) {
+        val params = JSObject()
+        // URLSearchParams semantics: decode form-style spaces before percent escapes,
+        // preserve encoded literal plus signs, and let the last repeated value win.
+        for (field in (url.encodedQuery ?: "").split('&')) {
+            if (field.isEmpty()) continue
+            val parts = field.split('=', limit = 2)
+            val key = android.net.Uri.decode(parts[0].replace("+", " "))
+            val value = android.net.Uri.decode(parts.getOrElse(1) { "" }.replace("+", " "))
+            params.put(key, value)
+        }
+        notifyListeners("deepLink", JSObject().apply {
+            put("canvasId", canvasId)
+            put("url", url.toString())
+            put("path", url.encodedPath ?: "")
+            put("params", params)
+        })
+    }
+
     // ---- Navigate ----
 
     @PluginMethod
@@ -1403,6 +1422,12 @@ class CanvasPlugin : Plugin() {
         activity.runOnUiThread {
             val canvas = webCanvas(call, createStandalone = true) ?: return@runOnUiThread
             try {
+                val parsedUrl = android.net.Uri.parse(url)
+                if (parsedUrl.scheme.equals("eliza", ignoreCase = true)) {
+                    emitDeepLink(canvas.id, parsedUrl)
+                    call.resolve(JSObject().put("url", url))
+                    return@runOnUiThread
+                }
                 val wv = ensureWebView(canvas)
                 if (!explicitCanvas) placeStandaloneWebView(canvas, wv, placement)
                 if (placementObj != null) {
@@ -1682,10 +1707,7 @@ class CanvasPlugin : Plugin() {
             ): Boolean {
                 val url = request.url
                 if (url.scheme?.lowercase() == "eliza") {
-                    pluginRef.notifyListeners("deepLink", JSObject().apply {
-                        put("canvasId", canvasId)
-                        put("url", url.toString())
-                    })
+                    pluginRef.emitDeepLink(canvasId, url)
                     return true
                 }
                 return false
@@ -1724,7 +1746,10 @@ class CanvasPlugin : Plugin() {
                 super.onReceivedError(view, request, error)
                 pluginRef.notifyListeners("navigationError", JSObject().apply {
                     put("canvasId", canvasId)
-                    put("error", error.description?.toString() ?: "Unknown error")
+                    val message = error.description?.toString() ?: "Unknown error"
+                    put("code", error.errorCode)
+                    put("message", message)
+                    put("error", message)
                     put("url", request.url?.toString() ?: "")
                 })
             }

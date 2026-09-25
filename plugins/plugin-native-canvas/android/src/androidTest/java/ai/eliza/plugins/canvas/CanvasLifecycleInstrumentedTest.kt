@@ -589,6 +589,63 @@ class CanvasLifecycleInstrumentedTest {
         receipt("canvas-recreation.json", JSONObject().put("placements", observations))
     }
 
+    @Test fun navigationEventsExposePublicDeepLinkAndErrorFields() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            evaluate(scenario, "window.navigationEvents={deep:[],errors:[],ready:[]};window.navigationListeners=['deepLink','navigationError','webViewReady'].map((name,i)=>window.Capacitor.addListener('ElizaCanvas',name,event=>window.navigationEvents[['deep','errors','ready'][i]].push(event)))")
+            fun events(): JSONObject = JSONObject(JSONTokener(evaluate(scenario, "JSON.stringify(window.navigationEvents)")).nextValue() as String)
+            fun observe(condition: String) {
+                val deadline = SystemClock.elapsedRealtime() + 3000
+                while (evaluate(scenario, "Boolean($condition)") != "true" && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20)
+            }
+            val direct = "eliza://open/tools%20panel?x=first&x=last&q=a%20b&flag=&encoded=%E2%9C%93&plus=a+b&literal=a%2Bb&%E2%9C%93=unicode-key"
+            val page = "eliza://open/from-page?value=hello%20world"
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#initial"))
+            waitFor(scenario, "window.navigationEvents.ready.length > 0")
+            success(scenario, "eval", JSONObject().put("script", "window.navigationSentinel='preserved';42"))
+            success(scenario, "navigate", JSONObject().put("url", direct))
+            observe("window.navigationEvents.deep.some(e=>e.url === ${JSONObject.quote(direct)})")
+            val afterDirect = events()
+            val sentinel = success(scenario, "eval", JSONObject().put("script", "window.navigationSentinel || null"))
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#page"))
+            waitFor(scenario, "window.navigationEvents.ready.some(e=>e.url === 'about:blank#page')")
+            success(scenario, "eval", JSONObject().put("script", "location.href=${JSONObject.quote(page)};42"))
+            observe("window.navigationEvents.deep.some(e=>e.url === ${JSONObject.quote(page)})")
+            val port = java.net.ServerSocket(0).use { it.localPort }
+            val failedUrl = "https://127.0.0.1:$port/unavailable"
+            success(scenario, "navigate", JSONObject().put("url", failedUrl))
+            observe("window.navigationEvents.errors.some(e=>e.url === ${JSONObject.quote(failedUrl)})")
+            val observed = events()
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#recovery"))
+            waitFor(scenario, "window.navigationEvents.ready.some(e=>e.url === 'about:blank#recovery')")
+            val recovered = success(scenario, "eval", JSONObject().put("script", "6 * 7"))
+            receipt("canvas-navigation-events.json", JSONObject().put("directUrl", direct).put("pageUrl", page).put("failedUrl", failedUrl).put("afterDirect", afterDirect).put("sentinel", sentinel).put("events", observed).put("recovered", recovered))
+            val deep = observed.getJSONArray("deep")
+            assertEquals(2, deep.length())
+            assertEquals(direct, deep.getJSONObject(0).getString("url"))
+            assertEquals("/tools%20panel", deep.getJSONObject(0).getString("path"))
+            val params = deep.getJSONObject(0).getJSONObject("params")
+            assertEquals("last", params.getString("x"))
+            assertEquals("a b", params.getString("q"))
+            assertEquals("", params.getString("flag"))
+            assertEquals("✓", params.getString("encoded"))
+            assertEquals("a b", params.getString("plus"))
+            assertEquals("a+b", params.getString("literal"))
+            assertEquals("unicode-key", params.getString("✓"))
+            assertEquals(0, afterDirect.getJSONArray("errors").length())
+            assertEquals("/from-page", deep.getJSONObject(1).getString("path"))
+            assertEquals("hello world", deep.getJSONObject(1).getJSONObject("params").getString("value"))
+            assertEquals("\"preserved\"", sentinel.getString("result"))
+            val errors = observed.getJSONArray("errors")
+            val error = (0 until errors.length()).map { errors.getJSONObject(it) }.first { it.getString("url") == failedUrl }
+            assertEquals(android.webkit.WebViewClient.ERROR_CONNECT, error.getInt("code"))
+            assertTrue(error.getString("message").isNotBlank())
+            assertEquals(error.getString("message"), error.getString("error"))
+            assertEquals("42", recovered.getString("result"))
+            evaluate(scenario, "window.navigationListeners.forEach(listener=>listener.remove())")
+        }
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")

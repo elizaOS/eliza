@@ -43,3 +43,7 @@ Android create and resize require positive integer dimensions whose RGBA byte co
 fits a signed 32-bit integer. Invalid sizes reject with `INVALID_ARGUMENT` before
 allocation or mutation. Resize preserves existing base and layer pixels, crops on
 shrink, and leaves new pixels transparent on growth.
+
+Android intercepts `eliza://` navigation from both API calls and embedded pages.
+Deep-link events include the encoded path and decoded query parameters (last
+repeated value wins). Navigation errors include the native code and message.
