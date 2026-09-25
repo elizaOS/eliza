@@ -32,3 +32,8 @@ validate numeric inputs. Zoom uses device-supported ratios; metering runs on the
 main thread and awaits CameraX completion. Cancellation rejects without changing
 cached settings. Device tests inspect Camera2 zoom and metering regions, exercise cancellation,
 and do not certify optical focus quality on a physical camera.
+
+Android settings batches reject unknown keys, malformed values and numeric
+overflow before changing cached or native state. This boundary validation does
+not certify that all valid settings are applied; full batch completion and
+manual-setting effects still require native verification.

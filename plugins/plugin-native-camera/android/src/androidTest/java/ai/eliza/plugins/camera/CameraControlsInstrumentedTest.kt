@@ -148,6 +148,40 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @Test fun invalidSettingsRejectWithoutChangingAnyCachedField() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+            val beforeZoom = requireNotNull(cameraInfo().zoomState.value).zoomRatio
+            try {
+                for (options in listOf(
+                    "{}", "{settings:null}", "{settings:[]}", "{settings:'auto'}",
+                    "{settings:{zoom:0}}", "{settings:{zoom:-1}}", "{settings:{zoom:'2'}}",
+                    "{settings:{zoom:null}}", "{settings:{zoom:1e100}}",
+                    "{settings:{flash:'invalid'}}", "{settings:{flash:1}}",
+                    "{settings:{focusMode:'fixed'}}", "{settings:{exposureMode:'locked'}}",
+                    "{settings:{whiteBalance:'sunny'}}", "{settings:{exposureCompensation:'1'}}",
+                    "{settings:{iso:0}}", "{settings:{iso:1.5}}", "{settings:{iso:2147483648}}",
+                    "{settings:{shutterSpeed:0}}", "{settings:{shutterSpeed:true}}",
+                    "{settings:{shutterSpeed:1e100}}", "{settings:{zoom:2,unknown:true}}"
+                )) {
+                    val result = call(scenario, "setSettings", options)
+                    val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                    receipts.put(JSONObject().put("options", options).put("result", result).put("settings", after))
+                    assertFalse("Invalid settings must reject: $options => $result", result.getBoolean("ok"))
+                    assertEquals("INVALID_ARGUMENT", result.getString("code"))
+                    assertEquals("Rejected settings must not mutate cache: $options", before.toString(), after.toString())
+                    assertEquals("Rejected batch must not apply its valid zoom field", beforeZoom.toDouble(),
+                        requireNotNull(cameraInfo().zoomState.value).zoomRatio.toDouble(), 0.001)
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-settings-invalid.json", receipts)
+            }
+        }
+    }
+
     @Test fun inactiveControlsRejectInsteadOfReportingSuccess() {
         val receipts = JSONArray()
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->

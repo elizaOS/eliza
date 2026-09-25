@@ -844,8 +844,16 @@ class CameraPlugin : Plugin() {
 
     @PluginMethod
     fun setSettings(call: PluginCall) {
-        val settings = call.getObject("settings") ?: run {
-            call.reject("Missing settings")
+        // Validate the whole batch before mutating cached state or native controls.
+        // JSONObject getters coerce strings, which is not the bridge contract.
+        val settings = call.data.opt("settings") as? org.json.JSONObject
+        if (settings == null) {
+            call.reject("settings must be an object", "INVALID_ARGUMENT")
+            return
+        }
+        val error = validateSettings(settings)
+        if (error != null) {
+            call.reject(error, "INVALID_ARGUMENT")
             return
         }
 
@@ -882,6 +890,26 @@ class CameraPlugin : Plugin() {
         }
 
         call.resolve()
+    }
+
+    private fun validateSettings(settings: org.json.JSONObject): String? {
+        for (key in settings.keys()) {
+            val value = settings.opt(key)
+            val valid = when (key) {
+                "flash" -> value is String && value in setOf("off", "on", "auto", "torch")
+                "focusMode", "exposureMode" -> value is String && value in setOf("auto", "continuous", "manual")
+                "whiteBalance" -> value is String && value in setOf("auto", "daylight", "cloudy", "tungsten", "fluorescent")
+                "zoom" -> value is Number && value.toFloat().isFinite() && value.toFloat() > 0f
+                "exposureCompensation" -> value is Number && value.toFloat().isFinite()
+                "iso" -> value is Number && value.toDouble().isFinite() &&
+                    value.toDouble() in 1.0..Int.MAX_VALUE.toDouble() && value.toDouble() % 1.0 == 0.0
+                "shutterSpeed" -> value is Number && value.toDouble().isFinite() &&
+                    value.toDouble() >= 1e-9 && value.toDouble() < Long.MAX_VALUE.toDouble() / 1e9
+                else -> return "Unknown camera setting: $key"
+            }
+            if (!valid) return "Invalid value for camera setting: $key"
+        }
+        return null
     }
 
     // ---- Zoom ----
