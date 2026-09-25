@@ -117,11 +117,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes: "operator-run multi-account integration; not part of routine CI",
   },
   {
-    file: "plugins/plugin-assistant/src/__tests__/should-respond.live.test.ts",
-    optIn: "ELIZA_RUN_LIVE_TESTS",
-    probe: "local Ollama at OLLAMA_API_ENDPOINT",
-  },
-  {
     file: "plugins/plugin-assistant/src/features/basic-capabilities/providers/channelTopics.live.test.ts",
     optIn: "ELIZA_LIVE_TEST",
     anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
