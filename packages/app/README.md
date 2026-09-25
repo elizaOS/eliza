@@ -70,6 +70,14 @@ unmetered, metered, offline, and restored bridge results. It restores the origin
 settings and exports each observed result. Device E2E runs this lane before the
 full plugin suite.
 
+The gateway service lifecycle lane requires Android 15+:
+`node packages/app/scripts/android-gateway-lifecycle.ts --serial emulator-5580`.
+It compiles the production service into a disposable minimal Activity host and
+uses Android's real foreground-service timeout to verify shutdown, exhausted-budget
+rejection, and foreground recovery in local, cloud, and cloud-hybrid modes. It
+restores the timeout setting and removes its package afterward. This tests the
+service lifecycle, not full MainActivity behavior or WebSocket delivery.
+
 The embedded-agent lifecycle lane needs a fresh x86_64 emulator with at least 4 GB
 RAM and no installed `ai.elizaos.app`. Run
 `node packages/app/scripts/android-native-agent.ts --serial emulator-5580` with
