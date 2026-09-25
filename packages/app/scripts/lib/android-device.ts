@@ -536,12 +536,7 @@ export function androidDistNeedsBuild({
       reason: `dist capacitorTarget=${freshStamp.capacitorTarget} but this lane bakes ${requireCapacitorTarget}`,
     };
   }
-  if (
-    headCommit &&
-    freshStamp.commit &&
-    !String(headCommit).startsWith(String(freshStamp.commit)) &&
-    !String(freshStamp.commit).startsWith(String(headCommit))
-  ) {
+  if (headCommit && freshStamp.commit !== headCommit) {
     return {
       build: true,
       reason: `dist commit=${freshStamp.commit} but HEAD=${headCommit}`,

@@ -273,6 +273,7 @@ function buildAndroidApk(bundle, backend) {
   log(`building WebView-debuggable APK via ${buildScript}…`);
   run(bundle, "build Android APK", "bun", ["run", buildScript], {
     ELIZA_MOBILE_REPO_ROOT: elizaRoot,
+    ELIZA_MOBILE_REQUIRED_RENDERER_COMMIT: currentHeadCommit(),
     ELIZA_WEBVIEW_DEBUG: "1",
     ELIZA_BUN_RISCV64_OPTIONAL: "1",
   });
@@ -302,6 +303,10 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
   const forceBuild = has("--force-build") || has("--build");
   const skipBuild = has("--skip-build");
   const headCommit = currentHeadCommit();
+  if (!headCommit)
+    throw new Error(
+      "Cannot verify Android E2E without the current Git revision.",
+    );
   let freshStamp = readFreshAndroidRendererStamp();
   const buildDecision = androidDistNeedsBuild({ freshStamp, headCommit });
 
@@ -326,6 +331,13 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
     );
   }
 
+  const rebuiltDecision = androidDistNeedsBuild({ freshStamp, headCommit });
+  if (rebuiltDecision.build) {
+    throw new Error(
+      `Android build did not produce the current renderer: ${rebuiltDecision.reason}`,
+    );
+  }
+
   let apk = resolveApk(process.env.ELIZA_ANDROID_APK);
   let apkStamp = readApkRendererStamp(apk);
   let apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
@@ -342,6 +354,12 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
       if (!freshStamp) {
         throw new Error(
           "Android build did not produce dist/eliza-renderer-build.json; refusing to install an unverifiable APK.",
+        );
+      }
+      const retryDecision = androidDistNeedsBuild({ freshStamp, headCommit });
+      if (retryDecision.build) {
+        throw new Error(
+          `Android rebuild did not produce the current renderer: ${retryDecision.reason}`,
         );
       }
       apk = resolveApk(process.env.ELIZA_ANDROID_APK);
