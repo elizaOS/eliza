@@ -3,8 +3,6 @@
   "compilerOptions": {
     "paths": {
       "@elizaos/agent": ["./src/type-shims/agent-root.ts"],
-      "@elizaos/agent/api": ["./src/type-shims/agent-api.ts"],
-      "@elizaos/agent/runtime": ["./src/type-shims/agent-runtime.ts"],
       "@elizaos/plugin-local-inference/runtime": [
         "./src/type-shims/plugin-local-inference-runtime.ts"
       ]

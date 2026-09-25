@@ -24,10 +24,10 @@ import {
   NotificationService,
   ServiceType,
 } from "@elizaos/core";
-import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
+import type { RouteHandlerResult } from "@elizaos/core/api/http-plugin";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
-import { type StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
-/** In-process route dispatcher (from `@elizaos/agent/api`). */
+import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
+/** In-process route dispatcher (from `@elizaos/agent`). */
 export type AndroidDispatchRoute = (args: {
   runtime: IAgentRuntime;
   method: string;
