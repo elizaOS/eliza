@@ -16,7 +16,7 @@
  *    propagates the outcome to children and flips the parent's state to
  *    `failed` so observers see one consistent terminal state per branch.
  */
-import { type TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
+import type { TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
 // ---------------------------------------------------------------------------
 // ScheduledTask schema (frozen)
 // ---------------------------------------------------------------------------
@@ -398,6 +398,8 @@ export interface ScheduledTaskRunner {
     taskId: string,
     verb: ScheduledTaskVerb,
     payload?: unknown,
+    /** Optional snapshot precondition for caller-owned read/modify/write edits. */
+    options?: { expectedTask: ScheduledTask },
   ): Promise<ScheduledTask>;
   applyWithResult(
     taskId: string,
