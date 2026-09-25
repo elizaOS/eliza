@@ -18,6 +18,9 @@ Host configuration is exported from the root as well. `AppMemoryConfig` and
 names configuration UI patches. `getAppBootConfigEnvAliases` and
 `resolveAppAliasedEnvValue` retain the host store's initialization behavior.
 
+`asRecord` accepts plain objects. `asObjectRecord` also accepts class and built-in
+object instances; both reject arrays and null.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

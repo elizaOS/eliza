@@ -7,6 +7,11 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
+Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
+`RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying
+registry shapes; `RegistryPluginInfo` and `RegistrySearchResult` retain the
+plugin manager's extensions. The roles plugin is exported as `rolesPlugin`.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

@@ -18,6 +18,7 @@ import {
   type OwnerContactEntry,
   type OwnerContactsConfig,
   requireConfirmedSendHandlerDelivery,
+  resolveOwnerEntityId,
   type UUID,
 } from "@elizaos/core";
 import { createSerialise } from "@elizaos/core/utils/serialise";
@@ -28,7 +29,6 @@ import {
   resolveOwnerContactWithFallback,
   resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import {
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,

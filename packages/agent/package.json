@@ -99,22 +99,8 @@
       "default": "./dist/api/*.js"
     },
     "./config/character-schema": "./src/config/character-schema.ts",
-    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
-    "./runtime": {
-      "types": "./src/runtime/index.ts",
-      "eliza-source": {
-        "types": "./src/runtime/index.ts",
-        "import": "./src/runtime/index.ts",
-        "default": "./src/runtime/index.ts"
-      },
-      "bun": {
-        "types": "./src/runtime/index.ts",
-        "import": "./src/runtime/index.ts",
-        "default": "./src/runtime/index.ts"
-      },
-      "import": "./dist/runtime/index.js",
-      "default": "./dist/runtime/index.js"
-    },
+    "./config/plugin-auto-enable": null,
+    "./runtime": null,
     "./runtime/runtime-installation-id": null,
     "./runtime/runtime-installation-id.windows": null,
     "./runtime/*": {
@@ -358,7 +344,28 @@
       "eliza-source": "./src/api/loopback-trust.ts",
       "import": "./dist/api/loopback-trust.js",
       "default": "./dist/api/loopback-trust.js"
-    }
+    },
+    "./services/index": null,
+    "./awareness/index": null,
+    "./awareness/registry": null,
+    "./contracts/awareness": null,
+    "./services/permissions/contracts": null,
+    "./hooks/index": null,
+    "./types/index": null,
+    "./diagnostics/integration-observability": null,
+    "./security/index": null,
+    "./actions/index": null,
+    "./api/augmented-request": null,
+    "./api/credit-detection": null,
+    "./runtime/owner-entity": null,
+    "./runtime/local-execution-mode": null,
+    "./runtime/index": null,
+    "./runtime/roles": null,
+    "./runtime/trajectory-persistence": null,
+    "./runtime/roles/src/types": null,
+    "./runtime/roles/src/utils": null,
+    "./runtime/tool-call-cache/index": null,
+    "./runtime/operations/index": null
   },
   "publishConfig": {
     "access": "public",

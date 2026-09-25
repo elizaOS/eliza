@@ -187,6 +187,9 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
+  const boundaryRecord = new (class BoundaryRecord { value = 1; })();
+  assert.equal(publicApi.asObjectRecord(boundaryRecord), boundaryRecord);
+  assert.equal(publicApi.asRecord(boundaryRecord), null);
   const exportPrompt = 'complete model request 🟠 '.repeat(12000) + 'FINAL-REQUEST';
   const exportResponse = 'complete response with final reference';
   const exportRecord = {

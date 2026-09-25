@@ -7,7 +7,7 @@
  */
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
-import { type IncomingMessage, type ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
@@ -193,10 +193,7 @@ const IOS_BRIDGE_BRAND_ENV_SUFFIXES = [
   "API_PORT",
 ] as const;
 async function loadAgentModule(): Promise<AgentModule> {
-  const [{ bootElizaRuntime }, { dispatchRoute }] = await Promise.all([
-    import("@elizaos/agent/runtime"),
-    import("@elizaos/agent/api"),
-  ]);
+  const { bootElizaRuntime, dispatchRoute } = await import("@elizaos/agent");
   return { bootElizaRuntime, dispatchRoute };
 }
 interface IosBridgeHost {
