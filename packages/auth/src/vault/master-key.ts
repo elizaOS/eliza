@@ -374,10 +374,43 @@ export function defaultMasterKey(
 }
 
 /**
+ * Per-process memo of the resolved sync master key, keyed by service/account.
+ *
+ * The master key is a single persistent value: the OS keychain and the
+ * passphrase KDF return the same bytes on every call within a process. But
+ * {@link loadDefaultMasterKeySync} is invoked once per credential file decode
+ * (see `account-storage.ts` `masterKey()` → `decodeAccountRecord`), so a
+ * `listAccounts()` over N files spawned N `readKeychainKeySync` child processes
+ * (each ~80-150ms: cold Node + `@napi-rs/keyring` load + Secret Service round
+ * trip) or ran N scrypt derivations (~90ms each). With ~17 pooled accounts that
+ * was ~2.5s of serialized, redundant key resolution wrapped inside the
+ * account-pool lease that every chat turn takes before its first model call —
+ * observed as multi-second `model:TEXT_EMBEDDING` spans while the TEI backend
+ * itself answered in 20-40ms.
+ *
+ * Caching the successfully-resolved key removes the redundant work without
+ * changing the security posture: the value is already held in process memory
+ * for the lifetime of every vault/credential operation, and the cache is keyed
+ * by the same service/account tuple the resolver reads. Failures are never
+ * cached, so a transient keychain/passphrase error still retries on the next
+ * call. The passphrase-length guard runs before the cache lookup so an invalid
+ * `ELIZA_VAULT_PASSPHRASE` keeps throwing.
+ */
+const syncMasterKeyCache = new Map<string, Buffer>();
+
+/** Reset the sync master-key memo. Test-only: production keys never rotate
+ * within a process, so callers outside tests must not need this. */
+export function resetLoadDefaultMasterKeySyncCache(): void {
+  syncMasterKeyCache.clear();
+}
+
+/**
  * Resolve the same persistent master key as {@link defaultMasterKey} for
  * synchronous credential stores that must be readable during process boot.
  * The function uses the platform keychain or the configured vault passphrase;
- * it never writes a filesystem fallback key.
+ * it never writes a filesystem fallback key. The successfully-resolved key is
+ * memoized per service/account for the process lifetime (see
+ * {@link syncMasterKeyCache}); errors are never cached.
  */
 export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
   const service = opts.service ?? "eliza";
@@ -390,6 +423,21 @@ export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
     );
   }
 
+  const cacheKey = `${service}\u0000${account}`;
+  const cached = syncMasterKeyCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const resolved = resolveDefaultMasterKeySync(service, account, passphrase);
+  syncMasterKeyCache.set(cacheKey, resolved);
+  return resolved;
+}
+
+function resolveDefaultMasterKeySync(
+  service: string,
+  account: string,
+  passphrase: string | undefined,
+): Buffer {
   if (isKeychainUnsafe()) {
     if (!passphrase) {
       throw new MasterKeyUnavailableError(keychainUnsafeMessage("vault: "));
