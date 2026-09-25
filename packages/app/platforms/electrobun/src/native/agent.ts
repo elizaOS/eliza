@@ -26,6 +26,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core/errors";
 import {
 	resolveApiToken,
 	resolveDesktopApiPort,
@@ -1290,6 +1291,8 @@ export class AgentManager {
 		error: null,
 	};
 	private childProcess: BunSubprocess | null = null;
+	private childTermination: Promise<void> | null = null;
+	private readonly intentionalChildStops = new WeakSet<BunSubprocess>();
 	private stdioAbortController: AbortController | null = null;
 	private hasPgliteError = false;
 	private pgliteRecoveryDone = false;
@@ -1763,6 +1766,7 @@ export class AgentManager {
 					child_pid: proc.pid,
 					error: errMsg,
 				});
+				await this.killChildProcess();
 				this.releaseDatabaseStartupLock();
 				this.emitStatus();
 				return this.status;
@@ -1840,7 +1844,12 @@ export class AgentManager {
 		// A deliberate stop cancels any pending crash auto-restart, regardless of
 		// current state (the crash may have already moved us to `error`).
 		this.cancelAutoRestart();
-		if (this.status.state !== "running" && this.status.state !== "starting") {
+		if (
+			!this.childProcess &&
+			!this.databaseStartupLock &&
+			this.status.state !== "running" &&
+			this.status.state !== "starting"
+		) {
 			return;
 		}
 		diagnosticLog("[Agent] Stopping...");
@@ -1987,19 +1996,9 @@ export class AgentManager {
 	}
 	/** Clean up on app quit. */
 	async dispose(): Promise<void> {
-		if (this.stdioAbortController) {
-			this.stdioAbortController.abort();
-			this.stdioAbortController = null;
-		}
-		try {
-			await this.killChildProcess();
-			this.releaseDatabaseStartupLock();
-		} catch (err) {
-			logger.warn(
-				`[Agent] dispose error: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
+		await this.stop();
 	}
+
 	// -----------------------------------------------------------------------
 	// Private helpers
 	// -----------------------------------------------------------------------
@@ -2156,7 +2155,8 @@ export class AgentManager {
 		proc.exited
 			.then((exitCode: number) => {
 				// Only update status if this is still our active child process
-				if (this.childProcess !== proc) return;
+				if (this.childProcess !== proc || this.intentionalChildStops.has(proc))
+					return;
 				const wasRunning = this.status.state === "running";
 				const wasStarting = this.status.state === "starting";
 				if (wasRunning || wasStarting) {
@@ -2202,7 +2202,8 @@ export class AgentManager {
 				}
 			})
 			.catch((err: unknown) => {
-				if (this.childProcess !== proc) return;
+				if (this.childProcess !== proc || this.intentionalChildStops.has(proc))
+					return;
 				diagnosticLog(
 					`[Agent] Child process exited with error: ${err instanceof Error ? err.message : String(err)}`,
 				);
@@ -2211,8 +2212,8 @@ export class AgentManager {
 					child_pid: proc.pid,
 					error: err instanceof Error ? err.message : String(err),
 				});
-				this.childProcess = null;
-				this.releaseDatabaseStartupLock();
+				// An exit-observation failure is not proof that the writer stopped.
+				this.cancelAutoRestart();
 				if (
 					this.status.state === "running" ||
 					this.status.state === "starting"
@@ -2226,7 +2227,6 @@ export class AgentManager {
 					};
 					this.setStartupPhase("process_exit_error", shortError(err));
 					this.emitStatus();
-					this.scheduleCrashRestart();
 				}
 			});
 	}
@@ -2303,33 +2303,53 @@ export class AgentManager {
 	 * after a timeout.
 	 */
 	private async killChildProcess(): Promise<void> {
+		if (this.childTermination) return this.childTermination;
 		const proc = this.childProcess;
 		if (!proc) return;
-		this.childProcess = null;
-		// Already exited
-		if (proc.exitCode !== null) return;
-		diagnosticLog(`[Agent] Sending SIGTERM to pid ${proc.pid}`);
-		proc.kill("SIGTERM");
-		// Wait for graceful shutdown or timeout
-		const exited = await Promise.race([
-			proc.exited.then(() => true as const),
-			Bun.sleep(SIGTERM_GRACE_MS).then(() => false as const),
-		]);
-		if (!exited) {
-			diagnosticLog(
-				`[Agent] Process did not exit within ${SIGTERM_GRACE_MS}ms, sending SIGKILL`,
-			);
+		this.intentionalChildStops.add(proc);
+		const waitForExit = async (timeoutMs: number): Promise<boolean> => {
+			let timer: ReturnType<typeof setTimeout> | undefined;
 			try {
-				proc.kill("SIGKILL");
-			} catch {
-				// Process may have already exited between check and kill
+				return await Promise.race([
+					proc.exited.then(() => true),
+					new Promise<boolean>((resolve) => {
+						timer = setTimeout(() => resolve(false), timeoutMs);
+					}),
+				]);
+			} finally {
+				clearTimeout(timer);
 			}
-			// Wait briefly for SIGKILL to take effect
-			// error-policy:J6 teardown — we only await that the killed child settles
-			await Promise.race([proc.exited.catch(() => {}), Bun.sleep(1000)]);
+		};
+		this.childTermination = (async () => {
+			if (proc.exitCode === null && proc.signalCode == null) {
+				diagnosticLog(`[Agent] Sending SIGTERM to pid ${proc.pid}`);
+				proc.kill("SIGTERM");
+				if (!(await waitForExit(SIGTERM_GRACE_MS))) {
+					diagnosticLog(
+						`[Agent] Graceful shutdown timed out; sending SIGKILL to pid ${proc.pid}`,
+					);
+					proc.kill("SIGKILL");
+					if (!(await waitForExit(1000))) {
+						throw new ElizaError(
+							`Agent process ${proc.pid} did not confirm exit after SIGKILL; database recovery remains blocked.`,
+							{
+								code: "AGENT_TERMINATION_UNCONFIRMED",
+								context: { pid: proc.pid },
+							},
+						);
+					}
+				}
+			}
+			if (this.childProcess === proc) this.childProcess = null;
+			diagnosticLog("[Agent] Child process terminated");
+		})();
+		try {
+			await this.childTermination;
+		} finally {
+			this.childTermination = null;
 		}
-		diagnosticLog("[Agent] Child process terminated");
 	}
+
 	/**
 	 * Attempt to fetch the agent name from the running API server.
 	 * Falls back to the configured desktop app name if the endpoint is unavailable.

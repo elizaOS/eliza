@@ -154,6 +154,59 @@ it("preserves all strategy projections and refreshes disabled eligibility only i
   ).toBe(false);
 });
 
+it("does not advance round-robin selection when previewed", async () => {
+  const pool = getDefaultAccountPool();
+  const snapshot = pool.readSnapshot();
+  for (const expected of ["personal", "work", "personal"]) {
+    for (let poll = 0; poll < 3; poll += 1) {
+      expect(
+        pool.selectionState("anthropic-api", "round-robin").activeAccountId,
+      ).toBe(expected);
+      expect(
+        snapshot.selectionState("anthropic-api", "round-robin").activeAccountId,
+      ).toBe(expected);
+    }
+    expect(
+      (
+        await pool.select({
+          providerId: "anthropic-api",
+          strategy: "round-robin",
+        })
+      )?.id,
+    ).toBe(expected);
+  }
+});
+
+it("keeps session affinity scoped to its provider", async () => {
+  const personal = getDefaultAccountPool().get("personal", "anthropic-api");
+  const work = getDefaultAccountPool().get("work", "anthropic-api");
+  if (!personal || !work) throw new Error("Missing stored fixture accounts");
+  const pool = new AccountPool({
+    readAccounts: () => ({
+      anthropic: personal,
+      openaiPersonal: { ...personal, providerId: "openai-api", priority: 2 },
+      openaiWork: { ...work, providerId: "openai-api", priority: 0 },
+    }),
+    writeAccount: async () => {},
+  });
+  expect(
+    (
+      await pool.select({
+        providerId: "anthropic-api",
+        sessionKey: "conversation",
+      })
+    )?.id,
+  ).toBe("personal");
+  expect(
+    (
+      await pool.select({
+        providerId: "openai-api",
+        sessionKey: "conversation",
+      })
+    )?.id,
+  ).toBe("work");
+});
+
 it("keeps an acquired snapshot coherent while a subsequent request rejects corrupted storage", () => {
   const pool = getDefaultAccountPool();
   const first = pool.readSnapshot();
@@ -249,4 +302,16 @@ it("serves identical real HTTP inventory with two full reads instead of one per 
       _resetAccountsRoutesPoolCache();
     }
   }
+});
+
+it("rejects metadata deletion when the persistence adapter cannot delete", async () => {
+  const pool = new AccountPool({
+    readAccounts: () => ({}),
+    writeAccount: async () => {},
+  });
+  await expect(
+    pool.deleteMetadata("anthropic-api", "personal"),
+  ).rejects.toMatchObject({
+    code: "ACCOUNT_POOL_DELETE_UNSUPPORTED",
+  });
 });

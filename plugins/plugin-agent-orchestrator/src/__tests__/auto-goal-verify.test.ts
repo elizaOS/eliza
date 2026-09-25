@@ -250,6 +250,74 @@ describe("auto goal verification on task_complete", () => {
     else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = savedFlag;
   });
 
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ] as const)(
+    "shutdown waits for admitted completion verification (model entered=%s, outage=%s)",
+    async (waitForModel, modelOutage) => {
+      const expectedStatus = modelOutage ? "active" : "done";
+      const fake = makeFakeAcp();
+      const store = new OrchestratorTaskStore({ backend: "memory" });
+      const { taskId, sessionId } = await seedTaskWithSession(store, [
+        "tests pass",
+      ]);
+      const runtime = makeRuntime(fake.service, () => "");
+      let release!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered = false;
+      runtime.useModel.mockImplementation(async () => {
+        entered = true;
+        await barrier;
+        if (modelOutage)
+          throw new Error("verifier unavailable during shutdown");
+        return JSON.stringify({
+          passed: true,
+          summary: "verified",
+          missing: [],
+        });
+      });
+      const service = createService(runtime as never, { store });
+      await service.start();
+      fake.emit(sessionId, "task_complete", { response: "done, tests pass" });
+      let stopped = false;
+      let stopping: Promise<void> | undefined;
+      try {
+        if (waitForModel) await vi.waitFor(() => expect(entered).toBe(true));
+        stopping = service.stop().then(() => {
+          stopped = true;
+        });
+        await vi.waitFor(() => expect(entered).toBe(true));
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect(stopped).toBe(false);
+        release();
+        await stopping;
+        expect((await store.getTask(taskId))?.task.status).toBe(expectedStatus);
+        if (modelOutage) {
+          expect(
+            (await store.getTask(taskId))?.task.metadata.autoVerifyAttempts,
+          ).toBeUndefined();
+          expect(
+            (await store.getTask(taskId))?.events.some(
+              (event) => event.eventType === "goal_verify_inconclusive",
+            ),
+          ).toBe(true);
+        }
+      } finally {
+        release();
+        await stopping;
+        await vi.waitFor(async () =>
+          expect((await store.getTask(taskId))?.task.status).toBe(
+            expectedStatus,
+          ),
+        );
+      }
+    },
+  );
+
   it("marks the task done when the small model confirms all criteria", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });

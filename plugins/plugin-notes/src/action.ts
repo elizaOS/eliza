@@ -441,7 +441,10 @@ export const notesAction: Action = {
         ...(noteId ? { requestedNoteId: noteId } : {}),
         ...(topic ? { topic } : {}),
         ...(dateRange ? { dateRange } : {}),
-        notes: matches,
+        notes: matches.map((note) => ({
+          ...note,
+          sourceNote: service.sourceReference(note),
+        })),
         notesRevision: snapshot.revision,
       });
       return emptyInventory

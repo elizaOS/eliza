@@ -14,6 +14,6 @@
     "lib": ["ES2024", "DOM"],
     "types": ["node", "bun-types"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "gepa/**/*.ts"],
   "extends": "../tsconfig.workspace.json"
 }

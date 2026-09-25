@@ -129,6 +129,8 @@ const EVENT_ID_DESCRIPTION =
 const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
 > = {
+  grantId:
+    "Exact grantId from a Calendar result for the user-selected connected account. Omit only when using the default built-in Eliza calendar. If the user requests Google or another connected provider, read the Calendar feed to resolve its accounts first; ask which account when more than one matches, before creating an event. Never substitute the built-in calendar for an explicitly requested provider.",
   ...Object.fromEntries(
     ["calendarId", "calendarid", "calendar_id"].map((key) => [
       key,
@@ -225,6 +227,18 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       type: "array",
       items: { type: "string" },
     },
+    sourceNote: {
+      type: "object",
+      description:
+        "Only when the user is creating an event from a saved note, copy the complete sourceNote reference from the exact Notes read. Otherwise omit this entire optional field. Never use unknown, empty, or placeholder values. Retain a real reference through confirmation; never invent or refresh only its hash.",
+      properties: {
+        agentId: { type: "string" },
+        noteId: { type: "string" },
+        contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      },
+      required: ["agentId", "noteId", "contentHash"],
+      additionalProperties: false,
+    },
     attendees: {
       type: "array",
       description:
@@ -274,6 +288,7 @@ export const CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
           "notifyAttendees",
           "recurrence",
           "attendees",
+          "sourceNote",
         ].includes(key),
     ),
   ),

@@ -888,6 +888,13 @@ def _make_registry_adapter(
             "BENCHMARK_MODEL_NAME": model_name,
             "MODEL_NAME": model_name,
         }
+        if benchmark_id in {"osworld", "visualwebbench"} and harness not in {"hermes", "openclaw"}:
+            vision_model = ctx.request.extra_config.get("vision_model")
+            if isinstance(vision_model, str) and vision_model.strip():
+                env["OPENAI_IMAGE_DESCRIPTION_MODEL"] = vision_model.strip()
+            vision_url = ctx.request.extra_config.get("vision_base_url")
+            if isinstance(vision_url, str) and vision_url.strip():
+                env["OPENAI_IMAGE_DESCRIPTION_BASE_URL"] = vision_url.strip().rstrip("/")
         for extra_key, env_key in (
             ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
             ("hermes_timeout_s", "HERMES_TIMEOUT_S"),

@@ -141,6 +141,64 @@ describe("startCloudAgent HTTP handlers", () => {
     vi.clearAllMocks();
   });
 
+  it.each([1, 1000, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects memory limit %s before opening servers",
+    async (maxMemories) => {
+      const { startCloudAgent } = await import(
+        "../../deploy/cloud-agent-shared"
+      );
+      expect(() => startCloudAgent({ maxMemories })).toThrow(
+        expect.objectContaining({
+          code: "CLOUD_AGENT_MEMORY_LIMIT_UNSUPPORTED",
+        }),
+      );
+      expect(capturedServers).toHaveLength(0);
+    },
+  );
+
+  it("preserves restored history beyond the former deployment cap when a new message arrives", async () => {
+    const { startCloudAgent } = await import("../../deploy/cloud-agent-shared");
+    startCloudAgent({ port: 0, bridgePort: 0, bridgeSecret: "secret" });
+    const [health, bridge] = capturedServers;
+    await waitForEchoRuntime(health);
+    const auth = { authorization: "Bearer secret" };
+    const memories = Array.from({ length: 1001 }, (_, index) => ({
+      role: "user",
+      text: `Complete original ${index}`,
+      sourceId: `source-${index}`,
+    }));
+    await dispatch(
+      bridge,
+      "POST",
+      "/api/restore",
+      JSON.stringify({ memories }),
+      auth,
+    );
+    await dispatch(
+      bridge,
+      "POST",
+      "/bridge",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "message.send",
+        params: { text: "New message" },
+      }),
+      auth,
+    );
+    const snapshot = parseJson(
+      await dispatch(bridge, "POST", "/api/snapshot", undefined, auth),
+    );
+    expect(snapshot.memories).toEqual([
+      ...memories,
+      expect.objectContaining({ role: "user", text: "New message" }),
+      expect.objectContaining({
+        role: "assistant",
+        text: "[echo] New message",
+      }),
+    ]);
+  });
+
   it.each(["Ω", "€", "😀"])(
     "preserves complete restored state when %s spans request chunks",
     async (codePoint) => {
@@ -313,7 +371,6 @@ describe("startCloudAgent HTTP handlers", () => {
       port: 0,
       bridgePort: 0,
       bridgeSecret: "secret",
-      maxMemories: 2,
       enableChatMode: true,
     });
     await Promise.resolve();

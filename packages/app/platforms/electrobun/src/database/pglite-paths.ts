@@ -30,26 +30,32 @@ export function resolvePgliteDataDirPath(
 ): string {
 	const trimmed = dataDir.trim();
 	if (isMemoryPgliteDataDir(trimmed)) return trimmed;
-	return path.isAbsolute(trimmed) ? trimmed : path.resolve(cwd, trimmed);
+	return path.resolve(cwd, trimmed);
 }
 
 function isInsidePath(childPath: string, parentPath: string): boolean {
 	const relative = path.relative(parentPath, childPath);
 	return (
 		relative === "" ||
-		(!relative.startsWith("..") && !path.isAbsolute(relative))
+		(relative !== ".." &&
+			!relative.startsWith(`..${path.sep}`) &&
+			!path.isAbsolute(relative))
 	);
 }
 
 function parentWritable(targetPath: string): boolean {
-	try {
-		const parent = path.dirname(targetPath);
-		fs.mkdirSync(parent, { recursive: true });
-		fs.accessSync(parent, fs.constants.W_OK);
-		return true;
-	} catch {
-		// error-policy:J4 parent dir not creatable/writable -> reported as not writable
-		return false;
+	let parent = path.dirname(targetPath);
+	for (;;) {
+		try {
+			if (!fs.statSync(parent).isDirectory()) return false;
+			fs.accessSync(parent, fs.constants.W_OK | fs.constants.X_OK);
+			return true;
+		} catch (error) {
+			const next = path.dirname(parent);
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT" || next === parent)
+				return false;
+			parent = next;
+		}
 	}
 }
 

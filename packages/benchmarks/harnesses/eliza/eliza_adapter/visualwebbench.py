@@ -26,6 +26,16 @@ if TYPE_CHECKING:
         VisualWebBenchTask,
     )
 
+def _image_media_type(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("VisualWebBench requires PNG, JPEG, or WebP image bytes")
+
+
 logger = logging.getLogger(__name__)
 
 _META_DESCRIPTION_RE = re.compile(
@@ -66,25 +76,18 @@ class ElizaVisualWebBenchAgent:
         started = time.time()
         self._client.reset(task_id=task.id, benchmark="visualwebbench")
 
-        # Attach the screenshot by path. Inline base64 screenshots are often
-        # megabytes long in the HF corpus; passing them through text-only or
-        # OpenAI-compatible benchmark bridges blows provider context limits.
-        # Enable VISUALWEBBENCH_INLINE_IMAGES=1 only for a known vision path.
-        attachments: list[dict[str, object]] = []
-        if task.image_path:
-            attachments.append({
-                "kind": "image",
-                "path": task.image_path,
-                "media_type": "image/png",
-            })
-        if task.image_bytes and _env_enabled("VISUALWEBBENCH_INLINE_IMAGES"):
-            import base64
+        import base64
 
-            attachments.append({
-                "kind": "image",
-                "media_type": "image/png",
-                "data_base64": base64.b64encode(task.image_bytes).decode("ascii"),
-            })
+        image_bytes = task.image_bytes
+        if not image_bytes and task.image_path:
+            image_bytes = Path(task.image_path).read_bytes()
+        if not image_bytes:
+            raise ValueError("VisualWebBench requires actual image bytes")
+        attachments: list[dict[str, object]] = [{
+            "kind": "image",
+            "media_type": _image_media_type(image_bytes),
+            "data_base64": base64.b64encode(image_bytes).decode("ascii"),
+        }]
 
         context: dict[str, object] = {
             "benchmark": "visualwebbench",

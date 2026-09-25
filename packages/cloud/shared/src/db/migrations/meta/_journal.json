@@ -3193,6 +3193,13 @@
       "when": 1796083200099,
       "tag": "0472_app_billing_checkout_cleanup_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 456,
+      "version": "7",
+      "when": 1796083200100,
+      "tag": "0473_ai_billing_records_nullable_usage_record",
+      "breakpoints": true
     }
   ]
 }

@@ -16,21 +16,23 @@ export function resolveDesktopCloudTarget(
   args: readonly string[],
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const inline = args.find((arg) => arg.startsWith("--cloud-target="));
-  const exactIndex = args.indexOf("--cloud-target");
-  if (
-    exactIndex >= 0 &&
-    (!args[exactIndex + 1] || args[exactIndex + 1].startsWith("--"))
-  ) {
-    throw new Error(
-      'Desktop Cloud target is missing. Expected "production" or "staging".',
-    );
+  let cliValue: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg !== "--cloud-target" && !arg.startsWith("--cloud-target="))
+      continue;
+    if (cliValue !== undefined)
+      throw new Error("Desktop Cloud target was supplied more than once.");
+    cliValue =
+      arg === "--cloud-target"
+        ? args[++index]
+        : arg.slice("--cloud-target=".length);
+    if (!cliValue?.trim() || cliValue.startsWith("--")) {
+      throw new Error(
+        'Desktop Cloud target is missing. Expected "production" or "staging".',
+      );
+    }
   }
-  const cliValue = inline
-    ? inline.slice("--cloud-target=".length)
-    : exactIndex >= 0
-      ? args[exactIndex + 1]
-      : undefined;
   const raw = cliValue ?? env.ELIZA_DESKTOP_CLOUD_TARGET;
 
   if (raw === undefined || raw === null || raw.trim() === "") {

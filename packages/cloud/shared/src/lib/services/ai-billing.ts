@@ -732,8 +732,9 @@ export async function recordUsageAnalytics(
     baseTotalCost: billing.baseTotalCost,
   };
 
+  let usageRecord: UsageRecord | null = null;
   try {
-    const usageRecord = await usageService.create({
+    usageRecord = await usageService.create({
       organization_id: context.organizationId,
       user_id: context.userId,
       api_key_id: context.apiKeyId || null,
@@ -812,7 +813,9 @@ export async function recordUsageAnalytics(
     logger.error("[AI Billing] Failed to record usage analytics", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return null;
+    // A later generation write may fail after the usage receipt was committed.
+    // Preserve that receipt so the settled billing ledger keeps its valid link.
+    return usageRecord;
   }
 }
 

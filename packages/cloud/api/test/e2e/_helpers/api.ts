@@ -223,6 +223,16 @@ async function request(
     );
     res = await fetch(url(path), makeInit());
   }
+  if (res.status === 500 && !isJsonMediaType(res.headers.get("content-type"))) {
+    console.error("[Worker e2e] Non-JSON server failure", {
+      method,
+      path,
+      status: res.status,
+      server: res.headers.get("server"),
+      contentType: res.headers.get("content-type"),
+      body: await res.clone().text(),
+    });
+  }
   recordStatus(method, path, res.status);
   return res;
 }

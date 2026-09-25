@@ -211,10 +211,8 @@ describe("client-chat model context preserves executor transport state", () => {
 				(entry) => entry.role === "user",
 			)?.content;
 			expect(wire).toBeDefined();
-			// Unknown structured metadata takes the lossless JSON path. Decode the
-			// current-message envelope so escaped text and every nested field count.
-			const currentMessage = wire?.split("# Current message\n").at(-1);
-			expect(JSON.parse(currentMessage ?? "null")).toEqual(original.content);
+			// Extended connector evidence retains its complete structured envelope.
+			expect(wire).toContain(JSON.stringify(original.content));
 			expect(wire).toContain(original.content.replyToMessageText);
 			const executor = __buildV5ExecutorContextForTests({
 				message,
@@ -329,11 +327,12 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		const params = firstCall?.[1] as
 			| { messages?: Array<{ role?: string; content?: string }> }
 			| undefined;
-		const systemContent = params?.messages?.[0]?.content ?? "";
+		const systemContent =
+			params?.messages?.map((message) => message.content).join("\n") ?? "";
 
-		expect(systemContent).toContain("available_contexts:");
+		expect(systemContent).toContain("# Available Contexts");
 		const catalog = systemContent.match(
-			/available_contexts:\n([\s\S]*?)\n\n/,
+			/# Available Contexts\n([\s\S]*?)\n\n/,
 		)?.[1];
 		expect(catalog).toBeDefined();
 		// `general` (no gate) and `memory` (USER) are visible to USER role.
@@ -389,8 +388,9 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		const params = firstCall?.[1] as
 			| { messages?: Array<{ role?: string; content?: string }> }
 			| undefined;
-		const systemContent = params?.messages?.[0]?.content ?? "";
-		expect(systemContent).toContain("available_contexts:");
-		expect(systemContent).toMatch(/available_contexts:\n\n/);
+		const systemContent =
+			params?.messages?.map((message) => message.content).join("\n") ?? "";
+		expect(systemContent).toContain("# Available Contexts");
+		expect(systemContent).toMatch(/# Available Contexts\n\n/);
 	});
 });

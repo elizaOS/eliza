@@ -46,7 +46,14 @@ export function backupPgliteDirectory(
 	const now = options.now ?? (() => new Date());
 	const backupDir = path.join(backupRoot, `pglite-${backupTimestamp(now)}`);
 	fs.mkdirSync(backupRoot, { recursive: true });
-	fs.cpSync(sourceDir, backupDir, { recursive: true, force: false });
+	// Reserve this backup exclusively. A previous backup is never a receipt
+	// for the current database contents, even when timestamps collide.
+	fs.mkdirSync(backupDir);
+	fs.cpSync(sourceDir, backupDir, {
+		recursive: true,
+		force: false,
+		errorOnExist: true,
+	});
 	return {
 		sourceDir,
 		backupDir,

@@ -167,7 +167,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             },
           ],
           loadLife: async () => [],
-          loadMoney: async () => [],
+          loadCommitments: async () => [],
           loadCompletedToday: async () => [],
         });
 
@@ -210,7 +210,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         loadCalendar: async () => [],
         loadInbox: async () => [],
         loadLife: async () => [],
-        loadMoney: async () => [],
+        loadCommitments: async () => [],
         loadCompletedToday: async () => [],
       });
 
@@ -237,7 +237,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         loadCalendar: async () => [],
         loadInbox: async () => [],
         loadLife: async () => [],
-        loadMoney: async () => [],
         loadCompletedToday: async () => [],
         loadCommitments: async () => [
           {
@@ -288,7 +287,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         loadCalendar: async () => [],
         loadInbox: async () => [],
         loadLife: async () => [],
-        loadMoney: async () => [],
         loadCompletedToday: async () => [],
         loadCommitments,
       });
@@ -339,6 +337,18 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             dueAt: "2026-05-11T17:00:00.000Z",
           },
         ],
+        loadCommitments: async () => [
+          {
+            id: "commitment-1",
+            kind: "commitment",
+            summary: "Send the signed contract",
+            counterparty: "Alex",
+            dueAt: "2026-05-20T00:00:00.000Z",
+            status: "open",
+            regretScore: 3,
+            reasons: ["promised delivery"],
+          },
+        ],
       });
 
       const result = await callBrief(runtime, makeMessage(), {
@@ -361,7 +371,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(data.briefing.sections.calendar).toHaveLength(1);
       expect(data.briefing.sections.inbox).toHaveLength(1);
       expect(data.briefing.sections.life).toHaveLength(1);
-      expect(data.briefing.sections).not.toHaveProperty("money");
+      expect(data.briefing.sections.commitments).toHaveLength(1);
       // Trimmed by the compose pass — not the raw model string.
       expect(data.briefing.narrative).toBe(
         "Composed narrative from the model.",
@@ -380,6 +390,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(args.prompt).toContain("Board sync"); // calendar
       expect(args.prompt).toContain("Approve the SOW"); // inbox
       expect(args.prompt).toContain("Send NDA"); // life
+      expect(args.prompt).toContain("Send the signed contract"); // commitments
       expect(args.prompt).toContain('"editorial"');
       expect(args.prompt).toContain('"itemId": "inbox:msg-1"');
       expect(args.prompt).toContain('"action": "lead"');
@@ -390,11 +401,16 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         loadCalendar: vi.fn(async () => []),
         loadInbox: vi.fn(async () => []),
         loadLife: vi.fn(async () => []),
-        loadMoney: vi.fn(async () => []),
+        loadCommitments: vi.fn(async () => []),
       });
       const result = await callBrief(makeRuntime(), makeMessage(), {
         subaction: "compose_morning",
-        include: { calendar: true, inbox: false, life: false, money: false },
+        include: {
+          calendar: true,
+          inbox: false,
+          life: false,
+          commitments: false,
+        },
         format: "json",
       });
       expect(result.success).toBe(true);
@@ -404,7 +420,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(data.briefing.sections).toHaveProperty("calendar");
       expect(data.briefing.sections).not.toHaveProperty("inbox");
       expect(data.briefing.sections).not.toHaveProperty("life");
-      expect(data.briefing.sections).not.toHaveProperty("money");
+      expect(data.briefing.sections).not.toHaveProperty("commitments");
     });
 
     it("accepts simile-style action names mapped through the subaction map", async () => {
@@ -515,7 +531,12 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       const runtime = makeRuntime({ reportError });
       const result = await callBrief(runtime, makeMessage(), {
         subaction: "compose_evening",
-        include: { calendar: false, inbox: false, life: true, money: false },
+        include: {
+          calendar: false,
+          inbox: false,
+          life: true,
+          commitments: false,
+        },
         format: "json",
       });
       expect(result.success).toBe(true);

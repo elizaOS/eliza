@@ -30,6 +30,7 @@ from .native_runtime import (
     PLUGIN_TOOLSET,
     NativeRuntimeError,
     is_loopback_base_url,
+    extract_benchmark_images,
     prepare_scoped_benchmark_plugin,
 )
 
@@ -660,6 +661,31 @@ def _normalize_tool_calls(raw_tool_calls: object) -> list[dict[str, object]]:
     return normalized
 
 
+def _runtime_paths(repo_path: Path | None, venv_python: Path | None) -> tuple[Path, Path]:
+    """Prefer explicit configuration, then the managed or standard install."""
+    configured_repo = os.environ.get("HERMES_REPO_PATH", "").strip()
+    if repo_path is not None:
+        repo = Path(repo_path).expanduser()
+    elif configured_repo:
+        repo = Path(configured_repo).expanduser()
+    elif (DEFAULT_REPO_PATH / "run_agent.py").is_file():
+        repo = DEFAULT_REPO_PATH
+    else:
+        standard = Path.home() / ".hermes" / "hermes-agent"
+        repo = standard if (standard / "run_agent.py").is_file() else DEFAULT_REPO_PATH
+    configured_python = os.environ.get("HERMES_RUNTIME_PYTHON", "").strip()
+    if venv_python is not None:
+        python = Path(venv_python).expanduser()
+    elif configured_python:
+        python = Path(configured_python).expanduser()
+    else:
+        python = repo / ".venv" / "bin" / "python"
+        standard_python = repo / "venv" / "bin" / "python"
+        if not python.is_file() and standard_python.is_file():
+            python = standard_python
+    return repo, python
+
+
 class HermesClient:
     """One-shot client whose only publishable mode is native subprocess Hermes."""
 
@@ -683,7 +709,7 @@ class HermesClient:
         resolved_provider = _resolved_campaign_provider(provider)
         resolved_model = _resolved_campaign_model(model, provider=resolved_provider)
         resolved_mode = resolve_hermes_mode(mode, provider=resolved_provider)
-        self.repo_path = Path(repo_path) if repo_path else DEFAULT_REPO_PATH
+        self.repo_path, self.venv_python = _runtime_paths(repo_path, venv_python)
         self.workspace_path = (
             Path(workspace_path).resolve()
             if workspace_path is not None
@@ -693,11 +719,6 @@ class HermesClient:
             raise ValueError(
                 f"Hermes benchmark workspace is not a directory: {self.workspace_path}"
             )
-        self.venv_python = (
-            Path(venv_python)
-            if venv_python is not None
-            else self.repo_path / ".venv" / "bin" / "python"
-        )
         self.provider = resolved_provider
         self.model = resolved_model
         default_api_key = _default_api_key(resolved_provider)
@@ -939,7 +960,7 @@ class HermesClient:
         text: str,
         context: Mapping[str, object] | None,
     ) -> dict[str, object]:
-        ctx = dict(context or {})
+        ctx, image_parts = extract_benchmark_images(context or {})
         raw_tools = ctx.get("tools")
         tools = _openai_compatible_tools(raw_tools)
         unsupported_tools = bool(raw_tools) and tools is None
@@ -978,6 +999,7 @@ class HermesClient:
             **self._native_payload_base(),
             "text": text,
             "context": ctx,
+            "image_parts": image_parts,
             "system_prompt": system_prompt if isinstance(system_prompt, str) else None,
             "tools": tools,
             "temperature": _coerce_optional_float(

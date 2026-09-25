@@ -214,7 +214,7 @@ function contentText(content: unknown): string {
 
 /**
  * The shared runtime packs the whole turn into one user message; the live user
- * turn follows the final "message:user:" marker. Fall back to the raw last
+ * turn follows the final "# Current message" heading. Fall back to the raw last
  * user message for plain OpenAI-style calls (same rule the live proof used).
  */
 function currentTurnText(messages: OpenAiMessage[]): string {
@@ -222,9 +222,9 @@ function currentTurnText(messages: OpenAiMessage[]): string {
   for (const message of messages) {
     if (message.role === "user") lastUser = contentText(message.content);
   }
-  const marker = lastUser.lastIndexOf("message:user:");
+  const marker = lastUser.lastIndexOf("# Current message\n");
   return marker >= 0
-    ? lastUser.slice(marker + "message:user:".length).trim()
+    ? lastUser.slice(marker + "# Current message\n".length).trim()
     : lastUser;
 }
 

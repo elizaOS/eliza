@@ -56,6 +56,7 @@ export interface StrategyResult {
   responseContent: Content | null;
   responseMessages: Memory[];
   actionResults?: ActionResult[];
+  requestFulfilled?: boolean;
   replyRecovery?: MessageReplyRecoveryContext;
   terminalFailure?: RuntimeFailure;
   state: State;

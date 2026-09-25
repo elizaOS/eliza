@@ -322,7 +322,8 @@ void text;
 		process.execPath,
 		[
 			path.join(repository, "node_modules/typescript/bin/tsc"),
-			// This explicit-file consumer must not inherit a parent tsconfig.
+			// The consumer supplies every compiler option and may live below a
+			// repository-local TMPDIR; never inherit an ancestor tsconfig.
 			"--ignoreConfig",
 			"--noEmit",
 			"--strict",
