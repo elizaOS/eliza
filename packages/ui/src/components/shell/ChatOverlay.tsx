@@ -2486,7 +2486,9 @@ export function ChatOverlay({
           messageId={m.id}
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
-          {m.role === "assistant" && m.planningAcknowledgment ? (
+          {m.role === "assistant" &&
+          m.planningAcknowledgment &&
+          m.planningAcknowledgment.trim() !== m.content.trim() ? (
             <div data-testid="chat-acknowledgment">
               <ChatMessage
                 appearance="glass"

@@ -3754,6 +3754,41 @@ describe("ChatOverlay", () => {
       expect(screen.getByText("Your note says hello.")).toBeTruthy();
     });
 
+    it.each([
+      'It says: "The token is cobalt."',
+      '  It says: "The token is cobalt."\n',
+    ])(
+      "does not repeat an acknowledgment identical to the saved final answer: %s",
+      (acknowledgment) => {
+        const reply = 'It says: "The token is cobalt."';
+        render(
+          <ChatOverlay
+            controller={makeController({
+              phase: "summoned",
+              messages: [
+                {
+                  id: "u",
+                  role: "user",
+                  content: "Read my saved note.",
+                  createdAt: 1,
+                },
+                {
+                  id: "a",
+                  role: "assistant",
+                  content: reply,
+                  planningAcknowledgment: acknowledgment,
+                  createdAt: 2,
+                },
+              ],
+            })}
+          />,
+        );
+        openSheetToFull();
+        expect(screen.queryByTestId("chat-acknowledgment")).toBeNull();
+        expect(screen.getAllByText(reply)).toHaveLength(1);
+      },
+    );
+
     it("hides reasoning disclosure while the latest assistant turn is streaming", () => {
       render(
         <ChatOverlay
