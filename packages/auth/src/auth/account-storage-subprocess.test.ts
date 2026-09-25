@@ -225,3 +225,56 @@ describe("account storage subprocess ownership", () => {
     20_000,
   );
 });
+
+it("resolves the production master key once per list and observes changed authority on the next list", () => {
+  const source = new URL("./account-storage.ts", import.meta.url).href;
+  const root = path.join(container, "batch-key");
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--conditions=eliza-source",
+      "--input-type=module",
+      "--eval",
+      `import crypto from "node:crypto";
+     import { syncBuiltinESMExports } from "node:module";
+     const derive = crypto.scryptSync;
+     let calls = 0;
+     crypto.scryptSync = (...args) => { calls++; return derive(...args); };
+     syncBuiltinESMExports();
+     const storage = await import(${JSON.stringify(source)});
+     const policy = storage.createRuntimeAccountStoragePolicy(${JSON.stringify(root)});
+     for (let i = 0; i < 3; i++) storage.saveAccount({
+       id: "account-" + i, providerId: "openai-codex", label: "Account",
+       source: "oauth", credentials: { access: "test-access", refresh: "test-refresh", expires: 9999999999999 },
+       createdAt: i, updatedAt: i,
+     }, policy);
+     calls = 0;
+     const records = storage.listAccounts("openai-codex", policy);
+     if (records.length !== 3 || calls !== 1) throw new Error("batch did not resolve exactly once: " + calls);
+     process.env.ELIZA_VAULT_PASSPHRASE = "changed-test-passphrase";
+     let rejected = false;
+     try { storage.listAccounts("openai-codex", policy); } catch (e) {
+       rejected = e.code === "AUTH_CREDENTIAL_RECORD_CORRUPT";
+     }
+     if (!rejected || calls !== 2) throw new Error("stale master key survived the operation");
+     console.log("batch-key-ok");`,
+    ],
+    {
+      cwd: path.resolve(import.meta.dirname, "../../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        BUN_ENV: "production",
+        VITEST: "false",
+        ELIZA_VAULT_DISABLE_KEYCHAIN: "1",
+        ELIZA_VAULT_PASSPHRASE: "initial-test-passphrase",
+      },
+      timeout: 60_000,
+    },
+  );
+  expect(child.status, child.stderr).toBe(0);
+  expect(child.stdout).toContain("batch-key-ok");
+});

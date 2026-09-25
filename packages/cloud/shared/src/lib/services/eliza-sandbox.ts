@@ -250,6 +250,8 @@ export class ElizaSandboxService {
       this.persistUnresolvedReplacementCleanupFence(...args),
     ensureRuntimeAgentStarted: (...args) => this.ensureRuntimeAgentStarted(...args),
     transferReplacementToPrimary: (...args) => this.transferReplacementToPrimary(...args),
+    persistAdoptedFailedProvisionCleanupFence: (...args) =>
+      this.#replacementCleanup.persistAdoptedFailedProvisionCleanupFence(...args),
     pushState: (...args) => this.pushState(...args),
   });
   readonly #warmClaim = new SandboxWarmClaim({

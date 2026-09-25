@@ -74,6 +74,9 @@ export interface SandboxProvisionHost {
   retirePersistedReplacementCleanup(
     ...args: Parameters<SandboxReplacementCleanup["retirePersistedReplacementCleanup"]>
   ): ReturnType<SandboxReplacementCleanup["retirePersistedReplacementCleanup"]>;
+  persistAdoptedFailedProvisionCleanupFence(
+    ...args: Parameters<SandboxReplacementCleanup["persistAdoptedFailedProvisionCleanupFence"]>
+  ): ReturnType<SandboxReplacementCleanup["persistAdoptedFailedProvisionCleanupFence"]>;
   getProvider(): Promise<SandboxProvider>;
   replacementCleanupCallbacks(
     ...args: Parameters<SandboxReplacementCleanup["replacementCleanupCallbacks"]>
@@ -391,6 +394,7 @@ export class SandboxProvision {
             for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
                 attemptsMade = attempt;
                 let handle;
+                let adoptedGeneration: AgentSandbox | null = null;
                 let healthContext: SandboxHealthContext = { kind: "candidate" };
                 try {
                     const retryHandle = attempt === 1 ? provisioningRetryHandle : null;
@@ -602,16 +606,7 @@ export class SandboxProvision {
                     }
                     const updated = await this.host.transferReplacementToPrimary(rec.id, rec.organization_id, handle, rec.environment_revision, updateData);
                     rec = updated;
-                    // Re-enter the billable set on every successful provision. A
-                    // credit-suspended agent (billing_status='suspended') that a user tops
-                    // up and resumes/wakes via the user-facing routes would otherwise run
-                    // (status='running') permanently EXCLUDED from listBillableSandboxes =
-                    // free dedicated compute forever. The service-key resume/restart routes
-                    // already reactivate; do it here so ALL provision paths re-enter billing.
-                    // Idempotent + exempt-guarded (ne billing_status 'exempt').
-                    if (!computeFundingId) {
-                        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
-                    }
+                    adoptedGeneration = updated;
                     // 5. Restore from backup (reconstructs incrementals back to a full).
                     //
                     // The snapshot holds only volatile in-memory session state — the agent's
@@ -803,6 +798,10 @@ export class SandboxProvision {
                             });
                         }
                         completed = ready;
+                        adoptedGeneration = ready;
+                    }
+                    if (!computeFundingId) {
+                      await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
                     }
                     logger.info("[agent-sandbox] Provisioned", {
                         agentId: rec.id,
@@ -861,10 +860,26 @@ export class SandboxProvision {
                         }
                         else if (!computeFundingId) {
                             const provider = await this.host.getProvider();
-                            if (!provider.stopForReplacement) {
-                                throw new Error("Sandbox provider cannot prove failed provision absent");
+                            if (isDockerBackedMetadata(handle.metadata)) {
+                              if (!adoptedGeneration) {
+                                throw new ElizaError("Failed Docker provision has no adopted generation", {
+                                  code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+                                });
+                              }
+                              await this.host.persistAdoptedFailedProvisionCleanupFence(
+                                rec.id, rec.organization_id, adoptedGeneration, handle, msg,
+                              );
+                              await this.host.retirePersistedReplacementCleanup(
+                                rec.id, rec.organization_id, undefined, undefined, "lifecycle", handle,
+                              );
+                            } else {
+                              if (!provider.stopForReplacement) {
+                                throw new ElizaError("Sandbox provider cannot prove failed provision absent", {
+                                  code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+                                });
+                              }
+                              await provider.stopForReplacement(handle.sandboxId);
                             }
-                            await provider.stopForReplacement(handle.sandboxId);
                         }
                     }
                     catch (stopErr) {

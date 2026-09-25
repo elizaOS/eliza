@@ -1,5 +1,6 @@
 /** Owns replacement identity, durable cleanup fences, and retirement reconciliation. Lifecycle locks and the single provider instance are supplied by the host, preserving transaction and cutover authority. */
 
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../../../db/client";
 import { dbWrite } from "../../../../db/helpers";
@@ -14,9 +15,14 @@ import { jobs } from "../../../../db/schemas/jobs";
 import { logger } from "../../../utils/logger";
 import { settleReplacementComputeInTransaction } from "../../agent-compute-provision";
 import { creditsService } from "../../credits";
+import type { DockerSandboxMetadata } from "../../docker-sandbox-provider";
+import { getContainerName } from "../../docker-sandbox-utils";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES } from "../../provisioning-job-types";
 import { type SandboxHandle, type SandboxProvider } from "../../sandbox-provider";
-import { SandboxReplacementCleanupUnresolvedError } from "../../sandbox-provider-types";
+import {
+  assertSandboxReplacementAttemptId,
+  SandboxReplacementCleanupUnresolvedError,
+} from "../../sandbox-provider-types";
 import { SandboxLifecycleAuthority } from "./authority.js";
 import {
   containerBackedServiceRejection,
@@ -477,6 +483,201 @@ export class SandboxReplacementCleanup {
       `);
       if (persisted.rows.length !== 1) {
         throw new Error("Unresolved replacement cleanup enrichment CAS failed");
+      }
+    });
+  }
+
+  private exactFailedDockerProvisionLocator(
+    handle: SandboxHandle,
+    expectedAgentId: string,
+  ): {
+    metadata: DockerSandboxMetadata;
+    locator: Omit<ReplacementCleanupLocator, "createdAt">;
+  } {
+    const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
+    if (!metadata) {
+      throw new ElizaError("Failed Docker provision has incomplete placement metadata", {
+        code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+      });
+    }
+    const locator = this.replacementLocatorFromHandle(handle);
+    if (
+      metadata.agentId !== expectedAgentId ||
+      locator.sandboxId !== locator.containerName ||
+      locator.containerName !== getContainerName(expectedAgentId)
+    ) {
+      throw new ElizaError("Failed Docker provision cleanup identity does not match its agent", {
+        code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+      });
+    }
+    assertSandboxReplacementAttemptId(locator.replacementAttemptId);
+    if (!locator.containerId || !/^[a-f0-9]{12,64}$/.test(locator.containerId)) {
+      throw new ElizaError("Failed Docker provision cleanup has no immutable container id", {
+        code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+      });
+    }
+    if (
+      metadata.replacementSecretCleanupVersion === 1 &&
+      (!metadata.nodeRecordId ||
+        !metadata.hostname ||
+        typeof metadata.nodeSshPort !== "number" ||
+        !metadata.nodeSshUser ||
+        !metadata.nodeHostKeyFingerprint)
+    ) {
+      throw new ElizaError("Failed Docker provision cleanup has incomplete exact node authority", {
+        code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+      });
+    }
+    return { metadata, locator };
+  }
+
+  /** Transfer the exact adopted generation back to durable cleanup ownership.
+   * Keep its capacity slot until remote absence is proven. A changed lifecycle
+   * revision requires reconciliation before any destructive effect. */
+  async persistAdoptedFailedProvisionCleanupFence(
+    agentId: string,
+    orgId: string,
+    adopted: AgentSandbox,
+    handle: SandboxHandle,
+    failureMessage: string,
+  ): Promise<void> {
+    const { metadata, locator } = this.exactFailedDockerProvisionLocator(handle, agentId);
+    if (!locator.allocationCounted) {
+      throw new ElizaError("Adopted Docker provision has no owned capacity slot to transfer", {
+        code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+      });
+    }
+    if (
+      adopted.id !== agentId ||
+      adopted.organization_id !== orgId ||
+      (adopted.status !== "running" && adopted.status !== "provisioning") ||
+      adopted.sandbox_id !== locator.sandboxId ||
+      adopted.node_id !== locator.nodeId ||
+      adopted.container_name !== locator.containerName ||
+      adopted.bridge_url !== handle.bridgeUrl ||
+      adopted.health_url !== handle.healthUrl ||
+      adopted.bridge_port !== metadata.bridgePort ||
+      adopted.web_ui_port !== metadata.webUiPort ||
+      (metadata.headscaleIp !== undefined && adopted.headscale_ip !== metadata.headscaleIp)
+    ) {
+      throw new ElizaError("Adopted Docker cleanup handle does not match its primary runtime", {
+        code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+      });
+    }
+
+    await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      const current = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current)
+        throw new ElizaError("Agent disappeared before failed provision cleanup fencing", {
+          code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+        });
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
+
+      const existing = this.getReplacementCleanupLocator(current);
+      if (existing) {
+        this.assertSameReplacementIdentity(existing, locator);
+        if (
+          existing.containerId !== locator.containerId ||
+          existing.vpnNodeId !== locator.vpnNodeId ||
+          current.status === "running" ||
+          current.sandbox_id !== null ||
+          current.bridge_url !== null ||
+          current.health_url !== null ||
+          current.node_id !== null ||
+          current.container_name !== null
+        ) {
+          throw new ElizaError(
+            "Failed provision cleanup fence conflicts with the current generation",
+            { code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED" },
+          );
+        }
+        return;
+      }
+
+      if (
+        current.deletion_attempt_id !== null ||
+        current.status !== adopted.status ||
+        current.environment_revision !== adopted.environment_revision ||
+        current.lifecycle_revision !== adopted.lifecycle_revision ||
+        current.lifecycle_job_id !== adopted.lifecycle_job_id ||
+        current.lifecycle_execution_generation !== adopted.lifecycle_execution_generation ||
+        current.sandbox_id !== adopted.sandbox_id ||
+        current.node_id !== adopted.node_id ||
+        current.container_name !== adopted.container_name ||
+        current.bridge_url !== adopted.bridge_url ||
+        current.health_url !== adopted.health_url ||
+        current.bridge_port !== adopted.bridge_port ||
+        current.web_ui_port !== adopted.web_ui_port ||
+        current.headscale_ip !== adopted.headscale_ip ||
+        current.docker_image !== adopted.docker_image ||
+        current.image_digest !== adopted.image_digest
+      ) {
+        throw new ElizaError(
+          "Primary runtime generation changed before failed provision cleanup fencing",
+          { code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED" },
+        );
+      }
+
+      const fencedAt = new Date();
+      const [fenced] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "error",
+          error_message: `Provisioning cleanup pending: ${failureMessage}`,
+          sandbox_id: null,
+          bridge_url: null,
+          health_url: null,
+          last_heartbeat_at: null,
+          node_id: null,
+          container_name: null,
+          bridge_port: null,
+          web_ui_port: null,
+          headscale_ip: null,
+          pool_ready_at: null,
+          replacement_cleanup_sandbox_id: locator.sandboxId,
+          replacement_cleanup_node_id: locator.nodeId,
+          replacement_cleanup_container_name: locator.containerName,
+          replacement_cleanup_attempt_id: locator.replacementAttemptId,
+          replacement_cleanup_container_id: locator.containerId,
+          replacement_cleanup_vpn_node_id: locator.vpnNodeId,
+          replacement_cleanup_vpn_node_name: locator.vpnNodeName,
+          replacement_cleanup_preserved_vpn_node_id: locator.previousVpnNodeId,
+          replacement_cleanup_vpn_registration_started_at: locator.vpnRegistrationStartedAt,
+          replacement_cleanup_allocation_counted: true,
+          replacement_cleanup_created_at: fencedAt,
+          updated_at: fencedAt,
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            eq(agentSandboxes.status, current.status),
+            eq(agentSandboxes.environment_revision, current.environment_revision),
+            eq(agentSandboxes.lifecycle_revision, current.lifecycle_revision),
+            sql`${agentSandboxes.lifecycle_job_id} IS NOT DISTINCT FROM ${current.lifecycle_job_id}`,
+            sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${current.lifecycle_execution_generation}`,
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${current.sandbox_id}`,
+            sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${current.node_id}`,
+            sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${current.container_name}`,
+            sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${current.bridge_url}`,
+            sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${current.health_url}`,
+            sql`${agentSandboxes.bridge_port} IS NOT DISTINCT FROM ${current.bridge_port}`,
+            sql`${agentSandboxes.web_ui_port} IS NOT DISTINCT FROM ${current.web_ui_port}`,
+            sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${current.headscale_ip}`,
+            sql`${agentSandboxes.docker_image} IS NOT DISTINCT FROM ${current.docker_image}`,
+            sql`${agentSandboxes.image_digest} IS NOT DISTINCT FROM ${current.image_digest}`,
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!fenced) {
+        throw new ElizaError("Failed provision cleanup ownership CAS failed", {
+          code: "SANDBOX_FAILED_PROVISION_CLEANUP_UNRESOLVED",
+        });
       }
     });
   }
