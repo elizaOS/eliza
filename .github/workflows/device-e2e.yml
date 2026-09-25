@@ -123,8 +123,9 @@ jobs:
           target: google_apis
           arch: x86_64
           ram-size: 6144M
-          # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
-          emulator-options: -phone-number 15555215554 -no-window -no-snapshot -no-boot-anim -camera-front emulated -camera-back emulated -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
+          # Pass through the complete host CPU feature set. qemu64 plus selected
+          # AVX flags omits features used by Bun's simdutf runtime dispatch.
+          emulator-options: -phone-number 15555215554 -no-window -no-snapshot -no-boot-anim -camera-front emulated -camera-back emulated -gpu swiftshader_indirect -qemu -cpu host
           # The runner invokes each physical line separately, so keep the
           # branch on one line and delegate the focused proof to a script.
           script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-native-sms.ts --sender emulator-5554 --loopback && node packages/app/scripts/android-native-sms.ts --sender emulator-5554 --loopback --multipart && node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-network-policy --network-transitions && node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-websiteblocker --dns-outage && node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-system --system-controls && node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 && node packages/app/scripts/android-native-agent.ts --serial emulator-5554 && node packages/app/scripts/android-e2e.ts --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android/evidence"; fi
