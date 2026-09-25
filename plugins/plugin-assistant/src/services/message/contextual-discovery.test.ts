@@ -2,6 +2,7 @@
 import {
   type Action,
   AgentRuntime,
+  ContextRegistry,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
@@ -267,6 +268,54 @@ describe("contextual native discovery", () => {
       parameters: { names: [], mode: "describe" },
     });
     expect(JSON.stringify(catalog?.data)).toContain("BROWSER_GET");
+  });
+
+  it("uses plugin-declared domain aliases without guessing English word forms", async () => {
+    const contexts = new ContextRegistry();
+    const currentRuntime = { ...runtime, contexts } as IAgentRuntime;
+    await notesPlugin.init?.({}, currentRuntime);
+    const browser: Action = {
+      name: "BROWSER_GET",
+      contexts: ["browser"],
+      description: "Read page body content",
+    };
+    const news: Action = {
+      name: "NEWS_GET",
+      contexts: ["news"],
+      description: "Read new news body content",
+    };
+    const actions = [...(notesPlugin.actions ?? []), browser, news];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      async () => actions,
+    );
+    const read = await discovery.handler?.(currentRuntime, message, undefined, {
+      parameters: { query: "read note body content" },
+    });
+    expect(read?.data?.inferredContexts).toEqual(["notes"]);
+    expect([...((read?.data?.loadedTools ?? []) as string[])].sort()).toEqual([
+      "NOTES_GET",
+      "NOTES_LIST",
+    ]);
+    const unknown = await discovery.handler?.(
+      currentRuntime,
+      message,
+      undefined,
+      { parameters: { query: "read new body" } },
+    );
+    expect(unknown?.data?.inferredContexts).toBeUndefined();
+    expect(unknown?.data?.loadedTools).toContain("BROWSER_GET");
+    const revoked = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      async () => [browser],
+    );
+    const fresh = await revoked.handler?.(currentRuntime, message, undefined, {
+      parameters: { query: "read note body content" },
+    });
+    expect(fresh?.data?.inferredContexts).toBeUndefined();
+    expect(fresh?.data?.loadedTools).toEqual(["BROWSER_GET"]);
   });
 
   it("matches whole registered domain phrases and keeps unknown operation wording", async () => {

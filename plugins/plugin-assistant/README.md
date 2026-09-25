@@ -24,7 +24,7 @@ contexts without receiving the action catalog. The planner can request more
 operations throughout the turn.
 
 Use `query` and optional `contexts` when an action name is unknown. When contexts
-are omitted, exact registered domain phrases in the query scope the search; the
+are omitted, exact registered domain phrases or declared aliases in the query scope the search; the
 result reports those inferred domains. Queries without a domain retain global
 search, and explicit contexts or catalog reads remain available. Search ranks
 complete authorized operations and prefers matching operation names over

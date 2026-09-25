@@ -26,6 +26,7 @@ import { NOTES_SURFACE } from "./surface.js";
  */
 const NOTES_CONTEXT: ContextDefinition = {
   id: "notes",
+  aliases: ["note"],
   label: "Notes",
   description: "Saved notes.",
   descriptionCompressed: "Saved notes.",

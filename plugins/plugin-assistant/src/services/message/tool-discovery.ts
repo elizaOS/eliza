@@ -174,7 +174,7 @@ export function createPlannerToolDiscoveryAction(
       },
     ],
     validate: async () => true,
-    handler: async (_runtime, _message, _state, options) => {
+    handler: async (runtime, _message, _state, options) => {
       const mode = isObjectRecord(options?.parameters)
         ? options.parameters.mode
         : undefined;
@@ -226,12 +226,18 @@ export function createPlannerToolDiscoveryAction(
                 ),
               ].filter((context) => {
                 const normalized = normalizeContextId(context);
-                const phrase = tokenizeActionSearchText(normalized).join(" ");
                 return (
                   normalized !== "general" &&
                   normalized !== "simple" &&
-                  phrase.length > 0 &&
-                  queryWords.includes(` ${phrase} `)
+                  [
+                    normalized,
+                    ...(runtime.contexts?.get(normalized)?.aliases ?? []),
+                  ].some((name) => {
+                    const phrase = tokenizeActionSearchText(name).join(" ");
+                    return (
+                      phrase.length > 0 && queryWords.includes(` ${phrase} `)
+                    );
+                  })
                 );
               })
             : [];
