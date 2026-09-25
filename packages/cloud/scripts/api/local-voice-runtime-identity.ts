@@ -7,6 +7,8 @@
  * not carry an agent identifier.
  */
 
+import { setTimeout as delay } from "node:timers/promises";
+
 const CANONICAL_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UUID_SHAPE_PATTERN =
@@ -58,16 +60,32 @@ export class LocalVoiceRuntimeIdentityError extends Error {
 /** Startup is pending while the runtime or its first UI conversation is not ready. */
 export class LocalVoiceRuntimePendingError extends LocalVoiceRuntimeIdentityError {}
 
-/** Wait for normal startup; invalid identities and malformed responses still fail. */
+/** Wait for normal startup; invalid identities and transport failures remain errors. */
 export async function waitForLocalVoiceRuntimeIdentity(
-  options: ResolveLocalVoiceRuntimeIdentityOptions,
+  options: ResolveLocalVoiceRuntimeIdentityOptions & {
+    signal?: AbortSignal;
+    onWaiting?: () => void;
+  },
 ): Promise<LocalVoiceRuntimeIdentity> {
-  for (;;) {
+  let notified = false;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  while (true) {
+    options.signal?.throwIfAborted();
     try {
-      return await resolveLocalVoiceRuntimeIdentity(options);
+      return await resolveLocalVoiceRuntimeIdentity({
+        ...options,
+        fetchImpl: (input, init) =>
+          fetchImpl(input, { ...init, signal: options.signal }),
+      });
     } catch (error) {
+      // error-policy:J4 A fresh runtime without a conversation remains visibly
+      // pending; no gateway, session or microphone is made available yet.
       if (!(error instanceof LocalVoiceRuntimePendingError)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!notified) {
+        options.onWaiting?.();
+        notified = true;
+      }
+      await delay(1_000, undefined, { signal: options.signal });
     }
   }
 }
@@ -313,7 +331,7 @@ function readConversations(value: unknown): RuntimeConversation[] {
   });
   if (body.conversations.length > 0 && parsed.length === 0) {
     throw new LocalVoiceRuntimeIdentityError(
-      "local conversations contain no readable records",
+      "local runtime conversations contain no readable records",
     );
   }
   return parsed;

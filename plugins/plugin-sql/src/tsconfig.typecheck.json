@@ -1,8 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "paths": {
-      "@elizaos/plugin-sqlite": ["../../plugin-sqlite/index.ts"]
-    }
+    "customConditions": ["eliza-source"],
+    "paths": {}
   }
 }

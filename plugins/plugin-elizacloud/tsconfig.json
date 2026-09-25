@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -23,50 +24,8 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
-      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"],
-      "@elizaos/capacitor-secure-store": ["../../plugins/plugin-native-secure-store/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/plugin-native-inference/model-catalog/recommendation": [
-        "../plugin-native-inference/src/model-catalog/recommendation.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/catalog": [
-        "../plugin-native-inference/src/model-catalog/catalog.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
-        "../plugin-native-inference/src/model-catalog/routing-policy.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
-        "../plugin-native-inference/src/model-catalog/voice-models.ts"
-      ],
-      "@elizaos/plugin-elizacloud/steward-session-client": [
-        "./src/steward-session-client/index.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/verify": [
-        "../plugin-native-inference/src/model-catalog/verify.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
-        "../plugin-native-inference/src/model-catalog/network-policy.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/runtime-class": [
-        "../plugin-native-inference/src/model-catalog/runtime-class.ts"
-      ],
-      "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
-        "./src/cloud-config/domain-contract.ts"
-      ],
-      "@elizaos/cloud-sdk/app-billing": ["../../packages/cloud/sdk/src/app-billing.ts"],
-      "@elizaos/plugin-elizacloud/cloud-config/base-url": ["./src/cloud-config/base-url.ts"],
-      "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets": [
-        "./src/cloud-config/cloud-secrets.ts"
-      ],
-      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
-        "./src/cloud-config/dev-cloud-env-authority.ts"
-      ],
-      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"]
+      "@elizaos/core/*": ["../../packages/core/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

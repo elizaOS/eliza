@@ -73,6 +73,8 @@ async function main(): Promise<void> {
       runtimeOrigin: configuredRuntimeOrigin,
       configuredAgentId: process.env.ELIZA_LOCAL_VOICE_AGENT_ID,
       configuredConversationId: process.env.ELIZA_LOCAL_VOICE_CONVERSATION_ID,
+      onWaiting: () =>
+        writeLog("info", "waiting for the local runtime's first conversation"),
     });
   const [{ createLocalRuntimeConversationFetch }, harness] = await Promise.all([
     import("../../api/v1/voice/session/lib/local-runtime-conversation-fetch"),

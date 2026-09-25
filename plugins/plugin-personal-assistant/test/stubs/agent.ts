@@ -109,7 +109,7 @@ export async function createLocalAgentBackup(runtime?: {
 // Integration telemetry is self-contained (only the core logger), so the test
 // lane runs the real span: route tests then exercise the genuine
 // success/failure bookkeeping instead of a shape-drifted fake.
-export { createIntegrationTelemetrySpan } from "../../../../packages/agent/src/diagnostics/integration-observability.ts";
+export { createIntegrationTelemetrySpan } from "@elizaos/core";
 
 export function extractConversationMetadataFromRoom(): Record<string, unknown> {
   return {};

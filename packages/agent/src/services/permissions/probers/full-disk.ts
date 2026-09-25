@@ -23,7 +23,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { PermissionState, Prober } from "../contracts.js";
+import type { PermissionState, Prober } from "@elizaos/core";
 import {
   buildState,
   IS_DARWIN,

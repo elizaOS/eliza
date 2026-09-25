@@ -7,7 +7,7 @@
  * `IPermissionsRegistry` implementation.
  */
 
-import type { IPermissionsRegistry } from "./contracts.js";
+import type { IPermissionsRegistry } from "@elizaos/core";
 import { ALL_PROBERS } from "./probers/index.js";
 
 export function registerAllProbers(registry: IPermissionsRegistry): void {

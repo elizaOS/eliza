@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -16,12 +17,7 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "types": ["bun", "node", "react"],
-    "paths": {
-      "@elizaos/ui/brand": ["../../ui/src/brand/index.ts"],
-      "@elizaos/core/config/public-endpoints": [
-        "../../core/src/config/public-endpoints.ts"
-      ]
-    }
+    "paths": {}
   },
   "include": ["src", "server.ts", "vite.config.ts", "vitest.config.ts"]
 }

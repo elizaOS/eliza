@@ -15,22 +15,22 @@
  */
 
 import {
+  hasConfiguredCanonicalOwner,
   type IAgentRuntime,
   logger,
   type Memory,
+  matchEntityToConnectorAdminWhitelist,
+  normalizeRole,
   type Plugin,
+  type RolesConfig,
+  type RolesWorldMetadata,
+  resolveCanonicalOwnerId,
   setEntityRoleCas,
   type UUID,
 } from "@elizaos/core";
+
 import { roleAction } from "@elizaos/plugin-assistant";
 import { rolesProvider } from "./provider.ts";
-import type { RolesConfig, RolesWorldMetadata } from "./types.ts";
-import {
-  hasConfiguredCanonicalOwner,
-  matchEntityToConnectorAdminWhitelist,
-  normalizeRole,
-  resolveCanonicalOwnerId,
-} from "./utils.ts";
 
 const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
   "@elizaos/runtime.roles.bootstrapRetries",
@@ -42,7 +42,6 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { rolesProvider } from "./provider.ts";
 export type {
   ConnectorAdminWhitelist,
   RoleCheckResult,
@@ -50,8 +49,7 @@ export type {
   RoleName,
   RolesConfig,
   RolesWorldMetadata,
-} from "./types.ts";
-export { ROLE_RANK } from "./types.ts";
+} from "@elizaos/core";
 export {
   canModifyRole,
   checkSenderPrivateAccess,
@@ -62,13 +60,15 @@ export {
   hasConfiguredCanonicalOwner,
   matchEntityToConnectorAdminWhitelist,
   normalizeRole,
+  ROLE_RANK,
   resolveCanonicalOwnerId,
   resolveCanonicalOwnerIdForMessage,
   resolveEntityRole,
   resolveWorldForMessage,
   setConnectorAdminWhitelist,
   setEntityRole,
-} from "./utils.ts";
+} from "@elizaos/core";
+export { rolesProvider } from "./provider.ts";
 export { roleAction };
 
 function systemRoleMessage(actorEntityId: string, roomId: UUID): Memory {

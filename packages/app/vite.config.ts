@@ -887,7 +887,13 @@ function createAppPluginSourceAliases() {
       string,
       unknown
     >;
-    if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
+    // Explicit browser entries also cover registered shell plugins such as
+    // Notes that do not carry the app catalog metadata.
+    if (
+      !isAppPluginPackage("plugins", entry.name, pkg) &&
+      !fs.existsSync(path.join(pkgDir, "src/browser.ts"))
+    )
+      continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
     const sourceEntry = [

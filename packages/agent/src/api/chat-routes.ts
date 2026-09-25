@@ -26,6 +26,8 @@ import {
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
   inheritIncomingMessagePersistence,
+  isInsufficientCreditsError,
+  isInsufficientCreditsMessage,
   isRateLimitError,
   isTextGenerationModelType,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -117,10 +119,6 @@ import {
   resolveCompatRoomKey,
   scopeCompatRoomKey,
 } from "./compat-utils.ts";
-import {
-  isInsufficientCreditsError,
-  isInsufficientCreditsMessage,
-} from "./credit-detection.ts";
 import {
   executeFallbackParsedActions,
   parseFallbackActionBlocks,
