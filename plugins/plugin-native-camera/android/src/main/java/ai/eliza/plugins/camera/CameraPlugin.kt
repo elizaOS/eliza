@@ -1165,14 +1165,26 @@ class CameraPlugin : Plugin() {
         val options = CaptureRequestOptions.Builder()
             .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, focus.mode)
             .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, focus.distance ?: 0f).build()
-        awaitCameraControl(owner, epoch, Camera2CameraControl.from(owner.cameraControl).addCaptureRequestOptions(options), {
-            check(requestId == focusRequestId) { "A newer focus request superseded this mode" }
-            if (focus.preset == "auto" && triggerAuto) {
-                awaitCameraControl(owner, epoch, owner.cameraControl.startFocusAndMetering(centerFocusAction()), {
-                    check(requestId == focusRequestId) { "A newer focus request superseded this autofocus operation" }
-                    ready()
+        // CameraX cancellation waits for its default AF mode in a capture.
+        // Release only our AF override first; keeping it would prevent that
+        // future from completing. Preserve white balance and other interop keys.
+        val interop = Camera2CameraControl.from(owner.cameraControl)
+        val released = CaptureRequestOptions.Builder.from(interop.captureRequestOptions)
+            .clearCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE).build()
+        awaitCameraControl(owner, epoch, interop.setCaptureRequestOptions(released), {
+            check(requestId == focusRequestId) { "A newer focus request superseded this release" }
+            awaitCameraControl(owner, epoch, owner.cameraControl.cancelFocusAndMetering(), {
+                check(requestId == focusRequestId) { "A newer focus request superseded this reset" }
+                awaitCameraControl(owner, epoch, interop.addCaptureRequestOptions(options), {
+                    check(requestId == focusRequestId) { "A newer focus request superseded this mode" }
+                    if (focus.preset == "auto" && triggerAuto) {
+                        awaitCameraControl(owner, epoch, owner.cameraControl.startFocusAndMetering(centerFocusAction()), {
+                            check(requestId == focusRequestId) { "A newer focus request superseded this autofocus operation" }
+                            ready()
+                        }, failed)
+                    } else ready()
                 }, failed)
-            } else ready()
+            }, failed)
         }, failed)
     }
 

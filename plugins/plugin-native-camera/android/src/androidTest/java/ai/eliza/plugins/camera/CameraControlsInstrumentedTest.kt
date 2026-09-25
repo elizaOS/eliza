@@ -524,6 +524,11 @@ class CameraControlsInstrumentedTest {
                             receipt.put("restartAfMode", probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE))
                                 .put("restartAfState", probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE))
                         }
+                        if (preset == "continuous") {
+                            assertTrue("Continuous focus must release the prior single-shot lock", probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE) in
+                                setOf(CaptureResult.CONTROL_AF_STATE_INACTIVE, CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN,
+                                    CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED, CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED))
+                        }
                         if (preset == "manual" && beforeDistance != null) {
                             assertEquals(beforeDistance.toDouble(), requireNotNull(probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE)).toDouble(), 0.001)
                         }
@@ -985,7 +990,7 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             preview(scenario)
             val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("focusMode")
-            val target = "auto"
+            val target = "manual"
             val settled = CountDownLatch(1)
             val stopped = CountDownLatch(1)
             val settlements = AtomicInteger()
