@@ -108,7 +108,7 @@ class WebsiteBlockerBridgeInstrumentedTest {
         }
     }
 
-    private fun query(host: String, transcript: JSONArray): Int {
+    private fun dnsRequest(host: String): ByteArray {
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
             out.writeShort(0x4321); out.writeShort(0x0100)
@@ -116,10 +116,24 @@ class WebsiteBlockerBridgeInstrumentedTest {
             for (label in host.split('.')) { out.writeByte(label.length); out.writeBytes(label) }
             out.writeByte(0); out.writeShort(1); out.writeShort(1)
         }
-        val request = bytes.toByteArray()
+        return bytes.toByteArray()
+    }
+
+    private fun bindVpnSocket(socket: DatagramSocket) {
+        val manager = instrumentation.targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = requireNotNull(manager.activeNetwork)
+        check(manager.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true)
+        // Target the observed VPN explicitly instead of racing default-route updates.
+        // The separate InetAddress assertions still exercise Android's default resolver.
+        network.bindSocket(socket)
+        socket.connect(InetAddress.getByName("10.77.0.2"), 53)
+    }
+
+    private fun query(host: String, transcript: JSONArray, timeoutMs: Int = 10000): Int {
+        val request = dnsRequest(host)
         val response = DatagramSocket().use { socket ->
-            socket.soTimeout = 10000
-            socket.connect(InetAddress.getByName("10.77.0.2"), 53)
+            socket.soTimeout = timeoutMs
+            bindVpnSocket(socket)
             socket.send(DatagramPacket(request, request.size))
             val packet = DatagramPacket(ByteArray(4096), 4096)
             try {
@@ -178,6 +192,54 @@ class WebsiteBlockerBridgeInstrumentedTest {
                 Thread.sleep(300)
                 assertEquals("Updated policy must block the new hostname", 3, query("example.net", transcript))
                 assertEquals("Removed hostname must resolve again", 0, query("example.com", transcript))
+                if (InstrumentationRegistry.getArguments().getString("dnsOutage") == "1") {
+                    DnsOutageFixture().use { outage ->
+                        val pending = mutableListOf<DatagramSocket>()
+                        try {
+                            val request = dnsRequest("example.org")
+                            repeat(72) {
+                                val socket = DatagramSocket()
+                                pending.add(socket)
+                                bindVpnSocket(socket)
+                                socket.send(DatagramPacket(request, request.size))
+                            }
+                            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                            while (outage.droppedPackets() < 4L) {
+                                assertTrue("VPN never attempted upstream DNS", System.nanoTime() < deadline)
+                                Thread.sleep(20)
+                            }
+                            var rejectedOverload = false
+                            for (socket in pending) {
+                                socket.soTimeout = 10
+                                val packet = DatagramPacket(ByteArray(4096), 4096)
+                                try {
+                                    socket.receive(packet)
+                                    if (packet.length >= 12 && (packet.data[3].toInt() and 15) == 2) {
+                                        rejectedOverload = true
+                                        break
+                                    }
+                                } catch (_: SocketTimeoutException) {
+                                    // Occupied workers and queued requests should still be waiting.
+                                }
+                            }
+                            assertTrue("A saturated forwarding queue must return explicit SERVFAIL", rejectedOverload)
+                            val started = System.nanoTime()
+                            try {
+                                assertEquals("Blocked DNS must remain responsive during upstream timeout", 3,
+                                    query("example.net", transcript, 1500))
+                            } finally {
+                                export("vpn-upstream-outage.json", JSONObject()
+                                    .put("concurrentRequests", pending.size)
+                                    .put("overloadReturnedServerFailure", rejectedOverload)
+                                    .put("droppedUpstreamPackets", outage.droppedPackets())
+                                    .put("blockedResponseMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started))
+                                    .toString(2).toByteArray())
+                            }
+                        } finally {
+                            pending.forEach { it.close() }
+                        }
+                    }
+                }
             } catch (error: Throwable) {
                 failure = error
                 throw error
@@ -187,6 +249,20 @@ class WebsiteBlockerBridgeInstrumentedTest {
                     begin(scenario, "stopBlock")
                     assertTrue(result(scenario).getBoolean("success"))
                     waitVpn(false)
+                    if (InstrumentationRegistry.getArguments().getString("dnsOutage") == "1") {
+                        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+                        while (Thread.getAllStackTraces().keys.any { it.isAlive && it.name == "ElizaWebsiteDns" }) {
+                            if (System.nanoTime() >= deadline) {
+                                export("vpn-dns-worker-stacks.txt", Thread.getAllStackTraces().entries
+                                    .filter { it.key.name == "ElizaWebsiteDns" || it.key.name == "main" }
+                                    .joinToString("\n\n") { "${it.key.name} ${it.key.state}\n${it.value.joinToString("\n")}" }.toByteArray())
+                                fail("Stopping VPN must cancel upstream sockets and workers")
+                            }
+                            Thread.sleep(20)
+                        }
+                        export("vpn-upstream-outage-cleanup.json", JSONObject()
+                            .put("activeVpn", hasVpn()).put("remainingDnsWorkers", 0).toString().toByteArray())
+                    }
                 } catch (cleanupError: Throwable) {
                     if (failure != null) failure.addSuppressed(cleanupError) else throw cleanupError
                 }
