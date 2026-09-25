@@ -3370,6 +3370,16 @@ public class ElizaAgentService extends Service {
                         details.put("agentFatal", fatal);
                     }
                     appendDiagnosticEvent("detached-agent-child-exited-before-ready", details);
+                    if (ElizaAgentWatchdogPolicy.isTerminalStartupFailure(fatal)) {
+                        synchronized (processLock) {
+                            currentStatus = "agent startup blocked: " + fatal;
+                        }
+                        appendDiagnosticEvent("agent-startup-intervention-required", details);
+                        updateNotification();
+                        Log.e(TAG, "Agent startup requires intervention; automatic restart stopped: " + fatal);
+                        stopSelf();
+                        return;
+                    }
                     // The death is user-visible: the status (and its
                     // notification) says WHAT killed the agent instead of
                     // leaving "starting" up until the generic timeout card.

@@ -16,6 +16,21 @@ import org.junit.runner.RunWith;
 public class ElizaAgentWatchdogPolicyInstrumentedTest {
 
     @Test
+    public void persistentStorageFailuresRequireInterventionInsteadOfRestart() {
+        assertTrue(ElizaAgentWatchdogPolicy.isTerminalStartupFailure(
+            "startEliza-threw: Error: Destructive migration blocked for eliza"));
+        for (String code : new String[] { "ELIZA_PGLITE_DATA_DIR_IN_USE",
+                "ELIZA_PGLITE_CORRUPT_DATA", "ELIZA_PGLITE_MANUAL_RESET_REQUIRED" }) {
+            assertTrue(ElizaAgentWatchdogPolicy.isTerminalStartupFailure(
+                "startup failed [" + code + "]: storage requires intervention"));
+        }
+        assertFalse(ElizaAgentWatchdogPolicy.isTerminalStartupFailure(null));
+        assertFalse(ElizaAgentWatchdogPolicy.isTerminalStartupFailure(""));
+        assertFalse(ElizaAgentWatchdogPolicy.isTerminalStartupFailure("socket timeout"));
+        assertFalse(ElizaAgentWatchdogPolicy.isTerminalStartupFailure("exit 137"));
+    }
+
+    @Test
     public void readyHealthBodyAcceptsOnlyRunningRuntime() {
         assertTrue(ElizaAgentWatchdogPolicy.isReadyHealthBody(
             "{\"ready\":true,\"runtime\":\"ok\",\"agentState\":\"running\"}"

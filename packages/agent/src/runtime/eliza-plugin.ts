@@ -83,6 +83,7 @@ import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
+import { retainedPendantSchema } from "./retained-pendant-schema.ts";
 export type ElizaPluginConfig = {
   workspaceDir?: string;
   sessionStorePath?: string;
@@ -111,6 +112,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
     // migrates the runtime data model whenever the agent runs.
     schema: {
+      ...retainedPendantSchema,
       ...knowledgeGraphSchema,
     },
     services: [
