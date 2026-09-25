@@ -119,6 +119,24 @@ describe("buildLoadArgsFromRegistryModel — Gemma separate-drafter MTP", () => 
 });
 
 describe("buildGemmaBionicPrompt", () => {
+  it("preserves a complete canonical Gemma 4 prompt byte for byte", () => {
+    const prompt =
+      "<|turn>system\nKeep all context.<turn|>\n<|turn>user\nhello<turn|>\n<|turn>model\n";
+    expect(buildGemmaBionicPrompt({ prompt } as never)).toBe(prompt);
+  });
+
+  it("retains the full message content when rendering the model's turn format", () => {
+    const content = "authorized context αβγ ".repeat(2000);
+    const result = buildGemmaBionicPrompt({
+      messages: [{ role: "user", content }],
+    } as never);
+    expect(result).toBe(
+      `<|turn>user\n${content.trim()}<turn|>\n<|turn>model\n`,
+    );
+    expect(result).not.toContain("<start_of_turn>");
+    expect(result).not.toContain("<end_of_turn>");
+  });
+
   it("renders messages with the Gemma chat turn markers", () => {
     expect(
       buildGemmaBionicPrompt({
@@ -131,11 +149,11 @@ describe("buildGemmaBionicPrompt", () => {
       } as never),
     ).toBe(
       [
-        "<start_of_turn>system\nReply tersely.<end_of_turn>",
-        "<start_of_turn>user\nhi<end_of_turn>",
-        "<start_of_turn>model\nhello<end_of_turn>",
-        "<start_of_turn>user\nnext<end_of_turn>",
-        "<start_of_turn>model\n",
+        "<|turn>system\nReply tersely.<turn|>",
+        "<|turn>user\nhi<turn|>",
+        "<|turn>model\nhello<turn|>",
+        "<|turn>user\nnext<turn|>",
+        "<|turn>model\n",
       ].join("\n"),
     );
   });
@@ -145,7 +163,7 @@ describe("buildGemmaBionicPrompt", () => {
       buildGemmaBionicPrompt({
         prompt: "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",
       } as never),
-    ).toBe("<start_of_turn>user\nhello<end_of_turn>\n<start_of_turn>model\n");
+    ).toBe("<|turn>user\nhello<turn|>\n<|turn>model\n");
   });
 });
 

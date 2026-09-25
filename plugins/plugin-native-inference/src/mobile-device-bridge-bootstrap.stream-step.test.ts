@@ -48,16 +48,19 @@ describe("resolveBionicStreamStep (#11913)", () => {
 
 describe("resolveBionicStopSequences", () => {
   it("adds mandatory Eliza turn markers without duplicating caller stops", () => {
-    expect(resolveBionicStopSequences(["CUSTOM", "<end_of_turn>", ""])).toEqual(
-      ["CUSTOM", "<end_of_turn>", "<start_of_turn>", "<endoftext>"],
-    );
+    expect(resolveBionicStopSequences(["CUSTOM", "<turn|>", ""])).toEqual([
+      "CUSTOM",
+      "<turn|>",
+      "<|turn>",
+      "<eos>",
+    ]);
   });
 
   it("supplies the complete stop contract when the caller omits it", () => {
     expect(resolveBionicStopSequences(undefined)).toEqual([
-      "<end_of_turn>",
-      "<start_of_turn>",
-      "<endoftext>",
+      "<turn|>",
+      "<|turn>",
+      "<eos>",
     ]);
   });
 });
