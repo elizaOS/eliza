@@ -1323,9 +1323,9 @@ if (uiOnly) {
               `[eliza] Voice gateway exited (${code}); voice is unavailable.`,
             );
         });
-        // The UI probes capability on mount. Do not let that first probe
-        // race gateway startup and leave this session on batch capture.
-        await waitForPort(voicePort, { timeout: 15_000 });
+        // A fresh runtime needs the UI to create its first conversation before
+        // voice can bind it. The UI retries gateway health without arming the
+        // microphone, so do not hold Vite startup behind voice readiness.
       })
       // error-policy:J4 Voice remains unavailable when local startup fails;
       // text development stays available and gateway health cannot pass.
