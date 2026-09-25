@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
   "description": "Quality + perf bench for eliza-1 (unguided vs guided GBNF decode) compared against Cerebras (Llama-3.1-8B for tiers \u22649B; GPT-OSS-120B for the 27B tier on H200) across the response handler, planner, and per-action tasks.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -12,6 +19,7 @@
     "./report": "./src/report.ts"
   },
   "scripts": {
+    "test": "bun test __tests__/metrics.test.ts",
     "start": "bun run src/index.ts",
     "fixtures:derive": "node ../../scripts/eliza-1/derive-fixtures.ts",
     "fixtures:derive:dry-run": "node ../../scripts/eliza-1/derive-fixtures.ts --dry-run",
