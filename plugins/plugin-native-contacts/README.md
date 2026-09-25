@@ -29,3 +29,9 @@ The Android WebView contract also verifies multi-card vCard import, folded Unico
 names, escaped backslashes and name separators, all phone/email values, and native
 provider readback. Cleanup removes only the run’s synthetic raw-contact IDs and
 exports a zero-remaining receipt.
+
+The runner first revokes contacts access on its isolated test APK. A real WebView
+requests access through Android's dialog, denies it, verifies read/create/import
+rejections, then grants access and verifies recovery without denied writes leaving
+contacts behind. Permission results and native grant states are exported separately
+from the subsequent granted-access suite.
