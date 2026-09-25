@@ -27,3 +27,9 @@ Android settings batches reject unknown keys, malformed values and numeric
 overflow before changing cached or native state. This boundary validation does
 not certify that all valid settings are applied; full batch completion and
 manual-setting effects still require native verification.
+
+White-balance presets require an active Android preview and device support.
+Their promises settle from native Camera2 capture completion; confirmed presets
+are restored across preview restart, camera switch and video rebind. Tests verify
+completed AWB metadata and cancellation, not physical color accuracy. Queued
+camera switches settle in order; stopping preview cancels remaining switches.

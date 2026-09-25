@@ -2,6 +2,9 @@ package ai.eliza.plugins.camera
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.hardware.camera2.CameraCharacteristics
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import android.hardware.camera2.CaptureResult
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.impl.CameraInfoInternal
@@ -44,9 +47,10 @@ class CameraControlsInstrumentedTest {
     private class CaptureProbe(info: CameraInfo) : AutoCloseable {
         private val info = info as CameraInfoInternal
         val latest = AtomicReference<CaptureResult?>()
+        val frames = AtomicInteger()
         private val callback = object : CameraCaptureCallback() {
             override fun onCaptureCompleted(captureConfigId: Int, result: CameraCaptureResult) {
-                result.captureResult?.let { latest.set(it) }
+                result.captureResult?.let { latest.set(it); frames.incrementAndGet() }
             }
         }
         init {
@@ -89,7 +93,7 @@ class CameraControlsInstrumentedTest {
         awaitState("$method did not settle") { evaluate(scenario, "window.controlResult !== null") == "true" }
         return JSONObject(JSONTokener(evaluate(scenario, "JSON.stringify(window.controlResult)")).nextValue() as String)
     }
-    private fun cameraInfo() = CameraSelector.DEFAULT_BACK_CAMERA.filter(
+    private fun cameraInfo(selector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA) = selector.filter(
         ProcessCameraProvider.getInstance(InstrumentationRegistry.getInstrumentation().targetContext).get().availableCameraInfos).first()
     private fun preview(scenario: ActivityScenario<CameraTestActivity>) {
         ready(scenario)
@@ -148,6 +152,169 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun whiteBalancePresetsReachCompletedCamera2Captures() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                val info = cameraInfo()
+                val supported = Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: intArrayOf()
+                val presets = listOf("daylight" to CaptureResult.CONTROL_AWB_MODE_DAYLIGHT,
+                    "cloudy" to CaptureResult.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT,
+                    "tungsten" to CaptureResult.CONTROL_AWB_MODE_INCANDESCENT,
+                    "fluorescent" to CaptureResult.CONTROL_AWB_MODE_FLUORESCENT,
+                    "auto" to CaptureResult.CONTROL_AWB_MODE_AUTO)
+                CaptureProbe(info).use { probe ->
+                    for ((preset, mode) in presets) {
+                        val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("whiteBalance")
+                        val result = call(scenario, "setSettings", "{settings:{whiteBalance:'$preset'}}")
+                        val receipt = JSONObject().put("preset", preset).put("expectedCamera2Mode", mode)
+                            .put("supported", mode in supported).put("result", result)
+                        receipts.put(receipt)
+                        if (mode in supported) {
+                            assertTrue("Supported white balance failed: $result", result.getBoolean("ok"))
+                            try {
+                                awaitState("White balance $preset must reach completed Camera2 captures") {
+                                    probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode
+                                }
+                            } finally { receipt.put("actualCamera2Mode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE)) }
+                            assertEquals(preset, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("whiteBalance"))
+                        } else {
+                            assertFalse("Unsupported white balance cannot report success", result.getBoolean("ok"))
+                            assertEquals("WHITE_BALANCE_UNSUPPORTED", result.getString("code"))
+                            assertEquals(before, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("whiteBalance"))
+                        }
+                    }
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-white-balance.json", receipts)
+            }
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun whiteBalanceSurvivesPreviewRestartSwitchAndRecording() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val back = cameraInfo()
+            val front = cameraInfo(CameraSelector.DEFAULT_FRONT_CAMERA)
+            fun supports(info: CameraInfo, mode: Int) = mode in (Camera2CameraInfo.from(info)
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: intArrayOf())
+            val mode = listOf(CaptureResult.CONTROL_AWB_MODE_DAYLIGHT, CaptureResult.CONTROL_AWB_MODE_FLUORESCENT,
+                CaptureResult.CONTROL_AWB_MODE_AUTO).first { supports(back, it) && supports(front, it) }
+            val preset = when(mode) { CaptureResult.CONTROL_AWB_MODE_DAYLIGHT -> "daylight"
+                CaptureResult.CONTROL_AWB_MODE_FLUORESCENT -> "fluorescent"; else -> "auto" }
+            fun observed(probe: CaptureProbe, stage: String) {
+                val count = probe.frames.get()
+                awaitState("$stage must retain $preset in new captures") {
+                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode
+                }
+                receipts.put(JSONObject().put("stage", stage).put("preset", preset)
+                    .put("actualCamera2Mode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
+                    .put("newCaptures", probe.frames.get() - count))
+            }
+            try {
+                CaptureProbe(back).use { probe ->
+                    assertTrue(call(scenario, "setSettings", "{settings:{whiteBalance:'$preset'}}").getBoolean("ok"))
+                    observed(probe, "selected")
+                    assertTrue(call(scenario, "stopPreview").getBoolean("ok"))
+                    preview(scenario)
+                    observed(probe, "restarted")
+                    assertTrue(call(scenario, "startRecording", "{audio:false,quality:'low'}").getBoolean("ok"))
+                    try { observed(probe, "recording") }
+                    finally {
+                        val stopped = call(scenario, "stopRecording")
+                        assertTrue("Recording must finalize: $stopped", stopped.getBoolean("ok"))
+                        val file = java.io.File(requireNotNull(android.net.Uri.parse(stopped.getJSONObject("value").getString("path")).path))
+                        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.canonicalFile
+                        assertEquals("Only delete this test's generated cache video", cache, file.canonicalFile.parentFile)
+                        assertTrue(file.delete())
+                    }
+                }
+                CaptureProbe(front).use { probe ->
+                    assertTrue(call(scenario, "switchCamera", "{direction:'front'}").getBoolean("ok"))
+                    observed(probe, "front")
+                }
+                CaptureProbe(back).use { probe ->
+                    assertTrue(call(scenario, "switchCamera", "{direction:'back'}").getBoolean("ok"))
+                    observed(probe, "back")
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-white-balance-lifecycle.json", receipts)
+            }
+        }
+    }
+
+    @Test fun recordingCancelledDuringSettingsRestorationSettlesBothCalls() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val settled = CountDownLatch(2)
+            val replies = JSONArray()
+            fun pending(method: String, data: JSObject) = object : PluginCall(null, "ElizaCamera", method, method, data) {
+                override fun resolve() { replies.put(JSONObject().put("method", method).put("resolved", true)); settled.countDown() }
+                override fun resolve(value: JSObject?) { resolve() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    replies.put(JSONObject().put("method", method).put("resolved", false).put("code", code)); settled.countDown()
+                }
+            }
+            try {
+                scenario.onActivity { activity ->
+                    val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                    plugin.startRecording(pending("startRecording", JSObject().put("audio", false).put("quality", "low")))
+                    plugin.stopRecording(pending("stopRecording", JSObject()))
+                }
+                assertTrue("Both pending recording calls must settle", settled.await(10, TimeUnit.SECONDS))
+                assertEquals(2, replies.length())
+                for (index in 0 until replies.length()) {
+                    assertFalse("No recording can succeed before native settings complete", replies.getJSONObject(index).getBoolean("resolved"))
+                    assertEquals("RECORDING_ERROR", replies.getJSONObject(index).getString("code"))
+                }
+                assertFalse(call(scenario, "getRecordingState").getJSONObject("value").getBoolean("isRecording"))
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-white-balance-recording-cancel.json", replies)
+            }
+        }
+    }
+
+    @Test fun stoppingPreviewRejectsActiveAndQueuedCameraSwitches() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val settled = CountDownLatch(3)
+            val replies = JSONArray()
+            fun pending(name: String, method: String) = object : PluginCall(null, "ElizaCamera", name, method, JSObject()) {
+                override fun resolve() { replies.put(JSONObject().put("call", name).put("resolved", true)); settled.countDown() }
+                override fun resolve(value: JSObject?) { resolve() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    replies.put(JSONObject().put("call", name).put("resolved", false).put("code", code)); settled.countDown()
+                }
+            }
+            try {
+                scenario.onActivity { activity ->
+                    val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                    plugin.switchCamera(pending("first", "switchCamera"))
+                    plugin.switchCamera(pending("queued", "switchCamera"))
+                    plugin.stopPreview(pending("stop", "stopPreview"))
+                }
+                assertTrue("Active and queued switches must settle on stop", settled.await(10, TimeUnit.SECONDS))
+                assertEquals(3, replies.length())
+                for (index in 0 until replies.length()) {
+                    val reply = replies.getJSONObject(index)
+                    assertEquals(reply.getString("call") == "stop", reply.getBoolean("resolved"))
+                }
+                // A fresh preview must work after cancellation releases the queue.
+                preview(scenario)
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-white-balance-switch-cancel.json", replies)
+            }
+        }
+    }
+
     @Test fun invalidSettingsRejectWithoutChangingAnyCachedField() {
         val receipts = JSONArray()
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
@@ -187,7 +354,7 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
             try {
-                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
+                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
                     val result = call(scenario, method, options)
                     receipts.put(JSONObject().put("method", method).put("result", result))
                     assertFalse("Inactive $method must reject", result.getBoolean("ok"))
@@ -275,6 +442,50 @@ class CameraControlsInstrumentedTest {
             emit("camera-control-cancellation.json", JSONArray().put(JSONObject()
                 .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
                 .put("beforeFocusMode", before).put("afterFocusMode", after)
+                .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun stoppingPreviewRejectsPendingWhiteBalance_withoutChangingCachedPreset() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("whiteBalance")
+            val modes = Camera2CameraInfo.from(cameraInfo()).getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: intArrayOf()
+            val target = if (CaptureResult.CONTROL_AWB_MODE_DAYLIGHT in modes) "daylight" else "auto"
+            val settled = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val settlements = AtomicInteger()
+            var rejectedCode: String? = null
+            var resolved = false
+            val pending = object : PluginCall(null, "ElizaCamera", "pending-metering", "setSettings",
+                JSObject().put("settings", JSObject().put("whiteBalance", target))) {
+                override fun resolve() { resolved = true; settlements.incrementAndGet(); settled.countDown() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    rejectedCode = code; settlements.incrementAndGet(); settled.countDown()
+                }
+            }
+            val stopping = object : PluginCall(null, "ElizaCamera", "stop-metering", "stopPreview", JSObject()) {
+                override fun resolve() { stopped.countDown() }
+            }
+            // One UI dispatch guarantees stop runs before the completion listener.
+            // Only reply transport is intercepted; CameraX and plugin lifecycle are real.
+            scenario.onActivity { activity ->
+                val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                plugin.setSettings(pending)
+                plugin.stopPreview(stopping)
+            }
+            assertTrue("Stop did not settle", stopped.await(10, TimeUnit.SECONDS))
+            assertTrue("Pending metering did not settle", settled.await(10, TimeUnit.SECONDS))
+            assertFalse("Cancelled control cannot report success", resolved)
+            assertTrue("Expected lifecycle/camera cancellation: $rejectedCode",
+                rejectedCode in setOf("CAMERA_INACTIVE", "CAMERA_CONTROL_FAILED"))
+            assertEquals(1, settlements.get())
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("whiteBalance")
+            assertEquals("Cancelled operation must not update settings", before, after)
+            emit("camera-white-balance-cancellation.json", JSONArray().put(JSONObject()
+                .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
+                .put("requestedPreset", target).put("beforePreset", before).put("afterPreset", after)
                 .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
         }
     }

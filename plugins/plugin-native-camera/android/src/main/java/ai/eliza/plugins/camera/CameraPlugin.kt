@@ -10,8 +10,8 @@ import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.CameraManager
@@ -28,6 +28,9 @@ import android.util.Size
 import android.util.Range
 import android.view.ViewGroup
 import androidx.camera.core.*
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.resolutionselector.ResolutionSelector
@@ -88,6 +91,9 @@ class CameraPlugin : Plugin() {
     private var pendingPreviewCall: PluginCall? = null
     private var currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     private var currentDirection = "back"
+    private var switchingCamera = false
+    private val pendingCameraSwitches = ArrayDeque<PluginCall>()
+    private var whiteBalanceRequestId = 0L
 
     private val frameDelivery = Handler(Looper.getMainLooper())
     private var previewEpoch = 0L
@@ -272,12 +278,16 @@ class CameraPlugin : Plugin() {
                     // Apply stored torch setting.
                     applyTorch(currentSettings["flash"] as? String == "torch")
 
-                    pendingPreviewCall = null
-                    call.resolve(JSObject().apply {
-                        put("width", width)
-                        put("height", height)
-                        put("deviceId", if (direction == "front") "front" else "back")
-                    })
+                    restoreWhiteBalance(requireNotNull(camera), {
+                        if (pendingPreviewCall === call) {
+                            pendingPreviewCall = null
+                            call.resolve(JSObject().apply {
+                                put("width", width)
+                                put("height", height)
+                                put("deviceId", if (direction == "front") "front" else "back")
+                            })
+                        }
+                    }, { error -> failPreview(call, error) })
                 } catch (error: Exception) {
                     // error-policy:J1 asynchronous preview failures settle the owning bridge call.
                     failPreview(call, error)
@@ -309,6 +319,9 @@ class CameraPlugin : Plugin() {
     }
 
     private fun stopPreviewInternal() {
+        while (pendingCameraSwitches.isNotEmpty()) {
+            pendingCameraSwitches.removeFirst().reject("Preview stopped before camera switch", "CAMERA_INACTIVE")
+        }
         pendingPreviewCall?.reject("Preview was stopped before it started", "PREVIEW_CANCELLED")
         pendingPreviewCall = null
         previewEpoch++
@@ -317,7 +330,9 @@ class CameraPlugin : Plugin() {
 
         recordingSession?.let { session ->
             session.stopping = true
-            session.recording?.stop()
+            if (session.recording == null) finishRecording(session, null,
+                java.util.concurrent.CancellationException("Preview stopped before recording started"))
+            else session.recording?.stop()
         }
 
         cameraProvider?.unbindAll()
@@ -342,34 +357,63 @@ class CameraPlugin : Plugin() {
     @PluginMethod
     fun switchCamera(call: PluginCall) {
         activity.runOnUiThread {
+            if (switchingCamera) {
+                pendingCameraSwitches.addLast(call)
+            } else {
+                switchingCamera = true
+                switchCameraNow(call)
+            }
+        }
+    }
+
+    private fun finishCameraSwitch() {
+        val next = pendingCameraSwitches.pollFirst()
+        if (next == null) switchingCamera = false
+        else ContextCompat.getMainExecutor(context).execute { switchCameraNow(next) }
+    }
+
+    private fun switchCameraNow(call: PluginCall) {
+        activity.runOnUiThread {
+            if (pendingPreviewCall != null) {
+                call.reject("Wait for camera preview to start", "CAMERA_NOT_READY")
+                finishCameraSwitch()
+                return@runOnUiThread
+            }
             val provider = cameraProvider
             if (destroyed || provider == null) {
                 call.reject("Preview not started", "CAMERA_NOT_READY")
+                finishCameraSwitch()
                 return@runOnUiThread
             }
             val direction = call.getString("direction")
                 ?: if (currentCameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) "front" else "back"
             if (direction != "front" && direction != "back") {
                 call.reject("Camera direction must be front or back", "INVALID_OPTIONS")
+                finishCameraSwitch()
                 return@runOnUiThread
             }
             val mirror = direction == "front"
             if (recordingSession != null || recordingPermissionCalls.isNotEmpty()) {
                 call.reject("Stop the recording before switching cameras", "RECORDING_BUSY")
+                finishCameraSwitch()
                 return@runOnUiThread
             }
-            currentDirection = direction
-            currentCameraSelector = if (direction == "front") {
-                CameraSelector.DEFAULT_FRONT_CAMERA
-            } else {
-                CameraSelector.DEFAULT_BACK_CAMERA
-            }
-
-            previewView?.scaleX = if (mirror) -1f else 1f
-
-            provider.unbindAll()
-
             try {
+                val targetSelector = if (direction == "front") CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+                val targetInfo = targetSelector.filter(provider.availableCameraInfos).firstOrNull()
+                val preset = currentSettings["whiteBalance"] as? String ?: "auto"
+                if (targetInfo == null || !supportsWhiteBalance(targetInfo, preset)) {
+                    call.reject("Target camera does not support white balance preset $preset", "WHITE_BALANCE_UNSUPPORTED")
+                    finishCameraSwitch()
+                    return@runOnUiThread
+                }
+                currentDirection = direction
+                currentCameraSelector = targetSelector
+
+                previewView?.scaleX = if (mirror) -1f else 1f
+
+                provider.unbindAll()
+
                 camera = provider.bindToLifecycle(
                     activity as LifecycleOwner,
                     currentCameraSelector,
@@ -382,10 +426,16 @@ class CameraPlugin : Plugin() {
                 applyTorch(currentSettings["flash"] as? String == "torch")
                 applyZoom((currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
 
-                call.resolve(JSObject().apply {
-                    put("width", currentPreviewWidth)
-                    put("height", currentPreviewHeight)
-                    put("deviceId", direction)
+                restoreWhiteBalance(requireNotNull(camera), {
+                    call.resolve(JSObject().apply {
+                        put("width", currentPreviewWidth)
+                        put("height", currentPreviewHeight)
+                        put("deviceId", direction)
+                    })
+                    finishCameraSwitch()
+                }, { error ->
+                    call.reject("Failed to restore camera settings", "SWITCH_CAMERA_ERROR", error)
+                    finishCameraSwitch()
                 })
             } catch (e: Exception) {
                 // error-policy:J1 camera switching failures reject the bridge call.
@@ -393,7 +443,8 @@ class CameraPlugin : Plugin() {
                     put("code", "SWITCH_CAMERA_ERROR")
                     put("message", "Failed to switch camera: ${e.message}")
                 })
-                call.reject("Failed to switch camera: ${e.message}")
+                call.reject("Failed to switch camera: ${e.message}", "SWITCH_CAMERA_ERROR", e)
+                finishCameraSwitch()
             }
         }
     }
@@ -675,77 +726,85 @@ class CameraPlugin : Plugin() {
                 requireNotNull(preview), requireNotNull(imageCapture), capture)
             applyTorch(currentSettings["flash"] as? String == "torch")
             applyZoom((currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
-            val pending = if (saveToGallery) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
-                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
-                }
-                val builder = MediaStoreOutputOptions.Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-                    .setContentValues(values)
-                if (maxDuration != null) builder.setDurationLimitMillis((maxDuration * 1000).toLong().coerceAtLeast(1))
-                if (maxFileSize != null) builder.setFileSizeLimit(maxFileSize.toLong())
-                capture.output.prepareRecording(context, builder.build())
-            } else {
-                val builder = FileOutputOptions.Builder(requireNotNull(file))
-                if (maxDuration != null) builder.setDurationLimitMillis((maxDuration * 1000).toLong().coerceAtLeast(1))
-                if (maxFileSize != null) builder.setFileSizeLimit(maxFileSize.toLong())
-                capture.output.prepareRecording(context, builder.build())
-            }
-            if (call.getBoolean("audio") ?: true) pending.withAudioEnabled()
-            session.recording = pending.start(ContextCompat.getMainExecutor(context)) { event ->
-                if (recordingSession !== session) return@start
-                session.duration = event.recordingStats.recordedDurationNanos / 1_000_000_000.0
-                session.fileSize = event.recordingStats.numBytesRecorded
-                when (event) {
-                    is VideoRecordEvent.Start -> {
-                        session.started = true
-                        session.startSettled = true
-                        call.resolve()
+            restoreWhiteBalance(requireNotNull(camera), {
+                check(recordingSession === session && !session.stopping) { "Recording was cancelled before native settings completed" }
+                val pending = if (saveToGallery) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+                        put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                        put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
                     }
-                    is VideoRecordEvent.Finalize -> {
-                        val acceptableLimit = event.error == VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED ||
-                            event.error == VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED
-                        try {
-                            if (event.hasError() && !acceptableLimit) {
-                                throw IllegalStateException("CameraX could not finalize recording (code ${event.error})", event.cause)
-                            }
-                            val outputUri = event.outputResults.outputUri
-                            val uri = if (outputUri != Uri.EMPTY) outputUri else Uri.fromFile(requireNotNull(session.file))
-                            val outputBytes = session.file?.length()
-                                ?: context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
-                                ?: throw IllegalStateException("Finalized video is not readable")
-                            val metadata = MediaMetadataRetriever()
-                            val result = try {
-                                metadata.setDataSource(context, uri)
-                                val width = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
-                                val height = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
-                                require(width != null && width > 0 && height != null && height > 0) { "Finalized video has no readable dimensions" }
-                                require(outputBytes > 0 && session.duration > 0) { "Finalized video contains no recorded media" }
-                                JSObject().apply {
-                                    put("path", session.file?.absolutePath ?: uri.toString())
-                                    put("duration", session.duration)
-                                    put("width", width)
-                                    put("height", height)
-                                    put("fileSize", outputBytes)
-                                    put("mimeType", "video/mp4")
+                    val builder = MediaStoreOutputOptions.Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+                        .setContentValues(values)
+                    if (maxDuration != null) builder.setDurationLimitMillis((maxDuration * 1000).toLong().coerceAtLeast(1))
+                    if (maxFileSize != null) builder.setFileSizeLimit(maxFileSize.toLong())
+                    capture.output.prepareRecording(context, builder.build())
+                } else {
+                    val builder = FileOutputOptions.Builder(requireNotNull(file))
+                    if (maxDuration != null) builder.setDurationLimitMillis((maxDuration * 1000).toLong().coerceAtLeast(1))
+                    if (maxFileSize != null) builder.setFileSizeLimit(maxFileSize.toLong())
+                    capture.output.prepareRecording(context, builder.build())
+                }
+                if (call.getBoolean("audio") ?: true) pending.withAudioEnabled()
+                session.recording = pending.start(ContextCompat.getMainExecutor(context)) { event ->
+                    if (recordingSession !== session) return@start
+                    session.duration = event.recordingStats.recordedDurationNanos / 1_000_000_000.0
+                    session.fileSize = event.recordingStats.numBytesRecorded
+                    when (event) {
+                        is VideoRecordEvent.Start -> {
+                            session.started = true
+                            session.startSettled = true
+                            call.resolve()
+                        }
+                        is VideoRecordEvent.Finalize -> {
+                            val acceptableLimit = event.error == VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED ||
+                                event.error == VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED
+                            try {
+                                if (event.hasError() && !acceptableLimit) {
+                                    throw IllegalStateException("CameraX could not finalize recording (code ${event.error})", event.cause)
                                 }
-                            } finally {
-                                metadata.release()
+                                val outputUri = event.outputResults.outputUri
+                                val uri = if (outputUri != Uri.EMPTY) outputUri else Uri.fromFile(requireNotNull(session.file))
+                                val outputBytes = session.file?.length()
+                                    ?: context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
+                                    ?: throw IllegalStateException("Finalized video is not readable")
+                                val metadata = MediaMetadataRetriever()
+                                val result = try {
+                                    metadata.setDataSource(context, uri)
+                                    val width = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+                                    val height = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+                                    require(width != null && width > 0 && height != null && height > 0) { "Finalized video has no readable dimensions" }
+                                    require(outputBytes > 0 && session.duration > 0) { "Finalized video contains no recorded media" }
+                                    JSObject().apply {
+                                        put("path", session.file?.absolutePath ?: uri.toString())
+                                        put("duration", session.duration)
+                                        put("width", width)
+                                        put("height", height)
+                                        put("fileSize", outputBytes)
+                                        put("mimeType", "video/mp4")
+                                    }
+                                } finally {
+                                    metadata.release()
+                                }
+                                finishRecording(session, result, null)
+                            } catch (error: Exception) {
+                                // error-policy:J1 CameraX/output failures become explicit bridge failures.
+                                finishRecording(session, null, error)
                             }
-                            finishRecording(session, result, null)
-                        } catch (error: Exception) {
-                            // error-policy:J1 CameraX/output failures become explicit bridge failures.
-                            finishRecording(session, null, error)
                         }
                     }
+                    notifyListeners("recordingState", JSObject().apply {
+                        put("isRecording", recordingSession === session && session.started && !session.stopping)
+                        put("duration", session.duration)
+                        put("fileSize", session.fileSize)
+                    })
                 }
-                notifyListeners("recordingState", JSObject().apply {
-                    put("isRecording", recordingSession === session && session.started && !session.stopping)
-                    put("duration", session.duration)
-                    put("fileSize", session.fileSize)
-                })
-            }
+            }, { error ->
+                if (recordingSession === session) {
+                    finishRecording(session, null, error)
+                    stopPreviewInternal()
+                }
+            })
         } catch (error: Exception) {
             // error-policy:J1 synchronous CameraX admission errors settle the owning call.
             finishRecording(session, null, error)
@@ -803,7 +862,9 @@ class CameraPlugin : Plugin() {
             session.stopCalls.add(call)
             if (!session.stopping) {
                 session.stopping = true
-                session.recording?.stop()
+                if (session.recording == null) finishRecording(session, null,
+                    java.util.concurrent.CancellationException("Recording stopped before native settings completed"))
+                else session.recording?.stop()
             }
         }
     }
@@ -857,6 +918,24 @@ class CameraPlugin : Plugin() {
             return
         }
 
+        if (settings.has("whiteBalance")) {
+            withActiveCamera(call) { owner ->
+                val preset = settings.getString("whiteBalance")
+                if (!supportsWhiteBalance(owner.cameraInfo, preset)) {
+                    call.reject("This camera does not support white balance preset $preset", "WHITE_BALANCE_UNSUPPORTED")
+                    return@withActiveCamera
+                }
+                settleCameraControl(call, owner, whiteBalanceFuture(owner, preset)) {
+                    applySettingsValues(settings)
+                }
+            }
+        } else {
+            applySettingsValues(settings)
+            call.resolve()
+        }
+    }
+
+    private fun applySettingsValues(settings: org.json.JSONObject) {
         settings.keys().forEach { key ->
             currentSettings[key] = settings.get(key)
         }
@@ -888,8 +967,6 @@ class CameraPlugin : Plugin() {
             applyExposureCompensation(ev)
             currentSettings["exposureCompensation"] = ev
         }
-
-        call.resolve()
     }
 
     private fun validateSettings(settings: org.json.JSONObject): String? {
@@ -910,6 +987,67 @@ class CameraPlugin : Plugin() {
             if (!valid) return "Invalid value for camera setting: $key"
         }
         return null
+    }
+
+    private fun whiteBalanceMode(preset: String): Int = when (preset) {
+        "auto" -> CaptureRequest.CONTROL_AWB_MODE_AUTO
+        "daylight" -> CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT
+        "cloudy" -> CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+        "tungsten" -> CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT
+        "fluorescent" -> CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT
+        else -> throw IllegalArgumentException("Unknown white balance preset: $preset")
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun supportsWhiteBalance(info: CameraInfo, preset: String): Boolean {
+        val modes = Camera2CameraInfo.from(info)
+            .getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: intArrayOf()
+        return whiteBalanceMode(preset) in modes
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun whiteBalanceFuture(owner: Camera, preset: String): ListenableFuture<Void> {
+        require(supportsWhiteBalance(owner.cameraInfo, preset)) { "This camera does not support white balance preset $preset" }
+        whiteBalanceRequestId++
+        return Camera2CameraControl.from(owner.cameraControl).addCaptureRequestOptions(
+            CaptureRequestOptions.Builder().setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE,
+                whiteBalanceMode(preset)).build())
+    }
+
+    // Rebinding CameraX use cases must restore the confirmed preset before the
+    // owning preview/switch/recording operation can report success.
+    private fun restoreWhiteBalance(owner: Camera, ready: () -> Unit, failed: (Exception) -> Unit) {
+        val epoch = previewEpoch
+        val preset = currentSettings["whiteBalance"] as? String ?: "auto"
+        fun stillOwnsCamera() = !destroyed && camera === owner && previewEpoch == epoch
+        fun apply(allowRebindRetry: Boolean) {
+            try {
+                val future = whiteBalanceFuture(owner, preset)
+                val requestId = whiteBalanceRequestId
+                future.addListener({
+                    try {
+                        future.get()
+                        check(stillOwnsCamera()) { "Camera changed during white balance restoration" }
+                        ready()
+                    } catch (error: Exception) {
+                        // Unbind/rebind queues an inactive transition on CameraX's
+                        // executor. Re-submit once after that transition, only if
+                        // this request still owns the foreground camera. A newer
+                        // preset, stop or switch must never be overwritten.
+                        val cause = (error as? java.util.concurrent.ExecutionException)?.cause
+                        val foreground = (activity as? LifecycleOwner)?.lifecycle?.currentState
+                            ?.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) == true
+                        if (allowRebindRetry && cause is CameraControl.OperationCanceledException &&
+                            stillOwnsCamera() && whiteBalanceRequestId == requestId && foreground) {
+                            apply(false)
+                        } else failed(error)
+                    }
+                }, ContextCompat.getMainExecutor(context))
+            } catch (error: Exception) {
+                failed(error)
+            }
+        }
+        apply(true)
     }
 
     // ---- Zoom ----
