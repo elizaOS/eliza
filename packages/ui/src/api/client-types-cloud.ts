@@ -1156,6 +1156,18 @@ export interface OrchestratorAccountReadiness {
   required: number;
   providers: OrchestratorProviderReadiness[];
   problems: string[];
+  /** Model-gateway verdict, present only when gateway mode is configured. A
+   * configured gateway with a missing/unresolved token sets `ok:false` and
+   * contributes a problem (every claude sub-agent would 401). */
+  gateway?: OrchestratorModelGatewayReadiness;
+}
+/** Model-gateway readiness from `GET /api/orchestrator/accounts/readiness`. */
+export interface OrchestratorModelGatewayReadiness {
+  ok: boolean;
+  configured: boolean;
+  url?: string;
+  /** Vault key that failed to resolve (key name only, never a token value). */
+  unresolvedKey?: string;
 }
 export type OrchestratorRoomParticipantKind =
   | "orchestrator"

@@ -295,7 +295,7 @@ async function dispatchOrchestratorRoutes(
   if (method === "GET" && pathname === `${PREFIX}/accounts/readiness`) {
     const rotation =
       query.get("rotation") === "1" || query.get("rotation") === "true";
-    const readiness = service.getAccountReadiness({ rotation });
+    const readiness = await service.getAccountReadiness({ rotation });
     sendJson(res, readiness, readiness.ready ? 200 : 503);
     return true;
   }

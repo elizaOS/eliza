@@ -72,6 +72,7 @@ import {
   classifyAccountFailure,
   getCodingAccountBridge,
   hasHealthyPooledAccount,
+  type ModelGatewayReadiness,
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
 import {
@@ -130,6 +131,7 @@ import {
   runIndependentVerification,
   shouldRunIndependentVerify,
 } from "./independent-verifier.js";
+import { resolveModelGatewayConfigResolved } from "./model-gateway.js";
 import {
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
   type OrchestratorOwnedArtifact,
@@ -6766,11 +6768,30 @@ export class OrchestratorTaskService extends Service {
    * falls back so a thin pool never hard-fails a spawn — this is meant to fail
    * loudly (a CI/ops check + a 503 route) so a misconfigured pool is caught.
    */
-  getAccountReadiness(
+  async getAccountReadiness(
     opts: { rotation?: boolean } = {},
-  ): CodingAccountReadiness {
+  ): Promise<CodingAccountReadiness> {
     const availability = getCodingAccountBridge()?.describe() ?? {};
-    return assessCodingAccountReadiness(availability, opts);
+    // Fold in the model-gateway verdict: when gateway mode is on, every claude
+    // sub-agent authenticates with the gateway token, so an unresolved
+    // `vault://` sentinel dooms every spawn even with healthy seats. Resolve it
+    // here (fail-closed) so readiness reports the real posture instead of
+    // ready:true/problems:[]. Un-configured gateway => no gateway verdict.
+    const resolved = await resolveModelGatewayConfigResolved();
+    const gateway: ModelGatewayReadiness | undefined = resolved
+      ? "token" in resolved
+        ? { ok: true, configured: true, url: resolved.url }
+        : {
+            ok: false,
+            configured: true,
+            url: resolved.url,
+            unresolvedKey: resolved.unresolvedKey,
+          }
+      : undefined;
+    return assessCodingAccountReadiness(availability, {
+      ...opts,
+      ...(gateway ? { gateway } : {}),
+    });
   }
 
   /**

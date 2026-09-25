@@ -98,8 +98,12 @@ import {
 } from "./git-identity-env.js";
 import {
   applyModelGatewayEnv,
+  isVaultRef,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
+  parseVaultRef,
+  primeModelGatewayToken,
   resolveModelGatewayConfig,
+  resolveModelGatewayEffectiveTokenSync,
 } from "./model-gateway.js";
 import {
   type ModelGatewayLease,
@@ -5585,9 +5589,29 @@ export class AcpService extends Service {
       const lease = childSessionId
         ? this.modelLeases.get(childSessionId)
         : undefined;
+      // The static gateway token in config may be a `vault://<key>` sentinel
+      // (the host's vault-bootstrap rewrites secret config keys to sentinels).
+      // `resolveModelGatewayConfig()` returns it verbatim, so dereference it to
+      // the plaintext primed earlier (mintModelLease -> primeModelGatewayToken)
+      // before it reaches the child env. A lease token is always plaintext.
+      // Fail closed: if the sentinel could not be resolved, do NOT inject it —
+      // throw a clear "gateway token unresolved" error at spawn time so the
+      // child fails fast instead of 401-ing against the gateway minutes later.
+      let staticToken = gateway.token;
+      if (!lease && isVaultRef(gateway.token)) {
+        const resolved = resolveModelGatewayEffectiveTokenSync(gateway.token);
+        if (!resolved) {
+          throw new Error(
+            `[model-gateway] gateway token unresolved for sub-agent spawn (${parseVaultRef(gateway.token) ?? gateway.token}); refusing to inject an unresolved vault:// sentinel as a child credential`,
+          );
+        }
+        staticToken = resolved;
+      }
       applyModelGatewayEnv(
         env,
-        lease ? { url: gateway.url, token: lease.token } : gateway,
+        lease
+          ? { url: gateway.url, token: lease.token }
+          : { url: gateway.url, token: staticToken },
       );
       this.log("info", "model-gateway mode engaged for sub-agent env", {
         gatewayUrl: gateway.url,
@@ -5680,6 +5704,27 @@ export class AcpService extends Service {
     options: { rollbackSessionOnFailure: boolean },
   ): Promise<ModelGatewayLease | undefined> {
     const ttlMs = timeoutMs ?? this.sessionTimeoutMs ?? DEFAULT_LEASE_TTL_MS;
+    // Dereference a `vault://` gateway-token sentinel into the process cache
+    // BEFORE the synchronous buildEnv runs, so a static-token spawn (no lease
+    // broker) injects the plaintext, not the sentinel. Fail-closed: an
+    // unresolvable sentinel throws here (rolling back the reserved slot on the
+    // fresh-spawn path) instead of letting the child 401 minutes later. No-op
+    // when gateway mode is off or the token is already plaintext.
+    const primed = await primeModelGatewayToken();
+    if (primed?.unresolvedKey) {
+      if (options.rollbackSessionOnFailure) {
+        await this.store.delete(sessionId).catch(() => {});
+      }
+      const err = new Error(
+        `[model-gateway] gateway token unresolved (${primed.unresolvedKey}); refusing to spawn sub-agent ${sessionId} with an unresolved vault:// token sentinel`,
+      );
+      this.log("error", "model-gateway token unresolved; spawn blocked", {
+        sessionId,
+        agentType,
+        unresolvedKey: primed.unresolvedKey,
+      });
+      throw err;
+    }
     let outcome: Awaited<ReturnType<typeof mintSpawnLease>>;
     try {
       outcome = await mintSpawnLease({ sessionId, agentType, ttlMs });

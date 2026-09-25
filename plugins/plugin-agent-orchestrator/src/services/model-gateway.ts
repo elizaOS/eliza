@@ -26,10 +26,149 @@
  * @module services/model-gateway
  */
 
+import { createManager, type Vault } from "@elizaos/auth/vault";
+import { logger } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
 
 export const MODEL_GATEWAY_URL_KEY = "ELIZA_MODEL_GATEWAY_URL";
 export const MODEL_GATEWAY_TOKEN_KEY = "ELIZA_MODEL_GATEWAY_TOKEN";
+
+/**
+ * Sentinel prefix marking a config value that resolves through the vault
+ * (the pre-existing `vault://<key>` scheme defined in
+ * packages/agent/src/runtime/operations/vault-bridge.ts —
+ * `formatVaultRef`/`isVaultRef`/`parseVaultRef`). Re-declared here (rather than
+ * imported from @elizaos/agent) so this leaf plugin does not take an
+ * app/agent-runtime dependency; the scheme is a stable data contract, not code.
+ */
+const VAULT_REF_PREFIX = "vault://";
+
+/** Type guard: true when `value` is a `vault://<key>` sentinel string. */
+export function isVaultRef(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.startsWith(VAULT_REF_PREFIX) &&
+    value.length > VAULT_REF_PREFIX.length
+  );
+}
+
+/** Extract the underlying vault key from a sentinel; null if malformed. */
+export function parseVaultRef(value: string): string | null {
+  if (!isVaultRef(value)) return null;
+  return value.slice(VAULT_REF_PREFIX.length);
+}
+
+/** Narrow surface of the vault used by the token deref (+ test fakes). */
+type GatewayTokenVaultLike = Pick<Vault, "get" | "has">;
+
+/**
+ * Lazily-constructed process-wide vault facade, the SAME `createManager()`
+ * surface `packages/app/src/services/vault-mirror.ts#sharedVault()` uses. The
+ * orchestrator plugin already depends on `@elizaos/auth`, so this needs no
+ * app/agent import. Overridable for tests.
+ */
+let cachedGatewayVault: GatewayTokenVaultLike | null = null;
+function sharedGatewayVault(): GatewayTokenVaultLike {
+  if (!cachedGatewayVault) cachedGatewayVault = createManager().vault;
+  return cachedGatewayVault;
+}
+
+/**
+ * Test-only: inject a fake vault (or reset to the real facade with `null`) so
+ * deref behavior can be exercised without a live PGlite vault.
+ */
+export function _setGatewayVaultForTesting(
+  next: GatewayTokenVaultLike | null,
+): void {
+  cachedGatewayVault = next;
+  resolvedGatewayTokenCache.clear();
+}
+
+/**
+ * Process-wide cache of `vault://<key>` sentinel → resolved plaintext token.
+ * `resolveModelGatewayConfig()` re-reads the on-disk config each call (the UI
+ * writes there and the value must take effect without a restart), and the
+ * on-disk `ELIZA_MODEL_GATEWAY_TOKEN` stays a sentinel even after the boot-time
+ * in-memory hydration in eliza.ts (that mutates the in-memory config object,
+ * not the file). So the orchestrator must deref the sentinel itself. The cache
+ * keeps that to one vault read per distinct sentinel across all spawns.
+ */
+const resolvedGatewayTokenCache = new Map<string, string>();
+
+export interface GatewayTokenResolution {
+  /** The usable plaintext token, present only when resolution succeeded. */
+  token?: string;
+  /**
+   * The vault key that could not be resolved (missing entry or vault error),
+   * present only on the fail-closed path. Key NAME only — never a value, never
+   * the underlying vault error (which could echo storage internals).
+   */
+  unresolvedKey?: string;
+}
+
+/**
+ * Resolve a raw gateway token that MAY be a `vault://<key>` sentinel into a
+ * usable plaintext token. A non-ref value passes through unchanged (zero vault
+ * calls). A ref is dereferenced through the vault. Fail-closed: a missing entry
+ * or any vault error yields `{ unresolvedKey }` (key name only) and NEVER the
+ * sentinel — so a sentinel can never be handed to a child as a credential.
+ */
+export async function resolveGatewayTokenValue(
+  rawToken: string,
+  vault: GatewayTokenVaultLike = sharedGatewayVault(),
+): Promise<GatewayTokenResolution> {
+  if (!isVaultRef(rawToken)) return { token: rawToken };
+  const key = parseVaultRef(rawToken);
+  if (!key) return { unresolvedKey: rawToken };
+  const cached = resolvedGatewayTokenCache.get(rawToken);
+  if (cached) return { token: cached };
+  try {
+    if (!(await vault.has(key))) return { unresolvedKey: key };
+    const value = (await vault.get(key))?.trim();
+    if (!value) return { unresolvedKey: key };
+    resolvedGatewayTokenCache.set(rawToken, value);
+    return { token: value };
+  } catch {
+    // error-policy:J3 fail-closed: never stringify the vault error (could echo
+    // storage internals) and never fall back to the sentinel. Key name only.
+    return { unresolvedKey: key };
+  }
+}
+
+/**
+ * Synchronous accessor for a gateway token that has already been dereferenced
+ * (either a plain value, or a `vault://` ref primed via
+ * `primeModelGatewayToken()`). Returns the plaintext when known, else
+ * `undefined` (caller fails closed). Never returns a `vault://` sentinel.
+ */
+export function resolveModelGatewayEffectiveTokenSync(
+  rawToken: string,
+): string | undefined {
+  if (!isVaultRef(rawToken)) return rawToken;
+  return resolvedGatewayTokenCache.get(rawToken);
+}
+
+/**
+ * Async prime step: dereference the configured gateway token sentinel (if any)
+ * into the process cache so a later synchronous `buildEnv` can inject the
+ * plaintext. Idempotent, self-gating (no-op when gateway mode is off or the
+ * token is not a sentinel). Returns the resolution so callers can fail-closed
+ * BEFORE spawning a child that would otherwise 401 minutes later.
+ */
+export async function primeModelGatewayToken(): Promise<
+  GatewayTokenResolution | undefined
+> {
+  const raw = readConfigEnvKey(MODEL_GATEWAY_TOKEN_KEY)?.trim();
+  if (!raw) return undefined;
+  if (!isVaultRef(raw)) return { token: raw };
+  const resolution = await resolveGatewayTokenValue(raw);
+  if (resolution.unresolvedKey) {
+    logger.error(
+      `[model-gateway] gateway token vault ref failed to resolve (fail-closed): ${resolution.unresolvedKey}`,
+    );
+  }
+  return resolution;
+}
 
 /**
  * Raw provider credentials that must never reach a sub-agent in gateway
@@ -61,12 +200,44 @@ export interface ModelGatewayConfig {
   token: string;
 }
 
-/** The active gateway config, or undefined when gateway mode is off. */
+/**
+ * The active gateway config, or undefined when gateway mode is off.
+ *
+ * NOTE: `token` here may be a raw `vault://<key>` sentinel — this function is
+ * synchronous and does NOT dereference. Truthiness/url callers use it as-is;
+ * the spawn path (`AcpService.buildEnv`) MUST dereference the sentinel to
+ * plaintext (via `primeModelGatewayToken` +
+ * `resolveModelGatewayEffectiveTokenSync`) before the token reaches a child
+ * env, and `applyModelGatewayEnv` throws if a sentinel ever slips through.
+ */
 export function resolveModelGatewayConfig(): ModelGatewayConfig | undefined {
   const url = readConfigEnvKey(MODEL_GATEWAY_URL_KEY)?.trim();
   const token = readConfigEnvKey(MODEL_GATEWAY_TOKEN_KEY)?.trim();
   if (!url || !token) return undefined;
   return { url, token };
+}
+
+/**
+ * Async counterpart to `resolveModelGatewayConfig` that DEREFERENCES a
+ * `vault://` token sentinel to plaintext. Returns:
+ *  - `undefined` when gateway mode is off (either var unset).
+ *  - `{ url, token }` with a usable plaintext token when resolvable.
+ *  - `{ url, unresolvedKey }` when the token is a sentinel that could NOT be
+ *    resolved (fail-closed — no token, key name only).
+ * Used by the readiness gate so a doomed pool reports a problem instead of
+ * `ready:true`.
+ */
+export async function resolveModelGatewayConfigResolved(): Promise<
+  | { url: string; token: string }
+  | { url: string; unresolvedKey: string }
+  | undefined
+> {
+  const url = readConfigEnvKey(MODEL_GATEWAY_URL_KEY)?.trim();
+  const rawToken = readConfigEnvKey(MODEL_GATEWAY_TOKEN_KEY)?.trim();
+  if (!url || !rawToken) return undefined;
+  const resolution = await resolveGatewayTokenValue(rawToken);
+  if (resolution.token) return { url, token: resolution.token };
+  return { url, unresolvedKey: resolution.unresolvedKey ?? rawToken };
 }
 
 /**
@@ -107,6 +278,15 @@ export function applyModelGatewayEnv(
   env: NodeJS.ProcessEnv,
   gateway: ModelGatewayConfig,
 ): void {
+  // Defense-in-depth: a `vault://` sentinel must NEVER be injected as a child
+  // credential. If the token still carries the sentinel here, the deref step
+  // upstream failed — fail fast with a clear error at spawn time instead of
+  // letting the child 401 against the gateway minutes after it goes ready.
+  if (isVaultRef(gateway.token)) {
+    throw new Error(
+      `[model-gateway] refusing to inject an unresolved gateway token sentinel into a sub-agent env (${parseVaultRef(gateway.token) ?? gateway.token}); the vault ref did not resolve to a usable token`,
+    );
+  }
   const rawValues: string[] = [];
   for (const key of MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS) {
     const value = env[key];

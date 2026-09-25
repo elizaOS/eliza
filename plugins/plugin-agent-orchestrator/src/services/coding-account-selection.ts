@@ -243,6 +243,27 @@ export interface CodingProviderReadiness {
   ok: boolean;
 }
 
+/**
+ * Readiness verdict for the model gateway that fronts sub-agent inference. When
+ * gateway mode is on, EVERY claude sub-agent authenticates with this token, so
+ * an unresolved `vault://` sentinel here dooms every claude spawn regardless of
+ * how many seats are healthy — the account-pool counts are honest but the
+ * spawn is not. `ok:false` must fail readiness so that case is caught.
+ */
+export interface ModelGatewayReadiness {
+  /** True only when gateway mode is on AND the token resolves to a usable value. */
+  ok: boolean;
+  /** True when gateway mode is configured (both URL + token env set). */
+  configured: boolean;
+  /** The gateway URL when configured (never the token). */
+  url?: string;
+  /**
+   * The vault key that failed to resolve, when the token is an unresolved
+   * `vault://` sentinel. Key NAME only — never a token value.
+   */
+  unresolvedKey?: string;
+}
+
 /** The pool's readiness for live coding work, with loud-failure detail. */
 export interface CodingAccountReadiness {
   ready: boolean;
@@ -253,6 +274,13 @@ export interface CodingAccountReadiness {
   providers: CodingProviderReadiness[];
   /** Human-readable reasons the pool is not ready (empty when ready). */
   problems: string[];
+  /**
+   * Model-gateway verdict, present only when gateway mode is configured. A
+   * `configured` gateway whose token is missing/unresolved sets `ok:false` and
+   * contributes a problem, so readiness is red when every claude spawn is
+   * doomed even though the seat counts look healthy.
+   */
+  gateway?: ModelGatewayReadiness;
 }
 
 /** The agent types the live multi-account orchestrator depends on. */
@@ -269,7 +297,11 @@ export const READINESS_REQUIRED_AGENT_TYPES = ["claude", "codex"] as const;
  */
 export function assessCodingAccountReadiness(
   availability: Record<string, CodingProviderAvailability[]>,
-  opts: { rotation?: boolean; agentTypes?: readonly string[] } = {},
+  opts: {
+    rotation?: boolean;
+    agentTypes?: readonly string[];
+    gateway?: ModelGatewayReadiness;
+  } = {},
 ): CodingAccountReadiness {
   const rotation = opts.rotation ?? false;
   const required = rotation ? 2 : 1;
@@ -290,12 +322,25 @@ export function assessCodingAccountReadiness(
       );
     }
   }
+  const gateway = opts.gateway;
+  // A configured gateway with an unusable token dooms every claude spawn even
+  // when the seat counts are healthy — fail readiness loudly so it is caught
+  // instead of reported ready:true. An UN-configured gateway is not a problem
+  // (direct-key mode); only a configured-but-broken gateway is.
+  if (gateway?.configured && !gateway.ok) {
+    problems.push(
+      gateway.unresolvedKey
+        ? `model-gateway: token vault ref '${gateway.unresolvedKey}' did not resolve (every claude sub-agent would 401)`
+        : "model-gateway: token is missing or an unresolved vault:// sentinel (every claude sub-agent would 401)",
+    );
+  }
   return {
     ready: problems.length === 0,
     rotation,
     required,
     providers,
     problems,
+    ...(gateway ? { gateway } : {}),
   };
 }
 
