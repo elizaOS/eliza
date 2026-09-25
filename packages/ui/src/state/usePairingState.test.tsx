@@ -48,7 +48,7 @@ it("retries setup after successful pairing without consuming the pairing code ag
 });
 
 it("does not resume setup when the pairing code is rejected", async () => {
-  mocks.pair.mockRejectedValue({ code: "PAIRING_INVALID" });
+  mocks.pair.mockRejectedValue({ code: "PAIRING_INVALID", status: 401 });
   const { result } = renderHook(() => usePairingState(vi.fn()));
   act(() => result.current.setPairingCodeInput("BAD-CODE"));
   await act(() => result.current.handlePairingSubmit());

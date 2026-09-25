@@ -115,7 +115,10 @@ export function usePairingState(onPaired: () => void) {
       // launch URL in a new document (which would clear the paired credential).
       onPaired();
     } catch (err) {
-      if ((err as { status?: number })?.status === 401) {
+      if (
+        pairedApiBaseRef.current === apiBase &&
+        (err as { status?: number })?.status === 401
+      ) {
         const rejected = pendingCredentialRef.current;
         pairedApiBaseRef.current = null;
         pendingCredentialRef.current = null;
