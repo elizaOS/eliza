@@ -64,16 +64,46 @@ export function getBooleanSetting(
   const normalized = value.toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
+function compatibleProvider(value: string | undefined): string | undefined {
+  const provider = value?.trim().toLowerCase();
+  return provider === "openai" || provider === "cerebras" || provider === "evolink"
+    ? provider
+    : undefined;
+}
+
+function explicitCompatibleBase(
+  baseURL: string | undefined,
+  provider: string | undefined
+): string | undefined {
+  if (!baseURL || !provider) return baseURL;
+  // Retain deliberate custom gateways. A stale first-party endpoint belonging
+  // to a different selected provider must not receive the selected credential.
+  let hostname: string;
+  try {
+    hostname = new URL(baseURL).hostname;
+  } catch {
+    // error-policy:J3 Endpoint validation remains with the request boundary.
+    return baseURL;
+  }
+  const owner =
+    hostname === "api.openai.com"
+      ? "openai"
+      : hostname === "api.cerebras.ai"
+        ? "cerebras"
+        : hostname === "direct.evolink.ai"
+          ? "evolink"
+          : undefined;
+  return owner && owner !== provider ? undefined : baseURL;
+}
+
 /**
  * True when the resolved base URL or `ELIZA_PROVIDER` setting marks the
  * runtime as using Cerebras's OpenAI-compatible endpoint. Used to scope
  * the `CEREBRAS_API_KEY` alias so OpenAI users are not affected.
  */
 export function isCerebrasMode(runtime: IAgentRuntime): boolean {
-  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
-  if (explicitProvider && explicitProvider.toLowerCase() === "cerebras") {
-    return true;
-  }
+  const explicitProvider = compatibleProvider(getSetting(runtime, "ELIZA_PROVIDER"));
+  if (explicitProvider) return explicitProvider === "cerebras";
   const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
   if (baseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(baseURL)) {
     return true;
@@ -94,10 +124,8 @@ export function isCerebrasMode(runtime: IAgentRuntime): boolean {
  * `EVOLINK_API_KEY` alias so OpenAI users are not affected.
  */
 export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
-  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
-  if (explicitProvider && explicitProvider.toLowerCase() === "evolink") {
-    return true;
-  }
+  const explicitProvider = compatibleProvider(getSetting(runtime, "ELIZA_PROVIDER"));
+  if (explicitProvider) return explicitProvider === "evolink";
   const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
   if (baseURL && /(^|\.)evolink\.ai(\/|$)/i.test(baseURL)) {
     return true;
@@ -186,20 +214,20 @@ export function resolveOpenAIBaseURL(
   } = {}
 ): string {
   const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key));
-  const explicitProvider = read("ELIZA_PROVIDER")?.toLowerCase();
-  const openAIBaseURL = read("OPENAI_BASE_URL");
-  const cerebrasMode =
-    explicitProvider === "cerebras" ||
-    (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL)) ||
-    (read("CEREBRAS_API_KEY") !== undefined &&
-      read("OPENAI_API_KEY") === undefined &&
-      openAIBaseURL === undefined);
-  const evolinkMode =
-    explicitProvider === "evolink" ||
-    (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL)) ||
-    (read("EVOLINK_API_KEY") !== undefined &&
-      read("OPENAI_API_KEY") === undefined &&
-      openAIBaseURL === undefined);
+  const explicitProvider = compatibleProvider(read("ELIZA_PROVIDER"));
+  const openAIBaseURL = explicitCompatibleBase(read("OPENAI_BASE_URL"), explicitProvider);
+  const cerebrasMode = explicitProvider
+    ? explicitProvider === "cerebras"
+    : (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL)) ||
+      (read("CEREBRAS_API_KEY") !== undefined &&
+        read("OPENAI_API_KEY") === undefined &&
+        openAIBaseURL === undefined);
+  const evolinkMode = explicitProvider
+    ? explicitProvider === "evolink"
+    : (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL)) ||
+      (read("EVOLINK_API_KEY") !== undefined &&
+        read("OPENAI_API_KEY") === undefined &&
+        openAIBaseURL === undefined);
   return (
     normalizeEndpointSetting(options.mockBaseURL) ??
     openAIBaseURL ??
