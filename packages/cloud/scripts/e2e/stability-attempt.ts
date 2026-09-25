@@ -17,6 +17,7 @@ import { canonicalCloudStabilitySha256 } from "../../e2e/src/stability/cloud-sta
 import {
   linuxSandboxEnabled,
   loopbackPorts,
+  processGroupHasLiveMembers,
   sandboxCommand,
   scenarioChildEnvironment,
   writeSandboxEnvironment,
@@ -232,11 +233,15 @@ async function startMockAuditProxy(
 
 function processGroupExists(pid: number): boolean {
   if (sandboxEnabled) {
-    return (
-      spawnSync("sudo", ["-n", "kill", "-0", `-${pid}`], {
-        stdio: "ignore",
-      }).status === 0
-    );
+    const inventory = spawnSync("sudo", ["-n", "ps", "-eo", "pgid=,stat="], {
+      encoding: "utf8",
+    });
+    if (inventory.error || inventory.status !== 0) {
+      throw new Error("Cannot inspect scenario process-group liveness", {
+        cause: inventory.error ?? inventory.stderr,
+      });
+    }
+    return processGroupHasLiveMembers(pid, inventory.stdout);
   }
   try {
     process.kill(-pid, 0);

@@ -174,12 +174,8 @@
       "default": "./dist/components/ui/input.js"
     },
     "./native-select": {
+      "eliza-source": "./src/components/ui/native-select.tsx",
       "types": "./dist/components/ui/native-select.d.ts",
-      "eliza-source": {
-        "types": "./src/components/ui/native-select.tsx",
-        "import": "./src/components/ui/native-select.tsx",
-        "default": "./src/components/ui/native-select.tsx"
-      },
       "import": "./dist/components/ui/native-select.js",
       "default": "./dist/components/ui/native-select.js"
     },
@@ -434,172 +430,172 @@
     "./dist/styles/*.css": "./dist/styles/*.css",
     "./*.css": "./dist/*.css",
     "./app-hero-art": {
-      "types": "./dist/app-hero-art.d.ts",
       "eliza-source": "./src/app-hero-art.ts",
+      "types": "./dist/app-hero-art.d.ts",
       "import": "./dist/app-hero-art.js",
       "default": "./dist/app-hero-art.js"
     },
     "./apps/detail-extension-registry": {
-      "types": "./dist/apps/detail-extension-registry.d.ts",
       "eliza-source": "./src/apps/detail-extension-registry.ts",
+      "types": "./dist/apps/detail-extension-registry.d.ts",
       "import": "./dist/apps/detail-extension-registry.js",
       "default": "./dist/apps/detail-extension-registry.js"
     },
     "./apps/detail-extension-types": {
-      "types": "./dist/apps/detail-extension-types.d.ts",
       "eliza-source": "./src/apps/detail-extension-types.ts",
+      "types": "./dist/apps/detail-extension-types.d.ts",
       "import": "./dist/apps/detail-extension-types.js",
       "default": "./dist/apps/detail-extension-types.js"
     },
     "./apps": {
-      "types": "./dist/apps/index.d.ts",
       "eliza-source": "./src/apps/index.ts",
+      "types": "./dist/apps/index.d.ts",
       "import": "./dist/apps/index.js",
       "default": "./dist/apps/index.js"
     },
     "./apps/overlay-app-api": {
-      "types": "./dist/apps/overlay-app-api.d.ts",
       "eliza-source": "./src/apps/overlay-app-api.ts",
+      "types": "./dist/apps/overlay-app-api.d.ts",
       "import": "./dist/apps/overlay-app-api.js",
       "default": "./dist/apps/overlay-app-api.js"
     },
     "./apps/overlay-app-registry": {
-      "types": "./dist/apps/overlay-app-registry.d.ts",
       "eliza-source": "./src/apps/overlay-app-registry.ts",
+      "types": "./dist/apps/overlay-app-registry.d.ts",
       "import": "./dist/apps/overlay-app-registry.js",
       "default": "./dist/apps/overlay-app-registry.js"
     },
     "./backgrounds/catalog-index": {
-      "types": "./dist/backgrounds/catalog-index.d.ts",
       "eliza-source": "./src/backgrounds/catalog-index.ts",
+      "types": "./dist/backgrounds/catalog-index.d.ts",
       "import": "./dist/backgrounds/catalog-index.js",
       "default": "./dist/backgrounds/catalog-index.js"
     },
     "./registry-host": {
-      "types": "./dist/registry-host.d.ts",
       "eliza-source": "./src/registry-host.ts",
+      "types": "./dist/registry-host.d.ts",
       "import": "./dist/registry-host.js",
       "default": "./dist/registry-host.js"
     },
     "./utils/asset-url": {
-      "types": "./dist/utils/asset-url.d.ts",
       "eliza-source": "./src/utils/asset-url.ts",
+      "types": "./dist/utils/asset-url.d.ts",
       "import": "./dist/utils/asset-url.js",
       "default": "./dist/utils/asset-url.js"
     },
     "./utils/browser-tab-kit-types": {
-      "types": "./dist/utils/browser-tab-kit-types.d.ts",
       "eliza-source": "./src/utils/browser-tab-kit-types.ts",
+      "types": "./dist/utils/browser-tab-kit-types.d.ts",
       "import": "./dist/utils/browser-tab-kit-types.js",
       "default": "./dist/utils/browser-tab-kit-types.js"
     },
     "./utils/browser-tabs-renderer-registry": {
-      "types": "./dist/utils/browser-tabs-renderer-registry.d.ts",
       "eliza-source": "./src/utils/browser-tabs-renderer-registry.ts",
+      "types": "./dist/utils/browser-tabs-renderer-registry.d.ts",
       "import": "./dist/utils/browser-tabs-renderer-registry.js",
       "default": "./dist/utils/browser-tabs-renderer-registry.js"
     },
     "./utils/cloud-status": {
-      "types": "./dist/utils/cloud-status.d.ts",
       "eliza-source": "./src/utils/cloud-status.ts",
+      "types": "./dist/utils/cloud-status.d.ts",
       "import": "./dist/utils/cloud-status.js",
       "default": "./dist/utils/cloud-status.js"
     },
     "./utils/documents-upload-image": {
-      "types": "./dist/utils/documents-upload-image.d.ts",
       "eliza-source": "./src/utils/documents-upload-image.ts",
+      "types": "./dist/utils/documents-upload-image.d.ts",
       "import": "./dist/utils/documents-upload-image.js",
       "default": "./dist/utils/documents-upload-image.js"
     },
     "./utils/eliza-cloud-model-route": {
-      "types": "./dist/utils/eliza-cloud-model-route.d.ts",
       "eliza-source": "./src/utils/eliza-cloud-model-route.ts",
+      "types": "./dist/utils/eliza-cloud-model-route.d.ts",
       "import": "./dist/utils/eliza-cloud-model-route.js",
       "default": "./dist/utils/eliza-cloud-model-route.js"
     },
     "./utils/format": {
-      "types": "./dist/utils/format.d.ts",
       "eliza-source": "./src/utils/format.ts",
+      "types": "./dist/utils/format.d.ts",
       "import": "./dist/utils/format.js",
       "default": "./dist/utils/format.js"
     },
     "./utils/host-capabilities": {
-      "types": "./dist/utils/host-capabilities.d.ts",
       "eliza-source": "./src/utils/host-capabilities.ts",
+      "types": "./dist/utils/host-capabilities.d.ts",
       "import": "./dist/utils/host-capabilities.js",
       "default": "./dist/utils/host-capabilities.js"
     },
     "./utils/labels": {
-      "types": "./dist/utils/labels.d.ts",
       "eliza-source": "./src/utils/labels.ts",
+      "types": "./dist/utils/labels.d.ts",
       "import": "./dist/utils/labels.js",
       "default": "./dist/utils/labels.js"
     },
     "./utils/namespace-defaults": {
-      "types": "./dist/utils/namespace-defaults.d.ts",
       "eliza-source": "./src/utils/namespace-defaults.ts",
+      "types": "./dist/utils/namespace-defaults.d.ts",
       "import": "./dist/utils/namespace-defaults.js",
       "default": "./dist/utils/namespace-defaults.js"
     },
     "./utils/owner-name": {
-      "types": "./dist/utils/owner-name.d.ts",
       "eliza-source": "./src/utils/owner-name.ts",
+      "types": "./dist/utils/owner-name.d.ts",
       "import": "./dist/utils/owner-name.js",
       "default": "./dist/utils/owner-name.js"
     },
     "./utils/rate-limiter": {
-      "types": "./dist/utils/rate-limiter.d.ts",
       "eliza-source": "./src/utils/rate-limiter.ts",
+      "types": "./dist/utils/rate-limiter.d.ts",
       "import": "./dist/utils/rate-limiter.js",
       "default": "./dist/utils/rate-limiter.js"
     },
     "./utils/streaming-text": {
-      "types": "./dist/utils/streaming-text.d.ts",
       "eliza-source": "./src/utils/streaming-text.ts",
+      "types": "./dist/utils/streaming-text.d.ts",
       "import": "./dist/utils/streaming-text.js",
       "default": "./dist/utils/streaming-text.js"
     },
     "./utils/subscription-auth": {
-      "types": "./dist/utils/subscription-auth.d.ts",
       "eliza-source": "./src/utils/subscription-auth.ts",
+      "types": "./dist/utils/subscription-auth.d.ts",
       "import": "./dist/utils/subscription-auth.js",
       "default": "./dist/utils/subscription-auth.js"
     },
     "./utils/trajectory-format": {
-      "types": "./dist/utils/trajectory-format.d.ts",
       "eliza-source": "./src/utils/trajectory-format.ts",
+      "types": "./dist/utils/trajectory-format.d.ts",
       "import": "./dist/utils/trajectory-format.js",
       "default": "./dist/utils/trajectory-format.js"
     },
     "./view-hero-art": {
-      "types": "./dist/view-hero-art.d.ts",
       "eliza-source": "./src/view-hero-art.ts",
+      "types": "./dist/view-hero-art.d.ts",
       "import": "./dist/view-hero-art.js",
       "default": "./dist/view-hero-art.js"
     },
     "./brand-classic/brand.css": "./src/brand-classic/brand.css",
     "./brand-classic": {
-      "types": "./dist/brand-classic/index.d.ts",
       "eliza-source": "./src/brand-classic/index.ts",
+      "types": "./dist/brand-classic/index.d.ts",
       "import": "./dist/brand-classic/index.js",
       "default": "./dist/brand-classic/index.js"
     },
     "./brand/brand.css": "./src/brand/brand.css",
     "./brand": {
-      "types": "./dist/brand/index.d.ts",
       "eliza-source": "./src/brand/index.ts",
+      "types": "./dist/brand/index.d.ts",
       "import": "./dist/brand/index.js",
       "default": "./dist/brand/index.js"
     },
     "./views/swarm-activity": {
-      "types": "./dist/views/swarm-activity.d.ts",
       "eliza-source": "./src/views/swarm-activity.ts",
+      "types": "./dist/views/swarm-activity.d.ts",
       "import": "./dist/views/swarm-activity.js",
       "default": "./dist/views/swarm-activity.js"
     },
     "./logger": {
-      "types": "./dist/logger.d.ts",
       "eliza-source": "./src/logger.ts",
+      "types": "./dist/logger.d.ts",
       "import": "./dist/logger.js",
       "default": "./dist/logger.js"
     },
@@ -607,8 +603,8 @@
     "./brand-classic.css": "./dist/brand-classic/brand.css",
     "./assets/*": "./assets/*",
     "./terminal/palette": {
-      "types": "./dist/terminal/palette.d.ts",
       "eliza-source": "./src/terminal/palette.ts",
+      "types": "./dist/terminal/palette.d.ts",
       "import": "./dist/terminal/palette.js",
       "default": "./dist/terminal/palette.js"
     }

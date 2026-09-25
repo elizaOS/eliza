@@ -20,6 +20,37 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 
+test("build graph isolates root tooling and app output producers", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "packages/scripts/run-turbo.ts",
+      "run",
+      "build",
+      "--filter=@elizaos/app",
+      "--dry=json",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  const graph = JSON.parse(result.stdout);
+  assert.equal(graph.globalCacheInputs.hashOfInternalDependencies, "");
+  const renderer = graph.tasks.find(
+    (task) => task.taskId === "@elizaos/app#build",
+  );
+  const host = graph.tasks.find(
+    (task) => task.taskId === "@elizaos/app#build:dist",
+  );
+  assert.deepEqual(renderer.outputs, ["web-dist/**"]);
+  assert.deepEqual(host.outputs, ["dist/**"]);
+  assert.ok(renderer.dependencies.includes(host.taskId));
+});
+
 for (const task of ["build", "@elizaos/app#build:dist", "@elizaos/ui#build"]) {
   test(`${task}: install refreshes stale distributions and restores cached outputs`, () => {
     const fixture = mkdtempSync(path.join(tmpdir(), "eliza-install-build-"));
@@ -262,3 +293,94 @@ process.exit(result.status ?? 1);`,
     }
   });
 }
+
+test("lockfile changes invalidate only consumers unless root tooling changes", () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), "eliza-lock-hash-"));
+  const write = (name, value) => {
+    const target = path.join(fixture, name);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, JSON.stringify(value));
+  };
+  try {
+    const config = JSON.parse(
+      readFileSync(path.join(root, "turbo.json"), "utf8"),
+    );
+    const manifest = {
+      name: "fixture",
+      private: true,
+      packageManager: "bun@1.3.14",
+      workspaces: ["packages/*"],
+      devDependencies: { "is-even": "*" },
+    };
+    write("package.json", manifest);
+    write("turbo.json", {
+      globalDependencies: config.globalDependencies,
+      tasks: { build: { dependsOn: ["^build"] } },
+    });
+    const lock = {
+      lockfileVersion: 1,
+      configVersion: 1,
+      workspaces: {
+        "": { name: "fixture", devDependencies: manifest.devDependencies },
+      },
+      packages: {
+        "is-number": ["is-number@7.0.0", "", {}, ""],
+        "is-even": ["is-even@1.0.0", "", {}, ""],
+      },
+    };
+    for (const [name, dependencies] of Object.entries({
+      leaf: { "is-number": "*" },
+      consumer: { leaf: "workspace:*" },
+      unrelated: {},
+    })) {
+      const pkg = {
+        name,
+        version: "1.0.0",
+        dependencies,
+        scripts: { build: "echo build" },
+      };
+      write(`packages/${name}/package.json`, pkg);
+      lock.workspaces[`packages/${name}`] = {
+        name,
+        version: pkg.version,
+        dependencies,
+      };
+      lock.packages[name] = [`${name}@workspace:packages/${name}`];
+    }
+    writeFileSync(path.join(fixture, ".gitignore"), "node_modules\n.turbo\n");
+    assert.equal(
+      spawnSync("git", ["init", "--quiet"], { cwd: fixture }).status,
+      0,
+    );
+    const hashes = () => {
+      write("bun.lock", lock);
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(root, "node_modules/turbo/bin/turbo"),
+          "run",
+          "build",
+          "--dry=json",
+        ],
+        { cwd: fixture, encoding: "utf8", timeout: 30_000 },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      return Object.fromEntries(
+        JSON.parse(result.stdout).tasks.map((task) => [task.taskId, task.hash]),
+      );
+    };
+    const before = hashes();
+    lock.packages["is-number"][0] = "is-number@6.0.0";
+    const changed = hashes();
+    assert.notEqual(changed["leaf#build"], before["leaf#build"]);
+    assert.notEqual(changed["consumer#build"], before["consumer#build"]);
+    assert.equal(changed["unrelated#build"], before["unrelated#build"]);
+    lock.packages["is-even"][0] = "is-even@0.1.0";
+    const rootChanged = hashes();
+    for (const task of Object.keys(changed)) {
+      assert.notEqual(rootChanged[task], changed[task]);
+    }
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});

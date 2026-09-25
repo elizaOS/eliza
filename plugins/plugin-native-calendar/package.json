@@ -13,14 +13,14 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/esm/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/esm/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
     "./macos-bridge-policy": {
-      "types": "./dist/esm/macos-bridge-policy.d.ts",
       "eliza-source": "./src/macos-bridge-policy.ts",
+      "types": "./dist/esm/macos-bridge-policy.d.ts",
       "import": "./dist/esm/macos-bridge-policy.js",
       "require": "./dist/plugin.cjs.js"
     },
