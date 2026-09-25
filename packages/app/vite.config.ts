@@ -2511,6 +2511,10 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-native-mobile-signals/src/index.ts",
         ],
         [
+          "@elizaos/capacitor-network-policy",
+          "plugins/plugin-native-network-policy/src/index.ts",
+        ],
+        [
           "@elizaos/capacitor-system",
           "plugins/plugin-native-system/src/index.ts",
         ],

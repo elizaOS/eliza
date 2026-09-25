@@ -1894,6 +1894,9 @@ async function initializePlatform(): Promise<void> {
   void getMobileLifecycle().initializeNetworkListener();
 
   if (isIOS || isAndroid) {
+    void import("@elizaos/capacitor-network-policy")
+      .then(({ installNetworkPolicyGlobal }) => installNetworkPolicyGlobal())
+      .catch((error) => logNativePluginUnavailable("Network policy", error));
     await initializeStatusBar();
     await getMobileLifecycle().initializeKeyboard();
     initializeMobileRuntimeModeListener();
