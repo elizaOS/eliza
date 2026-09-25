@@ -32,6 +32,7 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import { reconcileDirectTextModelSettings } from "../runtime/runtime-settings.ts";
 import {
   hasBlockedObjectKeyDeep,
   MAX_BLOCKED_OBJECT_DEPTH,
@@ -248,6 +249,8 @@ async function applyReloadedConfig(params: {
 }): Promise<void> {
   const { state, next, runtime, isBlockedEnvKey } = params;
 
+  const previous = structuredClone(state);
+
   // Replace top-level keys in the live state.config with the loaded values.
   replaceConfigInPlace(state, next);
   const nextRecord = asConfigRecord(next);
@@ -299,6 +302,7 @@ async function applyReloadedConfig(params: {
         character[field as string] = value;
       }
     }
+    reconcileDirectTextModelSettings(runtime, previous, next);
   }
 }
 
@@ -712,6 +716,7 @@ export async function handleConfigRoutes(
       return true;
     }
 
+    const previousConfig = structuredClone(config);
     replaceConfigInPlace(config, nextConfig);
 
     // Synchronise env only after persistence succeeds so a failed write cannot
@@ -757,6 +762,9 @@ export async function handleConfigRoutes(
         if (v.trim()) process.env[k] = v;
         else delete process.env[k];
       }
+    }
+    if (runtime) {
+      reconcileDirectTextModelSettings(runtime, previousConfig, config);
     }
     json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;
