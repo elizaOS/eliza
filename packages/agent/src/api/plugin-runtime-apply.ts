@@ -42,7 +42,7 @@ interface ApplyPluginRuntimeMutationOptions {
   config?: Record<string, string>;
   forceReloadPackages?: string[];
   expectRuntimeGraphChange?: boolean;
-  /** Credentials for an already-enabled plugin cannot change graph membership. */
+  /** Caller permits in-place configuration of an already-registered target; otherwise resolve the graph. */
   configurationOnly?: boolean;
   reason: string;
   restartRuntime?: (reason: string) => Promise<boolean>;
