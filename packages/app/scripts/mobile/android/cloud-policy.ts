@@ -268,6 +268,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "BgeEmbeddingSessionTest.java",
   "BionicEmbeddingInstrumentedTest.java",
   "BionicNetworkPolicyInstrumentedTest.java",
+  "BionicSpeechInstrumentedTest.java",
   "CapacitorBgeInstrumentedTest.java",
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
