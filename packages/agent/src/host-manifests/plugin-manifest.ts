@@ -35,11 +35,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  type PluginAutoEnableContext,
-  type PluginAutoEnableModule,
+import type {
+  ElizaConfig,
+  PluginAutoEnableContext,
+  PluginAutoEnableModule,
 } from "@elizaos/core";
-import { type ElizaConfig } from "@elizaos/core/config/types.eliza";
 
 // Re-export the runtime types so consumers that import from @elizaos/core
 // keep working. The canonical home for these is @elizaos/core (plugin author

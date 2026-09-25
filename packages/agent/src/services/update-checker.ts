@@ -3,8 +3,8 @@
  * configured release channel (stable/beta/nightly).
  */
 
+import type { ReleaseChannel, UpdateConfig } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import type { ReleaseChannel, UpdateConfig } from "../config/types.eliza.ts";
 import { VERSION } from "../runtime/version.ts";
 import { compareSemver } from "./version-compat.ts";
 

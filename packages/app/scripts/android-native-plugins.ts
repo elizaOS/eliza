@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Compile and exercise every Android native module; skipped tests are not proof. */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -189,11 +189,28 @@ async function main() {
         "Network transitions require an emulator without the user app installed",
       );
   }
+  const dnsOutage = args.includes("--dns-outage");
+  const dnsOutageChain = dnsOutage
+    ? `ELIZA_DNS_${randomBytes(6).toString("hex")}`
+    : undefined;
+  if (dnsOutage) {
+    if (
+      !/^(ranchu|goldfish)$/.test(hardware) ||
+      selected.length !== 1 ||
+      selected[0].directory !== "plugin-native-websiteblocker" ||
+      adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim()
+    )
+      throw new Error(
+        "DNS outage requires an isolated stock emulator without the user app and --plugin plugin-native-websiteblocker",
+      );
+  }
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
   const report = {
     serial,
     hardware,
     networkTransitions,
+    dnsOutage,
+    dnsOutageChain,
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -202,6 +219,11 @@ async function main() {
     results: [],
   };
   try {
+    // Persist ownership before device mutations, including interrupted-run recovery.
+    fs.writeFileSync(
+      path.join(outputDir, "report.json"),
+      JSON.stringify(report, null, 2),
+    );
     report.device = {
       sdk: adb("shell", "getprop", "ro.build.version.sdk").trim(),
       fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
@@ -318,6 +340,9 @@ async function main() {
             "-w",
             "-r",
             ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
+            ...(dnsOutage
+              ? ["-e", "dnsOutage", "1", "-e", "dnsOutageChain", dnsOutageChain]
+              : []),
             `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
           ],
           300000,
@@ -344,6 +369,21 @@ async function main() {
             };
           },
         );
+        if (dnsOutage) {
+          for (const name of [
+            "vpn-upstream-outage.json",
+            "vpn-upstream-outage-cleanup.json",
+          ]) {
+            if (
+              !entry.artifacts.some((artifact) =>
+                artifact.path.endsWith(`/${name}`),
+              )
+            ) {
+              entry.pass = false;
+              entry.problems.push(`Missing DNS outage proof: ${name}`);
+            }
+          }
+        }
       } catch (error) {
         entry.pass = false;
         entry.problems.push(String(error));
@@ -353,6 +393,45 @@ async function main() {
             error.stdout,
           );
       } finally {
+        if (dnsOutage) {
+          try {
+            const iptables = (...args) =>
+              adb("shell", "su", "0", "iptables", "-w", ...args);
+            // The host owns this unique chain too, so crashes cannot strand the outage.
+            if (
+              iptables("-S")
+                .split("\n")
+                .some((line) => line.trim() === `-N ${dnsOutageChain}`)
+            ) {
+              const rule = [
+                "-p",
+                "udp",
+                "--sport",
+                "53",
+                "!",
+                "-s",
+                "10.77.0.2",
+                "-j",
+                dnsOutageChain,
+              ];
+              if (
+                iptables("-S", "INPUT")
+                  .split("\n")
+                  .some((line) => line.trim().endsWith(`-j ${dnsOutageChain}`))
+              )
+                iptables("-D", "INPUT", ...rule);
+              iptables("-F", dnsOutageChain);
+              iptables("-X", dnsOutageChain);
+            }
+            fs.writeFileSync(
+              path.join(outputDir, "dns-outage-host-cleanup.json"),
+              JSON.stringify({ chain: dnsOutageChain, absent: true }),
+            );
+          } catch (error) {
+            entry.pass = false;
+            entry.problems.push(`DNS outage cleanup: ${error}`);
+          }
+        }
         try {
           fs.writeFileSync(
             path.join(outputDir, `${plugin.directory}-logcat.log`),
