@@ -3,9 +3,9 @@
  * write with a live model. Provider transport and credentials are simulated.
  */
 import { AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
-import { CalendarRepository } from "@elizaos/plugin-calendar/service/CalendarRepository";
 import { scenario } from "@elizaos/testing";
 import { z } from "zod";
+import { CalendarRepository } from "../../../../../plugin-calendar/src/service/CalendarRepository.ts";
 import clarification from "./calendar.multi-account-selection.scenario.ts";
 
 const unchanged = clarification.finalChecks?.find(
@@ -68,7 +68,9 @@ export default scenario({
       until: async (ctx) => {
         const result = await assertUnchanged(ctx);
         if (result !== undefined && result !== true)
-          throw new Error(`Calendar changed before approval: ${JSON.stringify(result)}`);
+          throw new Error(
+            `Calendar changed before approval: ${JSON.stringify(result)}`,
+          );
         return true;
       },
     },

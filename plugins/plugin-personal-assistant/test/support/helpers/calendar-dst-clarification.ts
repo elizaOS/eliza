@@ -7,9 +7,9 @@
 import { isDeepStrictEqual } from "node:util";
 import { AgentRuntime } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import { CalendarRepository } from "@elizaos/plugin-calendar/service/CalendarRepository";
-import type { CalendarService } from "@elizaos/plugin-calendar/service/CalendarService";
+import type { CalendarService } from "@elizaos/plugin-calendar";
 import { type ScenarioContext, scenario } from "@elizaos/testing";
+import { CalendarRepository } from "../../../../plugin-calendar/src/service/CalendarRepository.ts";
 import { inspectCalendarReschedule } from "./calendar-reschedule-check.js";
 
 interface DstJourney {
@@ -54,7 +54,7 @@ export function calendarDstClarificationJourney(input: DstJourney) {
     tags: ["CAL-16", "calendar", "dst", "clarification", "persisted-state"],
     isolation: "per-scenario",
     requires: {
-      plugins: ["@elizaos/plugin-calendar/plugin"],
+      plugins: ["@elizaos/plugin-calendar"],
       services: ["calendar"],
     },
     rooms: [
