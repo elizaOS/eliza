@@ -196,7 +196,12 @@ import {
   MicrosoftGraphDeltaExpiredError,
   type MicrosoftGraphEvent,
 } from "../microsoft/index.js";
-import type { CalendarAvailabilitySource } from "./availability.js";
+import {
+  type CalendarAvailabilityEvaluation,
+  type CalendarAvailabilitySource,
+  type CalendarAvailabilitySourceStatus,
+  evaluateCalendarAvailability,
+} from "./availability.js";
 import {
   CalendarRepository,
   createLifeOpsCalendarSyncState,
@@ -259,6 +264,109 @@ const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
+
+/** Map aggregate feed freshness to the availability source status vocabulary. */
+function availabilityFeedStatus(
+  feed: Pick<LifeOpsCalendarFeed, "source" | "syncedAt">,
+): CalendarAvailabilitySourceStatus {
+  if (feed.source === "cache") {
+    return feed.syncedAt ? "stale" : "disconnected";
+  }
+  return "fresh";
+}
+
+function availabilityMetadataString(
+  _feed: LifeOpsCalendarFeed,
+  event: LifeOpsCalendarEvent,
+  key: string,
+): string | null {
+  const value = event.metadata?.[key];
+  return typeof value === "string" ? value : null;
+}
+
+/** True when a feed row names the same event by local id or provider id. */
+function calendarEventIdentitiesMatch(
+  event: LifeOpsCalendarEvent,
+  eventId: string,
+): boolean {
+  return event.id === eventId || event.externalId === eventId;
+}
+
+/**
+ * A feed event belongs to a source when provider, side, calendar and any known
+ * grant/account identity all match. Group calendars intentionally omit the
+ * account fields, so a partially specified key must not claim an event.
+ */
+function availabilityEventMatchesSource(
+  event: LifeOpsCalendarEvent,
+  source: LifeOpsCalendarSourceHealth,
+): boolean {
+  const key = source.key;
+  return (
+    event.provider === key.provider &&
+    event.side === key.side &&
+    event.calendarId === key.calendarId &&
+    (!event.grantId || event.grantId === key.grantId) &&
+    (!event.connectorAccountId ||
+      event.connectorAccountId === key.connectorAccountId)
+  );
+}
+
+/**
+ * Compact, privacy-safe conflict evidence for the resolver failure path. The
+ * blocked reply never reaches the model with titles or attendee details from an
+ * unrelated event, so only counts, severities and evaluator suggestions remain.
+ */
+function calendarAvailabilityFailureContext(
+  evaluation: CalendarAvailabilityEvaluation,
+): Record<string, unknown> {
+  return {
+    definitive: evaluation.definitive,
+    completeness: evaluation.completeness,
+    conflictCount: evaluation.conflicts.length,
+    hardCount: evaluation.conflicts.filter(
+      (conflict) => conflict.severity === "hard",
+    ).length,
+    conflicts: evaluation.conflicts.map((conflict) => ({
+      severity: conflict.severity,
+      reasons: conflict.reasons,
+      suggestion: conflict.suggestion,
+    })),
+  };
+}
+
+/** Local civil date `days` after an ISO date/datetime string's date part. */
+function addDaysIso(value: string, days: number): string {
+  const datePart = value.slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+  if (!match) return value;
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Widen a timed proposal end by its duration so the authoritative read covers
+ * at least a full local day. A short event still needs the whole day scanned so
+ * a conflict elsewhere in the day is visible, and an overnight or all-day event
+ * needs its true exclusive end.
+ */
+function expandRangeEnd(startAt: string, endAt: string): string {
+  const startMs = Date.parse(startAt);
+  const endMs = Date.parse(endAt);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return endAt;
+  const durationMs = Math.max(0, endMs - startMs);
+  const dayStartMs = Date.parse(`${addDaysIso(startAt, 0)}T00:00:00.000Z`);
+  const dayEndMs = Date.parse(`${addDaysIso(startAt, 1)}T00:00:00.000Z`);
+  const minimum =
+    Number.isFinite(dayStartMs) && Number.isFinite(dayEndMs)
+      ? dayEndMs + (startMs - dayStartMs)
+      : startMs + 24 * 60 * 60 * 1000;
+  const candidate = Math.max(endMs + durationMs, minimum);
+  return new Date(candidate).toISOString();
+}
 
 type CalendarSecretsService = {
   getGlobal(key: string): Promise<string | null>;
@@ -5828,6 +5936,166 @@ export class CalendarService extends Service {
   }
 
   /**
+   * Service-level CAL-03 admission: require fresh selected-source availability
+   * before an external calendar mutation dispatches to Google, Microsoft or
+   * Apple. The conversational action checks only the create/update flow, so
+   * scripted, route and sibling-editor callers reach the service directly and
+   * must be admitted here too. Recurrence edits are checked at series width
+   * (the target series master's bounds), never as a single occurrence.
+   *
+   * The check mirrors the action boundary: a forced fresh-source read followed
+   * by an authoritative read over the event's own range, widened to a full
+   * local day. The second read is not redundant — the first is the viewer's
+   * current feed window (often today) and cannot establish that a future
+   * proposal is free.
+   */
+  private async assertCalendarMutationAvailability(args: {
+    requestUrl: URL;
+    startAt: string;
+    endAt: string;
+    timeZone: string;
+    excludeEventId?: string;
+  }): Promise<void> {
+    const startAt =
+      args.startAt.length > 0 && Number.isFinite(Date.parse(args.startAt))
+        ? args.startAt
+        : undefined;
+    const endAt =
+      args.endAt.length > 0 && Number.isFinite(Date.parse(args.endAt))
+        ? args.endAt
+        : undefined;
+    // An update that does not move the event has no proposed window to admit.
+    if (!startAt || !endAt || Date.parse(endAt) <= Date.parse(startAt)) return;
+    const range = {
+      start: startAt,
+      end: expandRangeEnd(startAt, endAt),
+    };
+    // First read: refresh every selected source so admission uses current data
+    // rather than a stale cache. A refresh failure is not fatal here; the
+    // authoritative read below re-reads the same source health and settles it.
+    try {
+      await this.getCalendarFeed(
+        args.requestUrl,
+        {
+          side: "owner",
+          forceSync: true,
+          timeMin: range.start,
+          timeMax: range.end,
+        },
+        new Date(),
+      );
+    } catch (error) {
+      // error-policy:J7 A refresh failure must not abort the guarded mutation;
+      // the authoritative read next settles whether coverage is usable.
+      this.runtime.reportError("calendar:availability-refresh", error, {
+        excludeEventId: args.excludeEventId ?? null,
+      });
+    }
+    const feed = await this.getCalendarFeed(
+      args.requestUrl,
+      {
+        side: "owner",
+        timeMin: range.start,
+        timeMax: range.end,
+      },
+      new Date(),
+    );
+    const observed = evaluateCalendarAvailability({
+      range,
+      timeZone: args.timeZone,
+      sources: this.availabilitySourcesForFeed(feed, args.excludeEventId),
+      proposal: { startISO: range.start, endISO: range.end },
+    });
+    if (!observed.definitive) {
+      throw new CalendarServiceError(
+        409,
+        "Calendar availability is not definitive for the proposed time; refresh the selected sources and try again.",
+        "CALENDAR_AVAILABILITY_INDETERMINATE",
+      );
+    }
+    if (observed.conflicts.length > 0) {
+      throw new CalendarServiceError(
+        409,
+        observed.summary,
+        "CALENDAR_AVAILABILITY_CONFLICT",
+        { cause: calendarAvailabilityFailureContext(observed) },
+      );
+    }
+  }
+
+  private availabilitySourcesForFeed(
+    feed: LifeOpsCalendarFeed,
+    excludeEventId?: string,
+  ): CalendarAvailabilitySource[] {
+    const events = feed.events
+      .filter((event) => event.id !== undefined)
+      .filter(
+        (event) =>
+          excludeEventId === undefined ||
+          !calendarEventIdentitiesMatch(event, excludeEventId),
+      )
+      .map((event) => ({
+        id: event.id,
+        title: event.title,
+        startISO: event.startAt,
+        endISO: event.endAt,
+        isAllDay: event.isAllDay,
+        status: event.status,
+        timeZone: event.timezone ?? undefined,
+        transparency: availabilityMetadataString(feed, event, "transparency"),
+      }));
+    const health = feed.sources;
+    if (!Array.isArray(health) || health.length === 0) {
+      return [
+        {
+          id: "owner-calendar-feed",
+          status: availabilityFeedStatus(feed),
+          visibility: "details",
+          events,
+        },
+      ];
+    }
+    const assignments = health.map((source) => ({
+      source,
+      events: [] as typeof events,
+    }));
+    const unattributed: typeof events = [];
+    for (let index = 0; index < feed.events.length; index += 1) {
+      const event = feed.events[index];
+      const normalized = events[index];
+      if (!event || !normalized) continue;
+      const matching = assignments.filter(({ source }) =>
+        availabilityEventMatchesSource(event, source),
+      );
+      if (matching.length === 1) {
+        matching[0]?.events.push(normalized);
+      } else {
+        unattributed.push(normalized);
+      }
+    }
+    const sources: CalendarAvailabilitySource[] = assignments.map(
+      ({ source, events: sourceEvents }) => ({
+        id: `${source.key.provider}:${source.key.calendarId}`,
+        status: source.status,
+        visibility: source.visibility,
+        events: sourceEvents,
+        ...(source.error ? { error: source.error.message } : {}),
+      }),
+    );
+    if (unattributed.length > 0) {
+      sources.push({
+        id: "owner-calendar-unattributed",
+        status: "stale",
+        visibility: "details",
+        events: unattributed,
+        error:
+          "Some cached events could not be attributed to exactly one connected calendar.",
+      });
+    }
+    return sources;
+  }
+
+  /**
    * Force-syncs the owner's calendars for the requested window and returns a
    * receipt counted over the selected sources. The receipt is issued only when
    * every source is fresh; a partial or unavailable feed fails the seed so the
@@ -6160,6 +6428,12 @@ export class CalendarService extends Service {
         calendarId,
         side,
       });
+      await this.assertCalendarMutationAvailability({
+        requestUrl,
+        startAt,
+        endAt,
+        timeZone,
+      });
       await this.validateNoteSource(request);
       const microsoftEvent = await this.microsoftPort.createEvent({
         account: target.account,
@@ -6218,6 +6492,12 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("create");
       }
       await this.requireReceiptAwareAppleCreate(options);
+      await this.assertCalendarMutationAvailability({
+        requestUrl,
+        startAt,
+        endAt,
+        timeZone,
+      });
       return this.createAppleCalendarEvent(request, calendarId, {
         startAt,
         endAt,
@@ -6243,6 +6523,12 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("create");
       }
       await this.requireReceiptAwareAppleCreate(options);
+      await this.assertCalendarMutationAvailability({
+        requestUrl,
+        startAt,
+        endAt,
+        timeZone,
+      });
       return this.createAppleCalendarEvent(request, calendarId, {
         startAt,
         endAt,
@@ -6251,6 +6537,12 @@ export class CalendarService extends Service {
     }
     const createEvent = requireGoogleServiceMethod(this.runtime, "createEvent");
     let googleEvent: GoogleCalendarEvent;
+    await this.assertCalendarMutationAvailability({
+      requestUrl,
+      startAt: range.startDate ?? startAt,
+      endAt: range.endDateExclusive ?? endAt,
+      timeZone,
+    });
     await this.validateNoteSource(request);
     try {
       googleEvent = await createEvent(
@@ -6678,6 +6970,13 @@ export class CalendarService extends Service {
       if (recurrence || recurrenceScope) {
         failAppleRecurrenceUnsupported("update");
       }
+      await this.assertCalendarMutationAvailability({
+        requestUrl,
+        excludeEventId: request.eventId,
+        startAt: nativePatch.startAt ?? "",
+        endAt: nativePatch.endAt ?? "",
+        timeZone: parseTimeZone,
+      });
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
     }
 
@@ -6701,7 +7000,25 @@ export class CalendarService extends Service {
       if (recurrence || recurrenceScope) {
         failAppleRecurrenceUnsupported("update");
       }
+      await this.assertCalendarMutationAvailability({
+        requestUrl,
+        excludeEventId: request.eventId,
+        startAt: nativePatch.startAt ?? "",
+        endAt: nativePatch.endAt ?? "",
+        timeZone: parseTimeZone,
+      });
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+    }
+    const proposedStartAt = nativePatch.startAt;
+    const proposedEndAt = nativePatch.endAt;
+    if (
+      typeof proposedStartAt !== "string" ||
+      typeof proposedEndAt !== "string"
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "An exact start and end are required to check the proposed move.",
+      );
     }
     if (recurrenceScope === "this_and_following") {
       return this.updateGoogleThisAndFollowing({
@@ -6723,6 +7040,13 @@ export class CalendarService extends Service {
         eventId: targetEventId,
       });
     }
+    await this.assertCalendarMutationAvailability({
+      requestUrl,
+      excludeEventId: request.eventId,
+      startAt: proposedStartAt,
+      endAt: proposedEndAt,
+      timeZone: parseTimeZone,
+    });
     const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
     let googleEvent: GoogleCalendarEvent;
     try {
