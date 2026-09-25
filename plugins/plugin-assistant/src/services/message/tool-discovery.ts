@@ -24,6 +24,7 @@ import {
   normalizeContextId,
 } from "@elizaos/core";
 import { buildActionCatalog } from "../../runtime/action-catalog";
+import { tokenizeActionSearchText } from "../../runtime/action-retrieval.ts";
 import {
   actionDiscoveryContexts,
   retrieveContextualPlannerActions,
@@ -160,7 +161,7 @@ export function createPlannerToolDiscoveryAction(
       {
         name: "query",
         description:
-          "Find operations by intent without knowing names. Cannot combine with names; all matching operations are returned without a result cap.",
+          "Find operations by intent without knowing names. Registered domain names in the query scope the search when contexts is omitted. Cannot combine with names; all matching operations within the scope are returned without a result cap.",
         required: false,
         schema: { type: "string", minLength: 1 },
       },
@@ -211,12 +212,38 @@ export function createPlannerToolDiscoveryAction(
         const freshActions = resolveAdditionalActions
           ? await resolveAdditionalActions([])
           : [...authorizedActions];
-        const scopedActions =
+        // A discovery query can name its domain without repeating `contexts`.
+        // Match whole registered domain phrases, not arbitrary description words;
+        // unknown domains keep global search and exact catalog loads stay available.
+        const queryWords = ` ${tokenizeActionSearchText(query ?? "").join(" ")} `;
+        const inferredContexts =
           contexts === undefined
+            ? [
+                ...new Set(
+                  freshActions.flatMap((action) =>
+                    actionDiscoveryContexts(action),
+                  ),
+                ),
+              ].filter((context) => {
+                const normalized = normalizeContextId(context);
+                const phrase = tokenizeActionSearchText(normalized).join(" ");
+                return (
+                  normalized !== "general" &&
+                  normalized !== "simple" &&
+                  phrase.length > 0 &&
+                  queryWords.includes(` ${phrase} `)
+                );
+              })
+            : [];
+        const searchContexts =
+          contexts ??
+          (inferredContexts.length > 0 ? inferredContexts : undefined);
+        const scopedActions =
+          searchContexts === undefined
             ? freshActions
             : freshActions.filter((action) =>
                 actionDiscoveryContexts(action).some((context) =>
-                  contexts
+                  searchContexts
                     .map(normalizeContextId)
                     .includes(normalizeContextId(context)),
                 ),
@@ -227,7 +254,7 @@ export function createPlannerToolDiscoveryAction(
             : retrieveContextualPlannerActions({
                 actions: scopedActions,
                 query,
-                contexts,
+                contexts: searchContexts,
               });
         if (mode !== "describe" && selected.length > 0)
           onDiscover(
@@ -246,6 +273,7 @@ export function createPlannerToolDiscoveryAction(
                 : "Matching tools enabled. Other operations remain discoverable; no domain work was executed.",
           data: {
             readOnlyOperation: true,
+            ...(inferredContexts.length > 0 ? { inferredContexts } : {}),
             matchCount: selected.length,
             completeMatches: true,
             ...(mode === "describe"

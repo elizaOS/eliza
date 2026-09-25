@@ -23,7 +23,10 @@ it is not a prompt-only instruction or a second model call. Stage 1 chooses
 contexts without receiving the action catalog. The planner can request more
 operations throughout the turn.
 
-Use `query` and optional `contexts` when an action name is unknown. Search ranks
+Use `query` and optional `contexts` when an action name is unknown. When contexts
+are omitted, exact registered domain phrases in the query scope the search; the
+result reports those inferred domains. Queries without a domain retain global
+search, and explicit contexts or catalog reads remain available. Search ranks
 complete authorized operations and prefers matching operation names over
 incidental words in long descriptions. Multiple requested operations remain
 eligible. Ambiguous wording falls back to the existing lexical matches; a miss

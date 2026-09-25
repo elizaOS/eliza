@@ -223,6 +223,82 @@ describe("contextual native discovery", () => {
     );
   });
 
+  it("scopes an unqualified Notes query using fresh registered domains", async () => {
+    const browser: Action = {
+      name: "BROWSER_GET",
+      contexts: ["browser"],
+      description: "Read and get the latest page body",
+    };
+    const calendar: Action = {
+      name: "CALENDAR_GET",
+      contextGate: { anyOf: ["calendar"] },
+      description: "Read the next calendar event",
+    };
+    const actions = [...(notesPlugin.actions ?? []), browser, calendar];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      () => {},
+      async () => actions,
+    );
+    const search = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "notes read get latest note body" },
+    });
+    expect([...((search?.data?.loadedTools ?? []) as string[])].sort()).toEqual(
+      ["NOTES_GET", "NOTES_LIST"],
+    );
+    expect(search?.data?.inferredContexts).toEqual(["notes"]);
+    const mixed = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "read notes and calendar" },
+    });
+    expect([...((mixed?.data?.loadedTools ?? []) as string[])].sort()).toEqual([
+      "CALENDAR_GET",
+      "NOTES_GET",
+      "NOTES_LIST",
+    ]);
+    const global = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "read get latest body" },
+    });
+    expect(global?.data?.loadedTools).toContain("BROWSER_GET");
+    const explicit = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "read notes", contexts: ["browser"] },
+    });
+    expect(explicit?.data?.loadedTools).toEqual(["BROWSER_GET"]);
+    const catalog = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: [], mode: "describe" },
+    });
+    expect(JSON.stringify(catalog?.data)).toContain("BROWSER_GET");
+  });
+
+  it("matches whole registered domain phrases and keeps unknown operation wording", async () => {
+    const archive: Action = {
+      name: "ARCHIVE_INSPECT",
+      contextGate: { anyOf: ["project-notes"] },
+      description: "Inspect project notes",
+    };
+    const other: Action = {
+      name: "OTHER_INSPECT",
+      contexts: ["browser"],
+      description: "Inspect project notes in a browser page",
+    };
+    const discovery = createPlannerToolDiscoveryAction(
+      [archive, other],
+      () => {},
+    );
+    const scoped = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "inspect project notes" },
+    });
+    expect(scoped?.data?.loadedTools).toEqual(["ARCHIVE_INSPECT"]);
+    expect(scoped?.data?.inferredContexts).toEqual(["project-notes"]);
+    const noncontiguous = await discovery.handler?.(
+      runtime,
+      message,
+      undefined,
+      { parameters: { query: "inspect project meeting notes" } },
+    );
+    expect(noncontiguous?.data?.inferredContexts).toBeUndefined();
+    expect(noncontiguous?.data?.loadedTools).toContain("OTHER_INSPECT");
+  });
+
   it("loads gate-only contexts through query search and permits later incremental operations", async () => {
     const actions: Action[] = [
       {
@@ -310,7 +386,7 @@ describe("contextual native discovery", () => {
       { deferNameIndex: true },
     );
     const search = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { query: "saved notes", contexts: ["notes"] },
+      parameters: { query: "saved notes" },
     });
     expect(search?.data?.loadedTools).toEqual(["NOTES_LIST"]);
     expect(search?.data?.completeMatches).toBe(true);
