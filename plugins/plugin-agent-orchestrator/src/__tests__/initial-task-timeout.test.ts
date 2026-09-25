@@ -78,7 +78,8 @@ describe("initial-task spawn path applies the detached timeout (real AcpService 
           nativeClients: Map<string, { close(): Promise<void> }>;
         }
       ).nativeClients;
-      const client = clients.get(spawned.sessionId)!;
+      const client = clients.get(spawned.sessionId);
+      if (!client) throw new Error("Spawned native ACP client is missing");
       const originalClose = client.close.bind(client);
       let release!: () => void;
       const barrier = new Promise<void>((resolve) => {
