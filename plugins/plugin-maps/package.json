@@ -8,26 +8,26 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "types": "./dist/plugin.d.ts",
       "eliza-source": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./ui": {
-      "types": "./dist/components/maps-view-bundle.d.ts",
       "eliza-source": "./src/components/maps-view-bundle.ts",
+      "types": "./dist/components/maps-view-bundle.d.ts",
       "import": "./dist/components/maps-view-bundle.js",
       "default": "./dist/components/maps-view-bundle.js"
     },
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }

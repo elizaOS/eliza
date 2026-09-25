@@ -29,8 +29,8 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -38,8 +38,8 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }

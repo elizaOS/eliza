@@ -14,8 +14,8 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "node": {
         "types": "./dist/node/index.d.ts",
         "import": "./dist/node/index.node.js",
@@ -35,20 +35,20 @@
       "default": "./dist/*.js"
     },
     "./ui": {
-      "types": "./dist/ui/index.d.ts",
       "eliza-source": "./src/ui/index.ts",
+      "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
     "./ui/*": {
-      "types": "./dist/ui/*.d.ts",
       "eliza-source": "./src/ui/*.ts",
+      "types": "./dist/ui/*.d.ts",
       "import": "./dist/ui/*.js",
       "default": "./dist/ui/*.js"
     },
     "./ui/register": {
-      "types": "./dist/ui/register.d.ts",
       "eliza-source": "./src/ui/register.ts",
+      "types": "./dist/ui/register.d.ts",
       "import": "./dist/ui/register.js",
       "default": "./dist/ui/register.js"
     }
