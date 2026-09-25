@@ -38,3 +38,8 @@ the host. Repeated attachment does not add duplicate views.
 Touch settings require a boolean. Disabling, hiding, or removing an active surface emits
 one cancellation with the last pointer coordinates; repeated enable/attach calls
 preserve an unchanged gesture.
+
+Android create and resize require positive integer dimensions whose RGBA byte count
+fits a signed 32-bit integer. Invalid sizes reject with `INVALID_ARGUMENT` before
+allocation or mutation. Resize preserves existing base and layer pixels, crops on
+shrink, and leaves new pixels transparent on growth.

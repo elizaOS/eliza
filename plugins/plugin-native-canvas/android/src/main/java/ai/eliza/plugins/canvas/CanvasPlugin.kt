@@ -179,18 +179,30 @@ class CanvasPlugin : Plugin() {
         }
     }
 
+    private fun readCanvasSize(call: PluginCall): CanvasSize? {
+        val value = call.data.opt("size") as? JSONObject
+        fun dimension(name: String): Int? {
+            val raw = value?.opt(name) as? Number ?: return null
+            val number = raw.toDouble()
+            if (!number.isFinite() || number < 1 || number > Int.MAX_VALUE || number % 1.0 != 0.0) return null
+            return number.toInt()
+        }
+        val width = dimension("width")
+        val height = dimension("height")
+        if (width == null || height == null || width.toLong() * height > Int.MAX_VALUE / 4) {
+            call.reject("size requires positive integer width and height within the RGBA bitmap byte-count limit", "INVALID_ARGUMENT")
+            return null
+        }
+        return CanvasSize(width, height)
+    }
+
     // ---- Create / Destroy ----
 
     @PluginMethod
     fun create(call: PluginCall) {
-        val sizeObj = call.getObject("size") ?: run {
-            call.reject("Missing size parameter")
-            return
-        }
-
-        val width = sizeObj.int("width", 100)
-        val height = sizeObj.int("height", 100)
-        val size = CanvasSize(width, height)
+        val size = readCanvasSize(call) ?: return
+        val width = size.width
+        val height = size.height
 
         val canvasId = "canvas_${nextCanvasId++}"
 
@@ -283,25 +295,22 @@ class CanvasPlugin : Plugin() {
             return
         }
 
-        val sizeObj = call.getObject("size") ?: run {
-            call.reject("Missing size")
-            return
-        }
+        val newSize = readCanvasSize(call) ?: return
 
         val canvas = canvases[canvasId] ?: run {
             call.reject("Canvas not found")
             return
         }
 
-        val width = sizeObj.int("width", canvas.size.width)
-        val height = sizeObj.int("height", canvas.size.height)
-        val newSize = CanvasSize(width, height)
-
         activity.runOnUiThread {
             canvas.size = newSize
             canvas.view.resize(newSize)
-            canvas.webView?.layoutParams =
-                FrameLayout.LayoutParams(width, height)
+            canvas.webView?.let { webView ->
+                webView.layoutParams = webView.layoutParams.apply {
+                    width = newSize.width
+                    height = newSize.height
+                }
+            }
             canvas.layers.values.forEach { it.view.resize(newSize) }
             call.resolve()
         }

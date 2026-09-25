@@ -440,6 +440,90 @@ class CanvasLifecycleInstrumentedTest {
         }
     }
 
+    @Test fun invalidSizesRejectWithoutChangingPixelsAndValidResizeRecovers() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            val id = create(scenario)
+            val target = JSONObject().put("canvasId", id)
+            success(scenario, "drawRect", JSONObject().put("canvasId", id)
+                .put("rect", JSONObject().put("x", 0).put("y", 0).put("width", 96).put("height", 64))
+                .put("fill", JSONObject().put("color", "#00ff00")))
+            val layerId = success(scenario, "createLayer", JSONObject().put("canvasId", id).put("layer", JSONObject().put("name", "resize-layer"))).getString("layerId")
+            success(scenario, "drawRect", JSONObject().put("canvasId", id)
+                .put("rect", JSONObject().put("x", 0).put("y", 0).put("width", 96).put("height", 64))
+                .put("fill", JSONObject().put("color", "#0000ff"))
+                .put("drawOptions", JSONObject().put("layerId", layerId)))
+            val layerTarget = JSONObject().put("canvasId", id).put("layerIds", JSONArray().put(layerId))
+            val layerBefore = success(scenario, "toImage", layerTarget)
+            val before = success(scenario, "getPixelData", target)
+            val results = JSONArray()
+            val invalid = listOf<Any>(
+                JSONObject().put("width", 0).put("height", 64),
+                JSONObject().put("width", -1).put("height", 64),
+                JSONObject().put("width", 96).put("height", 0),
+                JSONObject().put("width", 96).put("height", -1),
+                JSONObject().put("width", 1.5).put("height", 64),
+                JSONObject().put("width", 96).put("height", 2.5),
+                JSONObject().put("width", "96").put("height", 64),
+                JSONObject().put("width", 96).put("height", true),
+                JSONObject().put("width", JSONObject.NULL).put("height", 64),
+                JSONObject().put("width", 96), JSONObject(),
+                JSONObject().put("width", 2147483648L).put("height", 1),
+                JSONObject().put("width", 32768).put("height", 32768),
+                JSONObject.NULL, JSONArray(), "size")
+            for ((index, size) in invalid.withIndex()) {
+                for (method in listOf("create", "resize")) {
+                    receipt("canvas-size-request-$index-$method.json", JSONObject().put("method", method).put("size", size))
+                    val args = JSONObject().put("size", size)
+                    if (method == "resize") args.put("canvasId", id)
+                    val result = call(scenario, method, args)
+                    results.put(JSONObject().put("method", method).put("size", size).put("result", result))
+                    if (method == "create" && result.getBoolean("ok")) {
+                        success(scenario, "destroy", JSONObject().put("canvasId", result.getJSONObject("value").getString("canvasId")))
+                    }
+                }
+            }
+            val after = success(scenario, "getPixelData", target)
+            val layerAfter = success(scenario, "toImage", layerTarget)
+            success(scenario, "attach", target)
+            success(scenario, "navigate", JSONObject().put("canvasId", id).put("url", "about:blank"))
+            success(scenario, "resize", JSONObject().put("canvasId", id).put("size", JSONObject().put("width", 120).put("height", 80)))
+            val grown = success(scenario, "getPixelData", target)
+            val layerGrown = success(scenario, "toImage", layerTarget)
+            success(scenario, "resize", JSONObject().put("canvasId", id).put("size", JSONObject().put("width", 1).put("height", 1)))
+            val shrunk = success(scenario, "getPixelData", target)
+            receipt("canvas-size-validation.json", JSONObject().put("results", results).put("before", before).put("after", after).put("grown", grown).put("shrunk", shrunk).put("layerBefore", layerBefore).put("layerAfter", layerAfter).put("layerGrown", layerGrown))
+            for (index in 0 until results.length()) {
+                val result = results.getJSONObject(index).getJSONObject("result")
+                assertFalse(results.getJSONObject(index).toString(), result.getBoolean("ok"))
+                assertEquals("INVALID_ARGUMENT", result.getString("code"))
+            }
+            assertEquals(before.toString(), after.toString())
+            assertEquals(layerBefore.toString(), layerAfter.toString())
+            assertEquals(120, grown.getInt("width"))
+            assertEquals(80, grown.getInt("height"))
+            val pixels = Base64.decode(grown.getString("data"), Base64.DEFAULT)
+            val encoded = Base64.decode(layerGrown.getString("base64"), Base64.DEFAULT)
+            val layerBitmap = android.graphics.BitmapFactory.decodeByteArray(encoded, 0, encoded.size)
+            try {
+                assertEquals(120, layerBitmap.width)
+                assertEquals(80, layerBitmap.height)
+                for (y in 0 until 80) for (x in 0 until 120) {
+                    val inside = x < 96 && y < 64
+                    val offset = (y * 120 + x) * 4
+                    assertEquals(0, pixels[offset].toInt())
+                    assertEquals(if (inside) 255 else 0, pixels[offset + 1].toInt() and 255)
+                    assertEquals(0, pixels[offset + 2].toInt())
+                    assertEquals(if (inside) 255 else 0, pixels[offset + 3].toInt() and 255)
+                    assertEquals(if (inside) android.graphics.Color.BLUE else android.graphics.Color.TRANSPARENT, layerBitmap.getPixel(x, y))
+                }
+            } finally { layerBitmap.recycle() }
+            assertEquals(1, shrunk.getInt("width"))
+            assertEquals(1, shrunk.getInt("height"))
+            assertArrayEquals(byteArrayOf(0, -1, 0, -1), Base64.decode(shrunk.getString("data"), Base64.DEFAULT))
+            success(scenario, "destroy", target)
+        }
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
