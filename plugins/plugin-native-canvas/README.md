@@ -47,3 +47,8 @@ shrink, and leaves new pixels transparent on growth.
 Android intercepts `eliza://` navigation from both API calls and embedded pages.
 Deep-link events include the encoded path and decoded query parameters (last
 repeated value wins). Navigation errors include the native code and message.
+
+Android A2UI action events expose `action`, `data`, and optional `messageId`,
+while retaining legacy action and surface metadata and the complete `userAction`.
+Acknowledgements correlate with the supplied ID; they acknowledge bridge delivery,
+not execution of an agent action.

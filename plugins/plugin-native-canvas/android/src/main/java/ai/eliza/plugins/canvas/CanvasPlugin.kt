@@ -1673,7 +1673,10 @@ class CanvasPlugin : Plugin() {
                     val json = JSONObject(actionJson)
                     val userAction = json.optJSONObject("userAction") ?: json
                     val actionName = extractActionName(userAction)
-                    val actionId = userAction.optString("id", UUID.randomUUID().toString())
+                    val legacyId = userAction.opt("id") as? String
+                    val messageId = (userAction.opt("messageId") as? String) ?: legacyId
+                    val actionId = legacyId ?: messageId ?: UUID.randomUUID().toString()
+                    val actionData = userAction.optJSONObject("data") ?: JSONObject()
                     val surfaceId = userAction.optString("surfaceId", "main")
 
                     Handler(Looper.getMainLooper()).post {
@@ -1681,6 +1684,9 @@ class CanvasPlugin : Plugin() {
                             put("canvasId", canvasId)
                             put("actionId", actionId)
                             put("actionName", actionName ?: "")
+                            put("action", actionName ?: "")
+                            put("data", jsObjectFromJSON(actionData))
+                            messageId?.let { put("messageId", it) }
                             put("surfaceId", surfaceId)
                             put("userAction", jsObjectFromJSON(userAction))
                         })

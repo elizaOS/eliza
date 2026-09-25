@@ -646,6 +646,59 @@ class CanvasLifecycleInstrumentedTest {
         }
     }
 
+    @Test fun a2uiActionsExposePublicFieldsAndRetainLegacyReceipts() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            evaluate(scenario, "window.actionEvents=[];window.actionReady=false;window.actionListener=window.Capacitor.addListener('ElizaCanvas','a2uiAction',event=>window.actionEvents.push(event));window.actionReadyListener=window.Capacitor.addListener('ElizaCanvas','webViewReady',()=>window.actionReady=true)")
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#a2ui"))
+            waitFor(scenario, "window.actionReady")
+            success(scenario, "eval", JSONObject().put("script", "window.actionStatuses=[];window.addEventListener('eliza:a2ui-action-status',event=>window.actionStatuses.push(event.detail));42"))
+            val data = JSONObject().put("accepted", true).put("count", 3).put("label", "quote \" and Unicode ✓")
+            val publicAction = JSONObject().put("action", "confirm").put("data", data).put("messageId", "public-message")
+            val legacyAction = JSONObject().put("name", "legacy-save").put("id", "legacy-id").put("surfaceId", "settings").put("data", JSONObject().put("saved", true))
+            val noIdAction = JSONObject().put("action", "refresh")
+            val messages = listOf(publicAction, JSONObject().put("userAction", legacyAction), noIdAction)
+            for ((index, message) in messages.withIndex()) {
+                val argument = if (index == 1) JSONObject.quote(message.toString()) else message.toString()
+                success(scenario, "eval", JSONObject().put("script", "window.webkit.messageHandlers.elizaCanvasA2UIAction.postMessage($argument);42"))
+                waitFor(scenario, "window.actionEvents.length === ${index + 1}")
+            }
+            val events = JSONArray(JSONTokener(evaluate(scenario, "JSON.stringify(window.actionEvents)")).nextValue() as String)
+            var statuses = JSONArray()
+            val deadline = SystemClock.elapsedRealtime() + 3000
+            do {
+                val response = success(scenario, "eval", JSONObject().put("script", "JSON.stringify(window.actionStatuses)"))
+                statuses = JSONArray(JSONTokener(response.getString("result")).nextValue() as String)
+                if (statuses.length() == 3) break
+                SystemClock.sleep(20)
+            } while (SystemClock.elapsedRealtime() < deadline)
+            receipt("canvas-a2ui-events.json", JSONObject().put("messages", JSONArray(messages)).put("events", events).put("statuses", statuses))
+            assertEquals(3, events.length())
+            val first = events.getJSONObject(0)
+            assertEquals("confirm", first.getString("action"))
+            assertEquals(data.toString(), first.getJSONObject("data").toString())
+            assertEquals("public-message", first.getString("messageId"))
+            assertEquals("public-message", first.getString("actionId"))
+            assertEquals(publicAction.toString(), first.getJSONObject("userAction").toString())
+            val legacy = events.getJSONObject(1)
+            assertEquals("legacy-save", legacy.getString("action"))
+            assertTrue(legacy.getJSONObject("data").getBoolean("saved"))
+            assertEquals("legacy-id", legacy.getString("messageId"))
+            assertEquals("legacy-id", legacy.getString("actionId"))
+            assertEquals("settings", legacy.getString("surfaceId"))
+            assertEquals(legacyAction.toString(), legacy.getJSONObject("userAction").toString())
+            assertEquals("refresh", events.getJSONObject(2).getString("action"))
+            assertEquals(0, events.getJSONObject(2).getJSONObject("data").length())
+            assertFalse(events.getJSONObject(2).has("messageId"))
+            assertEquals(3, statuses.length())
+            for (index in 0 until 3) {
+                assertEquals(events.getJSONObject(index).getString("actionId"), statuses.getJSONObject(index).getString("id"))
+                assertTrue(statuses.getJSONObject(index).getBoolean("ok"))
+            }
+            evaluate(scenario, "window.actionListener.remove();window.actionReadyListener.remove()")
+        }
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
