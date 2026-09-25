@@ -35,6 +35,6 @@ Android attachment owns the base, layers, and embedded WebView together. Detach
 removes that group; reattach preserves its contents and layer order. Enabling
 touch places the drawing surfaces above the host; disabling it returns input to
 the host. Repeated attachment does not add duplicate views.
-Touch settings require a boolean. Disabling or removing an active surface emits
+Touch settings require a boolean. Disabling, hiding, or removing an active surface emits
 one cancellation with the last pointer coordinates; repeated enable/attach calls
 preserve an unchanged gesture.

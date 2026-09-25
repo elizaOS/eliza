@@ -214,10 +214,11 @@ class CanvasLifecycleInstrumentedTest {
 
     @Test fun disablingDetachingOrDestroyingCancelsAnActiveGestureExactlyOnce() {
         val results = JSONArray()
-        for (operation in listOf("disable", "detach", "destroy")) {
+        for (operation in listOf("disable", "detach", "destroy", "delete-layer", "hide-layer")) {
             ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
                 val id = create(scenario)
                 val target = JSONObject().put("canvasId", id)
+                val layerId = if (operation.endsWith("layer")) success(scenario, "createLayer", JSONObject().put("canvasId", id).put("layer", JSONObject().put("name", "gesture-layer"))).getString("layerId") else null
                 success(scenario, "attach", target)
                 success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", true))
                 evaluate(scenario, "window.gestureEvents=[];window.gestureListener=window.Capacitor.addListener('ElizaCanvas','touch',event=>window.gestureEvents.push(event))")
@@ -232,8 +233,12 @@ class CanvasLifecycleInstrumentedTest {
                 inject(MotionEvent.ACTION_DOWN)
                 try {
                     waitFor(scenario, "window.gestureEvents.length > 0")
-                    if (operation == "disable") success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", false))
-                    else success(scenario, operation, target)
+                    when (operation) {
+                        "disable" -> success(scenario, "setTouchEnabled", JSONObject().put("canvasId", id).put("enabled", false))
+                        "delete-layer" -> success(scenario, "deleteLayer", JSONObject().put("canvasId", id).put("layerId", layerId))
+                        "hide-layer" -> success(scenario, "updateLayer", JSONObject().put("canvasId", id).put("layerId", layerId).put("layer", JSONObject().put("visible", false)))
+                        else -> success(scenario, operation, target)
+                    }
                     InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 } finally { inject(MotionEvent.ACTION_UP) }
                 SystemClock.sleep(100)

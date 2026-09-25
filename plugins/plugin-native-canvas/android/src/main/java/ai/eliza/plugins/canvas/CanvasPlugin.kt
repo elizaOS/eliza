@@ -143,8 +143,6 @@ class CanvasPlugin : Plugin() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (!acceptsTouch) return false
-            // Removing a view can also produce a framework cancel after our explicit one.
-            if (event.actionMasked == MotionEvent.ACTION_CANCEL && activeTouches.isEmpty()) return true
             val type = when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> "start"
                 MotionEvent.ACTION_MOVE -> "move"
@@ -152,6 +150,8 @@ class CanvasPlugin : Plugin() {
                 MotionEvent.ACTION_CANCEL -> "cancel"
                 else -> return super.onTouchEvent(event)
             }
+            // Ignore framework cancellation and trailing events after explicit cancellation.
+            if (event.actionMasked != MotionEvent.ACTION_DOWN && activeTouches.isEmpty()) return true
 
             val touches = mutableListOf<TouchInfo>()
             for (i in 0 until event.pointerCount) {
@@ -410,6 +410,7 @@ class CanvasPlugin : Plugin() {
 
         activity.runOnUiThread {
             layerObj.booleanOrNull("visible")?.let {
+                if (!it) layer.view.cancelActiveTouch()
                 layer.visible = it
                 layer.view.visibility = if (it) View.VISIBLE else View.GONE
             }
@@ -448,6 +449,7 @@ class CanvasPlugin : Plugin() {
         }
 
         activity.runOnUiThread {
+            layer.view.cancelActiveTouch()
             (layer.view.parent as? ViewGroup)?.removeView(layer.view)
             canvas.layers.remove(layerId)
             call.resolve()
