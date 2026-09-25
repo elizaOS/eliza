@@ -67,8 +67,11 @@ public class ElizaVoicePlugin extends Plugin {
     }
 
     /** Decode base64 LE-s16 PCM into a Java float[] in [-1, 1]. */
-    private static float[] decodePcm16(String b64) {
+    static float[] decodePcm16(String b64) {
         byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+        if (bytes.length % 2 != 0) {
+            throw new IllegalArgumentException("PCM16 must contain complete two-byte samples");
+        }
         int n = bytes.length / 2;
         ByteBuffer bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         float[] out = new float[n];
