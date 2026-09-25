@@ -20,5 +20,8 @@ node packages/app/scripts/android-native-filesystem.ts --serial emulator-5554 --
 This uses the production service on a stock x86_64 emulator and verifies Unicode
 and binary persistence across processes, listing, overwrite, missing files, and
 path/symlink rejection. Full results go to `test-results/android-native-filesystem/`.
-It runs under the shell UID; Capacitor and installed-app sandbox behavior need
-separate tests. Device E2E runs this after the embedded-agent lifecycle lane.
+This fast lane runs under the shell UID. The `android-native-agent.ts --serial
+<emulator>` lane also runs the same contract inside the installed app, verifies
+the child UID and application SELinux domain, and exports both process results
+under `test-results/android-native-agent/`. Device E2E runs both lanes. The
+alternate Capacitor backend still needs separate verification.

@@ -148,6 +148,23 @@ try {
       );
     }
   }
+  if (!nativeInference) {
+    logged(
+      "filesystem-build.log",
+      "bun",
+      [
+        "build",
+        "packages/app/test/android-native-filesystem/contract.ts",
+        "--target=bun",
+        "--conditions=eliza-source",
+        `--outfile=${path.join(assets, "filesystem-contract.js")}`,
+      ],
+      120000,
+    );
+    report.filesystemBundleSha256 = hash(
+      path.join(assets, "filesystem-contract.js"),
+    );
+  }
   report.agentBundleSha256 = hash(path.join(assets, "agent/agent-bundle.js"));
   report.deviceFingerprint = adb(
     "shell",
@@ -298,12 +315,12 @@ try {
         ? "ai.elizaos.app.BionicEmbeddingInstrumentedTest,ai.elizaos.app.CapacitorBgeInstrumentedTest"
         : speech
           ? "ai.elizaos.app.BionicSpeechInstrumentedTest"
-          : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
+          : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest,ai.elizaos.app.NativeFilesystemInstrumentedTest",
       "ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner",
     ],
     360000,
   );
-  const parsed = parseInstrumentation(result, embedding ? 2 : 1);
+  const parsed = parseInstrumentation(result, speech ? 1 : 2);
   report.tests = parsed.tests;
   report.problems.push(...parsed.problems);
   for (const artifact of parseNativeArtifacts(result)) {
@@ -322,6 +339,12 @@ try {
     ]) {
       if (!report.artifacts.some((artifact) => artifact.path === name))
         report.problems.push(`Missing complete embedding proof: ${name}`);
+    }
+  }
+  if (!nativeInference) {
+    for (const name of ["filesystem-write.json", "filesystem-reopen.json"]) {
+      if (!report.artifacts.some((artifact) => artifact.path === name))
+        report.problems.push(`Missing app-sandbox filesystem proof: ${name}`);
     }
   }
   if (speech) {

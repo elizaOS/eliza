@@ -16,6 +16,10 @@ const observations: Record<string, unknown> = {
   phase,
   runtime: process.versions,
   backend: "Node on Android Bun",
+  uid: process.getuid?.(),
+  selinuxContext: (await readFile("/proc/self/attr/current", "utf8"))
+    .replaceAll("\0", "")
+    .trim(),
 };
 try {
   if (phase === "write") {
