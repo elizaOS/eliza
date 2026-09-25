@@ -637,7 +637,6 @@ test.beforeEach(async ({ page }) => {
     const host = window as unknown as Record<string, unknown>;
     host.__ELIZA_APP_API_BASE__ = origin;
     host.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
-    host.__ELIZAOS_API_BASE__ = origin;
   });
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);

@@ -9,9 +9,13 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 const enabled = process.env.BENCHMARK_NATIVE_CODING_E2E === "1";
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 
-test.skipIf(!enabled).each([false, true])(
-  "native coding CLI verifies files and preserves exit status (rejectModel=%s)",
-  async (rejectModel) => {
+test
+  .skipIf(!enabled)
+  .each(["coding", "provider-failure", "incomplete", "recovered"] as const)(
+  "native coding CLI verifies files and preserves exit status (%s)",
+  async (scenario) => {
+    const rejectModel = scenario === "provider-failure";
+    const expectedSuccess = scenario === "coding" || scenario === "recovered";
     const configuredModel = process.env.BENCHMARK_NATIVE_MODEL;
     if (!configuredModel)
       throw new Error("Set BENCHMARK_NATIVE_MODEL for this live test");
@@ -56,7 +60,11 @@ test.skipIf(!enabled).each([false, true])(
           id: "native-coding-e2e",
           type: "coding",
           prompt:
-            "Use FILE to create add.py defining add(a, b) returning a + b. The workspace contains test_add.py; do not modify the tests. Use the native SHELL action to run python -m unittest -v in the workspace. Report the observed result.",
+            scenario === "incomplete"
+              ? "Read the exact file required-input.txt and report its contents. The file must already exist; do not create it, invent contents, or substitute any other file. If it is missing, the requested task cannot be fulfilled."
+              : scenario === "recovered"
+                ? "Use SHELL to run python3 -m unittest -v before making any edits; it will fail because add.py is missing. Then fix the failure by using FILE to create add.py defining add(a, b) returning a + b. Rerun the same python3 -m unittest -v command with SHELL and verify all tests pass. Do not modify test_add.py. Report both the initial failure and the successful recovery."
+                : "Use FILE to create add.py defining add(a, b) returning a + b. The workspace contains test_add.py; do not modify the tests. Use the native SHELL action to run python -m unittest -v in the workspace. Report the observed result.",
           context: { workspace },
         }),
       );
@@ -128,7 +136,7 @@ test.skipIf(!enabled).each([false, true])(
         `CLI must terminate after its result; receipts: ${output}`,
       ).toBe(false);
       expect(code, `CLI exit status; receipts: ${output}`).toBe(
-        rejectModel ? 1 : 0,
+        expectedSuccess ? 0 : 1,
       );
       const rows = Buffer.concat(stdout)
         .toString()
@@ -142,10 +150,27 @@ test.skipIf(!enabled).each([false, true])(
         })
         .filter((row) => row?.id === "native-coding-e2e");
       expect(rows).toHaveLength(1);
-      expect(rows[0].success).toBe(!rejectModel);
+      expect(rows[0].success).toBe(expectedSuccess);
       if (rejectModel) {
         expect(rows[0].error).toBeTruthy();
         return;
+      }
+      if (scenario === "incomplete") {
+        expect(rows[0].request_fulfilled).toBe(false);
+        expect(rows[0].error).toBeTruthy();
+        await expect(
+          readFile(path.join(workspace, "required-input.txt")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        return;
+      }
+      expect(rows[0].request_fulfilled).toBe(true);
+      if (scenario === "recovered") {
+        expect(rows[0].action_results).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ success: false }),
+            expect.objectContaining({ success: true }),
+          ]),
+        );
       }
       expect(await readFile(path.join(workspace, "test_add.py"), "utf8")).toBe(
         testSource,

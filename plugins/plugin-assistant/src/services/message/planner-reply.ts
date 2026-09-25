@@ -488,6 +488,7 @@ export async function finalizePlannerReply(
     actionResults,
   );
   const terminalFailure = plannerResult.terminalFailure;
+  const requestFulfilled = plannerResult.evaluator?.success;
 
   return {
     kind: "planned_reply",
@@ -513,6 +514,9 @@ export async function finalizePlannerReply(
             ...(terminalFailure ? { terminalFailure } : {}),
           }),
           ...(actionResults.length > 0 ? { actionResults } : {}),
+          ...(typeof requestFulfilled === "boolean"
+            ? { requestFulfilled }
+            : {}),
         }
       : {
           responseContent: null,
@@ -521,6 +525,9 @@ export async function finalizePlannerReply(
           mode: "none",
           ...(terminalFailure ? { terminalFailure } : {}),
           ...(actionResults.length > 0 ? { actionResults } : {}),
+          ...(typeof requestFulfilled === "boolean"
+            ? { requestFulfilled }
+            : {}),
         },
   };
 }

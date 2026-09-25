@@ -33,3 +33,12 @@ to avoid loading runtime fixtures and their build dependencies during setup.
 `tsconfig.workspace.json` owns source aliases shared by the scenario runner,
 scenario corpus, and Cloud E2E. Keep lane-specific compiler options and file
 selection in their owning configs.
+
+The native Ollama test provider rejects oversized embedding inputs explicitly.
+To verify it against a running local `nomic-embed-text` model (real calls):
+
+```bash
+OLLAMA_URL=http://127.0.0.1:11434 OLLAMA_EMBEDDING_MODEL=nomic-embed-text \
+  OLLAMA_EMBEDDING_LIVE=1 bun test --conditions=eliza-source \
+  packages/testing/e2e/ollama-embedding.e2e.test.ts
+```

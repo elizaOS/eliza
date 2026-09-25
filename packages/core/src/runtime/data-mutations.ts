@@ -1,7 +1,7 @@
 import { randomUUID as uuidv4 } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "../errors";
-import type { Content } from "../types";
+import type { Content } from "../types/primitives.js";
 import {
 	buildMessageContentProjection,
 	collectMessageContentSegmentIds,
@@ -21,20 +21,18 @@ type EvidenceMutationService = Service & {
 	): Promise<T>;
 };
 
+import type { PatchOp } from "../types/database.js";
 import type {
 	Component,
 	Entity,
-	IAgentRuntime,
-	Memory,
-	MemoryMetadata,
-	Metadata,
 	Participant,
-	PatchOp,
 	Relationship,
 	Room,
-	UUID,
-} from "../types";
+} from "../types/environment.js";
+import type { Memory, MemoryMetadata } from "../types/memory.js";
 import { afterMemoryPersistedPipelineHookContext } from "../types/pipeline-hooks";
+import type { Metadata, UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,

@@ -1,9 +1,8 @@
-/** Storage compatibility for existing profiles after pendant services were retired.
- * Keep the original columns, constraints and snapshot keys until an explicit
- * archive/data migration is approved. Omitting these tables makes automatic
- * schema diffing propose destructive drops; this registers no feature services.
+/** Retains the retired pendant tables under their original migration owner.
+ * Removing these descriptors proposes destructive drops during existing-agent
+ * startup. Keep their data and tenant keys until an explicit archival migration
+ * exists; no pendant capture service or API is registered by this module.
  */
-
 import {
   foreignKey,
   index,
@@ -130,7 +129,7 @@ const pendantSessionInsightRefs = pendantSessionPgSchema.table(
   ],
 );
 
-export const retainedPendantSessionSchema = {
+export const retainedPendantSchema = {
   pendantSessions,
   pendantSessionSegments,
   pendantSessionInsightRefs,

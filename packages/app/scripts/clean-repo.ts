@@ -17,7 +17,7 @@ import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
   resolveNativePluginDir as nativePluginDir,
-} from "./capacitor-plugin-names.ts";
+} from "./lib/capacitor-plugin-names.ts";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

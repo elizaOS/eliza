@@ -8,8 +8,6 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const installedCoreUrl = import.meta.resolve("@elizaos/core");
-const installedCorePath = fileURLToPath(installedCoreUrl);
 const sourceCandidates = [
   new URL("../../../core/src/errors.ts", import.meta.url),
   new URL("../../../../core/src/errors.ts", import.meta.url),
@@ -17,15 +15,9 @@ const sourceCandidates = [
 const sourceUrl = sourceCandidates.find((candidate) =>
   fs.existsSync(fileURLToPath(candidate)),
 );
-const coreModuleUrl =
-  sourceUrl?.href ??
-  (fs.existsSync(installedCorePath) ? installedCoreUrl : undefined);
-
-if (!coreModuleUrl) {
-  throw new Error(
-    `Could not load @elizaos/core ElizaError from ${installedCorePath} or the workspace source tree.`,
-  );
-}
+// Do not resolve an installed package before checking the source tree: setup
+// scripts must also work before workspace package links have been installed.
+const coreModuleUrl = sourceUrl?.href ?? import.meta.resolve("@elizaos/core");
 
 const coreErrors = await import(coreModuleUrl);
 if (typeof coreErrors.ElizaError !== "function") {

@@ -6,14 +6,13 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "../errors";
 import type {
-	Content,
 	DocumentRangeReadParams,
 	DocumentRangeReadResult,
-	Memory,
-	UUID,
-} from "../types";
-import { MemoryType } from "../types";
+} from "../types/database.js";
 import type { DocumentMetadata, FragmentMetadata } from "../types/memory";
+import type { Memory } from "../types/memory.js";
+import { MemoryType } from "../types/memory.js";
+import type { Content, UUID } from "../types/primitives.js";
 import { createHash } from "../utils/crypto-compat";
 
 interface DocumentSourceMetadata

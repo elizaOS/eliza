@@ -83,9 +83,6 @@
 			"@elizaos/plugin-native-inference/*": [
 				"../../../../plugins/plugin-native-inference/src/*"
 			],
-			"@elizaos/plugin-local-inference": [
-				"../../../../plugins/plugin-local-inference/src/index.ts"
-			],
 			"@elizaos/plugin-local-inference/*": [
 				"../../../../plugins/plugin-local-inference/src/*"
 			],

@@ -11,7 +11,7 @@
  * - Use real runtime initialization
  */
 
-import type { UUID } from "../types";
+import type { UUID } from "../types/primitives.js";
 import { stringToUuid } from "../utils";
 
 /**

@@ -1,13 +1,10 @@
 /** Coordinates service start deduplication and stop-during-start settlement using the original runtime and its shared registries. */
 
 import { ElizaError } from "../errors";
-import type {
-	IAgentRuntime,
-	Service,
-	ServiceClass,
-	ServiceTypeName,
-} from "../types";
 import { EventType } from "../types/events";
+import type { ServiceClass } from "../types/plugin.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { Service, ServiceTypeName } from "../types/service.js";
 import type { RuntimeRetirement } from "./retirement.js";
 
 export type ServiceResolver = (service: Service) => void;

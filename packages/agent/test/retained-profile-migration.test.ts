@@ -11,7 +11,7 @@ import { PgliteDatabaseAdapter } from "../../../plugins/plugin-sql/src/pglite/ad
 import { PGliteClientManager } from "../../../plugins/plugin-sql/src/pglite/manager.ts";
 import { schema as sqlSchema } from "../../../plugins/plugin-sql/src/schema.ts";
 import { createElizaPlugin } from "../src/runtime/eliza-plugin.ts";
-import { retainedPendantSessionSchema } from "../src/runtime/retained-pendant-schema.ts";
+import { retainedPendantSchema } from "../src/runtime/retained-pendant-schema.ts";
 
 it("keeps retired session, segment and insight rows during host migration", async () => {
   vi.stubEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS", "false");
@@ -29,7 +29,7 @@ it("keeps retired session, segment and insight rows during host migration", asyn
       {
         name: "eliza",
         description: "Previous profile",
-        schema: retainedPendantSessionSchema,
+        schema: retainedPendantSchema,
       },
     ]);
     await migrations.runAllPluginMigrations();

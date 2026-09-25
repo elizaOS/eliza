@@ -31,7 +31,6 @@
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
@@ -55,18 +54,6 @@
       ],
       "@elizaos/plugin-native-inference/*": [
         "../../plugins/plugin-native-inference/src/*"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/runtime": [
-        "../../plugins/plugin-local-inference/src/runtime/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/routes": [
-        "../../plugins/plugin-local-inference/src/routes/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/services": [
-        "../../plugins/plugin-local-inference/src/services/index.ts"
       ],
       "@elizaos/capacitor-agent": [
         "../../plugins/plugin-native-agent/src/index.ts"

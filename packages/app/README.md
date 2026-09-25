@@ -14,9 +14,12 @@ captures.
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd packages/app build  # build
+bun run build:client  # build
 bun run --cwd packages/app test   # tests
 ```
+
+Turbo builds the host `dist/` before the renderer `web-dist/`. For a renderer-only
+rebuild after dependencies are built, use `bun run --cwd packages/app build`.
 
 Installed-app launch smoke uses `test:sim:local-chat`; iOS local full-Bun inference uses
 `test:sim:local-chat:ios:full-bun` against a current installed simulator build.

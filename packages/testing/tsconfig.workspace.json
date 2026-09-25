@@ -10,7 +10,6 @@
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/testing": ["./src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
@@ -75,7 +74,6 @@
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
       "@elizaos/auth/vault": ["../auth/src/vault/index.ts"],
       "@elizaos/auth/vault/*": ["../auth/src/vault/*"],
-      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-native-messages/bridge": [
@@ -92,12 +90,6 @@
       ],
       "@elizaos/plugin-native-settings": [
         "../../plugins/plugin-native-settings/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/runtime": [
-        "../../plugins/plugin-local-inference/src/runtime/index.ts"
       ],
       "@elizaos/plugin-local-inference/runtime/*": [
         "../../plugins/plugin-local-inference/src/runtime/*"
@@ -124,9 +116,7 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/testing/scenario-runner": ["./scenario-runner/src/index.ts"],
       "@elizaos/testing/scenario-runner/*": ["./scenario-runner/src/*"],
-      "@elizaos/testing/synthetic-world": ["./synthetic-world/src/index.ts"],
       "@elizaos/plugin-assistant": [
         "../../plugins/plugin-assistant/src/index.ts"
       ],
@@ -140,8 +130,6 @@
       "@elizaos/plugin-google-workspace": [
         "../../plugins/plugin-google-workspace/src/index.ts"
       ],
-      "@elizaos/agent/api": ["../agent/src/api/index.ts"],
-      "@elizaos/agent/runtime": ["../agent/src/runtime/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
       "@elizaos/plugin-meetings": [
@@ -154,7 +142,6 @@
       "@elizaos/plugin-native-inference/llama": [
         "../../plugins/plugin-native-inference/src/llama/index.ts"
       ],
-      "@elizaos/cloud-test-mocks": ["../cloud/test-mocks/src/index.ts"],
       "@elizaos/cloud-test-mocks/*": ["../cloud/test-mocks/src/*"],
       "@elizaos/plugin-web-search": [
         "../../plugins/plugin-web-search/src/index.ts"
@@ -195,12 +182,6 @@
       "@elizaos/plugin-google-workspace/*": [
         "../../plugins/plugin-google-workspace/src/*"
       ],
-      "@elizaos/plugin-google-workspace/package.json": [
-        "../../plugins/plugin-google-workspace/package.json"
-      ],
-      "@elizaos/plugin-health/package.json": [
-        "../../plugins/plugin-health/package.json"
-      ],
       "@elizaos/plugin-health/ui": [
         "../../plugins/plugin-health/src/ui/index.ts"
       ],
@@ -210,93 +191,35 @@
       "@elizaos/plugin-knowledge/*": [
         "../../plugins/plugin-knowledge/src/*.ts"
       ],
-      "@elizaos/plugin-knowledge/package.json": [
-        "../../plugins/plugin-knowledge/package.json"
-      ],
-      "@elizaos/plugin-coding-tools/package.json": [
-        "../../plugins/plugin-coding-tools/package.json"
-      ],
-      "@elizaos/plugin-browser/package.json": [
-        "../../plugins/plugin-browser/package.json"
-      ],
       "@elizaos/plugin-sqlite/*": ["../../plugins/plugin-sqlite/*"],
       "@elizaos/plugin-vision/*": ["../../plugins/plugin-vision/src/*.ts"],
-      "@elizaos/plugin-vision/package.json": [
-        "../../plugins/plugin-vision/package.json"
-      ],
       "@elizaos/plugin-scheduling/*": ["../../plugins/plugin-scheduling/src/*"],
-      "@elizaos/plugin-scheduling/package.json": [
-        "../../plugins/plugin-scheduling/package.json"
-      ],
       "@elizaos/plugin-notes": ["../../plugins/plugin-notes/src/index.ts"],
       "@elizaos/plugin-notes/*": ["../../plugins/plugin-notes/src/*.ts"],
-      "@elizaos/plugin-notes/package.json": [
-        "../../plugins/plugin-notes/package.json"
-      ],
-      "@elizaos/plugin-elizacloud/package.json": [
-        "../../plugins/plugin-elizacloud/package.json"
-      ],
-      "@elizaos/plugin-calendar/package.json": [
-        "../../plugins/plugin-calendar/package.json"
-      ],
       "@elizaos/plugin-native-filesystem/*": [
         "../../plugins/plugin-native-filesystem/src/*"
-      ],
-      "@elizaos/plugin-native-filesystem/package.json": [
-        "../../plugins/plugin-native-filesystem/package.json"
       ],
       "@elizaos/macosreminders/*": [
         "../../plugins/plugin-native-reminders/src/*"
       ],
-      "@elizaos/macosreminders/package.json": [
-        "../../plugins/plugin-native-reminders/package.json"
-      ],
-      "@elizaos/plugin-todos/package.json": [
-        "../../plugins/plugin-todos/package.json"
-      ],
       "@elizaos/plugin-reminders/*": [
         "../../plugins/plugin-reminders/src/*.ts"
       ],
-      "@elizaos/plugin-reminders/package.json": [
-        "../../plugins/plugin-reminders/package.json"
-      ],
       "@elizaos/plugin-inbox": ["../../plugins/plugin-inbox/src/index.ts"],
-      "@elizaos/plugin-inbox/package.json": [
-        "../../plugins/plugin-inbox/package.json"
-      ],
       "@elizaos/plugin-goals": ["../../plugins/plugin-goals/src/index.ts"],
-      "@elizaos/plugin-goals/package.json": [
-        "../../plugins/plugin-goals/package.json"
-      ],
       "@elizaos/plugin-assistant/*": ["../../plugins/plugin-assistant/src/*"],
       "@elizaos/plugin-x": ["../../plugins/plugin-x/src/index.ts"],
       "@elizaos/plugin-x/*": ["../../plugins/plugin-x/src/*.ts"],
-      "@elizaos/plugin-x/package.json": ["../../plugins/plugin-x/package.json"],
       "@elizaos/plugin-pdf/*": ["../../plugins/plugin-pdf/*"],
       "@elizaos/plugin-meetings/*": ["../../plugins/plugin-meetings/src/*.ts"],
-      "@elizaos/plugin-meetings/package.json": [
-        "../../plugins/plugin-meetings/package.json"
-      ],
       "@elizaos/native-activity-tracker/*": [
         "../../plugins/plugin-native-activity-tracker/src/*"
-      ],
-      "@elizaos/native-activity-tracker/package.json": [
-        "../../plugins/plugin-native-activity-tracker/package.json"
       ],
       "@elizaos/plugin-relationships/*": [
         "../../plugins/plugin-relationships/src/*"
       ],
-      "@elizaos/plugin-relationships/package.json": [
-        "../../plugins/plugin-relationships/package.json"
-      ],
       "@elizaos/plugin-blocker": ["../../plugins/plugin-blocker/src/index.ts"],
-      "@elizaos/plugin-blocker/package.json": [
-        "../../plugins/plugin-blocker/package.json"
-      ],
       "@elizaos/plugin-pty/*": ["../../plugins/plugin-pty/*"],
-      "@elizaos/testing/synthetic-control": [
-        "./src/synthetic-control/index.ts"
-      ],
       "@elizaos/plugin-native-inference/model-catalog": [
         "../../plugins/plugin-native-inference/src/model-catalog/index.ts"
       ]

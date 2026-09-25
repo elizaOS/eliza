@@ -4,7 +4,9 @@
  * demoted by canonical ownership. Return copies so filtering cannot mutate storage.
  */
 import type { RolesWorldMetadata } from "./roles";
-import type { Entity, IAgentRuntime, UUID, World } from "./types";
+import type { Entity, World } from "./types/environment.js";
+import type { UUID } from "./types/primitives.js";
+import type { IAgentRuntime } from "./types/runtime.js";
 import { stringToUuid } from "./utils";
 export async function resolveTrustedComponentSourceIds(
 	runtime: IAgentRuntime,

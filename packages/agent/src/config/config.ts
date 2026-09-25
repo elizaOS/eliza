@@ -12,8 +12,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import { type ElizaConfig } from "@elizaos/core/config/types";
+import { type ElizaConfig, ElizaError, logger } from "@elizaos/core";
 import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
 import {
   isElizaSettingsDebugEnabled,
@@ -42,7 +41,7 @@ import {
   resolveUserPath,
 } from "./paths.ts";
 
-export { type ElizaConfig } from "@elizaos/core/config/types";
+export type { ElizaConfig } from "@elizaos/core";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

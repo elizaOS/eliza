@@ -11,8 +11,11 @@
 import { SQLiteDatabaseAdapter } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../runtime";
-import type { Character, Memory, Provider, UUID } from "../types";
-import { ChannelType } from "../types";
+import type { Character } from "../types/agent.js";
+import type { Provider } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import { ChannelType } from "../types/primitives.js";
 import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 import { createInitializedRuntime } from "./initialized-runtime";
 

@@ -75,8 +75,17 @@ export function chooseElizaRuntime({
   hasNode,
 }) {
   const normalized = requestedRuntime?.trim().toLowerCase();
+  if (normalized && normalized !== "bun" && normalized !== "node") {
+    throw new Error(
+      `Invalid ELIZA_RUNTIME=${requestedRuntime}; expected bun or node.`,
+    );
+  }
   if (normalized === "bun" || normalized === "node") {
     return { runtime: normalized, warning: null };
+  }
+
+  if (hasBun === false && hasNode === false) {
+    throw new Error("No JavaScript runtime available; install Bun or Node.js.");
   }
 
   if (
@@ -237,7 +246,12 @@ export function probeNodeExecutable(candidate) {
         "-e",
         "process.stdout.write(process.versions.bun ? 'bun' : 'node:' + (process.versions.node || ''))",
       ],
-      { encoding: "utf8", env: buildNodeProbeEnv() },
+      {
+        encoding: "utf8",
+        env: buildNodeProbeEnv(),
+        timeout: 5_000,
+        killSignal: "SIGKILL",
+      },
     );
     return {
       status: result.status ?? 1,
@@ -272,7 +286,7 @@ export function resolveNodeExecPathFromCandidates({
   }
 
   let lastReason = "no candidates were provided";
-  for (const candidate of candidates) {
+  for (const candidate of new Set(candidates)) {
     if (!candidate) continue;
     const validation = validateNodeExecutable({
       candidate,

@@ -17,8 +17,6 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/capacitor-system": ["../plugin-native-system/src/index.ts"]
     }
   },

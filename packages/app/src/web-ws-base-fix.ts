@@ -101,11 +101,8 @@ export function repairWebSameOriginWsBase(): void {
   }
   // 2) REST base → same-origin https://<host>, so the client's baseUrl is
   //    non-empty and connectWs()'s empty-baseUrl guard does not bail. The boot
-  //    config is the single source of truth getElizaApiBase() reads, so this
-  //    goes through setElizaApiBase() (which sets boot-config AND mirrors the
-  //    __ELIZAOS_API_BASE__ global) rather than a raw window global that
-  //    getElizaApiBase() no longer reads. This does NOT touch the app-branding
-  //    globals (getInjectedAppApiBase()).
+  //    config is the source getElizaApiBase() reads, so update it through
+  //    setElizaApiBase(). App-branding injection remains independently owned.
   const restTarget = sameOriginRestBase();
   setElizaApiBase(restTarget);
 }

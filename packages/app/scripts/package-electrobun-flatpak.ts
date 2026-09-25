@@ -119,25 +119,24 @@ function lstatIfPresent(targetPath) {
   }
 }
 
-/** Canonicalize the stable /var alias that macOS exposes as /private/var. */
+/** Normalize macOS system aliases without accepting user-created symlinks. */
 export function canonicalizePlatformPathAlias(
-  targetPath,
-  platform = process.platform,
-) {
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
   const resolved = path.resolve(targetPath);
   if (platform !== "darwin") return resolved;
-  const aliasRoot = path.parse(resolved).root === "/" ? "/var" : null;
-  if (!aliasRoot) return resolved;
-  const relative = path.relative(aliasRoot, resolved);
-  if (
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
-  ) {
-    return resolved;
+  for (const aliasRoot of ["/var", "/tmp"]) {
+    const relative = path.relative(aliasRoot, resolved);
+    if (
+      relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative)
+    ) {
+      return path.join(realpathSync(aliasRoot), relative);
+    }
   }
-  const canonicalRoot = realpathSync(aliasRoot);
-  return path.join(canonicalRoot, relative);
+  return resolved;
 }
 
 /**

@@ -14,13 +14,14 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-
+import ts from "typescript";
 import {
   auditTsconfigWorkspaceResolution,
   builtBeforeTypecheck,
   discoverTypecheckProjects,
   workspaceSourceEntry,
 } from "./audit-tsconfig-workspace-resolution.ts";
+import { listWorkspaceDirs } from "./lib/workspaces.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -365,5 +366,36 @@ test("rejects an ambient workspace shim that shadows a source mapping", () => {
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("explicit source conditions resolve published source entries instead of stale declarations", () => {
+  const options = {
+    module: ts.ModuleKind.Preserve,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    customConditions: ["eliza-source"],
+  };
+  for (const directory of listWorkspaceDirs({ repoRoot })) {
+    const packageDir = path.join(repoRoot, directory);
+    const manifest = JSON.parse(
+      readFileSync(path.join(packageDir, "package.json"), "utf8"),
+    );
+    for (const [subpath, entry] of Object.entries(manifest.exports ?? {})) {
+      const source = entry?.["eliza-source"];
+      if (typeof source !== "string" || subpath.includes("*")) continue;
+      const specifier =
+        manifest.name + (subpath === "." ? "" : subpath.slice(1));
+      const resolved = ts.resolveModuleName(
+        specifier,
+        path.join(packageDir, "source-condition-probe.ts"),
+        options,
+        ts.sys,
+      ).resolvedModule;
+      assert.equal(
+        resolved?.resolvedFileName,
+        path.join(packageDir, source),
+        specifier,
+      );
+    }
   }
 });

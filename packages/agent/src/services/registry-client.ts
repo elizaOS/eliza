@@ -10,11 +10,10 @@ import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, type RegistryEndpoint } from "@elizaos/core";
 import { isRegistryCacheFresh } from "@elizaos/core/catalog/runtime-kernel";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import {
   LOCAL_APP_DEFAULT_SANDBOX,
   resolveAppOverride,

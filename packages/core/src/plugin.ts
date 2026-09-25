@@ -17,7 +17,7 @@
  */
 import { logger } from "./logger";
 
-import type { Plugin } from "./types";
+import type { Plugin } from "./types/plugin.js";
 
 /**
  * Resolves a plugin package name to a loaded {@link Plugin} object.

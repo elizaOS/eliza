@@ -17,3 +17,6 @@ include = ["openclaw_adapter*"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
+
+[tool.setuptools.package-data]
+openclaw_adapter = ["native_images.mjs"]

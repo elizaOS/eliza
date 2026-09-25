@@ -39,38 +39,38 @@
       "import": "./dist/server/start.js"
     },
     "./auth": {
-      "types": "./dist/auth/index.d.ts",
       "eliza-source": "./src/auth/index.ts",
+      "types": "./dist/auth/index.d.ts",
       "import": "./dist/auth/index.js",
       "default": "./dist/auth/index.js"
     },
     "./vault": {
-      "types": "./dist/vault/index.d.ts",
       "eliza-source": "./src/vault/index.ts",
+      "types": "./dist/vault/index.d.ts",
       "import": "./dist/vault/index.js",
       "default": "./dist/vault/index.js"
     },
     "./auth/*": {
-      "types": "./dist/auth/*.d.ts",
       "eliza-source": "./src/auth/*.ts",
+      "types": "./dist/auth/*.d.ts",
       "import": "./dist/auth/*.js",
       "default": "./dist/auth/*.js"
     },
     "./vault/*": {
-      "types": "./dist/vault/*.d.ts",
       "eliza-source": "./src/vault/*.ts",
+      "types": "./dist/vault/*.d.ts",
       "import": "./dist/vault/*.js",
       "default": "./dist/vault/*.js"
     },
     "./kms": {
-      "types": "./dist/kms/index.d.ts",
       "eliza-source": "./src/kms/index.ts",
+      "types": "./dist/kms/index.d.ts",
       "import": "./dist/kms/index.js",
       "default": "./dist/kms/index.js"
     },
     "./credentials": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }

@@ -28,9 +28,6 @@
       "bun-types"
     ],
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/dist"
-      ]
     },
     "noUnusedLocals": true,
     "noUnusedParameters": true,

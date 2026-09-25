@@ -19,8 +19,13 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { Plugin } from "@elizaos/core";
-import { ElizaError, formatError, logger } from "@elizaos/core";
+import {
+  ElizaError,
+  formatError,
+  logger,
+  type Plugin,
+  type PluginInstallRecord,
+} from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
@@ -29,7 +34,6 @@ import {
 } from "../config/dev-cloud-env-authority.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
-import type { PluginInstallRecord } from "../config/types.eliza.ts";
 import {
   type AppManifestBlock,
   applyAppManifestDefaults,

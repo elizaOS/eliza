@@ -11,6 +11,8 @@ Import graph stores, `KnowledgeGraphService`, and `knowledgeGraphSchema` from
 `@elizaos/plugin-relationships/register` leaf to register the signed page; importing the package
 alone does not register it. The app's manifest loader invokes this function through
 `elizaos.appRegister.export`.
+The app renderer resolves that root to `src/browser.ts`, which exposes the views
+and registration without loading database adapters or runtime services in Vite.
 
 ## Development
 

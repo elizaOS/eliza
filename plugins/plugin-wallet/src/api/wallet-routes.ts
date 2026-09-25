@@ -7,32 +7,31 @@
 // `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import {
-  type RouteHelpers,
-  type RouteRequestMeta,
+import { type AgentRuntime, type ElizaConfig, logger } from "@elizaos/core";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
 } from "@elizaos/core/api/route-helpers";
-import { type ElizaConfig } from "@elizaos/core/config/types";
 import { normalizeWalletRpcSelections } from "@elizaos/core/contracts/wallet";
 import {
   PostWalletGenerateRequestSchema,
   PostWalletImportRequestSchema,
   PostWalletPrimaryRequestSchema,
 } from "@elizaos/core/contracts/wallet-routes";
-import {
-  type WalletBalancesResponse,
-  type WalletChain,
-  type WalletChainKind,
-  type WalletConfigStatus,
-  type WalletConfigUpdateRequest,
-  type WalletEntry,
-  type WalletExportRejection as WalletExportRejectionLike,
-  type WalletExportRequestBody,
-  type WalletNftsResponse,
-  type WalletPrimaryMap,
-  type WalletRpcChain,
-  type WalletRpcSelections,
-  type WalletSource,
+import type {
+  WalletBalancesResponse,
+  WalletChain,
+  WalletChainKind,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
+  WalletEntry,
+  WalletExportRejection as WalletExportRejectionLike,
+  WalletExportRequestBody,
+  WalletNftsResponse,
+  WalletPrimaryMap,
+  WalletRpcChain,
+  WalletRpcSelections,
+  WalletSource,
 } from "@elizaos/core/contracts/wallet-types";
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.

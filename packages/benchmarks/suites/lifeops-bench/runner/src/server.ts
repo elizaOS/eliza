@@ -25,6 +25,10 @@ import {
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import dotenv from "dotenv";
+import {
+  prepareBenchmarkImages,
+  processBenchmarkImages,
+} from "./benchmark-images.js";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
   LIFECYCLE_TASK_CONTEXTS,
@@ -38,7 +42,7 @@ import {
   LifeOpsBenchHandler,
   type LifeOpsBenchTurnRecord,
 } from "./lifeops-bench-handler.js";
-import { type LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
+import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
   clearCapturedAction,
   createBenchmarkPlugin,
@@ -1556,6 +1560,7 @@ export async function startBenchmarkServer() {
   // Optional runtime setting passthrough for deterministic benchmark tuning.
   // Useful for forcing compaction behavior in context-stress scenarios.
   const runtimeSettingKeys = [
+    "DISABLE_IMAGE_DESCRIPTION",
     "MAX_CONVERSATION_TOKENS",
     "AUTO_COMPACT",
     "CONVERSATION_LENGTH",
@@ -2414,7 +2419,13 @@ export async function startBenchmarkServer() {
           const trajectory = trajectoriesBySession.get(key) ?? [];
           const startedAt = Date.now();
           await ensureBenchmarkSessionContext(runtime, session);
-          const benchmarkContext = normalizeBenchmarkContext(session, context);
+          const normalizedContext = normalizeBenchmarkContext(session, context);
+          const preparedImages =
+            isOsworldBenchmarkName(session.benchmark) ||
+            isVisualWebBenchmarkName(session.benchmark)
+              ? prepareBenchmarkImages(normalizedContext)
+              : { context: normalizedContext, attachments: [] };
+          const benchmarkContext = preparedImages.context;
           const composedPrompt = composeBenchmarkPrompt({
             text,
             context: benchmarkContext,
@@ -3021,9 +3032,7 @@ export async function startBenchmarkServer() {
           }
           if (
             isTerminalBenchmarkName(session.benchmark) ||
-            isSweBenchmarkName(session.benchmark) ||
-            isVisualWebBenchmarkName(session.benchmark) ||
-            isOsworldBenchmarkName(session.benchmark)
+            isSweBenchmarkName(session.benchmark)
           ) {
             const maxTokens =
               typeof benchmarkContext.max_tokens === "number"
@@ -3147,13 +3156,18 @@ export async function startBenchmarkServer() {
           const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
           const handleNativeTurn = () =>
             runWithBenchmarkContext(benchmarkContext, () =>
-              usageCapture.run(turnUsageBuffer, () =>
-                messageService.handleMessage(
+              usageCapture.run(turnUsageBuffer, async () => {
+                incomingMessage.content.attachments =
+                  await processBenchmarkImages(
+                    runtime,
+                    preparedImages.attachments,
+                  );
+                return messageService.handleMessage(
                   runtime,
                   incomingMessage,
                   callback,
-                ),
-              ),
+                );
+              }),
             );
           const lifecycleDispatch = lifecycleProfile
             ? await runWithLlmInputSubstringAttestation(
@@ -3165,6 +3179,19 @@ export async function startBenchmarkServer() {
           const result = lifecycleTurn
             ? lifecycleTurn.result
             : await handleNativeTurn();
+          if (
+            result.outcome.status === "failed" ||
+            result.outcome.status === "cancelled"
+          ) {
+            throw new ElizaError(
+              "Native benchmark agent turn did not complete",
+              {
+                code: "BENCHMARK_AGENT_TURN_FAILED",
+                severity: "fatal",
+                context: { outcome: result.outcome },
+              },
+            );
+          }
           const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
           if (lifecycleProfile) {
             const attestation = lifecycleDispatch?.attestation;
@@ -3274,7 +3301,28 @@ export async function startBenchmarkServer() {
                 : capturedActions,
               tool_calls: toolCalls,
               usage: turnUsage,
-              metadata,
+              metadata: {
+                ...metadata,
+                ...(preparedImages.attachments.length
+                  ? {
+                      image_input_mode: "native_image_description",
+                      image_model_usage: turnUsage.calls.filter(
+                        (call) =>
+                          call.modelType === ModelType.IMAGE_DESCRIPTION,
+                      ),
+                      image_references: preparedImages.attachments.map(
+                        ({ id, url, checksum, mimeType, size }) => ({
+                          id,
+                          url,
+                          checksum,
+                          mimeType,
+                          size,
+                        }),
+                      ),
+                    }
+                  : {}),
+              },
+              outcome: result.outcome,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,

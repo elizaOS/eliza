@@ -39,12 +39,12 @@ import {
   removePublicBuildStamp,
   shouldSkipBuildStamp,
 } from "./scripts/build-stamp.ts";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.ts";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.ts";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
 } from "./scripts/lib/android-cloud-routing-markers.ts";
+import { CAPACITOR_PLUGIN_NAMES } from "./scripts/lib/capacitor-plugin-names.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
@@ -890,7 +890,12 @@ function createAppPluginSourceAliases() {
     if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
-    const sourceEntry = ["src/index.ts", "src/index.tsx", "index.ts"]
+    const sourceEntry = [
+      "src/browser.ts",
+      "src/index.ts",
+      "src/index.tsx",
+      "index.ts",
+    ]
       .map((relativePath) => path.join(pkgDir, relativePath))
       .find((candidate) => fs.existsSync(candidate));
     if (!sourceEntry) {

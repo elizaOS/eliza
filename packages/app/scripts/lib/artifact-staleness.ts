@@ -49,14 +49,22 @@ export function maxMtimeUnder(
     maxDepth?: number;
   } = {},
 ) {
+  if (!Number.isSafeInteger(maxDepth) || maxDepth < 0) {
+    throw new Error(
+      "Source traversal maxDepth must be a nonnegative safe integer",
+    );
+  }
   let max = 0;
   const walk = (current: string, depth: number) => {
-    if (depth > maxDepth) return;
+    if (depth > maxDepth)
+      throw new Error(`Source traversal exceeds depth ${maxDepth}: ${current}`);
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      return;
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return;
+      throw error;
     }
     for (const entry of entries) {
       if (exclude.has(entry.name)) continue;
@@ -68,21 +76,30 @@ export function maxMtimeUnder(
       if (exts && !exts.has(path.extname(entry.name))) continue;
       try {
         max = Math.max(max, fs.statSync(full).mtimeMs);
-      } catch {
-        /* ignore unreadable entries */
+      } catch (error) {
+        if (
+          !(
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "ENOENT"
+          )
+        )
+          throw error;
       }
     }
   };
-  if (fs.existsSync(dir)) walk(dir, 0);
+  walk(dir, 0);
   return max;
 }
 
-/** mtime (ms) of a single file, or 0 if missing/unreadable. */
+/** mtime (ms) of a single file, or 0 if missing; unreadable paths fail. */
 export function fileMtime(filePath: string) {
   try {
     return fs.statSync(filePath).mtimeMs;
-  } catch {
-    return 0;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return 0;
+    throw error;
   }
 }
 

@@ -8,7 +8,6 @@ export { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character
 export {
   clearElizaApiBase,
   clearElizaApiToken,
-  type ElizaWindow,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
