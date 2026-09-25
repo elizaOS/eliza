@@ -1282,6 +1282,12 @@
 			"import": "./dist/voice/voice-cancellation-token.js",
 			"default": "./dist/voice/voice-cancellation-token.js"
 		},
+		"./utils/state-dir": {
+			"eliza-source": "./src/utils/state-dir.ts",
+			"types": "./dist/utils/state-dir.d.ts",
+			"import": "./dist/utils/state-dir.js",
+			"default": "./dist/utils/state-dir.js"
+		},
 		"./utils/exec-safety": {
 			"eliza-source": "./src/utils/exec-safety.ts",
 			"types": "./dist/utils/exec-safety.d.ts",

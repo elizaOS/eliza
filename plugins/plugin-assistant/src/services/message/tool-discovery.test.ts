@@ -8,10 +8,12 @@ import type {
 } from "@elizaos/core";
 import {
   buildPlannerToolsFromActions,
+  normalizeActionJsonSchema,
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
+import { notesPlugin } from "../../../../plugin-notes/src/plugin.ts";
 import { documentAction } from "../../features/documents/actions";
 import { createAssistantPlugin } from "../../index.ts";
 import { collectV5PlannerCandidateActions } from "./action-surface";
@@ -29,6 +31,171 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("canonical discovery surface", () => {
+  it("retains discriminator and parent validation boundaries for every explicitly discovered child", async () => {
+    const dispatched: unknown[] = [];
+    const validated: unknown[] = [];
+    const parent: Action = {
+      name: "LEDGER",
+      description: "Read, create, or delete a ledger entry",
+      parameters: [
+        {
+          name: "action",
+          description: "Operation",
+          required: true,
+          schema: { type: "string", enum: ["read", "create", "delete"] },
+        },
+      ],
+      validate: async (_runtime, _message, _state, options) => {
+        validated.push(options?.parameters?.action);
+        return false;
+      },
+      handler: async (_runtime, _message, _state, options) => {
+        dispatched.push(options?.parameters?.action);
+        return { success: true };
+      },
+    };
+    const actions = [...promoteSubactionsToActions(parent)];
+    const context: ContextObject = {
+      id: "pinned-discovery",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    for (const child of actions.slice(1)) {
+      const tools = collectPlannerTools(context, actions, {
+        canonicalFamilies: true,
+        directActionNames: new Set([child.name, "UNREGISTERED_OPERATION"]),
+      });
+      const native = tools.find((tool) => tool.name === child.name);
+      expect(native?.parameters).toEqual(normalizeActionJsonSchema(child));
+      expect(tools.some((tool) => tool.name === "UNREGISTERED_OPERATION")).toBe(
+        false,
+      );
+      const pin = normalizeActionJsonSchema(child).properties?.action.default;
+      expect(native?.parameters.properties?.action.enum).toEqual([pin]);
+      const conflicting = pin === "delete" ? "read" : "delete";
+      const before = dispatched.length;
+      expect(
+        (
+          await child.handler?.(runtime, message, undefined, {
+            parameters: { action: conflicting },
+          })
+        )?.success,
+      ).toBe(false);
+      expect(dispatched).toHaveLength(before);
+      expect(
+        await child.validate?.(runtime, message, undefined, { parameters: {} }),
+      ).toBe(false);
+      expect(validated.at(-1)).toBe(pin);
+      // Direct wrapper dispatch independently proves the pin. Normal execution
+      // first checks the validator above and would stop on its false result.
+      expect(
+        (await child.handler?.(runtime, message, undefined, { parameters: {} }))
+          ?.success,
+      ).toBe(true);
+      expect(dispatched.at(-1)).toBe(pin);
+    }
+  });
+
+  it("refines a Notes search simile to its native child and progressively loads another operation", async () => {
+    const actions = notesPlugin.actions ?? [];
+    const list = actions.find((action) => action.name === "NOTES_LIST");
+    if (!list) throw new Error("Missing registered NOTES_LIST");
+    const initial = collectBudgetedStageOneCandidateActions({
+      actions,
+      candidateActions: ["SEARCH_NOTES"],
+      contexts: ["notes"],
+      deferUnselectedContexts: true,
+      deferParentHints: true,
+      intents: ["search notes"],
+    });
+    expect(initial.map((action) => action.name)).toEqual(["NOTES_LIST"]);
+    const context: ContextObject = {
+      id: "notes-search",
+      events: initial.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    const tools = collectPlannerTools(context, initial, {
+      canonicalFamilies: true,
+    });
+    const native = tools.find((tool) => tool.name === "NOTES_LIST");
+    expect(native?.parameters).toEqual(normalizeActionJsonSchema(list));
+    expect(native?.parameters.properties?.content.minLength).toBe(1);
+    expect(native?.description).not.toContain("Complete alias contracts:");
+    expect(tools.some((tool) => tool.name === "NOTES")).toBe(false);
+    const before = structuredClone(native);
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (loaded, names) =>
+        appendDiscoveredPlannerTools(context, tools, loaded, names),
+    );
+    expect(
+      (
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: ["NOTES_GET"] },
+        })
+      )?.success,
+    ).toBe(true);
+    expect(tools.find((tool) => tool.name === "NOTES_LIST")).toEqual(before);
+    const get = actions.find((action) => action.name === "NOTES_GET");
+    if (!get) throw new Error("Missing registered NOTES_GET");
+    expect(tools.find((tool) => tool.name === "NOTES_GET")?.parameters).toEqual(
+      normalizeActionJsonSchema(get),
+    );
+    expect(
+      (
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: ["NOTES"] },
+        })
+      )?.success,
+    ).toBe(true);
+    expect(tools.some((tool) => tool.name === "NOTES")).toBe(true);
+    // Loading a complete family later must not weaken an already selected child.
+    const expanded = collectPlannerTools(context, actions, {
+      canonicalFamilies: true,
+      directActionNames: new Set(["NOTES_LIST", "NOTES_GET"]),
+    });
+    expect(
+      expanded.find((tool) => tool.name === "NOTES_LIST")?.parameters,
+    ).toEqual(native?.parameters);
+    const umbrella = expanded.find((tool) => tool.name === "NOTES");
+    expect(umbrella?.description).toContain("NOTES_CREATE");
+    for (const action of actions) {
+      expect(
+        expanded.some((tool) => tool.name === action.name) ||
+          umbrella?.description.includes(action.name),
+      ).toBe(true);
+    }
+    expect(
+      collectBudgetedStageOneCandidateActions({
+        actions,
+        candidateActions: ["NOTES"],
+        contexts: [],
+        deferUnselectedContexts: true,
+        intents: ["search notes"],
+      }).map((action) => action.name),
+    ).toEqual(["NOTES_LIST"]);
+    for (const [hint, intents] of [
+      ["NOTES", ["organize notes"]],
+      ["SEARCH_NOTES", ["organize notes"]],
+    ] as const) {
+      const family = collectBudgetedStageOneCandidateActions({
+        actions,
+        candidateActions: [hint],
+        contexts: [],
+        deferUnselectedContexts: true,
+        intents,
+      });
+      expect(family.map((action) => action.name)).toContain("NOTES");
+      expect(family.length).toBe(actions.length);
+    }
+  });
+
   it("exposes one canonical native schema while retaining the legacy simile", async () => {
     const domain: Action = {
       name: "READ_RECORD",

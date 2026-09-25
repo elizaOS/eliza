@@ -1241,6 +1241,7 @@ export async function runV5MessageRuntimeStage1(
               contexts: selectedContexts,
               deferUnselectedContexts: true,
               deferParentHints: true,
+              intents: messageHandler.plan.intents,
             });
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain
@@ -1269,11 +1270,23 @@ export async function runV5MessageRuntimeStage1(
     const progressiveActions = canUseProgressiveActions
       ? selectedActionFamilies
       : undefined;
+    const selectedFamilyChildren = new Set(
+      selectedActionFamilies.flatMap((action) =>
+        (action.subActions ?? []).map((child) =>
+          typeof child === "string" ? child : child.name,
+        ),
+      ),
+    );
+    const directPlannerActionNames = new Set(
+      selectedActionFamilies
+        .filter((action) => !selectedFamilyChildren.has(action.name))
+        .map((action) => action.name),
+    );
     if (progressiveActions) {
       progressiveActions.push(
         createPlannerToolDiscoveryAction(
           discoveryCatalogActions,
-          (discoveredActions) => {
+          (discoveredActions, names = []) => {
             // A loaded family's declared contexts join the turn's routing
             // state so its validate() (hasActionContext) sees them at
             // dispatch, exactly as the executor gate already merges them.
@@ -1293,6 +1306,8 @@ export async function runV5MessageRuntimeStage1(
               exposedPlannerActions.map((action) => action.name),
             );
             for (const action of discoveredActions) {
+              if (names.includes(action.name))
+                directPlannerActionNames.add(action.name);
               if (!existingNames.has(action.name)) {
                 exposedPlannerActions.push(action);
                 existingNames.add(action.name);
@@ -1300,12 +1315,15 @@ export async function runV5MessageRuntimeStage1(
             }
             // The planner loop holds this array for the lifetime of the turn.
             // Update it in place so the next model call sees the loaded schemas.
-            // A newly complete family uses the same canonical contract as
-            // initial loading, including any previously standalone aliases.
+            // Family loading keeps earlier selected child schemas native;
+            // unselected siblings retain their complete umbrella contract.
             const expandedTools = collectPlannerTools(
               plannerContextWithDecision,
               exposedPlannerActions,
-              { canonicalFamilies: true },
+              {
+                canonicalFamilies: true,
+                directActionNames: directPlannerActionNames,
+              },
             );
             plannerTools.splice(0, plannerTools.length, ...expandedTools);
           },
@@ -1548,6 +1566,7 @@ export async function runV5MessageRuntimeStage1(
       undefined,
       {
         canonicalFamilies: true,
+        directActionNames: directPlannerActionNames,
       },
     );
     // No dispatch-budget preflight: the planner receives every authorized

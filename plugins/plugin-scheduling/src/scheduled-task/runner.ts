@@ -1179,7 +1179,7 @@ export function createScheduledTaskRunner(
   const fireSnapshots = new WeakMap<ScheduledTask, ScheduledTask>();
   const mutationSnapshots = new WeakMap<
     ScheduledTask,
-    { previous: ScheduledTask; verb: ScheduledTaskVerb }
+    { previous: ScheduledTask; verb: ScheduledTaskVerb; conditional?: boolean }
   >();
 
   function expectation(task: ScheduledTask) {
@@ -1310,7 +1310,9 @@ export function createScheduledTaskRunner(
       : null;
     if (prepared) Object.assign(task, prepared);
     const observed =
-      prepared && mutation ? mutation.previous : fireSnapshots.get(task);
+      mutation && (prepared || mutation.conditional)
+        ? mutation.previous
+        : fireSnapshots.get(task);
     const nextFireAtIso = await resolveNextFireAt(task);
     const expectedStatus = opts?.expectedStatus ?? observed?.state.status;
     if (expectedStatus !== undefined) {
@@ -1319,7 +1321,8 @@ export function createScheduledTaskRunner(
         expectedStatus,
         ...(observed ? expectation(observed) : {}),
       });
-      if (!applied && prepared) throw scheduledTaskMutationRace(task.taskId);
+      if (!applied && (prepared || mutation?.conditional))
+        throw scheduledTaskMutationRace(task.taskId);
       if (applied && fireSnapshots.has(task))
         fireSnapshots.set(task, structuredClone(task));
       return applied ? structuredClone(task) : null;
@@ -2104,12 +2107,23 @@ export function createScheduledTaskRunner(
     taskId: string,
     verb: ScheduledTaskVerb,
     payload?: unknown,
+    options?: { expectedTask: ScheduledTask },
   ): Promise<ScheduledTask> {
     const task = await deps.store.get(taskId);
     if (!task) {
       throw new Error(`apply: task ${taskId} not found`);
     }
-    mutationSnapshots.set(task, { previous: structuredClone(task), verb });
+    if (
+      options &&
+      stableStringify(task) !== stableStringify(options.expectedTask)
+    ) {
+      throw scheduledTaskMutationRace(taskId);
+    }
+    mutationSnapshots.set(task, {
+      previous: structuredClone(task),
+      verb,
+      conditional: options !== undefined,
+    });
     switch (verb) {
       case "snooze":
         return applySnooze(

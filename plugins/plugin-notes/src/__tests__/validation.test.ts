@@ -42,15 +42,15 @@ describe("Notes boundary validation", () => {
       );
       expect(result).toEqual({
         title: "Header Line",
-        body: "First paragraph\nSecond paragraph",
+        body: "\nFirst paragraph\nSecond paragraph",
       });
     });
 
     it("handles leading and trailing whitespace on lines cleanly", () => {
       const result = parseNoteContent("   Padded Title   \n   Padded Body   ");
       expect(result).toEqual({
-        title: "Padded Title",
-        body: "Padded Body",
+        title: "   Padded Title   ",
+        body: "\n   Padded Body   ",
       });
     });
 
@@ -81,7 +81,7 @@ describe("Notes boundary validation", () => {
     it("leaves multi-line content on the first-line label contract", () => {
       expect(parseNoteContent("Demo Checklist: mic\ncharger")).toEqual({
         title: "Demo Checklist: mic",
-        body: "charger",
+        body: "\ncharger",
       });
     });
 
@@ -145,7 +145,7 @@ describe("Notes boundary validation", () => {
       });
       expect(note).toEqual({
         title: "Task Note",
-        body: "Details here",
+        body: "\nDetails here",
         color: "rose",
       });
     });
@@ -204,6 +204,27 @@ describe("Notes boundary validation", () => {
       };
       const parsed = parseNotesDocument(validDoc);
       expect(parsed).toEqual(validDoc);
+    });
+
+    it("rejects all-whitespace canonical persisted content", () => {
+      const timestamp = "2026-08-12T12:00:00.000Z";
+      expect(() =>
+        parseNotesDocument({
+          schemaVersion: NOTES_SCHEMA_VERSION,
+          revision: 1,
+          persistedAt: timestamp,
+          notes: [
+            {
+              id: "note-blank",
+              title: " ".repeat(240),
+              body: "\n ",
+              color: "yellow",
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        }),
+      ).toThrow("Stored note content must not be empty");
     });
 
     it("rejects duplicate note IDs in document", () => {

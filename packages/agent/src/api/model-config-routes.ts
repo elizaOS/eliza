@@ -755,10 +755,7 @@ export function resolveActiveChat(
             mockBaseURL: processEnv.ELIZA_MOCK_ANTHROPIC_BASE,
           })
         : resolveOpenAIBaseURL(
-            (key) =>
-              key === "ELIZA_PROVIDER" && provider === "cerebras"
-                ? "cerebras"
-                : readSetting(key),
+            (key) => (key === "ELIZA_PROVIDER" ? provider : readSetting(key)),
             { mockBaseURL: processEnv.ELIZA_MOCK_OPENAI_BASE },
           );
   const endpoint =

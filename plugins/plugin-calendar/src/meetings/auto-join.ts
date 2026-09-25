@@ -9,7 +9,7 @@
  * - A per-event anchor `calendar_event.start:<eventId>` is registered on the
  *   runtime anchor registry (override on re-register), resolving to the
  *   event's current `startAt`. Rescheduled events re-register the anchor, so
- *   the join task follows the event without editing the task row.
+ *   the join task follows the event, with its occurrence metadata kept current.
  * - Policy `"all"`: one `kind: "custom"` task with
  *   `trigger: { kind: "relative_to_anchor", offsetMinutes: -1 }`,
  *   `subject: { kind: "calendar_event", id }`, dispatched through the
@@ -26,7 +26,7 @@
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   MEETING_PLATFORM_LABELS,
   type ParsedMeetingUrl,
@@ -49,6 +49,19 @@ import { MEETING_JOIN_CHANNEL_KEY } from "./meeting-join-dispatch.js";
 
 const LOG_PREFIX = "[CalendarMeetingAutoJoin]";
 const CREATED_BY = "@elizaos/plugin-calendar";
+const CANCELLATION_PREFIX = "calendar-auto-join-cancel: ";
+const CANCELLATION_REASONS = new Set(
+  [
+    "conference link removed or unrecognized",
+    "meeting auto-join disabled",
+    "event already ended",
+    'auto-join policy changed to "all"',
+    'auto-join policy changed to "ask"',
+    "owner declined meeting auto-join",
+    "meeting approval occurrence changed",
+    "calendar event deleted",
+  ].map((reason) => `${CANCELLATION_PREFIX}${reason}`),
+);
 
 /** Marker on every task this module owns. */
 export const AUTO_JOIN_METADATA_FLAG = "calendarAutoJoin";
@@ -149,7 +162,16 @@ async function dismissTasks(
 ): Promise<void> {
   for (const task of tasks) {
     if (!isLive(task)) continue;
-    await runner.apply(task.taskId, "dismiss", { reason });
+    // The reason commits with the dismissed state; no partial metadata marker
+    // may make a later owner decline look like an automatic cancellation.
+    await runner.apply(
+      task.taskId,
+      "dismiss",
+      {
+        reason: `${CANCELLATION_PREFIX}${reason}`,
+      },
+      { expectedTask: task },
+    );
   }
 }
 
@@ -279,31 +301,83 @@ async function reconcileEvent(
     return [];
   }
 
-  // Keep the anchor current so a rescheduled event fires at the new start.
-  registerEventStartAnchor(runtime, event.id, event.startAt);
-
   // Live tasks created under a different policy mode are stale — dismiss and
   // recreate under the current mode.
-  const stale = live.filter((task) => taskMode(task) !== policy);
-  if (stale.length > 0) {
+  const matchesOccurrence = (task: ScheduledTask): boolean =>
+    task.metadata?.eventStartAt === event.startAt &&
+    task.metadata?.meetingUrl === parsed.meetingUrl &&
+    task.metadata?.platform === parsed.platform;
+  const stale = live.filter(
+    (task) =>
+      taskMode(task) !== policy ||
+      (policy === "ask" && !matchesOccurrence(task)),
+  );
+  for (const task of stale) {
     await dismissTasks(
       runner,
-      stale,
-      `auto-join policy changed to "${policy}"`,
+      [task],
+      taskMode(task) !== policy
+        ? `auto-join policy changed to "${policy}"`
+        : "meeting approval occurrence changed",
     );
   }
-  const current = live.filter((task) => taskMode(task) === policy);
+  const current: ScheduledTask[] = [];
+  for (const task of live.filter((task) => !stale.includes(task))) {
+    // Persist the occurrence before moving its anchor. Otherwise a task that
+    // follows a reschedule and then completes still claims the old occurrence.
+    current.push(
+      matchesOccurrence(task)
+        ? task
+        : await runner.apply(
+            task.taskId,
+            "edit",
+            {
+              metadata: {
+                ...task.metadata,
+                eventStartAt: event.startAt,
+                meetingUrl: parsed.meetingUrl,
+                platform: parsed.platform,
+              },
+            },
+            { expectedTask: task },
+          ),
+    );
+  }
+  registerEventStartAnchor(runtime, event.id, event.startAt);
+
+  // A task of the same role that already reached a terminal state for this
+  // same event start under the current policy is settled: the agent joined,
+  // or the owner answered the approval, and the meeting is still in progress.
+  // Recreating it would anchor a fresh join at start - 1 min, which is already
+  // due, so the agent would join the same meeting a second time (#29961). A
+  // failed task is not settled, so a failed join stays retryable; settlement
+  // is per role, so a completed approval never settles the join on its behalf.
+  // A rescheduled event carries a new startAt and is reconciled afresh.
+  const findSettled = (role: "join" | "approval"): ScheduledTask | undefined =>
+    existing.find(
+      (task) =>
+        !isLive(task) &&
+        task.state.status !== "failed" &&
+        !(
+          task.state.status === "dismissed" &&
+          CANCELLATION_REASONS.has(task.state.lastDecisionLog ?? "")
+        ) &&
+        taskRole(task) === role &&
+        taskMode(task) === policy &&
+        matchesOccurrence(task),
+    );
+  const joinAtStart = (mode: MeetingAutoJoinPolicy): ScheduledTaskInput =>
+    joinTaskInput(event, parsed, mode, {
+      kind: "relative_to_anchor",
+      anchorKey: eventStartAnchorKey(event.id),
+      offsetMinutes: JOIN_OFFSET_MINUTES,
+    });
 
   if (policy === "all") {
     const join = current.find((task) => taskRole(task) === "join");
     if (join) return [join];
-    const scheduled = await runner.schedule(
-      joinTaskInput(event, parsed, "all", {
-        kind: "relative_to_anchor",
-        anchorKey: eventStartAnchorKey(event.id),
-        offsetMinutes: JOIN_OFFSET_MINUTES,
-      }),
-    );
+    if (findSettled("join")) return current;
+    const scheduled = await runner.schedule(joinAtStart("all"));
     logger.info(
       {
         src: "calendar:meeting-auto-join",
@@ -318,7 +392,12 @@ async function reconcileEvent(
 
   // policy === "ask"
   let approval = current.find((task) => taskRole(task) === "approval");
-  if (!approval) {
+  const settledApproval = findSettled("approval");
+  if (settledApproval && settledApproval.state.status !== "completed") {
+    await dismissTasks(runner, current, "owner declined meeting auto-join");
+    return [];
+  }
+  if (!approval && !settledApproval) {
     approval = await runner.schedule(approvalTaskInput(event, parsed));
     logger.info(
       {
@@ -330,25 +409,53 @@ async function reconcileEvent(
     );
   }
   let join = current.find((task) => taskRole(task) === "join");
-  if (!join) {
-    join = await runner.schedule(
-      joinTaskInput(event, parsed, "ask", {
-        kind: "after_task",
-        taskId: approval.taskId,
-        outcome: "completed",
-      }),
-    );
-    logger.info(
-      {
-        src: "calendar:meeting-auto-join",
-        eventId: event.id,
-        taskId: join.taskId,
-        approvalTaskId: approval.taskId,
-      },
-      `${LOG_PREFIX} Scheduled approval-gated meeting join for event ${event.id}.`,
-    );
+  if (
+    join?.trigger.kind === "after_task" &&
+    join.trigger.taskId !== (approval ?? settledApproval)?.taskId
+  ) {
+    await dismissTasks(runner, [join], "meeting approval occurrence changed");
+    join = undefined;
   }
-  return [approval, join];
+  if (!join && !findSettled("join")) {
+    if (approval) {
+      join = await runner.schedule(
+        joinTaskInput(event, parsed, "ask", {
+          kind: "after_task",
+          taskId: approval.taskId,
+          outcome: "completed",
+        }),
+      );
+      logger.info(
+        {
+          src: "calendar:meeting-auto-join",
+          eventId: event.id,
+          taskId: join.taskId,
+          approvalTaskId: approval.taskId,
+        },
+        `${LOG_PREFIX} Scheduled approval-gated meeting join for event ${event.id}.`,
+      );
+    } else if (settledApproval?.state.status === "completed") {
+      // The owner already approved and the join itself failed. An after_task
+      // child only fires when its parent transitions, and that approval is
+      // already terminal, so the retry is anchored at the event start instead
+      // of re-prompting an owner who has answered.
+      join = await runner.schedule(joinAtStart("ask"));
+      logger.info(
+        {
+          src: "calendar:meeting-auto-join",
+          eventId: event.id,
+          taskId: join.taskId,
+          approvalTaskId: settledApproval.taskId,
+        },
+        `${LOG_PREFIX} Rescheduled failed meeting join for event ${event.id} under the owner's existing approval.`,
+      );
+    }
+    // An approval the owner dismissed, skipped, or let expire grants nothing;
+    // no join is scheduled for it.
+  }
+  return [approval, join].filter(
+    (task): task is ScheduledTask => task !== undefined,
+  );
 }
 
 export interface ReconcileMeetingAutoJoinArgs {

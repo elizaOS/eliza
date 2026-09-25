@@ -19,7 +19,7 @@ import notesPlugin, {
 } from "../../../../../plugins/plugin-notes/src/index.ts";
 
 const title = "Workflow launch checklist";
-const originalBody = "Confirm the native run output.\nKeep  two spaces.";
+const originalBody = "\nConfirm the native run output.\nKeep  two spaces.";
 const updatedBody =
   "Confirm the native run and widget output.\nKeep  two spaces.";
 let notesFilePath: string;
@@ -191,7 +191,7 @@ export default scenario({
       options: {
         parameters: {
           action: "create",
-          content: `${title}\n${originalBody}`,
+          content: `${title}${originalBody}`,
         },
       },
       assertTurn: expectNotesResult("create", originalBody),
@@ -214,7 +214,7 @@ export default scenario({
       options: {
         parameters: replacementParameters,
       },
-      assertTurn: expectNotesResult("update", updatedBody),
+      assertTurn: expectNotesResult("update", `\n${updatedBody}`),
     },
     {
       kind: "action",
@@ -224,7 +224,7 @@ export default scenario({
       options: {
         parameters: { action: "list", content: "Workflow launch" },
       },
-      assertTurn: expectNotesResult("list", updatedBody),
+      assertTurn: expectNotesResult("list", `\n${updatedBody}`),
     },
     {
       kind: "action",
@@ -234,7 +234,7 @@ export default scenario({
       options: {
         parameters: { action: "delete", content: "Workflow launch checklist" },
       },
-      assertTurn: expectNotesResult("delete", updatedBody),
+      assertTurn: expectNotesResult("delete", `\n${updatedBody}`),
     },
   ],
   finalChecks: [

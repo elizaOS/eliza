@@ -33,3 +33,29 @@ describe("OpenAI-compatible endpoint config", () => {
     expect(diagnosed).toBe(inferred);
   });
 });
+
+it.each(["", "  ", "unknown-backend"])("keeps credential fallback for selector %j", (selector) => {
+  const settings: Record<string, string> = {
+    ELIZA_PROVIDER: selector,
+    CEREBRAS_API_KEY: "synthetic-cerebras",
+  };
+  expect(resolveOpenAIBaseURL((key) => settings[key])).toBe("https://api.cerebras.ai/v1");
+});
+
+it.each([
+  [" openai ", "https://api.cerebras.ai/v1", "https://api.openai.com/v1"],
+  ["cerebras", "https://api.openai.com/v1", "https://api.cerebras.ai/v1"],
+  ["openai", "https://custom-gateway.example/v1", "https://custom-gateway.example/v1"],
+  ["cerebras", "https://custom-gateway.example/v1", "https://custom-gateway.example/v1"],
+])(
+  "uses selector %s without leaking credentials to a stale first-party endpoint",
+  (provider, base, expected) => {
+    const settings: Record<string, string> = {
+      ELIZA_PROVIDER: provider,
+      OPENAI_BASE_URL: base,
+      OPENAI_API_KEY: "synthetic-openai",
+      CEREBRAS_API_KEY: "synthetic-cerebras",
+    };
+    expect(resolveOpenAIBaseURL((key) => settings[key])).toBe(expected);
+  }
+);

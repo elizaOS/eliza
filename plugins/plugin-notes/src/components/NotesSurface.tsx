@@ -1,3 +1,4 @@
+import { reconstructNoteContent } from "../types.js";
 /**
  * Renders the authoritative Notes snapshot as a calm read-only collection.
  * Kept transport-agnostic so production, focused tests, and QA fixtures all
@@ -52,11 +53,6 @@ function formatUpdatedAt(value: string): string {
   }).format(new Date(timestamp));
 }
 
-function noteContent(note: StickyNoteModel): string {
-  const body = note.body.trim();
-  return body ? `${note.title}\n${body}` : note.title;
-}
-
 function NoteRow({
   note,
   selected,
@@ -66,7 +62,7 @@ function NoteRow({
   selected: boolean;
   sequence: number;
 }) {
-  const content = noteContent(note);
+  const content = reconstructNoteContent(note);
   const card = useAgentElement<HTMLLIElement>({
     id: note.id,
     label: `Note ${note.title}`,
@@ -81,7 +77,6 @@ function NoteRow({
     card.ref.current?.focus({ preventScroll: true });
   }, [selected, sequence, card.ref]);
   const material = COLOR_MATERIALS[note.color];
-  const body = note.body.trim();
 
   return (
     <li
@@ -103,34 +98,31 @@ function NoteRow({
         background: `linear-gradient(${material}, ${material}), var(--card, #121212)`,
       }}
     >
-      <h2
-        style={{
-          margin: 0,
-          color: "var(--txt, #f5f5f5)",
-          fontSize: 16,
-          lineHeight: 1.35,
-          fontWeight: 650,
-          letterSpacing: "-.012em",
-          overflowWrap: "anywhere",
-        }}
+      <div
+        data-note-content
+        style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
       >
-        {note.title}
-      </h2>
-      {body ? (
-        <p
+        <h2
           style={{
+            display: "inline",
             margin: 0,
-            color: "var(--muted-strong, rgba(255,255,255,.78))",
-            fontSize: 14,
-            lineHeight: 1.5,
-            fontWeight: 430,
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
+            fontSize: 16,
+            fontWeight: 650,
           }}
         >
-          {body}
-        </p>
-      ) : null}
+          {note.title}
+        </h2>
+        {note.body ? (
+          <span
+            style={{
+              fontSize: 14,
+              color: "var(--muted-strong, rgba(255,255,255,.78))",
+            }}
+          >
+            {note.body}
+          </span>
+        ) : null}
+      </div>
       <p
         style={{
           ...SECONDARY_TEXT_STYLE,

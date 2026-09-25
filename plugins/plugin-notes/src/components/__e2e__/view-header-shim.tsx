@@ -5,7 +5,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 

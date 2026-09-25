@@ -40,6 +40,14 @@ export default defineConfig({
           "src/components/__e2e__/view-header-shim.tsx",
         ),
       },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.resolve(packageRoot, "../../packages/core/src/$1"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.resolve(packageRoot, "../../packages/ui/src/$1"),
+      },
     ],
   },
   server: {

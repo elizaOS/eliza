@@ -113,10 +113,12 @@ it("kills a native read that blocks indefinitely and permits a later retry", () 
     }
   `);
   const started = Date.now();
-  expect(() =>
-    readKeychainKeySync("test", "blocked", { binding, timeoutMs: 500 }),
-  ).toThrow(/Keychain/);
-  expect(Date.now() - started).toBeLessThan(5_000);
+  // Exercise the production deadline. A shorter test-only timeout can expire
+  // during Node startup, before this fixture reaches the blocking native read.
+  expect(() => readKeychainKeySync("test", "blocked", { binding })).toThrow(
+    /Keychain/,
+  );
+  expect(Date.now() - started).toBeLessThan(10_000);
   const pid = Number(readFileSync(join(directory, "child-pid"), "utf8"));
   expect(() => process.kill(pid, 0)).toThrow();
   writeFileSync(

@@ -17,16 +17,21 @@ class NetworkTransitionFixture(context: Context) : Closeable {
         }
     private val wifiEnabled = shell("settings get global wifi_on")
     private val dataEnabled = shell("settings get global mobile_data")
-    private val originalMetered = metered()
+    private val originalMetered: Boolean?
     private val network: String
     private val override: String
 
     init {
         check(android.os.Build.HARDWARE in setOf("ranchu", "goldfish"))
         check(wifiEnabled == "1" && dataEnabled in setOf("0", "1")) { "Expected enabled Wi-Fi and known mobile-data state" }
-        check(connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
-            "Transitions require an active Wi-Fi network"
+        // Radio enablement and default-network selection settle asynchronously,
+        // especially after the preceding SMS instrumentation on a fresh emulator.
+        val deadline = System.nanoTime() + 30_000_000_000L
+        while (connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) {
+            check(System.nanoTime() < deadline) { "Transitions require an active Wi-Fi network; selection did not settle within 30 seconds" }
+            Thread.sleep(100)
         }
+        originalMetered = metered()
         val configurations = shell("cmd netpolicy list wifi-networks").lines().filter { it.isNotBlank() }.distinct()
         check(configurations.size == 1) { "Use an isolated emulator with one Wi-Fi policy: $configurations" }
         val entry = configurations.single().split(';')

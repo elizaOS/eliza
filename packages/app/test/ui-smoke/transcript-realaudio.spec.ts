@@ -574,7 +574,7 @@ async function startTranscriptionViaSpeech(
   probes: TranscriptProbes,
 ): Promise<void> {
   // Feed the spoken command through the existing ASR boundary after real WAV
-  // capture. The refactor retired the typed slash-command menu.
+  // capture. This is distinct from typed entry and the window-event bridge.
   probes.nextAsrText = "start transcription";
   await expect
     .poll(
@@ -604,6 +604,39 @@ async function startTranscriptionViaSpeech(
   await expect(
     page.getByTestId("chat-composer-transcription-stop"),
   ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
+}
+
+async function startTranscriptionViaTypedCommand(page: Page): Promise<void> {
+  const composer = page.getByTestId("chat-composer-textarea");
+  await composer.fill("/transcribe");
+  await composer.press("Enter");
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toBeVisible({ timeout: 15_000 });
+  const openChat = page.getByRole("button", {
+    name: "drag up to open chat",
+    exact: true,
+  });
+  if (await openChat.isVisible()) await openChat.click();
+  await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-transcribing-badge")).toBeInViewport({
+    ratio: 1,
+  });
+  await expect
+    .poll(async () => {
+      const badge = await page
+        .getByTestId("chat-transcribing-badge")
+        .boundingBox();
+      const handle = await page.getByTestId("chat-sheet-grabber").boundingBox();
+      return badge && handle ? badge.y - (handle.y + handle.height) : -1;
+    })
+    .toBeGreaterThanOrEqual(0);
+  await page.screenshot({
+    path: test.info().outputPath("typed-transcription-active.png"),
+    fullPage: true,
+  });
 }
 
 async function finalizeTranscriptionViaStopControl(page: Page): Promise<void> {
@@ -840,7 +873,7 @@ async function prepareTranscriptTestPage(
   await installTranscriptBackendMocks(page, probes);
 }
 
-type TranscriptionControlPath = "speech" | "agent-action";
+type TranscriptionControlPath = "speech" | "typed" | "agent-action";
 
 function normalizeCreateProofForParity(proof: TranscriptCreateProof): {
   audioContentType: string | null;
@@ -870,14 +903,19 @@ async function captureTranscriptRecordViaControlPath(
     timeout: 60_000,
   });
 
-  const mic = page.getByTestId("chat-composer-mic");
-  await expect(mic).toBeVisible({ timeout: 30_000 });
-  await mic.click();
-  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
-    timeout: 15_000,
-  });
+  // Typed entry must start capture from an idle microphone too.
+  if (controlPath !== "typed") {
+    const mic = page.getByTestId("chat-composer-mic");
+    await expect(mic).toBeVisible({ timeout: 30_000 });
+    await mic.click();
+    await expect(mic).toHaveAttribute("aria-label", "end conversation", {
+      timeout: 15_000,
+    });
+  }
 
-  if (controlPath === "agent-action") {
+  if (controlPath === "typed") {
+    await startTranscriptionViaTypedCommand(page);
+  } else if (controlPath === "agent-action") {
     await startTranscriptionViaAgentAction(page);
   } else {
     await startTranscriptionViaSpeech(page, probes);
@@ -1274,3 +1312,36 @@ test("voice-control bridge parity: the eliza:voice-control bridge creates the sa
     await speechPage.close();
   }
 });
+
+// Real microphone WAV capture and client HTTP/UI; backend responses are fixtures.
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`typed /transcribe on ${viewport.name} captures real audio from idle and completes a transcript attachment`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    const probes = freshProbes();
+    await installTranscriptBackendMocks(page, probes);
+    const proof = await captureTranscriptRecordViaControlPath(
+      page,
+      probes,
+      "typed",
+    );
+    expect(normalizeCreateProofForParity(proof)).toEqual({
+      audioContentType: "audio/wav",
+      createdAtType: "number",
+      hasCapturedAudio: true,
+      segmentCount: 1,
+      segmentTexts: [TRANSCRIPT_TEXT],
+    });
+    await page.screenshot({
+      path: test.info().outputPath("typed-transcription-complete.png"),
+      fullPage: true,
+    });
+  });
+}

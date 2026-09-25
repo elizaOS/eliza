@@ -26,7 +26,7 @@ try {
       throw new Error("reset race probe requires ready and go paths");
     }
     fs.writeFileSync(readyFile, "ready");
-    process.stdout.write("ready\n");
+    // Readiness uses the file, independent of test reporter buffering.
     const deadline = Date.now() + 10_000;
     while (!fs.existsSync(goFile) && Date.now() < deadline) {
       Atomics.wait(

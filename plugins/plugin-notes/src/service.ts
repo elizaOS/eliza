@@ -1,3 +1,4 @@
+import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
  * the durable per-agent document; HTTP routes and view capabilities call this
@@ -18,7 +19,9 @@ import type {
 import {
   parseCreateNoteInput,
   parseEntityId,
+  parseNoteContent,
   parseNoteEditRevision,
+  parseStickyNote,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -78,7 +81,7 @@ function queryMatches(
   );
   if (exactTitle.length > 0) return exactTitle;
   const contained = indexed.filter(({ note }) =>
-    normalizedLookup(`${note.title} ${note.body} ${note.color}`).includes(
+    normalizedLookup(`${reconstructNoteContent(note)} ${note.color}`).includes(
       target,
     ),
   );
@@ -220,7 +223,7 @@ function applyNotePatch(
     // A replacement callback keeps $&, $1 and similar text literal. The
     // match is checked under the same store barrier that commits the update.
     const replacement = original.replace(oldText, () => newText);
-    const validated = parseUpdateNoteInput({ [field]: replacement });
+    const validated = parseStickyNote({ ...updated, [field]: replacement });
     if (validated[field] !== replacement) {
       throw new ElizaError(
         "The exact edit would require whitespace normalization; nothing changed.",
@@ -234,8 +237,14 @@ function applyNotePatch(
     updated[field] = replacement;
     return updated;
   }
-  if (patch.title !== undefined) updated.title = patch.title;
-  if (patch.body !== undefined) updated.body = patch.body;
+  if (patch.content !== undefined) {
+    Object.assign(updated, parseNoteContent(patch.content));
+  } else {
+    if (patch.title !== undefined) updated.title = patch.title;
+    // Public structured bodies exclude the separator; stored remainders include it.
+    if (patch.body !== undefined)
+      updated.body = patch.body ? `\n${patch.body}` : "";
+  }
   if (patch.color !== undefined) updated.color = patch.color;
   return updated;
 }

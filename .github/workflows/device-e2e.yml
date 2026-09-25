@@ -104,6 +104,17 @@ jobs:
       - name: Install workspace
         run: bun install --frozen-lockfile
 
+      - name: Bound Android build memory
+        run: |
+          # Leave room for the 6 GiB emulator and renderer build on this runner.
+          # User properties override the workstation-sized project defaults.
+          mkdir -p "$HOME/.gradle"
+          cat > "$HOME/.gradle/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.daemon=false
+          EOF
+
       # KVM enables a usable emulator on GitHub ubuntu runners.
       - name: Enable KVM
         run: |

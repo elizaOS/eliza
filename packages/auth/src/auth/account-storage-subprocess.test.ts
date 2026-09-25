@@ -138,49 +138,89 @@ describe("account storage subprocess ownership", () => {
           ELIZA_STORAGE_PROBE_RESULT: resultFile,
           ELIZA_STORAGE_PROBE_ROOT: root,
         },
+        detached: process.platform !== "win32",
         stdio: ["ignore", "pipe", "pipe"],
       });
       const stderr: Buffer[] = [];
       child.stderr?.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
-      const childDone = new Promise<number | null>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("exit", resolve);
+      // Node's test reporter may buffer stdout until the probe exits. The
+      // ready file is the barrier; reporter output is not a readiness signal.
+      child.stdout?.resume();
+      let closed = false;
+      let spawnError: Error | undefined;
+      child.once("error", (error) => {
+        spawnError = error;
       });
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error("child did not reach reset race barrier")),
-          10_000,
-        );
-        child.once("error", reject);
-        child.stdout?.on("data", () => {
-          if (!fs.existsSync(readyFile)) return;
-          clearTimeout(timeout);
+      const childDone = new Promise<void>((resolve) => {
+        child.once("close", () => {
+          closed = true;
           resolve();
         });
       });
+      const diagnostics = () =>
+        `${runtime} pid=${child.pid ?? "not spawned"} exit=${child.exitCode} signal=${child.signalCode}: ${spawnError?.message ?? Buffer.concat(stderr).toString("utf8")}`;
+      const waitFor = async (ready: () => boolean, phase: string) => {
+        const deadline = Date.now() + 10_000;
+        while (!ready()) {
+          if (spawnError || closed) {
+            throw new Error(`child exited before ${phase}: ${diagnostics()}`);
+          }
+          if (Date.now() >= deadline) {
+            throw new Error(`child did not reach ${phase}: ${diagnostics()}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      };
+      const reapChild = async () => {
+        // Reap the test runner and its probe before afterEach removes storage.
+        if (!closed && child.pid !== undefined) {
+          if (process.platform === "win32") {
+            const stopped = spawnSync(
+              "taskkill",
+              ["/pid", String(child.pid), "/T", "/F"],
+              { encoding: "utf8" },
+            );
+            if (stopped.error) throw stopped.error;
+            if (stopped.status !== 0)
+              throw new Error(`failed to reap probe: ${stopped.stderr}`);
+          } else {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ESRCH")
+                throw error;
+            }
+          }
+        }
+        await childDone;
+      };
+      try {
+        await waitFor(() => fs.existsSync(readyFile), "reset race barrier");
+        const policy = createIsolatedAccountStoragePolicy(root);
+        resetAccountCredentialStorage(policy, () => {
+          fs.writeFileSync(goFile, "go");
+          Atomics.wait(
+            new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
+            0,
+            0,
+            150,
+          );
+        });
 
-      const policy = createIsolatedAccountStoragePolicy(root);
-      resetAccountCredentialStorage(policy, () => {
-        fs.writeFileSync(goFile, "go");
-        Atomics.wait(
-          new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
-          0,
-          0,
-          150,
-        );
-      });
-
-      const exitCode = await childDone;
-      expect(exitCode, Buffer.concat(stderr).toString("utf8")).toBe(0);
-      expect(JSON.parse(fs.readFileSync(resultFile, "utf8"))).toEqual({
-        code: "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
-        ok: false,
-      });
-      expect(
-        fs.existsSync(
-          path.join(root, "auth", "openai-codex", "child-account.json"),
-        ),
-      ).toBe(false);
+        await waitFor(() => closed, "probe completion");
+        expect(child.exitCode, diagnostics()).toBe(0);
+        expect(JSON.parse(fs.readFileSync(resultFile, "utf8"))).toEqual({
+          code: "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
+          ok: false,
+        });
+        expect(
+          fs.existsSync(
+            path.join(root, "auth", "openai-codex", "child-account.json"),
+          ),
+        ).toBe(false);
+      } finally {
+        await reapChild();
+      }
     },
     20_000,
   );

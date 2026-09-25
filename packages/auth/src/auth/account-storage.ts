@@ -14,7 +14,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
+import { logger } from "@elizaos/core/logger";
+import { resolveStateDir } from "@elizaos/core/utils/state-dir";
 import { CryptoError, decrypt, encrypt } from "../vault/crypto.js";
 import { loadDefaultMasterKeySync } from "../vault/master-key.js";
 import {

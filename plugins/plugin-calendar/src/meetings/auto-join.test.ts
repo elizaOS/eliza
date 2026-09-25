@@ -5,8 +5,9 @@
  * shell (getService/getCache) is a test double.
  */
 
+import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   type AnchorRegistry,
   createAnchorRegistry,
@@ -16,15 +17,20 @@ import {
   createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  createSchedulingSqlScheduledTaskLogStore,
+  createSchedulingSqlScheduledTaskStore,
   createTaskGateRegistry,
+  migrateSchedulingTables,
   registerAnchorRegistry,
   registerBuiltInCompletionChecks,
   registerBuiltInGates,
   registerDefaultEscalationLadders,
+  type ScheduledTaskLogStore,
   type ScheduledTaskRunnerHandle,
+  type ScheduledTaskStore,
   TestNoopScheduledTaskDispatcher,
 } from "@elizaos/plugin-scheduling";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APPROVAL_OFFSET_MINUTES,
   cancelAllMeetingAutoJoinTasks,
@@ -44,7 +50,10 @@ interface Harness {
   anchors: AnchorRegistry;
 }
 
-function makeHarness(): Harness {
+function makeHarness(stores?: {
+  store: ScheduledTaskStore;
+  logStore: ScheduledTaskLogStore;
+}): Harness {
   const cache = new Map<string, unknown>();
   const anchors = createAnchorRegistry();
   const gates = createTaskGateRegistry();
@@ -56,8 +65,8 @@ function makeHarness(): Harness {
 
   const runner = createScheduledTaskRunner({
     agentId: AGENT_ID,
-    store: createInMemoryScheduledTaskStore(),
-    logStore: createInMemoryScheduledTaskLogStore(),
+    store: stores?.store ?? createInMemoryScheduledTaskStore(),
+    logStore: stores?.logStore ?? createInMemoryScheduledTaskLogStore(),
     gates,
     completionChecks,
     ladders,
@@ -315,6 +324,542 @@ describe("reconcileMeetingAutoJoin", () => {
       taskId: approval?.taskId,
       outcome: "completed",
     });
+  });
+
+  it("rejects stale reschedule metadata without moving the event anchor", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [makeEvent()],
+      now: () => NOW,
+    });
+    const apply = harness.runner.apply.bind(harness.runner);
+    let raced = false;
+    vi.spyOn(harness.runner, "apply").mockImplementation(
+      async (id, verb, payload, options) => {
+        if (verb === "edit" && !raced) {
+          raced = true;
+          const [task] = await harness.runner.list();
+          await apply(id, "edit", {
+            metadata: { ...task.metadata, concurrentOwnerValue: "preserve" },
+          });
+        }
+        return apply(id, verb, payload, options);
+      },
+    );
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [makeEvent({ startAt: "2026-07-03T17:00:00.000Z" })],
+      now: () => NOW,
+    });
+    expect(
+      (await harness.runner.list())[0].metadata?.concurrentOwnerValue,
+    ).toBe("preserve");
+    expect((await harness.runner.list())[0].metadata?.eventStartAt).toBe(
+      makeEvent().startAt,
+    );
+    expect(
+      await harness.anchors.resolve(eventStartAnchorKey("evt-1"), {
+        nowIso: NOW.toISOString(),
+        ownerFacts: { timezone: "UTC" },
+      }),
+    ).toEqual({ atIso: makeEvent().startAt });
+  });
+
+  it("rejects completion racing the conditional reschedule write", async () => {
+    const store = createInMemoryScheduledTaskStore();
+    const logStore = createInMemoryScheduledTaskLogStore();
+    harness = makeHarness({ store, logStore });
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const reconcile = (event: LifeOpsCalendarEvent) =>
+      reconcileMeetingAutoJoin({
+        runtime: harness.runtime,
+        agentId: AGENT_ID,
+        events: [event],
+        now: () => NOW,
+      });
+    await reconcile(makeEvent());
+    const write = store.upsertIfStatus.bind(store);
+    let raced = false;
+    vi.spyOn(store, "upsertIfStatus").mockImplementation(
+      async (task, options) => {
+        if (!raced) {
+          raced = true;
+          await harness.runner.apply(task.taskId, "complete", {
+            reason: "concurrent completion",
+          });
+        }
+        return write(task, options);
+      },
+    );
+    await reconcile(makeEvent({ startAt: "2026-07-03T17:00:00.000Z" }));
+    const [task] = await harness.runner.list();
+    expect(task.state.status).toBe("completed");
+    expect(task.metadata?.eventStartAt).toBe(makeEvent().startAt);
+    expect(
+      await harness.anchors.resolve(eventStartAnchorKey("evt-1"), {
+        nowIso: NOW.toISOString(),
+        ownerFacts: { timezone: "UTC" },
+      }),
+    ).toEqual({ atIso: makeEvent().startAt });
+    expect(
+      (await logStore.list({ agentId: AGENT_ID, taskId: task.taskId })).some(
+        (row) => row.transition === "edited",
+      ),
+    ).toBe(false);
+  });
+
+  it("failed automatic cancellation cannot disguise a later owner decline", async () => {
+    const store = createInMemoryScheduledTaskStore();
+    harness = makeHarness({
+      store,
+      logStore: createInMemoryScheduledTaskLogStore(),
+    });
+    const reconcile = () =>
+      reconcileMeetingAutoJoin({
+        runtime: harness.runtime,
+        agentId: AGENT_ID,
+        events: [makeEvent()],
+        now: () => NOW,
+      });
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    await reconcile();
+    const approval = (await harness.runner.list()).find(
+      (t) => t.kind === "approval",
+    );
+    if (!approval) throw new Error("missing approval");
+    const failure = vi
+      .spyOn(store, "upsertIfStatus")
+      .mockRejectedValueOnce(new Error("database cancellation failed"));
+    await writeMeetingAutoJoinPolicy(harness.runtime, "off");
+    await reconcile();
+    failure.mockRestore();
+    expect(
+      (await harness.runner.list()).find((t) => t.taskId === approval.taskId)
+        ?.metadata,
+    ).toEqual(approval.metadata);
+    await harness.runner.apply(approval.taskId, "dismiss", {
+      reason: "owner declined",
+    });
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    await reconcile();
+    const after = await harness.runner.list();
+    expect(after.filter((t) => t.kind === "approval")).toHaveLength(1);
+    expect(after.every((t) => t.state.status === "dismissed")).toBe(true);
+  });
+
+  it.each(["scheduled", "fired", "acknowledged"] as const)(
+    "requires a new approval after rescheduling a %s prompt",
+    async (status) => {
+      await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+      const reconcile = (event: LifeOpsCalendarEvent) =>
+        reconcileMeetingAutoJoin({
+          runtime: harness.runtime,
+          agentId: AGENT_ID,
+          events: [event],
+          now: () => NOW,
+        });
+      await reconcile(makeEvent());
+      const original = await harness.runner.list();
+      const approval = original.find((t) => t.kind === "approval");
+      if (!approval) throw new Error("missing approval");
+      if (status !== "scheduled")
+        await harness.runner.fireWithResult(approval.taskId);
+      if (status === "acknowledged")
+        await harness.runner.apply(approval.taskId, "acknowledge");
+      const moved = makeEvent({
+        startAt: "2026-07-03T17:00:00.000Z",
+        endAt: "2026-07-03T17:30:00.000Z",
+      });
+      await reconcile(moved);
+      const tasks = await harness.runner.list();
+      expect(
+        tasks
+          .filter((t) => original.some((old) => old.taskId === t.taskId))
+          .every((t) => t.state.status === "dismissed"),
+      ).toBe(true);
+      const nextApproval = tasks.find(
+        (t) => t.kind === "approval" && t.state.status === "scheduled",
+      );
+      const nextJoin = tasks.find(
+        (t) => t.kind === "custom" && t.state.status === "scheduled",
+      );
+      expect(nextApproval?.promptInstructions).toContain(moved.startAt);
+      expect(nextJoin?.trigger).toEqual({
+        kind: "after_task",
+        taskId: nextApproval?.taskId,
+        outcome: "completed",
+      });
+      await harness.runner.apply(approval.taskId, "complete");
+      expect(
+        (await harness.runner.list()).find((t) => t.taskId === nextJoin?.taskId)
+          ?.state.status,
+      ).toBe("scheduled");
+    },
+  );
+
+  it("does not reuse completed approval for a changed meeting destination", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    const reconcile = (event: LifeOpsCalendarEvent) =>
+      reconcileMeetingAutoJoin({
+        runtime: harness.runtime,
+        agentId: AGENT_ID,
+        events: [event],
+        now: () => NOW,
+      });
+    await reconcile(makeEvent());
+    const oldApproval = (await harness.runner.list()).find(
+      (t) => t.kind === "approval",
+    );
+    if (!oldApproval) throw new Error("missing approval");
+    await harness.runner.apply(oldApproval.taskId, "complete");
+    const changed = makeEvent({
+      conferenceLink: "https://meet.google.com/new-link-abc",
+    });
+    await reconcile(changed);
+    const tasks = await harness.runner.list();
+    const nextApproval = tasks.find(
+      (t) => t.kind === "approval" && t.state.status === "scheduled",
+    );
+    const nextJoin = tasks.find(
+      (t) => t.kind === "custom" && t.state.status === "scheduled",
+    );
+    expect(nextApproval?.metadata?.meetingUrl).toBe(changed.conferenceLink);
+    expect(nextJoin?.trigger).toEqual({
+      kind: "after_task",
+      taskId: nextApproval?.taskId,
+      outcome: "completed",
+    });
+  });
+
+  it("does not carry an old occurrence approval to a rescheduled pending join", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    const reconcile = (event: LifeOpsCalendarEvent) =>
+      reconcileMeetingAutoJoin({
+        runtime: harness.runtime,
+        agentId: AGENT_ID,
+        events: [event],
+        now: () => NOW,
+      });
+    await reconcile(makeEvent());
+    const initial = await autoJoinTasks(harness.runner);
+    const approval = initial.find((t) => t.kind === "approval");
+    if (!approval) throw new Error("missing approval");
+    await harness.runner.apply(approval.taskId, "complete");
+    await reconcile(
+      makeEvent({
+        startAt: "2026-07-04T15:00:00.000Z",
+        endAt: "2026-07-04T15:30:00.000Z",
+      }),
+    );
+    const tasks = await autoJoinTasks(harness.runner);
+    const nextApproval = tasks.find(
+      (t) => t.kind === "approval" && t.state.status === "scheduled",
+    );
+    const nextJoin = tasks.find(
+      (t) => t.kind === "custom" && t.state.status === "scheduled",
+    );
+    expect(nextApproval).toBeDefined();
+    expect(nextJoin?.trigger).toEqual({
+      kind: "after_task",
+      taskId: nextApproval?.taskId,
+      outcome: "completed",
+    });
+    expect(
+      tasks.find(
+        (t) => t.taskId === initial.find((t) => t.kind === "custom")?.taskId,
+      )?.state.status,
+    ).toBe("dismissed");
+  });
+
+  it("reads moved occurrence settlement and receipts after recreating SQL-backed runners", async () => {
+    const pg = new PGlite();
+    try {
+      const executeSql = async (statement: string) =>
+        (await pg.query<Record<string, unknown>>(statement)).rows;
+      await migrateSchedulingTables({
+        execute: executeSql,
+        transaction: (operation) =>
+          pg.transaction((tx) =>
+            operation(
+              async (statement) =>
+                (await tx.query<Record<string, unknown>>(statement)).rows,
+            ),
+          ),
+      });
+      const restart = () =>
+        makeHarness({
+          store: createSchedulingSqlScheduledTaskStore({
+            agentId: AGENT_ID,
+            executeSql,
+          }),
+          logStore: createSchedulingSqlScheduledTaskLogStore({
+            agentId: AGENT_ID,
+            executeSql,
+          }),
+        });
+      let durable = restart();
+      const reconcile = (event: LifeOpsCalendarEvent) =>
+        reconcileMeetingAutoJoin({
+          runtime: durable.runtime,
+          agentId: AGENT_ID,
+          events: [event],
+          now: () => NOW,
+        });
+      await writeMeetingAutoJoinPolicy(durable.runtime, "all");
+      await reconcile(makeEvent());
+      const moved = makeEvent({
+        startAt: "2026-07-03T17:00:00.000Z",
+        endAt: "2026-07-03T17:30:00.000Z",
+      });
+      await reconcile(moved);
+      const [join] = await autoJoinTasks(durable.runner);
+      expect(join.metadata?.eventStartAt).toBe(moved.startAt);
+      const receipt = await durable.runner.applyWithResult(
+        join.taskId,
+        "complete",
+        { reason: "test dispatcher settled" },
+        { idempotencyKey: "settled-join" },
+      );
+      durable = restart();
+      await writeMeetingAutoJoinPolicy(durable.runtime, "all");
+      await reconcile(moved);
+      const after = await autoJoinTasks(durable.runner);
+      expect(after).toHaveLength(1);
+      expect(after[0].taskId).toBe(join.taskId);
+      expect(after[0].state.status).toBe("completed");
+      const rows = await executeSql(
+        "SELECT transition FROM app_scheduling.life_scheduled_task_log WHERE task_id = '" +
+          join.taskId +
+          "'",
+      );
+      expect(rows.map((row) => row.transition)).toEqual(
+        expect.arrayContaining(["scheduled", "edited", "completed"]),
+      );
+      expect(receipt.commit.transition).toBe("completed");
+    } finally {
+      await pg.close();
+    }
+  }, 30_000);
+
+  it.each(["all"] as const)(
+    "settles the moved live occurrence under policy %s",
+    async (policy) => {
+      await writeMeetingAutoJoinPolicy(harness.runtime, policy);
+      const reconcile = (event: LifeOpsCalendarEvent) =>
+        reconcileMeetingAutoJoin({
+          runtime: harness.runtime,
+          agentId: AGENT_ID,
+          events: [event],
+          now: () => NOW,
+        });
+      await reconcile(makeEvent());
+      const original = await autoJoinTasks(harness.runner);
+      const moved = makeEvent({
+        startAt: "2026-07-03T17:00:00.000Z",
+        endAt: "2026-07-03T17:30:00.000Z",
+      });
+      await reconcile(moved);
+      const updated = await autoJoinTasks(harness.runner);
+      expect(updated.map((t) => t.taskId)).toEqual(
+        original.map((t) => t.taskId),
+      );
+      for (const task of updated) {
+        expect(task.metadata).toEqual({
+          ...original.find((t) => t.taskId === task.taskId)?.metadata,
+          eventStartAt: moved.startAt,
+        });
+        await harness.runner.apply(task.taskId, "complete");
+      }
+      await reconcile(moved);
+      await reconcile(moved);
+      expect(
+        (await autoJoinTasks(harness.runner)).map((t) => [
+          t.taskId,
+          t.state.status,
+        ]),
+      ).toEqual(original.map((t) => [t.taskId, "completed"]));
+    },
+  );
+
+  it("re-enables a cancelled occurrence after policy off without erasing its dismissal", async () => {
+    const event = makeEvent();
+    const reconcile = () =>
+      reconcileMeetingAutoJoin({
+        runtime: harness.runtime,
+        agentId: AGENT_ID,
+        events: [event],
+        now: () => NOW,
+      });
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    await reconcile();
+    await writeMeetingAutoJoinPolicy(harness.runtime, "off");
+    await reconcile();
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    await reconcile();
+    expect(
+      (await autoJoinTasks(harness.runner)).map((t) => t.state.status).sort(),
+    ).toEqual(["dismissed", "scheduled"]);
+  });
+
+  it("does not recreate a completed join task while the meeting is still in progress", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const [join] = await autoJoinTasks(harness.runner);
+    // The join fired and the agent is in the meeting.
+    await harness.runner.apply(join.taskId, "complete", { reason: "joined" });
+
+    // A routine feed sync five minutes into the meeting must not schedule a
+    // second, immediately-due join for the same event.
+    const midMeeting = new Date("2026-07-03T15:05:00.000Z");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => midMeeting,
+    });
+    const tasks = await autoJoinTasks(harness.runner);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].taskId).toBe(join.taskId);
+    expect(tasks[0].state.status).toBe("completed");
+  });
+
+  it("schedules a fresh join when a joined event is rescheduled to a new start", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const [join] = await autoJoinTasks(harness.runner);
+    await harness.runner.apply(join.taskId, "complete", { reason: "joined" });
+
+    const moved = makeEvent({
+      startAt: "2026-07-10T15:00:00.000Z",
+      endAt: "2026-07-10T15:30:00.000Z",
+    });
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [moved],
+      now: () => NOW,
+    });
+    const tasks = await autoJoinTasks(harness.runner);
+    expect(tasks).toHaveLength(2);
+    const live = tasks.filter((t) => t.state.status === "scheduled");
+    expect(live).toHaveLength(1);
+    expect(live[0].metadata?.eventStartAt).toBe(moved.startAt);
+  });
+
+  it("does not re-prompt an approval the owner already dismissed", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const before = await autoJoinTasks(harness.runner);
+    const approval = before.find((t) => t.kind === "approval");
+    expect(approval).toBeDefined();
+    if (!approval) throw new Error("approval task missing");
+    await harness.runner.apply(approval.taskId, "dismiss", {
+      reason: "owner declined",
+    });
+
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => new Date("2026-07-03T14:50:00.000Z"),
+    });
+    const after = await autoJoinTasks(harness.runner);
+    expect(after.filter((t) => t.kind === "approval")).toHaveLength(1);
+    expect(after.filter((t) => t.state.status === "scheduled")).toHaveLength(0);
+    expect(after.find((t) => t.kind === "custom")?.state.status).toBe(
+      "dismissed",
+    );
+  });
+
+  it("retries a failed join in ask mode under the owner's completed approval without re-prompting", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const initial = await autoJoinTasks(harness.runner);
+    const approval = initial.find((t) => t.kind === "approval");
+    const join = initial.find((t) => t.kind === "custom");
+    if (!approval || !join) throw new Error("approval pair missing");
+    // The owner approves, then the join fails (the runner's terminal
+    // transition when dispatch escalation is exhausted).
+    await harness.runner.apply(approval.taskId, "complete", {
+      reason: "owner approved",
+    });
+    await harness.runner.pipeline(join.taskId, "failed");
+
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => new Date("2026-07-03T15:02:00.000Z"),
+    });
+    const tasks = await autoJoinTasks(harness.runner);
+    const approvals = tasks.filter((t) => t.kind === "approval");
+    const joins = tasks.filter((t) => t.kind === "custom");
+    // No second prompt: the completed approval is the only approval.
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0].state.status).toBe("completed");
+    // The failed join is retried once, anchored at the event start rather
+    // than chained to an approval that can no longer transition.
+    expect(joins).toHaveLength(2);
+    const retry = joins.find((t) => t.state.status === "scheduled");
+    expect(retry).toBeDefined();
+    expect(retry?.trigger).toEqual({
+      kind: "relative_to_anchor",
+      anchorKey: eventStartAnchorKey(event.id),
+      offsetMinutes: JOIN_OFFSET_MINUTES,
+    });
+    expect(retry?.metadata?.autoJoinMode).toBe("ask");
+  });
+
+  it("retries a failed join in all mode on the next sync", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const [join] = await autoJoinTasks(harness.runner);
+    await harness.runner.pipeline(join.taskId, "failed");
+
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => new Date("2026-07-03T15:02:00.000Z"),
+    });
+    const tasks = await autoJoinTasks(harness.runner);
+    expect(tasks.map((t) => t.state.status).sort()).toEqual([
+      "failed",
+      "scheduled",
+    ]);
   });
 
   it("policy change all→ask dismisses the direct join and creates the approval pair", async () => {

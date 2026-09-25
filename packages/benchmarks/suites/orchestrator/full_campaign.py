@@ -470,9 +470,9 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
     _entry(
         "gauntlet",
         "gauntlet",
-        disposition=CampaignDisposition.MANUAL,
-        phases=_phase(extra={"clone_mainnet": True, "expand_scenarios": True}),
-        reason="All 96 scenarios require a real Surfpool backend with clone support.",
+        disposition=CampaignDisposition.UNSUPPORTED,
+        phases=(),
+        reason="Framework bridges emit placeholder transactions and the transaction-intent validator is a stub; Surfpool provisioning alone cannot qualify full execution.",
     ),
     _entry(
         "terminal_bench",
