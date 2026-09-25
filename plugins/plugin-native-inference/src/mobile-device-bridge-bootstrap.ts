@@ -1,3 +1,5 @@
+import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
+import { requestBionicHost } from "./bionic-host-request.js";
 /**
  * Stock Capacitor mobile local-inference bridge.
  *
@@ -20,10 +22,10 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { type Server as HttpServer, type IncomingMessage } from "node:http";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
 import net from "node:net";
 import path from "node:path";
-import { type Duplex } from "node:stream";
+import type { Duplex } from "node:stream";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
@@ -1373,6 +1375,10 @@ async function downloadRecommendedModelFor(
       finalPath,
       label: `[mobile-device-bridge] Recommended-model download (${slot})`,
       expectedSizeBytes: model.expectedSizeBytes,
+      checkAdmission:
+        process.env.ELIZA_BIONIC_HOST_DELEGATED?.trim() === "1"
+          ? createAospNetworkAdmissionCheck(model.expectedSizeBytes ?? 0)
+          : undefined,
     });
     logger.info(
       `[mobile-device-bridge] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
@@ -1675,63 +1681,11 @@ function bionicHostGenerate(
   socketName: string,
   request: Record<string, unknown>,
 ): Promise<BionicGenerateResponse> {
-  const payload = Buffer.from(JSON.stringify(request), "utf8");
-  const frame = Buffer.allocUnsafe(4 + payload.length);
-  frame.writeUInt32BE(payload.length, 0);
-  payload.copy(frame, 4);
-  return new Promise((resolve, reject) => {
-    const sock = net.connect({ path: `\0${socketName}` });
-    let settled = false;
-    let chunks = Buffer.alloc(0);
-    let expected = -1;
-    const finish = (err: Error | null, value?: BionicGenerateResponse) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      sock.destroy();
-      err ? reject(err) : resolve(value as BionicGenerateResponse);
-    };
-    const timer = setTimeout(
-      () => finish(new Error("[mobile-device-bridge] bionic host timed out")),
-      getBionicRequestTimeoutMs(),
-    );
-    sock.on("connect", () => sock.write(frame));
-    sock.on("data", (d: Buffer) => {
-      chunks = Buffer.concat([chunks, d]);
-      if (expected < 0 && chunks.length >= 4) {
-        expected = chunks.readUInt32BE(0);
-        if (expected < 0 || expected > BIONIC_MAX_FRAME_BYTES) {
-          finish(
-            new Error(`[mobile-device-bridge] bad bionic frame ${expected}`),
-          );
-          return;
-        }
-      }
-      if (expected >= 0 && chunks.length >= 4 + expected) {
-        try {
-          finish(
-            null,
-            JSON.parse(chunks.subarray(4, 4 + expected).toString("utf8")),
-          );
-        } catch (e) {
-          finish(
-            new Error(
-              `[mobile-device-bridge] bad bionic JSON: ${(e as Error).message}`,
-            ),
-          );
-        }
-      }
-    });
-    sock.on("error", (e: Error) =>
-      finish(
-        new Error(`[mobile-device-bridge] bionic socket error: ${e.message}`),
-      ),
-    );
-    sock.on("close", () => {
-      if (!settled)
-        finish(new Error("[mobile-device-bridge] bionic host closed early"));
-    });
-  });
+  return requestBionicHost(
+    socketName,
+    request,
+    getBionicRequestTimeoutMs(),
+  ) as Promise<BionicGenerateResponse>;
 }
 /**
  * Streaming variant of {@link bionicHostGenerate}: sends op="generateStream" and

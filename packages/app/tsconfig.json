@@ -92,6 +92,9 @@
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],
+      "@elizaos/capacitor-network-policy": [
+        "../../plugins/plugin-native-network-policy/src/index.ts"
+      ],
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
       ],
