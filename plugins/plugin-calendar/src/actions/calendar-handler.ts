@@ -5338,7 +5338,18 @@ const calendarAction: CalendarHandlerAction = {
       intent,
       scenario,
       facts,
-      context: context ?? {},
+      context: {
+        ...context,
+        ...(scenario === "feed_results"
+          ? {
+              asOf: new Date().toISOString(),
+              selection: "bounded_agenda",
+              nextEventLookupPerformed: false,
+              completionBoundary:
+                "This read covers only the stated time window and retains elapsed events. An event ending before asOf is past, never the next event. This feed does not establish the next event or absence of upcoming events outside its bounds. For the single next ongoing or upcoming event, use CALENDAR_NEXT_EVENT; discover that exact operation if it is not loaded.",
+            }
+          : {}),
+      },
     });
     const respond = async <
       T extends NonNullable<ActionResult["data"]> | undefined,
@@ -7140,7 +7151,7 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "subaction",
       description:
-        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including requests with no title or keyword filter. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the next upcoming event; create_event only when creating a new event.",
+        "Calendar operation. Use feed for the full agenda or all events on a date or in a time range, including elapsed events; omitted bounds mean today, not the next upcoming event. Use search_events only when the user supplies an event-content filter such as a title, attendee, location, or keyword; a date alone is a time bound, not a search phrase. Use next_event for the single next ongoing or upcoming event relative to now, including across dates and without a keyword filter; create_event only when creating a new event.",
       required: false,
       schema: {
         type: "string" as const,
