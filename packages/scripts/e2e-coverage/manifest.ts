@@ -55,6 +55,9 @@ function existing(artifact: string): CoverageEntry {
  * scan — a newly route-wiring plugin with no entry here fails the gate.
  */
 export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
+  "plugin-assistant": covered(
+    "plugins/plugin-assistant/src/routes-e2e.test.ts",
+  ),
   // ── Dedicated route tests ──
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",

@@ -36,6 +36,7 @@
     "file": "packages/scripts/e2e-coverage/manifest.ts",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-assistant",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
       "plugins/plugin-computeruse",

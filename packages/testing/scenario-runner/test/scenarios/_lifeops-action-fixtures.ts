@@ -15,6 +15,10 @@ export function registerLifeOpsActionFixtures(
 ): void {
   registerStrictActionRouteFixtures(
     runtime,
-    specs.map((spec) => ({ ...spec, messageToUser: "I will check that." })),
+    specs.map((spec) => ({
+      ...spec,
+      discoverBeforeExecution: spec.actionName === "SCHEDULED_TASKS",
+      messageToUser: "I will check that.",
+    })),
   );
 }
