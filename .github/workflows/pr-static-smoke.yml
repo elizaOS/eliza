@@ -34,8 +34,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      NODE_OPTIONS: "--max-old-space-size=4096"
-      RUN_TURBO_CONCURRENCY: "2"
+      # Cloud API checking needs more than 4 GiB; serialize tasks so its
+      # 8 GiB heap does not compete with another compiler on a 16 GiB runner.
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
