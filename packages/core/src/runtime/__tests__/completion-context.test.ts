@@ -223,7 +223,7 @@ describe("source-bound completion relevance", () => {
 	);
 
 	it.each([false, true])(
-		"renders source policy once with the task without changing evidence or binding (registered fields: %s)",
+		"renders complete plain history without a source-selection task (registered fields: %s)",
 		(withFields) => {
 			const context = historyContext();
 			const before = structuredClone(context);
@@ -241,18 +241,24 @@ describe("source-bound completion relevance", () => {
 			const policySegments = input.promptSegments.filter((segment) =>
 				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
 			);
-			expect(policySegments).toHaveLength(1);
-			expect(policySegments[0]?.stable).toBe(false);
+			expect(policySegments).toHaveLength(0);
 			const binding = input.promptSegments.filter((segment) =>
 				segment.content.includes(
 					`completion_source_set: ${sources.sourceSetId}`,
 				),
 			);
-			expect(binding).toHaveLength(1);
-			expect(binding[0]?.stable).toBe(false);
+			expect(binding).toHaveLength(0);
+			const conversation = input.promptSegments.filter(
+				(segment) => segment.id === "conversation",
+			);
+			expect(conversation).toHaveLength(1);
+			expect(conversation[0]?.stable).toBe(false);
+			expect(conversation[0]?.content).toContain(
+				`# Conversation\n${sources.sources.map(({ event }) => event.segment.content).join("\n")}`,
+			);
 			const wire = input.messages.map((message) => message.content).join("\n");
 			for (const { id, event } of sources.sources) {
-				expect(wire).toContain(`${id}: characters `);
+				expect(wire).not.toContain(`${id}: characters `);
 				expect(wire).toContain(event.segment.content);
 			}
 			expect(context).toEqual(before);
@@ -330,7 +336,7 @@ describe("source-bound completion relevance", () => {
 			context,
 		);
 		const transcript = String(input.messages[1].content);
-		expect(transcript).toContain("h6: characters ");
+		expect(transcript).not.toContain("h6: characters ");
 		expect(transcript.split(first.segment.content)).toHaveLength(3);
 		const chosen = {
 			...selection(context),
@@ -346,7 +352,7 @@ describe("source-bound completion relevance", () => {
 		expect(JSON.stringify(context)).toBe(before);
 		expect(focused.context.events).toContainEqual(repeated);
 	});
-	it("labels complete Stage-1 source text and carries model-selected IDs through parsing", () => {
+	it("preserves complete Stage-1 text and accepts legacy source IDs through parsing", () => {
 		const context = historyContext();
 		const before = JSON.stringify(context);
 		const input = renderMessageHandlerModelInput(
@@ -355,10 +361,10 @@ describe("source-bound completion relevance", () => {
 		);
 		const user = String(input.messages[1].content);
 		for (const { id, event } of completionContextSources(context).sources) {
-			expect(user).toContain(`${id}: characters `);
+			expect(user).not.toContain(`${id}: characters `);
 			expect(user).toContain(event.segment.content);
 		}
-		expect(user).toContain(completionContextSources(context).sourceSetId);
+		expect(user).not.toContain(completionContextSources(context).sourceSetId);
 		const chosen = selection(context);
 		expect(completionContextFieldEvaluator.parse(chosen)).toEqual(chosen);
 		const parsed = parseMessageHandlerOutput(
@@ -535,7 +541,7 @@ describe("source-bound completion relevance", () => {
 		},
 	);
 
-	it("shares source selection and complete history across text and voice", () => {
+	it("shares complete plain history across text and voice", () => {
 		const input = renderMessageHandlerModelInput(
 			{ character: { name: "Eliza" } },
 			historyContext(),
@@ -549,12 +555,14 @@ describe("source-bound completion relevance", () => {
 			{ directMessage: true },
 		);
 		expect(input.messages).toEqual(textInput.messages);
-		expect(JSON.stringify(input.messages)).toContain("completion_source_set:");
+		expect(JSON.stringify(input.messages)).not.toContain(
+			"completion_source_set:",
+		);
 		expect(
 			input.promptSegments.some((segment) =>
 				segment.content.includes(COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS),
 			),
-		).toBe(true);
+		).toBe(false);
 		expect(JSON.stringify(input.messages)).not.toContain(
 			"voice engagement rules:",
 		);
