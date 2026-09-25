@@ -318,6 +318,67 @@
           "region clear preserves other pixels",
         );
         window.nativeCanvasEvidence.stages = canvasStages;
+        await call("resize", { canvasId, size: { width: 160, height: 80 } });
+        const textCases = [];
+        window.nativeCanvasEvidence.textCases = textCases;
+        for (const variant of [
+          { name: "monospace", font: "monospace" },
+          { name: "top", baseline: "top" },
+          { name: "middle", baseline: "middle" },
+          { name: "bottom", baseline: "bottom" },
+          { name: "max-width", maxWidth: 40 },
+        ]) {
+          const { name, ...overrides } = variant;
+          const args = {
+            text: "Canvas Wi42",
+            position: { x: 4, y: 36 },
+            style: {
+              font: "sans-serif",
+              size: 24,
+              color: "#3366ff",
+              ...overrides,
+            },
+          };
+          await call("clear", { canvasId });
+          await call("drawText", { canvasId, ...args });
+          const individual = await call("getPixelData", { canvasId });
+          const individualPng = await call("toImage", {
+            canvasId,
+            format: "png",
+          });
+          await call("clear", { canvasId });
+          await call("drawBatch", {
+            canvasId,
+            commands: [{ type: "text", args }],
+          });
+          const batch = await call("getPixelData", { canvasId });
+          const batchPng = await call("toImage", { canvasId, format: "png" });
+          textCases.push({
+            name,
+            args,
+            width: batch.width,
+            height: batch.height,
+            pixelsMatch: individual.data === batch.data,
+            individualPng,
+            batchPng,
+          });
+          const rgba = atob(individual.data);
+          assert(
+            rgba.length === 160 * 80 * 4 &&
+              Array.from(rgba).some(
+                (value, index) => index % 4 === 3 && value.charCodeAt(0) > 0,
+              ),
+            `individual text renders visible pixels: ${name}`,
+          );
+        }
+        const mismatchedText = textCases.filter(
+          ({ pixelsMatch, width, height }) =>
+            !pixelsMatch || width !== 160 || height !== 80,
+        );
+        assert(
+          mismatchedText.length === 0,
+          `batch text preserves individual rendering: ${mismatchedText.map(({ name }) => name).join(", ")}`,
+        );
       } finally {
         await call("destroy", { canvasId });
       }

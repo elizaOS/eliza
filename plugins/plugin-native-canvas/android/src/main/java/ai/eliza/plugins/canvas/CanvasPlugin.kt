@@ -773,56 +773,61 @@ class CanvasPlugin : Plugin() {
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
-            val fontSize = styleObj.float("size", 14f)
-            val fontName = styleObj.getString("font") ?: "sans-serif"
-            val align = styleObj.getString("align") ?: "left"
-            val baseline = styleObj.getString("baseline") ?: "alphabetic"
-            val maxWidth = styleObj.floatOrNull("maxWidth")
-
-            val typeface = try {
-                Typeface.create(fontName, Typeface.NORMAL)
-            } catch (_: Exception) {
-                Typeface.DEFAULT
-            }
-
-            val paint = Paint().apply {
-                isAntiAlias = true
-                textSize = fontSize
-                this.typeface = typeface
-                color = colorFromFillOrStroke(styleObj)
-                textAlign = when (align) {
-                    "center" -> Paint.Align.CENTER
-                    "right" -> Paint.Align.RIGHT
-                    else -> Paint.Align.LEFT
-                }
-            }
-
-            var x = positionObj.float("x")
-            var y = positionObj.float("y")
-
-            // Adjust for baseline.
-            val metrics = paint.fontMetrics
-            when (baseline) {
-                "top" -> y -= metrics.top
-                "middle" -> y -= (metrics.top + metrics.bottom) / 2
-                "bottom" -> y -= metrics.bottom
-                // "alphabetic" is the default baseline for drawText.
-            }
-
-            if (maxWidth != null) {
-                // Scale text to fit within maxWidth.
-                val textWidth = paint.measureText(text)
-                if (textWidth > maxWidth) {
-                    paint.textScaleX = maxWidth / textWidth
-                }
-            }
-
-            drawCanvas.drawText(text, x, y, paint)
+            drawStyledText(drawCanvas, text, positionObj, styleObj)
 
             restoreDrawOptions(drawCanvas, saveCount)
             targetView.commit()
             call.resolve()
         }
+    }
+
+    /** Keep standalone and batched text faithful to the same public style contract. */
+    private fun drawStyledText(drawCanvas: Canvas, text: String, positionObj: JSObject, styleObj: JSObject) {
+        val fontSize = styleObj.float("size", 14f)
+        val fontName = styleObj.getString("font") ?: "sans-serif"
+        val align = styleObj.getString("align") ?: "left"
+        val baseline = styleObj.getString("baseline") ?: "alphabetic"
+        val maxWidth = styleObj.floatOrNull("maxWidth")
+
+        val typeface = try {
+            Typeface.create(fontName, Typeface.NORMAL)
+        } catch (_: Exception) {
+            Typeface.DEFAULT
+        }
+
+        val paint = Paint().apply {
+            isAntiAlias = true
+            textSize = fontSize
+            this.typeface = typeface
+            color = colorFromFillOrStroke(styleObj)
+            textAlign = when (align) {
+                "center" -> Paint.Align.CENTER
+                "right" -> Paint.Align.RIGHT
+                else -> Paint.Align.LEFT
+            }
+        }
+
+        var x = positionObj.float("x")
+        var y = positionObj.float("y")
+
+        // Adjust for baseline.
+        val metrics = paint.fontMetrics
+        when (baseline) {
+            "top" -> y -= metrics.top
+            "middle" -> y -= (metrics.top + metrics.bottom) / 2
+            "bottom" -> y -= metrics.bottom
+            // "alphabetic" is the default baseline for drawText.
+        }
+
+        if (maxWidth != null) {
+            // Scale text to fit within maxWidth.
+            val textWidth = paint.measureText(text)
+            if (textWidth > maxWidth) {
+                paint.textScaleX = maxWidth / textWidth
+            }
+        }
+
+        drawCanvas.drawText(text, x, y, paint)
     }
 
     // ---- Drawing: Image ----
@@ -1071,23 +1076,7 @@ class CanvasPlugin : Plugin() {
                         val posJson = args.optJSONObject("position")
                         val styleJson = args.optJSONObject("style")
                         if (textStr.isNotEmpty() && posJson != null && styleJson != null) {
-                            val styleObj = jsObjectFromJSON(styleJson)
-                            val textPaint = Paint().apply {
-                                isAntiAlias = true
-                                textSize = styleObj.float("size", 14f)
-                                color = colorFromFillOrStroke(styleObj)
-                                textAlign = when (styleObj.getString("align")) {
-                                    "center" -> Paint.Align.CENTER
-                                    "right" -> Paint.Align.RIGHT
-                                    else -> Paint.Align.LEFT
-                                }
-                            }
-                            drawCanvas.drawText(
-                                textStr,
-                                posJson.optDouble("x", 0.0).toFloat(),
-                                posJson.optDouble("y", 0.0).toFloat(),
-                                textPaint
-                            )
+                            drawStyledText(drawCanvas, textStr, jsObjectFromJSON(posJson), jsObjectFromJSON(styleJson))
                         }
                     }
                     "image" -> {
