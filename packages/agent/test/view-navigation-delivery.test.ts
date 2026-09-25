@@ -2,6 +2,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  type Action,
   ContextRegistry,
   type IAgentRuntime,
   type Memory,
@@ -15,6 +16,7 @@ import {
 import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
 import { viewsAction } from "../src/actions/views.ts";
@@ -24,6 +26,7 @@ import {
   registerPluginViews,
 } from "../src/api/views-registry.ts";
 import { handleViewsRoutes } from "../src/api/views-routes.ts";
+import { createElizaPlugin } from "../src/runtime/eliza-plugin.ts";
 import {
   viewNavigationEvaluator,
   viewNavigationField,
@@ -151,6 +154,69 @@ describe("host view navigation", () => {
     );
     expect(f.requests()).toBe(0);
   });
+  it.each(["open view navigate notes", "VIEWS_SHOW open notes view"])(
+    "discovers registered navigation operations beside browser tools: %s",
+    async (query) => {
+      const f = await fixture();
+      const input = clientMessage();
+      f.runtime.actions = [
+        ...(createElizaPlugin().actions ?? []).filter((action) =>
+          action.name.startsWith("VIEWS"),
+        ),
+        {
+          name: "BROWSER_OPEN",
+          description: "Open a browser tab and navigate to a web page view",
+          contexts: ["general"],
+          validate: async () => true,
+          handler: async () => ({ success: true }),
+        } as Action,
+      ];
+      const loaded: Action[] = [];
+      let senderRole: "OWNER" | "USER" = "OWNER";
+      const discovery = createPlannerToolDiscoveryAction(
+        [],
+        (actions) => loaded.push(...actions),
+        (names) =>
+          collectV5PlannerCandidateActions({
+            runtime: f.runtime,
+            message: input,
+            state: { values: {}, data: {}, text: "" },
+            selectedContexts: ["calendar"],
+            candidateActions: names.length
+              ? names
+              : f.runtime.actions.map((a) => a.name),
+            userRoles: [senderRole],
+          }),
+        { deferNameIndex: true },
+      );
+      const found = await discovery.handler?.(f.runtime, input, undefined, {
+        parameters: { query },
+      });
+      expect(found?.data?.loadedTools).toContain("VIEWS_SHOW");
+      expect(f.requests()).toBe(0);
+      const navigate = loaded.find((action) => action.name === "VIEWS_SHOW");
+      expect(navigate).toBeDefined();
+      const result = await navigate?.handler?.(f.runtime, input, undefined, {
+        parameters: { view: "notes" },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: { navigation: { status: "delivered", path: "/notes" } },
+      });
+      expect(f.frames).toHaveLength(1);
+      expect(f.frames[0].client).toBe("origin-client");
+      senderRole = "USER";
+      loaded.length = 0;
+      const denied = await discovery.handler?.(f.runtime, input, undefined, {
+        parameters: { query },
+      });
+      expect(denied?.data?.loadedTools).not.toContain("VIEWS_SHOW");
+      expect(loaded.some((action) => action.name.startsWith("VIEWS"))).toBe(
+        false,
+      );
+      expect(f.frames).toHaveLength(1);
+    },
+  );
   it("rejects ambiguous labels rather than selecting an arbitrary view", async () => {
     const f = await fixture();
     await registerPluginViews(

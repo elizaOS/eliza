@@ -194,7 +194,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     responseHandlerFieldEvaluators: [viewNavigationField],
     responseHandlerEvaluators: [viewNavigationEvaluator],
     actions: [
-      viewsAction,
+      ...promoteSubactionsToActions(viewsAction),
       terminalAction,
       ...promoteSubactionsToActions(triggerAction),
       pageDelegateAction,
