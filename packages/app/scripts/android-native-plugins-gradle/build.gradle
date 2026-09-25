@@ -59,7 +59,7 @@ subprojects { subproject ->
 // Shared WebView contract tests are test-only sources. Production plugin AARs
 // never include this host, its assets, or its dependencies.
 subprojects { subproject ->
-    if (subproject.name in ['capacitor-android', 'native-block-target']) return
+    if (subproject.name in ['capacitor-android', 'native-block-target', 'native-gateway-host']) return
     subproject.afterEvaluate {
         def fixtures = new File(rootDir, 'bridge-tests')
         def descriptors = new groovy.json.JsonSlurper().parse(new File(fixtures, 'plugins.json'))

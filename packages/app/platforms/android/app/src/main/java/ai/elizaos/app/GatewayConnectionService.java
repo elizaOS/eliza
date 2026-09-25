@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import android.app.Notification;
+import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -51,6 +52,7 @@ public class GatewayConnectionService extends Service {
 
     private volatile String currentStatus = STATUS_DISCONNECTED;
     private volatile Thread notificationWorker;
+    private volatile boolean stopping;
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -61,21 +63,33 @@ public class GatewayConnectionService extends Service {
 
         Notification notification = buildBootstrapNotification("Eliza Gateway", "Starting…");
 
-        // API 34+ requires explicit foreground service type when calling startForeground().
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            );
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        try {
+            // API 34+ requires an explicit foreground service type.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (ForegroundServiceStartNotAllowedException error) {
+            // error-policy:J1 Android may accept the start request but reject
+            // promotion here, including after the dataSync budget is exhausted.
+            stopping = true;
+            Log.w(TAG, "event=gateway_service_start_denied code=FOREGROUND_SERVICE_NOT_ALLOWED", error);
+            stopSelf();
+            return;
         }
         updateNotificationAsync();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (stopping) {
+            return START_NOT_STICKY;
+        }
         if (intent != null) {
             String action = intent.getAction();
             if (ACTION_STOP.equals(action)) {
@@ -99,13 +113,25 @@ public class GatewayConnectionService extends Service {
     }
 
     @Override
-    public void onDestroy() {
+    public synchronized void onDestroy() {
+        stopping = true;
         // Clean up the notification when the service is torn down.
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
             mgr.cancel(NOTIFICATION_ID);
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onTimeout(int startId, int foregroundServiceType) {
+        // Android 15 requires stopSelf within the callback's grace period.
+        // This applies in cloud mode too; keeping the service alive crashes
+        // the entire host and a sticky restart has no remaining dataSync time.
+        stopping = true;
+        Log.w(TAG, "event=gateway_service_timeout startId=" + startId
+            + " foregroundServiceType=" + foregroundServiceType);
+        stopSelf();
     }
 
     @Override
@@ -213,7 +239,10 @@ public class GatewayConnectionService extends Service {
     }
 
     /** Push an updated notification to reflect the current connection status. */
-    private void updateNotification() {
+    private synchronized void updateNotification() {
+        // Serialize with onDestroy so a late worker cannot recreate the
+        // notification after timeout or rejected foreground promotion.
+        if (stopping) return;
         String title;
         String text;
 
