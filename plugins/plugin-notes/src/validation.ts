@@ -86,46 +86,43 @@ function parseString(
   return normalized;
 }
 
+function parseText(
+  value: unknown,
+  field: string,
+  maxLength = MAX_BODY_LENGTH,
+): string {
+  if (typeof value !== "string")
+    throw validationError(`${field} must be a string.`, field);
+  if (value.length > maxLength)
+    throw validationError(
+      `${field} must be at most ${maxLength} characters.`,
+      field,
+    );
+  return toWellFormedUnicode(value);
+}
+
 function parseRequiredTitle(value: unknown, field: string): string {
-  return parseString(value, field, {
-    allowEmpty: false,
-    maxLength: MAX_TITLE_LENGTH,
-  });
+  const title = parseText(value, field, MAX_TITLE_LENGTH);
+  if (!title.trim())
+    throw validationError(`${field} must not be empty.`, field);
+  return title;
 }
 
-function parseText(value: unknown, field: string): string {
-  return parseString(value, field, {
-    allowEmpty: true,
-    maxLength: MAX_BODY_LENGTH,
-  });
-}
-
-/**
- * Split the one user-authored note field into the storage schema's stable list
- * label and remainder. The first line is the label; overflow and later lines
- * stay in the body, so the transformation never asks a model to invent text or
- * discards user content. Punctuation does not define a field boundary; callers
- * supplying a separate title and body join them with a newline before parsing.
- */
+/** Store an exact prefix and remainder; punctuation never introduces a field. */
 export function parseNoteContent(
   value: unknown,
   field = "content",
 ): Pick<CreateNoteInput, "title" | "body"> {
-  const content = parseString(value, field, {
-    allowEmpty: false,
-    maxLength: MAX_NOTE_CONTENT_LENGTH,
-  });
-  const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
-  const labelLine = toWellFormedUnicode(firstLine.trim());
-  const title = truncateWellFormed(labelLine, MAX_TITLE_LENGTH).trim();
-  const overflow = labelLine.slice(title.length).trim();
-  const body = [overflow, ...remainingLines]
-    .filter((part, index) => index >= 1 || part.length > 0)
-    .join("\n")
-    .trim();
+  const content = parseText(value, field, MAX_NOTE_CONTENT_LENGTH);
+  if (!content.trim())
+    throw validationError(`${field} must not be empty.`, field);
+  const firstCharacter = content.search(/\S/u);
+  const newline = content.indexOf("\n", firstCharacter);
+  const firstLine = newline < 0 ? content : content.slice(0, newline);
+  const title = truncateWellFormed(firstLine, MAX_TITLE_LENGTH);
   return {
     title: parseRequiredTitle(title, `${field}.firstLine`),
-    body: parseText(body, `${field}.remainder`),
+    body: parseText(content.slice(title.length), `${field}.remainder`),
   };
 }
 
@@ -298,7 +295,11 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
   return patch;
 }
 
-function parseStickyNote(value: unknown, index: number): StickyNote {
+function parseStickyNote(
+  value: unknown,
+  index: number,
+  schemaVersion: number,
+): StickyNote {
   const field = `notes[${index}]`;
   const record = requireRecord(value, field);
   assertOnlyKeys(
@@ -309,7 +310,11 @@ function parseStickyNote(value: unknown, index: number): StickyNote {
   return {
     id: parseEntityId(record.id, `${field}.id`),
     title: parseRequiredTitle(record.title, `${field}.title`),
-    body: parseText(record.body, `${field}.body`),
+    body: parseText(
+      record.body,
+      `${field}.body`,
+      schemaVersion === 1 ? MAX_BODY_LENGTH : MAX_BODY_LENGTH + 1,
+    ),
     color: parseStickyColor(record.color, `${field}.color`),
     createdAt: parseTimestamp(record.createdAt, `${field}.createdAt`),
     updatedAt: parseTimestamp(record.updatedAt, `${field}.updatedAt`),
@@ -323,7 +328,10 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     ["schemaVersion", "revision", "persistedAt", "notes"],
     "notes state",
   );
-  if (record.schemaVersion !== NOTES_SCHEMA_VERSION) {
+  if (
+    record.schemaVersion !== NOTES_SCHEMA_VERSION &&
+    record.schemaVersion !== 1
+  ) {
     throw validationError(
       `schemaVersion must be ${NOTES_SCHEMA_VERSION}.`,
       "schemaVersion",
@@ -332,7 +340,12 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   if (!Array.isArray(record.notes)) {
     throw validationError("notes must be an array.", "notes");
   }
-  const notes = record.notes.map(parseStickyNote);
+  const notes = record.notes.map((value, index) => {
+    const note = parseStickyNote(value, index, record.schemaVersion as number);
+    // Schema 1 readers inserted this separator. Upgrade exactly once.
+    if (record.schemaVersion === 1 && note.body) note.body = `\n${note.body}`;
+    return note;
+  });
   const noteIds = new Set(notes.map((note) => note.id));
   if (noteIds.size !== notes.length) {
     throw validationError("notes contain duplicate ids.", "notes");

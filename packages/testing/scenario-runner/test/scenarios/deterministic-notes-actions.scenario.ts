@@ -19,9 +19,9 @@ import notesPlugin, {
 } from "../../../../../plugins/plugin-notes/src/index.ts";
 
 const title = "Workflow launch checklist";
-const originalBody = "Confirm the native run output.\nKeep  two spaces.";
+const originalBody = "\nConfirm the native run output.\nKeep  two spaces.";
 const updatedBody =
-  "Confirm the native run and widget output.\nKeep  two spaces.";
+  "\nConfirm the native run and widget output.\nKeep  two spaces.";
 let notesFilePath: string;
 let notesAgentId: string;
 let createdNote: StickyNote | undefined;
@@ -191,7 +191,7 @@ export default scenario({
       options: {
         parameters: {
           action: "create",
-          content: `${title}\n${originalBody}`,
+          content: `${title}${originalBody}`,
         },
       },
       assertTurn: expectNotesResult("create", originalBody),

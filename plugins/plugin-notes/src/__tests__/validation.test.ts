@@ -42,15 +42,15 @@ describe("Notes boundary validation", () => {
       );
       expect(result).toEqual({
         title: "Header Line",
-        body: "First paragraph\nSecond paragraph",
+        body: "\nFirst paragraph\nSecond paragraph",
       });
     });
 
     it("handles leading and trailing whitespace on lines cleanly", () => {
       const result = parseNoteContent("   Padded Title   \n   Padded Body   ");
       expect(result).toEqual({
-        title: "Padded Title",
-        body: "Padded Body",
+        title: "   Padded Title   ",
+        body: "\n   Padded Body   ",
       });
     });
 
@@ -81,7 +81,7 @@ describe("Notes boundary validation", () => {
     it("leaves multi-line content on the first-line label contract", () => {
       expect(parseNoteContent("Demo Checklist: mic\ncharger")).toEqual({
         title: "Demo Checklist: mic",
-        body: "charger",
+        body: "\ncharger",
       });
     });
 

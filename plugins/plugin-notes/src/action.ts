@@ -24,8 +24,8 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
-
 import { getNotesService, type NotesService } from "./service.js";
+import { reconstructNoteContent } from "./types.js";
 import {
   parseNoteContent,
   parseNoteDateRange,
@@ -67,7 +67,7 @@ function readAlternatives(
     if (value === undefined) value = candidate;
     else if (candidate !== value) conflicts.push(name);
   }
-  return { value: readString(value), conflicts };
+  return { value, conflicts };
 }
 
 function conflictingAlternatives(names: string[]): ActionResult {
@@ -402,7 +402,7 @@ export const notesAction: Action = {
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
-              `${note.title}\n${note.body}`
+              reconstructNoteContent(note)
                 .toLocaleLowerCase()
                 .includes(normalizedTopic),
             )
@@ -489,12 +489,16 @@ export const notesAction: Action = {
     }
 
     if (op === "create") {
-      const body = readString(params.body);
+      const body = typeof params.body === "string" ? params.body : undefined;
       const separateBody = body !== undefined && !target.includes("\n");
       const noteContent = parseNoteContent(
         separateBody ? `${target}\n${body}` : target,
       );
-      if (body && !separateBody && noteContent.body !== body) {
+      if (
+        body &&
+        !separateBody &&
+        target.slice(target.indexOf("\n") + 1) !== body
+      ) {
         // Two different complete bodies are ambiguous; reject before writing
         // rather than appending them or silently selecting one.
         return failure(

@@ -372,8 +372,12 @@ async function scenario(label: string, withApprovals = false) {
           expect(call.params.responseSchema).toMatchObject({
             type: "object",
             additionalProperties: false,
-            required: Object.keys(extraction),
           });
+          const required = record(call.params.responseSchema).required;
+          expect(Array.isArray(required)).toBe(true);
+          expect([...(required as string[])].sort()).toEqual(
+            Object.keys(extraction).sort(),
+          );
           return JSON.stringify(extraction);
         },
         times: 1,
@@ -484,11 +488,12 @@ async function scenario(label: string, withApprovals = false) {
     );
     const stored = await notes();
     const title = content.split("\n")[0];
-    const body = content.substring(title.length + 1);
+    const body = content.substring(title.length);
     const note = stored.parsed.notes.find(
       (entry) => entry.title === title && entry.body === body,
     );
     if (!note) throw new Error("Real Notes storage lacks the created note");
+    expect(note.title + note.body).toBe(content);
     return note;
   }
   async function readNote(note: NotesDocument["notes"][number]) {
@@ -496,7 +501,7 @@ async function scenario(label: string, withApprovals = false) {
       `Read note ${note.id} exactly.`,
       "NOTES_GET",
       { noteId: note.id },
-      `${note.title}\n${note.body}`,
+      `${note.title}${note.body}`,
     );
     const data = record(receipt.data);
     expect(data.lookupMode).toBe("exact_id");

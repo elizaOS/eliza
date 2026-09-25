@@ -16,10 +16,10 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
 } from "@elizaos/core/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -31,6 +31,7 @@ import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
 import { NotesStore, notesStateFilePath } from "../store.js";
 import type { StickyNote } from "../types.js";
+import { parseNoteContent } from "../validation.js";
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
@@ -197,6 +198,61 @@ async function invokeRoute(
 }
 
 describe("NotesStore", () => {
+  it.each([
+    "Title\n\nBody\n",
+    "x".repeat(241),
+    `${"a".repeat(239)}😀tail`,
+    "Reminder:  keep both spaces: and this colon.",
+  ])(
+    "lossless content survives persistence and restart: %s",
+    async (content) => {
+      const filePath = await temporaryStateFile();
+      const first = await serviceFor(filePath);
+      const note = await first.createNote(parseNoteContent(content));
+      await first.stop();
+      const second = await serviceFor(filePath);
+      const restored = second.getNote(note.id);
+      expect(restored).toEqual(note);
+      expect(`${restored.title}${restored.body}`).toBe(content);
+      await second.stop();
+    },
+  );
+
+  it("migrates a maximum schema1 body once across mutations and restarts", async () => {
+    const filePath = await temporaryStateFile();
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        persistedAt: timestamp,
+        notes: [
+          {
+            id: "note-legacy",
+            title: "Legacy",
+            body: "x".repeat(20000),
+            color: "yellow",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const first = await serviceFor(filePath);
+    expect(first.getNote("note-legacy").body).toBe(`\n${"x".repeat(20000)}`);
+    await first.createNote({ title: "Another" });
+    const expected = first.snapshot();
+    await first.stop();
+    const second = await serviceFor(filePath);
+    expect(second.snapshot()).toEqual(expected);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).schemaVersion).toBe(
+      2,
+    );
+    await second.stop();
+  });
+
   it("persists one document and restores notes after restart", async () => {
     const filePath = await temporaryStateFile();
     const first = await serviceFor(filePath);
@@ -220,7 +276,7 @@ describe("NotesStore", () => {
 
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
@@ -469,7 +525,7 @@ describe("Notes capabilities", () => {
       id: noteId,
     });
     expect(service.getNote(noteId)).toMatchObject({
-      body: "Polished draft",
+      body: "\nPolished draft",
       color: "green",
     });
     const polishedSnapshot = service.snapshot();
@@ -856,8 +912,8 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_NOT_FOUND" },
     });
     expect(service.listNotes().map((note) => note.body)).toEqual([
-      "Evening",
-      "Morning",
+      "\nEvening",
+      "\nMorning",
     ]);
   });
 
@@ -1072,15 +1128,15 @@ describe("Notes capabilities", () => {
     );
     expect(updated).toMatchObject({
       success: true,
-      data: { note: { title: "Shopping list", body: "Done shopping" } },
+      data: { note: { title: "Shopping list", body: "\nDone shopping" } },
     });
     // "Todo" remains unchanged; order may shift after update.
     expect(
       service.listNotes().map((n) => ({ title: n.title, body: n.body })),
     ).toEqual(
       expect.arrayContaining([
-        { title: "Shopping list", body: "Done shopping" },
-        { title: "Todo", body: "Fix the bug" },
+        { title: "Shopping list", body: "\nDone shopping" },
+        { title: "Todo", body: "\nFix the bug" },
       ]),
     );
   });
@@ -1133,7 +1189,7 @@ describe("Notes capabilities", () => {
 
     // Nothing was mutated.
     expect(service.listNotes().map((n) => n.body)).toEqual(
-      expect.arrayContaining(["Morning sync", "Afternoon review"]),
+      expect.arrayContaining(["\nMorning sync", "\nAfternoon review"]),
     );
   });
 

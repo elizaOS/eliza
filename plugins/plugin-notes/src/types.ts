@@ -5,7 +5,7 @@
  * browser/server models.
  */
 
-export const NOTES_SCHEMA_VERSION = 1 as const;
+export const NOTES_SCHEMA_VERSION = 2 as const;
 
 export const STICKY_COLORS = ["yellow", "green", "rose", "slate"] as const;
 
@@ -62,4 +62,11 @@ export interface UpdateNoteInput {
     oldText: string;
     newText: string;
   };
+}
+
+/** Schema 2 stores the separator, if any, in the verbatim remainder. */
+export function reconstructNoteContent(
+  note: Pick<StickyNote, "title" | "body">,
+): string {
+  return note.title + note.body;
 }

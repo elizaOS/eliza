@@ -96,7 +96,7 @@ describe("read-bound note replacement", () => {
       const restarted = await h.open();
       expect(restarted.snapshot()).toEqual(snapshot);
       expect(restarted.getNote(note.id).body).toBe(
-        winnerContent.split("\n").slice(1).join("\n"),
+        winnerContent.slice(winnerContent.indexOf("\n")),
       );
     },
   );

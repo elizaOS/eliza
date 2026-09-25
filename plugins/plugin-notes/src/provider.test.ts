@@ -173,7 +173,7 @@ describe("SAVED_NOTES provider", () => {
       true,
       true,
     );
-    expect(before.text).toContain(JSON.stringify(`Same title\n${first.body}`));
+    expect(before.text).toContain(JSON.stringify(`Same title${first.body}`));
     expect(before.text).toContain("Bring it tomorrow.");
     expect(before.text).not.toContain("Private unrelated body");
     const originalSnapshot = service.snapshot();
@@ -269,7 +269,7 @@ describe("SAVED_NOTES provider", () => {
     expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
     expect(
       service.listNotes().find((note) => note.title === "Lookup label")?.body,
-    ).toBe(body);
+    ).toBe(`\n${body}`);
     await service.deleteNote(identities[0].id);
     const after = await notesProvider.get(
       runtime,
@@ -419,12 +419,7 @@ describe("SAVED_NOTES provider", () => {
     );
     const decoded = rows.map(([, content]) => content);
     expect(rows).toEqual(
-      service
-        .listNotes()
-        .map((note) => [
-          note.id,
-          note.body ? `${note.title}\n${note.body}` : note.title,
-        ]),
+      service.listNotes().map((note) => [note.id, `${note.title}${note.body}`]),
     );
     expect(decoded).toContain(content);
     expect(decoded).toContain("Label only");
@@ -446,13 +441,13 @@ describe("SAVED_NOTES provider", () => {
         ...base,
         id: "note-Second",
         title: "Same title",
-        body: "Keep  spaces.\nSecond line.",
+        body: "\nKeep  spaces.\nSecond line.",
       },
       {
         ...base,
         id: "note-first",
         title: "Same title",
-        body: 'Different "quoted" body.',
+        body: '\nDifferent "quoted" body.',
       },
       { ...base, id: "note-label", title: "Label only", body: "" },
     ];
@@ -463,7 +458,7 @@ describe("SAVED_NOTES provider", () => {
         .map((line) => JSON.parse(line.slice(2)));
     const expected = notes.map((note) => [
       note.id,
-      note.body ? `${note.title}\n${note.body}` : note.title,
+      `${note.title}${note.body}`,
     ]);
     expect(decode(notes)).toEqual(expected);
     expect(decode([...notes].reverse())).toEqual([...expected].reverse());

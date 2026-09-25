@@ -235,7 +235,7 @@ describe("promoted Notes execution", () => {
         }),
       ).toMatchObject({ success: true });
       expect(getNotesService(runtime).listNotes()).toMatchObject([
-        { title: "Exact label", body: "Changed body." },
+        { title: "Exact label", body: "\nChanged body." },
       ]);
       expect(
         await execute(runtime, {
@@ -299,7 +299,7 @@ describe("promoted Notes execution", () => {
       }),
     ).toMatchObject({ success: true });
     expect(getNotesService(runtime).listNotes()).toMatchObject([
-      { title: "Exact label", body: "Complete  body" },
+      { title: "Exact label", body: "\nComplete  body" },
     ]);
   });
 
@@ -333,7 +333,7 @@ describe("promoted Notes execution", () => {
       success: true,
       data: {
         op: "create",
-        note: { title: "Alias check", body: "original body" },
+        note: { title: "Alias check", body: "\noriginal body" },
       },
     });
 
@@ -358,7 +358,7 @@ describe("promoted Notes execution", () => {
       success: true,
       data: {
         op: "update",
-        note: { title: "Alias check", body: "updated body" },
+        note: { title: "Alias check", body: "\nupdated body" },
       },
     });
 
@@ -556,7 +556,7 @@ describe("promoted Notes execution", () => {
       expect(result.data?.note).toMatchObject({
         id: original.id,
         title: original.title,
-        body: "Keep  both spaces and Mira’s green backpack.",
+        body: `${kind === "replacement" ? "\n" : ""}Keep  both spaces and Mira’s green backpack.`,
       });
       expect(result.effectReceipts?.[0]).toMatchObject({
         outcome: "applied",
@@ -571,7 +571,7 @@ describe("promoted Notes execution", () => {
       });
       await reopened.initialize();
       expect(reopened.getNote(original.id).body).toBe(
-        "Keep  both spaces and Mira’s green backpack.",
+        `${kind === "replacement" ? "\n" : ""}Keep  both spaces and Mira’s green backpack.`,
       );
       await reopened.stop();
     },
@@ -705,7 +705,7 @@ describe("promoted Notes execution", () => {
       name: "NOTES_LIST",
       params: { content: "Packing list" },
     });
-    expect(originalRead.data?.notes).toMatchObject([{ body: "Charger" }]);
+    expect(originalRead.data?.notes).toMatchObject([{ body: "\nCharger" }]);
     const result = await execute(runtime, {
       name: "NOTES_UPDATE",
       params: {
@@ -717,7 +717,7 @@ describe("promoted Notes execution", () => {
     expect(result.success).toBe(true);
     expect(result.data?.note).toMatchObject({
       title: "Packing list",
-      body: "Charger and water",
+      body: "\nCharger and water",
     });
   });
 
@@ -733,7 +733,7 @@ describe("promoted Notes execution", () => {
     expect(created.success).toBe(true);
     expect(created.data?.note).toMatchObject({
       title: "Conversation context QA",
-      body: "Bring the blue notebook and charger; no water.",
+      body: "\nBring the blue notebook and charger; no water.",
     });
     const originalSnapshot = getNotesService(runtime).snapshot();
     const updated = await execute(runtime, {
@@ -754,7 +754,7 @@ describe("promoted Notes execution", () => {
     expect(listed.data?.notes).toMatchObject([
       {
         title: "Conversation context QA",
-        body: "Bring only the blue notebook.",
+        body: "\nBring only the blue notebook.",
       },
     ]);
     expect(listed.data?.filterApplied).toBe(false);
@@ -863,7 +863,7 @@ describe("promoted Notes execution", () => {
       "Your notebook note is saved, and Notes is open.",
     );
     expect((await run(runtime, { action: "list" })).data?.notes).toMatchObject([
-      { title: "Queue contract QA", body: "Bring the notebook." },
+      { title: "Queue contract QA", body: "\nBring the notebook." },
     ]);
   });
 
@@ -1004,7 +1004,7 @@ describe("NOTES operation parsing", () => {
       expect(created.success).toBe(true);
       expect(
         (await run(runtime, { action: "list" })).data?.notes,
-      ).toMatchObject([{ title: "Legacy title", body: "Legacy body" }]);
+      ).toMatchObject([{ title: "Legacy title", body: "\nLegacy body" }]);
     },
   );
 
@@ -1154,7 +1154,7 @@ describe("NOTES operation parsing", () => {
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
         title: "Recency check",
-        body: "updated body",
+        body: "\nupdated body",
       },
     ]);
     const filtered = await run(runtime, {
@@ -1236,13 +1236,13 @@ describe("NOTES operation parsing", () => {
       expect(created.success).toBe(true);
       expect(created.data?.note).toMatchObject({
         title,
-        body: "Cerebras local note persistence",
+        body: "\nCerebras local note persistence",
       });
       const listed = await run(runtime, { action: "list" });
       expect(listed.data?.notes).toMatchObject([
         {
           title,
-          body: "Cerebras local note persistence",
+          body: "\nCerebras local note persistence",
           color: "yellow",
         },
       ]);
@@ -1259,7 +1259,9 @@ describe("NOTES operation parsing", () => {
     });
     expect(created.success).toBe(true);
     const listed = await run(runtime, { action: "list", content: "Checklist" });
-    expect(listed.data?.notes).toMatchObject([{ title: "Checklist", body }]);
+    expect(listed.data?.notes).toMatchObject([
+      { title: "Checklist", body: `\n${body}` },
+    ]);
     expect(listed.data?.count).toBe(1);
   });
 
@@ -1297,14 +1299,14 @@ describe("NOTES operation parsing", () => {
     expect(updated.data?.note).toMatchObject({
       id: created.data?.noteId,
       title: "Demo checklist",
-      body: "charger and water",
+      body: "\ncharger and water",
     });
     const listed = await run(runtime, {
       action: "list",
       content: "Demo checklist",
     });
     expect(listed.data?.notes).toMatchObject([
-      { title: "Demo checklist", body: "charger and water", color: "yellow" },
+      { title: "Demo checklist", body: "\ncharger and water", color: "yellow" },
     ]);
   });
 
@@ -1544,15 +1546,57 @@ describe("literal Notes edits", () => {
         },
       });
       expect(result.success).toBe(true);
-      expect(result.data?.note).toMatchObject({ title, body });
+      expect(result.data?.note).toMatchObject({ title, body: `\n${body}` });
     },
   );
+
+  it("preserves boundary whitespace in atomic literal edits", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Exact title",
+      body: "green",
+    });
+    const result = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: {
+        noteId: note.id,
+        textEdit: { field: "body", oldText: "green", newText: " orange " },
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.getNote(note.id).body).toBe(" orange ");
+  });
+
+  it("preserves all authored whitespace through action create and replacement", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const content = "  Title  \n\n  Body  \n";
+    const created = await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: { content },
+    });
+    expect(created.success).toBe(true);
+    const note = service.listNotes()[0];
+    expect(note.title + note.body).toBe(content);
+    const replacementContent = "  Title  \n\n  Updated  \n";
+    const updated = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: {
+        noteId: note.id,
+        expectedRevision: service.snapshot().revision,
+        replacementContent,
+      },
+    });
+    expect(updated.success).toBe(true);
+    const after = service.getNote(note.id);
+    expect(after.title + after.body).toBe(replacementContent);
+  });
 
   it.each([
     ["missing", "orange", "green", "NOTES_EDIT_TEXT_NOT_FOUND"],
     ["green", "orange", "green green", "NOTES_EDIT_TEXT_AMBIGUOUS"],
     ["aa", "b", "aaa", "NOTES_EDIT_TEXT_AMBIGUOUS"],
-    ["green", " orange ", "green", "NOTES_EDIT_NORMALIZATION_REQUIRED"],
   ])(
     "rejects %s -> %s without any revision or record change",
     async (oldText, newText, body, code) => {

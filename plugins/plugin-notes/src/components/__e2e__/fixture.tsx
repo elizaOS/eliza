@@ -24,7 +24,7 @@ const notes: StickyNote[] = [
   {
     id: "note-demo-1",
     title: "Demo run of show",
-    body: "Open on the launcher, ask Eliza for the day, then show Notes and Calendar.",
+    body: "\nOpen on the launcher, ask Eliza for the day, then show Notes and Calendar.",
     color: "yellow",
     createdAt: "2026-08-25T17:30:00.000Z",
     updatedAt: "2026-08-26T04:42:00.000Z",
@@ -32,7 +32,7 @@ const notes: StickyNote[] = [
   {
     id: "note-demo-2",
     title: "Pixel checklist",
-    body: "Charge the phone\nEnable Wi-Fi\nKeep a USB-C cable nearby",
+    body: "\nCharge the phone\nEnable Wi-Fi\nKeep a USB-C cable nearby",
     color: "green",
     createdAt: "2026-08-25T18:10:00.000Z",
     updatedAt: "2026-08-26T03:18:00.000Z",
@@ -40,7 +40,7 @@ const notes: StickyNote[] = [
   {
     id: "note-demo-3",
     title: "Follow up",
-    body: "Send the staging build notes after the demo.",
+    body: "\nSend the staging build notes after the demo.",
     color: "slate",
     createdAt: "2026-08-25T19:00:00.000Z",
     updatedAt: "2026-08-25T21:12:00.000Z",

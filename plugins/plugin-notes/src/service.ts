@@ -1,3 +1,4 @@
+import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
  * the durable per-agent document; HTTP routes and view capabilities call this
@@ -78,7 +79,7 @@ function queryMatches(
   );
   if (exactTitle.length > 0) return exactTitle;
   const contained = indexed.filter(({ note }) =>
-    normalizedLookup(`${note.title} ${note.body} ${note.color}`).includes(
+    normalizedLookup(`${reconstructNoteContent(note)} ${note.color}`).includes(
       target,
     ),
   );
