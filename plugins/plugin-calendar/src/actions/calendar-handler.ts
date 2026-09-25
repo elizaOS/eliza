@@ -39,6 +39,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/core/contracts/calendar";
 import {
@@ -317,6 +318,7 @@ type RankedCalendarSearchCandidate = {
 type CreateEventCalendarContext = {
   calendarTimeZone: string;
   feed: LifeOpsCalendarFeed;
+  calendars: LifeOpsCalendarSummary[];
 };
 
 export type CalendarLlmPlan = {
@@ -2182,6 +2184,7 @@ function formatCreateEventCalendarContext(
   const lines = [
     `Calendar timezone: ${context.calendarTimeZone}`,
     `Context window: ${context.feed.timeMin} to ${context.feed.timeMax}`,
+    `Authorized calendar account identities: ${JSON.stringify(context.calendars)}`,
     `Calendar source identities and health: ${JSON.stringify(context.feed.sources)}`,
   ];
 
@@ -3116,6 +3119,7 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
+    calendars: await service.listCalendars(INTERNAL_URL),
   };
 }
 
