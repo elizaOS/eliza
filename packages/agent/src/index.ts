@@ -62,7 +62,13 @@ export async function validateCloudBaseUrl(
   return validateCloudBaseUrl(value);
 }
 export * from "@elizaos/auth/auth";
-export type { ElizaConfig, RolesConfig } from "@elizaos/core";
+export type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ElizaConfig,
+  RolesConfig,
+} from "@elizaos/core";
 export { CONNECTOR_PLUGINS } from "@elizaos/core/config/plugin-auto-enable-engine";
 export type { ReleaseChannel } from "@elizaos/core/contracts/config";
 export {
@@ -205,20 +211,24 @@ export * from "./api/wallet-capability.ts";
 export * from "./api/workbench-helpers.ts";
 export * from "./awareness/index.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
-export { CharacterSchema } from "./config/character-schema.ts";
-export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
-export * from "./config/index.ts";
-export { resolveUserPath } from "./config/paths.ts";
+export * from "./config/character-schema.ts";
+export * from "./config/config.ts";
+export * from "./config/env-vars.ts";
+export * from "./config/includes.ts";
+export * from "./config/model-metadata.ts";
+export * from "./config/owner-contacts.ts";
+export * from "./config/paths.ts";
 // Export host-owned plugin metadata helpers for transport consumers.
 export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
+export * from "./config/schema.ts";
+export * from "./config/telegram-custom-commands.ts";
 // `contracts/awareness.js` preserves the agent-owned import surface by
 // re-exporting the canonical awareness contracts from `@elizaos/core`.
-// Config media/custom-action contract types are exported from `./config/index.js`
-// (via `@elizaos/core`); do not re-export `./contracts/config.js` here or
-// `tsc` reports duplicate symbol errors (TS2308).
+// Config contract types are exported from core above; the host config module
+// supplies its own runtime functions.
 export * from "./contracts/awareness.ts";
 export * from "./diagnostics/integration-observability.ts";
 export * from "./hooks/index.ts";

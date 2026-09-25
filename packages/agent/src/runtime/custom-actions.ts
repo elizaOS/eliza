@@ -17,6 +17,8 @@ import { request as requestHttps } from "node:https";
 import net from "node:net";
 import {
   type Action,
+  type CustomActionDef,
+  type CustomActionHandler,
   type HandlerOptions,
   type IAgentRuntime,
   isPrivateIpAddress,
@@ -28,10 +30,6 @@ import {
   resolveServerOnlyPort,
 } from "@elizaos/core/runtime-env";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "../config/types.eliza.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
