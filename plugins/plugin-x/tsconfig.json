@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "customConditions": ["eliza-source"],
+    "target": "ES2024",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
@@ -11,11 +12,7 @@
     "types": ["node"],
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
-    "paths": {
-      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
-        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
-      ]
-    }
+    "paths": {}
   },
   "include": ["src/**/*"],
   "exclude": [

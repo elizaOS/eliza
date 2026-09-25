@@ -55,6 +55,7 @@ import {
 } from "./database/world-metadata-cas";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import { createLogger } from "./logger";
+import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
@@ -509,7 +510,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private invalidateTurnIdentityClusters(): void {
 		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
 	}
-	readonly fetch = fetch;
+	readonly fetch: FetchLike = fetch;
 	services = new Map<ServiceTypeName, Service[]>();
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 
@@ -586,7 +587,7 @@ export class AgentRuntime implements IAgentRuntime {
 		/** Optional character configuration. If not provided, an anonymous character is created. */
 		character?: Character;
 		plugins?: Plugin[];
-		fetch?: typeof fetch;
+		fetch?: FetchLike;
 		/** Database adapter supplied by a persistence plugin or the host. WHY: Caller owns DB lifecycle; no plugin registration race; single source of truth. */
 		adapter?: IDatabaseAdapter;
 		settings?: RuntimeSettings;
@@ -683,7 +684,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (opts.adapter) {
 			this.registerDatabaseAdapter(opts.adapter);
 		}
-		this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
+		this.fetch = opts.fetch ?? this.fetch;
 		this.settings = { ...opts.settings };
 		const enableAutonomyFromSettings =
 			this.character.settings?.ENABLE_AUTONOMY === true ||

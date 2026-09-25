@@ -20,10 +20,7 @@
       "@elizaos/cloud-shared/db/*": ["../shared/src/db/*"],
       "@elizaos/cloud-shared/lib/*": ["../shared/src/lib/*"],
       "@elizaos/cloud-shared/types/*": ["../shared/src/types/*"],
-      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
-      "@elizaos/cloud-routing": ["../routing/src/index.ts"],
-      "@elizaos/core": ["../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../../plugins/plugin-elizacloud/src/index.ts"
@@ -31,63 +28,7 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../plugins/plugin-elizacloud/src/*"
       ],
-      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-web-search": [
-        "../../../plugins/plugin-web-search/src/index.ts"
-      ],
-      "@/*": ["../shared/*"],
-      "@elizaos/plugin-scheduling": [
-        "../../../plugins/plugin-scheduling/src/index.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/bge-input": [
-        "../../../plugins/plugin-native-inference/src/model-catalog/bge-input.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/prompts": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/prompts.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/model-provider": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/model-provider.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/resource-selection": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/resource-selection.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/action-naming": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/action-naming.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/json": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/json.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/schema-converter": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/schema-converter.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/voice-models": [
-        "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
-      ],
-      "@elizaos/ui/brand": ["../../ui/src/brand/index.ts"],
-      "@elizaos/plugin-mcp/protocol-utils/provider-projection": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/provider-projection.ts"
-      ],
-      "@elizaos/plugin-mcp/protocol-utils/tool-schema-compatibility": [
-        "../../../plugins/plugin-mcp/src/protocol-utils/tool-schema-compatibility.ts"
-      ],
-      "@elizaos/plugin-wallet/lib/market-overview": [
-        "../../../plugins/plugin-wallet/src/lib/market-overview.ts"
-      ],
-      "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
-      "@elizaos/ui": ["../../ui/src/index.ts"],
-      "@elizaos/auth": ["../../auth/src/sdk/index.ts"],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-secure-store": [
-        "../../../plugins/plugin-native-secure-store/src/index.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/network-policy": [
-        "../../../plugins/plugin-native-inference/src/model-catalog/network-policy.ts"
-      ],
-      "@elizaos/plugin-native-inference/model-catalog/routing-policy": [
-        "../../../plugins/plugin-native-inference/src/model-catalog/routing-policy.ts"
-      ]
+      "@/*": ["../shared/*"]
     }
   },
   "include": [
