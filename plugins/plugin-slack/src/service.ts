@@ -9,8 +9,8 @@
  * (`createUniqueUuid` / `stringToUuid` for stable room/entity IDs) and emitted as
  * `SlackEventTypes`; outbound `Content` is rendered to Slack mrkdwn via
  * `formatting.ts` and posted through the account's web client. Media attachments
- * are fetched through the SSRF-guarded `resolveAttachmentBytes` and uploaded as
- * file bytes rather than URLs.
+ * are resolved through the core outbound-media boundary and uploaded as file
+ * bytes rather than URLs.
  *
  * Multi-account state lives in a `Map<string, SlackAccountRuntime>`; the default
  * account is the first entry. OWNER-role accounts with a user token (`xoxp-`) post
@@ -43,11 +43,12 @@ import {
   type MessageMetadata,
   type MessagePayload,
   type Room,
-  resolveAttachmentBytes,
+  resolveOutboundAttachmentBytes,
   type SendHandlerOutcome,
   type SendHandlerReceipt,
   Service,
   stringToUuid,
+  summarizeOutboundAttachmentUrl,
   type TargetInfo,
   type UUID,
   type World,
@@ -64,9 +65,9 @@ type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
  * {@link SlackService.handleSendMessage} to derive complete/partial/not-delivered.
  */
 type OutboundAttachmentDelivery = {
-  delivered: Array<{ url: string; fileId: string; permalink: string }>;
+  delivered: Array<{ fileId: string; permalink: string }>;
   failures: Array<{
-    url: string;
+    source: ReturnType<typeof summarizeOutboundAttachmentUrl>;
     code: string;
     message: string;
     uncertain?: boolean;
@@ -2729,7 +2730,11 @@ export class SlackService extends Service implements ISlackService {
       args.textFailure !== undefined
         ? `text delivery failed (${args.textFailure.code}: ${args.textFailure.message})`
         : failures.length > 0
-          ? failures.map((f) => `${f.url} (${f.code}: ${f.message})`).join("; ")
+          ? failures
+              .map(
+                (f) => `${JSON.stringify(f.source)} (${f.code}: ${f.message})`,
+              )
+              .join("; ")
           : "no per-part failure evidence was recorded";
     if (providerMessageIds.length === 0) {
       if (failures.some((failure) => failure.uncertain))
@@ -2904,7 +2909,9 @@ export class SlackService extends Service implements ISlackService {
   protected async fetchAttachmentBytes(
     url: string,
   ): Promise<{ buffer: Buffer; fileName?: string; contentType?: string }> {
-    return resolveAttachmentBytes(url);
+    return resolveOutboundAttachmentBytes(url, {
+      localFetch: this.runtime.fetch ?? undefined,
+    });
   }
 
   /**
@@ -2922,10 +2929,10 @@ export class SlackService extends Service implements ISlackService {
     threadTs: string | undefined,
     accountId: string | null,
   ): Promise<OutboundAttachmentDelivery> {
-    const delivered: Array<{ url: string; fileId: string; permalink: string }> =
-      [];
+    const delivered: Array<{ fileId: string; permalink: string }> = [];
     const failures: OutboundAttachmentDelivery["failures"] = [];
     for (const media of attachments) {
+      const source = summarizeOutboundAttachmentUrl(media.url);
       let dispatched = false;
       try {
         const { buffer, fileName } = await this.fetchAttachmentBytes(media.url);
@@ -2949,7 +2956,6 @@ export class SlackService extends Service implements ISlackService {
           );
         }
         delivered.push({
-          url: media.url,
           fileId: uploaded.fileId,
           permalink: uploaded.permalink,
         });
@@ -2958,7 +2964,7 @@ export class SlackService extends Service implements ISlackService {
         // becomes typed evidence the composed outcome reports as partial/not
         // delivered; the remaining attachments are still attempted.
         failures.push({
-          url: media.url,
+          source,
           uncertain: dispatched,
           code:
             error instanceof ElizaError
@@ -2970,7 +2976,7 @@ export class SlackService extends Service implements ISlackService {
           {
             src: "plugin:slack",
             agentId: this.runtime.agentId,
-            url: media.url,
+            ...source,
             error: error instanceof Error ? error.message : String(error),
           },
           "Failed to send Slack outbound attachment; skipping",
