@@ -707,28 +707,21 @@ function ComposerMicActivity({
         className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2"
       />
       {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
-        <Card
-          asChild
-          surface="inverseForeground"
-          border="none"
-          radius="full"
+        <span
           key={id}
-        >
-          <span
-            // Stable bar ids keep imperative analyser writes independent of React.
-            ref={(node) => {
-              barsRef.current[index] = node;
-            }}
-            aria-hidden="true"
-            className={cn(
-              "relative z-10 w-0.5 origin-center transition-transform duration-75 sm:w-1",
-              !finishing &&
-                !analyser &&
-                "animate-pulse motion-reduce:animate-none",
-            )}
-            style={{ height, transform: "scaleY(0.32)" }}
-          />
-        </Card>
+          // Stable bar ids keep imperative analyser writes independent of React.
+          ref={(node) => {
+            barsRef.current[index] = node;
+          }}
+          aria-hidden="true"
+          className={cn(
+            "relative z-10 w-0.5 origin-center rounded-full bg-current transition-transform duration-75 sm:w-1",
+            !finishing &&
+              !analyser &&
+              "animate-pulse motion-reduce:animate-none",
+          )}
+          style={{ height, transform: "scaleY(0.32)" }}
+        />
       ))}
     </div>
   );
@@ -2538,6 +2531,8 @@ export function ChatOverlay({
   const booting = phase === "booting";
   const listening = phase === "listening";
   const hasDraft = draft.trim().length > 0;
+  const isTranscriptionCommand =
+    draft.trim() === "/transcribe" && pendingImages.length === 0;
   const hasImages = pendingImages.length > 0;
   const draftOwnsTrailingControl = (hasDraft || hasImages) && !recording;
   const generationOwnsTrailingControl =
@@ -2612,6 +2607,29 @@ export function ChatOverlay({
         inputRef.current?.focus();
         return;
       }
+      // This explicit local command uses the same permission/auth-gated recorder
+      // as spoken entry. Other slash text and messages with attachments stay chat.
+      if (trimmed === "/transcribe" && images.length === 0) {
+        resetMessageHistory();
+        clearChatDraft(activeConversationIdRef.current);
+        viewChatBinding?.onQuery?.("");
+        setDraft("");
+        setImageError(null);
+        if (!transcriptionMode) {
+          void (async () => {
+            try {
+              await toggleTranscriptionMode();
+            } catch (error) {
+              setImageError(
+                error instanceof Error
+                  ? error.message
+                  : "Could not start transcription",
+              );
+            }
+          })();
+        }
+        return;
+      }
       // Post-onboarding: a stopped agent can't take a turn.
       if (!canSend) return;
       resetMessageHistory();
@@ -2670,6 +2688,8 @@ export function ChatOverlay({
       resetMessageHistory,
       send,
       sendFirstRunText,
+      transcriptionMode,
+      toggleTranscriptionMode,
       setDraft,
       setPendingImages,
       viewChatBinding,
@@ -6028,7 +6048,7 @@ export function ChatOverlay({
                         variant="statusMuted"
                         size="pill"
                         data-testid="chat-transcribing-badge"
-                        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap"
+                        className="pointer-events-none mx-auto mt-7 mb-1 whitespace-normal text-center"
                       >
                         {transcriptionFinishing
                           ? "Finishing transcription…"
@@ -6752,16 +6772,18 @@ export function ChatOverlay({
                             label={
                               firstRunOpen
                                 ? "send to setup assistant"
-                                : !canSend
-                                  ? "send (agent stopped)"
-                                  : responding
-                                    ? "send another"
-                                    : "send"
+                                : isTranscriptionCommand
+                                  ? "start transcription"
+                                  : !canSend
+                                    ? "send (agent stopped)"
+                                    : responding
+                                      ? "send another"
+                                      : "send"
                             }
                             disabled={
                               firstRunOpen
                                 ? cloudLoginWaiting || !sendFirstRunText
-                                : !canSend
+                                : !canSend && !isTranscriptionCommand
                             }
                             onPointerDown={(event) => event.preventDefault()}
                             onClick={submit}
