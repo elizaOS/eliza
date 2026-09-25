@@ -109,7 +109,7 @@ describe("source-bound historical navigation", () => {
 			JSON.stringify(selectCompletionContext(withSelection(original)).context),
 		).toContain("EXACT_NAVIGATION_RECEIPT");
 	});
-	it("loads exact receipts beside a deferred handler history read", () => {
+	it("keeps exact receipts in the full-history reply handler despite deferred-read hints", () => {
 		const context = fixture();
 		const history = {
 			sourceSetId: completionContextSources(context).sourceSetId,
@@ -131,7 +131,7 @@ describe("source-bound historical navigation", () => {
 					{ directMessage: true, history },
 				).messages,
 			);
-		expect(render()).not.toContain("EXACT_NAVIGATION_RECEIPT");
+		expect(render()).toContain("EXACT_NAVIGATION_RECEIPT");
 		history.loadedSourceIds.add("h3");
 		expect(render()).toContain("EXACT_NAVIGATION_RECEIPT");
 	});

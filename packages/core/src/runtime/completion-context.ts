@@ -4,7 +4,10 @@
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
-import type { CompletionContextSelection } from "../types/components";
+import type {
+	ActionParameterSchema,
+	CompletionContextSelection,
+} from "../types/components";
 import type {
 	ContextEvent,
 	ContextObject,
@@ -20,7 +23,7 @@ export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `History selection: use
 Use relevant_prior_dialogue with complete=true when dependencies are resolved (an empty selection is valid), otherwise all_prior_dialogue with complete=false. Exhaustive dialogue coverage needs all originals; live-record questions need tools. Use the sourceSetId required by the response schema. Current request, system/provider constraints and receipts remain complete; selection proves relevance, never execution.`;
 
 /** Shared static and registered Stage-1 wire schema. */
-export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
+export const COMPLETION_CONTEXT_SCHEMA = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
@@ -72,7 +75,7 @@ export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {
 		"referentSourceIds",
 		"pendingIntentSourceIds",
 	],
-};
+} satisfies JSONSchema & ActionParameterSchema;
 
 /** A labeled history always supplies its source-set identity. Keep the schema
  * static across such turns, but do not offer an empty-ID escape hatch that

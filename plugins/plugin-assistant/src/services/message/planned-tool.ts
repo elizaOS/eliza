@@ -264,9 +264,19 @@ export async function executeV5PlannedToolCall(
     args.executorCtx.message.id.length > 0 &&
     args.plannerContext.metadata?.roomId === args.executorCtx.message.roomId &&
     args.plannerContext.metadata?.messageId === args.executorCtx.message.id;
+  const actionContext =
+    toolCall.completionContext !== undefined
+      ? {
+          ...args.plannerContext,
+          metadata: {
+            ...args.plannerContext.metadata,
+            completionContext: toolCall.completionContext ?? undefined,
+          },
+        }
+      : args.plannerContext;
   const actionConversation = boundToRequest
     ? completionContextSources(
-        selectCompletionContext(args.plannerContext).context,
+        selectCompletionContext(actionContext).context,
       ).sources.map(({ event }) => event)
     : [];
   const executorCtx = {
