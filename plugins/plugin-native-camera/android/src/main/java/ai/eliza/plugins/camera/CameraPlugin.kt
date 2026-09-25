@@ -1169,8 +1169,17 @@ class CameraPlugin : Plugin() {
         // Release only our AF override first; keeping it would prevent that
         // future from completing. Preserve white balance and other interop keys.
         val interop = Camera2CameraControl.from(owner.cameraControl)
-        val released = CaptureRequestOptions.Builder.from(interop.captureRequestOptions)
-            .clearCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE).build()
+        val current = interop.captureRequestOptions
+        // These are the other request options owned by this plugin. Rebuild via
+        // public option getters; Builder.from(Config) is CameraX-library-only.
+        val released = CaptureRequestOptions.Builder().apply {
+            current.getCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE)?.let {
+                setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, it)
+            }
+            current.getCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)?.let {
+                setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, it)
+            }
+        }.build()
         awaitCameraControl(owner, epoch, interop.setCaptureRequestOptions(released), {
             check(requestId == focusRequestId) { "A newer focus request superseded this release" }
             awaitCameraControl(owner, epoch, owner.cameraControl.cancelFocusAndMetering(), {
