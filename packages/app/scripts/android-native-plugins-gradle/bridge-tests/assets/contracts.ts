@@ -360,6 +360,62 @@
         settings.brightness >= 0 && settings.brightness <= 1,
         "native brightness range",
       );
+      if (descriptor.systemStage) {
+        const stage = descriptor.systemStage;
+        const expected = descriptor.systemExpected;
+        let brightnessReceipt = null;
+        let volumeReceipt = null;
+        if (stage === "denied" || stage === "revoked") {
+          await rejects("setScreenBrightness", { brightness: 0.37 });
+        } else if (stage === "granted" || stage === "clamped") {
+          brightnessReceipt = await call("setScreenBrightness", {
+            brightness: expected.brightnessInput,
+          });
+          assert(
+            Math.abs(brightnessReceipt.brightness - expected.brightness) <
+              0.000001,
+            "brightness receipt must match the requested native effect",
+          );
+        }
+        if (["granted", "clamped", "revoked"].includes(stage)) {
+          await rejects("setVolume", { stream: "invalid", volume: 1 });
+          await rejects("setVolume", { stream: "music" });
+          volumeReceipt = await call("setVolume", {
+            stream: "music",
+            volume: expected.volumeInput,
+            showUi: false,
+          });
+          assert(
+            volumeReceipt.current === expected.music &&
+              volumeReceipt.max === expected.maxMusic,
+            "volume receipt must reflect Android AudioManager",
+          );
+        }
+        const actual = await call("getDeviceSettings");
+        assert(
+          Math.abs(actual.brightness - expected.brightness) < 0.000001,
+          "native brightness round trip",
+        );
+        assert(
+          actual.brightnessMode === expected.brightnessMode,
+          "native brightness mode",
+        );
+        assert(
+          actual.canWriteSettings === expected.canWriteSettings,
+          "live WRITE_SETTINGS permission state",
+        );
+        assert(
+          actual.volumes.find((item) => item.stream === "music").current ===
+            expected.music,
+          "native music volume round trip",
+        );
+        window.nativeSystemEvidence = {
+          stage,
+          brightnessReceipt,
+          volumeReceipt,
+          settings: actual,
+        };
+      }
       break;
     }
     case "plugin-native-mobile-signals": {
