@@ -15,16 +15,16 @@ import {
 	ConfidentialInferenceOperation,
 	runWithConfidentialInference,
 } from "../../security/confidential-inference.js";
-import {
-	collectPiiPromptText,
-	GuardedStreamScanner,
-	type PseudonymSession,
-} from "../../security/index.js";
+import { GuardedStreamScanner } from "../../security/guarded-stream.js";
 import {
 	describeModelCallError,
 	isModelProviderFallbackError,
 	isModelProviderRetryBudgetExhaustedError,
 } from "../../security/model-failure.ts";
+import {
+	collectPiiPromptText,
+	type PseudonymSession,
+} from "../../security/pii-pseudonymizer.js";
 import type { SecretSwapSession } from "../../security/secret-swap";
 import {
 	getStreamingContext,
@@ -36,13 +36,12 @@ import {
 	runWithModelCallRecordingScope,
 	type TrajectoryRuntimeLlmCallLogger,
 } from "../../trajectory-utils";
-import type { ModelHandler } from "../../types";
+import type { StreamChunkCallback } from "../../types/components.js";
+import { EventType } from "../../types/events.js";
+import type { ModelHandler } from "../../types/model.js";
 import {
-	EventType,
 	type GenerateTextParams,
 	getModelFallbackChain,
-	type IAgentRuntime,
-	type JsonValue,
 	MODEL_PROVIDER_ATTEMPTS,
 	type ModelAttemptContext,
 	type ModelParamsMap,
@@ -53,18 +52,17 @@ import {
 	ModelType,
 	type ModelTypeName,
 	type ResponseSkeleton,
-	type Service,
-	type ServiceTypeName,
-	type StreamChunkCallback,
 	type TextStreamResult,
-	type UUID,
-} from "../../types";
+} from "../../types/model.js";
 import {
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
 	postModelPipelineHookContext,
 	preModelPipelineHookContext,
 } from "../../types/pipeline-hooks";
+import type { JsonValue, UUID } from "../../types/primitives.js";
+import type { IAgentRuntime } from "../../types/runtime.js";
+import type { Service, ServiceTypeName } from "../../types/service.js";
 import { BufferUtils } from "../../utils/buffer";
 import {
 	assertModelOutputComplete,

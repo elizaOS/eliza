@@ -8,8 +8,8 @@
  */
 
 import { ElizaError } from "../errors";
-import type { JsonValue } from "../types";
 import type { UUID } from "../types/primitives";
+import type { JsonValue } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { Task, TaskMetadata, TaskRunStatus } from "../types/task";

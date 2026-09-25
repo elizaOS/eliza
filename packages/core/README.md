@@ -8,6 +8,16 @@ and `@elizaos/plugin-assistant` for conversational behavior. The root entrypoint
 contracts and pure utilities without loading that runtime. Core does not own host
 route tables or install assistant behavior implicitly. Runtime settings are per-agent and do not implicitly read process.env.
 
+The root also exports route DTOs, Markdown, and LifeOps helpers. Use
+`KnowledgeGraphEntity` / `KnowledgeGraphRelationship` for graph records and
+`FirstRunMessageExample` for setup examples; the existing `Entity`, `Relationship`,
+and `MessageExample` names retain their runtime meanings.
+
+Host configuration is exported from the root as well. `AppMemoryConfig` and
+`AppX402Config` distinguish host settings from runtime settings; `ConfigUiPatchOp`
+names configuration UI patches. `getAppBootConfigEnvAliases` and
+`resolveAppAliasedEnvValue` retain the host store's initialization behavior.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

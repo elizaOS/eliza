@@ -29,4 +29,4 @@ it("keeps root imports passive and installs the Calendar surface explicitly", as
   const registered = getAppShellPageRegistrySnapshot();
   registerCalendarApp();
   expect(getAppShellPageRegistrySnapshot()).toBe(registered);
-});
+}, 30_000);

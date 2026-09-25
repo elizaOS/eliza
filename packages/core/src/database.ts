@@ -11,13 +11,12 @@
  */
 
 import { ElizaError } from "./errors";
+import type { AccessContext } from "./types/access-context.js";
+import type { Agent } from "./types/agent.js";
 import type {
-	AccessContext,
-	Agent,
 	AppendConnectorAccountAuditEventParams,
 	AtomicMemoryPublicationParams,
 	AtomicMemoryPublicationResult,
-	Component,
 	ConnectorAccountAuditEventRecord,
 	ConnectorAccountCredentialRefRecord,
 	ConnectorAccountRecord,
@@ -35,44 +34,46 @@ import type {
 	DocumentListQueryResult,
 	DocumentMutationResult,
 	DocumentRevisionReplaceParams,
-	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
 	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
-	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
 	ListConnectorAccountsParams,
 	Log,
 	LogBody,
-	Memory,
-	MemoryMetadata,
 	MessageContentPublicationParams,
 	MessageContentPublicationResult,
 	MessageContentRangeReadParams,
 	MessageContentRangeReadResult,
 	MessageSearchHit,
-	Metadata,
 	OAuthFlowRecord,
+	ParticipantUpdateFields,
+	ParticipantUserState,
+	PatchOp,
+	SetConnectorAccountCredentialRefParams,
+	UpdateOAuthFlowStateParams,
+	UpsertConnectorAccountParams,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
+} from "./types/database.js";
+import type {
+	Component,
+	Entity,
+	Participant,
+	Relationship,
+	Room,
+	World,
+} from "./types/environment.js";
+import type { Memory, MemoryMetadata } from "./types/memory.js";
+import type {
 	PairingAllowlistEntry,
 	PairingAllowlistQuery,
 	PairingRequest,
 	PairingRequestQuery,
-	Participant,
-	ParticipantUpdateFields,
-	ParticipantUserState,
-	PatchOp,
-	Relationship,
-	Room,
-	SetConnectorAccountCredentialRefParams,
-	Task,
-	UpdateOAuthFlowStateParams,
-	UpsertConnectorAccountParams,
-	UUID,
-	World,
-	WorldMetadataCompareAndSwapParams,
-	WorldMetadataMutationResult,
-} from "./types";
+} from "./types/pairing.js";
+import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
+import type { Task } from "./types/task.js";
 
 /** Enforces the shared pagination contract for entity-query boundaries. */
 export function validateQueryEntitiesPagination(params: {
@@ -288,7 +289,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract getEntitiesForRooms(
 		roomIds: UUID[],
 		includeComponents?: boolean,
-	): Promise<import("./types").EntitiesForRoomsResult>;
+	): Promise<import("./types/database.js").EntitiesForRoomsResult>;
 
 	/**
 	 * Creates a new entities in the database.
@@ -638,7 +639,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract getParticipantsForRooms(
 		roomIds: UUID[],
-	): Promise<import("./types").ParticipantsForRoomsResult>;
+	): Promise<import("./types/database.js").ParticipantsForRoomsResult>;
 
 	abstract areRoomParticipants(
 		pairs: Array<{ roomId: UUID; entityId: UUID }>,
@@ -763,11 +764,11 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	// ── Pairing CRUD (batch-only for mutations) ─────────────────────────
 	abstract getPairingRequests(
 		queries: PairingRequestQuery[],
-	): Promise<import("./types").PairingRequestsResult>;
+	): Promise<import("./types/database.js").PairingRequestsResult>;
 
 	abstract getPairingAllowlists(
 		queries: PairingAllowlistQuery[],
-	): Promise<import("./types").PairingAllowlistsResult>;
+	): Promise<import("./types/database.js").PairingAllowlistsResult>;
 
 	abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>;
 	abstract updatePairingRequests(requests: PairingRequest[]): Promise<void>;

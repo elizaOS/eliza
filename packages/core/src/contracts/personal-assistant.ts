@@ -4313,8 +4313,10 @@ export type {
 	EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia,
 	EntityState as LifeOpsEntityState,
 	EntityVisibility as LifeOpsEntityVisibility,
+} from "../knowledge-graph/entity-types.js";
+export type {
 	Relationship as LifeOpsGraphRelationship,
 	RelationshipSource as LifeOpsGraphRelationshipSource,
 	RelationshipState as LifeOpsGraphRelationshipState,
 	RelationshipStatus as LifeOpsGraphRelationshipStatus,
-} from "../knowledge-graph/index.js";
+} from "../knowledge-graph/relationship-types.js";

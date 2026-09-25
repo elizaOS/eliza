@@ -5,17 +5,15 @@ import {
 	roomDeliverySettlement,
 	trackPostDeliveryTask,
 } from "../services/post-delivery-task-tracker";
-import type {
-	ActionResult,
-	EffectReceipt,
-	IAgentRuntime,
-	Memory,
-	RunEventPayload,
-	UUID,
-} from "../types";
+import type { ActionResult } from "../types/components.js";
 import { mergeEffectReceipts } from "../types/effects";
+import type { EffectReceipt } from "../types/effects.js";
 import { EventType } from "../types/events";
+import type { RunEventPayload } from "../types/events.js";
+import type { Memory } from "../types/memory.js";
 import type { TurnOutcome } from "../types/message-service";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import type { RoomHandlerLease } from "./room-handler-queue";
 
 /**

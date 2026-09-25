@@ -545,7 +545,6 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       vi.fn(() => 1),
     );
     window.history.replaceState(null, "", "/views");
-    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);
   });

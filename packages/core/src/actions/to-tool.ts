@@ -12,7 +12,7 @@
  */
 import { ElizaError } from "../errors";
 import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context";
-import type { Action } from "../types";
+import type { Action } from "../types/components.js";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
 	type ActionParametersJsonSchema,

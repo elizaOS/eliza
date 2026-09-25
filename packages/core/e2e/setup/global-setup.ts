@@ -9,6 +9,13 @@
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
 import {
+	ChannelType,
+	type Character,
+	type Memory,
+	type Plugin,
+	type UUID,
+} from "@elizaos/core";
+import {
 	createOllamaModelHandlers,
 	detectInferenceProviders,
 	SQLiteDatabaseAdapter,
@@ -16,13 +23,6 @@ import {
 import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing.js";
 import { AgentRuntime } from "../../src/runtime";
-import {
-	ChannelType,
-	type Character,
-	type Memory,
-	type Plugin,
-	type UUID,
-} from "../../src/types";
 import { loadEnvFile } from "./env";
 
 const TEST_CHARACTER: Character = {
