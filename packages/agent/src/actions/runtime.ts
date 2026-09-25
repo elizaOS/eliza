@@ -16,20 +16,20 @@
  */
 
 import crypto from "node:crypto";
-import type {
-  Action,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
-import { logger, toWellFormedUnicode } from "@elizaos/core";
-import { type AwarenessRegistry } from "@elizaos/core/awareness/registry";
 import {
+  type Action,
+  type ActionResult,
+  type AwarenessRegistry,
   getValidationKeywordTerms,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   textIncludesKeywordTerm,
-} from "@elizaos/core/i18n/keyword-matching";
+  toWellFormedUnicode,
+  type UUID,
+} from "@elizaos/core";
+
 import { requestRestart } from "@elizaos/core/restart";
 import {
   createSelfApiRequestHeaders,

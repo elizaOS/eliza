@@ -8,16 +8,21 @@
  * conversation and stream-event types for API consumers.
  */
 import type http from "node:http";
-import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import {
-  type AgentAutomationMode,
-  type AgentStartupDiagnostics,
-  type LogEntry,
-  type PluginParamDef,
-  type SkillEntry,
-  type StreamEventEnvelope,
+import type {
+  AgentRuntime,
+  ConversationMetadata,
+  Media,
+  UUID,
+} from "@elizaos/core";
+import type {
+  AgentAutomationMode,
+  AgentStartupDiagnostics,
+  LogEntry,
+  PluginParamDef,
+  SkillEntry,
+  StreamEventEnvelope,
 } from "@elizaos/core/api/agent-api-types";
-import { type ConversationMetadata } from "@elizaos/core/contracts/conversation-routes";
+
 import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
 import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
@@ -34,20 +39,20 @@ export interface TelegramAccountAuthSessionLike {
   stop: () => void | Promise<void>;
 }
 
-export {
-  type AgentAutomationMode,
-  type AgentStartupDiagnostics,
-  type ChatImageAttachment,
-  type LogEntry,
-  type PluginParamDef,
-  type SkillEntry,
-  type StreamEventEnvelope,
-  type StreamEventType,
+export type {
+  AgentAutomationMode,
+  AgentStartupDiagnostics,
+  ChatImageAttachment,
+  LogEntry,
+  PluginParamDef,
+  SkillEntry,
+  StreamEventEnvelope,
+  StreamEventType,
 } from "@elizaos/core/api/agent-api-types";
-export {
-  type ConversationAutomationType,
-  type ConversationMetadata,
-  type ConversationScope,
+export type {
+  ConversationAutomationType,
+  ConversationMetadata,
+  ConversationScope,
 } from "@elizaos/core/contracts/conversation-routes";
 
 /** Metadata for a web-chat conversation. */
@@ -78,7 +83,7 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+export type { TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
 
 export interface PluginEntry {
   id: string;

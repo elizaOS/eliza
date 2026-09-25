@@ -26,6 +26,8 @@ import {
   authorizeOwnerExclusiveDisclosure,
   bindIncomingMessagePersistence,
   ChannelType,
+  type ChatFailureKind,
+  type ChatTerminalFailure,
   type Content,
   composeToolDiagnosticRedactor,
   createMessageMemory,
@@ -35,6 +37,7 @@ import {
   getInferenceTimer,
   hasAtLeastRole,
   InferenceTurnTimer,
+  isChatFailureKind,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -44,6 +47,13 @@ import {
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
   projectCompleteToolValueForModel,
   type RoleGrantSource,
   type RolesWorldMetadata,
@@ -63,20 +73,7 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
-import {
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  isChatFailureKind,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-} from "@elizaos/core/contracts/chat";
-import {
-  PatchConversationRequestSchema,
-  PostConversationCleanupEmptyRequestSchema,
-  PostConversationRequestSchema,
-  PostConversationTruncateRequestSchema,
-  PostSeedMessagesRequestSchema,
-} from "@elizaos/core/contracts/conversation-routes";
+
 import {
   conversationClientUserMemoryId,
   type DurableConversationChatMarker,

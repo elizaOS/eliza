@@ -14,13 +14,14 @@
  * deployment allows.
  */
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import {
   type CloudPairRelaySession,
+  logger,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/core";
+
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import {
   resolveDevCloudAuthorityEnvValue,

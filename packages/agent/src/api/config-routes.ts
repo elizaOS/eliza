@@ -12,13 +12,15 @@
  * models, database); provider API keys are synced into process.env.
  */
 import type http from "node:http";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import {
+  type AgentRuntime,
+  logger,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,

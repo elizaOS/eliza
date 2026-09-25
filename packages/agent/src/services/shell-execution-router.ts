@@ -21,11 +21,12 @@ import type { Dirent } from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { sanitizeSpawnEnv } from "@elizaos/core";
 import {
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
-} from "@elizaos/core/config/runtime-mode";
+  sanitizeSpawnEnv,
+} from "@elizaos/core";
+
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,

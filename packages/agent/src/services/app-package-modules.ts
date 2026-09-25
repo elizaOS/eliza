@@ -12,9 +12,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { ElizaError, readJsonFile, resolveStateDir } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { type AppPackageRouteContext } from "@elizaos/core/api/route-helpers";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
@@ -22,16 +19,22 @@ import {
   type AppRunSessionContext,
   type AppSessionState,
   type AppViewerAuthMessage,
+  ElizaError,
   hasAppInterface,
   packageNameToAppRouteSlug,
-} from "@elizaos/core/contracts/apps";
+  readJsonFile,
+  resolveStateDir,
+} from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { AppPackageRouteContext } from "@elizaos/core/api/route-helpers";
+
 import { isMobilePlatform } from "@elizaos/core/runtime-env";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { getPluginInfo } from "./registry-client.ts";
 
-export {
-  type AppLaunchSessionContext,
-  type AppRunSessionContext,
+export type {
+  AppLaunchSessionContext,
+  AppRunSessionContext,
 } from "@elizaos/core/contracts/apps";
 export type AppLaunchPreparationResolver = (
   ctx: AppLaunchSessionContext,

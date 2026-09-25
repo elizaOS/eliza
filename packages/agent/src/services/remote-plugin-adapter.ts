@@ -36,6 +36,7 @@ import {
   type PluginInvokeActionParams,
   type PluginWidgetDeclaration,
   type ProviderResult,
+  packageNameToAppRouteSlug,
   type RegisteredEvaluator,
   type RemotePluginModuleManifest,
   type ResponseHandlerEvaluator,
@@ -46,17 +47,17 @@ import {
   type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
-import {
-  type HttpPlugin as Plugin,
-  type Route,
-  type RouteHandlerContext,
+import type {
+  HttpPlugin as Plugin,
+  Route,
+  RouteHandlerContext,
 } from "@elizaos/core/api/http-plugin";
 import {
   getHttpRuntime,
   getPluginHttpRoutes,
 } from "@elizaos/core/api/http-plugin-runtime";
-import { type AppPackageRouteContext } from "@elizaos/core/api/route-helpers";
-import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
+import type { AppPackageRouteContext } from "@elizaos/core/api/route-helpers";
+
 import {
   type AppRouteModule,
   hasRuntimeAppRouteModule,

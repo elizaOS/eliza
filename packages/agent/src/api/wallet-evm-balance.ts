@@ -5,12 +5,14 @@
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
 
-import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   type EvmChainBalance,
   type EvmNft,
   type EvmTokenBalance,
-} from "@elizaos/core/contracts/wallet-types";
+  logger,
+  toWellFormedUnicode,
+} from "@elizaos/core";
+
 import {
   computeValueUsd,
   type DexTokenMeta,

@@ -3,17 +3,18 @@
  */
 
 import type http from "node:http";
-import { type AgentRuntime } from "@elizaos/core";
-import { type ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
 import {
+  type AgentRuntime,
   PostRegistryRegisterRequestSchema,
   PostRegistrySyncRequestSchema,
   PostRegistryUpdateUriRequestSchema,
-} from "@elizaos/core/contracts/agent-routes";
-import { type TradePermissionMode } from "@elizaos/core/contracts/wallet-types";
-import { type ElizaConfig } from "../config/config.ts";
-import { type LocalTradeExecutionOptions } from "./trade-safety.ts";
-import { type WalletCapabilityStatus } from "./wallet-capability.ts";
+  type TradePermissionMode,
+} from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+
+import type { ElizaConfig } from "../config/config.ts";
+import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
+import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------
 // Types

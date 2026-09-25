@@ -64,30 +64,27 @@ import {
 } from "@elizaos/auth/auth/types";
 import {
   type AccountPoolBrokerSnapshot,
-  type ElizaConfig,
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  resolveStateDir,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
-import {
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-  type ProviderRuntimeCapability,
-  type ProviderRuntimeEligibility,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
-import { resolveServiceRoutingInConfig } from "@elizaos/core/contracts/first-run-options";
-import {
+  type ElizaConfig,
+  ElizaError,
+  type IAgentRuntime,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
+  logger,
+  type ProviderRuntimeCapability,
+  type ProviderRuntimeEligibility,
+  resolveServiceRoutingInConfig,
+  resolveStateDir,
   type ServiceRouteAccountStrategy,
-} from "@elizaos/core/contracts/service-routing";
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
+
 import * as zod from "zod";
 import {
   runSubscriptionCliNpm,

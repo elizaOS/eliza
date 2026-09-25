@@ -7,18 +7,17 @@
  * `process.env`. Pure resolution logic consumed by the wallet routes and services.
  */
 
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
-import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
+  isElizaCloudServiceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
-} from "@elizaos/core/contracts/wallet";
-import {
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/core";
+
 import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import {
   resolveDevCloudAuthorityEnvValue,

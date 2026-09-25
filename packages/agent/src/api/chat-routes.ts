@@ -10,8 +10,13 @@ import {
   type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
+  asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
   type Content,
   createMessageMemory,
   type EffectReceipt,
@@ -28,8 +33,10 @@ import {
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
+  isLinkedAccountProviderId,
   isRateLimitError,
   isTextGenerationModelType,
+  type LinkedAccountProviderId,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type MessageReplyRecoveryContext,
@@ -37,6 +44,8 @@ import {
   markInference,
   nextInferenceTurnId,
   normalizeEffectReceipts,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
   type RolesWorldMetadata,
   type RoomHandlerLease,
   readActionReplyFailure,
@@ -64,19 +73,7 @@ import type {
   RouteRequestContext,
 } from "@elizaos/core/api/route-helpers";
 import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
-import {
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-} from "@elizaos/core/contracts/chat";
-import {
-  isLinkedAccountProviderId,
-  type LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
-import { asRecord } from "@elizaos/core/type-guards";
+
 import { extractAssistantReplyText } from "@elizaos/core/utils/assistant-text";
 import { readAliasedEnv } from "@elizaos/core/utils/env";
 import {

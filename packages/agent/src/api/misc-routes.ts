@@ -16,12 +16,6 @@ import {
   type CustomActionDef,
   logger,
   ModelType,
-  parseBooleanValue,
-  validateUuid,
-} from "@elizaos/core";
-import type { StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import {
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
@@ -29,7 +23,12 @@ import {
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
-} from "@elizaos/core/contracts/misc-routes";
+  parseBooleanValue,
+  validateUuid,
+} from "@elizaos/core";
+import type { StreamEventEnvelope } from "@elizaos/core/api/agent-api-types";
+import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
+
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,

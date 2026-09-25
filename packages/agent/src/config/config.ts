@@ -12,8 +12,13 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { type ElizaConfig, ElizaError, logger } from "@elizaos/core";
-import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
+import {
+  type ElizaConfig,
+  ElizaError,
+  logger,
+  migrateLegacyRuntimeConfig,
+} from "@elizaos/core";
+
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,

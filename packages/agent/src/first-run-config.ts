@@ -3,8 +3,11 @@
  * Validation and legacy field normalization are pure; hosts retain credential
  * resolution, durable config commits, environment updates, and authorization.
  */
-import type { ConnectorConfig, ElizaConfig } from "@elizaos/core";
-import { asRecord } from "@elizaos/core/type-guards";
+import {
+  asObjectRecord as asRecord,
+  type ConnectorConfig,
+  type ElizaConfig,
+} from "@elizaos/core";
 
 export interface CanonicalBlooioConnectorConfig {
   apiKey: string;

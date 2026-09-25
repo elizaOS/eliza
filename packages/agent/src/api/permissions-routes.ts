@@ -13,13 +13,9 @@
  * contract (metadata only; personal payloads never leave the device).
  */
 
-import { type AgentRuntime } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
 import {
+  type AgentRuntime,
   assertNativePersonalDataProjectionMetadataOnly,
-  projectNativePersonalDataCapabilities,
-} from "@elizaos/core/contracts/native-personal-data";
-import {
   type IPermissionsRegistry,
   isPermissionId,
   PERMISSION_IDS,
@@ -28,14 +24,15 @@ import {
   type PermissionState,
   type PermissionStatus,
   type Platform,
-} from "@elizaos/core/contracts/permissions";
-import {
   PutPermissionsShellRequestSchema,
   PutPermissionsStateRequestSchema,
-} from "@elizaos/core/contracts/permissions-routes";
+  projectNativePersonalDataCapabilities,
+} from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/core/api/route-helpers";
+
 import { getMacPermissionDeepLink } from "@elizaos/core/utils/permission-deep-links";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
-import { type AutonomousConfigLike } from "../types/config-like.ts";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
 
 interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
   features?: {

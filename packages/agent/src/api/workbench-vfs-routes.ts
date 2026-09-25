@@ -9,14 +9,11 @@
  * `sendVfsError`.
  */
 import crypto from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
 import {
+  type AgentRuntime,
   CLOUD_CONTAINER_SERVICE_TYPE,
   type CloudCodingContainerService,
   type CloudVfsBundle,
-  type PromoteVfsToCloudContainerRequest,
-} from "@elizaos/core/contracts/cloud-coding-containers";
-import {
   PostWorkbenchVfsCompilePluginRequestSchema,
   PostWorkbenchVfsGitRequestSchema,
   PostWorkbenchVfsLoadPluginRequestSchema,
@@ -24,8 +21,10 @@ import {
   PostWorkbenchVfsPromoteToCloudRequestSchema,
   PostWorkbenchVfsRollbackRequestSchema,
   PostWorkbenchVfsSnapshotRequestSchema,
+  type PromoteVfsToCloudContainerRequest,
   PutWorkbenchVfsFileRequestSchema,
-} from "@elizaos/core/contracts/workbench-routes";
+} from "@elizaos/core";
+
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,

@@ -19,39 +19,36 @@ import { resolveDefaultVaultDataDir } from "@elizaos/auth/vault";
 import {
   AgentRuntime,
   addLogListener,
+  buildDefaultElizaCloudServiceRouting,
   ChannelType,
   type Component,
   createMessageMemory,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
   formatError,
+  getFirstRunProviderOption,
   type IAgentRuntime,
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   type Plugin,
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
+  resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
+  resolveServiceRoutingInConfig,
   stringToUuid,
   type TargetInfo,
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
 import { drainAppRoutePluginLoaders } from "@elizaos/core/api/drain-app-route-plugins";
-import { resolveElizaCloudTopology } from "@elizaos/core/contracts/cloud-topology";
-import {
-  getFirstRunProviderOption,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunProviderId,
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/core/contracts/first-run-options";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/core/contracts/service-routing";
+
 import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
 import {
   isMobilePlatform,
