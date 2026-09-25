@@ -49,6 +49,14 @@ async function readGoogleRequests() {
     throw new Error(`Google request ledger returned ${response.status}`);
   return ledgerSchema.parse(await response.json()).requests;
 }
+export async function calendarRequestsSinceSeed(runtime: AgentRuntime) {
+  const prior = priorRequests.get(runtime);
+  if (!prior) throw new Error("Missing Google request ledger snapshot");
+  const requests = await readGoogleRequests();
+  if (!isDeepStrictEqual(requests.slice(0, prior.length), prior))
+    throw new Error("Google request ledger lost prior entries");
+  return requests.slice(prior.length);
+}
 async function readCalendarRows(runtime: AgentRuntime) {
   return new CalendarRepository(runtime).listCalendarEvents(
     String(runtime.agentId),
