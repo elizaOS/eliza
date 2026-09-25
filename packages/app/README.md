@@ -82,3 +82,10 @@ oversize/artifact rejection, release/reload, and 30 warm requests; the report
 exports complete 384-dimensional vectors and timing evidence. It also exercises
 the registered Capacitor BGE bridge from a real WebView, including tokenization,
 embedding, admission rejection, and context release.
+
+Use `--speech-model-dir <directory>` instead of `--embedding` for real CPU Kokoro
+synthesis through the framed host. Supply `kokoro-82m-v1_0.gguf` and `af_sam.bin`
+from the pinned assets in `plugins/plugin-native-inference/src/aosp-voice-download.ts`.
+The test verifies their hashes inside the installed APK, checks speed, input
+rejection and release/reload, and exports full PCM plus a playable WAV. This
+verifies synthesis from IPA; it does not cover microphone capture or recognition.
