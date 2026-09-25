@@ -27,6 +27,7 @@ import {
   REAL_LLM_BILLING_SOURCE,
   REAL_LLM_MAX_TOKENS,
   REAL_LLM_MODEL,
+  retryInferenceCacheWarming,
 } from "../src/helpers/monetization";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { expect, test } from "../src/helpers/test-fixtures";
@@ -129,22 +130,27 @@ test.describe("creator-monetization journey (real LLM)", () => {
         ?.totalLifetimeEarnings ?? 0;
 
     // ---- REAL paid inference: end-user calls the monetized app ----
-    const inference = await buyer<MessagesResponse>(
-      "POST",
-      "/api/v1/messages",
-      {
-        // gemma-4-31b is non-reasoning by default, but give it the model's
-        // full output budget (40k on the paid tier) so long completions are
-        // never truncated.
-        model: REAL_LLM_MODEL,
-        max_tokens: REAL_LLM_MAX_TOKENS,
-        messages: [
-          { role: "user", content: "Reply with exactly the word: PONG" },
-        ],
-      },
-      { "X-App-Id": appId },
+    const inference = await retryInferenceCacheWarming(() =>
+      buyer<MessagesResponse>(
+        "POST",
+        "/api/v1/messages",
+        {
+          // gemma-4-31b is non-reasoning by default, but give it the model's
+          // full output budget (40k on the paid tier) so long completions are
+          // never truncated.
+          model: REAL_LLM_MODEL,
+          max_tokens: REAL_LLM_MAX_TOKENS,
+          messages: [
+            { role: "user", content: "Reply with exactly the word: PONG" },
+          ],
+        },
+        { "X-App-Id": appId },
+      ),
     );
-    expect(inference.status, "monetized inference returns 200").toBe(200);
+    expect(
+      inference.status,
+      `monetized inference returns 200: ${JSON.stringify(inference.json)}`,
+    ).toBe(200);
     const text =
       inference.json.content?.find((b) => b.type === "text")?.text ?? "";
     expect(
