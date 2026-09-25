@@ -1,7 +1,16 @@
 package ai.eliza.plugins.camera
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.hardware.camera2.CaptureResult
+import androidx.camera.core.CameraInfo
+import androidx.camera.core.impl.CameraInfoInternal
+import androidx.camera.core.impl.CameraCaptureCallback
+import androidx.camera.core.impl.CameraCaptureResult
+import androidx.core.content.ContextCompat
+import java.util.concurrent.atomic.AtomicReference
 import android.os.Bundle
+import android.os.Build
 import android.os.SystemClock
 import android.util.Base64
 import androidx.camera.core.CameraSelector
@@ -27,9 +36,29 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /** Actual WebView promises and CameraX state; no replacement camera control. */
+@SuppressLint("RestrictedApi") // Test-only observer of the pinned CameraX capture session.
 @RunWith(AndroidJUnit4::class)
 class CameraControlsInstrumentedTest {
     @get:Rule val cameraPermission = GrantPermissionRule.grant(Manifest.permission.CAMERA)
+
+    private class CaptureProbe(info: CameraInfo) : AutoCloseable {
+        private val info = info as CameraInfoInternal
+        val latest = AtomicReference<CaptureResult?>()
+        private val callback = object : CameraCaptureCallback() {
+            override fun onCaptureCompleted(captureConfigId: Int, result: CameraCaptureResult) {
+                result.captureResult?.let { latest.set(it) }
+            }
+        }
+        init {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.runOnMainSync {
+                this.info.addSessionCaptureCallback(ContextCompat.getMainExecutor(instrumentation.targetContext), callback)
+            }
+        }
+        override fun close() {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { info.removeSessionCaptureCallback(callback) }
+        }
+    }
 
     private fun evaluate(scenario: ActivityScenario<CameraTestActivity>, script: String): String {
         val latch = CountDownLatch(1)
@@ -83,19 +112,34 @@ class CameraControlsInstrumentedTest {
                 val info = cameraInfo()
                 val initial = requireNotNull(info.zoomState.value)
                 val target = (initial.minZoomRatio + initial.maxZoomRatio) / 2
-                val result = call(scenario, "setZoom", "{zoom:$target}")
-                assertTrue("Zoom request failed: $result", result.getBoolean("ok"))
-                val observed = requireNotNull(info.zoomState.value).zoomRatio
-                receipts.put(JSONObject().put("requestedRatio", target.toDouble()).put("actualRatio", observed.toDouble())
-                    .put("minRatio", initial.minZoomRatio.toDouble()).put("maxRatio", initial.maxZoomRatio.toDouble()).put("result", result))
-                assertEquals("A ratio is not CameraX linear zoom", target.toDouble(), observed.toDouble(), 0.01)
-                for (options in listOf("{}", "{zoom:'2'}", "{zoom:-1}", "{zoom:${initial.maxZoomRatio + 1}}")) {
-                    val denied = call(scenario, "setZoom", options)
-                    receipts.put(JSONObject().put("options", options).put("result", denied))
-                    assertFalse("Invalid zoom must reject: $options", denied.getBoolean("ok"))
-                    assertEquals(target.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.01)
-                    val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
-                    assertEquals(target.toDouble(), settings.getDouble("zoom"), 0.01)
+                CaptureProbe(info).use { probe ->
+                    awaitState("Camera2 did not deliver a completed capture") { probe.latest.get() != null }
+                    val baselineCrop = requireNotNull(probe.latest.get()?.get(CaptureResult.SCALER_CROP_REGION))
+                    val result = call(scenario, "setZoom", "{zoom:$target}")
+                    assertTrue("Zoom request failed: $result", result.getBoolean("ok"))
+                    val observed = requireNotNull(info.zoomState.value).zoomRatio
+                    receipts.put(JSONObject().put("requestedRatio", target.toDouble()).put("actualRatio", observed.toDouble())
+                        .put("minRatio", initial.minZoomRatio.toDouble()).put("maxRatio", initial.maxZoomRatio.toDouble()).put("result", result))
+                    assertEquals("A ratio is not CameraX linear zoom", target.toDouble(), observed.toDouble(), 0.01)
+                    fun captureRatio(): Double? {
+                        val capture = probe.latest.get() ?: return null
+                        val ratio = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) capture.get(CaptureResult.CONTROL_ZOOM_RATIO) else null
+                        if (ratio != null && ratio != 1f) return ratio.toDouble()
+                        val crop = capture.get(CaptureResult.SCALER_CROP_REGION) ?: return null
+                        return baselineCrop.width().toDouble() / crop.width()
+                    }
+                    awaitState("Camera2 capture metadata did not apply requested zoom") {
+                        captureRatio()?.let { kotlin.math.abs(it - target) < 0.02 } == true
+                    }
+                    receipts.put(JSONObject().put("captureRatio", captureRatio()).put("captureFrame", probe.latest.get()?.frameNumber))
+                    for (options in listOf("{}", "{zoom:'2'}", "{zoom:-1}", "{zoom:${initial.maxZoomRatio + 1}}")) {
+                        val denied = call(scenario, "setZoom", options)
+                        receipts.put(JSONObject().put("options", options).put("result", denied))
+                        assertFalse("Invalid zoom must reject: $options", denied.getBoolean("ok"))
+                        assertEquals(target.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.01)
+                        val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                        assertEquals(target.toDouble(), settings.getDouble("zoom"), 0.01)
+                    }
                 }
             } finally {
                 call(scenario, "stopPreview")
@@ -124,21 +168,34 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             preview(scenario)
             try {
-                for ((method, flag) in listOf("setFocusPoint" to FocusMeteringAction.FLAG_AF, "setExposurePoint" to FocusMeteringAction.FLAG_AE)) {
-                    for (options in listOf("{}", "{x:-0.1,y:0.5}", "{x:0.5,y:1.1}", "{x:'0.5',y:0.5}")) {
-                        val result = call(scenario, method, options)
-                        receipts.put(JSONObject().put("method", method).put("options", options).put("result", result))
-                        assertFalse("Invalid $method coordinates must reject", result.getBoolean("ok"))
-                    }
-                    val point = SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
-                    val supported = cameraInfo().isFocusMeteringSupported(FocusMeteringAction.Builder(point, flag).build())
-                    val result = call(scenario, method, "{x:0.5,y:0.5}")
-                    receipts.put(JSONObject().put("method", method).put("supported", supported).put("result", result))
-                    if (!supported) {
-                        assertFalse("Unsupported metering must reject", result.getBoolean("ok"))
-                        assertEquals("METERING_UNSUPPORTED", result.getString("code"))
-                    } else {
-                        assertTrue("Supported metering must settle successfully: $result", result.getBoolean("ok"))
+                CaptureProbe(cameraInfo()).use { probe ->
+                    for ((method, flag) in listOf("setFocusPoint" to FocusMeteringAction.FLAG_AF, "setExposurePoint" to FocusMeteringAction.FLAG_AE)) {
+                        for (options in listOf("{}", "{x:-0.1,y:0.5}", "{x:0.5,y:1.1}", "{x:'0.5',y:0.5}")) {
+                            val result = call(scenario, method, options)
+                            receipts.put(JSONObject().put("method", method).put("options", options).put("result", result))
+                            assertFalse("Invalid $method coordinates must reject", result.getBoolean("ok"))
+                        }
+                        val point = SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
+                        val supported = cameraInfo().isFocusMeteringSupported(FocusMeteringAction.Builder(point, flag).build())
+                        val result = call(scenario, method, "{x:0.25,y:0.75}")
+                        receipts.put(JSONObject().put("method", method).put("supported", supported).put("result", result))
+                        if (!supported) {
+                            assertFalse("Unsupported metering must reject", result.getBoolean("ok"))
+                            assertEquals("METERING_UNSUPPORTED", result.getString("code"))
+                        } else {
+                            assertTrue("Supported metering must settle successfully: $result", result.getBoolean("ok"))
+                            val key = if (flag == FocusMeteringAction.FLAG_AF) CaptureResult.CONTROL_AF_REGIONS else CaptureResult.CONTROL_AE_REGIONS
+                            fun regions() = probe.latest.get()?.get(key)?.filter { it.meteringWeight > 0 }?.map { it.rect.toShortString() }.orEmpty()
+                            awaitState("Camera2 must report active $method regions") { regions().isNotEmpty() }
+                            val first = regions()
+                            val second = call(scenario, method, "{x:0.75,y:0.25}")
+                            assertTrue("Second metering point failed: $second", second.getBoolean("ok"))
+                            awaitState("A different point must change Camera2 metering regions") {
+                                regions().isNotEmpty() && regions() != first
+                            }
+                            receipts.put(JSONObject().put("method", method).put("firstCamera2Regions", JSONArray(first))
+                                .put("secondCamera2Regions", JSONArray(regions())).put("secondResult", second))
+                        }
                     }
                 }
             } finally {
