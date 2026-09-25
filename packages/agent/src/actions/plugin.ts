@@ -13,10 +13,9 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   logger,
+  requestRestart,
   resolveServerOnlyPort,
 } from "@elizaos/core";
-
-import { requestRestart } from "@elizaos/core/restart";
 
 import {
   isPluginManagerLike,

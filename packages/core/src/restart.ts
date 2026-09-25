@@ -1,14 +1,14 @@
 /**
- * Restart infrastructure — browser-safe version.
+ * Explicit host restart infrastructure.
  *
  * The host environment (CLI, desktop, dev-server) must call
  * setRestartHandler() at startup to provide a real implementation.
- * The default leaves restart requests unhandled so this module can be safely
- * imported in browsers.
+ * Restart requests fail explicitly until the host installs a handler.
  *
  * @module restart
  */
-import restartExitCodeDefinition from "@elizaos/core/restart-exit-code.json" with {
+import { ElizaError } from "./errors.js";
+import restartExitCodeDefinition from "./restart-exit-code.json" with {
 	type: "json",
 };
 
@@ -22,8 +22,7 @@ export const RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
  */
 export type RestartHandler = (reason?: string) => void | Promise<void>;
 
-// Browser-safe default. Server hosts register a real handler.
-let _handler: RestartHandler = () => {};
+let _handler: RestartHandler | undefined;
 
 /**
  * Replace the active restart handler.
@@ -36,5 +35,10 @@ export function setRestartHandler(handler: RestartHandler): void {
  * Trigger a restart. Delegates to whatever handler is currently registered.
  */
 export function requestRestart(reason?: string): void | Promise<void> {
+	if (!_handler) {
+		throw new ElizaError("The host has not installed a restart handler", {
+			code: "RESTART_HANDLER_NOT_INSTALLED",
+		});
+	}
 	return _handler(reason);
 }

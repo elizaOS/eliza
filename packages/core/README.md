@@ -26,7 +26,12 @@ Environment resolution, host execution settings, canonical JSON, transcript and
 audio-redaction utilities are also available from the root.
 
 `asRecord` accepts plain objects. `asObjectRecord` also accepts class and built-in
-object instances; both reject arrays and null.
+object instances; both reject arrays and null. `asObjectRecordOrUndefined` is
+the optional loose variant, and `hasPlainObjectTag` checks the object tag.
+
+Restart requests require a host-installed handler; otherwise they throw
+`RESTART_HANDLER_NOT_INSTALLED`. Self-edit defaults to the host process
+environment and retains its explicit opt-in and production gates.
 
 ## Development
 

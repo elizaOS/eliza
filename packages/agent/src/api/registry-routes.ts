@@ -8,11 +8,11 @@
  */
 
 import {
+  isValidRegistryPackageName,
   parseClampedInteger,
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
-import { isValidRegistryPackageName } from "@elizaos/core/catalog/runtime-kernel";
 
 import type {
   RegistryPluginInfo,

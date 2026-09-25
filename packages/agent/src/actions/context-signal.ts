@@ -19,13 +19,13 @@ import {
   getActiveRoutingContextsForTurn,
   hasPreparedKeywordTermMatch,
   type Memory,
+  normalizeCharacterLanguage,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
   recentConversationTextsFromState,
   type State,
   textIncludesKeywordTerm,
 } from "@elizaos/core";
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 
 import {
   type ContextSignalKey,

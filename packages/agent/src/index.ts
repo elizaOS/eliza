@@ -103,9 +103,12 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
+  RESTART_EXIT_CODE,
   type RegistryAppInfo,
+  type RestartHandler,
   type RuntimeExecutionMode,
   type RuntimeExecutionModeSource,
+  requestRestart,
   resolveFallbackOwnerEntityId,
   resolveLocalExecutionMode,
   resolveOwnerEntityId,
@@ -113,17 +116,12 @@ export {
   SELF_STATUS_SCHEMA_VERSION,
   SUMMARY_CHAR_LIMIT,
   SUMMARY_TOTAL_CHAR_LIMIT,
+  setRestartHandler,
   shouldUseSandboxExecution,
   textIncludesKeywordTerm,
 } from "@elizaos/core";
 export { CONNECTOR_PLUGINS } from "@elizaos/core/config/plugin-auto-enable-engine";
 export type { ReleaseChannel } from "@elizaos/core/contracts/config";
-export {
-  RESTART_EXIT_CODE,
-  type RestartHandler,
-  requestRestart,
-  setRestartHandler,
-} from "@elizaos/core/restart";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

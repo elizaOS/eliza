@@ -1,6 +1,28 @@
 /** Preserve tooling exclusions for source and installed script artifacts. */
-import { describe, expect, it } from "vitest";
-import { isSelfEditPathDenied } from "./self-edit";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { isSelfEditEnabled, isSelfEditPathDenied } from "./self-edit";
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe("self-edit host environment", () => {
+	it("requires opt-in and preserves production gating", () => {
+		vi.stubEnv("ELIZA_ENABLE_SELF_EDIT", "1");
+		vi.stubEnv("NODE_ENV", "production");
+		vi.stubEnv("ELIZA_DEV_MODE", "0");
+		expect(isSelfEditEnabled()).toBe(false);
+		vi.stubEnv("ELIZA_DEV_MODE", "1");
+		expect(isSelfEditEnabled()).toBe(true);
+		vi.stubEnv("ELIZA_ENABLE_SELF_EDIT", "0");
+		expect(isSelfEditEnabled()).toBe(false);
+		expect(
+			isSelfEditEnabled({
+				ELIZA_ENABLE_SELF_EDIT: "1",
+				NODE_ENV: "development",
+			}),
+		).toBe(true);
+		expect(isSelfEditEnabled({})).toBe(false);
+	});
+});
 
 describe("self-edit tooling paths", () => {
 	it.each([

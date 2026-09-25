@@ -24,17 +24,15 @@ import {
   getValidationKeywordTerms,
   type HandlerOptions,
   type IAgentRuntime,
+  isSelfEditEnabled,
   logger,
   type Memory,
+  requestRestart,
   resolveServerOnlyPort,
   textIncludesKeywordTerm,
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
-
-import { requestRestart } from "@elizaos/core/restart";
-
-import { isSelfEditEnabled } from "@elizaos/core/self-edit";
 
 const RUNTIME_OPS = [
   "status",

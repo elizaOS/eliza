@@ -39,11 +39,10 @@ import {
   createSelfApiRequestHeaders,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   logger,
+  type ProviderId,
   readJsonBody,
   resolveServerOnlyPort,
 } from "@elizaos/core";
-
-import type { ProviderId } from "@elizaos/core/contracts/local-inference-providers";
 
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,

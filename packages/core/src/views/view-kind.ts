@@ -12,7 +12,7 @@ export type {
 	ViewKindBearer,
 	ViewModality,
 	ViewType,
-} from "@elizaos/core";
+} from "../types/view-kind.js";
 
 /** The four view kinds, in escalating "exposure" order. */
 export const VIEW_KINDS = [

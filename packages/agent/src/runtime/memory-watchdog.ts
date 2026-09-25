@@ -28,8 +28,7 @@
  */
 import process from "node:process";
 
-import { logger } from "@elizaos/core";
-import { requestRestart } from "@elizaos/core/restart";
+import { logger, requestRestart } from "@elizaos/core";
 
 const BYTES_PER_MB = 1024 * 1024;
 

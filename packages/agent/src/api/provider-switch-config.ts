@@ -16,6 +16,8 @@ import {
 import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
 import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
 import {
+  asNonEmptyString,
+  asObjectRecord as asRecord,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   DEFAULT_CEREBRAS_TEXT_MODEL,
@@ -42,8 +44,6 @@ import {
   type ServiceCapability,
   type ServiceRoutingConfig,
 } from "@elizaos/core";
-
-import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;

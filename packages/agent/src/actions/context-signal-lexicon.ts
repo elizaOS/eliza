@@ -12,8 +12,8 @@
 import {
   type CharacterLanguage,
   getValidationKeywordTerms,
+  normalizeCharacterLanguage,
 } from "@elizaos/core";
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 
 export type ContextSignalKey =
   | "affirmative"

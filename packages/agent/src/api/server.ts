@@ -15,11 +15,13 @@ import {
   EventType,
   formatError,
   getHttpRuntime,
+  getStylePresets,
   type IAgentRuntime,
   isMobilePlatform,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
+  normalizeCharacterLanguage,
   parseClampedInteger,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
@@ -36,11 +38,6 @@ import {
   writeJsonError,
   writeJsonResponse,
 } from "@elizaos/core";
-
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/core/character-presets";
 
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";

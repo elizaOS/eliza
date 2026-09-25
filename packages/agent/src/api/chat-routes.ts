@@ -45,6 +45,7 @@ import {
   ModelType,
   markInference,
   nextInferenceTurnId,
+  normalizeCharacterLanguage,
   normalizeEffectReceipts,
   parseChatFailureKind,
   parseChatTerminalFailure,
@@ -72,8 +73,6 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-
-import { normalizeCharacterLanguage } from "@elizaos/core/character-presets";
 
 import {
   persistInferenceTimingSummary,

@@ -1,14 +1,17 @@
 /** Agent host environment policy for strict same-machine request classification. */
 
-import { readAliasedEnv } from "@elizaos/core";
-import { isTrustedLocalRequest as classifyLocalRequest } from "@elizaos/core/security/loopback-trust";
+import {
+  isTrustedLocalRequest as classifyLocalRequest,
+  readAliasedEnv,
+} from "@elizaos/core";
+
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 
 export {
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
   proxyClientHeaderBlocksLocalTrust,
-} from "@elizaos/core/security/loopback-trust";
+} from "@elizaos/core";
 export interface LoopbackTrustOptions {
   /**
    * When true, deny local trust if `ELIZA_REQUIRE_LOCAL_AUTH === "1"`. On-device
