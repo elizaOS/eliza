@@ -5,6 +5,8 @@ import static org.junit.Assert.*;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.util.Log;
+import android.os.Bundle;
+import android.util.Base64;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.DataInputStream;
@@ -120,7 +122,12 @@ public class BionicEmbeddingInstrumentedTest {
                 .put("medianMs", (warm[14] + warm[15]) / 2e6).put("p95Ms", warm[28] / 1e6)
                 .put("tokens", first.getInt("tokens")).put("vector", reference);
             Path artifact = app.getFilesDir().toPath().resolve("bionic-embedding-proof.json");
-            Files.write(artifact, proof.toString().getBytes(StandardCharsets.UTF_8));
+            byte[] proofBytes = proof.toString().getBytes(StandardCharsets.UTF_8);
+            Files.write(artifact, proofBytes);
+            Bundle status = new Bundle();
+            status.putString("nativeArtifactName", "bionic-embedding-proof.json");
+            status.putString("nativeArtifactBase64", Base64.encodeToString(proofBytes, Base64.NO_WRAP));
+            InstrumentationRegistry.getInstrumentation().sendStatus(2, status);
             Log.i("BionicEmbeddingProof", "Saved complete embedding proof to " + artifact);
         } finally {
             host.stop();

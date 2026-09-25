@@ -13,6 +13,8 @@ import { acquireDeviceLease } from "./lib/device-lease.ts";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
+const embedding = process.argv.includes("--embedding");
+const scenario = embedding ? "native embedding" : "native agent lifecycle";
 const serial = process.argv[process.argv.indexOf("--serial") + 1];
 if (!process.argv.includes("--serial") || !serial)
   throw new Error(
@@ -57,8 +59,10 @@ const report = {
   worktreeChanges: command("git", ["status", "--porcelain"]),
   startedAt: new Date().toISOString(),
   builtFromCheckout: true,
-  fixture:
-    "Minimal WebView page; production MainActivity, Agent library and ElizaAgentService",
+  scenario,
+  fixture: embedding
+    ? "Production framed inference host, JNI encoder and APK-packaged BGE model"
+    : "Minimal WebView page; production MainActivity, Agent library and ElizaAgentService",
   pass: false,
   problems: [],
   artifacts: [],
@@ -74,6 +78,26 @@ try {
     throw new Error("This host lane currently requires an x86_64 emulator");
   if (adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim())
     throw new Error("Refusing to replace an existing Eliza installation");
+  if (embedding) {
+    if (process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1")
+      throw new Error(
+        "Embedding requires the native library; unset ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB",
+      );
+    for (const abi of ["arm64-v8a", "x86_64"]) {
+      logged(
+        `inference-build-${abi}.log`,
+        process.execPath,
+        [
+          "packages/app/scripts/stage-elizavoice-lib.ts",
+          "--abi",
+          abi,
+          "--variant",
+          "cpu",
+        ],
+        1200000,
+      );
+    }
+  }
   logged(
     "mobile-build.log",
     "bun",
@@ -164,7 +188,7 @@ try {
   adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
   adb("shell", "wm", "dismiss-keyguard");
   // This helper is restricted to this disposable, debuggable emulator and root.
-  if (adb("shell", "getprop", "ro.debuggable").trim() === "1") {
+  if (!embedding && adb("shell", "getprop", "ro.debuggable").trim() === "1") {
     try {
       if (adb("shell", "su", "0", "id", "-u").trim() !== "0")
         throw new Error("root unavailable");
@@ -224,7 +248,9 @@ try {
         : []),
       "-e",
       "class",
-      "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
+      embedding
+        ? "ai.elizaos.app.BionicEmbeddingInstrumentedTest"
+        : "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
       "ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner",
     ],
     360000,
@@ -241,7 +267,14 @@ try {
       sha256: hash(file),
     });
   }
-  report.pass = parsed.pass;
+  if (
+    embedding &&
+    !report.artifacts.some(
+      (artifact) => artifact.path === "bionic-embedding-proof.json",
+    )
+  )
+    report.problems.push("Missing complete native embedding proof");
+  report.pass = parsed.pass && report.problems.length === 0;
 } catch (error) {
   report.problems.push(String(error));
 } finally {
@@ -257,6 +290,9 @@ try {
           "-s",
           "ElizaAgent:I",
           "TestRunner:I",
+          "BionicEmbeddingProof:I",
+          "ElizaVoiceNative:V",
+          "ElizaBionicInference:V",
         ),
       );
     } catch (error) {
@@ -295,6 +331,6 @@ try {
   }
 }
 console.log(
-  `${report.pass ? "PASS" : "FAIL"} Android native agent lifecycle\nEvidence: ${path.join(output, "report.json")}`,
+  `${report.pass ? "PASS" : "FAIL"} Android ${scenario}\nEvidence: ${path.join(output, "report.json")}`,
 );
 if (!report.pass) process.exitCode = 1;
