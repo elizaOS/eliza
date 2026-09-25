@@ -537,25 +537,6 @@ export function injectAndroidBackgroundRunnerAarFlatDir(content) {
   );
 }
 
-export function patchGradleFileForAgp9(filePath, label) {
-  if (!fs.existsSync(filePath)) return;
-  const current = fs.readFileSync(filePath, "utf8");
-  const patched = current
-    .replace(
-      /^\s*apply plugin:\s*['"](org\.jetbrains\.kotlin\.android|kotlin-android)['"]\s*\r?\n/gm,
-      "",
-    )
-    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n")
-    .replace(
-      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
-      "getDefaultProguardFile('proguard-android-optimize.txt')",
-    );
-  if (patched !== current) {
-    fs.writeFileSync(filePath, patched, "utf8");
-    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9.`);
-  }
-}
-
 export function ensureGradleProperty(content, key, value) {
   const re = new RegExp(`^${escapeRegExp(key)}=.*$`, "m");
   if (re.test(content)) return content.replace(re, `${key}=${value}`);
