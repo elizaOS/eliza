@@ -257,10 +257,6 @@ export function parseSleepEpisode(
   };
 }
 
-// createLifeOpsSubscriptionAudit / Candidate / Cancellation moved to
-// @elizaos/plugin-finances along with the finance tables. The subscriptions
-// mixin imports them from there directly.
-
 export function createLifeOpsActivitySignal(
   params: Omit<LifeOpsActivitySignal, "id" | "createdAt">,
 ): LifeOpsActivitySignal {

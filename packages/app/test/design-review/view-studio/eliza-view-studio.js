@@ -51,7 +51,6 @@ const catalogRouteGroups = [
       { label: "Focus", path: "/focus", icon: "focus" },
       { label: "Todos", path: "/todos", icon: "check" },
       { label: "Health", path: "/health", icon: "heart" },
-      { label: "Finances", path: "/finances", icon: "chart" },
       { label: "Wallet", path: "/wallet", icon: "wallet" },
     ],
   },

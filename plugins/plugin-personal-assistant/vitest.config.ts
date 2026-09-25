@@ -584,26 +584,6 @@ export default defineConfig({
       // condition, so without dist they resolve to missing ./dist/*.js. Anchor
       // both the barrel and every subpath to source, same as plugin-blocker.
       {
-        find: /^@elizaos\/plugin-finances\/(.+)$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-finances",
-          "src",
-          "$1.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-finances$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-finances",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-goals\/(.+)$/,
         replacement: path.join(
           elizaRoot,

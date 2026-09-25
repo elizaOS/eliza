@@ -67,12 +67,6 @@ export default defineConfig({
         replacement: sourceOf("../plugin-inbox/src/db/schema.ts"),
       },
       {
-        find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
-        replacement: sourceOf(
-          "../plugin-finances/src/db/finances-repository.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-health\/health-bridge\/health-records$/,
         replacement: sourceOf(
           "../plugin-health/src/health-bridge/health-records.ts",

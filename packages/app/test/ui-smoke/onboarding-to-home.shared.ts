@@ -95,16 +95,6 @@ const VIEW_FIXTURES = [
     tags: ["goals"],
     desktopTabEnabled: true,
   },
-  {
-    id: "finances",
-    label: "Finances",
-    description: "Finances view",
-    path: "/finances",
-    available: true,
-    pluginName: "finances",
-    tags: ["finances"],
-    desktopTabEnabled: true,
-  },
 ];
 
 // The home widgets resolve only when the matching plugin id is enabled+active in
@@ -970,7 +960,6 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
     "Ship the release",
   );
   for (const testId of [
-    "chat-widget-finances-alerts",
     "chat-widget-relationships",
     "chat-widget-inbox-unread",
   ]) {

@@ -65,6 +65,8 @@ const report = {
 };
 const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
 let installed = false;
+let samplerPath: string | null = null;
+let samplerReady = false;
 try {
   if (adb("shell", "getprop", "ro.kernel.qemu").trim() !== "1")
     throw new Error("Use a disposable Android emulator");
@@ -161,6 +163,48 @@ try {
   adb("install", "-r", "-t", testApk);
   adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
   adb("shell", "wm", "dismiss-keyguard");
+  // This helper is restricted to this disposable, debuggable emulator and root.
+  if (adb("shell", "getprop", "ro.debuggable").trim() === "1") {
+    try {
+      if (adb("shell", "su", "0", "id", "-u").trim() !== "0")
+        throw new Error("root unavailable");
+      const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+      if (!sdk) throw new Error("Android SDK unavailable");
+      const ndkRoot = path.join(sdk, "ndk");
+      const ndk = fs
+        .readdirSync(ndkRoot)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        .at(-1);
+      if (!ndk) throw new Error("Android NDK unavailable");
+      const host =
+        process.platform === "darwin" ? "darwin-x86_64" : "linux-x86_64";
+      const compiler = path.join(
+        ndkRoot,
+        ndk,
+        "toolchains/llvm/prebuilt",
+        host,
+        "bin/x86_64-linux-android26-clang",
+      );
+      const binary = path.join(output, "startup-pc-sampler");
+      command(compiler, [
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        path.join(fixture, "startup-pc-sampler.c"),
+        "-o",
+        binary,
+      ]);
+      samplerPath = `/data/local/tmp/eliza-startup-pc-${process.pid}`;
+      adb("push", binary, samplerPath);
+      adb("shell", "chmod", "755", samplerPath);
+      samplerReady = true;
+    } catch (error) {
+      report.startupSampler = "unavailable";
+      report.startupSamplerError =
+        error instanceof Error ? error.name : "Error";
+    }
+  }
   const result = logged(
     "instrumentation.log",
     "adb",
@@ -175,6 +219,9 @@ try {
       "-e",
       "isolatedAgentHost",
       "1",
+      ...(samplerReady && samplerPath
+        ? ["-e", "startupPcSampler", samplerPath]
+        : []),
       "-e",
       "class",
       "ai.elizaos.app.NativeAgentLifecycleInstrumentedTest",
@@ -227,6 +274,14 @@ try {
         report.pass = false;
         report.problems.push(`cleanup: ${error}`);
       }
+    }
+  }
+  if (samplerPath) {
+    try {
+      adb("shell", "rm", samplerPath);
+    } catch {
+      report.problems.push("startup sampler cleanup failed");
+      report.pass = false;
     }
   }
   report.finishedAt = new Date().toISOString();

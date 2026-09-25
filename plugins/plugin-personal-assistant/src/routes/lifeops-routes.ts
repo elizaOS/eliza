@@ -3,8 +3,7 @@
  * LifeOps dashboard and connector cards.
  *
  * Dispatches reads and writes across the owner domains: occurrences, goals,
- * task/workflow definitions, reminders, money/finances (delegated to
- * `@elizaos/plugin-finances`), Gmail triage/search/reply/manage, the merged
+ * task/workflow definitions, reminders, Gmail triage/search/reply/manage, the merged
  * inbox, screen-time/sleep, activity signals, schedule state, connector status,
  * and full-disk-access probing; calendar routes delegate to
  * `@elizaos/plugin-calendar`. Handlers run behind the `LifeOpsRouteContext`
@@ -246,10 +245,6 @@ const LIFEOPS_RATE_LIMITS = {
   // Generic outbound messaging (X DMs, iMessage, Telegram). Tighter
   // than the default to limit blast radius.
   outbound_message: { maxRequests: 5, windowMs: 60000 },
-  // Unauthenticated provider webhook ingress (Plaid). A dedicated bucket so a
-  // flood of forged deliveries cannot exhaust the shared default bucket and
-  // 429 the owner's own routes; verification rejects forgeries afterwards.
-  webhook_ingress: { maxRequests: 120, windowMs: 60000 },
   default: { maxRequests: 60, windowMs: 60000 },
 } satisfies Record<string, RateLimitConfig>;
 type LifeOpsRateLimitOperation = keyof typeof LIFEOPS_RATE_LIMITS;

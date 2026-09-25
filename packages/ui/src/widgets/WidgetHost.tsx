@@ -133,7 +133,6 @@ const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
 const FULL_APP_SHELL_WIDGET_PLUGIN_IDS: ReadonlySet<string> = new Set([
   "agent-orchestrator",
   "calendar",
-  "finances",
   "goals",
   "health",
   "inbox",

@@ -543,7 +543,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   const surfaceBeforeChatOpenBottom =
     (surfaceBeforeChatOpen?.y ?? 0) + (surfaceBeforeChatOpen?.height ?? 0);
 
-  const composer = page.getByRole("combobox", { name: "message" });
+  const composer = page.getByRole("textbox", { name: "message" });
   await composer.focus();
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
@@ -822,7 +822,7 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   if (!isBrowserWorkspaceSmokeSnapshot(snapshot) || !snapshot.tabs[0]) return;
   const tabId = snapshot.tabs[0].id;
 
-  const composer = page.getByRole("combobox", { name: "message" });
+  const composer = page.getByRole("textbox", { name: "message" });
   // The page may remain under a stationary pointer while the user types in
   // chat. Hover alone must not authorize a later page autofocus.
   await iframe.hover();
