@@ -34,11 +34,16 @@ export function setRestartHandler(handler: RestartHandler): void {
 /**
  * Trigger a restart. Delegates to whatever handler is currently registered.
  */
-export function requestRestart(reason?: string): void | Promise<void> {
+/** Capture the installed host handler before admitting a deferred restart. */
+export function requireRestartHandler(): RestartHandler {
 	if (!_handler) {
 		throw new ElizaError("The host has not installed a restart handler", {
 			code: "RESTART_HANDLER_NOT_INSTALLED",
 		});
 	}
-	return _handler(reason);
+	return _handler;
+}
+
+export function requestRestart(reason?: string): void | Promise<void> {
+	return requireRestartHandler()(reason);
 }

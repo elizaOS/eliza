@@ -27,7 +27,7 @@ import {
   isSelfEditEnabled,
   logger,
   type Memory,
-  requestRestart,
+  requireRestartHandler,
   resolveServerOnlyPort,
   textIncludesKeywordTerm,
   toWellFormedUnicode,
@@ -363,6 +363,7 @@ async function restartOp(
   // a memory entry (legacy RESTART_AGENT semantics). When invoked without a
   // message context (programmatic) or via an internal source, skip the memory
   // write — that path is the legacy RESTART_RUNTIME semantics.
+  const restart = requireRestartHandler();
   const isFromChat = isExplicitRestartRequest(message);
   const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
 
@@ -379,7 +380,13 @@ async function restartOp(
   }
 
   setTimeout(() => {
-    requestRestart(reason);
+    void Promise.resolve()
+      .then(() => restart(reason))
+      .catch((error: unknown) => {
+        // error-policy:J7 deferred host failures remain observable after action admission.
+        logger.error({ error, reason }, "[runtime] Deferred restart failed");
+        runtime.reportError("runtime.restart", error);
+      });
   }, SHUTDOWN_DELAY_MS);
 
   return {

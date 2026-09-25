@@ -2659,6 +2659,7 @@ export {
 	RESTART_EXIT_CODE,
 	type RestartHandler,
 	requestRestart,
+	requireRestartHandler,
 	setRestartHandler,
 } from "./restart.js";
 export * from "./retrieval/rerank.js";
