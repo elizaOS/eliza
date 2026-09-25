@@ -118,17 +118,17 @@ describe("TrajectoryDetailView recorded usage", () => {
     });
     expect(
       screen.getByRole("region", { name: "Recorded model input" }).textContent,
-    ).toBe("[user] actual input 0");
+    ).toBe("actual input 0");
     fireEvent.change(screen.getByRole("combobox", { name: "Model call" }), {
       target: { value: "call-1" },
     });
     expect(
       screen.getByRole("region", { name: "Recorded model input" }).textContent,
-    ).toBe("[user] actual input 1");
+    ).toBe("actual input 1");
     fireEvent.click(
       screen.getByRole("button", { name: "Copy Recorded model input" }),
     );
-    expect(api.copy).toHaveBeenLastCalledWith("[user] actual input 1");
+    expect(api.copy).toHaveBeenLastCalledWith("actual input 1");
   });
   it.each(["copied", "failed"])(
     "keeps the current copy pending when an older run's copy is %s",

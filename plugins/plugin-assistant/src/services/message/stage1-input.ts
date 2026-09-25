@@ -3,10 +3,8 @@ import {
   asUUID,
   ChannelType,
   type ChatMessage,
-  COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   type ContextDefinition,
   type ContextObject,
-  completionContextSources,
   HANDLE_RESPONSE_TOOL_NAME,
   type IAgentRuntime,
   type Memory,
@@ -16,29 +14,21 @@ import {
   renderContextObject,
   resolveOptimizedPromptForRuntime,
   segmentBlock,
-  selectHistoricalNavigation,
   type UUID,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { composePrompt } from "../../text/template-rendering.js";
 import type { OptimizedPromptTask } from "../optimized-prompt.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
-import {
-  buildCurrentTurnBoundary,
-  createV5MessageContextObject,
-} from "./context-assembly.js";
+import { createV5MessageContextObject } from "./context-assembly.js";
 import {
   formatAvailableContextsForPrompt,
   listAvailableContextsForTurn,
 } from "./context-catalog.js";
 import {
   type HistoryDiscovery,
-  historyReferenceNotice,
   loadedHistorySegments,
-  loadedPlainHistorySources,
-  REVIEWED_HISTORY_SELECTION_INSTRUCTIONS,
 } from "./history-discovery.js";
-import { plainHistoryTranscript } from "./history-wire.js";
 import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
@@ -160,31 +150,12 @@ export function renderMessageHandlerModelInput(
   messages: ChatMessage[];
   promptSegments: PromptSegment[];
 } {
-  const completionSources = completionContextSources(context);
-  const completionSourceIds = new Map(
-    completionSources?.sources.map(({ id, event }) => [event.id, id]),
-  );
   const progressiveContextInput =
     options?.progressiveContext ??
     (options?.directMessage && !options.groupTriage);
-  const history =
-    progressiveContextInput &&
-    options?.history?.sourceSetId === completionSources?.sourceSetId
-      ? options?.history
-      : undefined;
-  const rendered = renderContextObject(
-    history
-      ? selectHistoricalNavigation(
-          context,
-          new Set([
-            ...history.visibleEventIds,
-            ...completionSources.sources
-              .filter(({ id }) => history.loadedSourceIds.has(id))
-              .map(({ event }) => event.id),
-          ]),
-        )
-      : context,
-  );
+  // Stage 1 receives every original; selection/restoration remains available
+  // to later consumers without a second source-index task in the reply handler.
+  const rendered = renderContextObject(context);
   const instructions = renderMessageHandlerInstructions(
     runtime,
     availableContexts,
@@ -196,50 +167,20 @@ export function renderMessageHandlerModelInput(
   const dynamicSegments = rendered.promptSegments.filter(
     (segment) => !segment.stable,
   );
-  const currentTurnBoundary = dynamicSegments
-    .filter((segment) => segment.id === "current-turn-boundary")
-    .map((segment) =>
-      history
-        ? {
-            ...segment,
-            content: buildCurrentTurnBoundary({
-              hasMemoryRecallSurface: false,
-              hasOriginalReferences: true,
-            }),
-          }
-        : segment,
-    );
+  const currentTurnBoundary = dynamicSegments.filter(
+    (segment) => segment.id === "current-turn-boundary",
+  );
   const remainingDynamicSegments = dynamicSegments.filter(
     (segment) =>
       segment.id !== "current-turn-boundary" &&
       segment.id !== "available-actions",
   );
   const priorDialogueSegments = remainingDynamicSegments.filter(
-    (segment) =>
-      segment.label?.startsWith("prior_message:") === true &&
-      (!history ||
-        !segment.id ||
-        !completionSourceIds.has(segment.id) ||
-        history.visibleEventIds.has(segment.id)),
+    (segment) => segment.label?.startsWith("prior_message:") === true,
   );
-  const loaded = loadedPlainHistorySources(
-    context,
-    history,
-    new Set(
-      priorDialogueSegments.flatMap((segment) =>
-        segment.id ? [segment.id] : [],
-      ),
-    ),
-  );
-  const sourceOrder = new Map(
-    completionSources.sources.map(({ event }, index) => [event.id, index]),
-  );
-  const dialogue = [...priorDialogueSegments, ...loaded].sort(
-    (a, b) =>
-      (sourceOrder.get(a.id ?? "") ?? Number.MAX_SAFE_INTEGER) -
-      (sourceOrder.get(b.id ?? "") ?? Number.MAX_SAFE_INTEGER),
-  );
-  const transcript = plainHistoryTranscript(dialogue, completionSourceIds);
+  const transcript = priorDialogueSegments
+    .map((segment) => segment.content)
+    .join("\n");
   // Past effects remain complete historical evidence, before the instruction
   // that establishes the current request. They cannot become pending work by
   // being regrouped into the current turn's tool/result tail.
@@ -285,39 +226,22 @@ export function renderMessageHandlerModelInput(
       : []),
     ...loadedHistorySegments(
       context,
-      history ??
-        (progressiveContextInput ? options?.historyReadEvidence : undefined),
+      progressiveContextInput ? options?.historyReadEvidence : undefined,
       undefined,
       false,
     ),
     ...otherTurnSegments,
-    ...(completionSources.sources.length
-      ? [
-          {
-            id: "history-source-map",
-            content: `History source map (zero-based UTF-16 character ranges into the Conversation body; end exclusive):\n${transcript.sourceMap.map(([id, start, end]) => `${id}: characters ${start}–${end}`).join("\n")}\ncompletion_source_set: ${completionSources.sourceSetId}\n${options?.nativeTools ? "Native tool replies use current_request as required by the schema; raw JSON fallback uses completion_source_set." : "Use completion_source_set for response source identity."}${historyReferenceNotice(context, history)}`,
-            stable: false,
-          },
-        ]
-      : []),
     {
       id: "runtime-task",
       content: [
         taskInstructions,
         ...currentTurnBoundary.map(segmentBlock),
-        ...(completionSources.sources.length
-          ? [
-              history
-                ? REVIEWED_HISTORY_SELECTION_INSTRUCTIONS
-                : COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
-            ]
-          : []),
       ].join("\n\n"),
       stable: false,
     },
     {
       id: "conversation",
-      content: `# Conversation\n${transcript.text}`,
+      content: `# Conversation\n${transcript}`,
       stable: false,
     },
     ...currentMessages,

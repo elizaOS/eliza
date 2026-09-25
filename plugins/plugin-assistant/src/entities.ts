@@ -726,7 +726,7 @@ export async function getEntityDetails({
 function formatEntityNames(names: string[]): string {
   const uniqueNames = [...new Set(names.filter(Boolean))];
   const renderedNames =
-    uniqueNames.length > 0 ? `"${uniqueNames.join('" aka "')}"` : '"(unnamed)"';
+    uniqueNames.length > 0 ? uniqueNames.join(" aka ") : "(unnamed)";
   return renderedNames;
 }
 export function formatEntityMetadata(metadata: unknown): string {

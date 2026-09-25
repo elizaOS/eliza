@@ -8,23 +8,6 @@
 import type { ContextObject, ContextObjectPromptSegment } from "@elizaos/core";
 import { collectCompletionContextSources } from "@elizaos/core";
 
-/** Lossless transcript plus UTF-16 ranges into its body, excluding its heading. */
-export function plainHistoryTranscript(
-  segments: ContextObjectPromptSegment[],
-  sourceIds: ReadonlyMap<string, string>,
-): { text: string; sourceMap: Array<[string, number, number]> } {
-  let text = "";
-  const sourceMap: Array<[string, number, number]> = [];
-  for (const segment of segments) {
-    if (text.length) text += "\n\n";
-    const start = text.length;
-    text += segment.content;
-    const id = segment.id ? sourceIds.get(segment.id) : undefined;
-    if (id) sourceMap.push([id, start, text.length]);
-  }
-  return { text, sourceMap };
-}
-
 const REFERENCE_INSTRUCTION =
   "History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";
 

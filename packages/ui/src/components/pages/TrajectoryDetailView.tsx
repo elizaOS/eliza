@@ -203,7 +203,24 @@ export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
   }
   return "";
 }
+/** A sole text user message needs no synthetic role prefix in its body. */
+function singleUserMessageText(messages: unknown): string | undefined {
+  if (!Array.isArray(messages) || messages.length !== 1) return undefined;
+  const message = messages[0];
+  if (
+    message &&
+    typeof message === "object" &&
+    message.role === "user" &&
+    typeof message.content === "string" &&
+    Object.keys(message).every((key) => key === "role" || key === "content")
+  ) {
+    return message.content;
+  }
+  return undefined;
+}
 function recordedMessageText(messages: unknown): string {
+  const singleMessage = singleUserMessageText(messages);
+  if (singleMessage !== undefined) return singleMessage;
   if (
     Array.isArray(messages) &&
     messages.length > 0 &&
@@ -253,6 +270,7 @@ export function buildTrajectoryCallText(
   return {
     systemPromptText: normalizeTrajectoryCallText(call.systemPrompt),
     inputText: normalizeTrajectoryCallText(
+      singleUserMessageText(call.messages),
       call.userPrompt,
       call.prompt,
       call.messages,

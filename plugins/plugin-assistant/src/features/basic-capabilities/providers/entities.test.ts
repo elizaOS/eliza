@@ -54,7 +54,7 @@ describe("ENTITIES provider content", () => {
       text: "",
     });
     expect(result.text).toContain("People in the Room");
-    expect(result.text).toContain("Vega");
+    expect(result.text).toContain("\nVega\nID:");
     expect(result.discoveryText).toContain("registered names: Vega");
     expect(result.text).not.toContain("Data:");
     expect(result.text).not.toContain("client_chat");
