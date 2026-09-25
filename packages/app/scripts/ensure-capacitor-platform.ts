@@ -7,7 +7,6 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.ts";
 import {
   isCapacitorPlatformReady,
@@ -25,23 +24,21 @@ if (!validPlatforms.has(platform)) {
   process.exit(1);
 }
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const appRoot = path.resolve(scriptDir, "..");
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-const appDirForTemplates = resolveMainAppDir(repoRoot, "app");
+const appRoot = resolveMainAppDir(repoRoot, "app");
 const platformDir = path.join(appRoot, platform);
 
 function materializeTemplates() {
   return syncPlatformTemplateFiles(platform, {
     repoRootValue: repoRoot,
-    appDirValue: appDirForTemplates,
+    appDirValue: appRoot,
     log: console.log,
   });
 }
 
 materializeTemplates();
 
-if (isCapacitorPlatformReady(platform, { appDirValue: appDirForTemplates })) {
+if (isCapacitorPlatformReady(platform, { appDirValue: appRoot })) {
   console.log(`[ensure-capacitor-platform] ${platform} ready`);
   process.exit(0);
 }
@@ -71,7 +68,7 @@ if (!fs.existsSync(platformDir)) {
   }
 }
 
-if (!isCapacitorPlatformReady(platform, { appDirValue: appDirForTemplates })) {
+if (!isCapacitorPlatformReady(platform, { appDirValue: appRoot })) {
   console.error(
     `[ensure-capacitor-platform] ${platform} project is missing required files after template sync / cap add.`,
   );

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Compile and exercise every Android native module; skipped tests are not proof. */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -189,11 +189,40 @@ async function main() {
         "Network transitions require an emulator without the user app installed",
       );
   }
+  const dnsOutage = args.includes("--dns-outage");
+  const dnsOutageChain = dnsOutage
+    ? `ELIZA_DNS_${randomBytes(6).toString("hex")}`
+    : undefined;
+  if (dnsOutage) {
+    if (
+      !/^(ranchu|goldfish)$/.test(hardware) ||
+      selected.length !== 1 ||
+      selected[0].directory !== "plugin-native-websiteblocker" ||
+      adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim()
+    )
+      throw new Error(
+        "DNS outage requires an isolated stock emulator without the user app and --plugin plugin-native-websiteblocker",
+      );
+  }
+  const systemControls = args.includes("--system-controls");
+  if (
+    systemControls &&
+    (!/^(ranchu|goldfish)$/.test(hardware) ||
+      selected.length !== 1 ||
+      selected[0].directory !== "plugin-native-system" ||
+      adb("shell", "pm", "list", "packages", "ai.elizaos.app").trim())
+  )
+    throw new Error(
+      "System controls require an isolated stock emulator without the user app and --plugin plugin-native-system",
+    );
   const lease = await acquireDeviceLease(`android:${serial}`, { waitMs: 0 });
   const report = {
     serial,
     hardware,
     networkTransitions,
+    dnsOutage,
+    dnsOutageChain,
+    systemControls,
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -202,6 +231,11 @@ async function main() {
     results: [],
   };
   try {
+    // Persist ownership before device mutations, including interrupted-run recovery.
+    fs.writeFileSync(
+      path.join(outputDir, "report.json"),
+      JSON.stringify(report, null, 2),
+    );
     report.device = {
       sdk: adb("shell", "getprop", "ro.build.version.sdk").trim(),
       fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
@@ -249,6 +283,19 @@ async function main() {
       report.results.push(entry);
       let applicationId;
       let fixtureInstalled = false;
+      let preservePackageForRecovery = false;
+      const saveArtifact = ({ name, bytes }, prefix = "") => {
+        const relativePath = `${plugin.directory}/${prefix}${name}`;
+        const destination = path.join(outputDir, relativePath);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.writeFileSync(destination, bytes);
+        return {
+          path: relativePath,
+          bytes: bytes.length,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+        };
+      };
+
       try {
         adb("logcat", "-c");
         if (plugin.directory === "plugin-native-appblocker") {
@@ -318,6 +365,10 @@ async function main() {
             "-w",
             "-r",
             ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
+            ...(systemControls ? ["-e", "systemControls", "1"] : []),
+            ...(dnsOutage
+              ? ["-e", "dnsOutage", "1", "-e", "dnsOutageChain", dnsOutageChain]
+              : []),
             `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
           ],
           300000,
@@ -331,19 +382,72 @@ async function main() {
           entry,
           parseInstrumentation(output, plugin.expectedTests),
         );
-        entry.artifacts = parseNativeArtifacts(output).map(
-          ({ name, bytes }) => {
-            const relativePath = `${plugin.directory}/${name}`;
-            const destination = path.join(outputDir, relativePath);
-            fs.mkdirSync(path.dirname(destination), { recursive: true });
-            fs.writeFileSync(destination, bytes);
-            return {
-              path: relativePath,
-              bytes: bytes.length,
-              sha256: createHash("sha256").update(bytes).digest("hex"),
-            };
-          },
+        entry.artifacts = parseNativeArtifacts(output).map((artifact) =>
+          saveArtifact(artifact),
         );
+        if (systemControls) {
+          for (const stage of [
+            "denied",
+            "granted",
+            "clamped",
+            "revoked",
+            "restored",
+          ]) {
+            for (const source of ["bridge", "native"]) {
+              const name = `system-controls-${stage}-${source}.json`;
+              if (
+                !entry.artifacts.some((artifact) =>
+                  artifact.path.endsWith(`/${name}`),
+                )
+              ) {
+                entry.pass = false;
+                entry.problems.push(`Missing system control proof: ${name}`);
+              }
+            }
+          }
+        }
+        if (systemControls && entry.pass) {
+          const recovery = adb(
+            "shell",
+            "am",
+            "instrument",
+            "-w",
+            "-r",
+            "-e",
+            "class",
+            "ai.eliza.testing.NativeBridgeInstrumentedTest",
+            "-e",
+            "systemControlsPrepareRecovery",
+            "1",
+            `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
+          );
+          fs.writeFileSync(
+            path.join(outputDir, "system-controls-recovery-prepare.log"),
+            recovery,
+          );
+          entry.artifacts.push(
+            ...parseNativeArtifacts(recovery).map((artifact) =>
+              saveArtifact(artifact, "recovery-"),
+            ),
+          );
+          if (!parseInstrumentation(recovery, 1).pass)
+            throw new Error("System controls recovery preparation failed");
+        }
+        if (dnsOutage) {
+          for (const name of [
+            "vpn-upstream-outage.json",
+            "vpn-upstream-outage-cleanup.json",
+          ]) {
+            if (
+              !entry.artifacts.some((artifact) =>
+                artifact.path.endsWith(`/${name}`),
+              )
+            ) {
+              entry.pass = false;
+              entry.problems.push(`Missing DNS outage proof: ${name}`);
+            }
+          }
+        }
       } catch (error) {
         entry.pass = false;
         entry.problems.push(String(error));
@@ -353,6 +457,96 @@ async function main() {
             error.stdout,
           );
       } finally {
+        if (systemControls && applicationId?.endsWith(".test")) {
+          try {
+            const cleanup = adb(
+              "shell",
+              "am",
+              "instrument",
+              "-w",
+              "-r",
+              "-e",
+              "class",
+              "ai.eliza.testing.NativeBridgeInstrumentedTest",
+              "-e",
+              "systemControlsRestore",
+              "1",
+              `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
+            );
+            fs.writeFileSync(
+              path.join(outputDir, "system-controls-host-cleanup.log"),
+              cleanup,
+            );
+            const artifacts = parseNativeArtifacts(cleanup);
+            entry.artifacts ??= [];
+            entry.artifacts.push(
+              ...artifacts.map((artifact) =>
+                saveArtifact(artifact, "recovery-"),
+              ),
+            );
+            if (
+              entry.pass &&
+              !artifacts.some(
+                ({ name }) => name === "system-controls-restoration.json",
+              )
+            ) {
+              entry.pass = false;
+              entry.problems.push(
+                "Missing fresh-process system controls restoration evidence",
+              );
+            }
+            if (!parseInstrumentation(cleanup, 1).pass) {
+              preservePackageForRecovery = true;
+              entry.pass = false;
+              entry.problems.push(
+                "System settings restoration failed; preserve the test APK recovery record",
+              );
+            }
+          } catch (error) {
+            preservePackageForRecovery = true;
+            entry.pass = false;
+            entry.problems.push(`System settings cleanup: ${error}`);
+          }
+        }
+        if (dnsOutage) {
+          try {
+            const iptables = (...args) =>
+              adb("shell", "su", "0", "iptables", "-w", ...args);
+            // The host owns this unique chain too, so crashes cannot strand the outage.
+            if (
+              iptables("-S")
+                .split("\n")
+                .some((line) => line.trim() === `-N ${dnsOutageChain}`)
+            ) {
+              const rule = [
+                "-p",
+                "udp",
+                "--sport",
+                "53",
+                "!",
+                "-s",
+                "10.77.0.2",
+                "-j",
+                dnsOutageChain,
+              ];
+              if (
+                iptables("-S", "INPUT")
+                  .split("\n")
+                  .some((line) => line.trim().endsWith(`-j ${dnsOutageChain}`))
+              )
+                iptables("-D", "INPUT", ...rule);
+              iptables("-F", dnsOutageChain);
+              iptables("-X", dnsOutageChain);
+            }
+            fs.writeFileSync(
+              path.join(outputDir, "dns-outage-host-cleanup.json"),
+              JSON.stringify({ chain: dnsOutageChain, absent: true }),
+            );
+          } catch (error) {
+            entry.pass = false;
+            entry.problems.push(`DNS outage cleanup: ${error}`);
+          }
+        }
         try {
           fs.writeFileSync(
             path.join(outputDir, `${plugin.directory}-logcat.log`),
@@ -370,7 +564,7 @@ async function main() {
             entry.problems.push(`fixture cleanup: ${error}`);
           }
         }
-        if (applicationId?.endsWith(".test")) {
+        if (applicationId?.endsWith(".test") && !preservePackageForRecovery) {
           try {
             adb("uninstall", applicationId);
           } catch (error) {

@@ -21,7 +21,7 @@ test.describe("cloud-frontend monetization pages", () => {
       from: string,
       destination: string,
       requiredApiPaths: string[],
-      surface: "overview" | "analytics" | "billing" | "earnings",
+      surface: "apps" | "analytics" | "billing" | "earnings",
     ) => {
       responses.length = 0;
       await Promise.all([
@@ -35,9 +35,9 @@ test.describe("cloud-frontend monetization pages", () => {
         page.goto(`${stack.urls.frontend}${from}`, { timeout: 60_000 }),
       ]);
       await expect(page).toHaveURL(`${stack.urls.frontend}${destination}`);
-      if (surface === "overview") {
+      if (surface === "apps") {
         await expect(
-          page.getByRole("link", { name: "Add funds", exact: true }),
+          page.getByText("Total Apps", { exact: true }),
         ).toBeVisible();
       } else if (surface === "analytics") {
         await expect(
@@ -61,12 +61,7 @@ test.describe("cloud-frontend monetization pages", () => {
       ).toEqual([]);
     };
 
-    await visit(
-      "/dashboard/apps",
-      "/cloud",
-      ["/api/credits/balance"],
-      "overview",
-    );
+    await visit("/dashboard/apps", "/cloud/apps", ["/api/v1/apps"], "apps");
     await visit(
       "/dashboard/analytics",
       "/cloud/analytics",

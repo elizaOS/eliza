@@ -4,12 +4,12 @@
  * creating a second graph implementation or pulling host code into assistant.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, resolveOwnerEntityId } from "@elizaos/core";
+
 import type {
   RelationshipsGraphService,
   RelationshipsServiceLike,
 } from "@elizaos/plugin-assistant";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import { getCloudAuthService } from "./cloud-auth-service.ts";
 import { fetchConfiguredOwnerName } from "./owner-name.ts";
 

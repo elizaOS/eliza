@@ -5,7 +5,9 @@ Benchmark harness adapter for the Codex CLI. Requires an installed, authenticate
 The client replays complete task context and prior JSONL events across turns,
 records usage, and rejects failed or incomplete turns. `reset()` starts a fresh
 task. An explicit `cwd` enables workspace-write; otherwise execution is read-only.
-The caller must provide an isolated workspace for coding evaluations.
+The caller must provide an isolated workspace for coding evaluations. On POSIX,
+timeouts kill the CLI process group and retain full stdout/stderr on TimeoutExpired;
+other platforms terminate the direct process.
 
 This client is not yet a registered cross-framework suite adapter. Passing its
 unit tests does not establish tool-protocol compatibility or live parity.

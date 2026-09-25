@@ -18,7 +18,10 @@ export const UI_SMOKE_SHARD_ENV = "ELIZA_UI_SMOKE_SHARD";
  * suite. Throws on anything present but unusable.
  */
 export function parseUiSmokeShard(rawValue) {
-  const raw = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (rawValue != null && typeof rawValue !== "string") {
+    throw new Error(`${UI_SMOKE_SHARD_ENV} must be a string selector`);
+  }
+  const raw = rawValue?.trim() ?? "";
   if (raw.length === 0) return undefined;
 
   const match = raw.match(/^(\d+)\/(\d+)$/);
@@ -30,7 +33,13 @@ export function parseUiSmokeShard(rawValue) {
 
   const current = Number(match[1]);
   const total = Number(match[2]);
-  if (total < 1 || current < 1 || current > total) {
+  if (
+    !Number.isSafeInteger(current) ||
+    !Number.isSafeInteger(total) ||
+    total < 1 ||
+    current < 1 ||
+    current > total
+  ) {
     throw new Error(
       `${UI_SMOKE_SHARD_ENV} needs 1 <= current <= total, got "${raw}"`,
     );

@@ -58,22 +58,6 @@ export function buildRawGitHubAssetBase({
   return `${RAW_GITHUB_ORIGIN}/${repository}/${releaseTag}/${normalizedRoot}/`;
 }
 
-export function buildManagedAssetUrl({
-  repository = ELIZA_GITHUB_REPOSITORY,
-  releaseTag,
-  assetRoot,
-  assetPath,
-}) {
-  if (!releaseTag || !assetRoot || !assetPath) {
-    return "";
-  }
-
-  const normalizedAssetPath = assetPath.replace(/^\/+/, "");
-  const base = buildRawGitHubAssetBase({ repository, releaseTag, assetRoot });
-  if (!base) return "";
-  return new URL(normalizedAssetPath, base).toString();
-}
-
 export function buildReleaseValidationAssetUrl({
   repository = ELIZA_GITHUB_REPOSITORY,
   releaseTag,

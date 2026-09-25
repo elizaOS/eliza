@@ -55,14 +55,10 @@ import {
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience";
-import type {
-	AccessContext,
-	IAgentRuntime,
-	Memory,
-	MemoryScope,
-	MessageChatType,
-	UUID,
-} from "../types";
+import type { AccessContext } from "../types/access-context.js";
+import type { Memory, MemoryScope, MessageChatType } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { actorFromAccessContext, canReadScope } from "./filter";
 
 /**

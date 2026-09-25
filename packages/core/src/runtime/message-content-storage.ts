@@ -1,7 +1,9 @@
 /** Publishes message bodies and attachments through atomic content-segment storage, rejecting oversized writes when the adapter lacks that capability. */
 import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "../errors";
-import type { Content, IAgentRuntime, Memory, UUID } from "../types";
+import type { Memory } from "../types/memory.js";
+import type { Content, UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	buildMessageContentProjection,
 	canonicalAttachmentText,

@@ -619,7 +619,6 @@ describe("App navigate-view event wiring", () => {
     window.localStorage.setItem("eliza:permissions-primed", "1");
     window.localStorage.removeItem("steward_session_token");
     setBootConfig(DEFAULT_BOOT_CONFIG);
-    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.firstRunComplete = true;

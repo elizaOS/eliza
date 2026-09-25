@@ -15,6 +15,7 @@ import {
 } from "@elizaos/auth/auth/account-storage";
 import { applySubscriptionCredentials } from "@elizaos/auth/auth/credentials";
 import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/auth/types";
+import type { ElizaConfig } from "@elizaos/core";
 import {
   deriveFirstRunCredentialPersistencePlan,
   type FirstRunConnection,
@@ -44,7 +45,6 @@ import {
   type ServiceRoutingConfig,
 } from "@elizaos/core/contracts/service-routing";
 import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
-import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;

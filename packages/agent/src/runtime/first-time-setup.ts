@@ -17,7 +17,7 @@
  * @module first-time-setup
  */
 
-import { formatError } from "@elizaos/core";
+import { type AgentConfig, formatError } from "@elizaos/core";
 import { getStylePresets } from "@elizaos/core/character-presets";
 import {
   migrateLegacyRuntimeConfig,
@@ -36,7 +36,6 @@ import {
 } from "../api/wallet.ts";
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import type { AgentConfig } from "../config/types.agents.ts";
 import { pickRandomNames } from "./first-run-names.ts";
 
 // ---------------------------------------------------------------------------

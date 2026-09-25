@@ -91,7 +91,8 @@ function classifyAuthPhase(params: {
 	auth: AuthStatusSnapshot | null;
 	authError: string | null;
 }): LaunchPhase | null {
-	if (params.auth === null && params.authError === null) return "auth-checking";
+	if (params.authError !== null) return "error";
+	if (params.auth === null) return "auth-checking";
 	if (params.auth?.required === true && params.auth.pairingEnabled === true) {
 		return "pairing-required";
 	}
@@ -105,7 +106,8 @@ function classifyFirstRunPhase(params: {
 	firstRun: FirstRunStatusSnapshot | null;
 	firstRunError: string | null;
 }): LaunchPhase | null {
-	if (params.firstRun === null && params.firstRunError === null) {
+	if (params.firstRunError !== null) return "error";
+	if (params.firstRun === null) {
 		return "first-run-checking";
 	}
 	if (params.firstRun?.complete !== false) return null;
@@ -117,6 +119,7 @@ function classifyFirstRunPhase(params: {
 function classifyPhase(params: {
 	agent: EmbeddedAgentStatus;
 	boot: BootProgressSnapshot | null;
+	bootError: string | null;
 	auth: AuthStatusSnapshot | null;
 	authError: string | null;
 	firstRun: FirstRunStatusSnapshot | null;
@@ -124,7 +127,13 @@ function classifyPhase(params: {
 }): LaunchPhase {
 	const agentPhase = classifyAgentPhase(params.agent);
 	if (agentPhase !== null) return agentPhase;
-	if (params.boot?.phase && params.boot.phase !== "running") {
+	if (
+		params.bootError !== null ||
+		params.boot?.state === "error" ||
+		params.boot?.database === "error"
+	)
+		return "error";
+	if (!params.boot?.phase || params.boot.phase !== "running") {
 		return "agent-api-ready";
 	}
 	const authPhase = classifyAuthPhase(params);
@@ -136,6 +145,7 @@ function classifyPhase(params: {
 
 function databaseBlocksLaunch(database: DatabaseSnapshot): boolean {
 	return (
+		database.status === "error" ||
 		database.status === "migration-failed" ||
 		database.status === "corrupt" ||
 		database.status === "permission-error" ||
@@ -145,13 +155,7 @@ function databaseBlocksLaunch(database: DatabaseSnapshot): boolean {
 }
 
 function suggestedAction(snapshot: LaunchSnapshot): string | undefined {
-	if (
-		snapshot.database.status === "migration-failed" ||
-		snapshot.database.status === "corrupt" ||
-		snapshot.database.status === "permission-error" ||
-		snapshot.database.status === "path-error" ||
-		snapshot.database.status === "locked"
-	) {
+	if (databaseBlocksLaunch(snapshot.database)) {
 		return "Open launch diagnostics and use database recovery.";
 	}
 	if (snapshot.phase === "error")
@@ -252,6 +256,7 @@ export class LaunchOrchestrator {
 		const diagnostics = this.readDiagnostics();
 		const database = this.readDatabaseStatus();
 		let boot: BootProgressSnapshot | null = null;
+		let bootError: string | null = null;
 		let auth: AuthStatusSnapshot | null = null;
 		let authError: string | null = null;
 		let firstRun: FirstRunStatusSnapshot | null = null;
@@ -259,8 +264,8 @@ export class LaunchOrchestrator {
 
 		try {
 			boot = await this.readBootProgress();
-		} catch {
-			boot = null;
+		} catch (error) {
+			bootError = error instanceof Error ? error.message : String(error);
 		}
 
 		const port = agent.port;
@@ -282,6 +287,7 @@ export class LaunchOrchestrator {
 			: classifyPhase({
 					agent,
 					boot,
+					bootError,
 					auth,
 					authError,
 					firstRun,
@@ -294,7 +300,12 @@ export class LaunchOrchestrator {
 				port,
 				apiBase: apiBase(port),
 				startedAt: agent.startedAt,
-				error: agent.error ?? diagnostics.lastError ?? null,
+				error:
+					agent.error ??
+					bootError ??
+					boot?.lastError ??
+					diagnostics.lastError ??
+					null,
 			},
 			boot: {
 				runtimePhase: boot?.phase ?? diagnostics.phase ?? null,

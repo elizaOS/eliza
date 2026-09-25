@@ -64,9 +64,9 @@ function printUsageAndExit(code) {
 }
 
 async function loadModule() {
-  // The script is shipped alongside the plugin; resolve the migrator
-  // through the package entry point so test/dev/prod paths converge.
-  return import("@elizaos/plugin-personal-assistant/seed-routine-migrator");
+  return import(
+    "@elizaos/plugin-personal-assistant/lifeops/seed-routine-migration/migrator"
+  );
 }
 
 async function runFromSnapshot(args, mod) {

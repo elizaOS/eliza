@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import hashlib
+import math
+import uuid
 import os
 import signal
 import time
@@ -36,14 +39,72 @@ def parse_native_result(stdout: str, task_id: str) -> dict:
     return row
 
 
+def validate_native_trajectory(directory: Path, trace_id: str, task: dict) -> dict:
+    """Require a persisted final trajectory for this exact attempt and task."""
+    matches = []
+    for path in sorted(directory.glob("*/tj-*.json")):
+        raw = path.read_bytes()
+        try:
+            record = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RuntimeError(f"Invalid native trajectory artifact: {path}") from exc
+        if not isinstance(record, dict) or record.get("traceId") != trace_id:
+            continue
+        root = record.get("rootMessage")
+        text = root.get("text") if isinstance(root, dict) else None
+        if not isinstance(text, str):
+            continue
+        prompt, separator, context = text.rpartition("\n\nTask context (JSON):\n")
+        if not separator or prompt != task["prompt"]:
+            continue
+        try:
+            decoded_context = json.loads(context)
+        except json.JSONDecodeError:
+            continue
+        if decoded_context != task["context"]:
+            continue
+        matches.append((path, raw, record))
+    if len(matches) != 1:
+        raise RuntimeError(f"Expected one native task trajectory for trace {trace_id}, received {len(matches)}")
+    path, raw, record = matches[0]
+    started, ended = record.get("startedAt"), record.get("endedAt")
+    if record.get("status") != "finished" or any(
+        isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+        for value in (started, ended)
+    ) or ended < started:
+        raise RuntimeError(f"Native task trajectory is incomplete: {path}")
+    stages = record.get("stages")
+    if not isinstance(stages, list) or not any(
+        isinstance(stage, dict) and stage.get("kind") == "tool" for stage in stages
+    ):
+        raise RuntimeError(f"Native task trajectory has no recorded tool stage: {path}")
+    return {"trace_id": trace_id, "trajectory_id": record.get("trajectoryId"),
+            "path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "status": "finished"}
+
+
+async def _stop_native_process(process) -> None:
+    if process is None or process.returncode is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        pass
+    await process.wait()
+
+
 async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWEBenchConfig, *, provider: str | None = None) -> SWEBenchResult:
     from .cli import _build_subtask_prompt
 
     started = time.monotonic()
     manager = RepositoryManager(config.workspace_dir)
     process = None
+    patch = ""
+    trace_id = str(uuid.uuid4())
     # Keep receipts and state outside the checkout that gets cleaned up.
-    receipt_dir = Path(config.output_dir).resolve() / "native" / instance.instance_id.replace("/", "_")
+    receipt_dir = Path(config.output_dir).resolve() / "native" / instance.instance_id.replace("/", "_") / trace_id
     receipt_dir.mkdir(parents=True, exist_ok=True)
     try:
         if not config.model_name:
@@ -65,6 +126,7 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
             "OPENAI_SMALL_MODEL": config.model_name,
             "OPENAI_LARGE_MODEL": config.model_name,
             "LOG_LEVEL": "error",
+            "ELIZA_TRACE_ID": trace_id,
         })
         if provider == "cerebras":
             if not env.get("CEREBRAS_API_KEY"):
@@ -90,33 +152,40 @@ async def run_native_instance(instance: SWEBenchInstance, evaluator, config: SWE
                 cwd=repo, env=env, stdout=stdout, stderr=stderr,
                 start_new_session=os.name == "posix",
             )
-            await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
+            try:
+                await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
+            except TimeoutError:
+                # Settle the writer before taking a diagnostic diff; it must never
+                # be graded or disappear when the disposable checkout is removed.
+                await _stop_native_process(process)
+                patch = await manager.get_diff()
+                (receipt_dir / "attempted.patch").write_text(patch)
+                raise TimeoutError(
+                    f"Native CLI exceeded {config.timeout_seconds}s; see {receipt_dir}"
+                ) from None
+        # Preserve the attempted edit even when the completed CLI reports failure.
+        # Failed turns remain ineligible for grading.
+        patch = await manager.get_diff()
         if process.returncode != 0:
             raise RuntimeError(f"Native CLI exited {process.returncode}; see {receipt_dir}")
         row = parse_native_result((receipt_dir / "stdout.log").read_text(), instance.instance_id)
         (receipt_dir / "result.json").write_text(json.dumps(row, indent=2))
-        patch = await manager.get_diff()
         if not patch.strip():
             raise RuntimeError("Native coding turn completed without a working-tree diff")
+        evidence = validate_native_trajectory(receipt_dir / "state" / "trajectories", trace_id, task)
+        (receipt_dir / "trace-evidence.json").write_text(json.dumps(evidence, indent=2))
         result = await evaluator.evaluate_patch(instance, patch)
         result.duration_seconds = time.monotonic() - started
         result.status = f"{result.status or ''} execution=native_direct receipt={receipt_dir}".strip()
         return result
     except Exception as exc:
         return SWEBenchResult(
-            instance_id=instance.instance_id, generated_patch="", patch_status=PatchStatus.NOT_GENERATED,
+            instance_id=instance.instance_id, generated_patch=patch,
+            patch_status=PatchStatus.GENERATED if patch.strip() else PatchStatus.NOT_GENERATED,
             tests_passed=[], tests_failed=[], success=False,
             duration_seconds=time.monotonic() - started, tokens_used=None,
             error=f"{type(exc).__name__}: {exc}", status=f"execution=native_direct receipt={receipt_dir}",
         )
     finally:
-        if process is not None and process.returncode is None:
-            try:
-                if os.name == "posix":
-                    os.killpg(process.pid, signal.SIGKILL)
-                else:
-                    process.kill()
-            except ProcessLookupError:
-                pass
-            await process.wait()
+        await _stop_native_process(process)
         manager.cleanup_current_repo()

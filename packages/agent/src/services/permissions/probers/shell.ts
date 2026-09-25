@@ -12,7 +12,7 @@
  * status to mirror a user-toggled `shellEnabled` flag.
  */
 
-import type { PermissionState, Prober } from "../contracts.js";
+import type { PermissionState, Prober } from "@elizaos/core";
 import { buildState } from "./_bridge.js";
 
 const ID = "shell" as const;

@@ -44,11 +44,9 @@ import { effectDeliveryBindingProvesApplication } from "../runtime/effect-delive
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import {
-	GazetteerEntityRecognizer,
-	hardenIncomingUserMessage,
-	PseudonymSession,
-} from "../security/index.js";
+import { GazetteerEntityRecognizer } from "../security/entity-recognizer.js";
+import { hardenIncomingUserMessage } from "../security/incoming-message-security.js";
+import { PseudonymSession } from "../security/pii-pseudonymizer.js";
 import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import {

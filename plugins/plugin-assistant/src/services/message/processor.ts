@@ -1127,6 +1127,7 @@ export class MessageProcessor {
       Array.from(persistedEarlyReplyIds, (id) => id as UUID),
     );
     let actionResults: ActionResult[] | undefined;
+    let requestFulfilled: boolean | undefined;
     let replyRecovery: MessageReplyRecoveryContext | undefined;
     let terminalFailure: RuntimeFailure | undefined;
     let mode: StrategyMode = "none";
@@ -1156,6 +1157,7 @@ export class MessageProcessor {
           : result.responseMessages;
       state = result.state;
       actionResults = result.actionResults;
+      requestFulfilled = result.requestFulfilled;
       replyRecovery = result.replyRecovery;
       if (replyRecovery) {
         const savedRecovery = replyRecovery;
@@ -1600,6 +1602,7 @@ export class MessageProcessor {
           }
         : {}),
       ...(actionResults ? { actionResults } : {}),
+      ...(typeof requestFulfilled === "boolean" ? { requestFulfilled } : {}),
       ...(replyRecovery ? { replyRecovery } : {}),
       ...(terminalFailure ? { terminalFailure } : {}),
       state,

@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "outDir": "./dist",
     "rootDir": "./src",
     "sourceMap": true,
@@ -9,8 +10,6 @@
     "incremental": false,
     "noEmit": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
-      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../packages/ui/dist/*"]
     }
   },

@@ -10,20 +10,10 @@
       "@/lib/*": ["../../shared/src/lib/*"],
       "@/db/*": ["../../shared/src/db/*"],
       "@/types/*": ["../../shared/src/types/*"],
-      "@elizaos/cloud-shared": ["../../shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../../shared/src/*"],
-      "@elizaos/core": ["../../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../../packages/core/src/*"],
-      "@elizaos/plugin-sql": ["../../../../plugins/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-web-search": [
-        "../../../../plugins/plugin-web-search/src/index.ts"
-      ],
       "@/*": ["../../../*"],
-      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
-      "@elizaos/plugin-scheduling": [
-        "../../../../plugins/plugin-scheduling/src/index.ts"
-      ],
-      "@elizaos/plugin-todos": ["../../../../plugins/plugin-todos/src/index.ts"]
+      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"]
     }
   },
   "include": ["src/**/*", "../../shared/src/types/**/*.d.ts"],

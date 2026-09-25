@@ -4,10 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-packaging.ts";
 import {
-  CAPACITOR_PLUGIN_NAMES,
-  resolveNativePluginDir,
-} from "../../lib/capacitor-plugin-names.ts";
-import {
   resolvePackageAbsolutePath,
   resolvePackageAbsolutePathCandidates,
 } from "../build-tools.ts";
@@ -21,7 +17,6 @@ import {
   repoRoot,
 } from "../context.ts";
 import { escapeXmlText } from "../escape.ts";
-import { ANDROID_OFFICIAL_CAPACITOR_PACKAGES } from "../ios-pods.ts";
 import { syncAndroidAppActionsResources } from "./app-actions.ts";
 import {
   appendMissingGradleDependency,
@@ -33,33 +28,16 @@ import {
   injectCopyForkLlamaLibTask,
   injectNativeLibLegacyPackaging,
   injectNoCompressTarGz,
-  patchGradleFileForAgp9,
   replaceOrInsertGradleString,
   restrictLlamaCapacitorToArm64,
 } from "./gradle-patches.ts";
 import { assertSharedTreeOnlyForEliza } from "./shared-tree.ts";
-
-export function patchInstalledCapacitorPluginGradleForAgp9(pkgName) {
-  for (const pkgRoot of resolvePackageAbsolutePathCandidates(pkgName)) {
-    patchGradleFileForAgp9(
-      path.join(pkgRoot, "android", "build.gradle"),
-      pkgName,
-    );
-  }
-}
-
-export function patchOfficialCapacitorGradleForAgp9() {
-  for (const pkgName of ANDROID_OFFICIAL_CAPACITOR_PACKAGES) {
-    patchInstalledCapacitorPluginGradleForAgp9(pkgName);
-  }
-}
 
 export function patchLlamaCppCapacitorGradle() {
   for (const pkgRoot of resolvePackageAbsolutePathCandidates(
     "llama-cpp-capacitor",
   )) {
     const gradlePath = path.join(pkgRoot, "android", "build.gradle");
-    patchGradleFileForAgp9(gradlePath, "llama-cpp-capacitor");
     restrictLlamaCapacitorToArm64(gradlePath);
   }
 }
@@ -95,15 +73,6 @@ export function stageBackgroundRunnerAndroidJsEngineAar() {
   console.log(
     `[mobile-build] Staged Background Runner JS engine AAR: ${path.relative(repoRoot, target)}`,
   );
-}
-
-export function patchNativePluginGradleForAgp9() {
-  for (const name of CAPACITOR_PLUGIN_NAMES) {
-    patchGradleFileForAgp9(
-      path.join(resolveNativePluginDir(name), "android", "build.gradle"),
-      `plugin-native-${name}`,
-    );
-  }
 }
 
 export function patchAndroidGradleWrapperForReleaseCompat() {
@@ -328,9 +297,7 @@ export function patchAndroidGradle({ cloudBuild = false } = {}) {
     }
   }
 
-  patchOfficialCapacitorGradleForAgp9();
   patchLlamaCppCapacitorGradle();
-  patchNativePluginGradleForAgp9();
   stageBackgroundRunnerAndroidJsEngineAar();
 
   const stringsPath = path.join(

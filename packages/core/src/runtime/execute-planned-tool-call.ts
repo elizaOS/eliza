@@ -31,16 +31,16 @@ import type {
 	Action,
 	ActionParameters,
 	ActionResult,
-	ContentValue,
 	HandlerOptions,
-	IAgentRuntime,
-	Memory,
 	StreamChunkCallback,
-} from "../types";
+} from "../types/components.js";
 import type { AgentContext, RoleGateRole } from "../types/contexts";
 import { EventType } from "../types/events";
+import type { Memory } from "../types/memory.js";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
+import type { ContentValue } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state";
 import { withActiveRoutingContexts } from "../utils/context-routing";
 import { resolveActionEventWorldId } from "./action-event-world";

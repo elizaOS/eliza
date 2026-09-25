@@ -1,12 +1,12 @@
 /** Defines app setup ts behavior for dashboard host and runtime integration. */
 import Module from "node:module";
 import path from "node:path";
-import { afterAll, afterEach, vi } from "vitest";
 import {
   createMemoryStorage,
   hasStorageApi,
   suppressReactTestConsoleErrors,
-} from "./helpers/browser-mocks";
+} from "@elizaos/testing/browser-mocks";
+import { afterAll, afterEach, vi } from "vitest";
 
 const requireFromHere = Module.createRequire(import.meta.url);
 const testRenderer = requireFromHere(

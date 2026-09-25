@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../character.ts";
 import { ElizaError } from "../../errors.js";
 import { AgentRuntime } from "../../runtime.ts";
-import type { Room, UUID } from "../../types/index";
+import type { Room } from "../../types/environment.js";
+import type { UUID } from "../../types/primitives.js";
 import type { IAgentRuntime } from "../../types/runtime";
 import { stringToUuid as sqliteTestAgentId } from "../../utils.js";
 import {

@@ -349,7 +349,7 @@ export interface CloudAgentConfig {
   bridgeSecret?: string;
   /** Max request body size in bytes. Default: 1 MB */
   maxBodyBytes?: number;
-  /** Max memories kept in state. 0 = unlimited. Default: 0 */
+  /** Legacy option: only 0 (complete history) is supported. */
   maxMemories?: number;
   /**
    * Whether processMessage/processMessageStream accept a chat mode param.
@@ -369,13 +369,18 @@ interface AgentRuntime {
 }
 // ─── Main entry ─────────────────────────────────────────────────────────
 export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
+  if (userConfig.maxMemories !== undefined && userConfig.maxMemories !== 0) {
+    throw new ElizaError("Cloud agent history must not be truncated", {
+      code: "CLOUD_AGENT_MEMORY_LIMIT_UNSUPPORTED",
+      context: { boundary: "cloud-agent-startup" },
+    });
+  }
   const PORT = userConfig.port ?? Number(process.env.PORT ?? "2138");
   const BRIDGE_PORT =
     userConfig.bridgePort ?? Number(process.env.BRIDGE_PORT ?? "18790");
   const BRIDGE_SECRET = userConfig.bridgeSecret || crypto.randomUUID();
   const bridgeSecretGenerated = !userConfig.bridgeSecret;
   const MAX_BODY_BYTES = userConfig.maxBodyBytes ?? 1048576;
-  const MAX_MEMORIES = userConfig.maxMemories ?? 0;
   const enableChatMode = userConfig.enableChatMode ?? false;
   let agentRuntime: AgentRuntime | null = null;
   /** In-memory state that persists across snapshots. */
@@ -386,12 +391,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     startedAt: new Date().toISOString(),
     lastActivityAt: new Date().toISOString(),
   };
-  /** Trim memories array to MAX_MEMORIES, removing oldest entries first. */
-  function trimMemories(): void {
-    if (MAX_MEMORIES > 0 && state.memories.length > MAX_MEMORIES) {
-      state.memories.splice(0, state.memories.length - MAX_MEMORIES);
-    }
-  }
   function readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let body = "";
@@ -668,7 +667,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               ? { failureKind: response.failureKind }
               : {}),
           });
-          trimMemories();
           return {
             text: bridgeResultText(response),
             ...(response.failureKind
@@ -731,7 +729,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               ? { failureKind: response.failureKind }
               : {}),
           });
-          trimMemories();
           return {
             text: bridgeResultText(response),
             ...(response.failureKind
@@ -764,7 +761,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             text: reply,
             timestamp: Date.now(),
           });
-          trimMemories();
           return { text: reply };
         },
         processMessageStream: async (
@@ -786,7 +782,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             text: reply,
             timestamp: Date.now(),
           });
-          trimMemories();
           return { text: reply };
         },
         getMemories: () => state.memories,
@@ -979,7 +974,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         existingSourceIds.add(sourceId);
         inserted += 1;
       }
-      trimMemories();
       state.lastActivityAt = new Date().toISOString();
       res.writeHead(200);
       res.end(

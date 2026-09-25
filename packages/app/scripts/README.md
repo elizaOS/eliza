@@ -7,7 +7,7 @@ This directory is part of `packages/app`.
 Build from the repository root:
 
 ```bash
-bun run --cwd packages/app build
+bun run build:client
 ```
 
 Test from the repository root:

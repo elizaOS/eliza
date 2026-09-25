@@ -1,41 +1,42 @@
 /**
- * Type-only shim for the agent root bootstrap imported by Android bridge code.
- *
- * Runtime code loads the real package dynamically; this stand-in exists only so
- * the bridge package can typecheck without a built agent distribution.
+ * Type-only boundary for the agent root loaded by mobile bridges.
+ * Runtime imports resolve the real package; these declarations let the bridge
+ * typecheck without a built agent distribution.
  */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AndroidCoreRouteDeps,
   AndroidDispatchRoute,
 } from "../android/dispatch.ts";
 
-export function startEliza(_options: {
+export declare function startEliza(options: {
   serverOnly: true;
   localAgentMode: true;
-}): Promise<IAgentRuntime | undefined> {
-  throw new Error("Type shim only");
-}
+}): Promise<IAgentRuntime | undefined>;
 
-export const dispatchApiRoute: AndroidDispatchRoute = () => {
-  throw new Error("Type shim only");
-};
+export declare const dispatchApiRoute: AndroidDispatchRoute;
+export declare const configFileExists: AndroidCoreRouteDeps["configFileExists"];
+export declare const loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"];
+export declare const saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"];
+export declare const hasPersistedFirstRunState: AndroidCoreRouteDeps["hasPersistedFirstRunState"];
 
-export const configFileExists: AndroidCoreRouteDeps["configFileExists"] =
-  () => {
-    throw new Error("Type shim only");
-  };
+export declare function bootElizaRuntime(): Promise<IAgentRuntime>;
 
-export const loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"] = () => {
-  throw new Error("Type shim only");
-};
-
-export const saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"] = () => {
-  throw new Error("Type shim only");
-};
-
-export const hasPersistedFirstRunState: AndroidCoreRouteDeps["hasPersistedFirstRunState"] =
-  () => {
-    throw new Error("Type shim only");
-  };
+export declare function dispatchRoute(args: {
+  runtime: IAgentRuntime;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  query: Record<string, string | string[]>;
+  body: unknown;
+  inProcess: true;
+  isAuthorized: () => true;
+}): Promise<
+  | {
+      status: number;
+      headers?: Record<string, string>;
+      body?: unknown;
+    }
+  | null
+  | undefined
+>;

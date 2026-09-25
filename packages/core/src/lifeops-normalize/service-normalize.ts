@@ -12,7 +12,7 @@ import {
 	type LifeOpsSubjectType,
 	type LifeOpsVisibilityScope,
 } from "../contracts/personal-assistant.js";
-import { LIFEOPS_TIME_ZONE_ALIASES } from "../lifeops-constants/index.js";
+import { LIFEOPS_TIME_ZONE_ALIASES } from "../lifeops-constants/service-constants.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { LifeOpsServiceError } from "./service-error.js";
 import { isValidTimeZone, resolveDefaultTimeZone } from "./time-zone.js";

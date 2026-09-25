@@ -24,11 +24,14 @@
  */
 
 import { performance } from "node:perf_hooks";
-import { stringToUuid as sqliteTestAgentId } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ModelType,
+  runWithStreamingContext,
+  stringToUuid as sqliteTestAgentId,
+} from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
-import { AgentRuntime } from "../../core/src/runtime";
-import { runWithStreamingContext } from "../../core/src/streaming-context";
-import { ModelType } from "../../core/src/types";
+
 import { PhraseChunkedTts } from "../src/services/phrase-chunked-tts";
 
 // ---------------------------------------------------------------------------

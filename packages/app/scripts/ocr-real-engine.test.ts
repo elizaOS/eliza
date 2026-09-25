@@ -12,16 +12,16 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  closeOcrEngines,
+  ocrImage,
+  resetTesseractProbe,
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 import {
   evaluateOcrContent,
   type OcrResult,
 } from "../test/ui-smoke/ocr-content-rules";
-import {
-  closeOcrEngines,
-  ocrImage,
-  resetTesseractProbe,
-} from "./mvp-visual-verify/ocr.ts";
 import { runOcrTriage } from "./ocr-triage";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

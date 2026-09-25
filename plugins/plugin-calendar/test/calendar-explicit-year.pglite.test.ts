@@ -112,11 +112,19 @@ async function create(args: {
     runTextModel: async () => null,
     runJsonModel: async () => ({
       rawResponse: JSON.stringify({
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
         startAt: args.start,
         endAt: args.end,
         timeZone: zone,
       }),
-      parsed: { startAt: args.start, endAt: args.end, timeZone: zone },
+      parsed: {
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        startAt: args.start,
+        endAt: args.end,
+        timeZone: zone,
+      },
     }),
     recentConversationTexts: async () => [],
   });

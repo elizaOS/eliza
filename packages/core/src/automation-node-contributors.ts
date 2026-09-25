@@ -6,7 +6,7 @@
  * runtime capability specs into descriptors gated by the loaded actions/plugins.
  */
 
-import type { ElizaConfig } from "./config/types.js";
+import type { ElizaConfig } from "./config/types.eliza.js";
 import type { AutomationNodeDescriptor } from "./contracts/automation-nodes.js";
 import type { AgentRuntime } from "./runtime.js";
 import type { UUID } from "./types/primitives.js";

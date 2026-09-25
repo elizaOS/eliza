@@ -1,12 +1,13 @@
 /** Defines model registration, admission, and diagnostic policies shared by runtime model dispatch. */
+
 import {
-	type JsonValue,
 	type ModelHandler,
 	type ModelRegistrationMetadata,
 	type ResponseSkeleton,
 	TEXT_GENERATION_MODEL_TYPES,
 	type TextStreamResult,
-} from "../../types";
+} from "../../types/model.js";
+import type { JsonValue } from "../../types/primitives.js";
 import { assertModelOutputComplete } from "../../utils/model-errors";
 import { isPlainObject } from "../../utils/type-guards";
 

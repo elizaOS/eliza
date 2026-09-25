@@ -1,15 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "noEmit": false,
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "./src",
     "rewriteRelativeImportExtensions": true,
-    "paths": {
-      "@elizaos/core": ["../core/dist/index.d.ts"]
-    },
+    "paths": {},
     "types": ["node", "bun"]
   },
   "include": ["src/**/*"],

@@ -39,12 +39,12 @@ import {
   removePublicBuildStamp,
   shouldSkipBuildStamp,
 } from "./scripts/build-stamp.ts";
-import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.ts";
 import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.ts";
 import {
   ANDROID_CLOUD_ROUTING_MARKERS,
   findAndroidCloudRoutingMarkers,
 } from "./scripts/lib/android-cloud-routing-markers.ts";
+import { CAPACITOR_PLUGIN_NAMES } from "./scripts/lib/capacitor-plugin-names.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
 import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
@@ -887,7 +887,13 @@ function createAppPluginSourceAliases() {
       string,
       unknown
     >;
-    if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
+    // Explicit browser entries also cover registered shell plugins such as
+    // Notes that do not carry the app catalog metadata.
+    if (
+      !isAppPluginPackage("plugins", entry.name, pkg) &&
+      !fs.existsSync(path.join(pkgDir, "src/browser.ts"))
+    )
+      continue;
     const pkgName = pkg.name;
     if (typeof pkgName !== "string") continue;
     const sourceEntry = [

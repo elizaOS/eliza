@@ -52,7 +52,9 @@ describe("onboarding coordinator error integration", () => {
         ),
       ],
       format: "esm",
-      target: "node",
+      // Keep workerd's native Node imports without Bun's Node-only require bridge.
+      target: "browser",
+      external: ["node:*"],
       conditions: ["node", "import"],
       plugins: [
         {

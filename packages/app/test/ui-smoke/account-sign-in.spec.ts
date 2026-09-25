@@ -1,16 +1,7 @@
-/**
- * Exercises Account and Billing sign-in through the production renderer and auth store,
- * with only upstream HTTP responses supplied by deterministic fixtures.
- * A connected agent must not satisfy a signed-out browser's account session.
- */
+/** Real-browser Cloud account gating and sign-in discovery recovery with a connected agent. */
 import { writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import {
-  hideChatOverlay,
-  installDefaultAppRoutes,
-  openAppPath,
-  seedAppStorage,
-} from "./helpers";
+import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
 import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
 
 for (const section of ["account", "billing"]) {
@@ -18,7 +9,7 @@ for (const section of ["account", "billing"]) {
     { name: "desktop", width: 1280, height: 800 },
     { name: "mobile", width: 390, height: 844 },
   ]) {
-    test(`${section} starts browser sign-in with a connected agent on ${viewport.name}`, async ({
+    test(`${section} requires browser sign-in despite a connected agent on ${viewport.name}`, async ({
       page,
       baseURL,
     }, testInfo) => {
@@ -57,83 +48,84 @@ for (const section of ["account", "billing"]) {
           },
         });
       });
-      let rejectLogin = true;
-      await page.route("**/api/cloud/login", async (route) => {
-        if (rejectLogin) {
+      let rejectDiscovery = true;
+      let providerRequests = 0;
+      await page.route("**/auth/providers", async (route) => {
+        providerRequests += 1;
+        if (rejectDiscovery) {
           await route.fulfill({
             status: 503,
-            json: {
-              ok: false,
-              error: "Sign-in service temporarily unavailable",
-            },
+            json: { error: "Sign-in service temporarily unavailable" },
           });
           return;
         }
         await route.fulfill({
           json: {
-            ok: true,
-            sessionId: "account-sign-in-session",
-            browserUrl:
-              "https://www.elizacloud.ai/device/account-sign-in-session",
+            passkey: false,
+            email: true,
+            sms: false,
+            siwe: false,
+            siws: false,
+            google: true,
+            discord: false,
+            github: false,
+            twitter: false,
+            oauth: [],
           },
         });
       });
-      await page
-        .context()
-        .route(
-          "https://www.elizacloud.ai/device/account-sign-in-session",
-          async (route) => {
-            await route.fulfill({
-              contentType: "text/html",
-              body: "<h1>Authorize your browser</h1>",
-            });
-          },
-        );
-      await hideChatOverlay(page);
-      await openAppPath(page, "/settings");
-      await page.evaluate((section) => {
-        window.location.hash = `cloud-${section}`;
-      }, section);
-      const signIn = page.getByRole("button", { name: /^sign in$/i });
-      await expect(signIn).toBeVisible({ timeout: 60_000 });
-      await page.screenshot({
-        path: testInfo.outputPath(`${viewport.name}-${section}-rest.jpg`),
-        fullPage: true,
-      });
-      await signIn.hover();
-      await page.screenshot({
-        path: testInfo.outputPath(`${viewport.name}-${section}-hover.jpg`),
-        fullPage: true,
-      });
-      const loginRequest = page.waitForRequest(
-        (request) =>
-          request.url().endsWith("/api/cloud/login") &&
-          request.method() === "POST",
-        { timeout: 15_000 },
-      );
-      await signIn.click();
-      await loginRequest;
+      // Web settings anchors redirect to the canonical management route, whose
+      // browser session gate must not accept an agent's Cloud connection.
+      await page.goto(`${baseURL}/settings#cloud-${section}`);
+      await expect(
+        page.getByRole("heading", { name: "Sign in", exact: true }),
+      ).toBeVisible();
       await expect(page.getByRole("alert")).toContainText(
-        "Sign-in service temporarily unavailable",
+        "Sign-in options couldn't load",
       );
-      await expect(signIn).toBeEnabled();
+      await expect(page).toHaveURL(
+        (url) =>
+          url.pathname === "/login" &&
+          url.searchParams.get("returnTo") === `/cloud/${section}`,
+      );
       await page.screenshot({
         path: testInfo.outputPath(
           `${viewport.name}-${section}-signin-error.jpg`,
         ),
         fullPage: true,
       });
-      rejectLogin = false;
-      const popupPromise = page.waitForEvent("popup");
-      await signIn.click();
-      const popup = await popupPromise;
-      await expect(popup).toHaveURL(
-        "https://www.elizacloud.ai/device/account-sign-in-session",
-      );
+      const retry = page.getByRole("button", { name: "Retry sign-in options" });
+      await expect(retry).toBeEnabled();
+      await retry.hover();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `${viewport.name}-${section}-retry-hover.jpg`,
+        ),
+        fullPage: true,
+      });
+      const requestsBeforeRetry = providerRequests;
+      rejectDiscovery = false;
+      await retry.click();
       await expect(
-        popup.getByRole("heading", { name: "Authorize your browser" }),
+        page.getByRole("button", { name: "Google", exact: true }),
       ).toBeVisible();
-      await expect(page).toHaveURL(new RegExp(`/settings#cloud-${section}$`));
+      await expect
+        .poll(() => providerRequests)
+        .toBeGreaterThan(requestsBeforeRetry);
+      await expect(
+        page.getByText("Sign-in options couldn't load", { exact: true }),
+      ).toHaveCount(0);
+      await expect(page).toHaveURL(
+        (url) =>
+          url.pathname === "/login" &&
+          url.searchParams.get("returnTo") === `/cloud/${section}`,
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `${viewport.name}-${section}-signin-ready.jpg`,
+        ),
+        fullPage: true,
+      });
       const logPath = testInfo.outputPath(
         `${viewport.name}-console-network.log`,
       );

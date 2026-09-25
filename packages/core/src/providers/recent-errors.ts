@@ -18,13 +18,10 @@
 
 import type { ReportedError } from "../errors";
 import { logger } from "../logger";
-import type {
-	IAgentRuntime,
-	Memory,
-	Provider,
-	ProviderResult,
-	State,
-} from "../types";
+import type { Provider, ProviderResult } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,

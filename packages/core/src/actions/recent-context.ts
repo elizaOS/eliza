@@ -8,7 +8,9 @@
  * legitimately short conversation.
  */
 import { getRecentMessagesData } from "../recent-messages-state";
-import type { IAgentRuntime, Memory, State } from "../types";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 
 export function recentConversationTextsFromState(
 	state: State | undefined,

@@ -466,7 +466,6 @@ describe("App wallpaper-grant invariant — manifest gates the wallpaper (#13452
       vi.fn(() => new Promise<Response>(() => {})),
     );
     window.history.replaceState(null, "", "/views");
-    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);
   });

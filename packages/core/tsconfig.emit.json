@@ -1,6 +1,7 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
+		"customConditions": [],
 		"noEmit": false,
 		"rootDir": "./src",
 		"outDir": "./dist",
@@ -8,7 +9,6 @@
 		"declarationMap": false,
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
-			"@elizaos/core": ["./src/index.ts"],
 			"@elizaos/core/*": ["./src/*"]
 		}
 	},

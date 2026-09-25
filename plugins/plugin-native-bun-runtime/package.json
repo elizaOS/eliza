@@ -14,6 +14,7 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
       "bun": "./src/index.ts",
       "development": "./src/index.ts",
