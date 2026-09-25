@@ -53,23 +53,23 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
     "./api": {
-      "types": "./src/api/index.ts",
       "eliza-source": "./src/api/index.ts",
+      "types": "./src/api/index.ts",
       "bun": "./src/api/index.ts",
       "import": "./dist/api/index.js",
       "default": "./dist/api/index.js"
     },
     "./api/*": {
-      "types": "./src/api/*.ts",
       "eliza-source": "./src/api/*.ts",
+      "types": "./src/api/*.ts",
       "bun": "./src/api/*.ts",
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
@@ -77,8 +77,8 @@
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {
-      "types": "./src/runtime/index.ts",
       "eliza-source": "./src/runtime/index.ts",
+      "types": "./src/runtime/index.ts",
       "bun": "./src/runtime/index.ts",
       "import": "./dist/runtime/index.js",
       "default": "./dist/runtime/index.js"
@@ -86,136 +86,136 @@
     "./runtime/runtime-installation-id": null,
     "./runtime/runtime-installation-id.windows": null,
     "./runtime/*": {
-      "types": "./src/runtime/*.ts",
       "eliza-source": "./src/runtime/*.ts",
+      "types": "./src/runtime/*.ts",
       "bun": "./src/runtime/*.ts",
       "import": "./dist/runtime/*.js",
       "default": "./dist/runtime/*.js"
     },
     "./services/app-session-gate": {
-      "types": "./src/services/app-session-gate.ts",
       "eliza-source": "./src/services/app-session-gate.ts",
+      "types": "./src/services/app-session-gate.ts",
       "bun": "./src/services/app-session-gate.ts",
       "import": "./dist/services/app-session-gate.js",
       "default": "./dist/services/app-session-gate.js"
     },
     "./services/tee-evidence": {
-      "types": "./src/services/tee-evidence.ts",
       "eliza-source": "./src/services/tee-evidence.ts",
+      "types": "./src/services/tee-evidence.ts",
       "bun": "./src/services/tee-evidence.ts",
       "import": "./dist/services/tee-evidence.js",
       "default": "./dist/services/tee-evidence.js"
     },
     "./services/tee-evidence-provider": {
-      "types": "./src/services/tee-evidence-provider.ts",
       "eliza-source": "./src/services/tee-evidence-provider.ts",
+      "types": "./src/services/tee-evidence-provider.ts",
       "bun": "./src/services/tee-evidence-provider.ts",
       "import": "./dist/services/tee-evidence-provider.js",
       "default": "./dist/services/tee-evidence-provider.js"
     },
     "./services/permissions/probers/index": {
-      "types": "./src/services/permissions/probers/index.ts",
       "eliza-source": "./src/services/permissions/probers/index.ts",
+      "types": "./src/services/permissions/probers/index.ts",
       "bun": "./src/services/permissions/probers/index.ts",
       "import": "./dist/services/permissions/probers/index.js",
       "default": "./dist/services/permissions/probers/index.js"
     },
     "./services/permissions/probers/*": {
-      "types": "./src/services/permissions/probers/*.ts",
       "eliza-source": "./src/services/permissions/probers/*.ts",
+      "types": "./src/services/permissions/probers/*.ts",
       "bun": "./src/services/permissions/probers/*.ts",
       "import": "./dist/services/permissions/probers/*.js",
       "default": "./dist/services/permissions/probers/*.js"
     },
     "./security/access": {
-      "types": "./src/security/access.ts",
       "eliza-source": "./src/security/access.ts",
+      "types": "./src/security/access.ts",
       "bun": "./src/security/access.ts",
       "import": "./dist/security/access.js",
       "default": "./dist/security/access.js"
     },
     "./services/*": {
-      "types": "./src/services/*.ts",
       "eliza-source": "./src/services/*.ts",
+      "types": "./src/services/*.ts",
       "bun": "./src/services/*.ts",
       "import": "./dist/services/*.js",
       "default": "./dist/services/*.js"
     },
     "./config/*": {
-      "types": "./src/config/*.ts",
       "eliza-source": "./src/config/*.ts",
+      "types": "./src/config/*.ts",
       "bun": "./src/config/*.ts",
       "import": "./dist/config/*.js",
       "default": "./dist/config/*.js"
     },
     "./utils/*": {
-      "types": "./src/utils/*.ts",
       "eliza-source": "./src/utils/*.ts",
+      "types": "./src/utils/*.ts",
       "bun": "./src/utils/*.ts",
       "import": "./dist/utils/*.js",
       "default": "./dist/utils/*.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./services/agent-backup-v2-capture": {
-      "types": "./src/services/agent-backup.ts",
       "eliza-source": "./src/services/agent-backup.ts",
+      "types": "./src/services/agent-backup.ts",
       "bun": "./src/services/agent-backup.ts",
       "import": "./dist/services/agent-backup.js",
       "default": "./dist/services/agent-backup.js"
     },
     "./api/wallet-env-sync": {
-      "types": "./src/api/wallet-keygen.ts",
       "eliza-source": "./src/api/wallet-keygen.ts",
+      "types": "./src/api/wallet-keygen.ts",
       "bun": "./src/api/wallet-keygen.ts",
       "import": "./dist/api/wallet-keygen.js",
       "default": "./dist/api/wallet-keygen.js"
     },
     "./testing/*": {
-      "types": "./dist/testing/*.d.ts",
       "eliza-source": "./src/testing/*.ts",
+      "types": "./dist/testing/*.d.ts",
       "bun": "./src/testing/*.ts",
       "import": "./dist/testing/*.js",
       "default": "./dist/testing/*.js"
     },
     "./first-run-config": {
-      "types": "./dist/first-run-config.d.ts",
       "eliza-source": "./src/first-run-config.ts",
+      "types": "./dist/first-run-config.d.ts",
       "import": "./dist/first-run-config.js",
       "default": "./dist/first-run-config.js"
     },
     "./host-use-cases": {
-      "types": "./dist/host-use-cases.d.ts",
       "eliza-source": "./src/host-use-cases.ts",
+      "types": "./dist/host-use-cases.d.ts",
       "import": "./dist/host-use-cases.js",
       "default": "./dist/host-use-cases.js"
     },
     "./sandbox-registry": {
-      "types": "./dist/sandbox-registry.d.ts",
       "eliza-source": "./src/sandbox-registry.ts",
+      "types": "./dist/sandbox-registry.d.ts",
       "import": "./dist/sandbox-registry.js",
       "default": "./dist/sandbox-registry.js"
     },
     "./host-manifests/app-manifest": {
-      "types": "./dist/host-manifests/app-manifest.d.ts",
       "eliza-source": "./src/host-manifests/app-manifest.ts",
+      "types": "./dist/host-manifests/app-manifest.d.ts",
       "import": "./dist/host-manifests/app-manifest.js",
       "default": "./dist/host-manifests/app-manifest.js"
     },
     "./host-manifests/plugin-manifest": {
-      "types": "./dist/host-manifests/plugin-manifest.d.ts",
       "eliza-source": "./src/host-manifests/plugin-manifest.ts",
+      "types": "./dist/host-manifests/plugin-manifest.d.ts",
       "import": "./dist/host-manifests/plugin-manifest.js",
       "default": "./dist/host-manifests/plugin-manifest.js"
     },
     "./api/loopback-trust": {
-      "types": "./dist/api/loopback-trust.d.ts",
       "eliza-source": "./src/api/loopback-trust.ts",
+      "types": "./dist/api/loopback-trust.d.ts",
       "import": "./dist/api/loopback-trust.js",
       "default": "./dist/api/loopback-trust.js"
     }

@@ -8,8 +8,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "../../../../",
+    "noEmit": true,
     "types": ["bun-types", "node"],
     "paths": {
       "@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"],
