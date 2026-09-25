@@ -264,6 +264,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
 // source tree so direct/local targets retain their coverage, but remove them
 // alongside the production classes they exercise for cloud builds.
 export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
+  "ElizaVoicePcmInstrumentedTest.java",
   "BgeEmbeddingSessionTest.java",
   "BionicEmbeddingInstrumentedTest.java",
   "CapacitorBgeInstrumentedTest.java",

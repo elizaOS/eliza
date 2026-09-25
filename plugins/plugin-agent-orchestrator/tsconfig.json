@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ESNext",
     "module": "ESNext",
     "lib": ["ESNext", "DOM"],
@@ -22,13 +23,8 @@
     "allowArbitraryExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/auth/auth": ["../../packages/auth/src/auth/index.ts"],
       "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority": [
-        "../plugin-elizacloud/src/cloud-config/dev-cloud-env-authority.ts"
-      ]
+      "@elizaos/core/*": ["../../packages/core/src/*"]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,

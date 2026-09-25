@@ -302,13 +302,11 @@ bool drain_windows(PipelineSession* s, char** outError) {
             s->vad, s->pending.data(), kVadWindow, &prob, outError);
         if (rc != ELIZA_OK) return false;
 
-        // Buffer this window into turn or pre-roll BEFORE the state transition
-        // so a speech-start seeds the turn with the pre-roll + this window.
+        // Existing turns own this window. At onset, pre-roll must contain only
+        // earlier audio so the triggering window is appended exactly once.
         const float* win = s->pending.data();
         if (s->capturing) {
             s->turnPcm.insert(s->turnPcm.end(), win, win + kVadWindow);
-        } else {
-            push_preroll(s, win, kVadWindow);
         }
 
         s->seg.step(prob);
@@ -318,6 +316,8 @@ bool drain_windows(PipelineSession* s, char** outError) {
             s->turnPcm = s->preRoll;
             s->turnPcm.insert(s->turnPcm.end(), win, win + kVadWindow);
             s->preRoll.clear();
+        } else if (!s->capturing) {
+            push_preroll(s, win, kVadWindow);
         }
         if (s->seg.speechEnded) {
             s->capturing = false;
@@ -508,7 +508,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadOpen(JNIEnv* env, jclass,
 }
 
 // Process N 512-sample windows in one call; returns the per-window
-// probabilities as a Java float[] (length floor(samples/512)). Zero per-window
+// probabilities as a Java float[] (length samples/512). Zero per-window
 // bridge calls — the whole batch runs natively.
 JNIEXPORT jfloatArray JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativeVadProcessBatch(JNIEnv* env, jclass,
@@ -516,6 +516,10 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadProcessBatch(JNIEnv* env, jclass,
                                                            jfloatArray jPcm) {
     auto* vad = reinterpret_cast<EliVad*>(vadHandle);
     const std::vector<float> pcm = read_float_array(env, jPcm);
+    if (pcm.size() % kVadWindow != 0) {
+        throw_runtime(env, "vad_process: PCM must contain complete 512-sample windows", nullptr);
+        return nullptr;
+    }
     const size_t windows = pcm.size() / kVadWindow;
     std::vector<float> probs(windows, 0.0f);
     char* outError = nullptr;
@@ -571,7 +575,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordOpen(JNIEnv* env, jclass,
 }
 
 // Score N 1280-sample frames in one call; returns the per-frame P(wake) as a
-// Java float[] (length floor(samples/1280)).
+// Java float[] (length samples/1280).
 JNIEXPORT jfloatArray JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordScoreBatch(JNIEnv* env,
                                                               jclass,
@@ -579,6 +583,10 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordScoreBatch(JNIEnv* env,
                                                               jfloatArray jPcm) {
     auto* wake = reinterpret_cast<EliWakeWord*>(wakeHandle);
     const std::vector<float> pcm = read_float_array(env, jPcm);
+    if (pcm.size() % kWakeFrame != 0) {
+        throw_runtime(env, "wakeword_score: PCM must contain complete 1280-sample frames", nullptr);
+        return nullptr;
+    }
     const size_t frames = pcm.size() / kWakeFrame;
     std::vector<float> scores(frames, 0.0f);
     char* outError = nullptr;

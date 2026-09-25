@@ -2155,6 +2155,21 @@ export {
 export { VALIDATION_KEYWORD_DOCS } from "./i18n/keywords.js";
 export * from "./inference-trace.js";
 export {
+	type CreateIntegrationSpanOptions,
+	createIntegrationTelemetrySpan,
+	defaultIntegrationSeverityPolicy,
+	type IntegrationBoundary,
+	type IntegrationLogger,
+	type IntegrationObservabilityEvent,
+	type IntegrationOutcome,
+	type IntegrationSeverity,
+	type IntegrationSeverityPolicy,
+	type IntegrationSpanFailureArgs,
+	type IntegrationSpanMeta,
+	type IntegrationSpanSuccessArgs,
+	type IntegrationTelemetrySpan,
+} from "./integration-observability.ts";
+export {
 	BUILT_IN_ENTITY_TYPES,
 	type BuiltInEntityType,
 	DEFAULT_CONNECTOR_ACCOUNT_ID as KNOWLEDGE_GRAPH_DEFAULT_CONNECTOR_ACCOUNT_ID,
@@ -2893,6 +2908,7 @@ export {
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export * from "./tunnel-service";
+export { asRecord as asObjectRecord } from "./type-guards.ts";
 // Export everything from types
 export * from "./types/access-context.js";
 export * from "./types/action-failure.js";

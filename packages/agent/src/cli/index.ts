@@ -53,7 +53,7 @@ export async function runAutonomousCli(
   }
 
   if (command === "runtime") {
-    const { bootElizaRuntime } = await import("../runtime/index.ts");
+    const { bootElizaRuntime } = await import("../runtime/eliza.ts");
     await bootElizaRuntime();
     return;
   }
@@ -77,7 +77,7 @@ export async function runAutonomousCli(
       );
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
-    const { startElizaProcess } = await import("../runtime/index.ts");
+    const { startElizaProcess } = await import("../runtime/eliza.ts");
     const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the

@@ -13,7 +13,7 @@ import {
 } from "./types";
 
 const BOOT_COMMAND_TYPE = "controller.production-boot.claim.v1";
-const PRODUCTION_RUNTIME_MODULE = "@elizaos/agent/runtime";
+const PRODUCTION_RUNTIME_MODULE = "@elizaos/agent";
 /** Internal runtime shape used by the non-package-exported adversarial seam. */
 export interface SyntheticProductionRuntime {
   agentId: string;
