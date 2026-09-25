@@ -308,7 +308,7 @@ test("lockfile changes invalidate only consumers unless root tooling changes", (
     const manifest = {
       name: "fixture",
       private: true,
-      packageManager: "bun@1.3.14",
+      packageManager: "bun@1.4.2",
       workspaces: ["packages/*"],
       devDependencies: { "is-even": "*" },
     };

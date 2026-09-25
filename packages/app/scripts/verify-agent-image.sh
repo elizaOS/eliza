@@ -23,7 +23,7 @@ set -Eeuo pipefail
 #   DOCKER_IMAGE=ghcr.io/... bash packages/app/scripts/verify-agent-image.sh --boot-verify-only
 #
 # Environment:
-#   BUN_VERSION          Bun version to install/use in CI (default: 1.3.14)
+#   BUN_VERSION          Bun version to install/use in CI (default: 1.4.2)
 #   SMOKE_PORT           Host port to bind for smoke boot (default: 32138)
 #   SMOKE_TIMEOUT_SEC    Max wait for boot probe (default: 420)
 #   DOCKER_IMAGE         Override image tag completely
@@ -43,7 +43,7 @@ set -Eeuo pipefail
 #                        failure (missing jq/budget) never fails a smoke that
 #                        otherwise passed.
 
-BUN_VERSION="${BUN_VERSION:-1.3.14}"
+BUN_VERSION="${BUN_VERSION:-1.4.2}"
 SMOKE_PORT="${SMOKE_PORT:-32138}"
 CONTAINER_PORT="${CONTAINER_PORT:-42138}"
 SMOKE_TIMEOUT_SEC="${SMOKE_TIMEOUT_SEC:-420}"

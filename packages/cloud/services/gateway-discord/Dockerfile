@@ -18,7 +18,7 @@
 # The verified @discordjs/opus release used below publishes Alpine binaries for
 # amd64 and arm64 only. A different architecture fails closed in the selector;
 # do not treat a custom Bun base as sufficient native-addon evidence.
-ARG BUN_BASE=oven/bun:1.3.14-alpine
+ARG BUN_BASE=oven/bun:1.4.2-alpine
 
 FROM ${BUN_BASE} AS base
 

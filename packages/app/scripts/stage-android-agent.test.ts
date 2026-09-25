@@ -435,7 +435,7 @@ test("Android Bun pins resolve immutable asset IDs and accurate channel metadata
     resolvePinnedBunArtifact("canary", "x64").version,
     "1.4.3-canary.1",
   );
-  assert.equal(resolvePinnedBunArtifact("stable", "x64").version, "1.3.14");
+  assert.equal(resolvePinnedBunArtifact("stable", "x64").version, "1.4.2");
   assert.throws(
     () => resolvePinnedBunArtifact("canary", "unknown"),
     /Missing or invalid/,

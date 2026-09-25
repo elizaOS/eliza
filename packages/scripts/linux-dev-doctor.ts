@@ -17,7 +17,7 @@ const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const REQUIRED_BUN = "1.3.14";
+const REQUIRED_BUN = "1.4.2";
 const REQUIRED_NODE = "v24.15.0";
 const MIN_FREE_BYTES = 8 * 1024 ** 3;
 

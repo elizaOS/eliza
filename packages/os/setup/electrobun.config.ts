@@ -21,7 +21,7 @@ export default {
       "Flash elizaOS AOSP builds onto Pixel devices via ADB and fastboot.",
   },
   build: {
-    bunVersion: "1.3.14",
+    bunVersion: "1.4.2",
     bun: {
       entrypoint: "src/main/electrobun-main.ts",
       // Electrobun's launcher always starts `app/bun/index.js`. Bun otherwise

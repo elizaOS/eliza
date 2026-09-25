@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-BUN_VERSION="1.3.14"
+BUN_VERSION="1.4.2"
 readonly BUN_VERSION
 NODE_VERSION="24.15.0"
 readonly NODE_VERSION

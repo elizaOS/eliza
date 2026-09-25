@@ -30,7 +30,7 @@ RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --packages=external \
       --outfile=entrypoint.mjs
 
-FROM oven/bun:1.3.14 AS bun-runtime
+FROM oven/bun:1.4.2 AS bun-runtime
 
 FROM node:24.15.0-bookworm-slim AS runtime-deps
 # Authentication providers include native N-API dependencies. Build them against

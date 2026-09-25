@@ -84,7 +84,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "1.3.14"',
+  'BUN_VERSION: "1.4.2"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "bun-version: $" + "{{ env.BUN_VERSION }}",
@@ -329,7 +329,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "1.3.14"',
+  'BUN_VERSION: "1.4.2"',
   "name: Release Workflow Contract",
   "bun install --frozen-lockfile --ignore-scripts",
   'run-postinstall: "true"',

@@ -65,7 +65,7 @@ const CLEANUP_HELPER_SCRIPT = path.join(
   "rm-path-recursive.ts",
 );
 
-const BUN_VERSION = "1.3.14";
+const BUN_VERSION = "1.4.2";
 const DOWNLOAD_MAX_ATTEMPTS = 3;
 const DOWNLOAD_RETRY_BASE_DELAY_MS = 1_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;

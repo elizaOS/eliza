@@ -31,7 +31,7 @@ export default {
             }
           : {},
     },
-    bunVersion: "1.3.14",
+    bunVersion: "1.4.2",
     views: {},
     copy: {
       dist: "dist",

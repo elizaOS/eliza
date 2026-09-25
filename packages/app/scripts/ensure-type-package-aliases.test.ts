@@ -62,7 +62,7 @@ describe("readLockfilePinnedVersions", () => {
         "{",
         '  "packages": {',
         '    "@types/node": ["@types/node@25.6.2", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-root"],',
-        '    "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-bun"],',
+        '    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bun"],',
         '    "some-parent/@types/node": ["@types/node@26.1.1", "", {}, "sha512-nested"],',
         "  },",
         "}",
@@ -72,7 +72,7 @@ describe("readLockfilePinnedVersions", () => {
 
     const pins = readLockfilePinnedVersions(lockfilePath);
     expect(pins.get("@types/node")).toBe("25.6.2");
-    expect(pins.get("bun-types")).toBe("1.3.14");
+    expect(pins.get("bun-types")).toBe("1.4.2");
     expect(pins.has("some-parent/@types/node")).toBe(false);
   });
 
