@@ -471,8 +471,13 @@ class CameraPlugin : Plugin() {
 
     @PluginMethod
     fun capturePhoto(call: PluginCall) {
+        val optionError = validatePhotoOptions(call.data)
+        if (optionError != null) {
+            call.reject(optionError, "INVALID_ARGUMENT")
+            return
+        }
         val imgCapture = this.imageCapture ?: run {
-            call.reject("Camera not ready")
+            call.reject("Camera not ready", "CAMERA_INACTIVE")
             return
         }
 
@@ -511,11 +516,17 @@ class CameraPlugin : Plugin() {
                         // Rotate based on EXIF orientation (like classic implementation).
                         bitmap = rotateBitmapByExif(bitmap, orientation)
 
-                        // Scale if target dimensions specified.
-                        if (targetWidth != null && targetHeight != null) {
-                            bitmap = Bitmap.createScaledBitmap(
-                                bitmap, targetWidth, targetHeight, true
-                            )
+                        // Each dimension is independently optional. Preserve the
+                        // oriented source dimension that the caller omitted.
+                        if (targetWidth != null || targetHeight != null) {
+                            val width = targetWidth ?: bitmap.width
+                            val height = targetHeight ?: bitmap.height
+                            require(width.toLong() * height <= Int.MAX_VALUE / 4) {
+                                "Requested image exceeds Android bitmap byte capacity"
+                            }
+                            val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
+                            if (scaled !== bitmap) bitmap.recycle()
+                            bitmap = scaled
                         }
 
                         val outputStream = ByteArrayOutputStream()
@@ -529,7 +540,9 @@ class CameraPlugin : Plugin() {
                             }
                             else -> Bitmap.CompressFormat.JPEG
                         }
-                        bitmap.compress(compressFormat, quality.toInt(), outputStream)
+                        check(bitmap.compress(compressFormat, quality.toInt(), outputStream)) {
+                            "Image encoder did not produce output"
+                        }
 
                         val outputBytes = outputStream.toByteArray()
                         val base64 = Base64.encodeToString(outputBytes, Base64.NO_WRAP)
@@ -556,7 +569,7 @@ class CameraPlugin : Plugin() {
                         }
                     } catch (e: Exception) {
                         // error-policy:J1 capture/encoding failures reject the bridge call.
-                        call.reject("Photo processing failed: ${e.message}")
+                        call.reject("Photo processing failed: ${e.message}", "PHOTO_PROCESSING_FAILED", e)
                     } finally {
                         tempFile.delete()
                     }
@@ -568,10 +581,30 @@ class CameraPlugin : Plugin() {
                         put("code", "CAPTURE_ERROR")
                         put("message", "Photo capture failed: ${exception.message}")
                     })
-                    call.reject("Photo capture failed: ${exception.message}")
+                    call.reject("Photo capture failed: ${exception.message}", "CAPTURE_ERROR", exception)
                 }
             }
         )
+    }
+
+    private fun validatePhotoOptions(options: org.json.JSONObject): String? {
+        for (key in options.keys()) {
+            val value = options.opt(key)
+            val valid = when (key) {
+                "format" -> value is String && value in setOf("jpeg", "png", "webp")
+                "quality" -> value is Number && value.toDouble().isFinite() && value.toDouble() in 0.0..100.0
+                "width", "height" -> value is Number && value.toDouble().isFinite() &&
+                    value.toDouble() >= 1.0 && value.toDouble() <= Int.MAX_VALUE.toDouble() &&
+                    value.toDouble() == kotlin.math.floor(value.toDouble())
+                "saveToGallery", "exifOrientation" -> value is Boolean
+                else -> return "Unknown photo option: $key"
+            }
+            if (!valid) return "Invalid photo option: $key"
+        }
+        val width = (options.opt("width") as? Number)?.toLong() ?: 1L
+        val height = (options.opt("height") as? Number)?.toLong() ?: 1L
+        if (width * height > Int.MAX_VALUE / 4) return "Requested image exceeds Android bitmap byte capacity"
+        return null
     }
 
     /** Rotate bitmap using EXIF orientation (ported from classic CameraCaptureManager). */

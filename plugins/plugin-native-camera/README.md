@@ -80,3 +80,11 @@ report completed sensor values, including hardware quantization. Focus changes
 retain sensor options, and rebinds restore confirmed exposure. Exposure-point
 metering returns to continuous exposure. Device tests check sensor metadata,
 lifecycle retention and cancellation; physical exposure quality remains unqualified.
+
+Android photo options validate before capture: supported formats, finite quality
+from 0 to 100, positive integer dimensions, Boolean flags and known fields.
+Either dimension can be supplied; the omitted dimension keeps the oriented
+source size. Impossible bitmap byte counts reject explicitly. Requested EXIF
+contains source-capture metadata, so its orientation/dimensions can precede
+output transforms. Device tests decode JPEG, PNG and WebP, verify manual ISO and
+shutter in source EXIF, and check dimensions and malformed-option rejection.

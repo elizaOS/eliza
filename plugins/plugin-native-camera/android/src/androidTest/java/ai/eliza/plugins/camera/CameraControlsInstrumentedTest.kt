@@ -811,6 +811,123 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun manualExposureReachesPhotoExifAndEncodedFormats() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val details = Camera2CameraInfo.from(cameraInfo())
+            val capabilities = details.getCameraCharacteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
+            try {
+                if (CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR !in capabilities) {
+                    val rejected = call(scenario, "setSettings", "{settings:{iso:100,shutterSpeed:0.01}}")
+                    receipts.put(JSONObject().put("manualSensorSupported", false).put("result", rejected))
+                    assertFalse(rejected.getBoolean("ok"))
+                    assertEquals("EXPOSURE_UNSUPPORTED", rejected.getString("code"))
+                } else {
+                    val isoRange = requireNotNull(details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE))
+                    val timeRange = requireNotNull(details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE))
+                    for ((index, format) in listOf("jpeg", "png", "webp").withIndex()) {
+                        val iso = isoRange.lower + (isoRange.upper - isoRange.lower) * (index + 1) / 4
+                        val nanos = ((index + 1) * 10_000_000L).coerceIn(timeRange.lower, timeRange.upper)
+                        val settingsResult = call(scenario, "setSettings", "{settings:{iso:$iso,shutterSpeed:${nanos / 1e9}}}")
+                        assertTrue(settingsResult.toString(), settingsResult.getBoolean("ok"))
+                        val result = call(scenario, "capturePhoto", "{format:'$format',quality:85,width:320,height:240,exifOrientation:true}")
+                        val receipt = JSONObject().put("format", format).put("requestedIso", iso).put("requestedNanos", nanos)
+                            .put("ok", result.getBoolean("ok"))
+                        receipts.put(receipt)
+                        if (!result.getBoolean("ok")) receipt.put("error", result)
+                        assertTrue("Photo capture failed: $result", result.getBoolean("ok"))
+                        val photo = result.getJSONObject("value")
+                        val bytes = Base64.decode(photo.getString("base64"), Base64.DEFAULT)
+                        if (format == "webp") {
+                            emit("camera-manual-webp.json", JSONArray().put(JSONObject().put("format", format).put("base64", photo.getString("base64"))))
+                        } else InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
+                            putString("nativeArtifactName", if (format == "jpeg") "camera-manual.jpg" else "camera-manual.png")
+                            putString("nativeArtifactBase64", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                        })
+                        val dimensions = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, dimensions)
+                        val bitmap = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+                        try {
+                            receipt.put("bytes", bytes.size).put("decodedMime", dimensions.outMimeType)
+                                .put("decodedWidth", bitmap.width).put("decodedHeight", bitmap.height)
+                                .put("returnedWidth", photo.getInt("width")).put("returnedHeight", photo.getInt("height"))
+                                .put("exif", photo.optJSONObject("exif"))
+                            assertEquals("image/$format", dimensions.outMimeType)
+                            assertEquals(320, bitmap.width); assertEquals(240, bitmap.height)
+                            assertEquals(bitmap.width, photo.getInt("width")); assertEquals(bitmap.height, photo.getInt("height"))
+                            val exif = photo.getJSONObject("exif")
+                            assertEquals("Still-photo ISO must match the manual request", iso, exif.getString("ISO").toInt())
+                            assertEquals("Still-photo shutter must match the manual request", nanos / 1e9, exif.getString("ExposureTime").toDouble(), 0.000001)
+                        } finally { bitmap.recycle() }
+                    }
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-photo-exposure.json", receipts)
+            }
+        }
+    }
+
+    @Test fun malformedPhotoOptionsRejectWithoutEncodingAnAlternativeFormat() {
+        val receipts = JSONArray()
+        val failures = mutableListOf<String>()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                for (options in listOf("{format:'gif'}", "{format:17}", "{quality:-1}", "{quality:101}",
+                    "{quality:'85'}", "{quality:null}", "{width:0,height:240}", "{width:-1,height:240}",
+                    "{width:160.5,height:240}", "{width:'160',height:240}", "{height:0}",
+                    "{saveToGallery:0}", "{exifOrientation:'true'}", "{unknownPhotoOption:true}",
+                    "{width:2147483648,height:240}", "{width:2147483647,height:240}", "{width:1,height:2147483647}")) {
+                    val result = call(scenario, "capturePhoto", options)
+                    val receipt = JSONObject().put("options", options).put("ok", result.getBoolean("ok"))
+                        .put("code", result.optString("code")).put("error", result.optString("error"))
+                    if (result.getBoolean("ok")) {
+                        val value = result.getJSONObject("value")
+                        val bytes = Base64.decode(value.getString("base64"), Base64.DEFAULT)
+                        val decoded = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decoded)
+                        receipt.put("reportedFormat", value.getString("format")).put("actualMime", decoded.outMimeType)
+                    }
+                    receipts.put(receipt)
+                    if (result.getBoolean("ok") || result.optString("code") != "INVALID_ARGUMENT") failures.add(options)
+                }
+                assertTrue("Malformed photo options must reject with INVALID_ARGUMENT: $failures", failures.isEmpty())
+            } finally { call(scenario, "stopPreview"); emit("camera-photo-invalid.json", receipts) }
+        }
+    }
+
+    @Test fun photoDimensionsAndOptionalExifMatchDecodedOutput() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                fun photo(options: String): JSONObject {
+                    val result = call(scenario, "capturePhoto", options)
+                    assertTrue("Photo failed: ${result.optString("error")}", result.getBoolean("ok"))
+                    val value = result.getJSONObject("value")
+                    val bytes = Base64.decode(value.getString("base64"), Base64.DEFAULT)
+                    val bitmap = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+                    try {
+                        assertEquals(bitmap.width, value.getInt("width")); assertEquals(bitmap.height, value.getInt("height"))
+                        assertFalse("EXIF is opt-in on Android", value.has("exif"))
+                        receipts.put(JSONObject().put("options", options).put("width", bitmap.width).put("height", bitmap.height).put("bytes", bytes.size))
+                    } finally { bitmap.recycle() }
+                    return value
+                }
+                val original = photo("{}")
+                val widthOnly = photo("{width:160,quality:0,exifOrientation:false}")
+                assertEquals("A width-only request must be applied", 160, widthOnly.getInt("width"))
+                assertEquals(original.getInt("height"), widthOnly.getInt("height"))
+                val heightOnly = photo("{height:120,quality:100}")
+                assertEquals(original.getInt("width"), heightOnly.getInt("width"))
+                assertEquals("A height-only request must be applied", 120, heightOnly.getInt("height"))
+            } finally { call(scenario, "stopPreview"); emit("camera-photo-dimensions.json", receipts) }
+        }
+    }
+
     @Test fun flashSettingsRequireActiveCameraWithoutChangingCache() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
