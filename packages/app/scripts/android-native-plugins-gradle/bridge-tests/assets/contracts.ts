@@ -54,17 +54,18 @@
           devices.some((device) => device.supportedResolutions.length > 0),
         "camera capabilities must cross bridge",
       );
-      await call("setSettings", { settings: { flash: "off" } });
-      assert(
-        (await call("getSettings")).settings.flash === "off",
-        "settings round trip",
-      );
+      await rejects("setSettings", { settings: { flash: "off" } });
       await rejects("capturePhoto");
       await call("startPreview", {
         direction: "back",
         resolution: { width: 640, height: 480 },
       });
       try {
+        await call("setSettings", { settings: { flash: "off" } });
+        assert(
+          (await call("getSettings")).settings.flash === "off",
+          "active camera settings round trip",
+        );
         const photo = await call("capturePhoto", {
           format: "png",
           width: 32,

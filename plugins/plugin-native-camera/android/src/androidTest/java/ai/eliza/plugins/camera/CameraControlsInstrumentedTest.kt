@@ -226,6 +226,7 @@ class CameraControlsInstrumentedTest {
             val backZoom = requireNotNull(back.zoomState.value)
             val frontZoom = requireNotNull(front.zoomState.value)
             val requestedZoom = (maxOf(backZoom.minZoomRatio, frontZoom.minZoomRatio) + minOf(backZoom.maxZoomRatio, frontZoom.maxZoomRatio)) / 2
+            var requestedFlash = if (back.hasFlashUnit()) "torch" else "off"
             fun observed(probe: CaptureProbe, info: CameraInfo, stage: String) {
                 val sensor = requireNotNull(Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE))
                 fun captureZoom(): Double? {
@@ -239,13 +240,15 @@ class CameraControlsInstrumentedTest {
                 val count = probe.frames.get()
                 awaitState("$stage must retain $preset in new captures") {
                     val exposureIndex = probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)
-                    probe.frames.get() >= count + 3 && kotlin.math.abs((captureZoom() ?: 0.0) - requestedZoom) < 0.03 &&
+                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.FLASH_MODE) == (if(requestedFlash == "torch") CaptureResult.FLASH_MODE_TORCH else CaptureResult.FLASH_MODE_OFF) &&
+                        kotlin.math.abs((captureZoom() ?: 0.0) - requestedZoom) < 0.03 &&
                         probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode &&
                         (requestedEv == null || (exposureIndex != null && kotlin.math.abs(exposureIndex * step - requestedEv) <= step / 2 + 0.000001))
                 }
                 receipts.put(JSONObject().put("stage", stage).put("preset", preset)
                     .put("actualCamera2Mode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
                     .put("newCaptures", probe.frames.get() - count)
+                    .put("requestedFlash", requestedFlash).put("capturedFlashMode", probe.latest.get()?.get(CaptureResult.FLASH_MODE))
                     .put("requestedZoom", requestedZoom.toDouble()).put("capturedZoom", captureZoom())
                     .put("requestedEv", requestedEv ?: JSONObject.NULL)
                     .put("actualExposureIndex", probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)))
@@ -258,7 +261,7 @@ class CameraControlsInstrumentedTest {
             }
             try {
                 CaptureProbe(back).use { probe ->
-                    val options = JSONObject().put("whiteBalance", preset).put("zoom", requestedZoom.toDouble())
+                    val options = JSONObject().put("whiteBalance", preset).put("zoom", requestedZoom.toDouble()).put("flash", requestedFlash)
                     if (requestedEv != null) options.put("exposureCompensation", requestedEv)
                     assertTrue(call(scenario, "setSettings", JSONObject().put("settings", options).toString()).getBoolean("ok"))
                     observed(probe, back, "selected")
@@ -283,6 +286,17 @@ class CameraControlsInstrumentedTest {
                         assertEquals("Only delete this test's generated cache video", cache, file.canonicalFile.parentFile)
                         assertTrue(file.delete())
                     }
+                }
+                if (requestedFlash == "torch" && !front.hasFlashUnit()) {
+                    val rejected = call(scenario, "switchCamera", "{direction:'front'}")
+                    receipts.put(JSONObject().put("stage", "unsupported-flash-switch").put("result", rejected))
+                    assertFalse("Switch cannot discard confirmed torch", rejected.getBoolean("ok"))
+                    assertEquals(CameraState.Type.OPEN, back.cameraState.value?.type)
+                    assertEquals(1, back.torchState.value)
+                }
+                if (!front.hasFlashUnit()) {
+                    requestedFlash = "off"
+                    assertTrue(call(scenario, "setSettings", "{settings:{flash:'off'}}").getBoolean("ok"))
                 }
                 CaptureProbe(front).use { probe ->
                     assertTrue(call(scenario, "switchCamera", "{direction:'front'}").getBoolean("ok"))
@@ -399,6 +413,72 @@ class CameraControlsInstrumentedTest {
                 call(scenario, "stopPreview")
                 emit("camera-settings-zoom-range.json", receipts)
             }
+        }
+    }
+
+    @Test fun flashPoliciesReachNativeCaptures_andUnsupportedCamerasRejectMixedBatch() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                for ((direction, selector) in listOf("back" to CameraSelector.DEFAULT_BACK_CAMERA, "front" to CameraSelector.DEFAULT_FRONT_CAMERA)) {
+                    if (direction == "front") assertTrue(call(scenario, "switchCamera", "{direction:'front'}").getBoolean("ok"))
+                    val info = cameraInfo(selector)
+                    CaptureProbe(info).use { probe ->
+                        for (mode in listOf("torch", "on", "auto", "off")) {
+                            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                            val zoom = requireNotNull(info.zoomState.value)
+                            val targetZoom = (zoom.minZoomRatio + zoom.maxZoomRatio) / 2
+                            val result = call(scenario, "setSettings", "{settings:{flash:'$mode',zoom:$targetZoom}}")
+                            val receipt = JSONObject().put("direction", direction).put("mode", mode)
+                                .put("hasFlash", info.hasFlashUnit()).put("result", result)
+                            receipts.put(receipt)
+                            if (!info.hasFlashUnit() && mode != "off") {
+                                assertFalse("Unsupported flash cannot succeed", result.getBoolean("ok"))
+                                assertEquals("FLASH_UNSUPPORTED", result.getString("code"))
+                                val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                                assertEquals(before.toString(), after.toString())
+                                assertEquals(zoom.zoomRatio.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.001)
+                                continue
+                            }
+                            assertTrue("Flash mode $mode failed: $result", result.getBoolean("ok"))
+                            val expectedFlash = if (mode == "torch") CaptureResult.FLASH_MODE_TORCH else CaptureResult.FLASH_MODE_OFF
+                            val expectedAe = when(mode) { "auto" -> CaptureResult.CONTROL_AE_MODE_ON_AUTO_FLASH
+                                "on" -> CaptureResult.CONTROL_AE_MODE_ON_ALWAYS_FLASH; else -> CaptureResult.CONTROL_AE_MODE_ON }
+                            val count = probe.frames.get()
+                            try {
+                                awaitState("Flash $mode must reach completed captures") {
+                                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.FLASH_MODE) == expectedFlash &&
+                                        probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE) == expectedAe
+                                }
+                            } finally {
+                                receipt.put("capturedFlashMode", probe.latest.get()?.get(CaptureResult.FLASH_MODE))
+                                    .put("capturedAeMode", probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE))
+                                    .put("torchState", info.torchState.value)
+                            }
+                            assertEquals(if(mode == "torch") 1 else 0, info.torchState.value)
+                            assertEquals(mode, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("flash"))
+                        }
+                    }
+                }
+            } finally {
+                call(scenario, "setSettings", "{settings:{flash:'off'}}")
+                call(scenario, "stopPreview")
+                emit("camera-flash-policies.json", receipts)
+            }
+        }
+    }
+
+    @Test fun flashSettingsRequireActiveCameraWithoutChangingCache() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            ready(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+            val result = call(scenario, "setSettings", "{settings:{flash:'torch'}}")
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+            emit("camera-flash-inactive.json", JSONArray().put(JSONObject().put("result", result).put("before", before).put("after", after)))
+            assertFalse("Inactive torch cannot report success", result.getBoolean("ok"))
+            assertEquals("CAMERA_INACTIVE", result.getString("code"))
+            assertEquals(before.toString(), after.toString())
         }
     }
 
@@ -725,6 +805,52 @@ class CameraControlsInstrumentedTest {
             emit("camera-settings-zoom-cancellation.json", JSONArray().put(JSONObject()
                 .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
                 .put("requestedRatio", target.toDouble()).put("beforeRatio", before).put("afterRatio", after)
+                .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
+        }
+    }
+
+    @Test fun stoppingPreviewRejectsPendingFlash_withoutRetainingTorch() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("flash")
+            val supported = cameraInfo().hasFlashUnit()
+            val target = "torch"
+            val settled = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val settlements = AtomicInteger()
+            var rejectedCode: String? = null
+            var resolved = false
+            val pending = object : PluginCall(null, "ElizaCamera", "pending-metering", "setSettings",
+                JSObject().put("settings", JSObject().put("flash", target))) {
+                override fun resolve() { resolved = true; settlements.incrementAndGet(); settled.countDown() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    rejectedCode = code; settlements.incrementAndGet(); settled.countDown()
+                }
+            }
+            val stopping = object : PluginCall(null, "ElizaCamera", "stop-metering", "stopPreview", JSObject()) {
+                override fun resolve() { stopped.countDown() }
+            }
+            // One UI dispatch guarantees stop runs before the completion listener.
+            // Only reply transport is intercepted; CameraX and plugin lifecycle are real.
+            scenario.onActivity { activity ->
+                val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                plugin.setSettings(pending)
+                plugin.stopPreview(stopping)
+            }
+            assertTrue("Stop did not settle", stopped.await(10, TimeUnit.SECONDS))
+            assertTrue("Pending metering did not settle", settled.await(10, TimeUnit.SECONDS))
+            assertFalse("Cancelled control cannot report success", resolved)
+            val expectedCodes = if (supported) setOf("CAMERA_INACTIVE", "CAMERA_CONTROL_FAILED") else setOf("FLASH_UNSUPPORTED")
+            assertTrue("Expected lifecycle/camera cancellation: $rejectedCode", rejectedCode in expectedCodes)
+            assertEquals(1, settlements.get())
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("flash")
+            assertEquals("Cancelled operation must not update settings", before, after)
+            preview(scenario)
+            assertEquals(0, cameraInfo().torchState.value)
+            call(scenario, "stopPreview")
+            emit("camera-flash-cancellation.json", JSONArray().put(JSONObject()
+                .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
+                .put("hasFlash", supported).put("requestedFlash", target).put("beforeFlash", before).put("afterFlash", after)
                 .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
         }
     }

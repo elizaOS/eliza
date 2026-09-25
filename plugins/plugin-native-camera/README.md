@@ -55,3 +55,9 @@ waits for native completion before reporting success or caching the ratio.
 Unsupported mixed batches reject before mutation. Confirmed zoom is restored
 before preview restart, camera switch and recording rebind complete. Device tests
 check completed crop/zoom metadata, cancellation and retained white balance/EV.
+
+Android flash settings require an active preview. Cameras without a flash unit
+reject non-off modes before mixed-batch mutation. Torch completion and a native
+capture-options receipt precede confirmation; rebinds restore confirmed flash
+policy. Device tests inspect flash/AE metadata, torch state and cancellation.
+Physical flash output and automatic scene decisions need hardware qualification.

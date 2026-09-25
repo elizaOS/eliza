@@ -277,9 +277,6 @@ class CameraPlugin : Plugin() {
                         videoCapture
                     )
 
-                    // Apply stored torch setting.
-                    applyTorch(currentSettings["flash"] as? String == "torch")
-
                     restoreCameraSettings(requireNotNull(camera), {
                         if (pendingPreviewCall === call) {
                             pendingPreviewCall = null
@@ -413,6 +410,7 @@ class CameraPlugin : Plugin() {
                     planExposure(targetInfo, requestedExposureEv)
                 }
                 validateZoom(targetInfo, (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
+                validateFlash(targetInfo, currentSettings["flash"] as? String ?: "off")
                 currentDirection = direction
                 currentCameraSelector = targetSelector
 
@@ -427,9 +425,6 @@ class CameraPlugin : Plugin() {
                     imageCapture,
                     videoCapture
                 )
-
-                // Re-apply settings after rebinding.
-                applyTorch(currentSettings["flash"] as? String == "torch")
 
                 restoreCameraSettings(requireNotNull(camera), {
                     call.resolve(JSObject().apply {
@@ -729,7 +724,6 @@ class CameraPlugin : Plugin() {
             videoCapture = capture
             camera = provider.bindToLifecycle(activity as LifecycleOwner, currentCameraSelector,
                 requireNotNull(preview), requireNotNull(imageCapture), capture)
-            applyTorch(currentSettings["flash"] as? String == "torch")
             restoreCameraSettings(requireNotNull(camera), {
                 check(recordingSession === session && !session.stopping) { "Recording was cancelled before native settings completed" }
                 val pending = if (saveToGallery) {
@@ -922,7 +916,7 @@ class CameraPlugin : Plugin() {
             return
         }
 
-        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom")) {
+        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom") || settings.has("flash")) {
             withActiveCamera(call) { owner ->
                 val preset = if (settings.has("whiteBalance")) settings.getString("whiteBalance") else null
                 if (preset != null && !supportsWhiteBalance(owner.cameraInfo, preset)) {
@@ -933,17 +927,25 @@ class CameraPlugin : Plugin() {
                 // Validate every native setting before submitting any part of the batch.
                 val exposure = requestedEv?.let { planExposure(owner.cameraInfo, it) }
                 val zoom = if (settings.has("zoom")) settings.getDouble("zoom").toFloat().also { validateZoom(owner.cameraInfo, it) } else null
+                val flash = if (settings.has("flash")) settings.getString("flash").also { validateFlash(owner.cameraInfo, it) } else null
                 val epoch = previewEpoch
                 val failed: (Exception) -> Unit = { error -> call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error) }
                 fun complete() {
                     applySettingsValues(settings)
                     call.resolve()
                 }
+                fun applyBatchFlash() {
+                    if (flash == null) complete()
+                    else applyFlash(owner, epoch, flash, {
+                        currentSettings["flash"] = flash
+                        complete()
+                    }, failed)
+                }
                 fun applyBatchZoom() {
-                    if (zoom == null) complete()
+                    if (zoom == null) applyBatchFlash()
                     else awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), {
                         currentSettings["zoom"] = zoom
-                        complete()
+                        applyBatchFlash()
                     }, failed)
                 }
                 fun applyExposure() {
@@ -968,21 +970,7 @@ class CameraPlugin : Plugin() {
 
     private fun applySettingsValues(settings: org.json.JSONObject) {
         settings.keys().forEach { key ->
-            if (key != "exposureCompensation" && key != "zoom") currentSettings[key] = settings.get(key)
-        }
-
-        // Apply flash/torch setting.
-        if (settings.has("flash")) {
-            val flashMode = settings.getString("flash") ?: "off"
-            currentSettings["flash"] = flashMode
-
-            // Torch mode is handled via camera control, flash via ImageCapture.
-            if (flashMode == "torch") {
-                applyTorch(true)
-            } else {
-                applyTorch(false)
-                imageCapture?.flashMode = flashModeFromSetting(flashMode)
-            }
+            if (key !in setOf("exposureCompensation", "zoom", "flash")) currentSettings[key] = settings.get(key)
         }
 
     }
@@ -1032,7 +1020,7 @@ class CameraPlugin : Plugin() {
                 whiteBalanceMode(preset)).build())
     }
 
-    // Rebinding CameraX use cases must restore confirmed white balance, EV and zoom before the
+    // Rebinding CameraX use cases must restore confirmed white balance, EV, zoom and flash before the
     // owning preview/switch/recording operation can report success.
     private fun restoreCameraSettings(owner: Camera, ready: () -> Unit, failed: (Exception) -> Unit) {
         val epoch = previewEpoch
@@ -1049,7 +1037,9 @@ class CameraPlugin : Plugin() {
                         restoreExposure(owner, epoch, {
                             val zoom = (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f
                             validateZoom(owner.cameraInfo, zoom)
-                            awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), ready, failed)
+                            awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), {
+                                applyFlash(owner, epoch, currentSettings["flash"] as? String ?: "off", ready, failed)
+                            }, failed)
                         }, failed)
                     } catch (error: Exception) {
                         // Unbind/rebind queues an inactive transition on CameraX's
@@ -1224,8 +1214,29 @@ class CameraPlugin : Plugin() {
         }
     }
 
-    private fun applyTorch(enabled: Boolean) {
-        camera?.cameraControl?.enableTorch(enabled)
+    private fun validateFlash(info: CameraInfo, mode: String) {
+        if (mode != "off" && !info.hasFlashUnit()) {
+            throw CameraSettingException("FLASH_UNSUPPORTED", "This camera has no flash unit")
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun applyFlash(owner: Camera, epoch: Long, mode: String, ready: () -> Unit, failed: (Exception) -> Unit) {
+        validateFlash(owner.cameraInfo, mode)
+        requireNotNull(imageCapture) { "Camera capture is not ready" }.flashMode = flashModeFromSetting(mode)
+        fun confirmCaptureOptions() {
+            // ImageCapture's flash policy setter has no public future. A subsequent
+            // Camera2 options update completes only after its session tag reaches a
+            // capture, including the flash policy queued before it. Empty options
+            // preserve existing interop settings such as white balance.
+            awaitCameraControl(owner, epoch, Camera2CameraControl.from(owner.cameraControl)
+                .addCaptureRequestOptions(CaptureRequestOptions.Builder().build()), ready, failed)
+        }
+        // CameraX rejects even disableTorch on a camera without a flash unit.
+        if (!owner.cameraInfo.hasFlashUnit()) confirmCaptureOptions()
+        else awaitCameraControl(owner, epoch, owner.cameraControl.enableTorch(mode == "torch"), {
+            confirmCaptureOptions()
+        }, failed)
     }
 
     // Capture completion supplies real frame evidence without binding an extra analysis stream.
