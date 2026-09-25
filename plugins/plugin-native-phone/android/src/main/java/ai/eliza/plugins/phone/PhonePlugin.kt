@@ -51,7 +51,7 @@ class PhonePlugin : Plugin() {
     fun placeCall(call: PluginCall) {
         val number = call.getString("number")?.trim()
         if (number.isNullOrEmpty()) {
-            call.reject("number is required")
+            call.reject("number is required", "INVALID_ARGUMENT")
             return
         }
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
@@ -64,7 +64,7 @@ class PhonePlugin : Plugin() {
             call.resolve()
         } catch (error: SecurityException) {
             // error-policy:J1 Telecom permission denial is returned to the bridge caller.
-            call.reject("CALL_PHONE permission is required", error)
+            call.reject("CALL_PHONE permission is required", "CALL_PERMISSION_DENIED", error)
         }
     }
 

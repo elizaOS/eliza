@@ -37,3 +37,8 @@ Android `openDialer` opens the native dialer without placing a call. An optional
 number must be a string; malformed input rejects with `INVALID_ARGUMENT`.
 Telephone characters such as `#` remain part of the number. Missing handlers and
 launch denials reject with `DIALER_UNAVAILABLE` and `DIALER_PERMISSION_DENIED`.
+
+Android call placement rejects invalid numbers with `INVALID_ARGUMENT` and
+Telecom permission denials with `CALL_PERMISSION_DENIED`. Device tests explicitly
+revoke `CALL_PHONE` before instrumentation and assert denial before attempting
+the bridge call; this covers rejection, not successful carrier calling.
