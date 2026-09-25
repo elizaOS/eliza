@@ -31,6 +31,74 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("canonical discovery surface", () => {
+  it("retains discriminator and parent validation boundaries for every explicitly discovered child", async () => {
+    const dispatched: unknown[] = [];
+    const validated: unknown[] = [];
+    const parent: Action = {
+      name: "LEDGER",
+      description: "Read, create, or delete a ledger entry",
+      parameters: [
+        {
+          name: "action",
+          description: "Operation",
+          required: true,
+          schema: { type: "string", enum: ["read", "create", "delete"] },
+        },
+      ],
+      validate: async (_runtime, _message, _state, options) => {
+        validated.push(options?.parameters?.action);
+        return false;
+      },
+      handler: async (_runtime, _message, _state, options) => {
+        dispatched.push(options?.parameters?.action);
+        return { success: true };
+      },
+    };
+    const actions = [...promoteSubactionsToActions(parent)];
+    const context: ContextObject = {
+      id: "pinned-discovery",
+      events: actions.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    };
+    for (const child of actions.slice(1)) {
+      const tools = collectPlannerTools(context, actions, {
+        canonicalFamilies: true,
+        directActionNames: new Set([child.name, "UNREGISTERED_OPERATION"]),
+      });
+      const native = tools.find((tool) => tool.name === child.name);
+      expect(native?.parameters).toEqual(normalizeActionJsonSchema(child));
+      expect(tools.some((tool) => tool.name === "UNREGISTERED_OPERATION")).toBe(
+        false,
+      );
+      const pin = normalizeActionJsonSchema(child).properties?.action.default;
+      expect(native?.parameters.properties?.action.enum).toEqual([pin]);
+      const conflicting = pin === "delete" ? "read" : "delete";
+      const before = dispatched.length;
+      expect(
+        (
+          await child.handler?.(runtime, message, undefined, {
+            parameters: { action: conflicting },
+          })
+        )?.success,
+      ).toBe(false);
+      expect(dispatched).toHaveLength(before);
+      expect(
+        await child.validate?.(runtime, message, undefined, { parameters: {} }),
+      ).toBe(false);
+      expect(validated.at(-1)).toBe(pin);
+      // Direct wrapper dispatch independently proves the pin. Normal execution
+      // first checks the validator above and would stop on its false result.
+      expect(
+        (await child.handler?.(runtime, message, undefined, { parameters: {} }))
+          ?.success,
+      ).toBe(true);
+      expect(dispatched.at(-1)).toBe(pin);
+    }
+  });
+
   it("refines a Notes search simile to its native child and progressively loads another operation", async () => {
     const actions = notesPlugin.actions ?? [];
     const list = actions.find((action) => action.name === "NOTES_LIST");
