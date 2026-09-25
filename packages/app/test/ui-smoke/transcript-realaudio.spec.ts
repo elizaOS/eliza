@@ -5,7 +5,7 @@
  * This drives the REAL ChatOverlay transcript flow end-to-end with no
  * human and no microphone:
  *
- *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL
+ *   tap mic (hands-free) -> say “start transcription” (transcription mode) -> the REAL
  *   WAV-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
  *   and POSTs it to the configured ASR route -> a transcript session accumulates
  *   -> use the transcription stop control to finalize -> the shell POSTs the captured audio
@@ -45,26 +45,6 @@ test.setTimeout(360_000);
 const TRANSCRIPT_TEXT = "what time is it";
 const TRANSCRIPT_ID = "transcript-realaudio-e2e";
 const MEDIA_PATH = "/api/media/transcript-realaudio.wav";
-const TRANSCRIBE_COMMAND_CATALOG = {
-  commands: [
-    {
-      key: "transcribe",
-      nativeName: "transcribe",
-      description: "Toggle long-form transcription",
-      textAliases: ["/transcribe"],
-      scope: "both",
-      acceptsArgs: false,
-      args: [],
-      requiresAuth: false,
-      requiresElevated: false,
-      target: { kind: "client", clientAction: "toggle-transcription" },
-      source: "builtin",
-    },
-  ],
-  surface: "gui",
-  agentId: null,
-  generatedAt: "2026-01-01T00:00:00.000Z",
-};
 // A short caption typed before sending the transcript attachment. The overlay
 // thread drops empty-content turns from its `visibleMessages`, so the user turn
 // that carries the transcript tile must have text — typing a caption (a real,
@@ -168,6 +148,7 @@ interface TranscriptCreateProof {
 }
 
 interface TranscriptProbes {
+  nextAsrText?: string;
   asrPostCount: number;
   asrMaxCapturedBytes: number;
   createBodies: TranscriptCreateProof[];
@@ -199,19 +180,6 @@ async function installTranscriptBackendMocks(
   page: Page,
   probes: TranscriptProbes,
 ): Promise<void> {
-  await page.route("**/api/commands**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    const surface = new URL(route.request().url()).searchParams.get("surface");
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ...TRANSCRIBE_COMMAND_CATALOG, surface }),
-    });
-  });
-
   // Conversation send path. Without a clean stream completion the optimistic
   // assistant bubble streams "thinking" dots forever and the auto-scroll keeps
   // the thread animating, so a transcript-attachment tile never settles for a
@@ -330,16 +298,29 @@ async function installTranscriptBackendMocks(
   const fulfillAsr = async (route: Route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataBuffer();
-    const bytes = body?.byteLength ?? 0;
+    // Both the local binary route and shared Cloud multipart route carry WAV.
+    // Count the actual RIFF payload, not multipart metadata, as capture proof.
+    const wavOffset = body?.indexOf("RIFF") ?? -1;
+    const bytes =
+      body &&
+      wavOffset >= 0 &&
+      body.subarray(wavOffset + 8, wavOffset + 12).toString() === "WAVE"
+        ? Math.min(
+            body.readUInt32LE(wavOffset + 4) + 8,
+            body.length - wavOffset,
+          )
+        : 0;
     probes.asrPostCount += 1;
     probes.asrMaxCapturedBytes = Math.max(probes.asrMaxCapturedBytes, bytes);
+    const text = bytes > 1000 ? (probes.nextAsrText ?? TRANSCRIPT_TEXT) : "";
+    if (bytes > 1000) probes.nextAsrText = undefined;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        text: bytes > 1000 ? TRANSCRIPT_TEXT : "",
+        text,
         words:
-          bytes > 1000
+          text === TRANSCRIPT_TEXT
             ? [
                 { text: "what", startMs: 0, endMs: 600 },
                 { text: "time", startMs: 600, endMs: 1400 },
@@ -353,6 +334,7 @@ async function installTranscriptBackendMocks(
   };
   await page.route("**/api/asr/local-inference", fulfillAsr);
   await page.route("**/api/asr/cloud", fulfillAsr);
+  await page.route("**/api/v1/voice/stt", fulfillAsr);
 
   // The transcript store. POST persists; GET list/detail; PUT edit; DELETE.
   // installDefaultAppRoutes registers a GET-only **/api/transcripts** empty-list
@@ -576,7 +558,9 @@ function trackAsrPosts(page: Page): { count: () => number } {
   page.on("requestfinished", (req) => {
     if (
       req.method() === "POST" &&
-      /\/api\/asr\/(?:cloud|local-inference)(?:\?|$)/.test(req.url()) &&
+      /\/api\/(?:asr\/(?:cloud|local-inference)|v1\/voice\/stt)(?:\?|$)/.test(
+        req.url(),
+      ) &&
       !req.url().includes("/status")
     ) {
       posted += 1;
@@ -585,16 +569,35 @@ function trackAsrPosts(page: Page): { count: () => number } {
   return { count: () => posted };
 }
 
-async function startTranscriptionViaSlash(page: Page): Promise<void> {
-  const composer = page.getByTestId("chat-composer-textarea");
-  await composer.fill("/transcribe");
-  await expect(page.getByTestId("slash-command-menu")).toBeVisible({
-    timeout: 15_000,
+async function startTranscriptionViaSpeech(
+  page: Page,
+  probes: TranscriptProbes,
+): Promise<void> {
+  // Feed the spoken command through the existing ASR boundary after real WAV
+  // capture. The refactor retired the typed slash-command menu.
+  probes.nextAsrText = "start transcription";
+  await expect
+    .poll(
+      () => ({
+        pending: probes.nextAsrText,
+        posts: probes.asrPostCount,
+        bytes: probes.asrMaxCapturedBytes,
+      }),
+      {
+        timeout: 30_000,
+        message:
+          "real microphone audio must reach ASR and consume the spoken start command",
+      },
+    )
+    .toMatchObject({ pending: undefined });
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toBeVisible({ timeout: 15_000 });
+  const openChat = page.getByRole("button", {
+    name: "drag up to open chat",
+    exact: true,
   });
-  await composer.press("Enter");
-  await expect(page.getByTestId("slash-command-menu")).toBeHidden({
-    timeout: 15_000,
-  });
+  if (await openChat.isVisible()) await openChat.click();
   await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
     timeout: 15_000,
   });
@@ -603,7 +606,7 @@ async function startTranscriptionViaSlash(page: Page): Promise<void> {
   ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
 }
 
-async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
+async function finalizeTranscriptionViaStopControl(page: Page): Promise<void> {
   await page.getByTestId("chat-composer-transcription-stop").click();
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
@@ -753,7 +756,7 @@ async function openTranscriptViewer(page: Page): Promise<Locator> {
 
 /**
  * Drive the REAL transcript-capture chain from the chat overlay: tap mic ->
- * /transcribe -> real audio capture -> stop transcription to POST + finalize ->
+ * spoken start -> real audio capture -> stop transcription to POST + finalize ->
  * the recording lands in the composer -> send -> the transcript
  * ATTACHMENT tile renders in the thread. Returns once the tile is visible.
  */
@@ -775,10 +778,10 @@ async function captureTranscriptToAttachment(
     timeout: 15_000,
   });
 
-  await startTranscriptionViaSlash(page);
+  await startTranscriptionViaSpeech(page, probes);
   await page.waitForTimeout(1200);
 
-  await finalizeTranscriptionViaSlash(page);
+  await finalizeTranscriptionViaStopControl(page);
   await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
   await expect
     .poll(
@@ -837,7 +840,7 @@ async function prepareTranscriptTestPage(
   await installTranscriptBackendMocks(page, probes);
 }
 
-type TranscriptionControlPath = "slash" | "agent-action";
+type TranscriptionControlPath = "speech" | "agent-action";
 
 function normalizeCreateProofForParity(proof: TranscriptCreateProof): {
   audioContentType: string | null;
@@ -877,7 +880,7 @@ async function captureTranscriptRecordViaControlPath(
   if (controlPath === "agent-action") {
     await startTranscriptionViaAgentAction(page);
   } else {
-    await startTranscriptionViaSlash(page);
+    await startTranscriptionViaSpeech(page, probes);
   }
 
   await page.waitForTimeout(1200);
@@ -885,7 +888,7 @@ async function captureTranscriptRecordViaControlPath(
   if (controlPath === "agent-action") {
     await finalizeTranscriptionViaAgentAction(page);
   } else {
-    await finalizeTranscriptionViaSlash(page);
+    await finalizeTranscriptionViaStopControl(page);
   }
 
   await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
@@ -916,7 +919,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, keeps the mic active, and drops a transcript attachment", async ({
+test("REAL audio: spoken transcription records the injected WAV, POSTs it to ASR + /api/transcripts, keeps the mic active, and drops a transcript attachment", async ({
   page,
 }) => {
   const probes = freshProbes();
@@ -936,9 +939,9 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
     timeout: 15_000,
   });
 
-  // (LINKAGE b) /transcribe -> transcription mode. Transcription temporarily
+  // (LINKAGE b) spoken start -> transcription mode. Transcription temporarily
   // replaces the composer controls while the hands-free mic remains the parent.
-  await startTranscriptionViaSlash(page);
+  await startTranscriptionViaSpeech(page, probes);
   await expect(
     page.getByTestId("chat-composer-transcription-stop"),
   ).toHaveAttribute("aria-label", "stop transcription", {
@@ -952,7 +955,7 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   // (REAL AUDIO + ATTACHMENT) Stop to FINALIZE. The shell POSTs the segments +
   // the REAL captured audio (audioBase64) to /api/transcripts and drops a
   // `Recording ….wav` attachment into the composer.
-  await finalizeTranscriptionViaSlash(page);
+  await finalizeTranscriptionViaStopControl(page);
   await expect
     .poll(() => asr.count(), {
       timeout: 30_000,
@@ -1234,18 +1237,18 @@ test("VIEWER: open-in-knowledge navigates to the Knowledge view", async ({
 // `agent_event{stream:"voice-control"}` envelope (there is no server-side
 // voice-control emitter in the tree yet), so the title reflects bridge parity, not
 // server-action coverage — see #9958 for the remaining server-side hop.
-test("voice-control bridge parity: the eliza:voice-control bridge creates the same transcript record as the slash path", async ({
+test("voice-control bridge parity: the eliza:voice-control bridge creates the same transcript record as the spoken path", async ({
   browser,
 }) => {
-  const slashPage = await browser.newPage();
+  const speechPage = await browser.newPage();
   const agentActionPage = await browser.newPage();
   try {
-    const slashProbes = freshProbes();
-    await prepareTranscriptTestPage(slashPage, slashProbes);
-    const slashProof = await captureTranscriptRecordViaControlPath(
-      slashPage,
-      slashProbes,
-      "slash",
+    const speechProbes = freshProbes();
+    await prepareTranscriptTestPage(speechPage, speechProbes);
+    const speechProof = await captureTranscriptRecordViaControlPath(
+      speechPage,
+      speechProbes,
+      "speech",
     );
 
     const agentActionProbes = freshProbes();
@@ -1257,7 +1260,7 @@ test("voice-control bridge parity: the eliza:voice-control bridge creates the sa
     );
 
     expect(normalizeCreateProofForParity(agentActionProof)).toEqual(
-      normalizeCreateProofForParity(slashProof),
+      normalizeCreateProofForParity(speechProof),
     );
     expect(normalizeCreateProofForParity(agentActionProof)).toEqual({
       audioContentType: "audio/wav",
@@ -1268,6 +1271,6 @@ test("voice-control bridge parity: the eliza:voice-control bridge creates the sa
     });
   } finally {
     await agentActionPage.close();
-    await slashPage.close();
+    await speechPage.close();
   }
 });
