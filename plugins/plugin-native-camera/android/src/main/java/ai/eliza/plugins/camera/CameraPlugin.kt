@@ -700,6 +700,8 @@ class CameraPlugin : Plugin() {
         activity.runOnUiThread {
             if (destroyed) {
                 call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
+            } else if (switchingCamera || pendingPreviewCall != null) {
+                call.reject("Camera settings are being restored", "CAMERA_NOT_READY")
             } else if (recordingSession != null || recordingPermissionCalls.isNotEmpty()) {
                 call.reject("A recording is already starting, recording or finalizing", "RECORDING_BUSY")
             } else if (videoCapture == null) {
@@ -728,6 +730,10 @@ class CameraPlugin : Plugin() {
 
     @android.annotation.SuppressLint("MissingPermission")
     private fun startRecordingInternal(call: PluginCall) {
+        if (switchingCamera || pendingPreviewCall != null) {
+            call.reject("Camera settings are being restored", "CAMERA_NOT_READY")
+            return
+        }
         if (destroyed || videoCapture == null) {
             call.reject("Camera is no longer available", "CAMERA_NOT_READY")
             return

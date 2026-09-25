@@ -45,6 +45,21 @@ const ALLOW_FIRST_RUN =
   process.env.ELIZA_ANDROID_ALLOW_FIRST_RUN === "1" ||
   process.env.ELIZA_ANDROID_ALLOW_FIRST_RUN === "true";
 
+export function hostedAgentBase(): string {
+  const port = parsePort(
+    process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
+    "ELIZA_ANDROID_HOST_AGENT_PORT",
+  );
+  const expected = `http://10.0.2.2:${port}`;
+  const configured = process.env.ELIZA_ANDROID_ONBOARDING_API_BASE;
+  if (configured && configured.replace(/\/+$/, "") !== expected) {
+    throw new Error(
+      `ELIZA_ANDROID_ONBOARDING_API_BASE must be ${expected}: hosted pairing uses the same agent's loopback operator endpoint.`,
+    );
+  }
+  return expected;
+}
+
 function activeServerSeed(): string {
   if (BACKEND === "host") {
     return JSON.stringify({
@@ -53,12 +68,7 @@ function activeServerSeed(): string {
       label: "Host agent",
       // Loopback:31337 identifies the bundled native agent, even when adb
       // reverse forwards that port. Use a genuine remote identity instead.
-      apiBase:
-        process.env.ELIZA_ANDROID_ONBOARDING_API_BASE ??
-        `http://10.0.2.2:${parsePort(
-          process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
-          "ELIZA_ANDROID_HOST_AGENT_PORT",
-        )}`,
+      apiBase: hostedAgentBase(),
     });
   }
   // The renderer reads runtime mode from localStorage (a SEPARATE store from the
@@ -376,6 +386,7 @@ export async function pairHostedAgent(
   page: Page,
   { allowExistingSession = false } = {},
 ): Promise<void> {
+  hostedAgentBase();
   const input = page.getByPlaceholder("Enter pairing code");
   if (allowExistingSession) {
     // Playwright restarts workers after a failed test without clearing the app's

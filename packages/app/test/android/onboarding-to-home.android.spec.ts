@@ -32,25 +32,24 @@ import {
   adbDevice,
   resolveAdb,
 } from "../../scripts/lib/android-device.ts";
-import { parsePort } from "../../scripts/lib/host-agent.ts";
 import {
   assertOnboardingLiveness,
   sendChatAndReadReply,
 } from "../liveness-contract";
-import { expect, ORIGIN, pairHostedAgent, test } from "./android-harness";
+import {
+  expect,
+  hostedAgentBase,
+  ORIGIN,
+  pairHostedAgent,
+  test,
+} from "./android-harness";
 
 // When the host is a live-provider backend, the final onboarding turn must
 // prove a real model answered. Off by default because the shared host agent is
 // the deterministic stub.
 const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
-const HOST_AGENT_PORT = parsePort(
-  process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
-  "ELIZA_ANDROID_HOST_AGENT_PORT",
-);
-const HOST_AGENT_BASE =
-  process.env.ELIZA_ANDROID_ONBOARDING_API_BASE ??
-  `http://10.0.2.2:${HOST_AGENT_PORT}`;
+const HOST_AGENT_BASE = hostedAgentBase();
 // app.config.ts `desktop.urlScheme`; the Android manifest registers it as the
 // BROWSABLE `@string/custom_url_scheme` intent-filter.
 const URL_SCHEME = "elizaos";

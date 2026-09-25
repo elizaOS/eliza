@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   setToken: vi.fn(),
   persist: vi.fn(),
   resume: vi.fn(),
+  scrub: vi.fn(),
 }));
 vi.mock("../api", () => ({ client: mocks }));
 vi.mock("./active-server-credential", () => ({
   persistActiveServerCredential: mocks.persist,
+  scrubRejectedActiveServerCredential: mocks.scrub,
 }));
 vi.mock("../first-run/adopt-remote-first-run", () => ({
   resumeRemoteFirstRunAfterPairing: mocks.resume,
@@ -68,4 +70,37 @@ it("refreshes the startup coordinator after the paired setup completes", async (
     mocks.resume.mock.invocationCallOrder[0],
   );
   expect(result.current.state.pairingError).toBeNull();
+});
+
+it("pairs again after authenticated setup rejects the issued session", async () => {
+  mocks.resume.mockRejectedValueOnce({ status: 401 });
+  const { result } = renderHook(() => usePairingState(vi.fn()));
+  act(() => result.current.setPairingCodeInput("FIRST-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.scrub).toHaveBeenCalledWith("test-session");
+  expect(result.current.state.pairingCodeInput).toBe("");
+  expect(result.current.state.pairingError).toContain(
+    "Enter a new pairing code",
+  );
+  mocks.resume.mockResolvedValue(undefined);
+  mocks.pair.mockResolvedValue({ token: "replacement-session" });
+  act(() => result.current.setPairingCodeInput("NEW-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.pair).toHaveBeenNthCalledWith(2, "NEW-CODE");
+  expect(mocks.setToken).toHaveBeenLastCalledWith("replacement-session");
+  expect(result.current.state.pairingError).toBeNull();
+});
+
+it("retries credential persistence without consuming the one-time code again", async () => {
+  mocks.persist.mockRejectedValueOnce(new Error("Storage unavailable"));
+  mocks.resume.mockResolvedValue(undefined);
+  const onPaired = vi.fn();
+  const { result } = renderHook(() => usePairingState(onPaired));
+  act(() => result.current.setPairingCodeInput("ONE-TIME-CODE"));
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.resume).not.toHaveBeenCalled();
+  await act(() => result.current.handlePairingSubmit());
+  expect(mocks.pair).toHaveBeenCalledOnce();
+  expect(mocks.persist).toHaveBeenCalledTimes(2);
+  expect(onPaired).toHaveBeenCalledOnce();
 });

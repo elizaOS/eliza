@@ -356,6 +356,40 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @Test fun recordingCannotInterruptCameraSwitchRestoration() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val settled = CountDownLatch(2)
+            val replies = JSONArray()
+            fun pending(name: String, method: String, options: JSObject) = object : PluginCall(null, "ElizaCamera", name, method, options) {
+                override fun resolve() { replies.put(JSONObject().put("call", name).put("resolved", true)); settled.countDown() }
+                override fun resolve(value: JSObject?) { resolve() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    replies.put(JSONObject().put("call", name).put("resolved", false).put("code", code)); settled.countDown()
+                }
+            }
+            try {
+                scenario.onActivity { activity ->
+                    val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                    // One main-thread turn holds native completion callbacks until both
+                    // calls are submitted, proving recording arrives during restoration.
+                    plugin.switchCamera(pending("switch", "switchCamera", JSObject().put("direction", "back")))
+                    plugin.startRecording(pending("record", "startRecording", JSObject().put("audio", false)))
+                }
+                assertTrue("Both calls must settle", settled.await(30, TimeUnit.SECONDS))
+                assertEquals(2, replies.length())
+                for (index in 0 until replies.length()) {
+                    val reply = replies.getJSONObject(index)
+                    assertEquals(reply.toString(), reply.getString("call") == "switch", reply.getBoolean("resolved"))
+                    if (reply.getString("call") == "record") assertEquals("CAMERA_NOT_READY", reply.getString("code"))
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-switch-recording-admission.json", replies)
+            }
+        }
+    }
+
     @Test fun stoppingPreviewRejectsActiveAndQueuedCameraSwitches() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             preview(scenario)
