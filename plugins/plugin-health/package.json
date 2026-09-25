@@ -10,39 +10,39 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./ui": {
-      "types": "./dist/ui/index.d.ts",
       "eliza-source": "./src/ui/index.ts",
+      "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
     "./ui/index": {
-      "types": "./dist/ui/index.d.ts",
       "eliza-source": "./src/ui/index.ts",
+      "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
     "./screen-time/mobile-signal-setup": {
-      "types": "./dist/screen-time/mobile-signal-setup.d.ts",
       "eliza-source": "./src/screen-time/mobile-signal-setup.ts",
+      "types": "./dist/screen-time/mobile-signal-setup.d.ts",
       "import": "./dist/screen-time/mobile-signal-setup.js",
       "default": "./dist/screen-time/mobile-signal-setup.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./crypto/token-encryption": {
-      "types": "./dist/crypto/token-encryption.d.ts",
       "eliza-source": "./src/crypto/token-encryption.ts",
+      "types": "./dist/crypto/token-encryption.d.ts",
       "import": "./dist/crypto/token-encryption.js",
       "default": "./dist/crypto/token-encryption.js"
     }

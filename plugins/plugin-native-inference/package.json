@@ -13,171 +13,171 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
     "./llama": {
-      "types": "./dist/llama/index.d.ts",
       "eliza-source": "./src/llama/index.ts",
+      "types": "./dist/llama/index.d.ts",
       "import": "./dist/llama/index.js",
       "default": "./dist/llama/index.js"
     },
     "./mlkit-text": {
-      "types": "./dist/mlkit-text/index.d.ts",
       "eliza-source": "./src/mlkit-text/index.ts",
+      "types": "./dist/mlkit-text/index.d.ts",
       "import": "./dist/mlkit-text/index.js",
       "default": "./dist/mlkit-text/index.js"
     },
     "./*": {
-      "types": "./dist/*.d.ts",
       "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
     "./host-bridge": {
-      "types": "./dist/bridge.d.ts",
       "eliza-source": "./src/bridge.ts",
+      "types": "./dist/bridge.d.ts",
       "import": "./dist/bridge.js",
       "default": "./dist/bridge.js"
     },
     "./model-gpu/gpu-overrides": {
-      "types": "./dist/model-gpu/gpu-overrides.d.ts",
       "eliza-source": "./src/model-gpu/gpu-overrides.ts",
+      "types": "./dist/model-gpu/gpu-overrides.d.ts",
       "import": "./dist/model-gpu/gpu-overrides.js",
       "default": "./dist/model-gpu/gpu-overrides.js"
     },
     "./model-gpu/gpu-profile-loader": {
-      "types": "./dist/model-gpu/gpu-profile-loader.d.ts",
       "eliza-source": "./src/model-gpu/gpu-profile-loader.ts",
+      "types": "./dist/model-gpu/gpu-profile-loader.d.ts",
       "import": "./dist/model-gpu/gpu-profile-loader.js",
       "default": "./dist/model-gpu/gpu-profile-loader.js"
     },
     "./model-gpu/gpu-profile-schema": {
-      "types": "./dist/model-gpu/gpu-profile-schema.d.ts",
       "eliza-source": "./src/model-gpu/gpu-profile-schema.ts",
+      "types": "./dist/model-gpu/gpu-profile-schema.d.ts",
       "import": "./dist/model-gpu/gpu-profile-schema.js",
       "default": "./dist/model-gpu/gpu-profile-schema.js"
     },
     "./model-gpu/gpu-tier-detect": {
-      "types": "./dist/model-gpu/gpu-tier-detect.d.ts",
       "eliza-source": "./src/model-gpu/gpu-tier-detect.ts",
+      "types": "./dist/model-gpu/gpu-tier-detect.d.ts",
       "import": "./dist/model-gpu/gpu-tier-detect.js",
       "default": "./dist/model-gpu/gpu-tier-detect.js"
     },
     "./model-gpu/gpu-tier-profiles": {
-      "types": "./dist/model-gpu/gpu-tier-profiles.d.ts",
       "eliza-source": "./src/model-gpu/gpu-tier-profiles.ts",
+      "types": "./dist/model-gpu/gpu-tier-profiles.d.ts",
       "import": "./dist/model-gpu/gpu-tier-profiles.js",
       "default": "./dist/model-gpu/gpu-tier-profiles.js"
     },
     "./model-catalog/bge-embedding-model": {
-      "types": "./dist/model-catalog/bge-embedding-model.d.ts",
       "eliza-source": "./src/model-catalog/bge-embedding-model.ts",
+      "types": "./dist/model-catalog/bge-embedding-model.d.ts",
       "import": "./dist/model-catalog/bge-embedding-model.js",
       "default": "./dist/model-catalog/bge-embedding-model.js"
     },
     "./model-catalog/bge-input": {
-      "types": "./dist/model-catalog/bge-input.d.ts",
       "eliza-source": "./src/model-catalog/bge-input.ts",
+      "types": "./dist/model-catalog/bge-input.d.ts",
       "import": "./dist/model-catalog/bge-input.js",
       "default": "./dist/model-catalog/bge-input.js"
     },
     "./model-catalog/catalog": {
-      "types": "./dist/model-catalog/catalog.d.ts",
       "eliza-source": "./src/model-catalog/catalog.ts",
+      "types": "./dist/model-catalog/catalog.d.ts",
       "import": "./dist/model-catalog/catalog.js",
       "default": "./dist/model-catalog/catalog.js"
     },
     "./model-catalog/device-fit": {
-      "types": "./dist/model-catalog/device-fit.d.ts",
       "eliza-source": "./src/model-catalog/device-fit.ts",
+      "types": "./dist/model-catalog/device-fit.d.ts",
       "import": "./dist/model-catalog/device-fit.js",
       "default": "./dist/model-catalog/device-fit.js"
     },
     "./model-catalog/gpu-profiles": {
-      "types": "./dist/model-catalog/gpu-profiles.d.ts",
       "eliza-source": "./src/model-catalog/gpu-profiles.ts",
+      "types": "./dist/model-catalog/gpu-profiles.d.ts",
       "import": "./dist/model-catalog/gpu-profiles.js",
       "default": "./dist/model-catalog/gpu-profiles.js"
     },
     "./model-catalog/hf-proxy": {
-      "types": "./dist/model-catalog/hf-proxy.d.ts",
       "eliza-source": "./src/model-catalog/hf-proxy.ts",
+      "types": "./dist/model-catalog/hf-proxy.d.ts",
       "import": "./dist/model-catalog/hf-proxy.js",
       "default": "./dist/model-catalog/hf-proxy.js"
     },
     "./model-catalog/hub-auth": {
-      "types": "./dist/model-catalog/hub-auth.d.ts",
       "eliza-source": "./src/model-catalog/hub-auth.ts",
+      "types": "./dist/model-catalog/hub-auth.d.ts",
       "import": "./dist/model-catalog/hub-auth.js",
       "default": "./dist/model-catalog/hub-auth.js"
     },
     "./model-catalog": {
-      "types": "./dist/model-catalog/index.d.ts",
       "eliza-source": "./src/model-catalog/index.ts",
+      "types": "./dist/model-catalog/index.d.ts",
       "import": "./dist/model-catalog/index.js",
       "default": "./dist/model-catalog/index.js"
     },
     "./model-catalog/manifest-signature": {
-      "types": "./dist/model-catalog/manifest-signature.d.ts",
       "eliza-source": "./src/model-catalog/manifest-signature.ts",
+      "types": "./dist/model-catalog/manifest-signature.d.ts",
       "import": "./dist/model-catalog/manifest-signature.js",
       "default": "./dist/model-catalog/manifest-signature.js"
     },
     "./model-catalog/network-policy": {
-      "types": "./dist/model-catalog/network-policy.d.ts",
       "eliza-source": "./src/model-catalog/network-policy.ts",
+      "types": "./dist/model-catalog/network-policy.d.ts",
       "import": "./dist/model-catalog/network-policy.js",
       "default": "./dist/model-catalog/network-policy.js"
     },
     "./model-catalog/paths": {
-      "types": "./dist/model-catalog/paths.d.ts",
       "eliza-source": "./src/model-catalog/paths.ts",
+      "types": "./dist/model-catalog/paths.d.ts",
       "import": "./dist/model-catalog/paths.js",
       "default": "./dist/model-catalog/paths.js"
     },
     "./model-catalog/recommendation": {
-      "types": "./dist/model-catalog/recommendation.d.ts",
       "eliza-source": "./src/model-catalog/recommendation.ts",
+      "types": "./dist/model-catalog/recommendation.d.ts",
       "import": "./dist/model-catalog/recommendation.js",
       "default": "./dist/model-catalog/recommendation.js"
     },
     "./model-catalog/routing-policy": {
-      "types": "./dist/model-catalog/routing-policy.d.ts",
       "eliza-source": "./src/model-catalog/routing-policy.ts",
+      "types": "./dist/model-catalog/routing-policy.d.ts",
       "import": "./dist/model-catalog/routing-policy.js",
       "default": "./dist/model-catalog/routing-policy.js"
     },
     "./model-catalog/routing-preferences": {
-      "types": "./dist/model-catalog/routing-preferences.d.ts",
       "eliza-source": "./src/model-catalog/routing-preferences.ts",
+      "types": "./dist/model-catalog/routing-preferences.d.ts",
       "import": "./dist/model-catalog/routing-preferences.js",
       "default": "./dist/model-catalog/routing-preferences.js"
     },
     "./model-catalog/runtime-class": {
-      "types": "./dist/model-catalog/runtime-class.d.ts",
       "eliza-source": "./src/model-catalog/runtime-class.ts",
+      "types": "./dist/model-catalog/runtime-class.d.ts",
       "import": "./dist/model-catalog/runtime-class.js",
       "default": "./dist/model-catalog/runtime-class.js"
     },
     "./model-catalog/throughput": {
-      "types": "./dist/model-catalog/throughput.d.ts",
       "eliza-source": "./src/model-catalog/throughput.ts",
+      "types": "./dist/model-catalog/throughput.d.ts",
       "import": "./dist/model-catalog/throughput.js",
       "default": "./dist/model-catalog/throughput.js"
     },
     "./model-catalog/verify": {
-      "types": "./dist/model-catalog/verify.d.ts",
       "eliza-source": "./src/model-catalog/verify.ts",
+      "types": "./dist/model-catalog/verify.d.ts",
       "import": "./dist/model-catalog/verify.js",
       "default": "./dist/model-catalog/verify.js"
     },
     "./model-catalog/voice-models": {
-      "types": "./dist/model-catalog/voice-models.d.ts",
       "eliza-source": "./src/model-catalog/voice-models.ts",
+      "types": "./dist/model-catalog/voice-models.d.ts",
       "import": "./dist/model-catalog/voice-models.js",
       "default": "./dist/model-catalog/voice-models.js"
     }
