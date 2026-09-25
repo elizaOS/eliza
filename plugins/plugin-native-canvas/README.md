@@ -14,3 +14,12 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-canvas build  # build
 bun run --cwd plugins/plugin-native-canvas test   # tests
 ```
+
+Android drawing and clearing reject unknown or deleted layer IDs with
+`LAYER_NOT_FOUND`. Batch errors include `commandIndex`; earlier commands remain
+applied and later commands do not run. Device contracts verify layer isolation,
+encoded pixels, and failure recovery through the real WebView bridge:
+
+```bash
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5580 --plugin plugin-native-canvas
+```

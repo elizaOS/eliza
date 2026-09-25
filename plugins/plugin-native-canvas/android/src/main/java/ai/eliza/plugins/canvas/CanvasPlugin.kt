@@ -58,6 +58,22 @@ class CanvasPlugin : Plugin() {
         var view: CanvasView
     )
 
+    private fun resolveTarget(
+        call: PluginCall,
+        canvas: ManagedCanvas,
+        layerId: String?,
+        commandIndex: Int? = null
+    ): CanvasView? {
+        if (layerId == null) return canvas.view
+        val target = canvas.layers[layerId]?.view
+        if (target == null) {
+            val details = JSObject().put("layerId", layerId)
+            commandIndex?.let { details.put("commandIndex", it) }
+            call.reject("Layer not found: $layerId", "LAYER_NOT_FOUND", null, details)
+        }
+        return target
+    }
+
     // ---- CanvasView: a View backed by a Bitmap/Canvas ----
 
     class CanvasView(context: android.content.Context, private var size: CanvasSize) :
@@ -331,7 +347,7 @@ class CanvasPlugin : Plugin() {
         val rectObj = call.getObject("rect")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
 
             val rect = rectObj?.let {
                 RectF(
@@ -514,7 +530,7 @@ class CanvasPlugin : Plugin() {
         val cornerRadius = call.getFloat("cornerRadius") ?: 0f
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val paint = Paint().apply { isAntiAlias = true }
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -586,7 +602,7 @@ class CanvasPlugin : Plugin() {
         val strokeObj = call.getObject("stroke")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val paint = Paint().apply { isAntiAlias = true }
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -651,7 +667,7 @@ class CanvasPlugin : Plugin() {
         val layerId = drawOpts?.getString("layerId")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
@@ -704,7 +720,7 @@ class CanvasPlugin : Plugin() {
         val strokeObj = call.getObject("stroke")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val paint = Paint().apply { isAntiAlias = true }
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -769,7 +785,7 @@ class CanvasPlugin : Plugin() {
         val layerId = drawOpts?.getString("layerId")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
@@ -854,7 +870,7 @@ class CanvasPlugin : Plugin() {
         val srcRectObj = call.getObject("srcRect")
 
         activity.runOnUiThread {
-            val targetView = layerId?.let { canvas.layers[it]?.view } ?: canvas.view
+            val targetView = resolveTarget(call, canvas, layerId) ?: return@runOnUiThread
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
@@ -953,9 +969,10 @@ class CanvasPlugin : Plugin() {
                 val paint = Paint().apply { isAntiAlias = true }
 
                 val drawOptsObj = args.optJSONObject("drawOptions")
-                val targetLayerId = drawOptsObj?.optString("layerId")
-                val targetView =
-                    targetLayerId?.let { canvas.layers[it]?.view } ?: canvas.view
+                val targetLayerId = if (type == "clear") args.stringOrNull("layerId")
+                    else drawOptsObj?.stringOrNull("layerId")
+                val targetView = resolveTarget(call, canvas, targetLayerId, i)
+                    ?: return@runOnUiThread
                 val drawCanvas = targetView.getDrawCanvas()
                 val drawOpts = drawOptsObj?.let { jsObjectFromJSON(it) }
                 val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
@@ -1105,13 +1122,10 @@ class CanvasPlugin : Plugin() {
                     }
                     "clear" -> {
                         val clearRectJson = args.optJSONObject("rect")
-                        val clearLayerId = args.stringOrNull("layerId")
-                        val clearView =
-                            clearLayerId?.let { canvas.layers[it]?.view } ?: targetView
                         if (clearRectJson != null) {
-                            clearView.clear(rectFromJSON(clearRectJson))
+                            targetView.clear(rectFromJSON(clearRectJson))
                         } else {
-                            clearView.clear()
+                            targetView.clear()
                         }
                     }
                 }

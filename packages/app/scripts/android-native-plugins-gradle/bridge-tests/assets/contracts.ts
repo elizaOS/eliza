@@ -652,6 +652,248 @@
             String.fromCharCode(0, 0, 255, 255),
           "valid image drawing recovers after rejected inputs",
         );
+        const layerCases = [];
+        window.nativeCanvasEvidence.layerCases = layerCases;
+        const green = { color: "#00ff00" };
+        const primitives = [
+          {
+            type: "rect",
+            method: "drawRect",
+            args: { rect: { x: 2, y: 2, width: 8, height: 8 }, fill: green },
+          },
+          {
+            type: "ellipse",
+            method: "drawEllipse",
+            args: {
+              center: { x: 6, y: 6 },
+              radiusX: 4,
+              radiusY: 4,
+              fill: green,
+            },
+          },
+          {
+            type: "line",
+            method: "drawLine",
+            args: {
+              from: { x: 2, y: 6 },
+              to: { x: 10, y: 6 },
+              stroke: { color: "#00ff00", width: 4 },
+            },
+          },
+          {
+            type: "path",
+            method: "drawPath",
+            args: {
+              path: { commands: [{ type: "rect", args: [2, 2, 8, 8] }] },
+              fill: green,
+            },
+          },
+          {
+            type: "text",
+            method: "drawText",
+            args: {
+              text: "W",
+              position: { x: 2, y: 12 },
+              style: { font: "sans-serif", size: 12, color: "#00ff00" },
+            },
+          },
+          {
+            type: "image",
+            method: "drawImage",
+            args: {
+              image: dataUrl,
+              destRect: { x: 2, y: 2, width: 8, height: 8 },
+            },
+          },
+          {
+            type: "clear",
+            method: "clear",
+            args: { rect: { x: 2, y: 2, width: 8, height: 8 } },
+          },
+        ];
+        const { layerId: activeLayer } = await call("createLayer", {
+          canvasId,
+          layer: { name: "target", visible: true, opacity: 1, zIndex: 1 },
+        });
+        const { layerId: deletedLayer } = await call("createLayer", {
+          canvasId,
+          layer: { name: "deleted" },
+        });
+        await call("deleteLayer", { canvasId, layerId: deletedLayer });
+        for (const primitive of primitives) {
+          for (const batched of [false, true]) {
+            await call("clear", { canvasId });
+            await call("drawRect", {
+              canvasId,
+              rect: { x: 0, y: 0, width: 16, height: 16 },
+              fill: { color: "#ff0000" },
+            });
+            await call("clear", { canvasId, layerId: activeLayer });
+            if (primitive.type === "clear") {
+              await call("drawRect", {
+                canvasId,
+                rect: { x: 0, y: 0, width: 16, height: 16 },
+                fill: green,
+                drawOptions: { layerId: activeLayer },
+              });
+            }
+            const targetArgs = (id) => ({
+              ...primitive.args,
+              ...(primitive.type === "clear"
+                ? { layerId: id }
+                : { drawOptions: { layerId: id } }),
+            });
+            const invoke = (id) =>
+              imageOutcome(
+                batched ? "drawBatch" : primitive.method,
+                batched
+                  ? {
+                      canvasId,
+                      commands: [
+                        { type: primitive.type, args: targetArgs(id) },
+                      ],
+                    }
+                  : { canvasId, ...targetArgs(id) },
+              );
+            const beforeBase = (await call("getPixelData", { canvasId })).data;
+            const beforeImage = (
+              await call("toImage", { canvasId, format: "png" })
+            ).base64;
+            const valid = await invoke(activeLayer);
+            const validImage = (
+              await call("toImage", { canvasId, format: "png" })
+            ).base64;
+            const validBase = (await call("getPixelData", { canvasId })).data;
+            layerCases.push({
+              type: primitive.type,
+              batched,
+              target: "valid",
+              ...valid,
+              baseUnchanged: beforeBase === validBase,
+              compositeChanged: beforeImage !== validImage,
+            });
+            if (primitive.type === "ellipse" || primitive.type === "path") {
+              const rendered = await nativeImagePixels(
+                `${primitive.type}-${batched ? "batch" : "direct"}-layer`,
+              );
+              pixelEquals(
+                rendered(6, 6),
+                [0, 255, 0, 255],
+                "layer primitive fills its center",
+              );
+              pixelEquals(
+                rendered(0, 0),
+                [255, 0, 0, 255],
+                "layer primitive leaves outside base visible",
+              );
+              if (primitive.type === "ellipse")
+                pixelEquals(
+                  rendered(2, 2),
+                  [255, 0, 0, 255],
+                  "ellipse does not fill bounding-box corner",
+                );
+            }
+            for (const [target, id] of [
+              ["unknown", "missing-layer"],
+              ["deleted", deletedLayer],
+            ]) {
+              const baseBefore = (await call("getPixelData", { canvasId }))
+                .data;
+              const imageBefore = (
+                await call("toImage", { canvasId, format: "png" })
+              ).base64;
+              const outcome = await invoke(id);
+              layerCases.push({
+                type: primitive.type,
+                batched,
+                target,
+                ...outcome,
+                baseUnchanged:
+                  baseBefore ===
+                  (await call("getPixelData", { canvasId })).data,
+                compositeUnchanged:
+                  imageBefore ===
+                  (await call("toImage", { canvasId, format: "png" })).base64,
+              });
+            }
+          }
+        }
+        assert(
+          layerCases.every((entry) =>
+            entry.target === "valid"
+              ? !entry.rejected && entry.baseUnchanged && entry.compositeChanged
+              : entry.rejected &&
+                entry.code === "LAYER_NOT_FOUND" &&
+                entry.baseUnchanged &&
+                entry.compositeUnchanged &&
+                (!entry.batched || entry.commandIndex === 0),
+          ),
+          "every drawing and clear operation targets only existing layers, including batch commands",
+        );
+        await call("deleteLayer", { canvasId, layerId: activeLayer });
+        const batchLayerFailures = [];
+        window.nativeCanvasEvidence.batchLayerFailures = batchLayerFailures;
+        for (const primitive of primitives) {
+          await call("clear", { canvasId });
+          const outcome = await imageOutcome("drawBatch", {
+            canvasId,
+            commands: [
+              prefix,
+              {
+                type: primitive.type,
+                args: {
+                  ...primitive.args,
+                  ...(primitive.type === "clear"
+                    ? { layerId: deletedLayer }
+                    : {
+                        drawOptions: {
+                          layerId: deletedLayer,
+                          transform: { translateX: 4 },
+                        },
+                      }),
+                },
+              },
+              {
+                type: "rect",
+                args: {
+                  rect: { x: 12, y: 12, width: 2, height: 2 },
+                  fill: green,
+                },
+              },
+            ],
+          });
+          const pixels = atob((await call("getPixelData", { canvasId })).data);
+          const expected = Array.from({ length: 16 * 16 }, (_, index) =>
+            index % 16 < 2 && Math.floor(index / 16) < 2
+              ? String.fromCharCode(255, 0, 0, 255)
+              : String.fromCharCode(0, 0, 0, 0),
+          ).join("");
+          batchLayerFailures.push({
+            type: primitive.type,
+            ...outcome,
+            onlyPrefixApplied: pixels === expected,
+          });
+          assert(
+            outcome.rejected &&
+              outcome.code === "LAYER_NOT_FOUND" &&
+              outcome.commandIndex === 1 &&
+              pixels === expected,
+            "missing-layer batch preserves exact applied prefix and stops suffix",
+          );
+          await call("drawRect", {
+            canvasId,
+            rect: { x: 4, y: 4, width: 2, height: 2 },
+            fill: green,
+          });
+          pixelEquals(
+            (await nativeImagePixels(`recovered-after-${primitive.type}`))(
+              4,
+              4,
+            ),
+            [0, 255, 0, 255],
+            "drawing state remains usable after layer rejection",
+          );
+        }
       } finally {
         await call("destroy", { canvasId });
       }
