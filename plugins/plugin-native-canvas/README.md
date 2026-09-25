@@ -38,3 +38,21 @@ the host. Repeated attachment does not add duplicate views.
 Touch settings require a boolean. Disabling, hiding, or removing an active surface emits
 one cancellation with the last pointer coordinates; repeated enable/attach calls
 preserve an unchanged gesture.
+
+Android create and resize require positive integer dimensions whose RGBA byte count
+fits a signed 32-bit integer. Invalid sizes reject with `INVALID_ARGUMENT` before
+allocation or mutation. Resize preserves existing base and layer pixels, crops on
+shrink, and leaves new pixels transparent on growth.
+
+Android intercepts `eliza://` navigation from both API calls and embedded pages.
+Deep-link events include the encoded path and decoded query parameters (last
+repeated value wins). Navigation errors include the native code and message.
+
+Android A2UI action events expose `action`, `data`, and optional `messageId`,
+while retaining legacy action and surface metadata and the complete `userAction`.
+Acknowledgements correlate with the supplied ID; they acknowledge bridge delivery,
+not execution of an agent action.
+
+Malformed JSON and invalid Android A2UI actions emit no action event and receive a failure status
+with `INVALID_ARGUMENT`. Data values must be strings, finite numbers, or booleans.
+Status IDs retain a usable supplied ID; unparseable messages use an empty ID.
