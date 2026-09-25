@@ -20,31 +20,19 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
+      "eliza-source": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
-      "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
+      "eliza-source": "./src/plugin.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
     "./*": {
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
+      "eliza-source": "./src/*.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }

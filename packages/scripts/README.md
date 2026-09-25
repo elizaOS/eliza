@@ -1,7 +1,7 @@
 # Repository tooling
 
 `packages/scripts/` is the single home for repository-wide build, test, release,
-security, evidence, and development tools. It has no package manifest; root
+security, evidence, and development tools. Its private package declares tooling dependencies; root
 `package.json` commands invoke its entrypoints. Package-specific scripts remain
 in `packages/*/scripts/`; GitHub helpers live in `packages/scripts/github/`.
 

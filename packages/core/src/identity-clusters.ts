@@ -13,12 +13,9 @@ import {
 	memoizeTurnWork,
 } from "./trajectory-context.ts";
 import type { PrincipalService } from "./types/identity.ts";
-import {
-	type IAgentRuntime,
-	type Service,
-	ServiceType,
-	type UUID,
-} from "./types/index.ts";
+import type { UUID } from "./types/primitives.js";
+import type { IAgentRuntime } from "./types/runtime.js";
+import { type Service, ServiceType } from "./types/service.js";
 
 type IdentityClusterResolver = Service & {
 	getMemberEntityIds?: (entityId: UUID) => Promise<UUID[]>;

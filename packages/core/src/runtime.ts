@@ -78,27 +78,26 @@ import {
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import {
+	CompositeEntityRecognizer,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	RegexEntityRecognizer,
+} from "./security/entity-recognizer.js";
+import {
 	locateConfiguredSecretFragmentTaint,
 	type SecretFragment,
 	type SecretFragmentTaintProfile,
 } from "./security/fragment-redaction.js";
 import {
-	authorizeOwnerExclusiveDisclosure,
-	CompositeEntityRecognizer,
 	collectPiiPromptText,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
-	PII_ENTITY_RECOGNIZER_SERVICE,
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
 	PII_SWAP_EXEMPT_VALUES_SETTING,
-	type PiiEntityRecognizer,
-	type PiiEntityRecognizerService,
-	PRIVACY_DENIED_TEXT,
 	PseudonymSession,
 	parsePiiSwapList,
-	RegexEntityRecognizer,
-	revalidateOwnerExclusiveDisclosure,
-} from "./security/index.js";
+} from "./security/pii-pseudonymizer.js";
 import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -106,6 +105,11 @@ import {
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
 	SecretSwapSession,
 } from "./security/secret-swap";
+import {
+	authorizeOwnerExclusiveDisclosure,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+} from "./security/trusted-delivery-audience.js";
 import {
 	drainPostDeliveryTasks,
 	pendingPostDeliveryTaskCount,
@@ -118,50 +122,72 @@ import {
 	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
-import type { Content, SendHandlerFunction } from "./types";
+import type { AccessContext } from "./types/access-context.js";
+import type { Agent, Character } from "./types/agent.js";
+import type {
+	ChatPreHandler,
+	ChatPreHandlerContext,
+	ChatPreHandlerResult,
+} from "./types/chat-pre-handler";
+import type {
+	Action,
+	ActionMode,
+	ActionResult,
+	HandlerCallback,
+	Provider,
+} from "./types/components.js";
+import type { AgentContext } from "./types/contexts";
+import type {
+	AppendConnectorAccountAuditEventParams,
+	ConnectorAccountAuditEventRecord,
+	ConnectorAccountCredentialRefRecord,
+	ConnectorAccountRecord,
+	ConsumeOAuthFlowStateParams,
+	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
+	DeleteConnectorAccountParams,
+	DeleteOAuthFlowStateParams,
+	GetConnectorAccountCredentialRefParams,
+	GetConnectorAccountParams,
+	GetOAuthFlowStateParams,
+	IDatabaseAdapter,
+	ListConnectorAccountCredentialRefsParams,
+	ListConnectorAccountsParams,
+	Log,
+	LogBody,
+	MessageSearchHit,
+	OAuthFlowRecord,
+	PatchOp,
+	SetConnectorAccountCredentialRefParams,
+	UpdateOAuthFlowStateParams,
+	UpsertConnectorAccountParams,
+} from "./types/database.js";
+import type {
+	Component,
+	Entity,
+	Participant,
+	Relationship,
+	Room,
+	World,
+} from "./types/environment.js";
+import type { RegisteredEvaluator } from "./types/evaluator.js";
 import {
-	type AccessContext,
-	type Action,
-	type ActionMode,
-	type ActionResult,
-	type Agent,
-	type AppendConnectorAccountAuditEventParams,
-	ChannelType,
-	type Character,
-	type Component,
-	type ConnectorAccountAuditEventRecord,
-	type ConnectorAccountCredentialRefRecord,
-	type ConnectorAccountRecord,
-	type ConsumeOAuthFlowStateParams,
-	type ControlMessage,
-	type CreateOAuthFlowStateParams,
-	type DeleteConnectorAccountCredentialRefsParams,
-	type DeleteConnectorAccountParams,
-	type DeleteOAuthFlowStateParams,
-	type Entity,
 	type EventHandler,
 	type EventPayload,
 	type EventPayloadMap,
 	EventType,
+} from "./types/events.js";
+import type { Memory, MemoryMetadata } from "./types/memory.js";
+import type { IMessageService } from "./types/message-service";
+import type {
+	ControlMessage,
+	IMessagingAdapter,
+	SendHandlerFunction,
+} from "./types/messaging.js";
+import {
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
-	type GetConnectorAccountCredentialRefParams,
-	type GetConnectorAccountParams,
-	type GetOAuthFlowStateParams,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type IDatabaseAdapter,
-	type IMessagingAdapter,
-	type JsonValue,
-	type ListConnectorAccountCredentialRefsParams,
-	type ListConnectorAccountsParams,
-	type Log,
-	type LogBody,
-	type Memory,
-	type MemoryMetadata,
-	type MessageSearchHit,
-	type Metadata,
 	type ModelHandler,
 	type ModelParamsMap,
 	type ModelRegistrationInfo,
@@ -169,54 +195,47 @@ import {
 	type ModelResultMap,
 	ModelType,
 	type ModelTypeName,
-	type OAuthFlowRecord,
-	type PairingAllowlistEntry,
-	type PairingChannel,
-	type PairingRequest,
-	type Participant,
-	type PatchOp,
-	type Plugin,
-	type PluginOwnership,
-	type Provider,
-	type RegisteredEvaluator,
-	type Relationship,
-	type RemotePluginInstallOptions,
-	type RemotePluginInstanceHandle,
-	type Room,
-	type RuntimeEventStorage,
-	type RuntimeSettings,
-	type RuntimeStopOptions,
-	type Service,
-	type ServiceClass,
-	ServiceType,
-	type ServiceTypeName,
-	type SetConnectorAccountCredentialRefParams,
-	type State,
-	type Task,
-	type TaskWorker,
-	type UpdateOAuthFlowStateParams,
-	type UpsertConnectorAccountParams,
-	type UUID,
-	type World,
-} from "./types";
+} from "./types/model.js";
 import type {
-	ChatPreHandler,
-	ChatPreHandlerContext,
-	ChatPreHandlerResult,
-} from "./types/chat-pre-handler";
-import type { AgentContext } from "./types/contexts";
-import type { IMessageService } from "./types/message-service";
+	PairingAllowlistEntry,
+	PairingChannel,
+	PairingRequest,
+} from "./types/pairing.js";
+import type {
+	Plugin,
+	PluginOwnership,
+	RemotePluginInstallOptions,
+	RemotePluginInstanceHandle,
+	RuntimeEventStorage,
+	ServiceClass,
+} from "./types/plugin.js";
+import type { Content } from "./types/primitives.js";
+import {
+	ChannelType,
+	type JsonValue,
+	type Metadata,
+	type UUID,
+} from "./types/primitives.js";
 import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
 import type {
 	ExecutionTrace,
 	ScoreSignal,
 } from "./types/prompt-optimization-trace";
+import type { IAgentRuntime, RuntimeStopOptions } from "./types/runtime.js";
 import {
 	type SearchCategoryEnumerationOptions,
 	type SearchCategoryLookupOptions,
 	type SearchCategoryRegistration,
 	SearchCategoryRegistryError,
 } from "./types/search";
+import {
+	type Service,
+	ServiceType,
+	type ServiceTypeName,
+} from "./types/service.js";
+import type { RuntimeSettings } from "./types/settings.js";
+import type { State } from "./types/state.js";
+import type { Task, TaskWorker } from "./types/task.js";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
@@ -520,7 +539,7 @@ export class AgentRuntime implements IAgentRuntime {
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
 	// LLM mode option for overriding model selection (undefined means use settings)
-	private llmModeOption?: import("./types").LLMModeType;
+	private llmModeOption?: import("./types/model.js").LLMModeType;
 	// Check should respond option (undefined means use settings, defaults to true)
 	private checkShouldRespondOption?: boolean;
 
@@ -593,7 +612,7 @@ export class AgentRuntime implements IAgentRuntime {
 		 * This is useful for cost optimization (force SMALL) or quality (force LARGE).
 		 * While not recommended for production, it can be a fast way to make the agent run cheaper.
 		 */
-		llmMode?: import("./types").LLMModeType;
+		llmMode?: import("./types/model.js").LLMModeType;
 		/**
 		 * Enable or disable the shouldRespond evaluation.
 		 * When true (default), the agent evaluates whether to respond to each message.
@@ -2164,7 +2183,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 *
 	 * Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
 	 */
-	getLLMMode(): import("./types").LLMModeType {
+	getLLMMode(): import("./types/model.js").LLMModeType {
 		// Constructor option takes precedence
 		if (this.llmModeOption !== undefined) {
 			return this.llmModeOption;
@@ -2175,7 +2194,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (setting !== null && typeof setting === "string") {
 			const upper = setting.toUpperCase();
 			if (upper === "SMALL" || upper === "LARGE" || upper === "DEFAULT") {
-				return upper as import("./types").LLMModeType;
+				return upper as import("./types/model.js").LLMModeType;
 			}
 		}
 

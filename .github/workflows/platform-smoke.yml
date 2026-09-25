@@ -82,6 +82,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Link workspace packages
+        run: node packages/scripts/ensure-workspace-symlinks.ts
+
       - name: Build core
         run: bun run --cwd packages/core build
 

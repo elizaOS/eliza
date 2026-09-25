@@ -58,6 +58,14 @@ const PLUGINS_DIR = "plugins";
  */
 export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   [
+    "packages/scripts",
+    "Repository tooling tests are covered by root test:scripts and its fail-closed script-test inventory, which is also required by root test and test:all.",
+  ],
+  [
+    "packages/cloud/scripts",
+    "Cloud operation tests are covered by root test:scripts and its fail-closed script-test inventory, which is also required by root test and test:all.",
+  ],
+  [
     "packages/app/platforms/electrobun",
     "Native/macOS integration tests run through the package test command on their owning platform. These platform-specific suites are excluded from the shared Linux lane.",
   ],

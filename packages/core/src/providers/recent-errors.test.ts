@@ -12,7 +12,10 @@ import type { ReportedError } from "../errors";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
-import type { Character, IAgentRuntime, Memory, State } from "../types";
+import type { Character } from "../types/agent.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import {
 	isProviderThrottleReport,
 	QUIET_ERROR_CODES,

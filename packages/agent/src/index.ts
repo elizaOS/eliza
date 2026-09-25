@@ -8,10 +8,10 @@
  * than `export *` to dodge duplicate-symbol (TS2308) collisions and to keep
  * heavy plugins lazy-loaded — read the inline notes before widening any of them.
  */
-import {
-  type AgentCloudBillingRouteHandler,
-  type AgentCloudCompatRouteHandler,
-  type AgentCloudRouteHandler,
+import type {
+  AgentCloudBillingRouteHandler,
+  AgentCloudCompatRouteHandler,
+  AgentCloudRouteHandler,
 } from "./api/cloud-route-contracts.ts";
 
 export {
@@ -62,9 +62,9 @@ export async function validateCloudBaseUrl(
   return validateCloudBaseUrl(value);
 }
 export * from "@elizaos/auth/auth";
+export type { ElizaConfig, RolesConfig } from "@elizaos/core";
 export { CONNECTOR_PLUGINS } from "@elizaos/core/config/plugin-auto-enable-engine";
-export { type ElizaConfig, type RolesConfig } from "@elizaos/core/config/types";
-export { type ReleaseChannel } from "@elizaos/core/contracts/config";
+export type { ReleaseChannel } from "@elizaos/core/contracts/config";
 export {
   RESTART_EXIT_CODE,
   type RestartHandler,

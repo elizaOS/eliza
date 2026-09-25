@@ -92,7 +92,7 @@ export interface AppBootConfig {
   assetBaseUrl?: string;
   /** Apps starred and pinned by default when no user preference is saved. */
   defaultApps?: readonly string[];
-  /** API base URL — replaces window.__ELIZAOS_API_BASE__. */
+  /** API base URL supplied by the host. */
   apiBase?: string;
   /**
    * VAPID public key (base64url, uncompressed P-256 point) for Web Push

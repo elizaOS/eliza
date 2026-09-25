@@ -28,8 +28,8 @@ import type {
 	ActionParameterSchema,
 	ActionParameters,
 	ActionParameterValue,
-	JsonValue,
-} from "./types";
+} from "./types/components.js";
+import type { JsonValue } from "./types/primitives.js";
 import {
 	buildDeterministicSeed,
 	createDeterministicRandom,

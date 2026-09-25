@@ -4,17 +4,11 @@
 		"declarationDir": "./dist",
 		"rootDir": "./src",
 		"paths": {
-			"@elizaos/plugin-local-inference": ["./src/index.ts"],
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
-			"@elizaos/core": ["../../packages/core/dist/index.d.ts"],
 			"@elizaos/core/*": ["../../packages/core/dist/*"],
-			"@elizaos/plugin-native-inference/host-bridge": [
-				"../plugin-native-inference/dist/bridge.d.ts"
-			],
 			"@elizaos/plugin-native-inference/*": [
 				"../plugin-native-inference/dist/*"
 			],
-			"@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],
 			"@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"]
 		}
 	}

@@ -34,7 +34,7 @@ export function isEnvDisabled(value: string | undefined): boolean {
 	return raw === "0" || raw === "false" || raw === "off" || raw === "no";
 }
 
-import { resolveAliasedEnvValue } from "../config/boot-config.js";
+import { resolveAliasedEnvValue } from "../config/boot-config-store.js";
 import {
 	buildBrandEnvSyncAliases,
 	normalizeBrandEnvPrefix,
