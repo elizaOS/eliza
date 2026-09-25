@@ -11,7 +11,6 @@ import {
   getConnectorAccountManager,
   normalizeEffectReceipts,
 } from "@elizaos/core";
-import { CalendarRepository } from "@elizaos/plugin-calendar/service/CalendarRepository";
 import {
   judgeRubric,
   type ScenarioContext,
@@ -19,6 +18,7 @@ import {
   toRecord,
 } from "@elizaos/testing";
 import { z } from "zod";
+import { CalendarRepository } from "../../../../../plugin-calendar/src/service/CalendarRepository.ts";
 import { seedGoogleConnectorGrant } from "../../../support/helpers/seed-grants.ts";
 
 const beforeRows = new WeakMap<
@@ -72,7 +72,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "multi-account", "clarification"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-calendar/plugin"],
+    plugins: ["@elizaos/plugin-calendar"],
     services: ["calendar"],
   },
   mockoon: ["calendar"],
