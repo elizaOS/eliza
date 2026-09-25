@@ -103,6 +103,13 @@ class CameraPlugin : Plugin() {
     private var confirmedFocus: FocusSetting? = null
     private val manualFocusDistances = mutableMapOf<String, Float>()
     private var focusRequestId = 0L
+    private data class SensorExposure(val preset: String, val iso: Int? = null, val nanos: Long? = null)
+    private data class SensorObservation(val cameraId: String, val capture: TotalCaptureResult, val sequence: Long)
+    private var observedSensor: SensorObservation? = null
+    private var sensorSequence = 0L
+    private var confirmedSensor: SensorExposure? = null
+    private var sensorRequestId = 0L
+    private val sensorDelivery = Handler(Looper.getMainLooper())
 
     private val frameDelivery = Handler(Looper.getMainLooper())
     private var previewEpoch = 0L
@@ -334,6 +341,7 @@ class CameraPlugin : Plugin() {
         frameDelivery.removeCallbacksAndMessages(null)
         lastFrameEventNanos = 0L
         observedFocus = null
+        observedSensor = null
 
         recordingSession?.let { session ->
             session.stopping = true
@@ -420,6 +428,7 @@ class CameraPlugin : Plugin() {
                 validateZoom(targetInfo, (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
                 validateFlash(targetInfo, currentSettings["flash"] as? String ?: "off")
                 preflightFocus(targetInfo)
+                confirmedSensor?.let { validateSensorExposure(targetInfo, it) }
                 currentDirection = direction
                 currentCameraSelector = targetSelector
 
@@ -925,7 +934,7 @@ class CameraPlugin : Plugin() {
             return
         }
 
-        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom") || settings.has("flash") || settings.has("focusMode")) {
+        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom") || settings.has("flash") || settings.has("focusMode") || settings.has("exposureMode") || settings.has("iso") || settings.has("shutterSpeed")) {
             withActiveCamera(call) { owner ->
                 val preset = if (settings.has("whiteBalance")) settings.getString("whiteBalance") else null
                 if (preset != null && !supportsWhiteBalance(owner.cameraInfo, preset)) {
@@ -938,11 +947,19 @@ class CameraPlugin : Plugin() {
                 val zoom = if (settings.has("zoom")) settings.getDouble("zoom").toFloat().also { validateZoom(owner.cameraInfo, it) } else null
                 val flash = if (settings.has("flash")) settings.getString("flash").also { validateFlash(owner.cameraInfo, it) } else null
                 val focus = if (settings.has("focusMode")) planFocus(owner.cameraInfo, settings.getString("focusMode")) else null
+                val sensor = if (settings.has("exposureMode") || settings.has("iso") || settings.has("shutterSpeed")) planSensorExposure(owner.cameraInfo, settings) else null
+                validateExposureCombination(sensor ?: confirmedSensor, flash ?: currentSettings["flash"] as? String ?: "off", requestedEv ?: requestedExposureEv)
                 val epoch = previewEpoch
                 val failed: (Exception) -> Unit = { error -> call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error) }
                 fun complete() {
-                    applySettingsValues(settings)
-                    call.resolve()
+                    if (sensor == null) {
+                        applySettingsValues(settings)
+                        call.resolve()
+                    } else applySensorExposure(owner, epoch, sensor, { applied ->
+                        confirmSensorExposure(applied, sensor)
+                        applySettingsValues(settings)
+                        call.resolve()
+                    }, failed)
                 }
                 fun applyBatchFocus() {
                     if (focus == null) complete()
@@ -967,12 +984,34 @@ class CameraPlugin : Plugin() {
                     }, failed)
                 }
                 fun applyExposure() {
-                    if (exposure == null) applyBatchZoom()
-                    else awaitCameraControl(owner, epoch, owner.cameraControl.setExposureCompensationIndex(exposure.index), {
-                        requestedExposureEv = requireNotNull(requestedEv)
-                        currentSettings["exposureCompensation"] = exposure.appliedEv
+                    if (exposure == null) {
                         applyBatchZoom()
-                    }, failed)
+                        return
+                    }
+                    fun submitEv() {
+                        awaitCameraControl(owner, epoch, owner.cameraControl.setExposureCompensationIndex(exposure.index), {
+                            requestedExposureEv = requireNotNull(requestedEv)
+                            currentSettings["exposureCompensation"] = exposure.appliedEv
+                            applyBatchZoom()
+                        }, failed)
+                    }
+                    val manual = confirmedSensor?.takeIf { it.preset == "manual" }
+                    if (manual == null) submitEv()
+                    else {
+                        // CameraX's EV future requires an automatic AE state; it
+                        // never completes while manual sensor AE is inactive.
+                        val policy = if (sensor != null && sensor.preset != "manual") SensorExposure("continuous") else manual
+                        applySensorExposure(owner, epoch, policy, { applied ->
+                            confirmSensorExposure(applied, policy)
+                            if (policy.preset != "manual") submitEv()
+                            else {
+                                // Preflight permits only the neutral EV request
+                                // here. It is already confirmed and has no effect with AE off.
+                                check(exposure.index == 0 && requestedExposureEv == 0.0)
+                                applyBatchZoom()
+                            }
+                        }, failed)
+                    }
                 }
                 if (preset == null) applyExposure()
                 else awaitCameraControl(owner, epoch, whiteBalanceFuture(owner, preset), {
@@ -988,7 +1027,7 @@ class CameraPlugin : Plugin() {
 
     private fun applySettingsValues(settings: org.json.JSONObject) {
         settings.keys().forEach { key ->
-            if (key !in setOf("exposureCompensation", "zoom", "flash", "focusMode")) currentSettings[key] = settings.get(key)
+            if (key !in setOf("exposureCompensation", "zoom", "flash", "focusMode", "exposureMode", "iso", "shutterSpeed")) currentSettings[key] = settings.get(key)
         }
 
     }
@@ -1061,7 +1100,12 @@ class CameraPlugin : Plugin() {
                                     applyFocus(owner, epoch, focus, {
                                         if (confirmedFocus != null) confirmFocus(owner.cameraInfo, focus)
                                         currentSettings["focusMode"] = focus.preset
-                                        ready()
+                                        val sensor = confirmedSensor
+                                        if (sensor == null) ready()
+                                        else applySensorExposure(owner, epoch, sensor, { applied ->
+                                            confirmSensorExposure(applied, sensor)
+                                            ready()
+                                        }, failed)
                                     }, failed)
                                 }, failed)
                             }, failed)
@@ -1169,17 +1213,7 @@ class CameraPlugin : Plugin() {
         // Release only our AF override first; keeping it would prevent that
         // future from completing. Preserve white balance and other interop keys.
         val interop = Camera2CameraControl.from(owner.cameraControl)
-        val current = interop.captureRequestOptions
-        // These are the other request options owned by this plugin. Rebuild via
-        // public option getters; Builder.from(Config) is CameraX-library-only.
-        val released = CaptureRequestOptions.Builder().apply {
-            current.getCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE)?.let {
-                setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, it)
-            }
-            current.getCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)?.let {
-                setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, it)
-            }
-        }.build()
+        val released = retainedCaptureOptions(interop.captureRequestOptions, omitFocus = true).build()
         awaitCameraControl(owner, epoch, interop.setCaptureRequestOptions(released), {
             check(requestId == focusRequestId) { "A newer focus request superseded this release" }
             awaitCameraControl(owner, epoch, owner.cameraControl.cancelFocusAndMetering(), {
@@ -1194,6 +1228,135 @@ class CameraPlugin : Plugin() {
                     } else ready()
                 }, failed)
             }, failed)
+        }, failed)
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun retainedCaptureOptions(current: CaptureRequestOptions, omitFocus: Boolean = false, omitSensor: Boolean = false): CaptureRequestOptions.Builder {
+        val builder = CaptureRequestOptions.Builder()
+        fun <T> copy(key: CaptureRequest.Key<T>) {
+            current.getCaptureRequestOption(key)?.let { builder.setCaptureRequestOption(key, it) }
+        }
+        copy(CaptureRequest.CONTROL_AWB_MODE)
+        if (!omitFocus) copy(CaptureRequest.CONTROL_AF_MODE)
+        copy(CaptureRequest.LENS_FOCUS_DISTANCE)
+        if (!omitSensor) {
+            copy(CaptureRequest.CONTROL_AE_MODE)
+            copy(CaptureRequest.CONTROL_AE_LOCK)
+            copy(CaptureRequest.SENSOR_SENSITIVITY)
+            copy(CaptureRequest.SENSOR_EXPOSURE_TIME)
+        }
+        return builder
+    }
+
+    private fun validateExposureCombination(sensor: SensorExposure?, flash: String, ev: Double) {
+        if (sensor?.preset == "manual" && (flash in setOf("on", "auto") || ev != 0.0)) {
+            throw CameraSettingException("EXPOSURE_CONFLICT", "Manual exposure requires zero exposure compensation and flash off or torch")
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun validateSensorExposure(info: CameraInfo, sensor: SensorExposure) {
+        val details = Camera2CameraInfo.from(info)
+        if (sensor.preset == "manual") {
+            val capabilities = details.getCameraCharacteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
+            val modes = details.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES) ?: intArrayOf()
+            if (CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR !in capabilities || CaptureRequest.CONTROL_AE_MODE_OFF !in modes) {
+                throw CameraSettingException("EXPOSURE_UNSUPPORTED", "This camera does not support manual sensor exposure")
+            }
+            val isoRange = details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+            val timeRange = details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+            if (isoRange == null || timeRange == null) throw CameraSettingException("EXPOSURE_UNSUPPORTED", "This camera does not report manual sensor ranges")
+            if (sensor.iso != null && !isoRange.contains(sensor.iso) || sensor.nanos != null && !timeRange.contains(sensor.nanos)) {
+                throw CameraSettingException("EXPOSURE_OUT_OF_RANGE", "ISO or shutter speed is outside this camera's supported range")
+            }
+        } else if (sensor.preset == "auto" && details.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE) != true) {
+            throw CameraSettingException("EXPOSURE_UNSUPPORTED", "This camera does not support single-shot exposure locking")
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun planSensorExposure(info: CameraInfo, settings: org.json.JSONObject): SensorExposure {
+        val hasValues = settings.has("iso") || settings.has("shutterSpeed")
+        val preset = if (settings.has("exposureMode")) settings.getString("exposureMode") else if (hasValues) "manual" else "continuous"
+        if (hasValues && preset != "manual") throw CameraSettingException("EXPOSURE_CONFLICT", "ISO and shutter speed require manual exposure")
+        validateSensorExposure(info, SensorExposure(preset))
+        if (preset != "manual") return SensorExposure(preset)
+        val observed = observedSensor?.takeIf { it.cameraId == Camera2CameraInfo.from(info).cameraId }?.capture
+        val iso = if (settings.has("iso")) settings.getInt("iso") else observed?.get(CaptureResult.SENSOR_SENSITIVITY)
+        val nanos = if (settings.has("shutterSpeed")) (settings.getDouble("shutterSpeed") * 1e9).toLong() else observed?.get(CaptureResult.SENSOR_EXPOSURE_TIME)
+        if (iso == null || nanos == null) throw CameraSettingException("CAMERA_NOT_READY", "Completed sensor metadata is required before locking exposure")
+        return SensorExposure(preset, iso, nanos).also { validateSensorExposure(info, it) }
+    }
+
+    private fun confirmSensorExposure(sensor: SensorExposure, requested: SensorExposure = sensor) {
+        // Preserve the confirmed request across cameras; repeatedly restoring
+        // quantized sensor results would accumulate rounding drift.
+        confirmedSensor = requested
+        currentSettings["exposureMode"] = sensor.preset
+        if (sensor.preset == "manual") {
+            currentSettings["iso"] = requireNotNull(sensor.iso)
+            currentSettings["shutterSpeed"] = requireNotNull(sensor.nanos) / 1e9
+        } else {
+            currentSettings.remove("iso")
+            currentSettings.remove("shutterSpeed")
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun applySensorExposure(owner: Camera, epoch: Long, sensor: SensorExposure, ready: (SensorExposure) -> Unit, failed: (Exception) -> Unit) {
+        validateSensorExposure(owner.cameraInfo, sensor)
+        val requestId = ++sensorRequestId
+        val interop = Camera2CameraControl.from(owner.cameraControl)
+        val options = retainedCaptureOptions(interop.captureRequestOptions, omitSensor = true)
+            .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, false)
+        if (sensor.preset == "manual") {
+            options.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                .setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, requireNotNull(sensor.iso))
+                .setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, requireNotNull(sensor.nanos))
+        }
+        fun ownsRequest() = !destroyed && camera === owner && previewEpoch == epoch && sensorRequestId == requestId
+        fun awaitCapture(locked: Boolean) {
+            val after = sensorSequence
+            val deadline = SystemClock.elapsedRealtime() + 15000L + (sensor.nanos ?: 0L) / 1_000_000L
+            val poll = object : Runnable {
+                override fun run() {
+                    try {
+                        check(ownsRequest()) { "Camera changed before exposure completed" }
+                        val observation = observedSensor
+                        val result = observation?.capture
+                        val fresh = observation != null && observation.sequence > after && observation.cameraId == Camera2CameraInfo.from(owner.cameraInfo).cameraId
+                        val aeMode = result?.get(CaptureResult.CONTROL_AE_MODE)
+                        val aeState = result?.get(CaptureResult.CONTROL_AE_STATE)
+                        val applied = fresh && when {
+                            sensor.preset == "manual" -> aeMode == CaptureResult.CONTROL_AE_MODE_OFF &&
+                                result?.request?.get(CaptureRequest.SENSOR_SENSITIVITY) == sensor.iso &&
+                                result?.request?.get(CaptureRequest.SENSOR_EXPOSURE_TIME) == sensor.nanos &&
+                                result?.get(CaptureResult.SENSOR_SENSITIVITY) != null && result.get(CaptureResult.SENSOR_EXPOSURE_TIME) != null
+                            locked -> result?.get(CaptureResult.CONTROL_AE_LOCK) == true && aeState == CaptureResult.CONTROL_AE_STATE_LOCKED
+                            sensor.preset == "auto" -> aeMode != null && aeMode != CaptureResult.CONTROL_AE_MODE_OFF && aeState in setOf(CaptureResult.CONTROL_AE_STATE_CONVERGED, CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED)
+                            else -> aeMode != null && aeMode != CaptureResult.CONTROL_AE_MODE_OFF && result?.get(CaptureResult.CONTROL_AE_LOCK) != true
+                        }
+                        if (applied) {
+                            if (sensor.preset == "auto" && !locked) {
+                                awaitCameraControl(owner, epoch, interop.addCaptureRequestOptions(CaptureRequestOptions.Builder()
+                                    .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, true).build()), { awaitCapture(true) }, failed)
+                            } else if (sensor.preset == "manual") {
+                                ready(SensorExposure("manual", result!!.get(CaptureResult.SENSOR_SENSITIVITY), result.get(CaptureResult.SENSOR_EXPOSURE_TIME)))
+                            } else ready(sensor)
+                        } else {
+                            check(SystemClock.elapsedRealtime() < deadline) { "Timed out waiting for completed exposure metadata" }
+                            // Keep the cancellation check alive when preview frame callbacks are removed.
+                            sensorDelivery.postDelayed(this, 20)
+                        }
+                    } catch (error: Exception) { failed(error) }
+                }
+            }
+            poll.run()
+        }
+        awaitCameraControl(owner, epoch, interop.setCaptureRequestOptions(options.build()), {
+            check(ownsRequest()) { "A newer exposure request superseded this mode" }
+            awaitCapture(false)
         }, failed)
     }
 
@@ -1266,8 +1429,16 @@ class CameraPlugin : Plugin() {
                         call.resolve()
                     }, failed)
                 }, failed, triggerAuto = false)
-            } else settleCameraControl(call, owner, owner.cameraControl.startFocusAndMetering(action)) {
-                currentSettings[setting] = "manual"
+            } else {
+                val epoch = previewEpoch
+                val failed: (Exception) -> Unit = { error -> call.reject("Camera exposure metering failed", "CAMERA_CONTROL_FAILED", error) }
+                // A metering region belongs to automatic exposure, not manual sensor control.
+                applySensorExposure(owner, epoch, SensorExposure("continuous"), { applied ->
+                    confirmSensorExposure(applied)
+                    awaitCameraControl(owner, epoch, owner.cameraControl.startFocusAndMetering(action), {
+                        call.resolve()
+                    }, failed)
+                }, failed)
             }
         }
     }
@@ -1337,6 +1508,10 @@ class CameraPlugin : Plugin() {
     }
 
     private fun restoreExposure(owner: Camera, epoch: Long, ready: () -> Unit, failed: (Exception) -> Unit) {
+        if (confirmedSensor?.preset == "manual") {
+            ready()
+            return
+        }
         // Zero is the default on cameras without adjustable compensation. This
         // does not turn an explicit unsupported user request into success.
         if (!owner.cameraInfo.exposureState.isExposureCompensationSupported && requestedExposureEv == 0.0) {
@@ -1400,6 +1575,7 @@ class CameraPlugin : Plugin() {
                     result.get(CaptureResult.LENS_FOCUS_DISTANCE)?.let { distance ->
                         if (distance.isFinite()) observedFocus = FocusObservation(session.device.id, distance)
                     }
+                    observedSensor = SensorObservation(session.device.id, result, ++sensorSequence)
                     if (!hasListeners("frame")) return@post
                     val resolution = preview?.resolutionInfo?.resolution ?: return@post
                     val now = SystemClock.elapsedRealtimeNanos()

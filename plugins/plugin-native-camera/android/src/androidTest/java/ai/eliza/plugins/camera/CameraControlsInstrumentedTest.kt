@@ -600,6 +600,217 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun manualExposureReachesSensorAndSurvivesFocusAndRestart() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val info = cameraInfo()
+            val details = Camera2CameraInfo.from(info)
+            val capabilities = details.getCameraCharacteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
+            try {
+                CaptureProbe(info).use { probe ->
+                    awaitState("Need completed sensor metadata") { probe.latest.get()?.get(CaptureResult.SENSOR_SENSITIVITY) != null }
+                    if (CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR !in capabilities) {
+                        val result = call(scenario, "setSettings", "{settings:{exposureMode:'manual'}}")
+                        receipts.put(JSONObject().put("manualSensorSupported", false).put("result", result))
+                        assertFalse("Unsupported manual exposure must reject", result.getBoolean("ok"))
+                        assertEquals("EXPOSURE_UNSUPPORTED", result.getString("code"))
+                    } else {
+                        val isoRange = requireNotNull(details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE))
+                        val timeRange = requireNotNull(details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE))
+                        var iso = (isoRange.lower + (isoRange.upper - isoRange.lower) / 4)
+                        var nanos = 10_000_000L.coerceIn(timeRange.lower, timeRange.upper)
+                        fun inspect(stage: String, captureProbe: CaptureProbe = probe) {
+                            val count = captureProbe.frames.get()
+                            val receipt = JSONObject().put("stage", stage).put("requestedIso", iso).put("requestedNanos", nanos)
+                            receipts.put(receipt)
+                            try {
+                                awaitState("Manual exposure must reach completed sensor captures at $stage") {
+                                    val result = captureProbe.latest.get()
+                                    captureProbe.frames.get() >= count + 3 && result?.get(CaptureResult.CONTROL_AE_MODE) == CaptureResult.CONTROL_AE_MODE_OFF &&
+                                        result.get(CaptureResult.SENSOR_SENSITIVITY) == iso && result.get(CaptureResult.SENSOR_EXPOSURE_TIME) == nanos
+                                }
+                            } finally {
+                                receipt.put("actualAeMode", captureProbe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE))
+                                    .put("actualIso", captureProbe.latest.get()?.get(CaptureResult.SENSOR_SENSITIVITY))
+                                    .put("actualNanos", captureProbe.latest.get()?.get(CaptureResult.SENSOR_EXPOSURE_TIME))
+                            }
+                            val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                            assertEquals("manual", settings.getString("exposureMode"))
+                            assertEquals(iso, settings.getInt("iso"))
+                            assertEquals(nanos / 1e9, settings.getDouble("shutterSpeed"), 0.000000001)
+                        }
+                        val result = call(scenario, "setSettings", "{settings:{exposureMode:'manual',iso:$iso,shutterSpeed:${nanos / 1e9}}}")
+                        receipts.put(JSONObject().put("manualSensorSupported", true).put("result", result))
+                        assertTrue("Manual exposure failed: $result", result.getBoolean("ok"))
+                        inspect("selected")
+                        assertTrue(call(scenario, "setSettings", "{settings:{focusMode:'manual'}}").getBoolean("ok"))
+                        inspect("focus-changed")
+                        assertTrue(call(scenario, "stopPreview").getBoolean("ok"))
+                        preview(scenario)
+                        inspect("preview-restarted")
+                        iso = isoRange.lower
+                        assertTrue(call(scenario, "setSettings", "{settings:{iso:$iso}}").getBoolean("ok"))
+                        inspect("iso-only")
+                        val zeroEv = call(scenario, "setSettings", "{settings:{exposureCompensation:0}}")
+                        assertTrue("Zero EV must settle while manual exposure is active: $zeroEv", zeroEv.getBoolean("ok"))
+                        inspect("manual-zero-ev")
+                        if (info.hasFlashUnit()) {
+                            assertTrue(call(scenario, "setSettings", "{settings:{flash:'torch'}}").getBoolean("ok"))
+                            inspect("manual-torch")
+                            assertEquals(CaptureResult.FLASH_MODE_TORCH, probe.latest.get()?.get(CaptureResult.FLASH_MODE))
+                            assertTrue(call(scenario, "setSettings", "{settings:{flash:'off'}}").getBoolean("ok"))
+                        }
+                        nanos = 20_000_000L.coerceIn(timeRange.lower, timeRange.upper)
+                        assertTrue(call(scenario, "setSettings", "{settings:{shutterSpeed:${nanos / 1e9}}}").getBoolean("ok"))
+                        inspect("shutter-only")
+                        assertTrue(call(scenario, "setSettings", "{settings:{exposureMode:'manual'}}").getBoolean("ok"))
+                        inspect("lock-observed")
+                        assertTrue(call(scenario, "startRecording", "{audio:false,quality:'low'}").getBoolean("ok"))
+                        try {
+                            inspect("recording")
+                            awaitState("Manual-exposure video must contain encoded media") {
+                                val state = call(scenario, "getRecordingState").getJSONObject("value")
+                                state.getLong("fileSize") > 0 && state.getDouble("duration") > 0
+                            }
+                        } finally {
+                            val stopped = call(scenario, "stopRecording")
+                            assertTrue(stopped.toString(), stopped.getBoolean("ok"))
+                            val file = java.io.File(requireNotNull(android.net.Uri.parse(stopped.getJSONObject("value").getString("path")).path))
+                            assertEquals(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.canonicalFile, file.canonicalFile.parentFile)
+                            assertTrue(file.delete())
+                        }
+                        val front = cameraInfo(CameraSelector.DEFAULT_FRONT_CAMERA)
+                        val frontDetails = Camera2CameraInfo.from(front)
+                        val frontSupports = CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in
+                            (frontDetails.getCameraCharacteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()) &&
+                            frontDetails.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.contains(iso) == true &&
+                            frontDetails.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.contains(nanos) == true
+                        CaptureProbe(front).use { frontProbe ->
+                            val switched = call(scenario, "switchCamera", "{direction:'front'}")
+                            receipts.put(JSONObject().put("stage", "switch").put("supported", frontSupports).put("result", switched))
+                            if (frontSupports) {
+                                assertTrue(switched.toString(), switched.getBoolean("ok"))
+                                inspect("front", frontProbe)
+                                assertTrue(call(scenario, "switchCamera", "{direction:'back'}").getBoolean("ok"))
+                                inspect("back")
+                            } else assertFalse("Unsupported target must reject before unbinding", switched.getBoolean("ok"))
+                        }
+                        val ev = if (info.exposureState.isExposureCompensationSupported) info.exposureState.exposureCompensationStep.toDouble() else null
+                        val automaticOptions = if (ev == null) "{settings:{exposureMode:'continuous'}}" else "{settings:{exposureMode:'continuous',exposureCompensation:$ev}}"
+                        val automatic = call(scenario, "setSettings", automaticOptions)
+                        assertTrue("Leaving manual mode with EV must settle: $automatic", automatic.getBoolean("ok"))
+                        val count = probe.frames.get()
+                        awaitState("Continuous exposure must release manual sensor override") {
+                            probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE) == CaptureResult.CONTROL_AE_MODE_ON
+                        }
+                        receipts.put(JSONObject().put("stage", "continuous").put("actualAeMode", probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE)))
+                        if (ev != null) assertTrue(call(scenario, "setSettings", "{settings:{exposureCompensation:0}}").getBoolean("ok"))
+                        assertTrue(call(scenario, "setSettings", "{settings:{iso:$iso,shutterSpeed:${nanos / 1e9}}}").getBoolean("ok"))
+                        inspect("implicit-manual")
+                        val point = call(scenario, "setExposurePoint", "{x:0.25,y:0.75}")
+                        assertTrue(point.toString(), point.getBoolean("ok"))
+                        val pointCount = probe.frames.get()
+                        awaitState("Exposure point must exit manual mode") {
+                            probe.frames.get() >= pointCount + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE) == CaptureResult.CONTROL_AE_MODE_ON &&
+                                probe.latest.get()?.get(CaptureResult.CONTROL_AE_REGIONS)?.any { it.meteringWeight > 0 } == true
+                        }
+                        assertEquals("continuous", call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("exposureMode"))
+                        receipts.put(JSONObject().put("stage", "exposure-point").put("result", point).put("actualAeMode", probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE)))
+                    }
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-manual-exposure.json", receipts)
+            }
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun exposureBatchesRejectRangeAndModeConflictsBeforeMutation() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val details = Camera2CameraInfo.from(cameraInfo())
+            val isoRange = details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+            val timeRange = details.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+            val capabilities = details.getCameraCharacteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
+            try {
+                CaptureProbe(cameraInfo()).use { probe ->
+                    awaitState("Need native exposure metadata") { probe.latest.get() != null }
+                    val manualSupported = CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in capabilities
+                    val cases = mutableListOf("{whiteBalance:'daylight',exposureMode:'continuous',iso:100}" to "EXPOSURE_CONFLICT")
+                    if (manualSupported) {
+                        cases.add("{whiteBalance:'daylight',iso:${requireNotNull(isoRange).upper.toLong() + 1}}" to "EXPOSURE_OUT_OF_RANGE")
+                        cases.add("{whiteBalance:'daylight',shutterSpeed:${requireNotNull(timeRange).upper / 1e9 + 1.0}}" to "EXPOSURE_OUT_OF_RANGE")
+                        cases.add("{whiteBalance:'daylight',exposureMode:'manual',exposureCompensation:0.25}" to "EXPOSURE_CONFLICT")
+                        if (cameraInfo().hasFlashUnit()) cases.add("{whiteBalance:'daylight',exposureMode:'manual',flash:'auto'}" to "EXPOSURE_CONFLICT")
+                    }
+                    val baseline = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").toString()
+                    val beforeAwb = probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE)
+                    for ((settings, code) in cases) {
+                        val result = call(scenario, "setSettings", "{settings:$settings}")
+                        receipts.put(JSONObject().put("settings", settings).put("result", result))
+                        assertFalse(result.toString(), result.getBoolean("ok"))
+                        assertEquals(code, result.getString("code"))
+                        assertEquals(baseline, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").toString())
+                        val count = probe.frames.get()
+                        awaitState("Need captures after rejected batch") { probe.frames.get() >= count + 3 }
+                        assertEquals(beforeAwb, probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
+                    }
+                }
+            } finally { call(scenario, "stopPreview"); emit("camera-sensor-preflight.json", receipts) }
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun singleShotExposureLocksAfterConvergence_andContinuousReleasesLock() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val supportsLock = Camera2CameraInfo.from(cameraInfo()).getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE) == true
+            try {
+                CaptureProbe(cameraInfo()).use { probe ->
+                    val result = call(scenario, "setSettings", "{settings:{exposureMode:'auto'}}")
+                    receipts.put(JSONObject().put("supportsLock", supportsLock).put("result", result))
+                    if (!supportsLock) {
+                        assertFalse(result.getBoolean("ok")); assertEquals("EXPOSURE_UNSUPPORTED", result.getString("code"))
+                    } else {
+                        assertTrue(result.toString(), result.getBoolean("ok"))
+                        val count = probe.frames.get()
+                        awaitState("Single shot exposure must be locked") {
+                            probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK) == true
+                        }
+                        receipts.put(JSONObject().put("stage", "auto").put("aeMode", probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE))
+                            .put("aeLock", probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK)).put("aeState", probe.latest.get()?.get(CaptureResult.CONTROL_AE_STATE)))
+                        assertEquals(CaptureResult.CONTROL_AE_STATE_LOCKED, probe.latest.get()?.get(CaptureResult.CONTROL_AE_STATE))
+                        assertTrue(call(scenario, "setSettings", "{settings:{focusMode:'manual'}}").getBoolean("ok"))
+                        val focusCount = probe.frames.get()
+                        awaitState("Changing focus must retain the exposure lock") {
+                            probe.frames.get() >= focusCount + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK) == true
+                        }
+                        assertTrue(call(scenario, "stopPreview").getBoolean("ok"))
+                        preview(scenario)
+                        val restartedCount = probe.frames.get()
+                        awaitState("Single-shot exposure must converge and lock again after restart") {
+                            probe.frames.get() >= restartedCount + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK) == true &&
+                                probe.latest.get()?.get(CaptureResult.CONTROL_AE_STATE) == CaptureResult.CONTROL_AE_STATE_LOCKED
+                        }
+                        receipts.put(JSONObject().put("stage", "restarted").put("aeLock", probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK))
+                            .put("aeState", probe.latest.get()?.get(CaptureResult.CONTROL_AE_STATE)))
+                        assertTrue(call(scenario, "setSettings", "{settings:{exposureMode:'continuous'}}").getBoolean("ok"))
+                        val continuousCount = probe.frames.get()
+                        awaitState("Continuous exposure must unlock") {
+                            probe.frames.get() >= continuousCount + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK) == false
+                        }
+                        receipts.put(JSONObject().put("stage", "continuous").put("aeLock", probe.latest.get()?.get(CaptureResult.CONTROL_AE_LOCK)))
+                    }
+                }
+            } finally { call(scenario, "stopPreview"); emit("camera-auto-exposure.json", receipts) }
+        }
+    }
+
     @Test fun flashSettingsRequireActiveCameraWithoutChangingCache() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
@@ -712,7 +923,7 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
             try {
-                for ((method, options) in listOf("setSettings" to "{settings:{focusMode:'manual'}}", "setZoom" to "{zoom:1}", "setSettings" to "{settings:{zoom:1}}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
+                for ((method, options) in listOf("setSettings" to "{settings:{iso:100}}", "setSettings" to "{settings:{shutterSpeed:0.01}}", "setSettings" to "{settings:{exposureMode:'manual'}}", "setSettings" to "{settings:{focusMode:'manual'}}", "setZoom" to "{zoom:1}", "setSettings" to "{settings:{zoom:1}}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
                     val result = call(scenario, method, options)
                     receipts.put(JSONObject().put("method", method).put("result", result))
                     assertFalse("Inactive $method must reject", result.getBoolean("ok"))
@@ -939,6 +1150,57 @@ class CameraControlsInstrumentedTest {
                 .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
         }
     }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun stoppingPreviewRejectsPendingSensorExposure_withoutRetainingManualMode() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("exposureMode")
+            val supported = CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in (Camera2CameraInfo.from(cameraInfo()).getCameraCharacteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf())
+            val target = "manual"
+            val settled = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val settlements = AtomicInteger()
+            var rejectedCode: String? = null
+            var resolved = false
+            val pending = object : PluginCall(null, "ElizaCamera", "pending-metering", "setSettings",
+                JSObject().put("settings", JSObject().put("exposureMode", target).put("iso", 100).put("shutterSpeed", 0.01))) {
+                override fun resolve() { resolved = true; settlements.incrementAndGet(); settled.countDown() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    rejectedCode = code; settlements.incrementAndGet(); settled.countDown()
+                }
+            }
+            val stopping = object : PluginCall(null, "ElizaCamera", "stop-metering", "stopPreview", JSObject()) {
+                override fun resolve() { stopped.countDown() }
+            }
+            // One UI dispatch guarantees stop runs before the completion listener.
+            // Only reply transport is intercepted; CameraX and plugin lifecycle are real.
+            scenario.onActivity { activity ->
+                val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                plugin.setSettings(pending)
+                plugin.stopPreview(stopping)
+            }
+            assertTrue("Stop did not settle", stopped.await(10, TimeUnit.SECONDS))
+            assertTrue("Pending metering did not settle", settled.await(10, TimeUnit.SECONDS))
+            assertFalse("Cancelled control cannot report success", resolved)
+            val expectedCodes = if (supported) setOf("CAMERA_INACTIVE", "CAMERA_CONTROL_FAILED") else setOf("EXPOSURE_UNSUPPORTED")
+            assertTrue("Expected lifecycle/camera cancellation: $rejectedCode", rejectedCode in expectedCodes)
+            assertEquals(1, settlements.get())
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("exposureMode")
+            assertEquals("Cancelled operation must not update settings", before, after)
+            preview(scenario)
+            assertEquals("continuous", call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("exposureMode"))
+            CaptureProbe(cameraInfo()).use { probe ->
+                awaitState("Cancelled manual exposure must not be restored") { probe.latest.get()?.get(CaptureResult.CONTROL_AE_MODE) == CaptureResult.CONTROL_AE_MODE_ON }
+            }
+            call(scenario, "stopPreview")
+            emit("camera-sensor-cancellation.json", JSONArray().put(JSONObject()
+                .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
+                .put("manualSensorSupported", supported).put("requestedMode", target).put("beforeMode", before).put("afterMode", after)
+                .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
+        }
+    }
+
 
     @Test fun stoppingPreviewRejectsPendingFlash_withoutRetainingTorch() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->

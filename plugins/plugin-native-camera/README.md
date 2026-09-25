@@ -36,7 +36,7 @@ and do not certify optical focus quality on a physical camera.
 Android settings batches reject unknown keys, malformed values and numeric
 overflow before changing cached or native state. This boundary validation does
 not certify that all valid settings are applied; full batch completion and
-manual-setting effects still require native verification.
+concurrent batch effects still require native verification.
 
 White-balance presets require an active Android preview and device support.
 Their promises settle from native Camera2 capture completion; confirmed presets
@@ -70,3 +70,13 @@ Point focus exits manual lock and reports auto. Confirmed policies
 survive rebinds; manual distances belong to each camera and fixed-focus defaults
 adapt to device support. Native metadata tests do not certify physical sharpness
 or lens calibration.
+
+Android exposure mode, ISO and shutter speed require a ready preview. Manual
+mode uses the current observed sensor values for omitted fields; specifying ISO
+or shutter speed selects manual mode. Device ranges and incompatible automatic
+flash/nonzero EV combinations reject before batch mutation. Continuous mode
+releases manual control; auto waits for convergence and locks exposure. Settings
+report completed sensor values, including hardware quantization. Focus changes
+retain sensor options, and rebinds restore confirmed exposure. Exposure-point
+metering returns to continuous exposure. Device tests check sensor metadata,
+lifecycle retention and cancellation; physical exposure quality remains unqualified.
