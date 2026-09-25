@@ -227,6 +227,7 @@ class CameraControlsInstrumentedTest {
             val frontZoom = requireNotNull(front.zoomState.value)
             val requestedZoom = (maxOf(backZoom.minZoomRatio, frontZoom.minZoomRatio) + minOf(backZoom.maxZoomRatio, frontZoom.maxZoomRatio)) / 2
             var requestedFlash = if (back.hasFlashUnit()) "torch" else "off"
+            val lockedDistances = mutableMapOf<String, Float>()
             fun observed(probe: CaptureProbe, info: CameraInfo, stage: String) {
                 val sensor = requireNotNull(Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE))
                 fun captureZoom(): Double? {
@@ -240,7 +241,8 @@ class CameraControlsInstrumentedTest {
                 val count = probe.frames.get()
                 awaitState("$stage must retain $preset in new captures") {
                     val exposureIndex = probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)
-                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.FLASH_MODE) == (if(requestedFlash == "torch") CaptureResult.FLASH_MODE_TORCH else CaptureResult.FLASH_MODE_OFF) &&
+                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE) == CaptureResult.CONTROL_AF_MODE_OFF &&
+                        probe.latest.get()?.get(CaptureResult.FLASH_MODE) == (if(requestedFlash == "torch") CaptureResult.FLASH_MODE_TORCH else CaptureResult.FLASH_MODE_OFF) &&
                         kotlin.math.abs((captureZoom() ?: 0.0) - requestedZoom) < 0.03 &&
                         probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode &&
                         (requestedEv == null || (exposureIndex != null && kotlin.math.abs(exposureIndex * step - requestedEv) <= step / 2 + 0.000001))
@@ -248,10 +250,17 @@ class CameraControlsInstrumentedTest {
                 receipts.put(JSONObject().put("stage", stage).put("preset", preset)
                     .put("actualCamera2Mode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
                     .put("newCaptures", probe.frames.get() - count)
+                    .put("capturedAfMode", probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE))
+                    .put("capturedFocusDistance", probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE))
+                    .put("maximumFocusDistance", Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE))
                     .put("requestedFlash", requestedFlash).put("capturedFlashMode", probe.latest.get()?.get(CaptureResult.FLASH_MODE))
                     .put("requestedZoom", requestedZoom.toDouble()).put("capturedZoom", captureZoom())
                     .put("requestedEv", requestedEv ?: JSONObject.NULL)
                     .put("actualExposureIndex", probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)))
+                val distance = requireNotNull(probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE))
+                val cameraId = Camera2CameraInfo.from(info).cameraId
+                val locked = lockedDistances.getOrPut(cameraId) { distance }
+                assertEquals("Each lens retains its own manual distance", locked.toDouble(), distance.toDouble(), 0.001)
                 assertEquals(requestedZoom.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.001)
                 assertEquals(requestedZoom.toDouble(), call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("zoom"), 0.001)
                 if (requestedEv != null) {
@@ -261,7 +270,7 @@ class CameraControlsInstrumentedTest {
             }
             try {
                 CaptureProbe(back).use { probe ->
-                    val options = JSONObject().put("whiteBalance", preset).put("zoom", requestedZoom.toDouble()).put("flash", requestedFlash)
+                    val options = JSONObject().put("whiteBalance", preset).put("zoom", requestedZoom.toDouble()).put("flash", requestedFlash).put("focusMode", "manual")
                     if (requestedEv != null) options.put("exposureCompensation", requestedEv)
                     assertTrue(call(scenario, "setSettings", JSONObject().put("settings", options).toString()).getBoolean("ok"))
                     observed(probe, back, "selected")
@@ -469,6 +478,123 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun focusModesReachCompletedCaptures_andManualRetainsObservedDistance() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val info = cameraInfo()
+            val modes = Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
+            try {
+                CaptureProbe(info).use { probe ->
+                    awaitState("Need native focus metadata") { probe.latest.get() != null }
+                    for ((preset, mode) in listOf("manual" to CaptureResult.CONTROL_AF_MODE_OFF,
+                        "auto" to CaptureResult.CONTROL_AF_MODE_AUTO, "continuous" to CaptureResult.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
+                        val beforeDistance = probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE)
+                        val result = call(scenario, "setSettings", "{settings:{focusMode:'$preset'}}")
+                        val receipt = JSONObject().put("preset", preset).put("expectedAfMode", mode)
+                            .put("supported", mode in modes).put("beforeDistance", beforeDistance).put("result", result)
+                        receipts.put(receipt)
+                        if (mode !in modes) {
+                            assertFalse("Unsupported focus mode must reject", result.getBoolean("ok"))
+                            assertEquals("FOCUS_UNSUPPORTED", result.getString("code"))
+                            continue
+                        }
+                        assertTrue("Focus mode $preset failed: $result", result.getBoolean("ok"))
+                        val count = probe.frames.get()
+                        try {
+                            awaitState("$preset must change completed native AF mode") {
+                                probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE) == mode
+                            }
+                        } finally {
+                            receipt.put("capturedAfMode", probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE))
+                                .put("capturedDistance", probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE))
+                                .put("capturedAfState", probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE))
+                        }
+                        if (preset == "auto") {
+                            assertTrue("Auto mode must trigger a completed autofocus attempt", probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE) in
+                                setOf(CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED, CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED))
+                            assertTrue(call(scenario, "stopPreview").getBoolean("ok"))
+                            preview(scenario)
+                            val restartedCount = probe.frames.get()
+                            awaitState("Auto focus must be restored and triggered after restart") {
+                                probe.frames.get() >= restartedCount + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE) == mode &&
+                                    probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE) in setOf(CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED, CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED)
+                            }
+                            receipt.put("restartAfMode", probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE))
+                                .put("restartAfState", probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE))
+                        }
+                        if (preset == "manual" && beforeDistance != null) {
+                            assertEquals(beforeDistance.toDouble(), requireNotNull(probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE)).toDouble(), 0.001)
+                        }
+                        assertEquals(preset, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("focusMode"))
+                    }
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-focus-modes.json", receipts)
+            }
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    @Test fun unsupportedFocusPolicyRejectsBeforeMixedBatchChangesZoom() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                assertTrue(call(scenario, "switchCamera", "{direction:'front'}").getBoolean("ok"))
+                val info = cameraInfo(CameraSelector.DEFAULT_FRONT_CAMERA)
+                val modes = Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
+                val unsupported = listOf("continuous" to CaptureResult.CONTROL_AF_MODE_CONTINUOUS_PICTURE,
+                    "auto" to CaptureResult.CONTROL_AF_MODE_AUTO).firstOrNull { it.second !in modes }
+                receipts.put(JSONObject().put("availableAfModes", JSONArray(modes.toList())).put("unsupportedPreset", unsupported?.first ?: JSONObject.NULL))
+                if (unsupported != null) {
+                    val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                    val bounds = requireNotNull(info.zoomState.value)
+                    val ratio = (bounds.minZoomRatio + bounds.maxZoomRatio) / 2
+                    val result = call(scenario, "setSettings", "{settings:{focusMode:'${unsupported.first}',zoom:$ratio}}")
+                    val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                    receipts.put(JSONObject().put("result", result).put("before", before).put("after", after)
+                        .put("nativeZoom", requireNotNull(info.zoomState.value).zoomRatio.toDouble()))
+                    assertFalse(result.getBoolean("ok"))
+                    assertEquals("FOCUS_UNSUPPORTED", result.getString("code"))
+                    assertEquals(before.toString(), after.toString())
+                    assertEquals(bounds.zoomRatio.toDouble(), requireNotNull(info.zoomState.value).zoomRatio.toDouble(), 0.001)
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-focus-unsupported.json", receipts)
+            }
+        }
+    }
+
+    @Test fun focusPointLeavesManualLockAndTriggersNativeAutofocus() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                CaptureProbe(cameraInfo()).use { probe ->
+                    awaitState("Need lens distance before locking") { probe.latest.get()?.get(CaptureResult.LENS_FOCUS_DISTANCE) != null }
+                    assertTrue(call(scenario, "setSettings", "{settings:{focusMode:'manual'}}").getBoolean("ok"))
+                    val result = call(scenario, "setFocusPoint", "{x:0.5,y:0.5}")
+                    assertTrue("Focus point must leave manual lock: $result", result.getBoolean("ok"))
+                    awaitState("Point focus must use native auto mode") {
+                        probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE) == CaptureResult.CONTROL_AF_MODE_AUTO
+                    }
+                    val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                    receipts.put(JSONObject().put("result", result).put("settings", settings)
+                        .put("afMode", probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE))
+                        .put("afState", probe.latest.get()?.get(CaptureResult.CONTROL_AF_STATE)))
+                    assertEquals("auto", settings.getString("focusMode"))
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-focus-point-policy.json", receipts)
+            }
+        }
+    }
+
     @Test fun flashSettingsRequireActiveCameraWithoutChangingCache() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
@@ -581,7 +707,7 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
             try {
-                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setSettings" to "{settings:{zoom:1}}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
+                for ((method, options) in listOf("setSettings" to "{settings:{focusMode:'manual'}}", "setZoom" to "{zoom:1}", "setSettings" to "{settings:{zoom:1}}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
                     val result = call(scenario, method, options)
                     receipts.put(JSONObject().put("method", method).put("result", result))
                     assertFalse("Inactive $method must reject", result.getBoolean("ok"))
@@ -851,6 +977,55 @@ class CameraControlsInstrumentedTest {
             emit("camera-flash-cancellation.json", JSONArray().put(JSONObject()
                 .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
                 .put("hasFlash", supported).put("requestedFlash", target).put("beforeFlash", before).put("afterFlash", after)
+                .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
+        }
+    }
+
+    @Test fun stoppingPreviewRejectsPendingFocus_withoutRetainingManualMode() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("focusMode")
+            val target = "auto"
+            val settled = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val settlements = AtomicInteger()
+            var rejectedCode: String? = null
+            var resolved = false
+            val pending = object : PluginCall(null, "ElizaCamera", "pending-metering", "setSettings",
+                JSObject().put("settings", JSObject().put("focusMode", target))) {
+                override fun resolve() { resolved = true; settlements.incrementAndGet(); settled.countDown() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    rejectedCode = code; settlements.incrementAndGet(); settled.countDown()
+                }
+            }
+            val stopping = object : PluginCall(null, "ElizaCamera", "stop-metering", "stopPreview", JSObject()) {
+                override fun resolve() { stopped.countDown() }
+            }
+            // One UI dispatch guarantees stop runs before the completion listener.
+            // Only reply transport is intercepted; CameraX and plugin lifecycle are real.
+            scenario.onActivity { activity ->
+                val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                plugin.setSettings(pending)
+                plugin.stopPreview(stopping)
+            }
+            assertTrue("Stop did not settle", stopped.await(10, TimeUnit.SECONDS))
+            assertTrue("Pending metering did not settle", settled.await(10, TimeUnit.SECONDS))
+            assertFalse("Cancelled control cannot report success", resolved)
+            val expectedCodes = setOf("CAMERA_INACTIVE", "CAMERA_CONTROL_FAILED")
+            assertTrue("Expected lifecycle/camera cancellation: $rejectedCode", rejectedCode in expectedCodes)
+            assertEquals(1, settlements.get())
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getString("focusMode")
+            assertEquals("Cancelled operation must not update settings", before, after)
+            preview(scenario)
+            CaptureProbe(cameraInfo()).use { probe ->
+                awaitState("Cancelled focus must not replace the restored policy") {
+                    probe.latest.get()?.get(CaptureResult.CONTROL_AF_MODE) == CaptureResult.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                }
+            }
+            call(scenario, "stopPreview")
+            emit("camera-focus-cancellation.json", JSONArray().put(JSONObject()
+                .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
+                .put("requestedFocus", target).put("beforeFocus", before).put("afterFocus", after)
                 .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
         }
     }

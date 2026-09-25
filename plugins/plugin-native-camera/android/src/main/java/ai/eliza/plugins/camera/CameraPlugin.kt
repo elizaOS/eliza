@@ -12,6 +12,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.CameraManager
@@ -96,6 +97,12 @@ class CameraPlugin : Plugin() {
     private val pendingCameraSwitches = ArrayDeque<PluginCall>()
     private var whiteBalanceRequestId = 0L
     private var requestedExposureEv = 0.0
+    private data class FocusSetting(val preset: String, val mode: Int, val distance: Float?)
+    private data class FocusObservation(val cameraId: String, val distance: Float)
+    private var observedFocus: FocusObservation? = null
+    private var confirmedFocus: FocusSetting? = null
+    private val manualFocusDistances = mutableMapOf<String, Float>()
+    private var focusRequestId = 0L
 
     private val frameDelivery = Handler(Looper.getMainLooper())
     private var previewEpoch = 0L
@@ -326,6 +333,7 @@ class CameraPlugin : Plugin() {
         previewEpoch++
         frameDelivery.removeCallbacksAndMessages(null)
         lastFrameEventNanos = 0L
+        observedFocus = null
 
         recordingSession?.let { session ->
             session.stopping = true
@@ -411,6 +419,7 @@ class CameraPlugin : Plugin() {
                 }
                 validateZoom(targetInfo, (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
                 validateFlash(targetInfo, currentSettings["flash"] as? String ?: "off")
+                preflightFocus(targetInfo)
                 currentDirection = direction
                 currentCameraSelector = targetSelector
 
@@ -916,7 +925,7 @@ class CameraPlugin : Plugin() {
             return
         }
 
-        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom") || settings.has("flash")) {
+        if (settings.has("whiteBalance") || settings.has("exposureCompensation") || settings.has("zoom") || settings.has("flash") || settings.has("focusMode")) {
             withActiveCamera(call) { owner ->
                 val preset = if (settings.has("whiteBalance")) settings.getString("whiteBalance") else null
                 if (preset != null && !supportsWhiteBalance(owner.cameraInfo, preset)) {
@@ -928,17 +937,26 @@ class CameraPlugin : Plugin() {
                 val exposure = requestedEv?.let { planExposure(owner.cameraInfo, it) }
                 val zoom = if (settings.has("zoom")) settings.getDouble("zoom").toFloat().also { validateZoom(owner.cameraInfo, it) } else null
                 val flash = if (settings.has("flash")) settings.getString("flash").also { validateFlash(owner.cameraInfo, it) } else null
+                val focus = if (settings.has("focusMode")) planFocus(owner.cameraInfo, settings.getString("focusMode")) else null
                 val epoch = previewEpoch
                 val failed: (Exception) -> Unit = { error -> call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error) }
                 fun complete() {
                     applySettingsValues(settings)
                     call.resolve()
                 }
+                fun applyBatchFocus() {
+                    if (focus == null) complete()
+                    else applyFocus(owner, epoch, focus, {
+                        confirmFocus(owner.cameraInfo, focus)
+                        currentSettings["focusMode"] = focus.preset
+                        complete()
+                    }, failed)
+                }
                 fun applyBatchFlash() {
-                    if (flash == null) complete()
+                    if (flash == null) applyBatchFocus()
                     else applyFlash(owner, epoch, flash, {
                         currentSettings["flash"] = flash
-                        complete()
+                        applyBatchFocus()
                     }, failed)
                 }
                 fun applyBatchZoom() {
@@ -970,7 +988,7 @@ class CameraPlugin : Plugin() {
 
     private fun applySettingsValues(settings: org.json.JSONObject) {
         settings.keys().forEach { key ->
-            if (key !in setOf("exposureCompensation", "zoom", "flash")) currentSettings[key] = settings.get(key)
+            if (key !in setOf("exposureCompensation", "zoom", "flash", "focusMode")) currentSettings[key] = settings.get(key)
         }
 
     }
@@ -1038,7 +1056,14 @@ class CameraPlugin : Plugin() {
                             val zoom = (currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f
                             validateZoom(owner.cameraInfo, zoom)
                             awaitCameraControl(owner, epoch, owner.cameraControl.setZoomRatio(zoom), {
-                                applyFlash(owner, epoch, currentSettings["flash"] as? String ?: "off", ready, failed)
+                                applyFlash(owner, epoch, currentSettings["flash"] as? String ?: "off", {
+                                    val focus = restoredFocus(owner.cameraInfo)
+                                    applyFocus(owner, epoch, focus, {
+                                        if (confirmedFocus != null) confirmFocus(owner.cameraInfo, focus)
+                                        currentSettings["focusMode"] = focus.preset
+                                        ready()
+                                    }, failed)
+                                }, failed)
                             }, failed)
                         }, failed)
                     } catch (error: Exception) {
@@ -1060,6 +1085,95 @@ class CameraPlugin : Plugin() {
             }
         }
         apply(true)
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun planFocus(info: CameraInfo, preset: String): FocusSetting {
+        val mode = when(preset) {
+            "manual" -> CaptureRequest.CONTROL_AF_MODE_OFF
+            "auto" -> CaptureRequest.CONTROL_AF_MODE_AUTO
+            else -> CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+        }
+        val details = Camera2CameraInfo.from(info)
+        validateFocus(info, FocusSetting(preset, mode, null))
+        val distance = if (preset != "manual") null else {
+            val maximum = details.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)
+            if (maximum == 0f) 0f else observedFocus?.takeIf { it.cameraId == details.cameraId }?.distance
+                ?: throw CameraSettingException("CAMERA_NOT_READY", "A completed focus-distance capture is required before locking focus")
+        }
+        return FocusSetting(preset, mode, distance).also { validateFocus(info, it) }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun confirmFocus(info: CameraInfo, focus: FocusSetting) {
+        confirmedFocus = focus
+        if (focus.preset == "manual") {
+            manualFocusDistances[Camera2CameraInfo.from(info).cameraId] = requireNotNull(focus.distance)
+        } else manualFocusDistances.clear()
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun preflightFocus(info: CameraInfo) {
+        val focus = confirmedFocus ?: return
+        // A manual lock belongs to its lens, not every camera on the device.
+        val target = if (focus.preset == "manual") focus.copy(distance = manualFocusDistances[Camera2CameraInfo.from(info).cameraId]) else focus
+        validateFocus(info, target)
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun restoredFocus(info: CameraInfo): FocusSetting {
+        val focus = confirmedFocus ?: return defaultFocus(info)
+        if (focus.preset != "manual") return focus
+        val stored = manualFocusDistances[Camera2CameraInfo.from(info).cameraId]
+        return if (stored == null) planFocus(info, "manual") else focus.copy(distance = stored)
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun defaultFocus(info: CameraInfo): FocusSetting {
+        val modes = Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
+        return when {
+            CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE in modes -> FocusSetting("continuous", CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE, null)
+            CaptureRequest.CONTROL_AF_MODE_AUTO in modes -> FocusSetting("auto", CaptureRequest.CONTROL_AF_MODE_AUTO, null)
+            else -> FocusSetting("manual", CaptureRequest.CONTROL_AF_MODE_OFF, 0f)
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun validateFocus(info: CameraInfo, focus: FocusSetting) {
+        val details = Camera2CameraInfo.from(info)
+        val modes = details.getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
+        if (focus.mode !in modes || (focus.preset == "auto" && !info.isFocusMeteringSupported(centerFocusAction()))) {
+            throw CameraSettingException("FOCUS_UNSUPPORTED", "This camera does not support ${focus.preset} focus")
+        }
+        focus.distance?.let { distance ->
+            val maximum = details.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+            if (!distance.isFinite() || distance < 0f || distance > maximum) {
+                throw CameraSettingException("FOCUS_OUT_OF_RANGE", "Confirmed focus distance is outside this camera's supported range")
+            }
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun centerFocusAction() = FocusMeteringAction.Builder(
+        SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f), FocusMeteringAction.FLAG_AF)
+        .setAutoCancelDuration(10, java.util.concurrent.TimeUnit.SECONDS).build()
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun applyFocus(owner: Camera, epoch: Long, focus: FocusSetting, ready: () -> Unit, failed: (Exception) -> Unit, triggerAuto: Boolean = true) {
+        validateFocus(owner.cameraInfo, focus)
+        val requestId = ++focusRequestId
+        val options = CaptureRequestOptions.Builder()
+            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, focus.mode)
+            .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, focus.distance ?: 0f).build()
+        awaitCameraControl(owner, epoch, Camera2CameraControl.from(owner.cameraControl).addCaptureRequestOptions(options), {
+            check(requestId == focusRequestId) { "A newer focus request superseded this mode" }
+            if (focus.preset == "auto" && triggerAuto) {
+                awaitCameraControl(owner, epoch, owner.cameraControl.startFocusAndMetering(centerFocusAction()), {
+                    check(requestId == focusRequestId) { "A newer focus request superseded this autofocus operation" }
+                    ready()
+                }, failed)
+            } else ready()
+        }, failed)
     }
 
     // ---- Zoom ----
@@ -1118,7 +1232,20 @@ class CameraPlugin : Plugin() {
                 call.reject("This camera does not support the requested metering operation", "METERING_UNSUPPORTED")
                 return@withActiveCamera
             }
-            settleCameraControl(call, owner, owner.cameraControl.startFocusAndMetering(action)) {
+            if (flag == FocusMeteringAction.FLAG_AF) {
+                val focus = planFocus(owner.cameraInfo, "auto")
+                val epoch = previewEpoch
+                val failed: (Exception) -> Unit = { error -> call.reject("Camera focus failed", "CAMERA_CONTROL_FAILED", error) }
+                applyFocus(owner, epoch, focus, {
+                    val requestId = focusRequestId
+                    awaitCameraControl(owner, epoch, owner.cameraControl.startFocusAndMetering(action), {
+                        check(requestId == focusRequestId) { "A newer focus request superseded this metering operation" }
+                        confirmFocus(owner.cameraInfo, focus)
+                        currentSettings[setting] = "auto"
+                        call.resolve()
+                    }, failed)
+                }, failed, triggerAuto = false)
+            } else settleCameraControl(call, owner, owner.cameraControl.startFocusAndMetering(action)) {
                 currentSettings[setting] = "manual"
             }
         }
@@ -1246,7 +1373,13 @@ class CameraPlugin : Plugin() {
             override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                 val completedAt = System.currentTimeMillis()
                 frameDelivery.post {
-                    if (epoch != previewEpoch || destroyed || !hasListeners("frame")) return@post
+                    if (epoch != previewEpoch || destroyed) return@post
+                    val owner = camera ?: return@post
+                    if (Camera2CameraInfo.from(owner.cameraInfo).cameraId != session.device.id) return@post
+                    result.get(CaptureResult.LENS_FOCUS_DISTANCE)?.let { distance ->
+                        if (distance.isFinite()) observedFocus = FocusObservation(session.device.id, distance)
+                    }
+                    if (!hasListeners("frame")) return@post
                     val resolution = preview?.resolutionInfo?.resolution ?: return@post
                     val now = SystemClock.elapsedRealtimeNanos()
                     // Preserve the existing sampled notification rate; every notification

@@ -61,3 +61,11 @@ reject non-off modes before mixed-batch mutation. Torch completion and a native
 capture-options receipt precede confirmation; rebinds restore confirmed flash
 policy. Device tests inspect flash/AE metadata, torch state and cancellation.
 Physical flash output and automatic scene decisions need hardware qualification.
+
+Android focus modes apply supported Camera2 AF policies and wait for completed
+capture options. Manual mode retains the observed lens distance; auto selects
+and triggers single-shot AF at the center, and continuous selects continuous
+picture AF. Point focus exits manual lock and reports auto. Confirmed policies
+survive rebinds; manual distances belong to each camera and fixed-focus defaults
+adapt to device support. Native metadata tests do not certify physical sharpness
+or lens calibration.
