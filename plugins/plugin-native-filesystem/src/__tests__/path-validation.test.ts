@@ -44,6 +44,18 @@ describe("normalizeDevicePath", () => {
 		expect(() => normalizeDevicePath("foo\0bar")).toThrow(/NUL byte/);
 	});
 
+	it("normalizes dot segments without changing literal dot names", () => {
+		expect(normalizeDevicePath("./nested//./.hidden/.../file/")).toEqual({
+			relative: "nested/.hidden/.../file",
+			segments: ["nested", ".hidden", "...", "file"],
+		});
+		expect(normalizeDevicePath("././", { allowRoot: true })).toEqual({
+			relative: "",
+			segments: [],
+		});
+		expect(() => normalizeDevicePath("././")).toThrow(/root/);
+	});
+
 	it("normalizes valid paths into segments", () => {
 		expect(normalizeDevicePath("foo/bar.txt")).toEqual({
 			relative: "foo/bar.txt",
