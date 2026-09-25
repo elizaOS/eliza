@@ -85,6 +85,10 @@ import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
 import { retainedPendantSessionSchema } from "./retained-pendant-schema.ts";
+import {
+  viewNavigationEvaluator,
+  viewNavigationField,
+} from "./view-navigation.ts";
 export type ElizaPluginConfig = {
   workspaceDir?: string;
   sessionStorePath?: string;
@@ -186,6 +190,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundUploadImageRoute,
       ...filesRoutes,
     ],
+    responseHandlerFieldEvaluators: [viewNavigationField],
+    responseHandlerEvaluators: [viewNavigationEvaluator],
     actions: [
       viewsAction,
       terminalAction,

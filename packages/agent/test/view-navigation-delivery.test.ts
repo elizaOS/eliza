@@ -2,12 +2,20 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  ContextRegistry,
   type IAgentRuntime,
   type Memory,
+  type MessageHandlerResult,
+  ModelType,
+  ResponseHandlerFieldRegistry,
+  runResponseHandlerEvaluators,
   runWithStreamingContext,
   type UUID,
 } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import {
@@ -16,6 +24,10 @@ import {
   registerPluginViews,
 } from "../src/api/views-registry.ts";
 import { handleViewsRoutes } from "../src/api/views-routes.ts";
+import {
+  viewNavigationEvaluator,
+  viewNavigationField,
+} from "../src/runtime/view-navigation.ts";
 
 const owner = "11111111-1111-4111-8111-111111111111" as UUID;
 const room = "22222222-2222-4222-8222-222222222222" as UUID;
@@ -35,6 +47,8 @@ async function fixture(delivered = 1) {
   let requests = 0;
   const runtime = {
     agentId: "44444444-4444-4444-8444-444444444444",
+    actions: [viewsAction],
+    responseHandlerEvaluators: [viewNavigationEvaluator],
     getRoom: async () => ({ worldId: "world" }),
     getWorld: async () => ({
       id: "world",
@@ -208,4 +222,319 @@ describe("host view navigation", () => {
     ).toMatchObject({ success: false });
     expect(f.requests()).toBe(0);
   });
+});
+
+async function selectNavigation(
+  f: Awaited<ReturnType<typeof fixture>>,
+  input: Memory,
+  overrides = {},
+  planOverrides = {},
+  mutate?: () => void,
+) {
+  const fields = new ResponseHandlerFieldRegistry();
+  fields.register(viewNavigationField);
+  expect(fields.composeSchema().properties).toHaveProperty(
+    "visualContinuation",
+  );
+  const handler = {
+    processMessage: "RESPOND",
+    plan: {
+      requiresTool: true,
+      contexts: ["general"],
+      intents: ["Open Notes"],
+      candidateActions: ["VIEWS"],
+      reply: "Opened Notes.",
+      replyEffectStatus: "pending",
+      ...planOverrides,
+    },
+  } as MessageHandlerResult;
+  await fields.dispatch({
+    runtime: f.runtime,
+    message: input,
+    state: { values: {}, data: {}, text: "" },
+    senderRole: "OWNER",
+    turnSignal: new AbortController().signal,
+    rawParsed: {
+      visualContinuation: {
+        disposition: "requested",
+        viewId: "notes",
+        singleViewOnly: true,
+        navigationOnly: true,
+        reason: "Requested navigation",
+        ...overrides,
+      },
+    },
+  });
+  mutate?.();
+  await runResponseHandlerEvaluators({
+    runtime: f.runtime,
+    message: input,
+    state: { values: {}, data: {}, text: "" },
+    messageHandler: handler,
+    availableContexts: [{ id: "general", description: "General" }],
+    userRoles: ["OWNER"],
+  });
+  return handler;
+}
+const clientMessage = (): Memory => ({
+  ...message,
+  content: { ...message.content, source: "client_chat", channelType: "DM" },
+});
+
+describe("model-selected host navigation", () => {
+  it("selects the existing action without inference and delivers through the real originating-client route", async () => {
+    const f = await fixture();
+    const input = clientMessage();
+    const selected = await selectNavigation(f, input, { viewId: "chat" });
+    expect(selected.plan.deterministicToolCall).toEqual({
+      name: "VIEWS",
+      params: { action: "show", view: "chat" },
+    });
+    expect(f.requests()).toBe(0);
+    const result = await viewsAction.handler?.(f.runtime, input, undefined, {
+      parameters: selected.plan.deterministicToolCall?.params,
+    });
+    expect(result).toMatchObject({
+      success: true,
+      modelReplyRequired: true,
+      data: { navigation: { status: "delivered" } },
+    });
+    expect(f.frames).toHaveLength(1);
+    expect(f.frames[0].client).toBe("origin-client");
+    const again = {
+      ...selected,
+      plan: { ...selected.plan, deterministicToolCall: undefined },
+    };
+    await runResponseHandlerEvaluators({
+      runtime: f.runtime,
+      message: input,
+      state: { values: {}, data: {}, text: "" },
+      messageHandler: again,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+    });
+    expect(again.plan.deterministicToolCall).toBeUndefined();
+  });
+  it.each(["text", "actor", "room", "id", "client"])(
+    "rejects changed %s binding",
+    async (field) => {
+      const f = await fixture();
+      const input = clientMessage();
+      const selected = await selectNavigation(f, input, {}, {}, () => {
+        if (field === "text") input.content.text = "Different request";
+        else if (field === "client")
+          input.content.metadata = { viewClientId: "different-client" };
+        else if (field === "actor") input.entityId = room;
+        else if (field === "room") input.roomId = owner;
+        else input.id = room;
+      });
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.requests()).toBe(0);
+    },
+  );
+  it.each(["compound", "conditional", "unknown"])(
+    "keeps %s navigation and domain work in the planner",
+    async (mode) => {
+      const f = await fixture();
+      const selected = await selectNavigation(
+        f,
+        clientMessage(),
+        {
+          navigationOnly: false,
+          ...(mode === "unknown" ? { viewId: "unregistered" } : {}),
+        },
+        {
+          intents: ["Read notes", "Open Notes"],
+          candidateActions: ["NOTES_LIST"],
+        },
+      );
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(selected.plan.candidateActions).toEqual(["NOTES_LIST", "VIEWS"]);
+      expect(selected.plan.intents).toEqual(["Read notes", "Open Notes"]);
+      expect(f.requests()).toBe(0);
+    },
+  );
+  it.each(["forbidden", "none", "unresolved", "optional"])(
+    "does not directly execute %s",
+    async (disposition) => {
+      const f = await fixture();
+      const input = clientMessage();
+      await runWithStreamingContext(
+        { messageId: String(input.id), onStreamChunk: () => {} },
+        async () => {
+          const selected = await selectNavigation(f, input, { disposition });
+          expect(selected.plan.deterministicToolCall).toBeUndefined();
+          if (disposition === "forbidden" || disposition === "none")
+            expect(await show(f.runtime, "Notes", input)).toMatchObject({
+              success: false,
+              data: { navigation: { status: "forbidden" } },
+            });
+        },
+      );
+      expect(f.requests()).toBe(0);
+    },
+  );
+  it("rechecks owner role and rejects cancellation after the model decision", async () => {
+    const f = await fixture();
+    const input = clientMessage();
+    const roleChanged = await selectNavigation(
+      f,
+      input,
+      { viewId: "chat" },
+      {},
+      () => {
+        f.runtime.getWorld = async () =>
+          ({ id: "world", metadata: { roles: { [owner]: "USER" } } }) as never;
+      },
+    );
+    expect(roleChanged.plan.deterministicToolCall).toBeUndefined();
+    const other = await fixture();
+    const controller = new AbortController();
+    await runWithStreamingContext(
+      {
+        messageId: String(input.id),
+        abortSignal: controller.signal,
+        onStreamChunk: () => {},
+      },
+      async () => {
+        const selected = await selectNavigation(
+          other,
+          clientMessage(),
+          { viewId: "chat" },
+          {},
+          () => controller.abort(),
+        );
+        expect(selected.plan.deterministicToolCall).toBeUndefined();
+      },
+    );
+    expect(f.requests() + other.requests()).toBe(0);
+  });
+  it("does not substitute a direct call for contradictory non-navigation hints", async () => {
+    const f = await fixture();
+    const selected = await selectNavigation(
+      f,
+      clientMessage(),
+      { viewId: "chat" },
+      { candidateActions: ["NOTES_LIST"] },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(selected.plan.candidateActions).toContain("NOTES_LIST");
+    expect(selected.plan.candidateActions).toContain("VIEWS");
+  });
+  it("ignores missing, malformed and client-metadata decisions", async () => {
+    const f = await fixture();
+    for (const disposition of ["invalid", null]) {
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        visualContinuation: {
+          disposition: "requested",
+          viewId: "chat",
+          navigationOnly: true,
+          singleViewOnly: true,
+        },
+      };
+      const selected = await selectNavigation(f, input, {
+        disposition,
+        viewId: "chat",
+      });
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+    }
+    expect(f.requests()).toBe(0);
+  });
+  it.each([false, true])(
+    "runs the canonical pipeline and gates the held reply (wrong destination=%s)",
+    async (wrongDestination) => {
+      const f = await fixture();
+      const input = clientMessage();
+      input.content.text = "Open Home";
+      const fields = new ResponseHandlerFieldRegistry();
+      for (const field of [
+        ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+        viewNavigationField,
+      ])
+        fields.register(field);
+      const state = { values: {}, data: { providers: {} }, text: "" };
+      const recoveryRequired = new Error("reply recovery required");
+      const useModel = vi.fn(async (type: string, params: unknown) => {
+        if (wrongDestination && type !== ModelType.RESPONSE_HANDLER)
+          throw recoveryRequired;
+        expect(type).toBe(ModelType.RESPONSE_HANDLER);
+        expect(useModel).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(params)).toContain("visualContinuation");
+        return {
+          text: "",
+          toolCalls: [
+            {
+              name: "HANDLE_RESPONSE",
+              arguments: {
+                shouldRespond: "RESPOND",
+                contexts: ["general"],
+                contextRequests: [],
+                intents: ["Open Home"],
+                candidateActionNames: ["VIEWS"],
+                replyText: wrongDestination
+                  ? "Calendar is open."
+                  : "Chat is open.",
+                replyEffectStatus: "pending",
+                facts: [],
+                relationships: [],
+                topics: [],
+                addressedTo: [],
+                emotion: "none",
+                visualContinuation: {
+                  disposition: "requested",
+                  viewId: "chat",
+                  singleViewOnly: true,
+                  navigationOnly: true,
+                  reason: "Only requested navigation",
+                },
+              },
+            },
+          ],
+          finishReason: "tool-calls",
+        };
+      });
+      Object.assign(
+        f.runtime,
+        createMockRuntime({
+          ...f.runtime,
+          character: { name: "Agent", bio: [] },
+          contexts: new ContextRegistry([
+            { id: "general", description: "General tasks" },
+          ]),
+          responseHandlerFieldRegistry: fields,
+          responseHandlerFieldEvaluators: [...fields.list()],
+          responseHandlerEvaluators: [viewNavigationEvaluator],
+          providers: [],
+          evaluators: [],
+          runActionsByMode: async () => [],
+          getModelRegistrations: () => [],
+          useModel: useModel as unknown as IAgentRuntime["useModel"],
+          composeState: async () => state,
+        }),
+      );
+      const resultPromise = runWithStreamingContext(
+        { messageId: String(input.id), onStreamChunk: () => {} },
+        () =>
+          runV5MessageRuntimeStage1({
+            runtime: f.runtime,
+            state,
+            message: input,
+            responseId: "55555555-5555-4555-8555-555555555555" as UUID,
+          }),
+      );
+      if (wrongDestination) {
+        await expect(resultPromise).rejects.toBe(recoveryRequired);
+      } else {
+        const result = await resultPromise;
+        expect(useModel).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({
+          kind: "planned_reply",
+          result: { responseContent: { text: "Chat is open." } },
+        });
+      }
+      expect(f.frames).toHaveLength(1);
+    },
+  );
 });

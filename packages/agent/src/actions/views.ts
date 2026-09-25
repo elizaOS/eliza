@@ -166,9 +166,18 @@ export const viewsAction: Action = {
           "cancelled",
           "Navigation was cancelled before confirmation.",
         );
+      const receipt = {
+        effect: "view_navigation",
+        status: "delivered",
+        viewId: view.id,
+        path: view.path,
+        label: view.label,
+        stepId: null,
+        handoffId,
+      };
       return {
         success: true,
-        text: `Opened ${view.label}.`,
+        text: JSON.stringify(receipt),
         transcriptVisibility: "internal",
         modelReplyRequired: true,
         values: {
@@ -182,15 +191,7 @@ export const viewsAction: Action = {
         },
         data: {
           view,
-          navigation: {
-            effect: "view_navigation",
-            status: "delivered",
-            viewId: view.id,
-            path: view.path,
-            label: view.label,
-            stepId: null,
-            handoffId,
-          },
+          navigation: receipt,
         },
       };
     } catch (error) {
