@@ -379,6 +379,101 @@
           mismatchedText.length === 0,
           `batch text preserves individual rendering: ${mismatchedText.map(({ name }) => name).join(", ")}`,
         );
+        await call("resize", { canvasId, size: { width: 16, height: 16 } });
+        const imageFixture = document.createElement("canvas");
+        imageFixture.width = 4;
+        imageFixture.height = 2;
+        const imageContext = imageFixture.getContext("2d");
+        imageContext.fillStyle = "#ff0000";
+        imageContext.fillRect(0, 0, 2, 2);
+        imageContext.fillStyle = "#0000ff";
+        imageContext.fillRect(2, 0, 2, 2);
+        const dataUrl = imageFixture.toDataURL("image/png");
+        const operationCases = [];
+        window.nativeCanvasEvidence.operationCases = operationCases;
+        const variants = [
+          ...[
+            {
+              name: "cropped-base64-image",
+              image: { base64: dataUrl.split(",")[1] },
+            },
+            { name: "cropped-data-url-image", image: dataUrl },
+          ].map(({ name, image }) => ({
+            name,
+            commands: [
+              {
+                type: "image",
+                args: {
+                  image,
+                  srcRect: { x: 2, y: 0, width: 2, height: 2 },
+                  destRect: { x: 0, y: 0, width: 4, height: 4 },
+                },
+              },
+            ],
+          })),
+          {
+            name: "dashed-then-solid-line",
+            commands: [
+              {
+                type: "line",
+                args: {
+                  from: { x: 1, y: 3 },
+                  to: { x: 15, y: 3 },
+                  stroke: { color: "#0000ff", width: 2, dashPattern: [2, 2] },
+                },
+              },
+              {
+                type: "line",
+                args: {
+                  from: { x: 1, y: 10 },
+                  to: { x: 15, y: 10 },
+                  stroke: { color: "#0000ff", width: 2 },
+                },
+              },
+            ],
+          },
+        ];
+        for (const { name, commands } of variants) {
+          await call("clear", { canvasId });
+          for (const { type, args } of commands) {
+            await call(type === "image" ? "drawImage" : "drawLine", {
+              canvasId,
+              ...args,
+            });
+          }
+          const individual = await call("getPixelData", { canvasId });
+          const individualPng = await call("toImage", {
+            canvasId,
+            format: "png",
+          });
+          const rgba = atob(individual.data);
+          const offset =
+            name === "dashed-then-solid-line" ? (10 * 16 + 4) * 4 : 0;
+          assert(
+            rgba.length === 16 * 16 * 4 &&
+              rgba.slice(offset, offset + 4) ===
+                String.fromCharCode(0, 0, 255, 255),
+            `individual operation produces the expected blue pixel: ${name}`,
+          );
+          await call("clear", { canvasId });
+          await call("drawBatch", { canvasId, commands });
+          const batch = await call("getPixelData", { canvasId });
+          const batchPng = await call("toImage", { canvasId, format: "png" });
+          operationCases.push({
+            name,
+            commands,
+            pixelsMatch: individual.data === batch.data,
+            individualPng,
+            batchPng,
+          });
+        }
+        const mismatchedOperations = operationCases.filter(
+          ({ pixelsMatch }) => !pixelsMatch,
+        );
+        assert(
+          mismatchedOperations.length === 0,
+          `batch operations preserve individual rendering: ${mismatchedOperations.map(({ name }) => name).join(", ")}`,
+        );
       } finally {
         await call("destroy", { canvasId });
       }
