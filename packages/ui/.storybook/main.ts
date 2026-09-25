@@ -21,6 +21,9 @@ const hostExternalStub = resolve(packageRoot, "test/stubs/host-external.ts");
 // stories never hit "Invalid hook call" from a duplicate React (same strategy
 // as vitest.config.ts).
 const _require = createRequire(import.meta.url);
+const appRequire = createRequire(
+  resolve(monorepoRoot, "packages/app/package.json"),
+);
 let reactPath: string;
 let reactDomPath: string;
 try {
@@ -104,6 +107,18 @@ const config: StorybookConfig = {
           replacement: replacement as string,
         }));
     cfg.resolve.alias = [
+      // Wallet providers use these browser implementations in the app too.
+      // Explicit aliases leave the guard enabled for actual server runtimes.
+      ...[
+        ["events", "events/events.js"],
+        ["buffer", "buffer/index.js"],
+        ["util", "util/util.js"],
+        ["process", "process/browser.js"],
+        ["stream", "stream-browserify/index.js"],
+      ].map(([id, entry]) => ({
+        find: new RegExp(`^(?:node:)?${id}$`),
+        replacement: appRequire.resolve(entry),
+      })),
       {
         find: /^@elizaos\/auth$/,
         replacement: resolve(monorepoRoot, "packages/auth/src/sdk/index.ts"),
