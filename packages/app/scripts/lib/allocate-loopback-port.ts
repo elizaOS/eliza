@@ -21,15 +21,15 @@ import { createServer } from "node:net";
  * @returns {Promise<boolean>}
  */
 function tryBindPort(port, host = "127.0.0.1") {
-  return new Promise((resolve) => {
-    const server = createServer();
-    const onErr = () => {
-      server.removeAllListeners();
-      resolve(false);
+  return new Promise((resolve, reject) => {
+    const server = createServer((socket) => socket.destroy());
+    const onErr = (error) => {
+      if (error.code === "EADDRINUSE") resolve(false);
+      else reject(error);
     };
     server.once("error", onErr);
     server.listen({ port, host }, () => {
-      server.close(() => resolve(true));
+      server.close((error) => (error ? reject(error) : resolve(true)));
     });
   });
 }
@@ -42,8 +42,11 @@ function tryBindPort(port, host = "127.0.0.1") {
 export async function allocateFirstFreeLoopbackPort(preferred, opts = {}) {
   const host = opts.host ?? "127.0.0.1";
   const maxHops = opts.maxHops ?? 64;
-  if (!Number.isFinite(preferred) || preferred < 1 || preferred > 65535) {
+  if (!Number.isInteger(preferred) || preferred < 1 || preferred > 65535) {
     throw new Error(`Invalid preferred port: ${preferred}`);
+  }
+  if (!Number.isSafeInteger(maxHops) || maxHops < 1) {
+    throw new Error(`Invalid port search length: ${maxHops}`);
   }
   for (let i = 0; i < maxHops; i++) {
     const port = preferred + i;

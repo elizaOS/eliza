@@ -60,3 +60,15 @@ describe("parseUiSmokeShard", () => {
     expect(new Set(seen.map((shard) => shard.total))).toEqual(new Set([total]));
   });
 });
+
+it("rejects unsafe shard integers and explicit non-string selectors", () => {
+  for (const value of [
+    "1/9007199254740993",
+    "9007199254740993/9007199254740993",
+    `1/${"9".repeat(400)}`,
+    2,
+    {},
+  ]) {
+    expect(() => parseUiSmokeShard(value)).toThrow(UI_SMOKE_SHARD_ENV);
+  }
+});

@@ -139,6 +139,7 @@ def test_delegate_harness_does_not_start_eliza_server(monkeypatch) -> None:
 
 
 def test_model_env_is_forwarded(monkeypatch) -> None:
+    monkeypatch.setattr(os, "environ", os.environ.copy())
     monkeypatch.delenv("BENCHMARK_MODEL_NAME", raising=False)
     monkeypatch.delenv("OPENAI_LARGE_MODEL", raising=False)
 
@@ -148,7 +149,7 @@ def test_model_env_is_forwarded(monkeypatch) -> None:
     assert os.environ["OPENAI_LARGE_MODEL"] == "gemma-4-31b"
 
 
-def test_osworld_adapter_does_not_inline_screenshot_by_default(monkeypatch) -> None:
+def test_osworld_adapter_preserves_screenshot_and_accessibility_by_default(monkeypatch) -> None:
     class FakeClient:
         context = {}
 
@@ -183,9 +184,9 @@ def test_osworld_adapter_does_not_inline_screenshot_by_default(monkeypatch) -> N
     assert response == "WAIT"
     assert actions == ["WAIT"]
     assert client.context["screenshot_present"] is True
-    assert client.context["screenshot_inline"] is False
-    assert client.context["screenshot_base64"] is None
-    assert "[... truncated ...]" in client.context["accessibility_tree"]
+    assert client.context["screenshot_inline"] is True
+    assert client.context["screenshot_base64"] == "bm90LWEtcmVhbC1wbmc="
+    assert client.context["accessibility_tree"] == "node\n" * 20000
 
 
 def test_run_single_records_step_when_screenshot_missing(tmp_path, monkeypatch) -> None:

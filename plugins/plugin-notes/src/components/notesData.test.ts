@@ -1,6 +1,8 @@
 /**
  * Verifies browser mutations use the shared per-view interaction broker and
  * reject malformed broker envelopes before they can enter React state.
+ *
+ * @vitest-environment jsdom
  */
 
 import { ApiError } from "@elizaos/ui/api/client-types-core";

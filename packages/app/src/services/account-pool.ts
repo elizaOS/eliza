@@ -284,8 +284,11 @@ export class AccountPool {
     await this.markExpiredAccounts(input.providerId, all);
     const eligible = this.filterEligible(all, input);
     if (eligible.length === 0) return null;
-    if (input.sessionKey) {
-      const cached = this.affinity.get(input.sessionKey);
+    const affinityKey = input.sessionKey
+      ? poolRecordKey(input.providerId, input.sessionKey)
+      : undefined;
+    if (affinityKey) {
+      const cached = this.affinity.get(affinityKey);
       if (
         cached &&
         cached.attempts < SESSION_AFFINITY_MAX_ATTEMPTS &&
@@ -299,11 +302,12 @@ export class AccountPool {
     const strategy: Strategy = input.strategy ?? "priority";
     const picked = this.applyStrategy(strategy, eligible, input.providerId, {
       model: input.model,
+      advanceCursor: true,
     });
     if (!picked) return null;
-    this.stampSelection(picked.id);
-    if (input.sessionKey) {
-      this.affinity.set(input.sessionKey, {
+    this.stampSelection(poolRecordKey(picked.providerId, picked.id));
+    if (affinityKey) {
+      this.affinity.set(affinityKey, {
         accountId: picked.id,
         attempts: 1,
       });
@@ -456,6 +460,7 @@ export class AccountPool {
     providerId: PoolProviderId,
     opts: {
       model?: string;
+      advanceCursor?: boolean;
     } = {},
   ): LinkedAccountConfig | null {
     if (eligible.length === 0) return null;
@@ -469,7 +474,7 @@ export class AccountPool {
         const sorted = [...eligible].sort(byPriorityThenStableIdentity);
         const cursor = (this.roundRobinCursor.get(providerId) ?? -1) + 1;
         const index = cursor % sorted.length;
-        this.roundRobinCursor.set(providerId, index);
+        if (opts.advanceCursor) this.roundRobinCursor.set(providerId, index);
         return sorted[index] ?? null;
       }
       case "least-used": {
@@ -526,7 +531,9 @@ export class AccountPool {
   /** Most recent of the persisted `lastUsedAt` and the in-memory selection
    * stamp — so a just-picked account sorts as "more recently used". */
   private effectiveLastUsed(account: LinkedAccountConfig): number {
-    const recentSelection = this.recentlySelectedAt.get(account.id);
+    const recentSelection = this.recentlySelectedAt.get(
+      poolRecordKey(account.providerId, account.id),
+    );
     return Math.max(
       accountLastUsedAt(account),
       recentSelection === undefined ? 0 : recentSelection,
@@ -577,7 +584,13 @@ export class AccountPool {
     providerId: PoolProviderId,
     accountId: string,
   ): Promise<void> {
-    if (!this.deps.deleteAccount) return;
+    if (!this.deps.deleteAccount) {
+      throw new ElizaError("Account-pool persistence cannot delete metadata", {
+        code: "ACCOUNT_POOL_DELETE_UNSUPPORTED",
+        context: { providerId, accountId },
+        severity: "fatal",
+      });
+    }
     await this.deps.deleteAccount(providerId, accountId);
   }
   // Mutations.
@@ -1013,15 +1026,6 @@ function byPriorityThenStableIdentity(
   if (a.priority !== b.priority) return a.priority - b.priority;
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-}
-function _byLeastUsedThenPriority(
-  a: LinkedAccountConfig,
-  b: LinkedAccountConfig,
-): number {
-  const aPct = accountSessionPct(a);
-  const bPct = accountSessionPct(b);
-  if (aPct !== bPct) return aPct - bPct;
-  return byPriorityThenAge(a, b);
 }
 // Default deps wired against account storage plus a pool-owned metadata file.
 interface PoolMetaFields {
@@ -1794,7 +1798,7 @@ export async function sweepAccountPoolKeepAlive(
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
       const pooled = pool.get(record.id, providerId);
-      if (pooled?.health === "expired") continue;
+      if (pooled?.enabled === false || pooled?.health === "expired") continue;
       // A parked subscription account's refresh grant is dead until a human
       // re-auths, so resolving it burns a doomed refresh against the
       // provider's token endpoint (plus an error log line) every sweep,

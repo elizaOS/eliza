@@ -7,6 +7,8 @@
  * not carry an agent identifier.
  */
 
+import { setTimeout as delay } from "node:timers/promises";
+
 const CANONICAL_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UUID_SHAPE_PATTERN =
@@ -52,6 +54,39 @@ export class LocalVoiceRuntimeIdentityError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "LocalVoiceRuntimeIdentityError";
+  }
+}
+
+/** A ready runtime has not created its first default conversation yet. */
+export class LocalVoiceConversationPendingError extends LocalVoiceRuntimeIdentityError {}
+
+/** Wait only for first-chat creation; invalid identities and transport failures remain errors. */
+export async function waitForLocalVoiceRuntimeIdentity(
+  options: ResolveLocalVoiceRuntimeIdentityOptions & {
+    signal?: AbortSignal;
+    onWaiting?: () => void;
+  },
+): Promise<LocalVoiceRuntimeIdentity> {
+  let notified = false;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  while (true) {
+    options.signal?.throwIfAborted();
+    try {
+      return await resolveLocalVoiceRuntimeIdentity({
+        ...options,
+        fetchImpl: (input, init) =>
+          fetchImpl(input, { ...init, signal: options.signal }),
+      });
+    } catch (error) {
+      // error-policy:J4 A fresh runtime without a conversation remains visibly
+      // pending; no gateway, session or microphone is made available yet.
+      if (!(error instanceof LocalVoiceConversationPendingError)) throw error;
+      if (!notified) {
+        options.onWaiting?.();
+        notified = true;
+      }
+      await delay(1_000, undefined, { signal: options.signal });
+    }
   }
 }
 
@@ -286,6 +321,11 @@ function readConversations(value: unknown): RuntimeConversation[] {
       ),
     });
   });
+  if (body.conversations.length > 0 && parsed.length === 0) {
+    throw new LocalVoiceRuntimeIdentityError(
+      "local runtime conversations contain no readable records",
+    );
+  }
   return parsed;
 }
 
@@ -330,7 +370,7 @@ function selectConversationId(
     (left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs,
   );
   if (candidates.length === 0) {
-    throw new LocalVoiceRuntimeIdentityError(
+    throw new LocalVoiceConversationPendingError(
       "local runtime has no conversation for the running agent",
     );
   }

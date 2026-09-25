@@ -15,12 +15,9 @@ import { hashStableJson } from "./context-hash";
 
 const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
 
-/** One stable policy for source selection; the dynamic tail supplies only its binding. */
-export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `history_source_selection:
-Review every [hN] original for the current request. Select needed facts, applicable standing constraints and corrections, referents, and explicitly continued unfinished work in completionContext. Assign each ID once to its most specific category; the runtime retains their complete union without a cap.
-Keep old applicable constraints, but scope completed-task restrictions to that task unless made standing or continued now. Unrelated completed tasks, greetings and repeated navigation are not pending work. Include original corrections and their referents, and referenced assistant proposals, IDs and receipts. Quote or attribute only the speaker's original; identify recaps as recaps.
-Use relevant_prior_dialogue with complete=true only after resolving dependencies; a reviewed empty selection is valid. Use all_prior_dialogue with complete=false for unresolved dependencies, exhaustive conversation coverage/counts, or no source set. Live-record reads/counts are tool work, not exhaustive dialogue recall; long history alone does not require full selection.
-Use the sourceSetId prescribed by the native schema, otherwise copy completion_source_set exactly. This review certifies relevance, never tool completion. Historical navigation receipts follow their original request source; select or restore that request to inspect its receipt. Current request, system/provider constraints and tool evidence stay complete; future receipts append automatically and do not make this review incomplete.`;
+/** Shared source-selection policy; each stage supplies its request-local binding. */
+export const COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS = `History selection: use the source map to select original facts, applicable standing constraints/corrections, referents and explicitly continued unfinished work in completionContext. Assign each source once; its exact text remains intact. Completed tasks are not pending, and task-scoped restrictions do not automatically become standing rules. Preserve corrections and original speaker attribution; navigation receipts follow their request.
+Use relevant_prior_dialogue with complete=true when dependencies are resolved (an empty selection is valid), otherwise all_prior_dialogue with complete=false. Exhaustive dialogue coverage needs all originals; live-record questions need tools. Use the sourceSetId required by the response schema. Current request, system/provider constraints and receipts remain complete; selection proves relevance, never execution.`;
 
 /** Shared static and registered Stage-1 wire schema. */
 export const COMPLETION_CONTEXT_SCHEMA: JSONSchema = {

@@ -26,6 +26,14 @@ public class ElizaVoicePcmInstrumentedTest {
     }
 
     @Test
+    public void directDiarizationRejectsOversizedAudioBeforeProcessing() {
+        assertTrue(ElizaVoiceNative.ensureLoaded());
+        RuntimeException error = assertThrows(RuntimeException.class,
+            () -> ElizaVoiceNative.nativeDiarizSegment(0, new float[80001]));
+        assertTrue(error.getMessage().contains("at most 80000 samples"));
+    }
+
+    @Test
     public void nativeBatchesRejectPartialFramesBeforeProcessing() {
         assertTrue(ElizaVoiceNative.ensureLoaded());
         for (int size : new int[] {1, 511, 513, 1025}) {

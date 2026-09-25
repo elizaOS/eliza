@@ -18,7 +18,7 @@ def test_bing_task_consults_agent_instead_of_injecting_answer():
             requests.append((text, context))
             return NS(text="FAIL", params={})
 
-    agent = ElizaBridgeOSWorldAgent(client=Client())
+    agent = ElizaBridgeOSWorldAgent(client=Client(), observation_type="a11y_tree")
     agent._initialized = True
     response, actions = agent.predict(INSTRUCTION, {"accessibility_tree": "desktop"})
     assert len(requests) == 1

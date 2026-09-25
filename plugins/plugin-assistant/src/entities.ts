@@ -732,7 +732,14 @@ function formatEntityNames(names: string[]): string {
 export function formatEntityMetadata(metadata: unknown): string {
   return stableStringify(metadata);
 }
-export function formatEntities({ entities }: { entities: Entity[] }) {
+
+export function formatEntities({
+  entities,
+  includeMetadata = true,
+}: {
+  entities: Entity[];
+  includeMetadata?: boolean;
+}) {
   const sortedEntities = [...entities].sort((left, right) => {
     const leftName = left.names[0] ?? "";
     const rightName = right.names[0] ?? "";
@@ -743,7 +750,9 @@ export function formatEntities({ entities }: { entities: Entity[] }) {
   });
   const entityStrings = sortedEntities.map((entity: Entity) => {
     const header = `${formatEntityNames(entity.names)}\nID: ${entity.id}${
-      entity.metadata && Object.keys(entity.metadata).length > 0
+      includeMetadata &&
+      entity.metadata &&
+      Object.keys(entity.metadata).length > 0
         ? `\nData: ${formatEntityMetadata(entity.metadata)}\n`
         : "\n"
     }`;

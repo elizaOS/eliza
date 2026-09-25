@@ -227,24 +227,35 @@ bool finalize_turn(PipelineSession* s, char** outError) {
         haveEmbedding = true;
     }
 
-    // Diarizer over a single 5 s window: pyannote takes exactly 80000 samples.
-    // Center-crop or zero-pad the turn to the fixed window (the JS reducer maps
-    // frame labels back to ms via the fixed stride, so the window is canonical).
+    // Preserve coverage of the entire turn. Labels are local to each fixed
+    // model window; expose offsets and valid sample counts rather than making
+    // padding or independently inferred speaker classes look continuous.
     std::vector<int8_t> labels;
+    std::string diarizWindows = "[";
     bool haveLabels = false;
     if (s->diariz) {
-        std::vector<float> window(kDiarizWindow, 0.0f);
-        const size_t copy = samples < kDiarizWindow ? samples : kDiarizWindow;
-        std::memcpy(window.data(), s->turnPcm.data(), copy * sizeof(float));
-        std::vector<int8_t> out(kDiarizLabelCap, 0);
-        size_t nLabels = out.size();
-        const int rc = eliza_inference_diariz_segment(
-            s->diariz, window.data(), window.size(), out.data(), &nLabels,
-            outError);
-        if (rc != ELIZA_OK) return false;
-        labels.assign(out.begin(), out.begin() + static_cast<long>(nLabels));
-        haveLabels = true;
+        for (size_t start = 0; start < samples; start += kDiarizWindow) {
+            std::vector<float> window(kDiarizWindow, 0.0f);
+            const size_t validSamples = std::min(samples - start, kDiarizWindow);
+            std::memcpy(window.data(), s->turnPcm.data() + start,
+                        validSamples * sizeof(float));
+            std::vector<int8_t> out(kDiarizLabelCap, 0);
+            size_t nLabels = out.size();
+            const int rc = eliza_inference_diariz_segment(
+                s->diariz, window.data(), window.size(), out.data(), &nLabels,
+                outError);
+            if (rc != ELIZA_OK) return false;
+            if (haveLabels) diarizWindows += ",";
+            diarizWindows += "{\"startSample\":" + std::to_string(start) +
+                ",\"samples\":" + std::to_string(validSamples) +
+                ",\"modelSamples\":" + std::to_string(kDiarizWindow) +
+                ",\"labelOffset\":" + std::to_string(labels.size()) +
+                ",\"labelCount\":" + std::to_string(nLabels) + "}";
+            labels.insert(labels.end(), out.begin(), out.begin() + static_cast<long>(nLabels));
+            haveLabels = true;
+        }
     }
+    diarizWindows += "]";
 
     const double durationMs = 1000.0 * static_cast<double>(samples) / kSampleRate;
 
@@ -283,7 +294,7 @@ bool finalize_turn(PipelineSession* s, char** outError) {
                        ",\"embNorm\":" + std::to_string(embNorm) +
                        ",\"diarizFrames\":" + std::to_string(labels.size()) +
                        ",\"diarizDistinctClasses\":" +
-                       std::to_string(distinctLabels) + "}";
+                       std::to_string(distinctLabels) + ",\"diarizWindows\":" + diarizWindows + "}";
     s->turns.push_back(std::move(json));
     s->turnEmbeddings.push_back(haveEmbedding ? std::move(embedding)
                                               : std::vector<float>{});
@@ -699,7 +710,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizSegment(JNIEnv* env, jclass,
                                                          jfloatArray jPcm) {
     auto* di = reinterpret_cast<EliDiariz*>(diHandle);
     std::vector<float> pcm = read_float_array(env, jPcm);
-    // pyannote takes exactly 80000 samples — pad or crop.
+    if (pcm.size() > kDiarizWindow) {
+        throw_runtime(env, "diariz_segment: at most 80000 samples per model window", nullptr);
+        return nullptr;
+    }
+    // A short direct window is zero-padded; oversized input rejects explicitly.
     std::vector<float> window(kDiarizWindow, 0.0f);
     const size_t copy = pcm.size() < kDiarizWindow ? pcm.size() : kDiarizWindow;
     std::memcpy(window.data(), pcm.data(), copy * sizeof(float));
@@ -728,9 +743,8 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizClose(JNIEnv*, jclass,
 
 // ── Native streaming pipeline (the hot-loop owner) ───────────────────────
 
-// Open a pipeline session on a context: opens VAD + speaker + diariz (each
-// best-effort; a missing classifier is reported as null and that turn payload
-// is empty). Returns an opaque handle.
+// Open a pipeline session on a context. VAD, speaker and diariz are required;
+// failure releases already-opened classifiers and rejects the request.
 JNIEXPORT jlong JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineOpen(JNIEnv* env, jclass,
                                                         jlong ctxHandle) {

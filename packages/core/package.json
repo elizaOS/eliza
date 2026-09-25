@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -127,15 +127,24 @@
 			"import": "./dist/canonical-json.js",
 			"default": "./dist/canonical-json.js"
 		},
-		"./catalog/channel-plugin-map.json": "./dist/catalog/channel-plugin-map.json",
-		"./catalog/curated-app-definitions.json": "./dist/catalog/curated-app-definitions.json",
+		"./catalog/channel-plugin-map.json": {
+			"eliza-source": "./src/catalog/channel-plugin-map.json",
+			"default": "./dist/catalog/channel-plugin-map.json"
+		},
+		"./catalog/curated-app-definitions.json": {
+			"eliza-source": "./src/catalog/curated-app-definitions.json",
+			"default": "./dist/catalog/curated-app-definitions.json"
+		},
 		"./catalog/generate": {
 			"eliza-source": "./src/catalog/generate.ts",
 			"types": "./dist/catalog/generate.d.ts",
 			"import": "./dist/catalog/generate.js",
 			"default": "./dist/catalog/generate.js"
 		},
-		"./catalog/generated.json": "./dist/catalog/generated.json",
+		"./catalog/generated.json": {
+			"eliza-source": "./src/catalog/generated.json",
+			"default": "./dist/catalog/generated.json"
+		},
 		"./catalog": {
 			"eliza-source": "./src/catalog/index.ts",
 			"types": "./dist/catalog/index.d.ts",
@@ -148,7 +157,10 @@
 			"import": "./dist/catalog/loader.js",
 			"default": "./dist/catalog/loader.js"
 		},
-		"./catalog/provider-plugin-map.json": "./dist/catalog/provider-plugin-map.json",
+		"./catalog/provider-plugin-map.json": {
+			"eliza-source": "./src/catalog/provider-plugin-map.json",
+			"default": "./dist/catalog/provider-plugin-map.json"
+		},
 		"./catalog/runtime-kernel": {
 			"eliza-source": "./src/catalog/runtime-kernel.ts",
 			"types": "./dist/catalog/runtime-kernel.d.ts",
@@ -161,7 +173,10 @@
 			"import": "./dist/catalog/schema.js",
 			"default": "./dist/catalog/schema.js"
 		},
-		"./catalog/short-id-plugin-map.json": "./dist/catalog/short-id-plugin-map.json",
+		"./catalog/short-id-plugin-map.json": {
+			"eliza-source": "./src/catalog/short-id-plugin-map.json",
+			"default": "./dist/catalog/short-id-plugin-map.json"
+		},
 		"./character-language": {
 			"eliza-source": "./src/character-language.ts",
 			"types": "./dist/character-language.d.ts",
