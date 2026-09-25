@@ -41,7 +41,7 @@ train = [
   # Keep the training wheel compatible with the current vLLM serving line.
   # vLLM 0.27.x resolves Torch 2.13, the first release outside the
   # torch.jit.script memory-corruption advisory range.
-  "torch>=2.13.0,<2.14",
+  "torch>=2.13.0,<2.15",
   "transformers>=4.46.0",
   "accelerate>=1.1.0",
   "peft>=0.14.0",

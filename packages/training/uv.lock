@@ -1071,7 +1071,7 @@ requires-dist = [
     { name = "stanza", specifier = ">=1.12.2,<1.13" },
     { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "tinker", marker = "extra == 'rl-tinker'", specifier = ">=0.1.0" },
-    { name = "torch", marker = "extra == 'train'", specifier = ">=2.13.0,<2.14" },
+    { name = "torch", marker = "extra == 'train'", specifier = ">=2.13.0,<2.15" },
     { name = "transformers", marker = "extra == 'serve'", specifier = ">=4.46.0" },
     { name = "transformers", marker = "extra == 'train'", specifier = ">=4.46.0" },
     { name = "trl", marker = "extra == 'train'", specifier = ">=0.13.0" },
