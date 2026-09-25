@@ -262,6 +262,10 @@ test.describe
         });
       } finally {
         const videoPath = await recording.stop();
+        expect(
+          videoPath,
+          "native walkthrough must be a finalized video",
+        ).not.toBeNull();
         if (videoPath) {
           await testInfo.attach("onboarding walkthrough video", {
             path: videoPath,
