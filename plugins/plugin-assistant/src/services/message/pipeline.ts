@@ -1239,7 +1239,7 @@ export async function runV5MessageRuntimeStage1(
               query: getUserMessageText(args.message),
               intents: messageHandler.plan.intents,
               contexts: selectedContexts,
-            })
+            }).actions
           : collectBudgetedStageOneCandidateActions({
               actions: plannerCandidateActions,
               candidateActions: stageOneCandidates,
@@ -1262,7 +1262,7 @@ export async function runV5MessageRuntimeStage1(
         intents: messageHandler.plan.intents,
         contexts: selectedContexts,
         selectedActions: selectedActionFamilies,
-      });
+      }).actions;
     }
     // Discovery is planner protocol, registered below rather than in
     // runtime.actions. An explicit request must keep it even when no domain

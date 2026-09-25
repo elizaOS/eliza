@@ -36,6 +36,185 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("bounds broad query loads while keeping deferred operations exactly discoverable", async () => {
+    const actions: Action[] = Array.from({ length: 24 }, (_, index) => ({
+      name: `RECORDS_READ_${index}`,
+      description: "Read saved records",
+      contexts: ["records"],
+      tags: ["domain:records"],
+      parameters: [{ name: "id", required: true, schema: { type: "string" } }],
+    }));
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (selected) => {
+        loaded = selected;
+      },
+      async () => actions,
+    );
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "read records" },
+    });
+    expect(loaded).toHaveLength(10);
+    expect(result?.data).toMatchObject({
+      matchCount: 24,
+      selectedCount: 10,
+      deferredCount: 14,
+      completeMatches: false,
+    });
+    expect(JSON.stringify(result)).not.toContain('"parameters"');
+    const omitted = actions.find((action) => !loaded.includes(action));
+    if (!omitted) throw new Error("Missing deferred operation");
+    expect(
+      (
+        await discovery.handler?.(runtime, message, undefined, {
+          parameters: { names: [omitted.name] },
+        })
+      )?.success,
+    ).toBe(true);
+    expect(loaded).toEqual([omitted]);
+    const catalog = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: [] },
+    });
+    expect(catalog?.data?.catalog).toHaveLength(24);
+  });
+  it("bounds context-only descriptions without loading tools and refreshes denied matches", async () => {
+    const actions: Action[] = Array.from({ length: 25 }, (_, index) => ({
+      name: `RECORDS_READ_${index}`,
+      description: "Read records",
+      contexts: ["records"],
+    }));
+    let admitted = actions.slice(1);
+    let loads = 0;
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      () => {
+        loads++;
+      },
+      async () => admitted,
+    );
+    const description = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { contexts: ["records"], mode: "describe" },
+    });
+    expect(description?.data).toMatchObject({
+      matchCount: 24,
+      selectedCount: 10,
+      deferredCount: 14,
+      completeMatches: false,
+    });
+    expect(description?.data?.catalog).toHaveLength(10);
+    expect(JSON.stringify(description)).not.toContain('"RECORDS_READ_0"');
+    expect(loads).toBe(0);
+    admitted = [];
+    const revoked = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { query: "read records" },
+    });
+    expect(revoked?.data).toMatchObject({
+      matchCount: 0,
+      selectedCount: 0,
+      deferredCount: 0,
+      completeMatches: true,
+    });
+    expect(loads).toBe(0);
+  });
+  it("keeps incidental-context members and parents discoverable in bounded context-only enumeration", async () => {
+    const owner: Action = {
+      name: "CALENDAR",
+      description: "Calendar",
+      tags: ["domain:calendar"],
+      contexts: ["calendar"],
+      subActions: ["CALENDAR_READ"],
+    };
+    const read: Action = {
+      name: "CALENDAR_READ",
+      description: "Read calendar",
+      tags: ["domain:calendar"],
+      contexts: ["calendar"],
+    };
+    const related: Action[] = Array.from({ length: 14 }, (_, index) => ({
+      name: `HOUSEHOLD_READ_${index}`,
+      description: "Read household proposal",
+      tags: ["domain:household"],
+      contexts: ["household", "calendar"],
+    }));
+    const actions = [owner, read, ...related];
+    let loaded: Action[] = [];
+    const discovery = createPlannerToolDiscoveryAction(
+      actions,
+      (selected) => {
+        loaded = selected;
+      },
+      async () => actions,
+    );
+    const result = await discovery.handler?.(runtime, message, undefined, {
+      parameters: { contexts: ["calendar"] },
+    });
+    expect(result?.data).toMatchObject({
+      matchCount: 16,
+      selectedCount: 10,
+      deferredCount: 6,
+      completeMatches: false,
+    });
+    expect(loaded).toHaveLength(10);
+    const deferred = related.find((action) => !loaded.includes(action));
+    if (!deferred) throw new Error("Missing deferred scoped operation");
+    await discovery.handler?.(runtime, message, undefined, {
+      parameters: { names: [deferred.name] },
+    });
+    expect(loaded).toEqual([deferred]);
+  });
+  it("preserves mixed-domain coverage inside the initial ten-operation budget", () => {
+    const notes: Action[] = Array.from({ length: 24 }, (_, index) => ({
+      name: `NOTES_READ_${index}`,
+      description: "Read notes",
+      contexts: ["notes"],
+    }));
+    const calendar: Action = {
+      name: "CALENDAR_READ",
+      description: "Read calendar",
+      contexts: ["calendar"],
+    };
+    const selection = retrieveContextualPlannerActions({
+      actions: [...notes, calendar],
+      query: "read notes and calendar",
+      intents: ["Read notes", "Read calendar"],
+      contexts: ["notes", "calendar"],
+    });
+    expect(selection.actions).toHaveLength(10);
+    expect(selection.actions).toContain(calendar);
+    expect(selection.actions.some((action) => notes.includes(action))).toBe(
+      true,
+    );
+    expect(selection).toMatchObject({
+      matchCount: 25,
+      selectedCount: 10,
+      deferredCount: 15,
+    });
+  });
+  it("keeps every exact hint even when required operations exceed the automatic budget", () => {
+    const required: Action[] = Array.from({ length: 12 }, (_, index) => ({
+      name: `REQUIRED_${index}`,
+      description: "Exact requested operation",
+      contexts: ["required"],
+    }));
+    const reads: Action[] = Array.from({ length: 15 }, (_, index) => ({
+      name: `NOTES_READ_${index}`,
+      description: "Read notes",
+      contexts: ["notes"],
+    }));
+    const selection = retrieveContextualPlannerActions({
+      actions: [...required, ...reads],
+      query: "read notes",
+      contexts: ["notes"],
+      selectedActions: required,
+    });
+    expect(selection.actions).toEqual(required);
+    expect(selection).toMatchObject({
+      matchCount: 27,
+      selectedCount: 12,
+      deferredCount: 15,
+    });
+  });
   it("completes hinted navigation with read operations for uncovered declared domains", async () => {
     const views: Action = {
       name: "VIEWS_SHOW",
@@ -71,7 +250,7 @@ describe("contextual native discovery", () => {
       ],
       contexts: ["general", "notes", "calendar"],
       selectedActions: [views],
-    });
+    }).actions;
     expect(found.map((action) => action.name).sort()).toEqual([
       "CALENDAR_NEXT_EVENT",
       "NOTES_GET",
@@ -181,7 +360,7 @@ describe("contextual native discovery", () => {
         intents: ["Read the selected note"],
         contexts: ["notes"],
         selectedActions: [exact],
-      }),
+      }).actions,
     ).toEqual([exact]);
   });
   it("preserves explicit cross-domain hints without treating their incidental Calendar domain as covered", () => {
@@ -201,7 +380,7 @@ describe("contextual native discovery", () => {
       intents: ["Read next calendar event", "Read household resource proposal"],
       contexts: ["calendar"],
       selectedActions: [capacity],
-    });
+    }).actions;
     expect(selected).toEqual([capacity, calendar]);
     expect(
       sharedCalendarActions.some(
@@ -222,7 +401,7 @@ describe("contextual native discovery", () => {
         intents: ["Open Notes view"],
         contexts: ["general", "notes"],
         selectedActions: [view],
-      }),
+      }).actions,
     ).toEqual([view]);
   });
   it("discovers gate-only domains while preserving required, forbidden and role terms", async () => {
@@ -334,7 +513,7 @@ describe("contextual native discovery", () => {
         actions: [operation, unrelated],
         query,
         contexts: [context],
-      });
+      }).actions;
       expect(result.map((action) => action.name)).toEqual([name]);
       expect(result[0]).toBe(operation);
     },
@@ -364,7 +543,7 @@ describe("contextual native discovery", () => {
         actions,
         query,
         contexts: ["notes"],
-      });
+      }).actions;
       expect(result.map((action) => action.name).sort()).toEqual(expected);
       for (const action of result) expect(actions).toContain(action);
     },
@@ -384,7 +563,7 @@ describe("contextual native discovery", () => {
         query: "List my saved notes. Do not create or modify anything.",
         intents,
         contexts: ["notes"],
-      });
+      }).actions;
       expect(found.map((action) => action.name).sort()).toEqual(expected);
     },
   );
@@ -401,7 +580,7 @@ describe("contextual native discovery", () => {
       query: "list notes and summarize calendar. Do not create anything",
       intents: ["list notes", "summarize calendar"],
       contexts: ["notes", "calendar"],
-    });
+    }).actions;
     expect(found.map((action) => action.name).sort()).toEqual([
       "AGENDA",
       "NOTES_LIST",
@@ -415,7 +594,7 @@ describe("contextual native discovery", () => {
       actions,
       query: "notes",
       contexts: ["notes"],
-    });
+    }).actions;
     expect(result.map((action) => action.name)).toEqual(
       expect.arrayContaining([
         "NOTES_LIST",
@@ -599,7 +778,7 @@ describe("contextual native discovery", () => {
       { name: "RECORDS_DELETE", description: "Permanently destroy entries" },
     ];
     expect(
-      retrieveContextualPlannerActions({ actions, query: "read" }).map(
+      retrieveContextualPlannerActions({ actions, query: "read" }).actions.map(
         (action) => action.name,
       ),
     ).toEqual(["RECORDS_READ"]);

@@ -27,6 +27,7 @@ import { buildActionCatalog } from "../../runtime/action-catalog";
 import { tokenizeActionSearchText } from "../../runtime/action-retrieval.ts";
 import {
   actionDiscoveryContexts,
+  DEFAULT_PLANNER_QUERY_TOOL_LIMIT,
   retrieveContextualPlannerActions,
 } from "./action-surface.js";
 import {
@@ -160,15 +161,13 @@ export function createPlannerToolDiscoveryAction(
       },
       {
         name: "query",
-        description:
-          "Find operations by intent without knowing names. Registered domain names in the query scope the search when contexts is omitted. Cannot combine with names; all matching operations within the scope are returned without a result cap.",
+        description: `Find operations by intent without knowing names. Registered domain names in the query scope the search when contexts is omitted. Cannot combine with names. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} ranked complete operations; remaining matches stay available through exact names or a narrower search.`,
         required: false,
         schema: { type: "string", minLength: 1 },
       },
       {
         name: "contexts",
-        description:
-          "Optional exact domain IDs to scope query search, or list domain operations without a query. Cannot combine with names.",
+        description: `Optional exact domain IDs to scope search, including without a query. Selects up to ${DEFAULT_PLANNER_QUERY_TOOL_LIMIT} operations. Cannot combine with names; names=[] still reads the complete catalog.`,
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
@@ -254,14 +253,12 @@ export function createPlannerToolDiscoveryAction(
                     .includes(normalizeContextId(context)),
                 ),
               );
-        const selected =
-          query === undefined
-            ? scopedActions
-            : retrieveContextualPlannerActions({
-                actions: scopedActions,
-                query,
-                contexts: searchContexts,
-              });
+        const selection = retrieveContextualPlannerActions({
+          actions: scopedActions,
+          query: query ?? "",
+          contexts: searchContexts,
+        });
+        const selected = selection.actions;
         if (mode !== "describe" && selected.length > 0)
           onDiscover(
             selected,
@@ -275,13 +272,15 @@ export function createPlannerToolDiscoveryAction(
             selected.length === 0
               ? "No matching operations. Rephrase the query, change contexts, or use names=[] to read the complete authorized catalog. No tools were loaded or executed."
               : mode === "describe"
-                ? "Complete matching operation descriptions and schemas. No tools were enabled or executed."
-                : "Matching tools enabled. Other operations remain discoverable; no domain work was executed.",
+                ? "Complete descriptions and schemas for the selected matching operations. Deferred matches remain discoverable. No tools were enabled or executed."
+                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or names=[] for the complete catalog; no domain work was executed.",
           data: {
             readOnlyOperation: true,
             ...(inferredContexts.length > 0 ? { inferredContexts } : {}),
-            matchCount: selected.length,
-            completeMatches: true,
+            matchCount: selection.matchCount,
+            selectedCount: selection.selectedCount,
+            deferredCount: selection.deferredCount,
+            completeMatches: selection.deferredCount === 0,
             ...(mode === "describe"
               ? {
                   catalog: selected.map((action) => ({

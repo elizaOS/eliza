@@ -43,10 +43,19 @@ incidental words in long descriptions. Multiple requested operations remain
 eligible. Ambiguous wording falls back to the existing lexical matches; a miss
 means the query found nothing, not that the capability is unavailable.
 
+Automatic initial selection and query/context search select at most ten complete
+operation definitions, retaining domain coverage before filling remaining slots
+by rank. Explicit Stage-1 hints remain selected even when they exceed that automatic
+budget. Search reports total `matchCount`, `selectedCount`, and `deferredCount`;
+`completeMatches` is false when any matching operations were deferred. Neither
+the underlying catalog nor the ranker is capped. This bounds lexical/contextual
+selection; it does not add vector retrieval or a semantic reranker.
+
 The default `mode=load` enables the selected complete schemas in the next planner
 round. `mode=describe` reads descriptions and schemas without enabling them.
 Exact `names` load known operations or whole named families; `names=[]` reads the
-complete authorized catalog. Search and exact loads refresh permissions, and
+complete authorized catalog. These explicit paths are not limited to ten, and
+no selected definition is truncated. Search and exact loads refresh permissions, and
 execution checks them again. Discovery does not execute domain work. There is
 one canonical planner discovery action. `SEARCH_ACTIONS` remains a cloud MCP
 simile for connector discovery, not a separate planner registry;
