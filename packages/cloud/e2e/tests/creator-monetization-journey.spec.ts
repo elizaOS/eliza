@@ -135,9 +135,7 @@ test.describe("creator-monetization journey (real LLM)", () => {
         "POST",
         "/api/v1/messages",
         {
-          // gemma-4-31b is non-reasoning by default, but give it the model's
-          // full output budget (40k on the paid tier) so long completions are
-          // never truncated.
+          // Give the live model its full output budget, including reasoning.
           model: REAL_LLM_MODEL,
           max_tokens: REAL_LLM_MAX_TOKENS,
           messages: [
