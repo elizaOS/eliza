@@ -52,3 +52,7 @@ Android A2UI action events expose `action`, `data`, and optional `messageId`,
 while retaining legacy action and surface metadata and the complete `userAction`.
 Acknowledgements correlate with the supplied ID; they acknowledge bridge delivery,
 not execution of an agent action.
+
+Malformed JSON and invalid Android A2UI actions emit no action event and receive a failure status
+with `INVALID_ARGUMENT`. Data values must be strings, finite numbers, or booleans.
+Status IDs retain a usable supplied ID; unparseable messages use an empty ID.

@@ -17,6 +17,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
+import com.getcapacitor.Logger
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
@@ -1669,22 +1670,59 @@ class CanvasPlugin : Plugin() {
         wv.addJavascriptInterface(object {
             @JavascriptInterface
             fun postAction(actionJson: String) {
+                var correlationId = ""
                 try {
-                    val json = JSONObject(actionJson)
-                    val userAction = json.optJSONObject("userAction") ?: json
-                    val actionName = extractActionName(userAction)
-                    val legacyId = userAction.opt("id") as? String
-                    val messageId = (userAction.opt("messageId") as? String) ?: legacyId
+                    // JSONObject accepts comments, unquoted keys and other non-JSON forms.
+                    // Validate the original transport text with Android's strict reader first.
+                    android.util.JsonReader(java.io.StringReader(actionJson)).use { reader ->
+                        reader.isLenient = false
+                        if (reader.peek() != android.util.JsonToken.BEGIN_OBJECT) {
+                            throw InvalidA2uiAction("Action message must be an object")
+                        }
+                        reader.skipValue()
+                        if (reader.peek() != android.util.JsonToken.END_DOCUMENT) {
+                            throw InvalidA2uiAction("Action message has trailing content")
+                        }
+                    }
+                    val tokener = JSONTokener(actionJson)
+                    val json = tokener.nextValue() as? JSONObject
+                        ?: throw InvalidA2uiAction("Action message must be an object")
+                    if (tokener.nextClean() != '\u0000') throw InvalidA2uiAction("Action message has trailing content")
+                    correlationId = (json.opt("id") as? String) ?: (json.opt("messageId") as? String) ?: ""
+                    val userAction = if (json.has("userAction")) {
+                        json.opt("userAction") as? JSONObject
+                            ?: throw InvalidA2uiAction("userAction must be an object")
+                    } else json
+                    correlationId = (userAction.opt("id") as? String) ?: (userAction.opt("messageId") as? String) ?: ""
+                    fun optionalString(key: String): String? {
+                        if (!userAction.has(key)) return null
+                        return userAction.opt(key) as? String
+                            ?: throw InvalidA2uiAction("$key must be a string")
+                    }
+                    val name = optionalString("name")?.trim()
+                    val action = optionalString("action")?.trim()
+                    val actionName = name?.takeIf { it.isNotEmpty() } ?: action?.takeIf { it.isNotEmpty() }
+                        ?: throw InvalidA2uiAction("A non-empty action or name is required")
+                    val legacyId = optionalString("id")
+                    val messageId = optionalString("messageId") ?: legacyId
                     val actionId = legacyId ?: messageId ?: UUID.randomUUID().toString()
-                    val actionData = userAction.optJSONObject("data") ?: JSONObject()
-                    val surfaceId = userAction.optString("surfaceId", "main")
+                    val actionData = if (userAction.has("data")) {
+                        userAction.opt("data") as? JSONObject ?: throw InvalidA2uiAction("data must be an object")
+                    } else JSONObject()
+                    for (key in actionData.keys()) {
+                        val value = actionData.get(key)
+                        if (value !is String && value !is Boolean && !(value is Number && value.toDouble().isFinite())) {
+                            throw InvalidA2uiAction("data values must be strings, finite numbers or booleans")
+                        }
+                    }
+                    val surfaceId = optionalString("surfaceId") ?: "main"
 
                     Handler(Looper.getMainLooper()).post {
                         pluginRef.notifyListeners("a2uiAction", JSObject().apply {
                             put("canvasId", canvasId)
                             put("actionId", actionId)
-                            put("actionName", actionName ?: "")
-                            put("action", actionName ?: "")
+                            put("actionName", actionName)
+                            put("action", actionName)
                             put("data", jsObjectFromJSON(actionData))
                             messageId?.let { put("messageId", it) }
                             put("surfaceId", surfaceId)
@@ -1700,7 +1738,12 @@ class CanvasPlugin : Plugin() {
                         """.trimIndent()
                         wv.evaluateJavascript(statusJS, null)
                     }
-                } catch (_: Exception) {
+                } catch (error: InvalidA2uiAction) {
+                    rejectA2uiAction(wv, correlationId, error.message ?: "Invalid action message")
+                } catch (_: org.json.JSONException) {
+                    rejectA2uiAction(wv, correlationId, "Action message is not valid JSON")
+                } catch (_: java.io.IOException) {
+                    rejectA2uiAction(wv, correlationId, "Action message is not valid JSON")
                 }
             }
         }, "elizaCanvasA2UIBridge")
@@ -2093,14 +2136,17 @@ class CanvasPlugin : Plugin() {
         return result
     }
 
-    // ---- A2UI Action Name ----
+    private class InvalidA2uiAction(message: String) : Exception(message)
 
-    private fun extractActionName(userAction: JSONObject): String? {
-        for (key in listOf("name", "action")) {
-            val raw = userAction.optString(key, "").trim()
-            if (raw.isNotEmpty()) return raw
+    private fun rejectA2uiAction(webView: WebView, id: String, message: String) {
+        val status = JSObject().put("id", id).put("ok", false)
+            .put("code", "INVALID_ARGUMENT").put("error", message)
+        Logger.warn("ElizaCanvas", JSObject().put("event", "a2uiActionRejected")
+            .put("code", "INVALID_ARGUMENT").put("message", message).toString())
+        Handler(Looper.getMainLooper()).post {
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('eliza:a2ui-action-status', {detail: $status}));", null)
         }
-        return null
     }
 
     // ---- JS String Escape (matches iOS jsStringLiteral) ----

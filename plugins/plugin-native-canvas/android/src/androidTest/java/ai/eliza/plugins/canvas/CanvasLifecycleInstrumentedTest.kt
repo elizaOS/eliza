@@ -699,6 +699,66 @@ class CanvasLifecycleInstrumentedTest {
         }
     }
 
+    @Test fun malformedA2uiMessagesRejectAndValidDeliveryRecovers() {
+        ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
+            waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
+            evaluate(scenario, "window.invalidActionEvents=[];window.invalidActionReady=false;window.invalidActionListener=window.Capacitor.addListener('ElizaCanvas','a2uiAction',event=>window.invalidActionEvents.push(event));window.invalidActionReadyListener=window.Capacitor.addListener('ElizaCanvas','webViewReady',()=>window.invalidActionReady=true)")
+            success(scenario, "navigate", JSONObject().put("url", "about:blank#invalid-a2ui"))
+            waitFor(scenario, "window.invalidActionReady")
+            success(scenario, "eval", JSONObject().put("script", "window.invalidActionStatuses=[];window.addEventListener('eliza:a2ui-action-status',event=>window.invalidActionStatuses.push(event.detail));42"))
+            val invalid = mutableListOf<JSONObject>()
+            invalid.add(JSONObject())
+            for (value in listOf<Any>("", "   ", 12, true, JSONObject(), JSONArray(), JSONObject.NULL)) invalid.add(JSONObject().put("action", value))
+            invalid.add(JSONObject().put("name", 12))
+            for (value in listOf<Any>(JSONObject.NULL, JSONArray(), "data", JSONObject().put("nested", JSONObject()), JSONObject().put("null", JSONObject.NULL), JSONObject().put("array", JSONArray()))) invalid.add(JSONObject().put("action", "confirm").put("data", value))
+            invalid.add(JSONObject().put("action", "confirm").put("messageId", 12))
+            invalid.add(JSONObject().put("action", "confirm").put("id", 12))
+            invalid.add(JSONObject().put("action", "confirm").put("surfaceId", 12))
+            invalid.add(JSONObject().put("userAction", JSONObject.NULL))
+            invalid.add(JSONObject().put("userAction", "action"))
+            val sent = JSONArray()
+            for ((index, payload) in invalid.withIndex()) {
+                val id = "invalid-$index"
+                if (payload.has("messageId")) payload.put("id", id) else payload.put("messageId", id)
+                sent.put(JSONObject().put("expectedId", id).put("payload", payload))
+                success(scenario, "eval", JSONObject().put("script", "window.webkit.messageHandlers.elizaCanvasA2UIAction.postMessage($payload);42"))
+            }
+            val malformed = listOf("{", "null", "[]", "42", "{\"action\":\"confirm\"} trailing",
+                "{action:\"confirm\"}", "{\"action\":\"confirm\",}", "{\"action\":\"confirm\",\"data\":{\"count\":01}}",
+                "/* comment */ {\"action\":\"confirm\"}", "{\"action\":\"confirm\",\"data\":{\"count\":NaN}}")
+            for (raw in malformed) {
+                sent.put(JSONObject().put("expectedId", "").put("raw", raw))
+                success(scenario, "eval", JSONObject().put("script", "elizaCanvasA2UIBridge.postAction(${JSONObject.quote(raw)});42"))
+            }
+            val recovery = JSONObject().put("action", "recovery").put("messageId", "recovery-id").put("data", JSONObject().put("complete", true))
+            success(scenario, "eval", JSONObject().put("script", "window.webkit.messageHandlers.elizaCanvasA2UIAction.postMessage($recovery);42"))
+            waitFor(scenario, "window.invalidActionEvents.some(event=>event.action === 'recovery')")
+            var statuses = JSONArray()
+            val deadline = SystemClock.elapsedRealtime() + 3000
+            do {
+                val reply = success(scenario, "eval", JSONObject().put("script", "JSON.stringify(window.invalidActionStatuses)"))
+                statuses = JSONArray(JSONTokener(reply.getString("result")).nextValue() as String)
+                if ((0 until statuses.length()).any { statuses.getJSONObject(it).optString("id") == "recovery-id" }) break
+                SystemClock.sleep(20)
+            } while (SystemClock.elapsedRealtime() < deadline)
+            val events = JSONArray(JSONTokener(evaluate(scenario, "JSON.stringify(window.invalidActionEvents)")).nextValue() as String)
+            receipt("canvas-a2ui-invalid.json", JSONObject().put("sent", sent).put("events", events).put("statuses", statuses).put("recovery", recovery))
+            assertEquals("Only valid recovery may reach action listeners", 1, events.length())
+            assertEquals("recovery", events.getJSONObject(0).getString("action"))
+            assertEquals(sent.length() + 1, statuses.length())
+            for (index in 0 until sent.length()) {
+                val status = statuses.getJSONObject(index)
+                assertEquals(sent.getJSONObject(index).getString("expectedId"), status.getString("id"))
+                assertFalse(status.getBoolean("ok"))
+                assertEquals("INVALID_ARGUMENT", status.getString("code"))
+                assertTrue(status.getString("error").isNotBlank())
+            }
+            assertTrue(statuses.getJSONObject(sent.length()).getBoolean("ok"))
+            assertEquals("recovery-id", statuses.getJSONObject(sent.length()).getString("id"))
+            evaluate(scenario, "window.invalidActionListener.remove();window.invalidActionReadyListener.remove()")
+        }
+    }
+
     @Test fun popupBackDismissalRejectsFurtherUseAndCanNavigateAgain() {
         ActivityScenario.launch(CanvasTestActivity::class.java).use { scenario ->
             waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
