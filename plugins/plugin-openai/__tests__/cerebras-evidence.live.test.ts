@@ -217,9 +217,10 @@ async function runCapturedError(
   if (options.minimumWireCalls === undefined) {
     expect(wireCalls, `${name} should make one provider request`).toHaveLength(1);
   } else {
-    expect(wireCalls.length, `${name} should capture the required provider requests`).toBeGreaterThanOrEqual(
-      options.minimumWireCalls
-    );
+    expect(
+      wireCalls.length,
+      `${name} should capture the required provider requests`
+    ).toBeGreaterThanOrEqual(options.minimumWireCalls);
   }
   return { error: serializeCerebrasProviderError(thrown), wireCalls };
 }
