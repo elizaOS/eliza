@@ -42,3 +42,7 @@ Android call placement rejects invalid numbers with `INVALID_ARGUMENT` and
 Telecom permission denials with `CALL_PERMISSION_DENIED`. Device tests explicitly
 revoke `CALL_PHONE` before instrumentation and assert denial before attempting
 the bridge call; this covers rejection, not successful carrier calling.
+
+Calling capability requires both Telecom availability and `CALL_PHONE` permission.
+A missing Telecom service rejects call placement with `TELECOM_UNAVAILABLE`;
+status still reports unavailable capabilities and an explicit null dialer package.

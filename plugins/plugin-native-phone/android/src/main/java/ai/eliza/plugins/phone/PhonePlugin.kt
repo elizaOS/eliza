@@ -56,7 +56,7 @@ class PhonePlugin : Plugin() {
         }
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
         if (telecom == null) {
-            call.reject("Telecom service is unavailable")
+            call.reject("Telecom service is unavailable", "TELECOM_UNAVAILABLE")
             return
         }
         try {

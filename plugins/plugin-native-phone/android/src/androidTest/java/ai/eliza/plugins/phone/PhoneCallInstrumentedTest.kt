@@ -31,9 +31,9 @@ class PhoneCallInstrumentedTest {
             SystemClock.sleep(20)
         }
     }
-    private fun call(scenario: ActivityScenario<PhoneTestActivity>, args: JSONObject): JSONObject {
+    private fun call(scenario: ActivityScenario<PhoneTestActivity>, args: JSONObject, method: String = "placeCall"): JSONObject {
         waitFor(scenario, "window.Capacitor && window.Capacitor.nativePromise")
-        evaluate(scenario, "window.dialerReply=null;window.Capacitor.nativePromise('ElizaPhone','placeCall',$args).then(value=>window.dialerReply={ok:true,value:value||{}},error=>window.dialerReply={ok:false,code:error.code||null,message:error.message})")
+        evaluate(scenario, "window.dialerReply=null;window.Capacitor.nativePromise('ElizaPhone',${JSONObject.quote(method)},$args).then(value=>window.dialerReply={ok:true,value:value||{}},error=>window.dialerReply={ok:false,code:error.code||null,message:error.message})")
         waitFor(scenario, "window.dialerReply !== null")
         return JSONObject(JSONTokener(evaluate(scenario, "JSON.stringify(window.dialerReply)")).nextValue() as String)
     }
@@ -43,6 +43,47 @@ class PhoneCallInstrumentedTest {
             putString("nativeArtifactBase64", Base64.encodeToString(data.toString().toByteArray(), Base64.NO_WRAP))
         })
     }
+    @Test fun unavailableTelecomRejectsAndRestoredServiceRemainsUsable() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED, context.checkSelfPermission(android.Manifest.permission.CALL_PHONE))
+        ActivityScenario.launch(PhoneTestActivity::class.java).use { scenario ->
+            val before = call(scenario, JSONObject(), "getStatus")
+            scenario.onActivity { it.hideTelecom = true }
+            val unavailableStatus = call(scenario, JSONObject(), "getStatus")
+            val unavailableCall = call(scenario, JSONObject().put("number", "+15550123456"))
+            scenario.onActivity { it.hideTelecom = false }
+            val restored = call(scenario, JSONObject(), "getStatus")
+            val denied = call(scenario, JSONObject().put("number", "+15550123456"))
+            receipt("phone-telecom-availability.json", JSONObject().put("before", before).put("unavailableStatus", unavailableStatus).put("unavailableCall", unavailableCall).put("restored", restored).put("denied", denied).put("fixture", "Activity returns null for Telecom only; actual CALL_PHONE remains denied"))
+            assertTrue(before.getBoolean("ok"))
+            assertTrue(before.getJSONObject("value").getBoolean("hasTelecom"))
+            assertTrue(unavailableStatus.getBoolean("ok"))
+            val status = unavailableStatus.getJSONObject("value")
+            assertFalse(status.getBoolean("hasTelecom"))
+            assertFalse(status.getBoolean("canPlaceCalls"))
+            assertTrue(status.has("defaultDialerPackage"))
+            assertTrue(status.isNull("defaultDialerPackage"))
+            assertFalse(status.getBoolean("isDefaultDialer"))
+            assertFalse(unavailableCall.getBoolean("ok"))
+            assertEquals("TELECOM_UNAVAILABLE", unavailableCall.getString("code"))
+            assertEquals(before.toString(), restored.toString())
+            assertEquals("CALL_PERMISSION_DENIED", denied.getString("code"))
+        }
+    }
+
+    @Test fun permissionAloneDoesNotReportCallingCapabilityWithoutTelecom() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val controlled = object : android.content.ContextWrapper(context) {
+            override fun getSystemService(name: String): Any? = if (name == android.content.Context.TELECOM_SERVICE) null else super.getSystemService(name)
+            override fun checkSelfPermission(permission: String): Int = if (permission == android.Manifest.permission.CALL_PHONE) android.content.pm.PackageManager.PERMISSION_GRANTED else super.checkSelfPermission(permission)
+        }
+        val status = PhoneStatusReader(controlled).readStatus()
+        receipt("phone-telecom-capability.json", JSONObject().put("fixture", "Controlled Context reports permission granted and Telecom absent; no call dispatch")
+            .put("hasTelecom", status.hasTelecom).put("canPlaceCalls", status.canPlaceCalls).put("defaultDialerPackage", status.defaultDialerPackage ?: JSONObject.NULL).put("isDefaultDialer", status.isDefaultDialer))
+        assertFalse(status.hasTelecom)
+        assertFalse(status.canPlaceCalls)
+    }
+
     @Test fun invalidCallNumbersAndActualPermissionDenialRejectThroughWebView() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals("Test must never have carrier call permission", android.content.pm.PackageManager.PERMISSION_DENIED,

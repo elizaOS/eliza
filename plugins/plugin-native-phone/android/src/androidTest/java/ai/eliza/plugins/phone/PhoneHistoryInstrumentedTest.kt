@@ -26,6 +26,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 class PhoneTestActivity : BridgeActivity() {
+    var hideTelecom = false
+    override fun getSystemService(name: String): Any? {
+        if (hideTelecom && name == Context.TELECOM_SERVICE) return null
+        return super.getSystemService(name)
+    }
     var dialerFailure: String? = null
     val dialerIntents = org.json.JSONArray()
     override fun startActivity(intent: android.content.Intent, options: Bundle?) {
