@@ -773,56 +773,61 @@ class CanvasPlugin : Plugin() {
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
-            val fontSize = styleObj.float("size", 14f)
-            val fontName = styleObj.getString("font") ?: "sans-serif"
-            val align = styleObj.getString("align") ?: "left"
-            val baseline = styleObj.getString("baseline") ?: "alphabetic"
-            val maxWidth = styleObj.floatOrNull("maxWidth")
-
-            val typeface = try {
-                Typeface.create(fontName, Typeface.NORMAL)
-            } catch (_: Exception) {
-                Typeface.DEFAULT
-            }
-
-            val paint = Paint().apply {
-                isAntiAlias = true
-                textSize = fontSize
-                this.typeface = typeface
-                color = colorFromFillOrStroke(styleObj)
-                textAlign = when (align) {
-                    "center" -> Paint.Align.CENTER
-                    "right" -> Paint.Align.RIGHT
-                    else -> Paint.Align.LEFT
-                }
-            }
-
-            var x = positionObj.float("x")
-            var y = positionObj.float("y")
-
-            // Adjust for baseline.
-            val metrics = paint.fontMetrics
-            when (baseline) {
-                "top" -> y -= metrics.top
-                "middle" -> y -= (metrics.top + metrics.bottom) / 2
-                "bottom" -> y -= metrics.bottom
-                // "alphabetic" is the default baseline for drawText.
-            }
-
-            if (maxWidth != null) {
-                // Scale text to fit within maxWidth.
-                val textWidth = paint.measureText(text)
-                if (textWidth > maxWidth) {
-                    paint.textScaleX = maxWidth / textWidth
-                }
-            }
-
-            drawCanvas.drawText(text, x, y, paint)
+            drawStyledText(drawCanvas, text, positionObj, styleObj)
 
             restoreDrawOptions(drawCanvas, saveCount)
             targetView.commit()
             call.resolve()
         }
+    }
+
+    /** Keep standalone and batched text faithful to the same public style contract. */
+    private fun drawStyledText(drawCanvas: Canvas, text: String, positionObj: JSObject, styleObj: JSObject) {
+        val fontSize = styleObj.float("size", 14f)
+        val fontName = styleObj.getString("font") ?: "sans-serif"
+        val align = styleObj.getString("align") ?: "left"
+        val baseline = styleObj.getString("baseline") ?: "alphabetic"
+        val maxWidth = styleObj.floatOrNull("maxWidth")
+
+        val typeface = try {
+            Typeface.create(fontName, Typeface.NORMAL)
+        } catch (_: Exception) {
+            Typeface.DEFAULT
+        }
+
+        val paint = Paint().apply {
+            isAntiAlias = true
+            textSize = fontSize
+            this.typeface = typeface
+            color = colorFromFillOrStroke(styleObj)
+            textAlign = when (align) {
+                "center" -> Paint.Align.CENTER
+                "right" -> Paint.Align.RIGHT
+                else -> Paint.Align.LEFT
+            }
+        }
+
+        var x = positionObj.float("x")
+        var y = positionObj.float("y")
+
+        // Adjust for baseline.
+        val metrics = paint.fontMetrics
+        when (baseline) {
+            "top" -> y -= metrics.top
+            "middle" -> y -= (metrics.top + metrics.bottom) / 2
+            "bottom" -> y -= metrics.bottom
+            // "alphabetic" is the default baseline for drawText.
+        }
+
+        if (maxWidth != null) {
+            // Scale text to fit within maxWidth.
+            val textWidth = paint.measureText(text)
+            if (textWidth > maxWidth) {
+                paint.textScaleX = maxWidth / textWidth
+            }
+        }
+
+        drawCanvas.drawText(text, x, y, paint)
     }
 
     // ---- Drawing: Image ----
@@ -853,65 +858,43 @@ class CanvasPlugin : Plugin() {
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
-            var bitmap: Bitmap? = null
-
-            // Try to decode from base64 object.
-            if (imageObj != null) {
-                val base64 = imageObj.getString("base64")
-                if (base64 != null) {
-                    try {
-                        val bytes = Base64.decode(base64, Base64.DEFAULT)
-                        bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-
-            // Try to load from URL string (only for local/data URIs on main thread).
-            if (bitmap == null && imageString != null) {
-                try {
-                    if (imageString.startsWith("data:")) {
-                        val commaIdx = imageString.indexOf(',')
-                        if (commaIdx > 0) {
-                            val base64Data = imageString.substring(commaIdx + 1)
-                            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
-                            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        }
-                    }
-                } catch (_: Exception) {
-                }
-            }
-
-            if (bitmap != null) {
-                val destRect = rectFromObject(destRectObj)
-
-                if (srcRectObj != null) {
-                    // Crop source bitmap then draw into dest.
-                    val srcRect = Rect(
-                        srcRectObj.int("x"),
-                        srcRectObj.int("y"),
-                        (srcRectObj.double("x") + srcRectObj.double("width")).toInt(),
-                        (srcRectObj.double("y") + srcRectObj.double("height")).toInt()
-                    )
-                    val dst = Rect(
-                        destRect.left.toInt(), destRect.top.toInt(),
-                        destRect.right.toInt(), destRect.bottom.toInt()
-                    )
-                    drawCanvas.drawBitmap(bitmap, srcRect, dst, null)
-                } else {
-                    val dst = Rect(
-                        destRect.left.toInt(), destRect.top.toInt(),
-                        destRect.right.toInt(), destRect.bottom.toInt()
-                    )
-                    drawCanvas.drawBitmap(bitmap, null, dst, null)
-                }
-
-                bitmap.recycle()
-            }
+            drawStyledImage(drawCanvas, imageObj, imageString, destRectObj, srcRectObj)
 
             restoreDrawOptions(drawCanvas, saveCount)
             targetView.commit()
             call.resolve()
+        }
+    }
+
+    /** Decode supported local image inputs and preserve the source crop in both APIs. */
+    private fun drawStyledImage(
+        drawCanvas: Canvas,
+        imageObj: JSObject?,
+        imageString: String?,
+        destRectObj: JSObject,
+        srcRectObj: JSObject?
+    ) {
+        val encoded = imageObj?.getString("base64") ?: imageString
+            ?.takeIf { it.startsWith("data:") && it.indexOf(',') > 0 }
+            ?.substringAfter(',') ?: return
+        val bitmap = try {
+            val bytes = Base64.decode(encoded, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (_: Exception) {
+            null
+        } ?: return
+        try {
+            val destRect = rectFromObject(destRectObj)
+            val source = srcRectObj?.let {
+                Rect(it.int("x"), it.int("y"),
+                    (it.double("x") + it.double("width")).toInt(),
+                    (it.double("y") + it.double("height")).toInt())
+            }
+            val destination = Rect(destRect.left.toInt(), destRect.top.toInt(),
+                destRect.right.toInt(), destRect.bottom.toInt())
+            drawCanvas.drawBitmap(bitmap, source, destination, null)
+        } finally {
+            bitmap.recycle()
         }
     }
 
@@ -933,12 +916,12 @@ class CanvasPlugin : Plugin() {
         }
 
         activity.runOnUiThread {
-            val paint = Paint().apply { isAntiAlias = true }
-
             for (i in 0 until commands.length()) {
                 val command = commands.getJSONObject(i) ?: continue
                 val type = command.optString("type", "")
                 val args = command.optJSONObject("args") ?: continue
+                // Paint state (notably dash patterns) belongs to one command.
+                val paint = Paint().apply { isAntiAlias = true }
 
                 val drawOptsObj = args.optJSONObject("drawOptions")
                 val targetLayerId = drawOptsObj?.optString("layerId")
@@ -1071,51 +1054,17 @@ class CanvasPlugin : Plugin() {
                         val posJson = args.optJSONObject("position")
                         val styleJson = args.optJSONObject("style")
                         if (textStr.isNotEmpty() && posJson != null && styleJson != null) {
-                            val styleObj = jsObjectFromJSON(styleJson)
-                            val textPaint = Paint().apply {
-                                isAntiAlias = true
-                                textSize = styleObj.float("size", 14f)
-                                color = colorFromFillOrStroke(styleObj)
-                                textAlign = when (styleObj.getString("align")) {
-                                    "center" -> Paint.Align.CENTER
-                                    "right" -> Paint.Align.RIGHT
-                                    else -> Paint.Align.LEFT
-                                }
-                            }
-                            drawCanvas.drawText(
-                                textStr,
-                                posJson.optDouble("x", 0.0).toFloat(),
-                                posJson.optDouble("y", 0.0).toFloat(),
-                                textPaint
-                            )
+                            drawStyledText(drawCanvas, textStr, jsObjectFromJSON(posJson), jsObjectFromJSON(styleJson))
                         }
                     }
                     "image" -> {
-                        val destRectJson = args.optJSONObject("destRect")
-                        if (destRectJson != null) {
-                            val destRect = rectFromJSON(destRectJson)
-                            var bmp: Bitmap? = null
-                            val imgObj = args.optJSONObject("image")
-                            if (imgObj != null) {
-                                val b64 = imgObj.optString("base64", "")
-                                if (b64.isNotEmpty()) {
-                                    try {
-                                        val bytes = Base64.decode(b64, Base64.DEFAULT)
-                                        bmp = BitmapFactory.decodeByteArray(
-                                            bytes, 0, bytes.size
-                                        )
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                            }
-                            if (bmp != null) {
-                                val dst = Rect(
-                                    destRect.left.toInt(), destRect.top.toInt(),
-                                    destRect.right.toInt(), destRect.bottom.toInt()
-                                )
-                                drawCanvas.drawBitmap(bmp, null, dst, null)
-                                bmp.recycle()
-                            }
+                        val destination = args.optJSONObject("destRect")
+                        if (destination != null) {
+                            drawStyledImage(drawCanvas,
+                                args.optJSONObject("image")?.let { jsObjectFromJSON(it) },
+                                args.opt("image") as? String,
+                                jsObjectFromJSON(destination),
+                                args.optJSONObject("srcRect")?.let { jsObjectFromJSON(it) })
                         }
                     }
                     "clear" -> {
