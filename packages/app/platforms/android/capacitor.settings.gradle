@@ -85,6 +85,9 @@ project(':elizaos-capacitor-location').projectDir = new File('../../../../plugin
 include ':elizaos-capacitor-mobile-signals'
 project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../../plugins/plugin-native-mobile-signals/android')
 
+include ':elizaos-capacitor-network-policy'
+project(':elizaos-capacitor-network-policy').projectDir = new File('../../../../plugins/plugin-native-network-policy/android')
+
 include ':elizaos-capacitor-secure-store'
 project(':elizaos-capacitor-secure-store').projectDir = new File('../../../../plugins/plugin-native-secure-store/android')
 

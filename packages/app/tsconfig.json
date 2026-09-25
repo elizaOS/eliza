@@ -2,6 +2,7 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "jsx": "react-jsx",
     "paths": {
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
@@ -90,6 +91,9 @@
       ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-network-policy": [
+        "../../plugins/plugin-native-network-policy/src/index.ts"
       ],
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
