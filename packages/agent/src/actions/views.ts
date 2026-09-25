@@ -39,6 +39,13 @@ export const viewsAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    {
+      name: "navigationStepId",
+      description:
+        "Optional runtime-owned navigation correlation. The executor supplies it; omit when planning.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   validate: async () => true,
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
@@ -172,7 +179,10 @@ export const viewsAction: Action = {
         viewId: view.id,
         path: view.path,
         label: view.label,
-        stepId: null,
+        stepId:
+          typeof params.navigationStepId === "string"
+            ? params.navigationStepId
+            : null,
         handoffId,
       };
       return {

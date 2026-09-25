@@ -4730,6 +4730,13 @@ async function executeQueuedToolCall(params: {
     });
   }
   params.trajectory.plannedQueue.shift();
+  if (params.toolCall.name === "VIEWS_SHOW") {
+    // Runtime-owned correlation is fresh for this execution, never model authority.
+    params.toolCall.params = {
+      ...params.toolCall.params,
+      navigationStepId: crypto.randomUUID(),
+    };
+  }
   const streamingContext = getStreamingContext();
   const contextEvent = findToolContextEvent(
     params.trajectory.context,

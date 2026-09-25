@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import {
   type Action,
   ContextRegistry,
+  type GenerateTextResult,
   type IAgentRuntime,
   type Memory,
   type MessageHandlerResult,
@@ -16,6 +17,7 @@ import {
 import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runPlannerLoop } from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { collectV5PlannerCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
@@ -215,6 +217,102 @@ describe("host view navigation", () => {
         false,
       );
       expect(f.frames).toHaveLength(1);
+    },
+  );
+  it.each(["delivered", "stale", "wrong-view", "rejected", "cancelled"])(
+    "binds mixed queued reads to the actual %s navigation receipt",
+    async (mode) => {
+      const f = await fixture(mode === "rejected" ? 0 : 1);
+      const input = clientMessage();
+      const sequence: string[] = [];
+      const evaluations: string[] = [];
+      const navigation = createElizaPlugin().actions?.find(
+        (action) => action.name === "VIEWS_SHOW",
+      );
+      if (!navigation?.handler) throw new Error("Missing navigation operation");
+      let nonce: unknown;
+      const result = await runPlannerLoop({
+        context: {
+          id: String(input.id),
+          metadata: { roomId: input.roomId, messageId: input.id },
+          events: [],
+        },
+        runtime: {
+          useModel: async (): Promise<GenerateTextResult> => ({
+            text: "",
+            toolCalls: [
+              {
+                id: "navigate",
+                name: "VIEWS_SHOW",
+                arguments: {
+                  view: "notes",
+                  navigationStepId: "untrusted-model-value",
+                  eliza_turn_scope: "more_work_pending",
+                },
+              },
+              {
+                id: "read",
+                name: "READ_NOTE",
+                arguments: { eliza_turn_scope: "more_work_pending" },
+              },
+            ],
+          }),
+        },
+        executeToolCall: async (call) => {
+          sequence.push(call.name);
+          if (call.name === "VIEWS_SHOW") {
+            nonce = call.params?.navigationStepId;
+            const controller = new AbortController();
+            if (mode === "cancelled") controller.abort();
+            const received = await runWithStreamingContext(
+              { abortSignal: controller.signal },
+              () =>
+                navigation.handler(f.runtime, input, undefined, {
+                  parameters: {
+                    view: "notes",
+                    navigationStepId: String(nonce),
+                  },
+                }),
+            );
+            if (!received || typeof received === "boolean")
+              throw new Error("Missing navigation result");
+            if (mode === "stale" || mode === "wrong-view") {
+              const receipt = received.data?.navigation as Record<
+                string,
+                unknown
+              >;
+              received.data = {
+                ...received.data,
+                navigation: {
+                  ...receipt,
+                  ...(mode === "stale"
+                    ? { stepId: "old-execution" }
+                    : { viewId: "calendar", label: "Calendar" }),
+                },
+              };
+            }
+            return received as never;
+          }
+          return { success: true, text: "Note read.", continueChain: false };
+        },
+        evaluate: async () => {
+          evaluations.push(sequence.at(-1) ?? "");
+          return {
+            success: true,
+            decision: "NEXT_RECOMMENDED",
+            thought: "Inspect the remaining queued read.",
+            recommendedToolCallId: "read",
+            raw: {},
+          };
+        },
+      });
+      expect(result.terminalFailure).toBeUndefined();
+      expect(sequence).toEqual(["VIEWS_SHOW", "READ_NOTE"]);
+      if (mode === "delivered") expect(evaluations).not.toContain("VIEWS_SHOW");
+      else expect(evaluations).toContain("VIEWS_SHOW");
+      expect(typeof nonce).toBe("string");
+      expect(nonce).not.toBe("untrusted-model-value");
+      expect(f.frames).toHaveLength(mode === "cancelled" ? 0 : 1);
     },
   );
   it("rejects ambiguous labels rather than selecting an arbitrary view", async () => {
