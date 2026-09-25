@@ -23,7 +23,9 @@ not establish live framework quality. Typechecking is not a substitute for runti
 
 Run the TypeScript HTTP-to-report checks with
 `bun run --cwd packages/benchmarks/suites/eliza-1 test`
-using Node 24.15.0. The required server CI lane runs this command. Reported token counts use observed provider usage; local
+using Bun 1.4.2. The required server CI lane runs this command and collects
+test-case receipts. Node 24.15.0 can also run the file with `node --test`.
+Reported token counts use observed provider usage; local
 decode modes without token receipts show n/a. Accuracy includes parse failures.
 
 The Python runner defaults to the 32-case manual decision set (19 RESPOND,

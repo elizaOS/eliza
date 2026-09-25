@@ -19,7 +19,7 @@
     "./report": "./src/report.ts"
   },
   "scripts": {
-    "test": "node --test __tests__/metrics.test.ts",
+    "test": "bun test __tests__/metrics.test.ts",
     "start": "bun run src/index.ts",
     "fixtures:derive": "node ../../scripts/eliza-1/derive-fixtures.ts",
     "fixtures:derive:dry-run": "node ../../scripts/eliza-1/derive-fixtures.ts --dry-run",
