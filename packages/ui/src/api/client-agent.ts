@@ -13,11 +13,12 @@ import type {
   PermissionId,
   PermissionState,
 } from "@elizaos/core/contracts/permissions";
+import { isTruthyEnvValue } from "@elizaos/core/env-utils";
 import {
-  isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/core/settings-debug";
+import { resolveEnvAlias } from "@elizaos/core/utils/env-alias";
 import {
   invokeDesktopBridgeRequest,
   invokeDesktopBridgeRequestWithTimeout,
@@ -32,6 +33,7 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
+import { getBootConfig } from "../config/boot-config";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
@@ -168,17 +170,18 @@ export * from "./client-agent-consumer-keys";
 // Module-level helpers
 // ---------------------------------------------------------------------------
 function clientSettingsDebug(): boolean {
-  let viteEnv: Record<string, unknown> | undefined;
-  try {
-    viteEnv = import.meta.env as Record<string, unknown>;
-  } catch {
-    viteEnv = undefined;
-  }
-  return isElizaSettingsDebugEnabled({
-    importMetaEnv: viteEnv,
-    env: typeof process !== "undefined" ? process.env : undefined,
-  });
+  const env = Object.fromEntries(
+    Object.entries(import.meta.env ?? {}).map(([key, value]) => [
+      key,
+      value == null ? undefined : String(value),
+    ]),
+  );
+  const aliases = getBootConfig().envAliases;
+  return ["ELIZA_SETTINGS_DEBUG", "VITE_ELIZA_SETTINGS_DEBUG"].some((key) =>
+    isTruthyEnvValue(resolveEnvAlias(key, aliases, env)),
+  );
 }
+
 function isTradePermissionMode(value: string): value is TradePermissionMode {
   return (
     value === "user-sign-only" ||

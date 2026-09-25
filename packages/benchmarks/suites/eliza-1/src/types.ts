@@ -84,14 +84,16 @@ export interface CaseMetric {
    * when not applicable (e.g. parse failed earlier).
    */
   label_match: boolean | null;
+  /** Ground truth for decision-class coverage, never sent to the model. */
+  expected_label?: string;
   /** Milliseconds until the first generated token / chunk. */
   first_token_latency_ms: number | null;
   /** End-to-end generation latency in ms. */
   total_latency_ms: number;
-  /** Number of output tokens generated (approximated when not exact). */
-  tokens_generated: number;
+  /** Observed output tokens; null when the provider does not report usage. */
+  tokens_generated: number | null;
   /** Output tokens / second (computed from tokens_generated and total_latency_ms). */
-  tokens_per_second: number;
+  tokens_per_second: number | null;
   /** Ratio of prefix (literal) bytes to total output bytes (for local guided modes). */
   skip_ratio?: number;
   /** Raw text the mode returned, for debugging. */
@@ -114,7 +116,8 @@ export interface ModeSummary {
   first_token_latency_p95_ms: number | null;
   total_latency_p50_ms: number;
   total_latency_p95_ms: number;
-  mean_tokens_per_second: number;
+  mean_tokens_per_second: number | null;
+  token_usage_observed_cases: number;
   /** Mean skip_ratio for this mode+task (when applicable). */
   mean_skip_ratio?: number;
 }
@@ -205,7 +208,7 @@ export interface ModeResult {
   rawOutput: string;
   firstTokenLatencyMs: number | null;
   totalLatencyMs: number;
-  tokensGenerated: number;
+  tokensGenerated: number | null;
   /** Non-fatal generation diagnostics, such as fallback path usage. */
   warnings?: string[];
   error?: string;

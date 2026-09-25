@@ -1,21 +1,32 @@
 /** Resolves Cloud credentials, connection state, and billing against the configured deployment. */
-import { applyCanonicalSetupConfig } from "./config-like";
-import { clearCloudSecrets } from "./cloud-secrets";
-import { getCloudSecret } from "./cloud-secrets";
-import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
-import { isElizaSettingsDebugEnabled } from "@elizaos/core/settings-debug";
-import { logger } from "@elizaos/core";
-import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
-import { normalizeEnvValue } from "./config-like";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
-import { resolveCloudBillingUrl } from "../cloud/base-url.js";
-import { resolveDevCloudAuthorityEnvValue } from "../cloud-config/dev-cloud-env-authority.js";
-import { resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
-import { scrubCloudSecretsFromEnv } from "./cloud-secrets";
-import { settingsDebugCloudSummary } from "@elizaos/core/settings-debug";
-import { type AgentRuntime } from "@elizaos/core";
-import { type ElizaConfig } from "./config-like";
+import {
+    type AgentRuntime,
+    isCloudInferenceSelectedInConfig,
+    isElizaSettingsDebugEnabled,
+    logger,
+    migrateLegacyRuntimeConfig,
+    settingsDebugCloudSummary,
+} from "@elizaos/core";
+import {
+    resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+    resolveCloudBillingUrl,
+} from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import {
+    resolveDevCloudAuthorityEnvValue,
+    resolveDevCloudEnvAuthority,
+} from "../cloud-config/dev-cloud-env-authority.js";
+import {
+    clearCloudSecrets,
+    getCloudSecret,
+    scrubCloudSecretsFromEnv,
+} from "./cloud-secrets";
+import {
+    applyCanonicalSetupConfig,
+    type ElizaConfig,
+    normalizeEnvValue,
+} from "./config-like";
+
 export const CLOUD_BILLING_URL = "https://cloud.eliza.app/cloud/billing";
 const CLOUD_ENV_KEYS = [
     "ELIZAOS_CLOUD_API_KEY",

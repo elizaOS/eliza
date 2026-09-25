@@ -331,6 +331,104 @@
       });
       assert(Array.isArray(result.contacts), "real contacts provider result");
       await rejects("createContact", { displayName: "" });
+      if (descriptor.contactsFixture) {
+        const { marker, emails, phonePrefix } = descriptor.contactsFixture;
+        const expected = [
+          {
+            name: `${marker} Zoë, Example`,
+            phones: [`${phonePrefix}0`, `${phonePrefix}1`],
+            emails: emails.slice(0, 2),
+          },
+          {
+            name: String.raw`${marker} Literal\notes`,
+            phones: [`${phonePrefix}2`],
+            emails: [emails[2]],
+          },
+          {
+            name: `Dr. ${marker} Given Middle Family;Suffix Jr.`,
+            phones: [],
+            emails: [emails[3]],
+          },
+        ];
+        const vcardText = [
+          "BEGIN:VCARD",
+          "VERSION:4.0",
+          String.raw`FN:${marker} Zoë\, Exa`,
+          " mple",
+          `TEL:${phonePrefix}0`,
+          `TEL;TYPE=cell:${phonePrefix}1`,
+          `TEL:${phonePrefix}0`,
+          `EMAIL;TYPE=work:${emails[0]}`,
+          `EMAIL:${emails[1]}`,
+          "END:VCARD",
+          "BEGIN:VCARD",
+          "VERSION:4.0",
+          String.raw`FN:${marker} Literal\\notes`,
+          `TEL:${phonePrefix}2`,
+          `EMAIL:${emails[2]}`,
+          "END:VCARD",
+          "BEGIN:VCARD",
+          "VERSION:3.0",
+          String.raw`N:Family\;Suffix;${marker} Given;Middle;Dr.;Jr.`,
+          `EMAIL:${emails[3]}`,
+          "END:VCARD",
+        ].join("\r\n");
+        // The third card exercises the bridge's existing structured-name fallback.
+        await rejects("importVCard", { vcardText: "" });
+        await rejects("importVCard", {
+          vcardText: "BEGIN:VCARD\r\nVERSION:4.0\r\nEND:VCARD",
+        });
+        assert(
+          (await call("listContacts", { query: marker })).contacts.length === 0,
+          "invalid imports create no synthetic rows",
+        );
+        const imported = await call("importVCard", { vcardText });
+        assert(
+          imported.imported.length === 3,
+          "multi-card import receipt count",
+        );
+        for (let index = 0; index < expected.length; index++) {
+          const record = imported.imported[index];
+          const wanted = expected[index];
+          assert(
+            record.sourceName === wanted.name,
+            `decoded vCard name ${index}: ${JSON.stringify(record.sourceName)}`,
+          );
+          assert(
+            typeof record.displayName === "string" &&
+              record.displayName.includes(marker),
+            `provider display name retains imported identity ${index}`,
+            // Android formats suffixes (for example, adding a comma before Jr.).
+            // The Kotlin fixture independently compares this receipt to ContactsProvider.
+          );
+          assert(
+            JSON.stringify([...record.phoneNumbers].sort()) ===
+              JSON.stringify([...wanted.phones].sort()),
+            `all imported phone numbers ${index}`,
+          );
+          assert(
+            JSON.stringify([...record.emailAddresses].sort()) ===
+              JSON.stringify([...wanted.emails].sort()),
+            `all imported email addresses ${index}`,
+          );
+        }
+        const listed = await call("listContacts", { query: marker });
+        assert(
+          listed.contacts.length === 3,
+          "imported contacts are searchable",
+        );
+        for (const record of imported.imported) {
+          const actual = listed.contacts.find(
+            (entry) => entry.id === record.id,
+          );
+          assert(
+            actual?.displayName === record.displayName,
+            "readback matches import identity and name",
+          );
+        }
+        window.nativeContactsEvidence = { imported, listed, marker };
+      }
+
       break;
     }
     case "plugin-native-messages": {

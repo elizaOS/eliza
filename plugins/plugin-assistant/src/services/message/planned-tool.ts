@@ -897,6 +897,18 @@ export function collectCanonicalPlannerActions(
     const parentName = promotedSubactionParent(action);
     if (!parentName) return true;
     const parent = authorized.get(parentName);
+    // A required child operand cannot become optional on the native tool
+    // schema merely because its constraint survives in descriptive prose.
+    if (
+      action.parameters?.some(
+        (parameter) =>
+          parameter.required &&
+          !parent?.parameters?.some(
+            (entry) => entry.name === parameter.name && entry.required,
+          ),
+      )
+    )
+      return true;
     // An umbrella requiring a field absent from this alias cannot represent
     // that alias's valid calls without manufacturing an extra argument.
     if (

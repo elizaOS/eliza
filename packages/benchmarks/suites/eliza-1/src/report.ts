@@ -19,8 +19,8 @@ function ms(value: number | null): string {
   return `${(value / 1000).toFixed(2)}s`;
 }
 
-function num(value: number): string {
-  return value.toFixed(1);
+function num(value: number | null): string {
+  return value === null ? "n/a" : value.toFixed(1);
 }
 
 /**
@@ -40,6 +40,7 @@ export function buildTableRows(summaries: ModeSummary[]): string[][] {
     "ftl_p95",
     "lat_p50",
     "lat_p95",
+    "usage n",
     "tok/s",
   ];
   const rows = summaries.map((s) => [
@@ -54,6 +55,7 @@ export function buildTableRows(summaries: ModeSummary[]): string[][] {
     ms(s.first_token_latency_p95_ms),
     ms(s.total_latency_p50_ms),
     ms(s.total_latency_p95_ms),
+    `${s.token_usage_observed_cases}/${s.cases}`,
     num(s.mean_tokens_per_second),
   ]);
   return [header, ...rows];
