@@ -302,13 +302,11 @@ bool drain_windows(PipelineSession* s, char** outError) {
             s->vad, s->pending.data(), kVadWindow, &prob, outError);
         if (rc != ELIZA_OK) return false;
 
-        // Buffer this window into turn or pre-roll BEFORE the state transition
-        // so a speech-start seeds the turn with the pre-roll + this window.
+        // Existing turns own this window. At onset, pre-roll must contain only
+        // earlier audio so the triggering window is appended exactly once.
         const float* win = s->pending.data();
         if (s->capturing) {
             s->turnPcm.insert(s->turnPcm.end(), win, win + kVadWindow);
-        } else {
-            push_preroll(s, win, kVadWindow);
         }
 
         s->seg.step(prob);
@@ -318,6 +316,8 @@ bool drain_windows(PipelineSession* s, char** outError) {
             s->turnPcm = s->preRoll;
             s->turnPcm.insert(s->turnPcm.end(), win, win + kVadWindow);
             s->preRoll.clear();
+        } else if (!s->capturing) {
+            push_preroll(s, win, kVadWindow);
         }
         if (s->seg.speechEnded) {
             s->capturing = false;
