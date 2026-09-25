@@ -131,23 +131,52 @@ class WebsiteBlockerBridgeInstrumentedTest {
 
     private fun query(host: String, transcript: JSONArray, timeoutMs: Int = 10000): Int {
         val request = dnsRequest(host)
-        val response = DatagramSocket().use { socket ->
-            socket.soTimeout = timeoutMs
-            bindVpnSocket(socket)
-            socket.send(DatagramPacket(request, request.size))
-            val packet = DatagramPacket(ByteArray(4096), 4096)
-            socket.receive(packet)
-            packet.data.copyOf(packet.length)
-        }
-        assertTrue("DNS response header missing", response.size >= 12)
-        assertEquals(0x43, response[0].toInt() and 255)
-        assertEquals(0x21, response[1].toInt() and 255)
-        assertTrue("DNS response bit missing", response[2].toInt() and 128 != 0)
-        val code = response[3].toInt() and 15
-        transcript.put(JSONObject().put("host", host).put("rcode", code)
+        // Record the attempt before I/O so timeouts cannot produce an empty transcript.
+        val attempt = JSONObject().put("host", host).put("timeoutMs", timeoutMs)
             .put("request", Base64.encodeToString(request, Base64.NO_WRAP))
-            .put("response", Base64.encodeToString(response, Base64.NO_WRAP)))
-        return code
+        transcript.put(attempt)
+        val started = System.nanoTime()
+        try {
+            val response = DatagramSocket().use { socket ->
+                socket.soTimeout = timeoutMs
+                bindVpnSocket(socket)
+                attempt.put("localAddress", socket.localAddress.hostAddress).put("localPort", socket.localPort)
+                socket.send(DatagramPacket(request, request.size))
+                attempt.put("sent", true)
+                val packet = DatagramPacket(ByteArray(4096), 4096)
+                socket.receive(packet)
+                packet.data.copyOf(packet.length)
+            }
+            attempt.put("response", Base64.encodeToString(response, Base64.NO_WRAP))
+            assertTrue("DNS response header missing", response.size >= 12)
+            assertEquals(0x43, response[0].toInt() and 255)
+            assertEquals(0x21, response[1].toInt() and 255)
+            assertTrue("DNS response bit missing", response[2].toInt() and 128 != 0)
+            val code = response[3].toInt() and 15
+            attempt.put("rcode", code)
+            return code
+        } catch (error: Throwable) {
+            attempt.put("error", error.toString())
+            throw error
+        } finally {
+            attempt.put("elapsedMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started))
+        }
+    }
+
+    private fun exportFailureNetwork(error: Throwable) {
+        val manager = instrumentation.targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val networks = JSONArray()
+        for (network in manager.allNetworks) {
+            networks.put(JSONObject().put("network", network.toString())
+                .put("capabilities", manager.getNetworkCapabilities(network)?.toString())
+                .put("linkProperties", manager.getLinkProperties(network)?.toString()))
+        }
+        val threads = Thread.getAllStackTraces().entries
+            .filter { it.key.name.contains("ElizaWebsite") || it.key.name == "main" }
+            .joinToString("\n\n") { "${it.key.name} ${it.key.state}\n${it.value.joinToString("\n")}" }
+        export("vpn-failure-network.json", JSONObject().put("error", error.toString())
+            .put("activeNetwork", manager.activeNetwork?.toString()).put("networks", networks)
+            .put("threads", threads).toString(2).toByteArray())
     }
 
     @Test
@@ -224,6 +253,8 @@ class WebsiteBlockerBridgeInstrumentedTest {
                 }
             } catch (error: Throwable) {
                 failure = error
+                // Capture before stop destroys the failing network; preserve the original failure.
+                try { exportFailureNetwork(error) } catch (diagnosticError: Throwable) { error.addSuppressed(diagnosticError) }
                 throw error
             } finally {
                 export("vpn-dns-transcript.json", transcript.toString(2).toByteArray())
