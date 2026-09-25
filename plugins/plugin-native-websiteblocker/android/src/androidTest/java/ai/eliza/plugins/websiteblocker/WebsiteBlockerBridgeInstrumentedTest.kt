@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import java.net.DatagramSocket
 import java.net.DatagramPacket
 import java.net.UnknownHostException
+import java.net.SocketTimeoutException
 import java.net.InetAddress
 import java.io.DataOutputStream
 import org.json.JSONArray
@@ -121,7 +122,25 @@ class WebsiteBlockerBridgeInstrumentedTest {
             socket.connect(InetAddress.getByName("10.77.0.2"), 53)
             socket.send(DatagramPacket(request, request.size))
             val packet = DatagramPacket(ByteArray(4096), 4096)
-            socket.receive(packet)
+            try {
+                socket.receive(packet)
+            } catch (error: SocketTimeoutException) {
+                val manager = instrumentation.targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val threads = JSONArray()
+                Thread.getAllStackTraces().forEach { (thread, stack) ->
+                    if (thread.name == "ElizaWebsiteBlockerVpn") {
+                        threads.put(JSONObject().put("state", thread.state.toString())
+                            .put("stack", JSONArray(stack.map { it.toString() })))
+                    }
+                }
+                transcript.put(JSONObject().put("host", host).put("error", "DNS response timed out")
+                    .put("activeNetwork", manager.activeNetwork?.toString())
+                    .put("capabilities", manager.getNetworkCapabilities(manager.activeNetwork)?.toString())
+                    .put("links", manager.getLinkProperties(manager.activeNetwork)?.toString())
+                    .put("tunnelThreads", threads))
+                export("vpn-dns-timeout.json", transcript.toString(2).toByteArray())
+                throw error
+            }
             packet.data.copyOf(packet.length)
         }
         assertTrue("DNS response header missing", response.size >= 12)
