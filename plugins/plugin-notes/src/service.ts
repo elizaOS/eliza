@@ -20,6 +20,7 @@ import {
   parseCreateNoteInput,
   parseEntityId,
   parseNoteEditRevision,
+  parseStickyNote,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -221,7 +222,7 @@ function applyNotePatch(
     // A replacement callback keeps $&, $1 and similar text literal. The
     // match is checked under the same store barrier that commits the update.
     const replacement = original.replace(oldText, () => newText);
-    const validated = parseUpdateNoteInput({ [field]: replacement });
+    const validated = parseStickyNote({ ...updated, [field]: replacement });
     if (validated[field] !== replacement) {
       throw new ElizaError(
         "The exact edit would require whitespace normalization; nothing changed.",

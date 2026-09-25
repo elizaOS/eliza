@@ -321,10 +321,10 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
   return patch;
 }
 
-function parseStickyNote(
+export function parseStickyNote(
   value: unknown,
-  index: number,
-  schemaVersion: number,
+  index = 0,
+  schemaVersion: number = NOTES_SCHEMA_VERSION,
 ): StickyNote {
   const field = `notes[${index}]`;
   const record = requireRecord(value, field);
@@ -333,7 +333,7 @@ function parseStickyNote(
     ["id", "title", "body", "color", "createdAt", "updatedAt"],
     field,
   );
-  return {
+  const note = {
     id: parseEntityId(record.id, `${field}.id`),
     title: parseText(record.title, `${field}.title`, MAX_TITLE_LENGTH),
     body: parseText(
@@ -345,6 +345,10 @@ function parseStickyNote(
     createdAt: parseTimestamp(record.createdAt, `${field}.createdAt`),
     updatedAt: parseTimestamp(record.updatedAt, `${field}.updatedAt`),
   };
+  if (!(note.title + note.body).trim()) {
+    throw validationError("Stored note content must not be empty.", field);
+  }
+  return note;
 }
 
 export function parseNotesDocument(value: unknown): NotesDocument {
@@ -368,12 +372,6 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   }
   const notes = record.notes.map((value, index) => {
     const note = parseStickyNote(value, index, record.schemaVersion as number);
-    if (!(note.title + note.body).trim()) {
-      throw validationError(
-        "Stored note content must not be empty.",
-        `notes[${index}]`,
-      );
-    }
     // Schema 1 readers inserted this separator. Upgrade exactly once.
     if (record.schemaVersion === 1 && note.body) note.body = `\n${note.body}`;
     return note;

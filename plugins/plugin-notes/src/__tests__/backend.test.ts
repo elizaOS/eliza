@@ -287,6 +287,48 @@ describe("NotesStore", () => {
     await second.stop();
   });
 
+  it("atomically edits canonical whitespace prefixes and rejects blank results across restart", async () => {
+    const filePath = await temporaryStateFile();
+    const first = await serviceFor(filePath);
+    const note = await first.createNote({
+      content: " ".repeat(300) + "\nValid text",
+    });
+    const before = first.snapshot();
+    await first.updateNote(
+      note.id,
+      {
+        textEdit: {
+          field: "title",
+          oldText: " ".repeat(240),
+          newText: " ".repeat(239),
+        },
+      },
+      before.revision,
+    );
+    expect(first.getNote(note.id).title).toBe(" ".repeat(239));
+    expect(first.getNote(note.id).body).toBe(note.body);
+    const edited = first.snapshot();
+    expect(edited.revision).toBe(before.revision + 1);
+    const bytes = await fs.readFile(filePath, "utf8");
+    await expect(
+      first.updateNote(
+        note.id,
+        {
+          textEdit: { field: "body", oldText: "Valid text", newText: "" },
+        },
+        edited.revision,
+      ),
+    ).rejects.toThrow("must not be empty");
+    expect(first.snapshot()).toEqual(edited);
+    expect(await fs.readFile(filePath, "utf8")).toBe(bytes);
+    await first.stop();
+    const second = await serviceFor(filePath);
+    const saved = second.getNote(note.id);
+    expect(saved.title + saved.body).toBe(" ".repeat(299) + "\nValid text");
+    expect(second.snapshot().revision).toBe(edited.revision);
+    await second.stop();
+  });
+
   it("edits and replaces migrated maximum content without losing its separator", async () => {
     const filePath = await temporaryStateFile();
     const timestamp = "2026-07-16T12:00:00.000Z";
