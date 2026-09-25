@@ -35,6 +35,7 @@ repositories {
 }
 
 dependencies {
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
     implementation project(':capacitor-android')
 
     // Instrumented test deps (issue #9967 — on-device contacts round-trip).

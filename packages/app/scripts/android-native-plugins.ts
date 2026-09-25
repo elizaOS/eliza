@@ -354,6 +354,48 @@ async function main() {
         // the activity even though its WebView can still answer JavaScript.
         adb("shell", "input", "keyevent", "KEYCODE_WAKEUP");
         adb("shell", "wm", "dismiss-keyguard");
+        if (plugin.directory === "plugin-native-contacts") {
+          // Revocation kills the package; do it before instrumentation starts.
+          for (const permission of ["READ_CONTACTS", "WRITE_CONTACTS"])
+            adb(
+              "shell",
+              "pm",
+              "revoke",
+              applicationId,
+              `android.permission.${permission}`,
+            );
+          const preflight = adb(
+            "shell",
+            "am",
+            "instrument",
+            "-w",
+            "-r",
+            "-e",
+            "class",
+            "ai.eliza.plugins.contacts.ContactsPermissionInstrumentedTest",
+            "-e",
+            "contactsPermissionPreflight",
+            "1",
+            `${applicationId}/androidx.test.runner.AndroidJUnitRunner`,
+          );
+          fs.writeFileSync(
+            path.join(outputDir, `${plugin.directory}-permissions.log`),
+            preflight,
+          );
+          entry.permissionPreflight = parseInstrumentation(preflight, 1);
+          entry.artifacts = parseNativeArtifacts(preflight).map((artifact) =>
+            saveArtifact(artifact),
+          );
+          if (
+            !entry.permissionPreflight.pass ||
+            !entry.artifacts.some((artifact) =>
+              artifact.path.endsWith("/contacts-permissions-preflight.json"),
+            )
+          )
+            throw new Error(
+              `Contacts permission preflight failed: ${entry.permissionPreflight.problems.join("; ")}`,
+            );
+        }
         const output = run(
           "adb",
           [
@@ -382,9 +424,12 @@ async function main() {
           entry,
           parseInstrumentation(output, plugin.expectedTests),
         );
-        entry.artifacts = parseNativeArtifacts(output).map((artifact) =>
-          saveArtifact(artifact),
-        );
+        entry.artifacts = [
+          ...(entry.artifacts ?? []),
+          ...parseNativeArtifacts(output).map((artifact) =>
+            saveArtifact(artifact),
+          ),
+        ];
         if (systemControls) {
           for (const stage of [
             "denied",
