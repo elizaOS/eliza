@@ -28,11 +28,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { getDefaultAccountPool } from "@elizaos/app/account-pool";
+import type { ElizaConfig } from "@elizaos/core";
 import {
   type AccountsRouteContext,
   handleAccountsRoutes,
 } from "../../../agent/src/api/accounts-routes.ts";
-import type { ElizaConfig } from "../../../agent/src/config/types.eliza.ts";
 import {
   defaultAgentHostBridge,
   setAgentHostBridge,

@@ -5,7 +5,7 @@
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { delimiter, dirname, extname, isAbsolute, join } from "node:path";
-import type { HookConfig, InternalHooksConfig } from "../config/types.hooks.ts";
+import type { HookConfig, InternalHooksConfig } from "@elizaos/core";
 import type { ElizaHookMetadata } from "./types.ts";
 
 function binaryExists(name: string): boolean {
