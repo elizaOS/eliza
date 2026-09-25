@@ -55,7 +55,7 @@ export default scenario({
       text: `Create a solo Google Calendar event titled ${title} on February 5, 2027 from 15:00 to 15:30 UTC.`,
       responseJudge: {
         rubric:
-          "Ask which of the two connected Google accounts, personal@example.test or work@company.test, to use. Do not select an account or claim the event was created.",
+          "Ask which of the two connected Google accounts, personal@example.test or work@company.test, to use. Do not select an account or claim the event was created. A clear personal-versus-work account choice satisfies this, including when calendar names are shown; exact email-address wording is not required.",
         minimumScore: 1,
       },
       timeoutMs: 120_000,
