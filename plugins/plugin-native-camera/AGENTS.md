@@ -33,3 +33,9 @@ Their promises settle from native Camera2 capture completion; confirmed presets
 are restored across preview restart, camera switch and video rebind. Tests verify
 completed AWB metadata and cancellation, not physical color accuracy. Queued
 camera switches settle in order; stopping preview cancels remaining switches.
+
+Exposure compensation requires an active, ready preview and device support.
+EV is rounded to the nearest native step; getSettings reports the applied EV.
+Out-of-range requests reject before batch mutation. The original confirmed
+request is retained for rebinds, avoiding drift across cameras with different
+steps. Device tests check completed AE indices, mixed-batch rejection and cancellation.

@@ -195,7 +195,7 @@ class CameraControlsInstrumentedTest {
     }
 
     @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
-    @Test fun whiteBalanceSurvivesPreviewRestartSwitchAndRecording() {
+    @Test fun confirmedSettingsSurvivePreviewRestartSwitchAndRecording() {
         val receipts = JSONArray()
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             preview(scenario)
@@ -207,24 +207,47 @@ class CameraControlsInstrumentedTest {
                 CaptureResult.CONTROL_AWB_MODE_AUTO).first { supports(back, it) && supports(front, it) }
             val preset = when(mode) { CaptureResult.CONTROL_AWB_MODE_DAYLIGHT -> "daylight"
                 CaptureResult.CONTROL_AWB_MODE_FLUORESCENT -> "fluorescent"; else -> "auto" }
-            fun observed(probe: CaptureProbe, stage: String) {
+            val maximumEv = minOf(back.exposureState.exposureCompensationRange.upper * back.exposureState.exposureCompensationStep.toDouble(),
+                front.exposureState.exposureCompensationRange.upper * front.exposureState.exposureCompensationStep.toDouble())
+            val requestedEv = if (back.exposureState.isExposureCompensationSupported && front.exposureState.isExposureCompensationSupported && maximumEv > 0)
+                minOf(back.exposureState.exposureCompensationStep.toDouble() * 0.75, maximumEv) else null
+            fun observed(probe: CaptureProbe, info: CameraInfo, stage: String) {
+                val step = info.exposureState.exposureCompensationStep.toDouble()
                 val count = probe.frames.get()
                 awaitState("$stage must retain $preset in new captures") {
-                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode
+                    val exposureIndex = probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)
+                    probe.frames.get() >= count + 3 && probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE) == mode &&
+                        (requestedEv == null || (exposureIndex != null && kotlin.math.abs(exposureIndex * step - requestedEv) <= step / 2 + 0.000001))
                 }
                 receipts.put(JSONObject().put("stage", stage).put("preset", preset)
                     .put("actualCamera2Mode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
-                    .put("newCaptures", probe.frames.get() - count))
+                    .put("newCaptures", probe.frames.get() - count)
+                    .put("requestedEv", requestedEv ?: JSONObject.NULL)
+                    .put("actualExposureIndex", probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)))
+                if (requestedEv != null) {
+                    val index = requireNotNull(probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION))
+                    assertEquals(index * step, call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("exposureCompensation"), 0.000001)
+                }
             }
             try {
                 CaptureProbe(back).use { probe ->
-                    assertTrue(call(scenario, "setSettings", "{settings:{whiteBalance:'$preset'}}").getBoolean("ok"))
-                    observed(probe, "selected")
+                    val options = JSONObject().put("whiteBalance", preset)
+                    if (requestedEv != null) options.put("exposureCompensation", requestedEv)
+                    assertTrue(call(scenario, "setSettings", JSONObject().put("settings", options).toString()).getBoolean("ok"))
+                    observed(probe, back, "selected")
                     assertTrue(call(scenario, "stopPreview").getBoolean("ok"))
                     preview(scenario)
-                    observed(probe, "restarted")
+                    observed(probe, back, "restarted")
                     assertTrue(call(scenario, "startRecording", "{audio:false,quality:'low'}").getBoolean("ok"))
-                    try { observed(probe, "recording") }
+                    try {
+                        observed(probe, back, "recording")
+                        var recorded = JSONObject()
+                        awaitState("Recording must contain encoded media before stopping") {
+                            recorded = call(scenario, "getRecordingState").getJSONObject("value")
+                            recorded.getBoolean("isRecording") && recorded.getLong("fileSize") > 0 && recorded.getDouble("duration") > 0
+                        }
+                        receipts.put(JSONObject().put("stage", "encoded-video").put("state", recorded))
+                    }
                     finally {
                         val stopped = call(scenario, "stopRecording")
                         assertTrue("Recording must finalize: $stopped", stopped.getBoolean("ok"))
@@ -236,15 +259,15 @@ class CameraControlsInstrumentedTest {
                 }
                 CaptureProbe(front).use { probe ->
                     assertTrue(call(scenario, "switchCamera", "{direction:'front'}").getBoolean("ok"))
-                    observed(probe, "front")
+                    observed(probe, front, "front")
                 }
                 CaptureProbe(back).use { probe ->
                     assertTrue(call(scenario, "switchCamera", "{direction:'back'}").getBoolean("ok"))
-                    observed(probe, "back")
+                    observed(probe, back, "back")
                 }
             } finally {
                 call(scenario, "stopPreview")
-                emit("camera-white-balance-lifecycle.json", receipts)
+                emit("camera-confirmed-settings-lifecycle.json", receipts)
             }
         }
     }
@@ -252,7 +275,7 @@ class CameraControlsInstrumentedTest {
     @Test fun recordingCancelledDuringSettingsRestorationSettlesBothCalls() {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             preview(scenario)
-            val settled = CountDownLatch(2)
+            val settled = CountDownLatch(3)
             val replies = JSONArray()
             fun pending(method: String, data: JSObject) = object : PluginCall(null, "ElizaCamera", method, method, data) {
                 override fun resolve() { replies.put(JSONObject().put("method", method).put("resolved", true)); settled.countDown() }
@@ -265,13 +288,15 @@ class CameraControlsInstrumentedTest {
                 scenario.onActivity { activity ->
                     val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
                     plugin.startRecording(pending("startRecording", JSObject().put("audio", false).put("quality", "low")))
+                    plugin.setSettings(pending("setSettings", JSObject().put("settings", JSObject().put("exposureCompensation", 1))))
                     plugin.stopRecording(pending("stopRecording", JSObject()))
                 }
                 assertTrue("Both pending recording calls must settle", settled.await(10, TimeUnit.SECONDS))
-                assertEquals(2, replies.length())
+                assertEquals(3, replies.length())
                 for (index in 0 until replies.length()) {
                     assertFalse("No recording can succeed before native settings complete", replies.getJSONObject(index).getBoolean("resolved"))
-                    assertEquals("RECORDING_ERROR", replies.getJSONObject(index).getString("code"))
+                    val reply = replies.getJSONObject(index)
+                    assertEquals(if (reply.getString("method") == "setSettings") "CAMERA_NOT_READY" else "RECORDING_ERROR", reply.getString("code"))
                 }
                 assertFalse(call(scenario, "getRecordingState").getJSONObject("value").getBoolean("isRecording"))
             } finally {
@@ -315,6 +340,66 @@ class CameraControlsInstrumentedTest {
         }
     }
 
+    @Test fun exposureCompensationUsesNearestNativeStepAndReportsAppliedEv() {
+        val receipts = JSONArray()
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            try {
+                val info = cameraInfo()
+                val state = info.exposureState
+                if (!state.isExposureCompensationSupported) {
+                    val result = call(scenario, "setSettings", "{settings:{exposureCompensation:1}}")
+                    receipts.put(JSONObject().put("supported", false).put("result", result))
+                    assertFalse(result.getBoolean("ok"))
+                    assertEquals("EXPOSURE_UNSUPPORTED", result.getString("code"))
+                } else {
+                    val step = state.exposureCompensationStep.toDouble()
+                    val bounds = state.exposureCompensationRange
+                    val requests = mutableListOf<Pair<Double, Int>>()
+                    if (bounds.upper >= 1) requests.add(step * 0.75 to 1)
+                    if (bounds.lower <= -1) requests.add(-step * 0.75 to -1)
+                    requests.add(0.0 to 0)
+                    CaptureProbe(info).use { probe ->
+                        for ((ev, index) in requests) {
+                            val result = call(scenario, "setSettings", "{settings:{exposureCompensation:$ev}}")
+                            val receipt = JSONObject().put("requestedEv", ev).put("step", step)
+                                .put("expectedIndex", index).put("result", result)
+                            receipts.put(receipt)
+                            assertTrue("Exposure request failed: $result", result.getBoolean("ok"))
+                            try {
+                                awaitState("Exposure compensation must reach native step $index") {
+                                    probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION) == index
+                                }
+                            } finally { receipt.put("actualIndex", probe.latest.get()?.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION)) }
+                            assertEquals(index, info.exposureState.exposureCompensationIndex)
+                            val settings = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                            receipt.put("reportedEv", settings.getDouble("exposureCompensation"))
+                            assertEquals("Settings report applied EV, not an unrepresentable request", index * step,
+                                settings.getDouble("exposureCompensation"), 0.000001)
+                        }
+                        val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                        val beforeMode = probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE)
+                        val result = call(scenario, "setSettings", "{settings:{whiteBalance:'daylight',exposureCompensation:${(bounds.upper + 1) * step}}}")
+                        val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings")
+                        val count = probe.frames.get()
+                        awaitState("Need new captures after rejection") { probe.frames.get() >= count + 3 }
+                        receipts.put(JSONObject().put("stage", "out-of-range-batch").put("result", result)
+                            .put("beforeSettings", before).put("afterSettings", after)
+                            .put("beforeWhiteBalanceMode", beforeMode).put("afterWhiteBalanceMode", probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE)))
+                        assertFalse("Out-of-range EV cannot be silently clamped", result.getBoolean("ok"))
+                        assertEquals("EXPOSURE_OUT_OF_RANGE", result.getString("code"))
+                        assertEquals(before.toString(), after.toString())
+                        assertEquals(beforeMode, probe.latest.get()?.get(CaptureResult.CONTROL_AWB_MODE))
+                        assertEquals(0, info.exposureState.exposureCompensationIndex)
+                    }
+                }
+            } finally {
+                call(scenario, "stopPreview")
+                emit("camera-exposure-compensation.json", receipts)
+            }
+        }
+    }
+
     @Test fun invalidSettingsRejectWithoutChangingAnyCachedField() {
         val receipts = JSONArray()
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
@@ -354,7 +439,7 @@ class CameraControlsInstrumentedTest {
         ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
             ready(scenario)
             try {
-                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
+                for ((method, options) in listOf("setZoom" to "{zoom:1}", "setSettings" to "{settings:{exposureCompensation:1}}", "setSettings" to "{settings:{whiteBalance:'auto'}}", "setFocusPoint" to "{x:0.5,y:0.5}", "setExposurePoint" to "{x:0.5,y:0.5}")) {
                     val result = call(scenario, method, options)
                     receipts.put(JSONObject().put("method", method).put("result", result))
                     assertFalse("Inactive $method must reject", result.getBoolean("ok"))
@@ -486,6 +571,52 @@ class CameraControlsInstrumentedTest {
             emit("camera-white-balance-cancellation.json", JSONArray().put(JSONObject()
                 .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
                 .put("requestedPreset", target).put("beforePreset", before).put("afterPreset", after)
+                .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
+        }
+    }
+
+    @Test fun stoppingPreviewRejectsPendingExposure_withoutChangingConfirmedEv() {
+        ActivityScenario.launch(CameraTestActivity::class.java).use { scenario ->
+            preview(scenario)
+            val before = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("exposureCompensation")
+            val state = cameraInfo().exposureState
+            val target = if (state.isExposureCompensationSupported) state.exposureCompensationStep.toDouble() * 0.75 else 1.0
+            val settled = CountDownLatch(1)
+            val stopped = CountDownLatch(1)
+            val settlements = AtomicInteger()
+            var rejectedCode: String? = null
+            var resolved = false
+            val pending = object : PluginCall(null, "ElizaCamera", "pending-metering", "setSettings",
+                JSObject().put("settings", JSObject().put("exposureCompensation", target))) {
+                override fun resolve() { resolved = true; settlements.incrementAndGet(); settled.countDown() }
+                override fun reject(message: String?, code: String?, error: Exception?, data: JSObject?) {
+                    rejectedCode = code; settlements.incrementAndGet(); settled.countDown()
+                }
+            }
+            val stopping = object : PluginCall(null, "ElizaCamera", "stop-metering", "stopPreview", JSObject()) {
+                override fun resolve() { stopped.countDown() }
+            }
+            // One UI dispatch guarantees stop runs before the completion listener.
+            // Only reply transport is intercepted; CameraX and plugin lifecycle are real.
+            scenario.onActivity { activity ->
+                val plugin = activity.bridge.getPlugin("ElizaCamera").instance as CameraPlugin
+                plugin.setSettings(pending)
+                plugin.stopPreview(stopping)
+            }
+            assertTrue("Stop did not settle", stopped.await(10, TimeUnit.SECONDS))
+            assertTrue("Pending metering did not settle", settled.await(10, TimeUnit.SECONDS))
+            assertFalse("Cancelled control cannot report success", resolved)
+            val expectedCodes = if (state.isExposureCompensationSupported) setOf("CAMERA_INACTIVE", "CAMERA_CONTROL_FAILED") else setOf("EXPOSURE_UNSUPPORTED")
+            assertTrue("Expected lifecycle/camera cancellation: $rejectedCode", rejectedCode in expectedCodes)
+            assertEquals(1, settlements.get())
+            val after = call(scenario, "getSettings").getJSONObject("value").getJSONObject("settings").getDouble("exposureCompensation")
+            assertEquals("Cancelled operation must not update settings", before, after, 0.000001)
+            preview(scenario)
+            assertEquals(0, cameraInfo().exposureState.exposureCompensationIndex)
+            call(scenario, "stopPreview")
+            emit("camera-exposure-cancellation.json", JSONArray().put(JSONObject()
+                .put("resolved", resolved).put("rejectedCode", rejectedCode).put("settlements", settlements.get())
+                .put("supported", state.isExposureCompensationSupported).put("requestedEv", target).put("beforeEv", before).put("afterEv", after)
                 .put("transport", "Native PluginCall replies; same-dispatch lifecycle cancellation")))
         }
     }

@@ -55,6 +55,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 @CapacitorPlugin(
     name = "ElizaCamera",
@@ -94,6 +95,7 @@ class CameraPlugin : Plugin() {
     private var switchingCamera = false
     private val pendingCameraSwitches = ArrayDeque<PluginCall>()
     private var whiteBalanceRequestId = 0L
+    private var requestedExposureEv = 0.0
 
     private val frameDelivery = Handler(Looper.getMainLooper())
     private var previewEpoch = 0L
@@ -278,7 +280,7 @@ class CameraPlugin : Plugin() {
                     // Apply stored torch setting.
                     applyTorch(currentSettings["flash"] as? String == "torch")
 
-                    restoreWhiteBalance(requireNotNull(camera), {
+                    restoreCameraSettings(requireNotNull(camera), {
                         if (pendingPreviewCall === call) {
                             pendingPreviewCall = null
                             call.resolve(JSObject().apply {
@@ -407,6 +409,9 @@ class CameraPlugin : Plugin() {
                     finishCameraSwitch()
                     return@runOnUiThread
                 }
+                if (targetInfo.exposureState.isExposureCompensationSupported || requestedExposureEv != 0.0) {
+                    planExposure(targetInfo, requestedExposureEv)
+                }
                 currentDirection = direction
                 currentCameraSelector = targetSelector
 
@@ -426,7 +431,7 @@ class CameraPlugin : Plugin() {
                 applyTorch(currentSettings["flash"] as? String == "torch")
                 applyZoom((currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
 
-                restoreWhiteBalance(requireNotNull(camera), {
+                restoreCameraSettings(requireNotNull(camera), {
                     call.resolve(JSObject().apply {
                         put("width", currentPreviewWidth)
                         put("height", currentPreviewHeight)
@@ -726,7 +731,7 @@ class CameraPlugin : Plugin() {
                 requireNotNull(preview), requireNotNull(imageCapture), capture)
             applyTorch(currentSettings["flash"] as? String == "torch")
             applyZoom((currentSettings["zoom"] as? Number)?.toFloat() ?: 1.0f)
-            restoreWhiteBalance(requireNotNull(camera), {
+            restoreCameraSettings(requireNotNull(camera), {
                 check(recordingSession === session && !session.stopping) { "Recording was cancelled before native settings completed" }
                 val pending = if (saveToGallery) {
                     val values = ContentValues().apply {
@@ -918,16 +923,35 @@ class CameraPlugin : Plugin() {
             return
         }
 
-        if (settings.has("whiteBalance")) {
+        if (settings.has("whiteBalance") || settings.has("exposureCompensation")) {
             withActiveCamera(call) { owner ->
-                val preset = settings.getString("whiteBalance")
-                if (!supportsWhiteBalance(owner.cameraInfo, preset)) {
+                val preset = if (settings.has("whiteBalance")) settings.getString("whiteBalance") else null
+                if (preset != null && !supportsWhiteBalance(owner.cameraInfo, preset)) {
                     call.reject("This camera does not support white balance preset $preset", "WHITE_BALANCE_UNSUPPORTED")
                     return@withActiveCamera
                 }
-                settleCameraControl(call, owner, whiteBalanceFuture(owner, preset)) {
+                val requestedEv = if (settings.has("exposureCompensation")) settings.getDouble("exposureCompensation") else null
+                // Validate every native setting before submitting any part of the batch.
+                val exposure = requestedEv?.let { planExposure(owner.cameraInfo, it) }
+                val epoch = previewEpoch
+                val failed: (Exception) -> Unit = { error -> call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error) }
+                fun complete() {
                     applySettingsValues(settings)
+                    call.resolve()
                 }
+                fun applyExposure() {
+                    if (exposure == null) complete()
+                    else awaitCameraControl(owner, epoch, owner.cameraControl.setExposureCompensationIndex(exposure.index), {
+                        requestedExposureEv = requireNotNull(requestedEv)
+                        currentSettings["exposureCompensation"] = exposure.appliedEv
+                        complete()
+                    }, failed)
+                }
+                if (preset == null) applyExposure()
+                else awaitCameraControl(owner, epoch, whiteBalanceFuture(owner, preset), {
+                    currentSettings["whiteBalance"] = preset
+                    applyExposure()
+                }, failed)
             }
         } else {
             applySettingsValues(settings)
@@ -937,7 +961,7 @@ class CameraPlugin : Plugin() {
 
     private fun applySettingsValues(settings: org.json.JSONObject) {
         settings.keys().forEach { key ->
-            currentSettings[key] = settings.get(key)
+            if (key != "exposureCompensation") currentSettings[key] = settings.get(key)
         }
 
         // Apply flash/torch setting.
@@ -961,12 +985,6 @@ class CameraPlugin : Plugin() {
             currentSettings["zoom"] = zoom
         }
 
-        // Apply exposure compensation.
-        if (settings.has("exposureCompensation")) {
-            val ev = settings.getDouble("exposureCompensation").toFloat()
-            applyExposureCompensation(ev)
-            currentSettings["exposureCompensation"] = ev
-        }
     }
 
     private fun validateSettings(settings: org.json.JSONObject): String? {
@@ -1014,9 +1032,9 @@ class CameraPlugin : Plugin() {
                 whiteBalanceMode(preset)).build())
     }
 
-    // Rebinding CameraX use cases must restore the confirmed preset before the
+    // Rebinding CameraX use cases must restore confirmed white balance and EV before the
     // owning preview/switch/recording operation can report success.
-    private fun restoreWhiteBalance(owner: Camera, ready: () -> Unit, failed: (Exception) -> Unit) {
+    private fun restoreCameraSettings(owner: Camera, ready: () -> Unit, failed: (Exception) -> Unit) {
         val epoch = previewEpoch
         val preset = currentSettings["whiteBalance"] as? String ?: "auto"
         fun stillOwnsCamera() = !destroyed && camera === owner && previewEpoch == epoch
@@ -1028,7 +1046,7 @@ class CameraPlugin : Plugin() {
                     try {
                         future.get()
                         check(stillOwnsCamera()) { "Camera changed during white balance restoration" }
-                        ready()
+                        restoreExposure(owner, epoch, ready, failed)
                     } catch (error: Exception) {
                         // Unbind/rebind queues an inactive transition on CameraX's
                         // executor. Re-submit once after that transition, only if
@@ -1128,8 +1146,14 @@ class CameraPlugin : Plugin() {
                 call.reject("Camera preview is not active", "CAMERA_INACTIVE")
                 return@runOnUiThread
             }
+            if (pendingPreviewCall != null || switchingCamera || recordingSession?.let { !it.started && !it.stopping } == true) {
+                call.reject("Camera settings are being restored", "CAMERA_NOT_READY")
+                return@runOnUiThread
+            }
             try {
                 operation(owner)
+            } catch (error: CameraSettingException) {
+                call.reject(error.message, error.code, error)
             } catch (error: Exception) {
                 call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error)
             }
@@ -1137,30 +1161,56 @@ class CameraPlugin : Plugin() {
     }
 
     private fun settleCameraControl(call: PluginCall, owner: Camera, future: ListenableFuture<*>, onSuccess: () -> Unit) {
-        val epoch = previewEpoch
+        awaitCameraControl(owner, previewEpoch, future, {
+            onSuccess()
+            call.resolve()
+        }, { error -> call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error) })
+    }
+
+    private fun awaitCameraControl(owner: Camera, epoch: Long, future: ListenableFuture<*>, ready: () -> Unit, failed: (Exception) -> Unit) {
         future.addListener({
             try {
                 future.get()
-                if (destroyed || camera !== owner || previewEpoch != epoch) {
-                    call.reject("Camera preview changed before control completed", "CAMERA_INACTIVE")
-                } else {
-                    onSuccess()
-                    call.resolve()
-                }
+                check(!destroyed && camera === owner && previewEpoch == epoch) { "Camera changed before control completed" }
+                ready()
             } catch (error: Exception) {
-                call.reject("Camera control failed", "CAMERA_CONTROL_FAILED", error)
+                failed(error)
             }
         }, ContextCompat.getMainExecutor(context))
     }
 
-    private fun applyExposureCompensation(ev: Float) {
-        // CameraX exposure compensation uses an index. Map EV to the nearest index.
-        val cameraInfo = camera?.cameraInfo ?: return
-        val range = cameraInfo.exposureState.exposureCompensationRange
-        val step = cameraInfo.exposureState.exposureCompensationStep.toFloat()
-        if (step <= 0f) return
-        val index = (ev / step).toInt().coerceIn(range.lower, range.upper)
-        camera?.cameraControl?.setExposureCompensationIndex(index)
+    private class CameraSettingException(val code: String, message: String) : IllegalArgumentException(message)
+    private data class ExposureSetting(val index: Int, val appliedEv: Double)
+
+    private fun planExposure(info: CameraInfo, ev: Double): ExposureSetting {
+        val state = info.exposureState
+        val step = state.exposureCompensationStep.toDouble()
+        if (!state.isExposureCompensationSupported || !step.isFinite() || step <= 0.0) {
+            throw CameraSettingException("EXPOSURE_UNSUPPORTED", "This camera does not support exposure compensation")
+        }
+        val range = state.exposureCompensationRange
+        val minimum = range.lower * step
+        val maximum = range.upper * step
+        if (ev < minimum || ev > maximum) {
+            throw CameraSettingException("EXPOSURE_OUT_OF_RANGE", "Exposure compensation must be between $minimum and $maximum EV")
+        }
+        val index = (ev / step).roundToInt()
+        return ExposureSetting(index, index * step)
+    }
+
+    private fun restoreExposure(owner: Camera, epoch: Long, ready: () -> Unit, failed: (Exception) -> Unit) {
+        // Zero is the default on cameras without adjustable compensation. This
+        // does not turn an explicit unsupported user request into success.
+        if (!owner.cameraInfo.exposureState.isExposureCompensationSupported && requestedExposureEv == 0.0) {
+            currentSettings["exposureCompensation"] = 0.0
+            ready()
+            return
+        }
+        val exposure = planExposure(owner.cameraInfo, requestedExposureEv)
+        awaitCameraControl(owner, epoch, owner.cameraControl.setExposureCompensationIndex(exposure.index), {
+            currentSettings["exposureCompensation"] = exposure.appliedEv
+            ready()
+        }, failed)
     }
 
     // ---- Flash / Torch ----
