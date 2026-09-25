@@ -858,13 +858,22 @@ class CanvasPlugin : Plugin() {
             val drawCanvas = targetView.getDrawCanvas()
             val saveCount = applyDrawOptions(drawCanvas, canvas, drawOpts)
 
-            drawStyledImage(drawCanvas, imageObj, imageString, destRectObj, srcRectObj)
+            try {
+                drawStyledImage(drawCanvas, imageObj, imageString, destRectObj, srcRectObj)
+            } catch (error: CanvasImageException) {
+                restoreDrawOptions(drawCanvas, saveCount)
+                call.reject(error.message, "INVALID_IMAGE", error)
+                return@runOnUiThread
+            }
 
             restoreDrawOptions(drawCanvas, saveCount)
             targetView.commit()
             call.resolve()
         }
     }
+
+    private class CanvasImageException(message: String, cause: Exception? = null) :
+        IllegalArgumentException(message, cause)
 
     /** Decode supported local image inputs and preserve the source crop in both APIs. */
     private fun drawStyledImage(
@@ -876,13 +885,13 @@ class CanvasPlugin : Plugin() {
     ) {
         val encoded = imageObj?.getString("base64") ?: imageString
             ?.takeIf { it.startsWith("data:") && it.indexOf(',') > 0 }
-            ?.substringAfter(',') ?: return
+            ?.substringAfter(',') ?: throw CanvasImageException("Canvas images require a base64 object or data URL")
         val bitmap = try {
             val bytes = Base64.decode(encoded, Base64.DEFAULT)
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        } catch (_: Exception) {
-            null
-        } ?: return
+        } catch (error: Exception) {
+            throw CanvasImageException("Canvas image could not be decoded", error)
+        } ?: throw CanvasImageException("Canvas image could not be decoded")
         try {
             val destRect = rectFromObject(destRectObj)
             val source = srcRectObj?.let {
@@ -1060,11 +1069,18 @@ class CanvasPlugin : Plugin() {
                     "image" -> {
                         val destination = args.optJSONObject("destRect")
                         if (destination != null) {
-                            drawStyledImage(drawCanvas,
-                                args.optJSONObject("image")?.let { jsObjectFromJSON(it) },
-                                args.opt("image") as? String,
-                                jsObjectFromJSON(destination),
-                                args.optJSONObject("srcRect")?.let { jsObjectFromJSON(it) })
+                            try {
+                                drawStyledImage(drawCanvas,
+                                    args.optJSONObject("image")?.let { jsObjectFromJSON(it) },
+                                    args.opt("image") as? String,
+                                    jsObjectFromJSON(destination),
+                                    args.optJSONObject("srcRect")?.let { jsObjectFromJSON(it) })
+                            } catch (error: CanvasImageException) {
+                                restoreDrawOptions(drawCanvas, saveCount)
+                                call.reject("Image command $i failed: ${error.message}", "INVALID_IMAGE", error,
+                                    JSObject().put("commandIndex", i))
+                                return@runOnUiThread
+                            }
                         }
                     }
                     "clear" -> {
